@@ -9,13 +9,13 @@ import {
   ListItemIcon,
   ListItemText,
   Popover,
-  Typography,
   useTheme,
 } from "@mui/material";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
@@ -185,9 +185,9 @@ function TransferItem({
       <ListItemText
         disableTypography
         primary={
-          <Typography variant="subtitle2" color="text.primary">
+          <AppTypography variant="subtitle2" color="text.primary">
             {label}
-          </Typography>
+          </AppTypography>
         }
         secondary={
           <div style={{ marginTop: 4 }}>
@@ -198,9 +198,9 @@ function TransferItem({
                 sx={{ height: 5, borderRadius: 1, mb: 0.5 }}
               />
             </AppTooltip>
-            <Typography variant="caption" color="text.secondary">
+            <AppTypography variant="caption" color="text.secondary">
               {detailText}
-            </Typography>
+            </AppTypography>
           </div>
         }
       />
@@ -469,16 +469,16 @@ function NavbarNotificationsDropdown() {
               value={peekTransfer.progress}
               sx={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
             />
-            <Typography
+            <AppTypography
               variant="caption"
               color="inherit"
-              sx={{ opacity: 0.8, fontSize: "0.7rem" }}
+              style={{ opacity: 0.8, fontSize: "0.7rem" }}
             >
               {peekTransfer.label
                 ? removePercentage(peekTransfer.label)
                 : getTransferTitle(peekTransfer.type)}{" "}
               {Math.round(peekTransfer.progress)}%
-            </Typography>
+            </AppTypography>
           </>
         )}
       </div>
@@ -526,11 +526,11 @@ function NavbarNotificationsDropdown() {
             padding: theme.spacing(2),
           }}
         >
-          <Typography variant="subtitle2" color="textPrimary">
+          <AppTypography variant="subtitle2" color="text.primary">
             {totalItems === 0
               ? "No notifications yet"
               : `${totalItems} notification${totalItems === 1 ? "" : "s"}`}
-          </Typography>
+          </AppTypography>
         </div>
 
         {/* Unified list */}
@@ -578,14 +578,14 @@ function NavbarNotificationsDropdown() {
                     <ListItemText
                       disableTypography
                       primary={
-                        <Typography variant="subtitle2" color="text.primary">
+                        <AppTypography variant="subtitle2" color="text.primary">
                           {transfer.label || getCompletedTitle(transfer.type)}
-                        </Typography>
+                        </AppTypography>
                       }
                       secondary={
-                        <Typography variant="caption" color="text.secondary">
+                        <AppTypography variant="caption" color="text.secondary">
                           just now
-                        </Typography>
+                        </AppTypography>
                       }
                     />
                   </ListItem>
@@ -607,11 +607,11 @@ function NavbarNotificationsDropdown() {
                     <ListItemText
                       disableTypography
                       primary={
-                        <Typography variant="subtitle2" color="text.primary">
+                        <AppTypography variant="subtitle2" color="text.primary">
                           {toastItem.description
                             ? `${toastItem.title} — ${toastItem.description}`
                             : toastItem.title}
-                        </Typography>
+                        </AppTypography>
                       }
                       secondary={
                         <div
@@ -621,9 +621,9 @@ function NavbarNotificationsDropdown() {
                             gap: theme.spacing(1),
                           }}
                         >
-                          <Typography variant="caption" color="text.secondary">
+                          <AppTypography variant="caption" color="text.secondary">
                             {formatTimeAgo(toastItem.createdAt)}
-                          </Typography>
+                          </AppTypography>
                           {toastItem.meta?.href && (
                             <Button
                               size="small"

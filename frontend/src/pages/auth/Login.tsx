@@ -1,10 +1,11 @@
-import { Paper, Typography } from "@mui/material";
+import { Paper } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { alpha } from "@/utils/color";
 import { keyframes } from "@mui/system";
 import React from "react";
 
 import LoginComponent from "@/components/auth/Login";
+import AppTypography from "@/components/ui/AppTypography";
 
 import "./login-page.css";
 
@@ -31,16 +32,14 @@ const Login: React.FC = () => {
           backdropFilter: "blur(10px)",
         }}
       >
-        <Typography
-          sx={{
-            fontWeight: 600,
-            fontSize: { xs: "0.78rem", sm: "0.82rem" },
-            letterSpacing: "0.06em",
-            color: "text.primary",
-          }}
+        <AppTypography
+          fontWeight={600}
+          fontSize="0.82rem"
+          color="text.primary"
+          style={{ letterSpacing: "0.06em" }}
         >
           Linux
-        </Typography>
+        </AppTypography>
         <div
           className="login-badge-icon"
           style={{
@@ -86,10 +85,10 @@ const Login: React.FC = () => {
             marginBottom: theme.spacing(2),
           }}
         >
-          <Typography variant="h4">Welcome back</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="h4">Welcome back</AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             Sign in to manage your Linux i/O instance.
-          </Typography>
+          </AppTypography>
         </div>
         <LoginComponent />
       </Paper>

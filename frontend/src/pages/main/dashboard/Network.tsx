@@ -1,4 +1,3 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 
@@ -7,6 +6,7 @@ import NetworkGraph from "./NetworkGraph";
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 
 const NetworkInterfacesCard: React.FC = () => {
   const theme = useTheme();
@@ -102,10 +102,10 @@ const NetworkInterfacesCard: React.FC = () => {
               gap: theme.spacing(1),
             }}
           >
-            <Typography
+            <AppTypography
               variant="caption"
               color="text.secondary"
-              sx={{
+              style={{
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
                 fontSize: "0.62rem",
@@ -113,16 +113,16 @@ const NetworkInterfacesCard: React.FC = () => {
               }}
             >
               {label}
-            </Typography>
-            <Typography variant="body2" fontWeight={500} noWrap>
+            </AppTypography>
+            <AppTypography variant="body2" fontWeight={500} noWrap>
               {value}
-            </Typography>
+            </AppTypography>
           </div>
         ))}
       </div>
     )
   ) : (
-    <Typography variant="body2">No interface selected.</Typography>
+    <AppTypography variant="body2">No interface selected.</AppTypography>
   );
 
   const content2 = selectedInterface ? (
@@ -138,7 +138,7 @@ const NetworkInterfacesCard: React.FC = () => {
       </div>
     )
   ) : (
-    <Typography variant="body2">No graph data.</Typography>
+    <AppTypography variant="body2">No graph data.</AppTypography>
   );
 
   return (

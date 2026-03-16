@@ -1,5 +1,7 @@
-import { Button, Typography, useTheme } from "@mui/material";
+import { Button, useTheme } from "@mui/material";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
@@ -38,26 +40,26 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
         }}
       >
         {/* Title */}
-        <Typography
+        <AppTypography
           variant="h5"
           fontWeight={600}
-          sx={{
+          style={{
             color: theme.palette.text.primary,
           }}
         >
           Unsaved Changes
-        </Typography>
+        </AppTypography>
 
         {/* Message */}
-        <Typography
+        <AppTypography
           variant="body1"
-          sx={{
-            mt: 2,
+          style={{
+            marginTop: 8,
             color: theme.palette.text.secondary,
           }}
         >
           You have unsaved changes in the editor. What would you like to do?
-        </Typography>
+        </AppTypography>
 
         {/* Buttons */}
         <div

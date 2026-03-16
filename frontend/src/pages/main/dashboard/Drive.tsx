@@ -1,10 +1,10 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
 interface DriveInfo {
@@ -94,7 +94,7 @@ const Drive: React.FC = () => {
       <DashboardCard
         title="Drives"
         avatarIcon="mdi:harddisk"
-        stats={<Typography variant="body2">No drives found.</Typography>}
+        stats={<AppTypography variant="body2">No drives found.</AppTypography>}
         selectOptions={[]}
         selectedOption=""
         selectedOptionLabel=""
@@ -136,10 +136,10 @@ const Drive: React.FC = () => {
             gap: theme.spacing(1),
           }}
         >
-          <Typography
+          <AppTypography
             variant="caption"
             color="text.secondary"
-            sx={{
+            style={{
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               fontSize: "0.62rem",
@@ -147,15 +147,15 @@ const Drive: React.FC = () => {
             }}
           >
             {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
+          </AppTypography>
+          <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
-          </Typography>
+          </AppTypography>
         </div>
       ))}
     </div>
   ) : (
-    <Typography variant="body2">No drive selected.</Typography>
+    <AppTypography variant="body2">No drive selected.</AppTypography>
   );
 
   const options = drives.map((drive) => ({

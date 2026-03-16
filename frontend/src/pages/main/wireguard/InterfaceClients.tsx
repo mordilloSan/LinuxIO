@@ -5,24 +5,24 @@ import {
   DialogContent,
   Grid,
   IconButton,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
-
 import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 const wireguardToastMeta = {
-  meta: { href: "/wireguard", label: "Open WireGuard" },
+  meta: {
+    href: "/wireguard",
+    label: "Open WireGuard",
+  },
 };
-
 interface InterfaceDetailsProps {
   params: {
     id: string;
@@ -43,7 +43,6 @@ const formatFileSize = (n?: number) => {
   } while (Math.abs(val) >= 1024 && i < units.length - 1);
   return `${val.toFixed(val >= 100 ? 0 : val >= 10 ? 1 : 2)} ${units[i]}`;
 };
-
 const formatBps = (n?: number) => {
   if (n == null) return "-";
   // bytes/sec formatting
@@ -58,7 +57,6 @@ const formatBps = (n?: number) => {
   } while (Math.abs(val) >= 1024 && i < units.length - 1);
   return `${val.toFixed(val >= 100 ? 0 : val >= 10 ? 1 : 2)} ${units[i]}`;
 };
-
 const formatAgo = (unix?: number) => {
   if (!unix) return "never";
   const diff = Math.max(0, Math.floor(Date.now() / 1000 - unix));
@@ -70,14 +68,12 @@ const formatAgo = (unix?: number) => {
   const d = Math.floor(h / 24);
   return `${d}d ago`;
 };
-
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const theme = useTheme();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
   const queryClient = useQueryClient();
-
   const interfaceName = params.id;
 
   // Update current time every 3 seconds (matches refetchInterval)
@@ -87,7 +83,6 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
-
   const {
     data: peersData,
     isPending: isLoading,
@@ -112,7 +107,6 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       );
     },
   });
-
   const { mutate: downloadConfig } =
     linuxio.wireguard.peer_config_download.useMutation({
       onError: (error: Error) => {
@@ -122,7 +116,6 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         );
       },
     });
-
   const { mutate: getQrCode, isPending: isLoadingQrCode } =
     linuxio.wireguard.peer_qrcode.useMutation({
       onError: (error: Error) => {
@@ -141,10 +134,12 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     return peers.map((peer) => {
       const lastUnix = peer.last_handshake_unix ?? 0;
       const isOnline = lastUnix > 0 && currentTime - lastUnix < 180; // 3 min window
-      return { ...peer, isOnline };
+      return {
+        ...peer,
+        isOnline,
+      };
     });
   }, [peers, currentTime]);
-
   const handleDeletePeer = (peerName: string) => {
     deletePeer([interfaceName, peerName], {
       onSuccess: () => {
@@ -155,12 +150,13 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       },
     });
   };
-
   const handleDownloadConfig = (peername: string) => {
     downloadConfig([interfaceName, peername], {
       onSuccess: (result) => {
         // Create blob from config text
-        const blob = new Blob([result.content], { type: "text/plain" });
+        const blob = new Blob([result.content], {
+          type: "text/plain",
+        });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -176,7 +172,6 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       },
     });
   };
-
   const handleViewQrCode = (peername: string) => {
     getQrCode([interfaceName, peername], {
       onSuccess: (result) => {
@@ -189,25 +184,38 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       },
     });
   };
-
   if (isLoading) return <ComponentLoader />;
   if (isError)
-    return <Typography color="error">Failed to load peer details</Typography>;
-
+    return (
+      <AppTypography color="error">Failed to load peer details</AppTypography>
+    );
   return (
     <>
       <Grid container spacing={3}>
         {peersWithStatus.length === 0 ? (
-          <Grid size={{ xs: 6, sm: 4, md: 4, lg: 3, xl: 2 }}>
-            <Typography>No peers found for this interface.</Typography>
+          <Grid
+            size={{
+              xs: 6,
+              sm: 4,
+              md: 4,
+              lg: 3,
+              xl: 2,
+            }}
+          >
+            <AppTypography>No peers found for this interface.</AppTypography>
           </Grid>
         ) : (
           peersWithStatus.map((peer, idx) => {
             const isOnline = peer.isOnline;
-
             return (
               <Grid
-                size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 6,
+                  lg: 4,
+                  xl: 3,
+                }}
                 key={peer.name || idx}
               >
                 <FrostedCard>
@@ -226,9 +234,14 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                           gap: theme.spacing(1),
                         }}
                       >
-                        <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
+                        <AppTypography
+                          variant="h6"
+                          style={{
+                            fontSize: "1.1rem",
+                          }}
+                        >
                           {peer.name || "Peer"}
-                        </Typography>
+                        </AppTypography>
                         <AppTooltip
                           title={
                             isOnline
@@ -244,11 +257,17 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                           />
                         </AppTooltip>
                       </div>
-                      <div style={{ display: "flex" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                        }}
+                      >
                         <IconButton
                           aria-label="Delete"
                           onClick={() => handleDeletePeer(peer.name)}
-                          sx={{ color: "error.main" }}
+                          sx={{
+                            color: "error.main",
+                          }}
                         >
                           <Icon icon="mdi:delete" width={22} height={22} />
                         </IconButton>
@@ -267,37 +286,65 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                       </div>
                     </div>
 
-                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    <AppTypography
+                      variant="body2"
+                      style={{
+                        marginTop: 2,
+                      }}
+                    >
                       Handshake: {formatAgo(peer.last_handshake_unix)}
-                    </Typography>
+                    </AppTypography>
 
-                    <Typography variant="body2">
+                    <AppTypography variant="body2">
                       Rx: {formatFileSize(peer.rx_bytes)}{" "}
-                      <span style={{ opacity: 0.7 }}>
+                      <span
+                        style={{
+                          opacity: 0.7,
+                        }}
+                      >
                         ({formatBps(peer.rx_bps)})
                       </span>
-                    </Typography>
+                    </AppTypography>
 
-                    <Typography variant="body2">
+                    <AppTypography variant="body2">
                       Tx: {formatFileSize(peer.tx_bytes)}{" "}
-                      <span style={{ opacity: 0.7 }}>
+                      <span
+                        style={{
+                          opacity: 0.7,
+                        }}
+                      >
                         ({formatBps(peer.tx_bps)})
                       </span>
-                    </Typography>
+                    </AppTypography>
 
-                    <Typography variant="body2" sx={{ mt: 1 }}>
+                    <AppTypography
+                      variant="body2"
+                      style={{
+                        marginTop: 4,
+                      }}
+                    >
                       Allowed IPs:{" "}
                       {(peer.allowed_ips && peer.allowed_ips.join(", ")) || "-"}
-                    </Typography>
-                    <Typography variant="body2" sx={{ wordBreak: "break-all" }}>
+                    </AppTypography>
+                    <AppTypography
+                      variant="body2"
+                      style={{
+                        wordBreak: "break-all",
+                      }}
+                    >
                       Endpoint: {peer.endpoint || "-"}
-                    </Typography>
-                    <Typography variant="body2" sx={{ wordBreak: "break-all" }}>
+                    </AppTypography>
+                    <AppTypography
+                      variant="body2"
+                      style={{
+                        wordBreak: "break-all",
+                      }}
+                    >
                       Preshared Key: {peer.preshared_key || "-"}
-                    </Typography>
-                    <Typography variant="body2">
+                    </AppTypography>
+                    <AppTypography variant="body2">
                       Keep Alive: {peer.persistent_keepalive ?? "-"}
-                    </Typography>
+                    </AppTypography>
                   </CardContent>
                 </FrostedCard>
               </Grid>
@@ -315,7 +362,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       >
         <DialogContent>
           {isLoadingQrCode ? (
-            <Typography>Loading QR code...</Typography>
+            <AppTypography>Loading QR code...</AppTypography>
           ) : qrCode ? (
             <img
               src={qrCode}
@@ -328,12 +375,11 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
               }}
             />
           ) : (
-            <Typography>Failed to load QR code</Typography>
+            <AppTypography>Failed to load QR code</AppTypography>
           )}
         </DialogContent>
       </Dialog>
     </>
   );
 };
-
 export default InterfaceClients;

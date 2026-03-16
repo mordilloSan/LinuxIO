@@ -1,17 +1,19 @@
-import { Button, Typography } from "@mui/material";
+import { Button } from "@mui/material";
 import React from "react";
 import { Link } from "react-router-dom";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 function Page500() {
   return (
     <div style={{ textAlign: "center" }}>
-      <Typography component="h1" variant="h1" align="center" gutterBottom>
+      <AppTypography component="h1" variant="h1" align="center" gutterBottom>
         500
-      </Typography>
-      <Typography component="h2" variant="h4" align="center" gutterBottom>
+      </AppTypography>
+      <AppTypography component="h2" variant="h4" align="center" gutterBottom>
         Internal server error.
-      </Typography>
-      <Typography
+      </AppTypography>
+      <AppTypography
         component="h2"
         variant="subtitle1"
         align="center"
@@ -19,7 +21,7 @@ function Page500() {
       >
         The server encountered something unexpected that didn’t allow it to
         complete the request.
-      </Typography>
+      </AppTypography>
 
       <Button
         component={Link}

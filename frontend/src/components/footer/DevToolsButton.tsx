@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import "@/components/cards/frosted-card.css";
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
+import AppTypography from "@/components/ui/AppTypography";
 
 const DevToolsButton: React.FC = () => {
   const theme = useTheme();
@@ -54,9 +54,9 @@ const DevToolsButton: React.FC = () => {
             height={16}
             style={{ color: theme.palette.primary.main }}
           />
-          <Typography variant="caption" color="text.secondary">
+          <AppTypography variant="caption" color="text.secondary">
             Dev Tools
-          </Typography>
+          </AppTypography>
         </div>
       </div>
       <DevToolsPanel isOpen={isOpen} onClose={() => setIsOpen(false)} />

@@ -4,17 +4,14 @@ import {
   CircularProgress,
   Divider,
   Paper,
-  Typography,
   useTheme,
 } from "@mui/material";
 import React from "react";
-
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
-
 import { isEditableFile } from "@/components/filebrowser/utils";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { formatDate, formatFileSize } from "@/utils/formaters";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface FileDetailProps {
   resource?: FileResource;
   onDownload: (path: string) => void;
@@ -22,13 +19,11 @@ interface FileDetailProps {
   statData?: ResourceStatData | null;
   isLoadingStat?: boolean;
 }
-
-const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
-  label,
-  value,
-}) => {
+const DetailRow: React.FC<{
+  label: string;
+  value: React.ReactNode;
+}> = ({ label, value }) => {
   const theme = useTheme();
-
   return (
     <div
       style={{
@@ -36,25 +31,29 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
         gap: theme.spacing(2),
       }}
     >
-      <Typography
+      <AppTypography
         variant="body2"
         fontWeight={600}
         color="text.secondary"
-        sx={{ minWidth: 100 }}
+        style={{
+          minWidth: 100,
+        }}
       >
         {label}:
-      </Typography>
-      <Typography
+      </AppTypography>
+      <AppTypography
         component="div"
         variant="body2"
-        sx={{ flex: 1, wordBreak: "break-all" }}
+        style={{
+          flex: 1,
+          wordBreak: "break-all",
+        }}
       >
         {value}
-      </Typography>
+      </AppTypography>
     </div>
   );
 };
-
 const FileDetail: React.FC<FileDetailProps> = ({
   resource,
   onDownload,
@@ -80,7 +79,6 @@ const FileDetail: React.FC<FileDetailProps> = ({
     isDirectory && resource?.path
       ? (subfoldersMap.get(resource.path)?.size ?? null)
       : null;
-
   if (!resource) {
     return (
       <Paper
@@ -90,29 +88,25 @@ const FileDetail: React.FC<FileDetailProps> = ({
           p: 3,
         }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <AppTypography variant="body2" color="text.secondary">
           Select an item to view its details.
-        </Typography>
+        </AppTypography>
       </Paper>
     );
   }
-
   const isSymlink = resource.symlink;
   // Show edit button only for text-based files that can be edited
   const canEdit = !isDirectory && isEditableFile(resource.name);
-
   const getTypeIcon = () => {
     if (isSymlink) return <Icon icon="mdi:link" width={28} height={28} />;
     if (isDirectory) return <Icon icon="mdi:folder" width={28} height={28} />;
     return <Icon icon="mdi:file" width={28} height={28} />;
   };
-
   const getTypeLabel = () => {
     if (isSymlink) return "Symbolic Link";
     if (isDirectory) return "Directory";
     return "File";
   };
-
   return (
     <Paper
       variant="outlined"
@@ -132,13 +126,22 @@ const FileDetail: React.FC<FileDetailProps> = ({
           gap: theme.spacing(2),
         }}
       >
-        <div style={{ color: theme.palette.primary.main, display: "flex" }}>
+        <div
+          style={{
+            color: theme.palette.primary.main,
+            display: "flex",
+          }}
+        >
           {getTypeIcon()}
         </div>
-        <div style={{ flex: 1 }}>
-          <Typography variant="h6" fontWeight={600}>
+        <div
+          style={{
+            flex: 1,
+          }}
+        >
+          <AppTypography variant="h6" fontWeight={600}>
             {resource.name}
-          </Typography>
+          </AppTypography>
           <div
             style={{
               display: "flex",
@@ -147,14 +150,14 @@ const FileDetail: React.FC<FileDetailProps> = ({
               marginTop: theme.spacing(0.5),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               {getTypeLabel()}
-            </Typography>
+            </AppTypography>
             {resource.hidden && (
               <>
-                <Typography variant="body2" color="text.secondary">
+                <AppTypography variant="body2" color="text.secondary">
                   •
-                </Typography>
+                </AppTypography>
                 <div
                   style={{
                     display: "flex",
@@ -163,9 +166,9 @@ const FileDetail: React.FC<FileDetailProps> = ({
                   }}
                 >
                   <Icon icon="mdi:eye-off" width={16} height={16} />
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     Hidden
-                  </Typography>
+                  </AppTypography>
                 </div>
               </>
             )}
@@ -198,7 +201,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
                 }}
               >
                 <CircularProgress size={16} />
-                <Typography variant="body2">Calculating...</Typography>
+                <AppTypography variant="body2">Calculating...</AppTypography>
               </div>
             ) : size !== undefined && size !== null && size !== 0 ? (
               formatFileSize(size)
@@ -217,9 +220,9 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {statData && (
         <>
           <Divider />
-          <Typography variant="subtitle2" fontWeight={600}>
+          <AppTypography variant="subtitle2" fontWeight={600}>
             Permissions & Ownership
-          </Typography>
+          </AppTypography>
           <div
             style={{
               display: "flex",
@@ -245,7 +248,9 @@ const FileDetail: React.FC<FileDetailProps> = ({
             }}
           >
             <CircularProgress size={16} />
-            <Typography variant="body2">Loading permissions...</Typography>
+            <AppTypography variant="body2">
+              Loading permissions...
+            </AppTypography>
           </div>
         </>
       )}
@@ -282,5 +287,4 @@ const FileDetail: React.FC<FileDetailProps> = ({
     </Paper>
   );
 };
-
 export default FileDetail;

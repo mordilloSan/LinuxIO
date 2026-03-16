@@ -1,4 +1,3 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
@@ -6,6 +5,7 @@ import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
 } from "@/components/cards/DashboardCard";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 
 const MotherBoardInfo: React.FC = () => {
@@ -45,10 +45,10 @@ const MotherBoardInfo: React.FC = () => {
             gap: theme.spacing(1),
           }}
         >
-          <Typography
+          <AppTypography
             variant="caption"
             color="text.secondary"
-            sx={{
+            style={{
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               fontSize: "0.62rem",
@@ -56,15 +56,15 @@ const MotherBoardInfo: React.FC = () => {
             }}
           >
             {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
+          </AppTypography>
+          <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
-          </Typography>
+          </AppTypography>
         </div>
       ))}
     </div>
   ) : (
-    <Typography variant="body2">No system information available.</Typography>
+    <AppTypography variant="body2">No system information available.</AppTypography>
   );
 
   const sensors = motherboardInfo?.temperatures?.sensors ?? {};

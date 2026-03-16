@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
-import { Typography, Grid } from "@mui/material";
+import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -234,30 +236,30 @@ const NetworkInterfaceList = () => {
                       />
                     </div>
                     <div style={{ flexGrow: 1 }}>
-                      <Typography variant="subtitle1" fontWeight={600} noWrap>
+                      <AppTypography variant="subtitle1" fontWeight={600} noWrap>
                         {iface.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      </AppTypography>
+                      <AppTypography variant="body2" color="text.secondary" noWrap>
                         IPv4:{" "}
                         {Array.isArray(iface.ipv4)
                           ? iface.ipv4.join(", ")
                           : "N/A"}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      </AppTypography>
+                      <AppTypography variant="body2" color="text.secondary" noWrap>
                         MAC: {iface.mac}
-                      </Typography>
+                      </AppTypography>
 
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography variant="body2" color="text.secondary" noWrap>
                         {iface.speed === "unknown" ||
                         iface.speed.startsWith("-1")
                           ? "No Carrier"
                           : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
-                      </Typography>
+                      </AppTypography>
 
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography variant="body2" color="text.secondary" noWrap>
                         RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
                         {formatBps(iface.tx_speed)}
-                      </Typography>
+                      </AppTypography>
                     </div>
                   </div>
                   <NetworkInterfaceEditor
@@ -322,9 +324,9 @@ const NetworkInterfaceList = () => {
                         display: "inline-block",
                       }}
                     />
-                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    <AppTypography variant="caption" style={{ opacity: 0.7 }}>
                       RX: {(selectedIface.rx_speed / 1024).toFixed(1)} kB/s
-                    </Typography>
+                    </AppTypography>
                   </div>
                 </div>
                 <div>
@@ -355,9 +357,9 @@ const NetworkInterfaceList = () => {
                         display: "inline-block",
                       }}
                     />
-                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    <AppTypography variant="caption" style={{ opacity: 0.7 }}>
                       TX: {(selectedIface.tx_speed / 1024).toFixed(1)} kB/s
-                    </Typography>
+                    </AppTypography>
                   </div>
                 </div>
               </div>

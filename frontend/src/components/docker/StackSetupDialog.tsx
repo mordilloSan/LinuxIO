@@ -5,23 +5,20 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
-  Typography,
   useTheme,
   CircularProgress,
 } from "@mui/material";
 import { alpha } from "@/utils/color";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import { linuxio } from "@/api";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface StackSetupDialogProps {
   open: boolean;
   onClose: () => void;
   onConfirm: (stackName: string, workingDir: string) => void;
   defaultWorkingDir?: string;
 }
-
 const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
   open,
   onClose,
@@ -48,7 +45,6 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       setErrors({});
     }
   }, [open, defaultWorkingDir]);
-
   const sanitizeStackName = (name: string): string => {
     return name
       .toLowerCase()
@@ -56,7 +52,6 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       .replace(/^-+|-+$/g, "")
       .substring(0, 63);
   };
-
   const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const sanitized = sanitizeStackName(e.target.value);
     setStackName(sanitized);
@@ -68,50 +63,49 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
         : defaultWorkingDir;
       setWorkingDir(newWorkingDir);
     }
-
     if (errors.stackName) {
-      setErrors({ ...errors, stackName: undefined });
+      setErrors({
+        ...errors,
+        stackName: undefined,
+      });
     }
   };
-
   const handleWorkingDirChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setWorkingDir(e.target.value);
     setIsWorkingDirManuallyEdited(true);
     if (errors.workingDir) {
-      setErrors({ ...errors, workingDir: undefined });
+      setErrors({
+        ...errors,
+        workingDir: undefined,
+      });
     }
   };
-
   const validate = (): boolean => {
-    const newErrors: { stackName?: string; workingDir?: string } = {};
-
+    const newErrors: {
+      stackName?: string;
+      workingDir?: string;
+    } = {};
     if (!stackName.trim()) {
       newErrors.stackName = "Stack name is required";
     }
-
     if (!workingDir.trim()) {
       newErrors.workingDir = "Working directory is required";
     } else if (!workingDir.startsWith("/")) {
       newErrors.workingDir = "Working directory must be an absolute path";
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
   const handleConfirm = async () => {
     if (!validate()) {
       return;
     }
-
     setIsValidating(true);
-
     try {
       // Validate the directory with the backend
       const result = await linuxio.docker.validate_stack_directory.call(
         workingDir.trim(),
       );
-
       if (!result.valid) {
         setErrors({
           ...errors,
@@ -132,7 +126,6 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       setIsValidating(false);
     }
   };
-
   return (
     <Dialog
       open={open}
@@ -153,10 +146,16 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Typography variant="h6">Create New Docker Compose Stack</Typography>
+        <AppTypography variant="h6">
+          Create New Docker Compose Stack
+        </AppTypography>
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 3 }}>
+      <DialogContent
+        sx={{
+          pt: 3,
+        }}
+      >
         <div
           style={{
             display: "flex",
@@ -201,13 +200,13 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
               padding: theme.spacing(2),
             }}
           >
-            <Typography variant="caption" color="text.secondary">
+            <AppTypography variant="caption" color="text.secondary">
               <strong>File location:</strong>
               <br />
               {workingDir && stackName
                 ? `${workingDir}/docker-compose.yml`
                 : "Enter stack name and directory"}
-            </Typography>
+            </AppTypography>
           </div>
         </div>
       </DialogContent>
@@ -235,5 +234,4 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     </Dialog>
   );
 };
-
 export default StackSetupDialog;

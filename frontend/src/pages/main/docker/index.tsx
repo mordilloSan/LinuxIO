@@ -1,23 +1,14 @@
 import { Icon } from "@iconify/react";
-import {
-  Alert,
-  AlertTitle,
-  Button,
-  IconButton,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Alert, AlertTitle, Button, IconButton, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
 import DockerDashboard from "./DockerDashboard";
 import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
-
 import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
@@ -25,7 +16,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
+import AppTypography from "@/components/ui/AppTypography";
 const DockerPage: React.FC = () => {
   const theme = useTheme();
   const { status: dockerStatus } = useCapability("dockerAvailable");
@@ -33,11 +24,9 @@ const DockerPage: React.FC = () => {
     useCapability("indexerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
-
   const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
-
   const stoppedContainers = useMemo(
     () => containers.filter((c) => c.State === "exited" || c.State === "dead"),
     [containers],
@@ -46,7 +35,6 @@ const DockerPage: React.FC = () => {
     () => containers.filter((c) => c.State === "running"),
     [containers],
   );
-
   const { mutate: startAllStopped, isPending: isStartingAll } =
     linuxio.docker.start_all_stopped.useMutation({
       onSuccess: (data: any) => {
@@ -58,7 +46,6 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Failed to start containers")),
     });
-
   const { mutate: stopAllRunning, isPending: isStoppingAll } =
     linuxio.docker.stop_all_running.useMutation({
       onSuccess: (data: any) => {
@@ -70,7 +57,6 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Failed to stop containers")),
     });
-
   const { mutate: systemPrune, isPending: isPruning } =
     linuxio.docker.system_prune.useMutation({
       onSuccess: () => {
@@ -92,7 +78,6 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Prune failed")),
     });
-
   const [containerView, setContainerView] = useViewMode(
     "docker.containers",
     "card",
@@ -104,7 +89,6 @@ const DockerPage: React.FC = () => {
   );
   const [volumesView, setVolumesView] = useViewMode("docker.volumes", "table");
   const [imagesView, setImagesView] = useViewMode("docker.images", "table");
-
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
   >(null);
@@ -121,15 +105,18 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
-
   if (dockerStatus === "unknown") {
     return (
-      <div style={{ padding: theme.spacing(3) }}>
+      <div
+        style={{
+          padding: theme.spacing(3),
+        }}
+      >
         <Alert severity="info">
           <AlertTitle>Checking Docker</AlertTitle>
-          <Typography variant="body2">
+          <AppTypography variant="body2">
             Verifying Docker daemon access...
-          </Typography>
+          </AppTypography>
         </Alert>
       </div>
     );
@@ -138,13 +125,22 @@ const DockerPage: React.FC = () => {
   // Show error if Docker is not available
   if (dockerStatus === "unavailable") {
     return (
-      <div style={{ padding: theme.spacing(3) }}>
+      <div
+        style={{
+          padding: theme.spacing(3),
+        }}
+      >
         <Alert severity="warning">
           <AlertTitle>Docker Not Available</AlertTitle>
-          <Typography variant="body2" sx={{ mb: 2 }}>
+          <AppTypography
+            variant="body2"
+            style={{
+              marginBottom: 8,
+            }}
+          >
             Docker daemon is not accessible
-          </Typography>
-          <Typography variant="body2" component="div">
+          </AppTypography>
+          <AppTypography variant="body2" component="div">
             <strong>Common causes:</strong>
             <ul
               style={{
@@ -166,12 +162,11 @@ const DockerPage: React.FC = () => {
                 environment variable)
               </li>
             </ul>
-          </Typography>
+          </AppTypography>
         </Alert>
       </div>
     );
   }
-
   return (
     <>
       <TabContainer
@@ -312,7 +307,9 @@ const DockerPage: React.FC = () => {
                         size="small"
                         onClick={reindexStackHandler}
                         disabled={!indexerEnabled}
-                        sx={{ mr: 1 }}
+                        sx={{
+                          mr: 1,
+                        }}
                       >
                         Scan
                       </Button>
@@ -485,5 +482,4 @@ const DockerPage: React.FC = () => {
     </>
   );
 };
-
 export default DockerPage;

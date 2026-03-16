@@ -19,3 +19,13 @@
     grid-template-columns: 1fr 80px 80px 80px;
   }
 }
+
+.dd-hidden-xs {
+  display: none;
+}
+
+@media (min-width: 600px) {
+  .dd-hidden-xs {
+    display: block;
+  }
+}

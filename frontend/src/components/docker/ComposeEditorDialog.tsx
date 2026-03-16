@@ -5,7 +5,6 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
-  Typography,
   useTheme,
 } from "@mui/material";
 import React, {
@@ -16,15 +15,13 @@ import React, {
   useRef,
   useState,
 } from "react";
-
 import ComposeValidationFeedback, {
   ValidationResult,
 } from "./ComposeValidationFeedback";
-
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface ComposeEditorDialogProps {
   open: boolean;
   mode: "create" | "edit";
@@ -40,11 +37,9 @@ interface ComposeEditorDialogProps {
   ) => Promise<void>;
   onValidate?: (content: string) => Promise<ValidationResult>;
 }
-
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
-
 const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   open,
   mode,
@@ -58,7 +53,6 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
 }) => {
   const theme = useTheme();
   const editorRef = useRef<FileEditorHandle>(null);
-
   const [stackName, setStackName] = useState(initialStackName);
   const [isEditorDirty, setIsEditorDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -75,7 +69,6 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       setValidation(null);
     }
   }, [open, initialStackName]);
-
   const handleClose = () => {
     if (!readOnly && isEditorDirty) {
       setShowUnsavedDialog(true);
@@ -83,20 +76,16 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       onClose();
     }
   };
-
   const handleDiscardAndExit = () => {
     setShowUnsavedDialog(false);
     onClose();
   };
-
   const handleSaveAndExit = async () => {
     await handleSave();
     setShowUnsavedDialog(false);
   };
-
   const handleValidate = async () => {
     if (!onValidate || !editorRef.current) return;
-
     setIsValidating(true);
     try {
       const content = editorRef.current.getContent();
@@ -108,7 +97,6 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       setIsValidating(false);
     }
   };
-
   const handleSave = useCallback(async () => {
     if (!editorRef.current) return;
 
@@ -125,10 +113,8 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       });
       return;
     }
-
     setIsSaving(true);
     setIsValidating(true);
-
     try {
       const content = editorRef.current.getContent();
       let contentToSave = content;
@@ -137,7 +123,6 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       if (onValidate) {
         const validationResult = await onValidate(content);
         setValidation(validationResult);
-
         if (!validationResult.valid) {
           setIsSaving(false);
           setIsValidating(false);
@@ -182,14 +167,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       }
     }
   });
-
   useEffect(() => {
     if (!open) return;
-
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
-
   const sanitizeStackName = (name: string): string => {
     return name
       .toLowerCase()
@@ -197,11 +179,9 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       .replace(/^-+|-+$/g, "")
       .substring(0, 63);
   };
-
   const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setStackName(sanitizeStackName(e.target.value));
   };
-
   return (
     <>
       <Dialog
@@ -225,14 +205,20 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Typography variant="h6">
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <AppTypography variant="h6">
               {readOnly
                 ? "View Docker Compose Stack"
                 : mode === "create"
                   ? "Create Docker Compose Stack"
                   : "Edit Docker Compose Stack"}
-            </Typography>
+            </AppTypography>
 
             {mode === "create" ? (
               <TextField
@@ -247,24 +233,35 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
               />
             ) : (
               <div>
-                <Typography variant="body2" color="text.secondary">
+                <AppTypography variant="body2" color="text.secondary">
                   Stack: <strong>{stackName}</strong>
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
                   File: {filePath}
-                </Typography>
+                </AppTypography>
               </div>
             )}
           </div>
         </DialogTitle>
 
-        <DialogContent sx={{ p: 0, display: "flex", flexDirection: "column" }}>
+        <DialogContent
+          sx={{
+            p: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <ComposeValidationFeedback
             validation={validation}
             isValidating={isValidating}
           />
 
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          <div
+            style={{
+              flex: 1,
+              overflow: "hidden",
+            }}
+          >
             <Suspense
               fallback={
                 <div
@@ -339,5 +336,4 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
     </>
   );
 };
-
 export default ComposeEditorDialog;

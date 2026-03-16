@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Typography,
   Checkbox,
   Button,
   IconButton,
@@ -20,6 +19,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
@@ -199,9 +199,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         }
                         disabled={group.name === "root"}
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {group.name}
-                      </Typography>
+                      </AppTypography>
                     </div>
                     <AppTooltip title="Edit Members">
                       <IconButton
@@ -232,9 +232,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     />
                   </div>
 
-                  <Typography variant="caption" color="text.secondary">
+                  <AppTypography variant="caption" color="text.secondary">
                     Members ({group.members.length})
-                  </Typography>
+                  </AppTypography>
                   <div
                     style={{
                       marginTop: 2,
@@ -254,9 +254,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         />
                       ))
                     ) : (
-                      <Typography variant="body2" color="text.secondary">
+                      <AppTypography variant="body2" color="text.secondary">
                         (no members)
-                      </Typography>
+                      </AppTypography>
                     )}
                   </div>
                 </FrostedCard>
@@ -265,9 +265,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           </Grid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No groups found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -296,13 +296,13 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             <>
               <TableCell>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    fontWeight="medium"
-                    sx={responsiveTextStyles}
+                    fontWeight={500}
+                    style={responsiveTextStyles}
                   >
                     {group.name}
-                  </Typography>
+                  </AppTypography>
                   {group.isSystem && (
                     <Chip
                       label="system"
@@ -314,9 +314,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                 </div>
               </TableCell>
               <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {group.gid}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
@@ -333,9 +333,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         />
                       ))
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <AppTypography variant="body2" color="text.secondary">
                       (no members)
-                    </Typography>
+                    </AppTypography>
                   )}
                   {group.members.length > 3 && (
                     <Chip
@@ -373,9 +373,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           )}
           renderExpandedContent={(group) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>All Members ({group.members.length}):</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
               >
@@ -390,9 +390,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no members)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
             </>

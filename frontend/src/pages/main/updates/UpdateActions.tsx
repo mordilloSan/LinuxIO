@@ -1,7 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Alert, IconButton, LinearProgress, Typography } from "@mui/material";
+import { Alert, IconButton, LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 
@@ -83,9 +85,9 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
               marginBottom: theme.spacing(1),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               {getStatusText()}
-            </Typography>
+            </AppTypography>
             <div
               style={{
                 display: "flex",
@@ -93,9 +95,9 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                 gap: theme.spacing(1),
               }}
             >
-              <Typography variant="body2" color="text.secondary">
+              <AppTypography variant="body2" color="text.secondary">
                 {Math.round(progress)}%
-              </Typography>
+              </AppTypography>
               {onCancel && (
                 <AppTooltip title="Cancel update">
                   <IconButton size="small" onClick={onCancel} sx={{ ml: 0.5 }}>
@@ -113,14 +115,14 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
           {eventLog && eventLog.length > 0 && (
             <div style={{ marginTop: theme.spacing(1) }}>
               {eventLog.map((line, index) => (
-                <Typography
+                <AppTypography
                   key={`${index}-${line}`}
                   variant="caption"
                   color="text.secondary"
-                  sx={{ display: "block" }}
+                  style={{ display: "block" }}
                 >
                   {line}
-                </Typography>
+                </AppTypography>
               ))}
             </div>
           )}

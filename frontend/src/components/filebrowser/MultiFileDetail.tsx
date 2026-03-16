@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
-import { Button, Divider, Paper, Typography, useTheme } from "@mui/material";
+import { Button, Divider, Paper, useTheme } from "@mui/material";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
@@ -54,33 +56,33 @@ const DetailRow: React.FC<{
         gap: theme.spacing(2),
       }}
     >
-      <Typography
+      <AppTypography
         variant="body2"
         fontWeight={600}
         color="text.secondary"
-        sx={{ minWidth: 140 }}
+        style={{ minWidth: 140 }}
       >
         {label}:
-      </Typography>
+      </AppTypography>
       {isLoading ? (
-        <Typography
+        <AppTypography
           variant="body2"
-          sx={{
+          style={{
             flex: 1,
             wordBreak: "break-all",
             animation: "detailGlow 2.5s infinite",
           }}
         >
           —
-        </Typography>
+        </AppTypography>
       ) : (
-        <Typography
+        <AppTypography
           component="div"
           variant="body2"
-          sx={{ flex: 1, wordBreak: "break-all" }}
+          style={{ flex: 1, wordBreak: "break-all" }}
         >
           {value}
-        </Typography>
+        </AppTypography>
       )}
     </div>
   );
@@ -142,12 +144,12 @@ const MultiFileItemRow: React.FC<{
         }}
       >
         <div>
-          <Typography variant="subtitle1" fontWeight={600}>
+          <AppTypography variant="subtitle1" fontWeight={600}>
             {item.name}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             {isDir ? "Directory" : "File"}
-          </Typography>
+          </AppTypography>
         </div>
         {!isDir && (
           <Button
@@ -159,9 +161,9 @@ const MultiFileItemRow: React.FC<{
           </Button>
         )}
       </div>
-      <Typography variant="body2" color="text.secondary">
+      <AppTypography variant="body2" color="text.secondary">
         Size: {renderSize()}
-      </Typography>
+      </AppTypography>
     </div>
   );
 };
@@ -198,13 +200,13 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         }}
       >
         <div>
-          <Typography variant="h6" fontWeight={600}>
+          <AppTypography variant="h6" fontWeight={600}>
             {multiItems.length} Selected Item
             {multiItems.length === 1 ? "" : "s"}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             Combined statistics for the selected files and folders
-          </Typography>
+          </AppTypography>
         </div>
       </div>
 

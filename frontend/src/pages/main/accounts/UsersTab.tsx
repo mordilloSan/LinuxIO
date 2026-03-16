@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Typography,
   Checkbox,
   Button,
   IconButton,
@@ -11,28 +10,25 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import CreateUserDialog from "./components/CreateUserDialog";
 import DeleteUserDialog from "./components/DeleteUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
-
 import { linuxio, type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-
 const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -42,7 +38,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const { data: users = [] } = linuxio.accounts.list_users.useQuery({
     refetchInterval: 10000,
   });
-
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -50,26 +45,21 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AccountUser | null>(null);
-
   const usersList = Array.isArray(users) ? users : [];
-
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
-
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleCreateUser);
     }
   }, [onMountCreateHandler, handleCreateUser]);
-
   const filtered = usersList.filter(
     (user) =>
       user.username.toLowerCase().includes(search.toLowerCase()) ||
       user.gecos.toLowerCase().includes(search.toLowerCase()) ||
       user.primaryGroup.toLowerCase().includes(search.toLowerCase()),
   );
-
   const effectiveSelected = useMemo(() => {
     const filteredNames = new Set(filtered.map((u) => u.username));
     const result = new Set<string>();
@@ -80,7 +70,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
     });
     return result;
   }, [selected, filtered]);
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       // Don't allow selecting root or current user
@@ -97,7 +86,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       setSelected(new Set());
     }
   };
-
   const handleSelectOne = (username: string, checked: boolean) => {
     if (username === "root" || username === currentUser?.name) return;
     setSelected((prev) => {
@@ -110,21 +98,17 @@ const UsersTab: React.FC<UsersTabProps> = ({
       return next;
     });
   };
-
   const handleDeleteSuccess = () => {
     setSelected(new Set());
   };
-
   const handleEditUser = (user: AccountUser) => {
     setSelectedUser(user);
     setEditDialogOpen(true);
   };
-
   const handleChangePassword = (user: AccountUser) => {
     setSelectedUser(user);
     setPasswordDialogOpen(true);
   };
-
   const { mutate: lockUser, isPending: isLocking } =
     linuxio.accounts.lock_user.useMutation({
       onSuccess: () => {
@@ -137,7 +121,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
         toast.error(getMutationErrorMessage(error, "Failed to lock user"));
       },
     });
-
   const { mutate: unlockUser, isPending: isUnlocking } =
     linuxio.accounts.unlock_user.useMutation({
       onSuccess: () => {
@@ -150,7 +133,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
         toast.error(getMutationErrorMessage(error, "Failed to unlock user"));
       },
     });
-
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;
     if (user.isLocked) {
@@ -159,7 +141,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       lockUser([user.username]);
     }
   };
-
   const selectedUsers = filtered.filter((u) =>
     effectiveSelected.has(u.username),
   );
@@ -196,33 +177,56 @@ const UsersTab: React.FC<UsersTabProps> = ({
     }
     return allGroups;
   };
-
   const columns: UnifiedTableColumn[] = [
-    { field: "username", headerName: "Username", align: "left" },
+    {
+      field: "username",
+      headerName: "Username",
+      align: "left",
+    },
     {
       field: "gecos",
       headerName: "Full Name",
       align: "left",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          sm: "table-cell",
+        },
+      },
     },
     {
       field: "uid",
       headerName: "ID",
       align: "left",
       width: "80px",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          md: "table-cell",
+        },
+      },
     },
     {
       field: "lastLogin",
       headerName: "Last Active",
       align: "left",
-      sx: { display: { xs: "none", lg: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          lg: "table-cell",
+        },
+      },
     },
     {
       field: "groups",
       headerName: "Groups",
       align: "left",
-      sx: { display: { xs: "none", xl: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          xl: "table-cell",
+        },
+      },
     },
     {
       field: "actions",
@@ -231,7 +235,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       width: "150px",
     },
   ];
-
   return (
     <div>
       <div
@@ -256,7 +259,13 @@ const UsersTab: React.FC<UsersTabProps> = ({
             },
           }}
         />
-        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
+        <span
+          style={{
+            fontWeight: "bold",
+          }}
+        >
+          {filtered.length} shown
+        </span>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -273,8 +282,20 @@ const UsersTab: React.FC<UsersTabProps> = ({
         filtered.length > 0 ? (
           <Grid container spacing={2}>
             {filtered.map((user) => (
-              <Grid key={user.username} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
+              <Grid
+                key={user.username}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
+              >
+                <FrostedCard
+                  style={{
+                    padding: 8,
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
@@ -285,7 +306,11 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     }}
                   >
                     <div
-                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
                     >
                       <Checkbox
                         size="small"
@@ -298,11 +323,16 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           user.username === currentUser?.name
                         }
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {user.username}
-                      </Typography>
+                      </AppTypography>
                     </div>
-                    <div style={{ display: "flex", gap: 2 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 2,
+                      }}
+                    >
                       <AppTooltip title="Edit">
                         <IconButton
                           size="small"
@@ -371,25 +401,28 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     )}
                   </div>
 
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     Full name: {user.gecos || "-"}
-                  </Typography>
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  </AppTypography>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     UID: {user.uid}
-                  </Typography>
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  </AppTypography>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     Last active:{" "}
                     {formatLastLogin(user.lastLogin, user.username)}
-                  </Typography>
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  </AppTypography>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     Shell: {user.shell}
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="body2"
-                    sx={{ fontFamily: "monospace", ...responsiveTextStyles }}
+                    style={{
+                      fontFamily: "monospace",
+                      ...responsiveTextStyles,
+                    }}
                   >
                     Home: {user.homeDir}
-                  </Typography>
+                  </AppTypography>
 
                   <div
                     style={{
@@ -405,7 +438,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         label={idx === 0 ? `${group} (primary)` : group}
                         size="small"
                         variant="soft"
-                        sx={{ fontSize: "0.7rem" }}
+                        sx={{
+                          fontSize: "0.7rem",
+                        }}
                       />
                     ))}
                   </div>
@@ -414,10 +449,15 @@ const UsersTab: React.FC<UsersTabProps> = ({
             ))}
           </Grid>
         ) : (
-          <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <Typography variant="body2" color="text.secondary">
+          <div
+            style={{
+              textAlign: "center",
+              paddingBlock: 16,
+            }}
+          >
+            <AppTypography variant="body2" color="text.secondary">
               No users found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -455,20 +495,23 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     flexWrap: "wrap",
                   }}
                 >
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    fontWeight="medium"
-                    sx={responsiveTextStyles}
+                    fontWeight={500}
+                    style={responsiveTextStyles}
                   >
                     {user.username}
-                  </Typography>
+                  </AppTypography>
                   {user.username === currentUser?.name && (
                     <Chip
                       label="Your account"
                       size="small"
                       color="primary"
                       variant="soft"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      sx={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
                     />
                   )}
                   {user.isLocked && (
@@ -477,36 +520,73 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       size="small"
                       color="warning"
                       variant="soft"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      sx={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
                     />
                   )}
                 </div>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    sm: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {user.gecos || "-"}
-                </Typography>
+                </AppTypography>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    md: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {user.uid}
-                </Typography>
+                </AppTypography>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
-                <Typography
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    lg: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography
                   variant="body2"
-                  sx={responsiveTextStyles}
                   color={
                     user.username === currentUser?.name
                       ? "success.main"
                       : "text.secondary"
                   }
+                  style={responsiveTextStyles}
                 >
                   {formatLastLogin(user.lastLogin, user.username)}
-                </Typography>
+                </AppTypography>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", xl: "table-cell" } }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    xl: "table-cell",
+                  },
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 2,
+                  }}
+                >
                   {getAllGroups(user)
                     .slice(0, 3)
                     .map((group, idx) => (
@@ -522,7 +602,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         }
                         size="small"
                         variant="soft"
-                        sx={{ fontSize: "0.65rem", height: 20 }}
+                        sx={{
+                          fontSize: "0.65rem",
+                          height: 20,
+                        }}
                       />
                     ))}
                   {getAllGroups(user).length > 3 && (
@@ -530,7 +613,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       label={`+${getAllGroups(user).length - 3}`}
                       size="small"
                       variant="soft"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      sx={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
                     />
                   )}
                 </div>
@@ -597,32 +683,42 @@ const UsersTab: React.FC<UsersTabProps> = ({
           )}
           renderExpandedContent={(user) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Home Directory:</b>
-              </Typography>
-              <Typography
+              </AppTypography>
+              <AppTypography
                 variant="body2"
-                sx={{
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  mb: 2,
+                  marginBottom: 8,
                 }}
               >
                 {user.homeDir}
-              </Typography>
+              </AppTypography>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Shell:</b>
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 2, fontSize: "0.85rem" }}>
+              </AppTypography>
+              <AppTypography
+                variant="body2"
+                style={{
+                  marginBottom: 8,
+                  fontSize: "0.85rem",
+                }}
+              >
                 {user.shell}
-              </Typography>
+              </AppTypography>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>All Groups:</b>
-              </Typography>
+              </AppTypography>
               <div
-                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
+                style={{
+                  marginBottom: 8,
+                  display: "flex",
+                  flexWrap: "wrap",
+                }}
               >
                 {getAllGroups(user).map((group, idx) => (
                   <Chip
@@ -630,7 +726,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     label={idx === 0 ? `${group} (primary)` : group}
                     size="small"
                     variant="soft"
-                    sx={{ mr: 1, mb: 1 }}
+                    sx={{
+                      mr: 1,
+                      mb: 1,
+                    }}
                   />
                 ))}
               </div>
@@ -675,5 +774,4 @@ const UsersTab: React.FC<UsersTabProps> = ({
     </div>
   );
 };
-
 export default UsersTab;

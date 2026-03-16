@@ -4,16 +4,14 @@ import {
   DialogTitle,
   DialogContent,
   IconButton,
-  Typography,
   LinearProgress,
   useTheme,
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-
 import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface ComposeOperationDialogProps {
   open: boolean;
   onClose: () => void;
@@ -21,12 +19,10 @@ interface ComposeOperationDialogProps {
   projectName: string;
   composePath?: string;
 }
-
 interface ComposeMessage {
   type: "stdout" | "stderr" | "error" | "complete";
   message: string;
 }
-
 const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   open,
   onClose,
@@ -41,7 +37,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
   const { streamRef, openStream, closeStream } = useLiveStream();
-
   const { isOpen: muxIsOpen } = useStreamMux();
 
   // Scroll to bottom when output changes
@@ -77,7 +72,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     if (streamRef.current) {
       return;
     }
-
     openStream({
       open: () => openDockerComposeStream(action, projectName, composePath),
       onOpenError: () => {
@@ -91,7 +85,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         const text = decodeString(data);
         try {
           const msg: ComposeMessage = JSON.parse(text);
-
           switch (msg.type) {
             case "stdout":
             case "stderr":
@@ -126,7 +119,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     openStream,
     streamRef,
   ]);
-
   const getActionLabel = () => {
     switch (action) {
       case "up":
@@ -141,7 +133,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         return "Processing";
     }
   };
-
   const handleClose = () => {
     if (isRunning) {
       // Close stream if still running
@@ -149,7 +140,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     }
     onClose();
   };
-
   return (
     <Dialog
       open={open}
@@ -184,7 +174,13 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             gap: theme.spacing(1),
           }}
         >
-          {isRunning && <LinearProgress sx={{ width: 100 }} />}
+          {isRunning && (
+            <LinearProgress
+              sx={{
+                width: 100,
+              }}
+            />
+          )}
           {success && (
             <Icon
               icon="mdi:check-circle"
@@ -201,16 +197,20 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
               color={theme.palette.error.main}
             />
           )}
-          <Typography variant="h6">
+          <AppTypography variant="h6">
             {getActionLabel()} Stack: {projectName}
-          </Typography>
+          </AppTypography>
         </div>
         <IconButton onClick={handleClose} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0 }}>
+      <DialogContent
+        sx={{
+          p: 0,
+        }}
+      >
         <div
           ref={outputBoxRef}
           style={{
@@ -227,22 +227,26 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           }}
         >
           {output.length === 0 && isRunning && (
-            <Typography color="text.secondary">
+            <AppTypography color="text.secondary">
               Starting operation...
-            </Typography>
+            </AppTypography>
           )}
           {output.map((line, index) => (
             <div key={index}>{line}</div>
           ))}
           {error && (
-            <Typography color="error" sx={{ mt: 2 }}>
+            <AppTypography
+              color="error"
+              style={{
+                marginTop: 8,
+              }}
+            >
               Error: {error}
-            </Typography>
+            </AppTypography>
           )}
         </div>
       </DialogContent>
     </Dialog>
   );
 };
-
 export default ComposeOperationDialog;

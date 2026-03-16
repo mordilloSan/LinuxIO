@@ -5,7 +5,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Typography,
   FormControlLabel,
   Radio,
   RadioGroup,
@@ -13,9 +12,8 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useState } from "react";
-
+import AppTypography from "@/components/ui/AppTypography";
 export type DeleteOption = "containers" | "file" | "directory";
-
 interface DeleteStackDialogProps {
   open: boolean;
   onClose: () => void;
@@ -25,7 +23,6 @@ interface DeleteStackDialogProps {
   workingDir: string;
   isLoading?: boolean;
 }
-
 const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
   open,
   onClose,
@@ -37,18 +34,15 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
 }) => {
   const theme = useTheme();
   const [deleteOption, setDeleteOption] = useState<DeleteOption>("containers");
-
   const handleConfirm = () => {
     onConfirm(deleteOption);
   };
-
   const handleClose = () => {
     if (!isLoading) {
       setDeleteOption("containers");
       onClose();
     }
   };
-
   return (
     <Dialog
       open={open}
@@ -78,13 +72,17 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           height={24}
           color={theme.palette.error.main}
         />
-        <Typography variant="h6">Delete Stack: {projectName}</Typography>
+        <AppTypography variant="h6">Delete Stack: {projectName}</AppTypography>
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 3 }}>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
+      <DialogContent
+        sx={{
+          pt: 3,
+        }}
+      >
+        <AppTypography variant="body2" color="text.secondary" gutterBottom>
           Choose what to delete:
-        </Typography>
+        </AppTypography>
 
         <RadioGroup
           value={deleteOption}
@@ -95,14 +93,19 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             control={<Radio />}
             label={
               <div>
-                <Typography variant="body1">Remove containers only</Typography>
-                <Typography variant="caption" color="text.secondary">
+                <AppTypography variant="body1">
+                  Remove containers only
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
                   Runs `docker compose down` - removes containers and networks,
                   keeps compose file
-                </Typography>
+                </AppTypography>
               </div>
             }
-            sx={{ alignItems: "flex-start", mb: 1 }}
+            sx={{
+              alignItems: "flex-start",
+              mb: 1,
+            }}
           />
 
           <FormControlLabel
@@ -110,15 +113,18 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             control={<Radio />}
             label={
               <div>
-                <Typography variant="body1">
+                <AppTypography variant="body1">
                   Remove containers + delete compose file
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
                   {configFiles.length > 0 && `Will delete: ${configFiles[0]}`}
-                </Typography>
+                </AppTypography>
               </div>
             }
-            sx={{ alignItems: "flex-start", mb: 1 }}
+            sx={{
+              alignItems: "flex-start",
+              mb: 1,
+            }}
           />
 
           <FormControlLabel
@@ -126,15 +132,17 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             control={<Radio color="error" />}
             label={
               <div>
-                <Typography variant="body1" color="error">
+                <AppTypography variant="body1" color="error">
                   Remove containers + delete entire directory
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
                   {workingDir && `Will delete: ${workingDir}`}
-                </Typography>
+                </AppTypography>
               </div>
             }
-            sx={{ alignItems: "flex-start" }}
+            sx={{
+              alignItems: "flex-start",
+            }}
           />
         </RadioGroup>
 
@@ -142,28 +150,38 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           <Alert
             severity="warning"
             icon={<Icon icon="mdi:alert" width={22} height={22} />}
-            sx={{ mt: 2 }}
+            sx={{
+              mt: 2,
+            }}
           >
-            <Typography variant="body2">
+            <AppTypography variant="body2">
               <strong>Warning:</strong> This will permanently delete the entire
               stack directory including all configuration files, data, and
               subdirectories. This action cannot be undone!
-            </Typography>
+            </AppTypography>
           </Alert>
         )}
 
         {deleteOption === "file" && (
-          <Alert severity="info" sx={{ mt: 2 }}>
-            <Typography variant="body2">
+          <Alert
+            severity="info"
+            sx={{
+              mt: 2,
+            }}
+          >
+            <AppTypography variant="body2">
               The compose file will be deleted, but volumes and other data in
               the directory will be preserved.
-            </Typography>
+            </AppTypography>
           </Alert>
         )}
       </DialogContent>
 
       <DialogActions
-        sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}
+        sx={{
+          p: 2,
+          borderTop: `1px solid ${theme.palette.divider}`,
+        }}
       >
         <Button onClick={handleClose} disabled={isLoading} color="inherit">
           Cancel
@@ -187,5 +205,4 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
     </Dialog>
   );
 };
-
 export default DeleteStackDialog;

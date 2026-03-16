@@ -1,6 +1,8 @@
-import { Alert, AlertTitle, Collapse, Typography } from "@mui/material";
+import { Alert, AlertTitle, Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 export interface ValidationError {
   line?: number;
@@ -89,7 +91,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                   marginTop: index > 0 ? theme.spacing(1) : 0,
                 }}
               >
-                <Typography variant="body2">
+                <AppTypography variant="body2">
                   {error.field && (
                     <strong style={{ marginRight: "8px" }}>
                       {error.field}:
@@ -101,7 +103,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                       (line {error.line})
                     </span>
                   )}
-                </Typography>
+                </AppTypography>
               </div>
             ))}
           </Alert>
@@ -119,7 +121,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                   marginTop: index > 0 ? theme.spacing(1) : 0,
                 }}
               >
-                <Typography variant="body2">
+                <AppTypography variant="body2">
                   {warning.field && (
                     <strong style={{ marginRight: "8px" }}>
                       {warning.field}:
@@ -131,7 +133,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                       (line {warning.line})
                     </span>
                   )}
-                </Typography>
+                </AppTypography>
               </div>
             ))}
           </Alert>

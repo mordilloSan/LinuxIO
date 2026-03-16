@@ -11,10 +11,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { alpha } from "@/utils/color";
+import AppTypography from "@/components/ui/AppTypography";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
@@ -289,39 +289,39 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               />
             </AppTooltip>
             <DockerIcon identifier={container.icon} size={24} alt={name} />
-            <Typography variant="body2" fontWeight="bold" noWrap>
+            <AppTypography variant="body2" fontWeight={700} noWrap>
               {name}
-            </Typography>
+            </AppTypography>
           </div>
         </TableCell>
 
         {/* Version */}
         <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-          <Typography
+          <AppTypography
             variant="body2"
-            sx={{
+            color="text.secondary"
+            style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
-              color: "text.secondary",
             }}
           >
             {version}
-          </Typography>
+          </AppTypography>
         </TableCell>
 
         {/* Uptime */}
         <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-          <Typography
+          <AppTypography
             variant="body2"
-            sx={{
+            color="text.secondary"
+            style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
-              color: "text.secondary",
               fontVariantNumeric: "tabular-nums",
             }}
           >
             {uptime}
-          </Typography>
+          </AppTypography>
         </TableCell>
 
         {/* Network */}
@@ -332,14 +332,14 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 networks.length > 1 ? networks.map(([n]) => n).join(", ") : ""
               }
             >
-              <Typography
+              <AppTypography
                 variant="body2"
-                sx={{
+                color="text.secondary"
+                noWrap
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.78rem",
-                  color: "text.secondary",
                 }}
-                noWrap
               >
                 {networks[0][0]}
                 {networks.length > 1 && (
@@ -352,12 +352,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     +{networks.length - 1}
                   </span>
                 )}
-              </Typography>
+              </AppTypography>
             </AppTooltip>
           ) : (
-            <Typography variant="body2" color="text.disabled">
+            <AppTypography variant="body2" color="text.disabled">
               —
-            </Typography>
+            </AppTypography>
           )}
         </TableCell>
 
@@ -373,17 +373,17 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   : ""
               }
             >
-              <Typography
+              <AppTypography
                 variant="body2"
-                sx={{ fontFamily: "monospace", fontSize: "0.78rem" }}
+                style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
               >
                 {networks[0][1].IPAddress}
-              </Typography>
+              </AppTypography>
             </AppTooltip>
           ) : (
-            <Typography variant="body2" color="text.disabled">
+            <AppTypography variant="body2" color="text.disabled">
               —
-            </Typography>
+            </AppTypography>
           )}
         </TableCell>
 
@@ -392,11 +392,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
           {ports.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {ports.slice(0, 2).map((p, i) => (
-                <Typography
+                <AppTypography
                   key={i}
                   variant="body2"
                   noWrap
-                  sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                  style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                 >
                   <span style={{ color: theme.palette.text.primary }}>
                     {p.PrivatePort}/{p.Type}
@@ -412,18 +412,18 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   <span style={{ color: theme.palette.text.secondary }}>
                     {p.PublicPort ?? "—"}
                   </span>
-                </Typography>
+                </AppTypography>
               ))}
               {ports.length > 2 && (
-                <Typography variant="caption" color="text.disabled">
+                <AppTypography variant="caption" color="text.disabled">
                   +{ports.length - 2} more
-                </Typography>
+                </AppTypography>
               )}
             </div>
           ) : (
-            <Typography variant="body2" color="text.disabled">
+            <AppTypography variant="body2" color="text.disabled">
               —
-            </Typography>
+            </AppTypography>
           )}
         </TableCell>
 
@@ -435,10 +435,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {mounts.slice(0, 2).map((m, i) => (
                 <AppTooltip key={i} title={`${m.Destination} → ${m.Source}`}>
-                  <Typography
+                  <AppTypography
                     variant="body2"
                     noWrap
-                    sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                    style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                   >
                     <span style={{ color: theme.palette.text.primary }}>
                       {m.Destination}
@@ -454,19 +454,19 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     <span style={{ color: theme.palette.text.secondary }}>
                       {m.Source}
                     </span>
-                  </Typography>
+                  </AppTypography>
                 </AppTooltip>
               ))}
               {mounts.length > 2 && (
-                <Typography variant="caption" color="text.disabled">
+                <AppTypography variant="caption" color="text.disabled">
                   +{mounts.length - 2} more
-                </Typography>
+                </AppTypography>
               )}
             </div>
           ) : (
-            <Typography variant="body2" color="text.disabled">
+            <AppTypography variant="body2" color="text.disabled">
               —
-            </Typography>
+            </AppTypography>
           )}
         </TableCell>
 
@@ -476,28 +476,28 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
           width="80px"
           sx={{ display: { xs: "none", xl: "table-cell" } }}
         >
-          <Typography
+          <AppTypography
             variant="body2"
-            sx={{
+            color="text.secondary"
+            style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
-              color: "text.secondary",
               fontVariantNumeric: "tabular-nums",
             }}
           >
             {cpuPercent.toFixed(1)}%
-          </Typography>
-          <Typography
+          </AppTypography>
+          <AppTypography
             variant="body2"
-            sx={{
+            color="text.secondary"
+            style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
-              color: "text.secondary",
               fontVariantNumeric: "tabular-nums",
             }}
           >
             {formatFileSize(memUsage)}
-          </Typography>
+          </AppTypography>
         </TableCell>
 
         {/* Actions + expand */}
@@ -678,15 +678,17 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               >
                 {ports.length > 2 && (
                   <div>
-                    <Typography
+                    <AppTypography
                       variant="caption"
                       color="text.secondary"
                       fontWeight={600}
-                      display="block"
-                      mb={0.75}
+                      style={{
+                        display: "block",
+                        marginBottom: 3,
+                      }}
                     >
                       ALL PORTS (Container → Host)
-                    </Typography>
+                    </AppTypography>
                     <div
                       style={{
                         display: "flex",
@@ -695,10 +697,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       }}
                     >
                       {ports.map((p, i) => (
-                        <Typography
+                        <AppTypography
                           key={i}
                           variant="body2"
-                          sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: "0.75rem",
+                          }}
                         >
                           <span style={{ color: theme.palette.text.primary }}>
                             {p.PrivatePort}/{p.Type}
@@ -716,22 +721,24 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                               ? `${p.IP && p.IP !== "0.0.0.0" ? p.IP + ":" : ""}${p.PublicPort}`
                               : "—"}
                           </span>
-                        </Typography>
+                        </AppTypography>
                       ))}
                     </div>
                   </div>
                 )}
                 {mounts.length > 2 && (
                   <div>
-                    <Typography
+                    <AppTypography
                       variant="caption"
                       color="text.secondary"
                       fontWeight={600}
-                      display="block"
-                      mb={0.75}
+                      style={{
+                        display: "block",
+                        marginBottom: 3,
+                      }}
                     >
                       ALL VOLUMES (App → Host)
-                    </Typography>
+                    </AppTypography>
                     <div
                       style={{
                         display: "flex",
@@ -740,10 +747,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       }}
                     >
                       {mounts.map((m, i) => (
-                        <Typography
+                        <AppTypography
                           key={i}
                           variant="body2"
-                          sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: "0.75rem",
+                          }}
                         >
                           <span style={{ color: theme.palette.text.primary }}>
                             {m.Destination}
@@ -759,7 +769,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                           <span style={{ color: theme.palette.text.secondary }}>
                             {m.Source}
                           </span>
-                        </Typography>
+                        </AppTypography>
                       ))}
                     </div>
                   </div>
@@ -863,9 +873,9 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       </TableContainer>
       {containers.length === 0 && (
         <div style={{ textAlign: "center", paddingBlock: 16 }}>
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             No containers found.
-          </Typography>
+          </AppTypography>
         </div>
       )}
     </div>

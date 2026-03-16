@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Typography, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material";
 import React from "react";
 
 import { iconSize } from "@/constants";
+import AppTypography from "@/components/ui/AppTypography";
 
 const ErrorMessage: React.FC = () => {
   const theme = useTheme();
@@ -25,9 +26,9 @@ const ErrorMessage: React.FC = () => {
         height={iconSize.lg}
         color={theme.palette.error.main}
       />
-      <Typography color="error" variant="body1">
+      <AppTypography color="error" variant="body1">
         Failed to load!
-      </Typography>
+      </AppTypography>
     </div>
   );
 };

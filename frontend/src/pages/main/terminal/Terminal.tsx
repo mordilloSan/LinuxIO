@@ -1,5 +1,7 @@
-import { IconButton, Menu, MenuItem, Typography } from "@mui/material";
+import { IconButton, Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -339,12 +341,14 @@ const TerminalXTerm: React.FC = () => {
         }}
       >
         {/* Font Size Controls */}
-        <Typography
+        <AppTypography
           variant="body2"
-          sx={{ color: "text.secondary", fontWeight: 500, mr: 2 }}
+          color="text.secondary"
+          fontWeight={500}
+          style={{ marginRight: 8 }}
         >
           Font
-        </Typography>
+        </AppTypography>
         <IconButton
           size="small"
           sx={{ color: "text.secondary" }}
@@ -352,12 +356,14 @@ const TerminalXTerm: React.FC = () => {
         >
           <Minus size={18} />
         </IconButton>
-        <Typography
+        <AppTypography
           variant="body2"
-          sx={{ minWidth: 28, textAlign: "center", color: "text.secondary" }}
+          color="text.secondary"
+          align="center"
+          style={{ minWidth: 28 }}
         >
           {fontSize}
-        </Typography>
+        </AppTypography>
         <IconButton
           size="small"
           sx={{ color: "text.secondary" }}
@@ -425,9 +431,9 @@ const TerminalXTerm: React.FC = () => {
             }}
           >
             <span>Copy</span>
-            <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
+            <AppTypography variant="body2" color="text.secondary" style={{ marginLeft: 8 }}>
               Shift+C
-            </Typography>
+            </AppTypography>
           </div>
         </MenuItem>
         <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
@@ -440,9 +446,9 @@ const TerminalXTerm: React.FC = () => {
             }}
           >
             <span>Paste</span>
-            <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
+            <AppTypography variant="body2" color="text.secondary" style={{ marginLeft: 8 }}>
               Shift+V
-            </Typography>
+            </AppTypography>
           </div>
         </MenuItem>
       </Menu>

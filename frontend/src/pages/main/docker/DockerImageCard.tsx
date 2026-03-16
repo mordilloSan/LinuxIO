@@ -3,12 +3,13 @@ import {
   CardContent,
   Collapse,
   IconButton,
-  Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import { alpha } from "@/utils/color";
 import { useMemo, useState } from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import { cardBorderRadius } from "@/constants";
 import { CollapsibleTableProps } from "@/types/collapsible";
@@ -90,12 +91,12 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         >
           {columns.map((col) => (
             <div key={col.field} style={{ flex: 1, minWidth: 0 }}>
-              <Typography
+              <AppTypography
                 variant={col.field === "repo" ? "subtitle1" : "body2"}
                 color="text.primary"
               >
                 {(row as any)[col.field]}
-              </Typography>
+              </AppTypography>
             </div>
           ))}
 

@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import { Link, Typography, useTheme } from "@mui/material";
+import { Link, useTheme } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface Update {
   package_id: string;
@@ -135,10 +136,10 @@ const SystemHealth = () => {
             gap: theme.spacing(1),
           }}
         >
-          <Typography
+          <AppTypography
             variant="caption"
             color="text.secondary"
-            sx={{
+            style={{
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               fontSize: "0.62rem",
@@ -146,10 +147,10 @@ const SystemHealth = () => {
             }}
           >
             {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
+          </AppTypography>
+          <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
-          </Typography>
+          </AppTypography>
         </div>
       ))}
     </div>

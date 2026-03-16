@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   CardContent,
-  Typography,
   FormControl,
   Select,
   MenuItem,
@@ -14,6 +13,7 @@ import React, { useState } from "react";
 import FrostedCard from "./RootCard";
 
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
 import {
   getAccentCardHoverStyles,
@@ -188,11 +188,13 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         displayEmpty
         renderValue={() =>
           selectedOptionLabel ? (
-            <Typography variant="body2">{selectedOptionLabel}</Typography>
+            <AppTypography variant="body2" color="text.secondary">
+              {selectedOptionLabel}
+            </AppTypography>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               Select...
-            </Typography>
+            </AppTypography>
           )
         }
       >
@@ -231,16 +233,16 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         >
           {/* Title and optional extras */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Typography
+            <AppTypography
               variant="h5"
-              sx={{
-                fontWeight: "bold",
+              fontWeight={700}
+              style={{
                 transform: "translateY(-1px)",
                 ...(titleColor && { color: titleColor }),
               }}
             >
               {title}
-            </Typography>
+            </AppTypography>
 
             {statusDot}
             {renderSelect}
@@ -278,12 +280,13 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                     color={primaryColor}
                   />
                 </div>
-                <Typography
+                <AppTypography
                   variant="body2"
-                  sx={{ color: "text.secondary", ml: 0, lineHeight: 1 }}
+                  color="text.secondary"
+                  style={{ marginLeft: 0, lineHeight: 1 }}
                 >
                   {icon_text}
-                </Typography>
+                </AppTypography>
               </div>
             )}
             {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (

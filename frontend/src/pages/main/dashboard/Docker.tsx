@@ -4,14 +4,12 @@ import {
   ListItemIcon,
   Menu,
   MenuItem,
-  Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -19,22 +17,18 @@ import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
+import AppTypography from "@/components/ui/AppTypography";
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
   () => import("@/pages/main/docker/TerminalDialog"),
 );
-
 const cleanName = (name: string) => name.replace(/^\//, "");
-
 const getStatusLabel = (status: string, state: string): string => {
   const health = status.match(/\((\w+)\)/)?.[1];
   if (health === "healthy" || health === "unhealthy") return health;
   return state;
 };
-
 const getCollectionCount = <T,>(items: T[]) => items.length;
-
 const DockerInfo: React.FC = () => {
   const theme = useTheme();
   const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
@@ -53,7 +47,6 @@ const DockerInfo: React.FC = () => {
     id: string;
     name: string;
   } | null>(null);
-
   const resolveStateColor = useCallback(
     (state: string) => {
       switch (state) {
@@ -73,7 +66,6 @@ const DockerInfo: React.FC = () => {
     },
     [theme],
   );
-
   const invalidateContainers = useCallback(
     () =>
       queryClient.invalidateQueries({
@@ -81,18 +73,13 @@ const DockerInfo: React.FC = () => {
       }),
     [queryClient],
   );
-
   const { mutate: startContainer } =
     linuxio.docker.start_container.useMutation();
-
   const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation();
-
   const { mutate: restartContainer } =
     linuxio.docker.restart_container.useMutation();
-
   const { mutate: removeContainer } =
     linuxio.docker.remove_container.useMutation();
-
   const handleContextMenu = useCallback(
     (
       e: React.MouseEvent<HTMLElement>,
@@ -102,16 +89,18 @@ const DockerInfo: React.FC = () => {
     ) => {
       e.preventDefault();
       setMenuAnchor(e.currentTarget);
-      setMenuContainer({ id, name, state });
+      setMenuContainer({
+        id,
+        name,
+        state,
+      });
     },
     [],
   );
-
   const handleMenuClose = useCallback(() => {
     setMenuAnchor(null);
     setMenuContainer(null);
   }, []);
-
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
       if (!menuContainer) return;
@@ -146,7 +135,6 @@ const DockerInfo: React.FC = () => {
       invalidateContainers,
     ],
   );
-
   const {
     data: containers = [],
     isPending: isContainersLoading,
@@ -154,30 +142,25 @@ const DockerInfo: React.FC = () => {
   } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
-
   const { data: imagesCount = 0 } =
     linuxio.docker.list_images.useQueryWithSelect({
       refetchInterval: 30_000,
       select: getCollectionCount,
     });
-
   const { data: networksCount = 0 } =
     linuxio.docker.list_networks.useQueryWithSelect({
       refetchInterval: 30_000,
       select: getCollectionCount,
     });
-
   const { data: volumesCount = 0 } =
     linuxio.docker.list_volumes.useQueryWithSelect({
       refetchInterval: 30_000,
       select: getCollectionCount,
     });
-
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,
     [containers],
   );
-
   const sorted = useMemo(
     () =>
       [...containers].sort((a, b) => {
@@ -187,7 +170,6 @@ const DockerInfo: React.FC = () => {
       }),
     [containers],
   );
-
   const stats = (
     <div
       style={{
@@ -198,10 +180,22 @@ const DockerInfo: React.FC = () => {
       }}
     >
       {[
-        { label: "Containers", value: `${runningCount}/${containers.length}` },
-        { label: "Images", value: imagesCount },
-        { label: "Networks", value: networksCount },
-        { label: "Volumes", value: volumesCount },
+        {
+          label: "Containers",
+          value: `${runningCount}/${containers.length}`,
+        },
+        {
+          label: "Images",
+          value: imagesCount,
+        },
+        {
+          label: "Networks",
+          value: networksCount,
+        },
+        {
+          label: "Volumes",
+          value: volumesCount,
+        },
       ].map(({ label, value }, index, rows) => (
         <div
           key={label}
@@ -218,10 +212,10 @@ const DockerInfo: React.FC = () => {
             gap: theme.spacing(1),
           }}
         >
-          <Typography
+          <AppTypography
             variant="caption"
             color="text.secondary"
-            sx={{
+            style={{
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               fontSize: "0.62rem",
@@ -229,15 +223,14 @@ const DockerInfo: React.FC = () => {
             }}
           >
             {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
+          </AppTypography>
+          <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
-          </Typography>
+          </AppTypography>
         </div>
       ))}
     </div>
   );
-
   const stats2 = isContainersError ? (
     <ErrorMessage />
   ) : isContainersLoading ? (
@@ -263,18 +256,31 @@ const DockerInfo: React.FC = () => {
         const statusColor = resolveStateColor(
           getStatusLabel(c.Status, c.State),
         );
-
         return (
           <AppTooltip
             key={c.Id}
             title={
-              <div style={{ textAlign: "center" }}>
-                <Typography component="span" sx={{ fontSize: "0.8rem" }}>
+              <div
+                style={{
+                  textAlign: "center",
+                }}
+              >
+                <AppTypography
+                  component="span"
+                  style={{
+                    fontSize: "0.8rem",
+                  }}
+                >
                   {name}
-                </Typography>
-                <Typography component="span" sx={{ color: statusColor }}>
+                </AppTypography>
+                <AppTypography
+                  component="span"
+                  style={{
+                    color: statusColor,
+                  }}
+                >
                   {getStatusLabel(c.Status, c.State)}
-                </Typography>
+                </AppTypography>
               </div>
             }
             arrow
@@ -311,7 +317,13 @@ const DockerInfo: React.FC = () => {
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
         autoFocus={false}
-        slotProps={{ paper: { sx: { minWidth: 140 } } }}
+        slotProps={{
+          paper: {
+            sx: {
+              minWidth: 140,
+            },
+          },
+        }}
       >
         {menuContainer?.state !== "running" && (
           <MenuItem onClick={() => handleAction("start")}>
@@ -383,7 +395,6 @@ const DockerInfo: React.FC = () => {
       </Menu>
     </div>
   );
-
   return (
     <>
       <DashboardCard
@@ -416,5 +427,4 @@ const DockerInfo: React.FC = () => {
     </>
   );
 };
-
 export default DockerInfo;

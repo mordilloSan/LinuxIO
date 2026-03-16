@@ -23,13 +23,11 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import {
   linuxio,
   type LogicalVolume,
@@ -41,32 +39,28 @@ import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface LVMManagementProps {
   onMountCreateHandler?: (handler: () => void) => void;
 }
-
 interface CreateLVDialogProps {
   open: boolean;
   onClose: () => void;
   volumeGroups: VolumeGroup[];
   onSuccess: () => void;
 }
-
 interface ResizeLVDialogProps {
   open: boolean;
   onClose: () => void;
   lv: LogicalVolume | null;
   onSuccess: () => void;
 }
-
 interface DeleteLVDialogProps {
   open: boolean;
   onClose: () => void;
   lv: LogicalVolume | null;
   onSuccess: () => void;
 }
-
 const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   open,
   onClose,
@@ -79,7 +73,6 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-
   const { mutate: createLV, isPending: isCreating } =
     linuxio.storage.create_lv.useMutation({
       onSuccess: () => {
@@ -99,17 +92,14 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
         );
       },
     });
-
   const handleCreate = () => {
     if (!vgName || !lvName || !size) {
       setValidationError("All fields are required");
       return;
     }
-
     setValidationError(null);
     createLV([vgName, lvName, size]);
   };
-
   const handleClose = () => {
     setVgName("");
     setLvName("");
@@ -117,9 +107,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
     setValidationError(null);
     onClose();
   };
-
   const selectedVG = volumeGroups.find((vg) => vg.name === vgName);
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Logical Volume</DialogTitle>
@@ -147,9 +135,9 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
             </Select>
           </FormControl>
           {selectedVG && (
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               Available space: {formatFileSize(selectedVG.free)}
-            </Typography>
+            </AppTypography>
           )}
           <TextField
             label="Logical Volume Name"
@@ -184,7 +172,6 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
     </Dialog>
   );
 };
-
 const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   open,
   onClose,
@@ -202,7 +189,6 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
     return "";
   });
   const [validationError, setValidationError] = useState<string | null>(null);
-
   const { mutate: resizeLV, isPending: isResizing } =
     linuxio.storage.resize_lv.useMutation({
       onSuccess: () => {
@@ -222,23 +208,19 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
         );
       },
     });
-
   const handleResize = () => {
     if (!lv || !newSize) {
       setValidationError("Size is required");
       return;
     }
-
     setValidationError(null);
     resizeLV([lv.vgName, lv.name, newSize]);
   };
-
   const handleClose = () => {
     setNewSize("");
     setValidationError(null);
     onClose();
   };
-
   return (
     <Dialog
       key={lv?.path}
@@ -259,12 +241,12 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
         >
           {lv && (
             <>
-              <Typography variant="body2">
+              <AppTypography variant="body2">
                 <strong>Volume:</strong> {lv.path}
-              </Typography>
-              <Typography variant="body2">
+              </AppTypography>
+              <AppTypography variant="body2">
                 <strong>Current Size:</strong> {formatFileSize(lv.size)}
-              </Typography>
+              </AppTypography>
             </>
           )}
           <TextField
@@ -293,7 +275,6 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
     </Dialog>
   );
 };
-
 const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   open,
   onClose,
@@ -301,7 +282,6 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-
   const { mutate: deleteLV, isPending: isDeleting } =
     linuxio.storage.delete_lv.useMutation({
       onSuccess: () => {
@@ -321,16 +301,13 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
         );
       },
     });
-
   const handleDelete = () => {
     if (!lv) return;
     deleteLV([lv.vgName, lv.name]);
   };
-
   const handleClose = () => {
     onClose();
   };
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Delete Logical Volume</DialogTitle>
@@ -340,12 +317,22 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
           <strong>{lv?.name}</strong>?
         </DialogContentText>
         {lv?.mountpoint && (
-          <Alert severity="warning" sx={{ mt: 2 }}>
+          <Alert
+            severity="warning"
+            sx={{
+              mt: 2,
+            }}
+          >
             This volume is currently mounted at <strong>{lv.mountpoint}</strong>
             . Please unmount it first.
           </Alert>
         )}
-        <DialogContentText sx={{ mt: 2, color: "error.main" }}>
+        <DialogContentText
+          sx={{
+            mt: 2,
+            color: "error.main",
+          }}
+        >
           This action cannot be undone. All data on this volume will be lost.
         </DialogContentText>
       </DialogContent>
@@ -365,8 +352,9 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
     </Dialog>
   );
 };
-
-const PVTable: React.FC<{ data: PhysicalVolume[] }> = ({ data }) => (
+const PVTable: React.FC<{
+  data: PhysicalVolume[];
+}> = ({ data }) => (
   <TableContainer>
     <Table size="small">
       <TableHead>
@@ -382,18 +370,23 @@ const PVTable: React.FC<{ data: PhysicalVolume[] }> = ({ data }) => (
         {data.length === 0 ? (
           <TableRow>
             <TableCell colSpan={5}>
-              <Typography color="text.secondary" align="center">
+              <AppTypography color="text.secondary" align="center">
                 No physical volumes found
-              </Typography>
+              </AppTypography>
             </TableCell>
           </TableRow>
         ) : (
           data.map((pv) => (
             <TableRow key={pv.name}>
               <TableCell>
-                <Typography variant="body2" fontFamily="monospace">
+                <AppTypography
+                  variant="body2"
+                  style={{
+                    fontFamily: "monospace",
+                  }}
+                >
                   {pv.name}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell>{pv.vgName || "-"}</TableCell>
               <TableCell>{formatFileSize(pv.size)}</TableCell>
@@ -408,8 +401,9 @@ const PVTable: React.FC<{ data: PhysicalVolume[] }> = ({ data }) => (
     </Table>
   </TableContainer>
 );
-
-const VGTable: React.FC<{ data: VolumeGroup[] }> = ({ data }) => (
+const VGTable: React.FC<{
+  data: VolumeGroup[];
+}> = ({ data }) => (
   <TableContainer>
     <Table size="small">
       <TableHead>
@@ -425,18 +419,18 @@ const VGTable: React.FC<{ data: VolumeGroup[] }> = ({ data }) => (
         {data.length === 0 ? (
           <TableRow>
             <TableCell colSpan={5}>
-              <Typography color="text.secondary" align="center">
+              <AppTypography color="text.secondary" align="center">
                 No volume groups found
-              </Typography>
+              </AppTypography>
             </TableCell>
           </TableRow>
         ) : (
           data.map((vg) => (
             <TableRow key={vg.name}>
               <TableCell>
-                <Typography variant="body2" fontWeight={600}>
+                <AppTypography variant="body2" fontWeight={600}>
                   {vg.name}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell>{formatFileSize(vg.size)}</TableCell>
               <TableCell>{formatFileSize(vg.free)}</TableCell>
@@ -449,13 +443,11 @@ const VGTable: React.FC<{ data: VolumeGroup[] }> = ({ data }) => (
     </Table>
   </TableContainer>
 );
-
 interface LVTableProps {
   data: LogicalVolume[];
   onResize: (lv: LogicalVolume) => void;
   onDelete: (lv: LogicalVolume) => void;
 }
-
 const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
   <TableContainer>
     <Table size="small">
@@ -473,44 +465,59 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
         {data.length === 0 ? (
           <TableRow>
             <TableCell colSpan={6}>
-              <Typography color="text.secondary" align="center">
+              <AppTypography color="text.secondary" align="center">
                 No logical volumes found
-              </Typography>
+              </AppTypography>
             </TableCell>
           </TableRow>
         ) : (
           data.map((lv) => (
             <TableRow key={lv.path}>
               <TableCell>
-                <Typography variant="body2" fontWeight={600}>
+                <AppTypography variant="body2" fontWeight={600}>
                   {lv.name}
-                </Typography>
-                <Typography
+                </AppTypography>
+                <AppTypography
                   variant="caption"
                   color="text.secondary"
-                  fontFamily="monospace"
+                  style={{
+                    fontFamily: "monospace",
+                  }}
                 >
                   {lv.path}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell>{lv.vgName}</TableCell>
               <TableCell>{formatFileSize(lv.size)}</TableCell>
               <TableCell>
                 {lv.mountpoint ? (
-                  <Typography variant="body2" fontFamily="monospace">
+                  <AppTypography
+                    variant="body2"
+                    style={{
+                      fontFamily: "monospace",
+                    }}
+                  >
                     {lv.mountpoint}
-                  </Typography>
+                  </AppTypography>
                 ) : (
                   <Chip label="Not mounted" size="small" variant="soft" />
                 )}
               </TableCell>
               <TableCell>
                 {lv.mountpoint ? (
-                  <div style={{ width: 100 }}>
+                  <div
+                    style={{
+                      width: 100,
+                    }}
+                  >
                     <LinearProgress
                       variant="determinate"
                       value={lv.usedPct}
-                      sx={{ height: 6, borderRadius: 3, mb: 0.5 }}
+                      sx={{
+                        height: 6,
+                        borderRadius: 3,
+                        mb: 0.5,
+                      }}
                       color={
                         lv.usedPct > 90
                           ? "error"
@@ -519,9 +526,9 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                             : "primary"
                       }
                     />
-                    <Typography variant="caption">
+                    <AppTypography variant="caption">
                       {lv.usedPct.toFixed(1)}%
-                    </Typography>
+                    </AppTypography>
                   </div>
                 ) : (
                   "-"
@@ -550,7 +557,6 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
     </Table>
   </TableContainer>
 );
-
 const LVMManagement: React.FC<LVMManagementProps> = ({
   onMountCreateHandler,
 }) => {
@@ -559,64 +565,58 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
   const [resizeDialogOpen, setResizeDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedLV, setSelectedLV] = useState<LogicalVolume | null>(null);
-
   const {
     data: pvs = [],
     isPending: pvsLoading,
     refetch: refetchPVs,
-  } = linuxio.storage.list_pvs.useQuery({ refetchInterval: 10000 });
-
+  } = linuxio.storage.list_pvs.useQuery({
+    refetchInterval: 10000,
+  });
   const {
     data: vgs = [],
     isPending: vgsLoading,
     refetch: refetchVGs,
-  } = linuxio.storage.list_vgs.useQuery({ refetchInterval: 10000 });
-
+  } = linuxio.storage.list_vgs.useQuery({
+    refetchInterval: 10000,
+  });
   const {
     data: lvs = [],
     isPending: lvsLoading,
     refetch: refetchLVs,
-  } = linuxio.storage.list_lvs.useQuery({ refetchInterval: 10000 });
-
+  } = linuxio.storage.list_lvs.useQuery({
+    refetchInterval: 10000,
+  });
   const handleCreateLV = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
-
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleCreateLV);
     }
   }, [onMountCreateHandler, handleCreateLV]);
-
   const handleAccordionChange =
     (panel: string) => (_: React.SyntheticEvent, isExpanded: boolean) => {
       setExpanded(isExpanded ? panel : false);
     };
-
   const handleRefreshAll = () => {
     refetchPVs();
     refetchVGs();
     refetchLVs();
   };
-
   const handleResize = (lv: LogicalVolume) => {
     setSelectedLV(lv);
     setResizeDialogOpen(true);
   };
-
   const handleDelete = (lv: LogicalVolume) => {
     setSelectedLV(lv);
     setDeleteDialogOpen(true);
   };
-
   if (pvsLoading || vgsLoading || lvsLoading) {
     return <ComponentLoader />;
   }
-
   const pvsList = Array.isArray(pvs) ? pvs : [];
   const vgsList = Array.isArray(vgs) ? vgs : [];
   const lvsList = Array.isArray(lvs) ? lvs : [];
-
   return (
     <>
       <Accordion
@@ -626,9 +626,9 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         <AccordionSummary
           expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}
         >
-          <Typography fontWeight={600}>
+          <AppTypography fontWeight={600}>
             Logical Volumes ({lvsList.length})
-          </Typography>
+          </AppTypography>
         </AccordionSummary>
         <AccordionDetails>
           <LVTable
@@ -646,9 +646,9 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         <AccordionSummary
           expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}
         >
-          <Typography fontWeight={600}>
+          <AppTypography fontWeight={600}>
             Volume Groups ({vgsList.length})
-          </Typography>
+          </AppTypography>
         </AccordionSummary>
         <AccordionDetails>
           <VGTable data={vgsList} />
@@ -662,9 +662,9 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         <AccordionSummary
           expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}
         >
-          <Typography fontWeight={600}>
+          <AppTypography fontWeight={600}>
             Physical Volumes ({pvsList.length})
-          </Typography>
+          </AppTypography>
         </AccordionSummary>
         <AccordionDetails>
           <PVTable data={pvsList} />
@@ -694,5 +694,4 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
     </>
   );
 };
-
 export default LVMManagement;

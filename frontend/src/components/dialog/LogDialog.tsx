@@ -3,7 +3,6 @@ import {
   DialogTitle,
   DialogContent,
   IconButton,
-  Typography,
   Alert,
   Switch,
   FormControlLabel,
@@ -11,11 +10,10 @@ import {
 import { useTheme } from "@mui/material/styles";
 import { alpha } from "@/utils/color";
 import React from "react";
-
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTooltip from "@/components/ui/AppTooltip";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface LogDialogProps {
   open: boolean;
   onClose: () => void;
@@ -34,7 +32,6 @@ interface LogDialogProps {
   onExited?: () => void;
   maxWidth?: "sm" | "md" | "lg" | "xl";
 }
-
 const LogDialog: React.FC<LogDialogProps> = ({
   open,
   onClose,
@@ -51,18 +48,33 @@ const LogDialog: React.FC<LogDialogProps> = ({
   maxWidth = "md",
 }) => {
   const theme = useTheme();
-
   return (
     <GeneralDialog
       open={open}
       onClose={onClose}
       maxWidth={maxWidth}
       fullWidth
-      slotProps={{ transition: { onExited } }}
+      slotProps={{
+        transition: {
+          onExited,
+        },
+      }}
     >
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-          {titleContent ?? <Typography variant="h6">{title}</Typography>}
+      <DialogTitle
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {titleContent ?? <AppTypography variant="h6">{title}</AppTypography>}
         </div>
         {extraActions}
         <AppTooltip
@@ -77,7 +89,9 @@ const LogDialog: React.FC<LogDialogProps> = ({
               />
             }
             label="Live"
-            sx={{ ml: 1 }}
+            sx={{
+              ml: 1,
+            }}
           />
         </AppTooltip>
         <IconButton onClick={onClose} size="small">
@@ -85,9 +99,19 @@ const LogDialog: React.FC<LogDialogProps> = ({
         </IconButton>
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 0 }}>
+      <DialogContent
+        dividers
+        sx={{
+          p: 0,
+        }}
+      >
         {error ? (
-          <Alert severity="error" sx={{ m: 2 }}>
+          <Alert
+            severity="error"
+            sx={{
+              m: 2,
+            }}
+          >
             {error}
           </Alert>
         ) : (
@@ -122,9 +146,9 @@ const LogDialog: React.FC<LogDialogProps> = ({
             )}
             {!isLoading &&
               (logs || (
-                <Typography color="text.secondary">
+                <AppTypography color="text.secondary">
                   No logs available.
-                </Typography>
+                </AppTypography>
               ))}
           </div>
         )}
@@ -132,5 +156,4 @@ const LogDialog: React.FC<LogDialogProps> = ({
     </GeneralDialog>
   );
 };
-
 export default LogDialog;

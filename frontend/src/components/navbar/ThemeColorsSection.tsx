@@ -1,7 +1,9 @@
 import { Icon } from "@iconify/react";
-import { IconButton, Typography, useTheme } from "@mui/material";
+import { IconButton, useTheme } from "@mui/material";
 import { alpha } from "@/utils/color";
 import { useRef } from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -166,9 +168,9 @@ function ThemeColorsSection() {
       }}
     >
       <div style={{ display: "flex", alignItems: "center" }}>
-        <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
+        <AppTypography variant="body1" fontWeight={600} style={{ flexGrow: 1 }}>
           Colors
-        </Typography>
+        </AppTypography>
         <AppTooltip
           title={
             hasAnyOverride
@@ -204,12 +206,12 @@ function ThemeColorsSection() {
             }}
           >
             <div>
-              <Typography variant="body2" fontWeight={600}>
+              <AppTypography variant="body2" fontWeight={600}>
                 {label}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary">
                 {description}
-              </Typography>
+              </AppTypography>
             </div>
 
             <div

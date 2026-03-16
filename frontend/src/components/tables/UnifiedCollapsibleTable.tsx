@@ -8,9 +8,9 @@ import {
   TableRow,
   IconButton,
   Collapse,
-  Typography,
 } from "@mui/material";
 import { alpha } from "@/utils/color";
+import AppTypography from "@/components/ui/AppTypography";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
@@ -218,9 +218,9 @@ function UnifiedCollapsibleTable<T>({
             paddingBottom: 32,
           }}
         >
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             {emptyMessage}
-          </Typography>
+          </AppTypography>
         </div>
       )}
     </div>

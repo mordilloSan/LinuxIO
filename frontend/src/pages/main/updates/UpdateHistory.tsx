@@ -1,21 +1,14 @@
 import { Icon } from "@iconify/react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-  Typography,
-} from "@mui/material";
+import { Table, TableBody, TableCell, TableRow } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
-
 import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppChip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
-
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {
@@ -23,25 +16,32 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   }
   return result;
 };
-
 const UpdateHistory: React.FC = () => {
   const theme = useTheme();
   const { data: rows = [] } = linuxio.dbus.get_update_history.useQuery();
-
   const columns: UnifiedTableColumn[] = [
-    { field: "date", headerName: "Date", align: "left" },
+    {
+      field: "date",
+      headerName: "Date",
+      align: "left",
+    },
     {
       field: "packages",
       headerName: "Packages Updated",
       align: "center",
       sx: {
-        width: { xs: 112, sm: 148 },
-        minWidth: { xs: 112, sm: 148 },
+        width: {
+          xs: 112,
+          sm: 148,
+        },
+        minWidth: {
+          xs: 112,
+          sm: 148,
+        },
         whiteSpace: "nowrap",
       },
     },
   ];
-
   return (
     <UnifiedCollapsibleTable
       data={rows}
@@ -61,19 +61,25 @@ const UpdateHistory: React.FC = () => {
       renderMainRow={(row) => (
         <>
           <TableCell>
-            <Typography
+            <AppTypography
               variant="body2"
-              fontWeight="medium"
-              sx={responsiveTextStyles}
+              fontWeight={500}
+              style={responsiveTextStyles}
             >
               {row.date}
-            </Typography>
+            </AppTypography>
           </TableCell>
           <TableCell
             align="center"
             sx={{
-              width: { xs: 112, sm: 148 },
-              minWidth: { xs: 112, sm: 148 },
+              width: {
+                xs: 112,
+                sm: 148,
+              },
+              minWidth: {
+                xs: 112,
+                sm: 148,
+              },
             }}
           >
             <AppChip
@@ -81,21 +87,25 @@ const UpdateHistory: React.FC = () => {
               size="small"
               color="success"
               variant="soft"
-              style={{ minWidth: 40 }}
+              style={{
+                minWidth: 40,
+              }}
             />
           </TableCell>
         </>
       )}
       renderExpandedContent={(row) => (
         <>
-          <Typography variant="subtitle2" gutterBottom>
+          <AppTypography variant="subtitle2" gutterBottom>
             <b>Packages Installed:</b>
-          </Typography>
+          </AppTypography>
           <Table
             size="small"
             sx={{
               borderCollapse: "collapse",
-              "& .MuiTableCell-root": { border: "none" },
+              "& .MuiTableCell-root": {
+                border: "none",
+              },
               overflowX: "auto",
               display: "block",
             }}
@@ -122,7 +132,10 @@ const UpdateHistory: React.FC = () => {
                     [...Array(5 - group.length)].map((_, j) => (
                       <TableCell
                         key={`empty-${j}`}
-                        sx={{ width: "20%", border: "none" }}
+                        sx={{
+                          width: "20%",
+                          border: "none",
+                        }}
                       />
                     ))}
                 </TableRow>
@@ -135,5 +148,4 @@ const UpdateHistory: React.FC = () => {
     />
   );
 };
-
 export default UpdateHistory;

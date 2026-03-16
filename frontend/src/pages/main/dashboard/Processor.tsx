@@ -1,4 +1,3 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
@@ -10,6 +9,7 @@ import DashboardCard, {
 } from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 
 const Processor: React.FC = () => {
@@ -108,10 +108,10 @@ const Processor: React.FC = () => {
               gap: theme.spacing(1),
             }}
           >
-            <Typography
+            <AppTypography
               variant="caption"
               color="text.secondary"
-              sx={{
+              style={{
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
                 fontSize: "0.62rem",
@@ -119,10 +119,10 @@ const Processor: React.FC = () => {
               }}
             >
               {label}
-            </Typography>
-            <Typography variant="body2" fontWeight={500} noWrap>
+            </AppTypography>
+            <AppTypography variant="body2" fontWeight={500} noWrap>
               {value}
-            </Typography>
+            </AppTypography>
           </div>
         ))}
       </div>

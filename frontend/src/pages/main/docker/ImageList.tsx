@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Typography,
   Checkbox,
   Button,
   Dialog,
@@ -16,7 +15,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
@@ -28,12 +26,11 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-
 interface DeleteImageDialogProps {
   open: boolean;
   onClose: () => void;
@@ -41,7 +38,6 @@ interface DeleteImageDialogProps {
   imageTags: string[];
   onSuccess: () => void;
 }
-
 const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   open,
   onClose,
@@ -51,30 +47,32 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useTheme();
-
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useMutation({
       onError: () => {
         // Suppress global error handler - errors handled manually in handleDelete
       },
     });
-
   const handleDelete = async () => {
     // Delete images sequentially, tracking successes and failures
     const results = await Promise.all(
       imageIds.map(async (id, index) => {
         try {
           await deleteImage([id]);
-          return { success: true, tag: imageTags[index] };
+          return {
+            success: true,
+            tag: imageTags[index],
+          };
         } catch {
-          return { success: false, tag: imageTags[index] };
+          return {
+            success: false,
+            tag: imageTags[index],
+          };
         }
       }),
     );
-
     const succeeded = results.filter((r) => r.success);
     const failed = results.filter((r) => !r.success);
-
     if (succeeded.length > 0) {
       const successMessage =
         succeeded.length === 1
@@ -82,7 +80,6 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
           : `${succeeded.length} images deleted successfully`;
       toast.success(successMessage);
     }
-
     if (failed.length > 0) {
       const failMessage =
         failed.length === 1
@@ -90,18 +87,15 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
           : `Could not delete ${failed.length} images (likely in use)`;
       toast.error(failMessage);
     }
-
     queryClient.invalidateQueries({
       queryKey: linuxio.docker.list_images.queryKey(),
     });
     onSuccess();
     handleClose();
   };
-
   const handleClose = () => {
     onClose();
   };
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Delete Image{imageIds.length > 1 ? "s" : ""}</DialogTitle>
@@ -124,11 +118,19 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
               label={tag}
               size="small"
               variant="soft"
-              sx={{ mr: 1, mb: 1 }}
+              sx={{
+                mr: 1,
+                mb: 1,
+              }}
             />
           ))}
         </div>
-        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+        <DialogContentText
+          sx={{
+            mt: 2,
+            color: "warning.main",
+          }}
+        >
           This action cannot be undone. Images in use by containers cannot be
           deleted.
         </DialogContentText>
@@ -149,7 +151,6 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     </Dialog>
   );
 };
-
 const ImageList: React.FC<ImageListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -158,7 +159,6 @@ const ImageList: React.FC<ImageListProps> = ({
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
-
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -193,7 +193,6 @@ const ImageList: React.FC<ImageListProps> = ({
       };
     });
   });
-
   const filtered = imageRows.filter(
     (img) =>
       img.repo.toLowerCase().includes(search.toLowerCase()) ||
@@ -212,7 +211,6 @@ const ImageList: React.FC<ImageListProps> = ({
     });
     return result;
   }, [selected, filtered]);
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelected(new Set(filtered.map((img) => img.id)));
@@ -220,7 +218,6 @@ const ImageList: React.FC<ImageListProps> = ({
       setSelected(new Set());
     }
   };
-
   const handleSelectOne = (id: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -232,11 +229,9 @@ const ImageList: React.FC<ImageListProps> = ({
       return next;
     });
   };
-
   const handleDeleteSuccess = () => {
     setSelected(new Set());
   };
-
   const selectedImages = filtered.filter((img) =>
     effectiveSelected.has(img.id),
   );
@@ -244,27 +239,54 @@ const ImageList: React.FC<ImageListProps> = ({
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-
   const columns: UnifiedTableColumn[] = [
-    { field: "repo", headerName: "Repository", align: "left" },
-    { field: "tag", headerName: "Tag", align: "left", width: "120px" },
+    {
+      field: "repo",
+      headerName: "Repository",
+      align: "left",
+    },
+    {
+      field: "tag",
+      headerName: "Tag",
+      align: "left",
+      width: "120px",
+    },
     {
       field: "id",
       headerName: "Image ID",
       align: "left",
       width: "140px",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          md: "table-cell",
+        },
+      },
     },
-    { field: "size", headerName: "Size", align: "right", width: "100px" },
+    {
+      field: "size",
+      headerName: "Size",
+      align: "right",
+      width: "100px",
+    },
     {
       field: "created",
       headerName: "Created",
       align: "left",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          sm: "table-cell",
+        },
+      },
     },
-    { field: "usedBy", headerName: "Used By", align: "center", width: "100px" },
+    {
+      field: "usedBy",
+      headerName: "Used By",
+      align: "center",
+      width: "100px",
+    },
   ];
-
   return (
     <div>
       <div
@@ -289,7 +311,7 @@ const ImageList: React.FC<ImageListProps> = ({
             },
           }}
         />
-        <Typography fontWeight="bold">{filtered.length} shown</Typography>
+        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -308,9 +330,18 @@ const ImageList: React.FC<ImageListProps> = ({
             {filtered.map((image) => (
               <Grid
                 key={`${image.id}-${image.tag}`}
-                size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
               >
-                <FrostedCard style={{ padding: 8 }}>
+                <FrostedCard
+                  style={{
+                    padding: 8,
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
@@ -334,15 +365,17 @@ const ImageList: React.FC<ImageListProps> = ({
                           handleSelectOne(image.id, e.target.checked)
                         }
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {image.repo}
-                      </Typography>
+                      </AppTypography>
                     </div>
                     <Chip
                       label={image.tag}
                       size="small"
                       variant="soft"
-                      sx={{ fontSize: "0.75rem" }}
+                      sx={{
+                        fontSize: "0.75rem",
+                      }}
                     />
                   </div>
 
@@ -353,21 +386,27 @@ const ImageList: React.FC<ImageListProps> = ({
                       marginBottom: theme.spacing(1.5),
                     }}
                   >
-                    <Typography variant="body2" sx={responsiveTextStyles}>
+                    <AppTypography variant="body2" style={responsiveTextStyles}>
                       Size: {image.size} MB
-                    </Typography>
-                    <Typography
+                    </AppTypography>
+                    <AppTypography
                       variant="body2"
-                      sx={{ fontFamily: "monospace", ...responsiveTextStyles }}
+                      style={{
+                        fontFamily: "monospace",
+                        ...responsiveTextStyles,
+                      }}
                     >
                       ID: {image.shortId}
-                    </Typography>
-                    <Typography
+                    </AppTypography>
+                    <AppTypography
                       variant="body2"
-                      sx={{ fontSize: "0.82rem", ...responsiveTextStyles }}
+                      style={{
+                        fontSize: "0.82rem",
+                        ...responsiveTextStyles,
+                      }}
                     >
                       Created: {image.created}
-                    </Typography>
+                    </AppTypography>
                   </div>
 
                   <div
@@ -385,20 +424,20 @@ const ImageList: React.FC<ImageListProps> = ({
                     />
                   </div>
 
-                  <Typography variant="caption" color="text.secondary">
+                  <AppTypography variant="caption" color="text.secondary">
                     Full ID
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="body2"
-                    sx={{
+                    style={{
                       fontFamily: "monospace",
                       fontSize: "0.75rem",
-                      mb: 1,
+                      marginBottom: 4,
                       ...longTextStyles,
                     }}
                   >
                     {image.id}
-                  </Typography>
+                  </AppTypography>
                 </FrostedCard>
               </Grid>
             ))}
@@ -411,9 +450,9 @@ const ImageList: React.FC<ImageListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No images found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -440,46 +479,65 @@ const ImageList: React.FC<ImageListProps> = ({
           renderMainRow={(image) => (
             <>
               <TableCell>
-                <Typography
+                <AppTypography
                   variant="body2"
-                  fontWeight="medium"
-                  sx={responsiveTextStyles}
+                  fontWeight={500}
+                  style={responsiveTextStyles}
                 >
                   {image.repo}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell>
                 <Chip
                   label={image.tag}
                   size="small"
                   variant="soft"
-                  sx={{ fontSize: "0.75rem" }}
+                  sx={{
+                    fontSize: "0.75rem",
+                  }}
                 />
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    md: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography
                   variant="body2"
-                  sx={{
+                  style={{
                     fontFamily: "monospace",
                     fontSize: "0.85rem",
                     ...responsiveTextStyles,
                   }}
                 >
                   {image.shortId}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell align="right">
-                <Typography variant="body2" sx={responsiveTextStyles}>
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {image.size} MB
-                </Typography>
+                </AppTypography>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    sm: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography
                   variant="body2"
-                  sx={{ fontSize: "0.85rem", ...responsiveTextStyles }}
+                  style={{
+                    fontSize: "0.85rem",
+                    ...responsiveTextStyles,
+                  }}
                 >
                   {image.created}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell align="center">
                 <Chip
@@ -487,31 +545,33 @@ const ImageList: React.FC<ImageListProps> = ({
                   size="small"
                   variant="soft"
                   color={image.containers > 0 ? "success" : "default"}
-                  sx={{ minWidth: 40 }}
+                  sx={{
+                    minWidth: 40,
+                  }}
                 />
               </TableCell>
             </>
           )}
           renderExpandedContent={(image) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Full Image ID:</b>
-              </Typography>
-              <Typography
+              </AppTypography>
+              <AppTypography
                 variant="body2"
-                sx={{
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  mb: 2,
+                  marginBottom: 8,
                   ...longTextStyles,
                 }}
               >
                 {image.id}
-              </Typography>
+              </AppTypography>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{
                   display: "flex",
@@ -527,39 +587,43 @@ const ImageList: React.FC<ImageListProps> = ({
                       label={`${key}: ${val}`}
                       size="small"
                       variant="soft"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                      sx={{
+                        mr: 1,
+                        mb: 1,
+                        ...wrappableChipStyles,
+                      }}
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no labels)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Image Digests:</b>
-              </Typography>
+              </AppTypography>
               <div>
                 {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
                   image.raw.RepoDigests.map((digest) => (
-                    <Typography
+                    <AppTypography
                       key={digest}
                       variant="body2"
-                      sx={{
+                      style={{
                         fontFamily: "monospace",
                         fontSize: "0.8rem",
-                        mb: 0.5,
+                        marginBottom: 2,
                         ...longTextStyles,
                       }}
                     >
                       {digest}
-                    </Typography>
+                    </AppTypography>
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no digests)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
             </>
@@ -578,5 +642,4 @@ const ImageList: React.FC<ImageListProps> = ({
     </div>
   );
 };
-
 export default ImageList;

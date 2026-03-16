@@ -1,4 +1,3 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -6,6 +5,7 @@ import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {
@@ -19,9 +19,9 @@ const GpuInfo: React.FC = () => {
   });
 
   const content: React.ReactNode = isLoading ? (
-    <Typography variant="body2">Loading…</Typography>
+    <AppTypography variant="body2">Loading...</AppTypography>
   ) : isError || !gpus || gpus.length === 0 ? (
-    <Typography variant="body2">No GPU information available.</Typography>
+    <AppTypography variant="body2">No GPU information available.</AppTypography>
   ) : (
     <div
       style={{
@@ -52,12 +52,12 @@ const GpuInfo: React.FC = () => {
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <Typography variant="subtitle2" fontWeight={700} noWrap>
+              <AppTypography variant="subtitle2" fontWeight={700} noWrap>
                 {gpu.model || `GPU ${idx + 1}`}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap>
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary" noWrap>
                 {gpu.vendor} • {getGpuType(gpu)}
-              </Typography>
+              </AppTypography>
             </div>
             <div
               style={{

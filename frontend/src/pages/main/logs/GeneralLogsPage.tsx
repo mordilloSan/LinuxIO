@@ -13,10 +13,10 @@ import {
   Switch,
   TableCell,
   TextField,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { alpha } from "@/utils/color";
+import AppTypography from "@/components/ui/AppTypography";
 import React, {
   useCallback,
   useEffect,
@@ -447,30 +447,30 @@ const GeneralLogsPage: React.FC = () => {
           />
         </TableCell>
         <TableCell sx={{ width: "1%" }}>
-          <Typography
+          <AppTypography
             variant="body2"
-            sx={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+            style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
           >
             {log.identifier}
-          </Typography>
+          </AppTypography>
         </TableCell>
         <TableCell sx={{ width: "1%" }}>
-          <Typography
+          <AppTypography
             variant="body2"
-            sx={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
+            style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
           >
             {log.timestamp}
-          </Typography>
+          </AppTypography>
         </TableCell>
         <TableCell sx={{ maxWidth: 0 }}>
-          <Typography
+          <AppTypography
             variant="body2"
             color="text.secondary"
             noWrap
-            sx={{ fontSize: "0.75rem" }}
+            style={{ fontSize: "0.75rem" }}
           >
             {log.message}
-          </Typography>
+          </AppTypography>
         </TableCell>
       </>
     );
@@ -480,9 +480,9 @@ const GeneralLogsPage: React.FC = () => {
   const renderExpandedContent = useCallback((log: LogEntry) => {
     return (
       <>
-        <Typography variant="subtitle2" gutterBottom>
+        <AppTypography variant="subtitle2" gutterBottom>
           <b>Full Message:</b>
-        </Typography>
+        </AppTypography>
         <Paper
           sx={(theme) => ({
             p: 2,
@@ -504,9 +504,9 @@ const GeneralLogsPage: React.FC = () => {
 
         {log.rawJson && (
           <>
-            <Typography variant="subtitle2" gutterBottom>
+            <AppTypography variant="subtitle2" gutterBottom>
               <b>Raw Journal Entry:</b>
-            </Typography>
+            </AppTypography>
             <Paper
               className="custom-scrollbar"
               sx={(theme) => ({
@@ -668,7 +668,7 @@ const GeneralLogsPage: React.FC = () => {
             label="Live"
           />
         </AppTooltip>
-        <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
+        <AppTypography fontWeight={700}>{filteredLogs.length} shown</AppTypography>
       </div>
 
       {isLoading && <ComponentLoader />}

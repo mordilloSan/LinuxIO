@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
-import { Typography, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import { getSubtleDividerColor } from "@/theme/surfaces";
 
@@ -78,13 +80,13 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         onMouseEnter={() => setHoveredField("name")}
         onMouseLeave={() => setHoveredField(null)}
       >
-        <Typography
+        <AppTypography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Name
           {renderSortIcon("name")}
-        </Typography>
+        </AppTypography>
       </div>
       <div
         style={columnStyle}
@@ -99,13 +101,13 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         onMouseEnter={() => setHoveredField("size")}
         onMouseLeave={() => setHoveredField(null)}
       >
-        <Typography
+        <AppTypography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Size
           {renderSortIcon("size")}
-        </Typography>
+        </AppTypography>
       </div>
       <div
         onClick={() => onSortChange("modTime")}
@@ -124,9 +126,9 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           textAlign: "center",
         }}
       >
-        <Typography
+        <AppTypography
           variant="h6"
-          sx={{
+          style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -136,7 +138,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         >
           Last modified
           {renderSortIcon("modTime")}
-        </Typography>
+        </AppTypography>
       </div>
     </div>
   );

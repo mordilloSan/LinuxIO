@@ -1,10 +1,10 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import DevToolsButton from "@/components/footer/DevToolsButton";
+import AppTypography from "@/components/ui/AppTypography";
 
 function Footer() {
   const theme = useTheme();
@@ -41,15 +41,17 @@ function Footer() {
         >
           <ErrorBoundary>
             {data?.current_version && (
-              <Typography
+              <AppTypography
                 variant="caption"
-                sx={{
+                style={{
                   opacity: 0.6,
                   fontSize: "0.7rem",
+                  letterSpacing: "normal",
+                  transform: "translateY(5px)",
                 }}
               >
                 {data.current_version}
-              </Typography>
+              </AppTypography>
             )}
           </ErrorBoundary>
         </div>

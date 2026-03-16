@@ -5,28 +5,27 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
-
 import type { PowerData } from "../types";
-
 import Chip from "@/components/ui/AppChip";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface PowerStatesTabProps {
   power: PowerData;
 }
-
 export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
   const theme = useTheme();
-
   return (
     <>
-      <div style={{ marginBottom: theme.spacing(3) }}>
-        <Typography variant="subtitle2" gutterBottom>
+      <div
+        style={{
+          marginBottom: theme.spacing(3),
+        }}
+      >
+        <AppTypography variant="subtitle2" gutterBottom>
           Current State
-        </Typography>
+        </AppTypography>
         <div
           style={{
             display: "flex",
@@ -39,29 +38,61 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
             color="primary"
             variant="soft"
           />
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             Estimated Power: ~{power.estimatedW.toFixed(2)}W
-          </Typography>
+          </AppTypography>
         </div>
       </div>
 
-      <Typography variant="subtitle2" gutterBottom>
+      <AppTypography variant="subtitle2" gutterBottom>
         Supported Power States
-      </Typography>
-      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+      </AppTypography>
+      <TableContainer
+        className="custom-scrollbar"
+        sx={{
+          maxHeight: 400,
+        }}
+      >
         <Table
           size="small"
           stickyHeader
-          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+          sx={{
+            "& .MuiTableCell-root": {
+              borderColor: "divider",
+            },
+          }}
         >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>State</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Op</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
+                State
+              </TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
+                Op
+              </TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+                align="right"
+              >
                 Max Power
               </TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
+                Description
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -73,7 +104,11 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
                 <TableCell>{ps.state}</TableCell>
                 <TableCell>+</TableCell>
                 <TableCell align="right">{ps.maxPowerW}W</TableCell>
-                <TableCell sx={{ fontSize: "0.75rem" }}>
+                <TableCell
+                  sx={{
+                    fontSize: "0.75rem",
+                  }}
+                >
                   {ps.description}
                 </TableCell>
               </TableRow>

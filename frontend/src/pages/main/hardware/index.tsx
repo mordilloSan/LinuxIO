@@ -4,7 +4,6 @@ import {
   Grid,
   IconButton,
   TableCell,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { alpha } from "@/utils/color";
@@ -18,6 +17,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import "@/theme/section.css";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
@@ -86,9 +86,9 @@ const SectionHeader: React.FC<{
       userSelect: "none",
     }}
   >
-    <Typography variant="subtitle1" fontWeight={700}>
+    <AppTypography variant="subtitle1" fontWeight={700}>
       {title}
-    </Typography>
+    </AppTypography>
     <IconButton
       size="small"
       className="section-toggle"
@@ -156,18 +156,18 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
           />
         </div>
         <div style={{ minWidth: 0 }}>
-          <Typography
+          <AppTypography
             variant="subtitle2"
             fontWeight={700}
-            lineHeight={1.2}
+            style={{ lineHeight: 1.2 }}
             noWrap
           >
             {group.adapter}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="caption" color="text.secondary">
             {group.readings.length} reading
             {group.readings.length !== 1 ? "s" : ""}
-          </Typography>
+          </AppTypography>
         </div>
       </div>
 
@@ -227,14 +227,14 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
                       : alpha(theme.palette.text.secondary, 0.4)
                   }
                 />
-                <Typography variant="caption">{r.label}</Typography>
+                <AppTypography variant="caption">{r.label}</AppTypography>
               </div>
-              <Typography
+              <AppTypography
                 variant="caption"
-                sx={{ fontVariantNumeric: "tabular-nums" }}
+                style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {r.value > 0 ? `${r.value} RPM` : "Off"}
-              </Typography>
+              </AppTypography>
             </div>
           ))}
         </div>
@@ -261,14 +261,14 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
                   height={14}
                   color={theme.palette.success.main}
                 />
-                <Typography variant="caption">{r.label}</Typography>
+                <AppTypography variant="caption">{r.label}</AppTypography>
               </div>
-              <Typography
+              <AppTypography
                 variant="caption"
-                sx={{ fontVariantNumeric: "tabular-nums" }}
+                style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {r.value.toFixed(2)} V
-              </Typography>
+              </AppTypography>
             </div>
           ))}
         </div>
@@ -287,7 +287,7 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
               paddingInline: 2,
             }}
           >
-            <Typography variant="caption">{r.label}</Typography>
+            <AppTypography variant="caption">{r.label}</AppTypography>
             <Chip
               size="small"
               label={`${r.value} ${r.unit}`}
@@ -467,13 +467,13 @@ const HardwarePage: React.FC = () => {
                     height={18}
                     color={theme.palette.primary.main}
                   />
-                  <Typography
+                  <AppTypography
                     variant="overline"
                     color="text.secondary"
-                    sx={{ lineHeight: 1.6 }}
+                    style={{ lineHeight: 1.6 }}
                   >
                     {label}
-                  </Typography>
+                  </AppTypography>
                 </div>
                 <div
                   style={{
@@ -483,22 +483,23 @@ const HardwarePage: React.FC = () => {
                     marginTop: 1,
                   }}
                 >
-                  <Typography
+                  <AppTypography
                     variant="h6"
                     fontWeight={700}
                     noWrap
-                    sx={{ lineHeight: 1.2, fontSize: "0.95rem" }}
+                    style={{ lineHeight: 1.2 }}
+                    fontSize="0.95rem"
                   >
                     {value}
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="caption"
                     color="text.secondary"
                     noWrap
-                    sx={{ textAlign: "right" }}
+                    align="right"
                   >
                     {detail}
-                  </Typography>
+                  </AppTypography>
                 </div>
               </FrostedCard>
             </Grid>
@@ -528,21 +529,21 @@ const HardwarePage: React.FC = () => {
           ).map(({ label, value }) => (
             <Grid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard style={{ paddingInline: 10, paddingBlock: 8 }}>
-                <Typography
+                <AppTypography
                   variant="overline"
                   color="text.secondary"
-                  sx={{ lineHeight: 1.6 }}
+                  style={{ lineHeight: 1.6 }}
                 >
                   {label}
-                </Typography>
-                <Typography
+                </AppTypography>
+                <AppTypography
                   variant="body2"
                   fontWeight={600}
                   noWrap
-                  sx={{ lineHeight: 1.3 }}
+                  style={{ lineHeight: 1.3 }}
                 >
                   {value || "—"}
-                </Typography>
+                </AppTypography>
               </FrostedCard>
             </Grid>
           ))}
@@ -618,10 +619,10 @@ const HardwarePage: React.FC = () => {
       <Collapse in={sections.sensors}>
         {!sensorGroups || sensorGroups.length === 0 ? (
           <FrostedCard style={{ padding: 16, textAlign: "center" }}>
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No sensor data available. Ensure <code>lm-sensors</code> is
               installed and configured.
-            </Typography>
+            </AppTypography>
           </FrostedCard>
         ) : (
           <>

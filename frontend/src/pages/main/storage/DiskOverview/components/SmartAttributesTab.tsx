@@ -5,19 +5,16 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
 } from "@mui/material";
 import React from "react";
-
 import type { SmartAttribute } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface SmartAttributesTabProps {
   isNvme: boolean;
   nvmeHealthRaw?: Record<string, unknown>;
   ataAttrs?: SmartAttribute[];
 }
-
 export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
   isNvme,
   nvmeHealthRaw,
@@ -25,16 +22,36 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
 }) => {
   if (isNvme && nvmeHealthRaw) {
     return (
-      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+      <TableContainer
+        className="custom-scrollbar"
+        sx={{
+          maxHeight: 400,
+        }}
+      >
         <Table
           size="small"
           stickyHeader
-          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+          sx={{
+            "& .MuiTableCell-root": {
+              borderColor: "divider",
+            },
+          }}
         >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
+                Attribute
+              </TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+                align="right"
+              >
                 Value
               </TableCell>
             </TableRow>
@@ -212,29 +229,69 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
       </TableContainer>
     );
   }
-
   if (ataAttrs && ataAttrs.length > 0) {
     return (
-      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+      <TableContainer
+        className="custom-scrollbar"
+        sx={{
+          maxHeight: 400,
+        }}
+      >
         <Table
           size="small"
           stickyHeader
-          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+          sx={{
+            "& .MuiTableCell-root": {
+              borderColor: "divider",
+            },
+          }}
         >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
+                #
+              </TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
+                Attribute
+              </TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+                align="right"
+              >
                 Value
               </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+                align="right"
+              >
                 Worst
               </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+                align="right"
+              >
                 Thresh
               </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <TableCell
+                sx={{
+                  fontWeight: 600,
+                }}
+                align="right"
+              >
                 Raw
               </TableCell>
             </TableRow>
@@ -267,10 +324,9 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
       </TableContainer>
     );
   }
-
   return (
-    <Typography color="text.secondary">
+    <AppTypography color="text.secondary">
       No SMART attributes available for this drive.
-    </Typography>
+    </AppTypography>
   );
 };

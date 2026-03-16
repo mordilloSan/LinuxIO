@@ -3,13 +3,13 @@ import {
   IconButton,
   Button,
   Popover,
-  Typography,
   useTheme as useMuiTheme,
 } from "@mui/material";
 import { alpha } from "@/utils/color";
 import { useMemo, useState } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { iconSize } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 import { COLOR_TOKENS } from "@/theme/colors";
@@ -55,9 +55,9 @@ function NavbarColorCustomizer() {
           },
         }}
       >
-        <Typography variant="h6" gutterBottom>
+        <AppTypography variant="h6" gutterBottom>
           Primary Color
-        </Typography>
+        </AppTypography>
 
         {/* Token swatches */}
         <div

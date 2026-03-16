@@ -1,6 +1,8 @@
-import { Button, Typography } from "@mui/material";
+import { Button } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
@@ -44,17 +46,17 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           textAlign: "center",
         }}
       >
-        <Typography variant="h5" fontWeight={600}>
+        <AppTypography variant="h5" fontWeight={600}>
           {title}
-        </Typography>
+        </AppTypography>
 
-        <Typography
+        <AppTypography
           variant="body1"
           color="text.secondary"
           style={{ marginTop: theme.spacing(2) }}
         >
           {message}
-        </Typography>
+        </AppTypography>
 
         <div
           style={{

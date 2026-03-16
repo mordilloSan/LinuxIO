@@ -1,5 +1,7 @@
-import { Collapse, Divider, Switch, Typography } from "@mui/material";
+import { Collapse, Divider, Switch } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -303,14 +305,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           <DockerIcon identifier={container.icon} size={48} alt={name} />
         </div>
         <div style={{ flex: 0.95, minWidth: 0 }}>
-          <Typography
+          <AppTypography
             variant="subtitle1"
-            fontWeight="600"
+            fontWeight={600}
             noWrap
-            sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
+            style={{ marginLeft: 4, marginRight: 0.4, marginBottom: 2, fontSize: "1.05rem" }}
           >
             {name}
-          </Typography>
+          </AppTypography>
           <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
             {container.Labels?.["com.docker.compose.project"] ===
             "linuxio-watchtower" ? (
@@ -460,12 +462,12 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Typography
+        <AppTypography
           variant="caption"
           color={isWatchtowerContainer ? "text.disabled" : "text.secondary"}
         >
           Auto Update
-        </Typography>
+        </AppTypography>
         <AppTooltip title={autoUpdateTooltip}>
           <span style={{ display: "inline-flex" }}>
             <Switch

@@ -1,5 +1,7 @@
-import { Button, Divider, TextField, Typography, Alert } from "@mui/material";
+import { Button, Divider, TextField, Alert } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import React, {
   useCallback,
   useEffect,
@@ -193,12 +195,12 @@ const DockerFolderSettingsSection: React.FC = () => {
           gap: theme.spacing(2),
         }}
       >
-        <Typography variant="body1" fontWeight={600}>
+        <AppTypography variant="body1" fontWeight={600}>
           Docker Folder
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
+        </AppTypography>
+        <AppTypography variant="body2" color="text.secondary">
           Set the directory scanned for Docker Compose stacks.
-        </Typography>
+        </AppTypography>
 
         <TextField
           label="Docker folder"

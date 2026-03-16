@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
-import { CardContent, Typography, IconButton } from "@mui/material";
+import { CardContent, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
@@ -75,9 +77,9 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               alignItems: "center",
             }}
           >
-            <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
+            <AppTypography variant="h6" style={{ fontSize: "1.1rem" }}>
               {iface.name}
-            </Typography>
+            </AppTypography>
             <div>
               <AppTooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
@@ -146,15 +148,15 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               </AppTooltip>
             </div>
           </div>
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             Address: {iface.address}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             Port: {iface.port}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             Peers: {iface.peerCount}
-          </Typography>
+          </AppTypography>
         </CardContent>
       </FrostedCard>
     </motion.div>

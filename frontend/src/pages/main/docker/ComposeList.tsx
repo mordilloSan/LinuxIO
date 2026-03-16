@@ -8,21 +8,18 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import React, { useCallback, useState } from "react";
-
 import ComposeStackCard from "./ComposeStackCard";
-
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { getComposeStatusColor } from "@/constants/statusColors";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface ComposeService {
   name: string;
   image: string;
@@ -34,7 +31,6 @@ interface ComposeService {
   container_ids: string[];
   ports: string[];
 }
-
 export interface ComposeProject {
   name: string;
   icon?: string;
@@ -44,7 +40,6 @@ export interface ComposeProject {
   config_files: string[];
   working_dir: string;
 }
-
 interface ComposeListProps {
   projects: ComposeProject[];
   onStart: (projectName: string) => void;
@@ -56,7 +51,6 @@ interface ComposeListProps {
   isLoading?: boolean;
   viewMode?: "table" | "card";
 }
-
 const ComposeList: React.FC<ComposeListProps> = ({
   projects,
   onStart,
@@ -71,15 +65,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const [search, setSearch] = useState("");
   const theme = useTheme();
   const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
-
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
-
   const getStatusColor = (status: string) => {
     return getComposeStatusColor(status);
   };
-
   const getTotalContainers = (project: ComposeProject) => {
     return Object.values(project.services).reduce(
       (acc, service) => acc + service.container_count,
@@ -94,7 +85,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
       headerName: "",
       width: "40px",
     },
-    { field: "name", headerName: "Stack" },
+    {
+      field: "name",
+      headerName: "Stack",
+    },
     {
       field: "containers",
       headerName: "Containers",
@@ -104,12 +98,22 @@ const ComposeList: React.FC<ComposeListProps> = ({
     {
       field: "config",
       headerName: "Config Files",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          sm: "table-cell",
+        },
+      },
     },
     {
       field: "location",
       headerName: "Location",
-      sx: { display: { xs: "none", lg: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          lg: "table-cell",
+        },
+      },
     },
     {
       field: "actions",
@@ -123,11 +127,26 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const renderMainRow = useCallback(
     (project: ComposeProject) => {
       const statusColor = getStatusColor(project.status);
-
       return (
         <>
-          <TableCell sx={{ px: { xs: 1, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
-            <div style={{ display: "flex", alignItems: "center" }}>
+          <TableCell
+            sx={{
+              px: {
+                xs: 1,
+                sm: 2,
+              },
+              py: {
+                xs: 1.5,
+                sm: 2,
+              },
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
               <span
                 style={{
                   display: isSmallUp ? "none" : "inline-block",
@@ -143,10 +162,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 color={statusColor}
                 variant="soft"
                 sx={{
-                  display: { xs: "none", sm: "inline-flex" },
+                  display: {
+                    xs: "none",
+                    sm: "inline-flex",
+                  },
                   textTransform: "capitalize",
                   fontSize: "0.68rem",
-                  "& .MuiChip-label": { px: 3 },
+                  "& .MuiChip-label": {
+                    px: 3,
+                  },
                 }}
               />
             </div>
@@ -164,41 +188,69 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 size={28}
                 alt={project.name}
               />
-              <Typography variant="body2" fontWeight="bold">
+              <AppTypography variant="body2" fontWeight={700}>
                 {project.name}
-              </Typography>
+              </AppTypography>
             </div>
           </TableCell>
           <TableCell align="center">{getTotalContainers(project)}</TableCell>
-          <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+          <TableCell
+            sx={{
+              display: {
+                xs: "none",
+                sm: "table-cell",
+              },
+            }}
+          >
             <AppTooltip title={project.config_files.join(", ") || "Unknown"}>
-              <div style={{ display: "flex", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
                 <Icon
                   icon="mdi:folder-open"
                   width={20}
                   height={20}
-                  style={{ marginRight: 4, opacity: 0.7 }}
+                  style={{
+                    marginRight: 4,
+                    opacity: 0.7,
+                  }}
                 />
-                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                <AppTypography
+                  variant="body2"
+                  noWrap
+                  style={{
+                    maxWidth: 200,
+                  }}
+                >
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}
-                </Typography>
+                </AppTypography>
               </div>
             </AppTooltip>
           </TableCell>
-          <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
+          <TableCell
+            sx={{
+              display: {
+                xs: "none",
+                lg: "table-cell",
+              },
+            }}
+          >
             <AppTooltip title={project.working_dir || "Unknown"}>
-              <Typography
+              <AppTypography
                 variant="body2"
                 noWrap
-                sx={{
+                style={{
                   maxWidth: 600,
                   fontSize: "0.85rem",
-                  color: "text.secondary",
+                  color: "var(--mui-palette-text-secondary)",
                 }}
               >
                 {project.working_dir || "-"}
-              </Typography>
+              </AppTypography>
             </AppTooltip>
           </TableCell>
           <TableCell align="right">
@@ -227,7 +279,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         onPreview && project.config_files.length > 0
                           ? "pointer"
                           : "default",
-                      "&:hover": { opacity: 1 },
+                      "&:hover": {
+                        opacity: 1,
+                      },
                     }}
                   />
                 </AppTooltip>
@@ -241,7 +295,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           onEdit(project.name, project.config_files[0])
                         }
                         disabled={isLoading}
-                        sx={{ p: { xs: 0.5, sm: 1 } }}
+                        sx={{
+                          p: {
+                            xs: 0.5,
+                            sm: 1,
+                          },
+                        }}
                       >
                         <Icon icon="mdi:pencil" width={20} height={20} />
                       </IconButton>
@@ -255,7 +314,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           size="small"
                           onClick={() => onRestart(project.name)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                          sx={{
+                            p: {
+                              xs: 0.5,
+                              sm: 1,
+                            },
+                          }}
                         >
                           <Icon icon="mdi:restart" width={20} height={20} />
                         </IconButton>
@@ -265,7 +329,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           size="small"
                           onClick={() => onStop(project.name)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                          sx={{
+                            p: {
+                              xs: 0.5,
+                              sm: 1,
+                            },
+                          }}
                         >
                           <Icon icon="mdi:stop-circle" width={20} height={20} />
                         </IconButton>
@@ -275,7 +344,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           size="small"
                           onClick={() => onDelete(project)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                          sx={{
+                            p: {
+                              xs: 0.5,
+                              sm: 1,
+                            },
+                          }}
                         >
                           <Icon icon="mdi:delete" width={20} height={20} />
                         </IconButton>
@@ -288,7 +362,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           size="small"
                           onClick={() => onStart(project.name)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                          sx={{
+                            p: {
+                              xs: 0.5,
+                              sm: 1,
+                            },
+                          }}
                         >
                           <Icon icon="mdi:play" width={20} height={20} />
                         </IconButton>
@@ -298,7 +377,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           size="small"
                           onClick={() => onDelete(project)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                          sx={{
+                            p: {
+                              xs: 0.5,
+                              sm: 1,
+                            },
+                          }}
                         >
                           <Icon icon="mdi:delete" width={20} height={20} />
                         </IconButton>
@@ -334,14 +418,35 @@ const ComposeList: React.FC<ComposeListProps> = ({
             <TableHead>
               <TableRow>
                 <TableCell>Service Name</TableCell>
-                <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                <TableCell
+                  sx={{
+                    display: {
+                      xs: "none",
+                      sm: "table-cell",
+                    },
+                  }}
+                >
                   Image
                 </TableCell>
                 <TableCell>State</TableCell>
-                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                <TableCell
+                  sx={{
+                    display: {
+                      xs: "none",
+                      md: "table-cell",
+                    },
+                  }}
+                >
                   Containers
                 </TableCell>
-                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                <TableCell
+                  sx={{
+                    display: {
+                      xs: "none",
+                      md: "table-cell",
+                    },
+                  }}
+                >
                   Ports
                 </TableCell>
               </TableRow>
@@ -365,10 +470,23 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       {service.name}
                     </div>
                   </TableCell>
-                  <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                  <TableCell
+                    sx={{
+                      display: {
+                        xs: "none",
+                        sm: "table-cell",
+                      },
+                    }}
+                  >
+                    <AppTypography
+                      variant="body2"
+                      noWrap
+                      style={{
+                        maxWidth: 200,
+                      }}
+                    >
                       {service.image}
-                    </Typography>
+                    </AppTypography>
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -378,41 +496,66 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         service.state === "running" ? "success" : "default"
                       }
                       variant="soft"
-                      sx={{ textTransform: "capitalize" }}
+                      sx={{
+                        textTransform: "capitalize",
+                      }}
                     />
                   </TableCell>
-                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                  <TableCell
+                    sx={{
+                      display: {
+                        xs: "none",
+                        md: "table-cell",
+                      },
+                    }}
+                  >
                     {service.container_count}
                   </TableCell>
-                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                  <TableCell
+                    sx={{
+                      display: {
+                        xs: "none",
+                        md: "table-cell",
+                      },
+                    }}
+                  >
                     {service.ports.length > 0 ? service.ports.join(", ") : "-"}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-          <div style={{ marginTop: theme.spacing(2) }}>
-            <Typography
+          <div
+            style={{
+              marginTop: theme.spacing(2),
+            }}
+          >
+            <AppTypography
               variant="body2"
               color="text.secondary"
-              sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               <b>Working Directory:</b> {project.working_dir || "-"}
-            </Typography>
-            <Typography
+            </AppTypography>
+            <AppTypography
               variant="body2"
               color="text.secondary"
-              sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               <b>Config Files:</b> {project.config_files.join(", ") || "-"}
-            </Typography>
+            </AppTypography>
           </div>
         </>
       );
     },
     [theme],
   );
-
   const searchBar = (
     <div
       style={{
@@ -428,12 +571,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
         placeholder="Search stacks…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        sx={{ width: 320 }}
+        sx={{
+          width: 320,
+        }}
       />
-      <Typography fontWeight="bold">{filtered.length} shown</Typography>
+      <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
     </div>
   );
-
   if (viewMode === "card") {
     return (
       <div>
@@ -446,15 +590,23 @@ const ComposeList: React.FC<ComposeListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No compose stacks found. Start containers with docker compose to
               see them here.
-            </Typography>
+            </AppTypography>
           </div>
         ) : (
           <Grid container spacing={2}>
             {filtered.map((project) => (
-              <Grid key={project.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <Grid
+                key={project.name}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
+              >
                 <ComposeStackCard
                   project={project}
                   onStart={onStart}
@@ -472,7 +624,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
       </div>
     );
   }
-
   return (
     <div>
       {searchBar}
@@ -487,5 +638,4 @@ const ComposeList: React.FC<ComposeListProps> = ({
     </div>
   );
 };
-
 export default ComposeList;

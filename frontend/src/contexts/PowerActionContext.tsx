@@ -1,5 +1,7 @@
-import { Backdrop, Typography } from "@mui/material";
+import { Backdrop } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import React, {
   createContext,
   useState,
@@ -91,14 +93,14 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
             paddingRight: theme.spacing(3),
           }}
         >
-          <Typography variant="h5" component="div" gutterBottom>
+          <AppTypography variant="h5" component="div" gutterBottom>
             {powerAction === "rebooting" ? "Rebooting..." : "Shutting Down..."}
-          </Typography>
-          <Typography variant="body1" sx={{ opacity: 0.8 }}>
+          </AppTypography>
+          <AppTypography variant="body1" style={{ opacity: 0.8 }}>
             {powerAction === "rebooting"
               ? "Please wait while the system restarts. You will be redirected once the server is back online."
               : "The system is shutting down. You may close this window."}
-          </Typography>
+          </AppTypography>
           {powerAction === "rebooting" && <ComponentLoader />}
         </div>
       </Backdrop>

@@ -7,20 +7,24 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface SelfTestsTabProps {
   startPending: "short" | "long" | null;
   onRunTest: (testType: "short" | "long") => void;
-  selfTestLog?: { standard?: { table?: unknown[] } };
-  nvmeSelfTestLog?: { table?: unknown[] };
+  selfTestLog?: {
+    standard?: {
+      table?: unknown[];
+    };
+  };
+  nvmeSelfTestLog?: {
+    table?: unknown[];
+  };
   smartmontoolsAvailable: boolean;
   smartmontoolsReason?: string;
 }
-
 export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   startPending,
   onRunTest,
@@ -31,13 +35,16 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
 }) => {
   const theme = useTheme();
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
-
   return (
     <>
-      <div style={{ marginBottom: theme.spacing(3) }}>
-        <Typography variant="subtitle2" gutterBottom>
+      <div
+        style={{
+          marginBottom: theme.spacing(3),
+        }}
+      >
+        <AppTypography variant="subtitle2" gutterBottom>
           Run SMART Self-Test
-        </Typography>
+        </AppTypography>
         <div
           style={{
             display: "flex",
@@ -78,35 +85,70 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             {startPending === "long" ? "Starting..." : "Extended Test"}
           </Button>
         </div>
-        <Typography
+        <AppTypography
           variant="caption"
           color="text.secondary"
-          sx={{ mt: 1, display: "block" }}
+          style={{
+            marginTop: 4,
+            display: "block",
+          }}
         >
           {smartmontoolsAvailable
             ? "Short test takes ~2 minutes. Extended test can take hours depending on drive size."
             : smartmontoolsReason ||
               "SMART self-tests are disabled because smartmontools is unavailable."}
-        </Typography>
+        </AppTypography>
       </div>
 
-      <Typography variant="subtitle2" gutterBottom>
+      <AppTypography variant="subtitle2" gutterBottom>
         Self-Test History
-      </Typography>
+      </AppTypography>
       {selfTestLog?.standard?.table &&
       (selfTestLog.standard.table as unknown[]).length > 0 ? (
-        <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+        <TableContainer
+          className="custom-scrollbar"
+          sx={{
+            maxHeight: 400,
+          }}
+        >
           <Table
             size="small"
             stickyHeader
-            sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+            sx={{
+              "& .MuiTableCell-root": {
+                borderColor: "divider",
+              },
+            }}
           >
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
+                  #
+                </TableCell>
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
+                  Type
+                </TableCell>
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
+                  Status
+                </TableCell>
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                  align="right"
+                >
                   Lifetime Hours
                 </TableCell>
               </TableRow>
@@ -115,8 +157,13 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
               {(
                 selfTestLog.standard.table as {
                   num?: number;
-                  type?: { string?: string };
-                  status?: { string?: string; passed?: boolean };
+                  type?: {
+                    string?: string;
+                  };
+                  status?: {
+                    string?: string;
+                    passed?: boolean;
+                  };
                   lifetime_hours?: number;
                 }[]
               ).map((entry, idx) => (
@@ -142,17 +189,43 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
         </TableContainer>
       ) : nvmeSelfTestLog?.table &&
         (nvmeSelfTestLog.table as unknown[]).length > 0 ? (
-        <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+        <TableContainer
+          className="custom-scrollbar"
+          sx={{
+            maxHeight: 400,
+          }}
+        >
           <Table
             size="small"
             stickyHeader
-            sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+            sx={{
+              "& .MuiTableCell-root": {
+                borderColor: "divider",
+              },
+            }}
           >
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Result</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
+                  Type
+                </TableCell>
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
+                  Result
+                </TableCell>
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                  align="right"
+                >
                   Power On Hours
                 </TableCell>
               </TableRow>
@@ -160,8 +233,13 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             <TableBody>
               {(
                 nvmeSelfTestLog.table as {
-                  self_test_code?: { string?: string };
-                  self_test_result?: { string?: string; value?: number };
+                  self_test_code?: {
+                    string?: string;
+                  };
+                  self_test_result?: {
+                    string?: string;
+                    value?: number;
+                  };
                   power_on_hours?: number;
                 }[]
               ).map((entry, idx) => (
@@ -188,9 +266,9 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           </Table>
         </TableContainer>
       ) : (
-        <Typography color="text.secondary">
+        <AppTypography color="text.secondary">
           No self-test history available.
-        </Typography>
+        </AppTypography>
       )}
     </>
   );

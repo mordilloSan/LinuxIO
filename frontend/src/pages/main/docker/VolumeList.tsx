@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Typography,
   Checkbox,
   Button,
   Dialog,
@@ -16,7 +15,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
@@ -29,19 +27,17 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-
 interface DeleteVolumeDialogProps {
   open: boolean;
   onClose: () => void;
   volumeNames: string[];
   onSuccess: () => void;
 }
-
 const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   open,
   onClose,
@@ -50,7 +46,6 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useTheme();
-
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
     linuxio.docker.delete_volume.useMutation({
       onError: (error: Error) => {
@@ -59,7 +54,6 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         );
       },
     });
-
   const handleDelete = async () => {
     // Delete volumes sequentially
     for (const name of volumeNames) {
@@ -76,11 +70,9 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
     onSuccess();
     handleClose();
   };
-
   const handleClose = () => {
     onClose();
   };
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>
@@ -105,11 +97,19 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
               label={name}
               size="small"
               variant="soft"
-              sx={{ mr: 1, mb: 1 }}
+              sx={{
+                mr: 1,
+                mb: 1,
+              }}
             />
           ))}
         </div>
-        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+        <DialogContentText
+          sx={{
+            mt: 2,
+            color: "warning.main",
+          }}
+        >
           This action cannot be undone. Volumes in use by containers cannot be
           deleted.
         </DialogContentText>
@@ -130,7 +130,6 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
     </Dialog>
   );
 };
-
 const VolumeList: React.FC<VolumeListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -139,7 +138,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
   const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
-
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -159,7 +157,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
       onMountCreateHandler(handleCreateVolume);
     }
   }, [onMountCreateHandler, handleCreateVolume]);
-
   const filtered = volumesList.filter(
     (vol) =>
       vol.Name.toLowerCase().includes(search.toLowerCase()) ||
@@ -178,7 +175,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
     });
     return result;
   }, [selected, filtered]);
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelected(new Set(filtered.map((v) => v.Name)));
@@ -186,7 +182,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
       setSelected(new Set());
     }
   };
-
   const handleSelectOne = (name: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -198,41 +193,56 @@ const VolumeList: React.FC<VolumeListProps> = ({
       return next;
     });
   };
-
   const handleDeleteSuccess = () => {
     setSelected(new Set());
   };
-
   const selectedVolumes = filtered.filter((v) => effectiveSelected.has(v.Name));
   const allSelected =
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-
   const columns: UnifiedTableColumn[] = [
-    { field: "name", headerName: "Volume Name", align: "left" },
+    {
+      field: "name",
+      headerName: "Volume Name",
+      align: "left",
+    },
     {
       field: "driver",
       headerName: "Driver",
       align: "left",
       width: "120px",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          sm: "table-cell",
+        },
+      },
     },
     {
       field: "mountpoint",
       headerName: "Mountpoint",
       align: "left",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          md: "table-cell",
+        },
+      },
     },
     {
       field: "scope",
       headerName: "Scope",
       align: "left",
       width: "100px",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      sx: {
+        display: {
+          xs: "none",
+          sm: "table-cell",
+        },
+      },
     },
   ];
-
   return (
     <div>
       <div
@@ -257,7 +267,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
             },
           }}
         />
-        <Typography fontWeight="bold">{filtered.length} shown</Typography>
+        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -274,8 +284,20 @@ const VolumeList: React.FC<VolumeListProps> = ({
         filtered.length > 0 ? (
           <Grid container spacing={2}>
             {filtered.map((volume) => (
-              <Grid key={volume.Name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
+              <Grid
+                key={volume.Name}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
+              >
+                <FrostedCard
+                  style={{
+                    padding: 8,
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
@@ -299,29 +321,31 @@ const VolumeList: React.FC<VolumeListProps> = ({
                           handleSelectOne(volume.Name, e.target.checked)
                         }
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {volume.Name}
-                      </Typography>
+                      </AppTypography>
                     </div>
                     <Chip
                       label={volume.Driver}
                       size="small"
                       variant="soft"
-                      sx={{ fontSize: "0.75rem" }}
+                      sx={{
+                        fontSize: "0.75rem",
+                      }}
                     />
                   </div>
 
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    sx={{
-                      mb: 1,
+                    style={{
+                      marginBottom: 4,
                       fontFamily: "monospace",
                       fontSize: "0.8rem",
                       ...longTextStyles,
                     }}
                   >
                     {volume.Mountpoint || "-"}
-                  </Typography>
+                  </AppTypography>
 
                   <div
                     style={{
@@ -355,9 +379,9 @@ const VolumeList: React.FC<VolumeListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No volumes found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -384,75 +408,101 @@ const VolumeList: React.FC<VolumeListProps> = ({
           renderMainRow={(volume) => (
             <>
               <TableCell>
-                <Typography
+                <AppTypography
                   variant="body2"
-                  fontWeight="medium"
-                  sx={responsiveTextStyles}
+                  fontWeight={500}
+                  style={responsiveTextStyles}
                 >
                   {volume.Name}
-                </Typography>
+                </AppTypography>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    sm: "table-cell",
+                  },
+                }}
+              >
                 <Chip
                   label={volume.Driver}
                   size="small"
                   variant="soft"
-                  sx={{ fontSize: "0.75rem" }}
+                  sx={{
+                    fontSize: "0.75rem",
+                  }}
                 />
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    md: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography
                   variant="body2"
-                  sx={{
+                  style={{
                     fontFamily: "monospace",
                     fontSize: "0.85rem",
                     ...longTextStyles,
                   }}
                 >
                   {volume.Mountpoint || "-"}
-                </Typography>
+                </AppTypography>
               </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+              <TableCell
+                sx={{
+                  display: {
+                    xs: "none",
+                    sm: "table-cell",
+                  },
+                }}
+              >
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {volume.Scope || "local"}
-                </Typography>
+                </AppTypography>
               </TableCell>
             </>
           )}
           renderExpandedContent={(volume) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Full Mountpoint:</b>
-              </Typography>
-              <Typography
+              </AppTypography>
+              <AppTypography
                 variant="body2"
-                sx={{
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  mb: 2,
+                  marginBottom: 8,
                   ...longTextStyles,
                 }}
               >
                 {volume.Mountpoint || "-"}
-              </Typography>
+              </AppTypography>
 
               {volume.CreatedAt && (
                 <>
-                  <Typography variant="subtitle2" gutterBottom>
+                  <AppTypography variant="subtitle2" gutterBottom>
                     <b>Created:</b>
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="body2"
-                    sx={{ mb: 2, fontSize: "0.85rem" }}
+                    style={{
+                      marginBottom: 8,
+                      fontSize: "0.85rem",
+                    }}
                   >
                     {new Date(volume.CreatedAt).toLocaleString()}
-                  </Typography>
+                  </AppTypography>
                 </>
               )}
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{
                   display: "flex",
@@ -467,19 +517,23 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       label={`${key}: ${val}`}
                       size="small"
                       variant="soft"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                      sx={{
+                        mr: 1,
+                        mb: 1,
+                        ...wrappableChipStyles,
+                      }}
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no labels)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Options:</b>
-              </Typography>
+              </AppTypography>
               <div>
                 {volume.Options && Object.keys(volume.Options).length > 0 ? (
                   Object.entries(volume.Options).map(([key, val]) => (
@@ -488,13 +542,17 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       label={`${key}: ${val}`}
                       size="small"
                       variant="soft"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                      sx={{
+                        mr: 1,
+                        mb: 1,
+                        ...wrappableChipStyles,
+                      }}
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no options)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
             </>
@@ -512,5 +570,4 @@ const VolumeList: React.FC<VolumeListProps> = ({
     </div>
   );
 };
-
 export default VolumeList;

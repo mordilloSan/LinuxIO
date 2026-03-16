@@ -1,6 +1,8 @@
-import { Button, Dialog, Typography, useTheme } from "@mui/material";
+import { Button, Dialog, useTheme } from "@mui/material";
 import { alpha } from "@/utils/color";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 interface ComposePostSaveDialogProps {
   open: boolean;
@@ -80,18 +82,18 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
         }}
       >
         {/* Title */}
-        <Typography
+        <AppTypography
           variant="h5"
           fontWeight={600}
-          sx={{
+          style={{
             color: theme.palette.text.primary,
           }}
         >
           Stack Saved Successfully
-        </Typography>
+        </AppTypography>
 
         {/* Message */}
-        <Typography
+        <AppTypography
           variant="body1"
           style={{
             marginTop: theme.spacing(2),
@@ -100,7 +102,7 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
           }}
         >
           {getActionMessage()}
-        </Typography>
+        </AppTypography>
 
         {/* Buttons */}
         <div

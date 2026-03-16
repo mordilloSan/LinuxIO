@@ -8,12 +8,10 @@ import {
   DialogTitle,
   Divider,
   FormControlLabel,
-  Typography,
 } from "@mui/material";
 import React, { useState } from "react";
-
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-
+import AppTypography from "@/components/ui/AppTypography";
 export interface PruneOptions {
   containers: boolean;
   images: boolean;
@@ -21,7 +19,6 @@ export interface PruneOptions {
   networks: boolean;
   volumes: boolean;
 }
-
 const defaultOptions: PruneOptions = {
   containers: true,
   images: true,
@@ -29,14 +26,12 @@ const defaultOptions: PruneOptions = {
   networks: true,
   volumes: false,
 };
-
 interface PruneDialogProps {
   open: boolean;
   onClose: () => void;
   onConfirm: (opts: PruneOptions) => void;
   isLoading?: boolean;
 }
-
 const PruneDialog: React.FC<PruneDialogProps> = ({
   open,
   onClose,
@@ -44,19 +39,18 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
   isLoading = false,
 }) => {
   const [opts, setOpts] = useState<PruneOptions>(defaultOptions);
-
   const toggle = (key: keyof PruneOptions) =>
-    setOpts((prev) => ({ ...prev, [key]: !prev[key] }));
-
+    setOpts((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
   const selectedCount = Object.values(opts).filter(Boolean).length;
-
   const handleClose = () => {
     if (!isLoading) {
       setOpts(defaultOptions);
       onClose();
     }
   };
-
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
       <DialogTitle
@@ -69,15 +63,32 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         }}
       >
         <Icon icon="mdi:broom" width={24} height={24} />
-        <Typography variant="h6">Prune System</Typography>
+        <AppTypography variant="h6">Prune System</AppTypography>
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 2.5, pb: 1 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <DialogContent
+        sx={{
+          pt: 2.5,
+          pb: 1,
+        }}
+      >
+        <AppTypography
+          variant="body2"
+          color="text.secondary"
+          style={{
+            marginBottom: 8,
+          }}
+        >
           Select which unused Docker resources to remove:
-        </Typography>
+        </AppTypography>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
           <FormControlLabel
             control={
               <Checkbox
@@ -119,7 +130,11 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             label="Unused Networks"
           />
 
-          <Divider sx={{ my: 0.5 }} />
+          <Divider
+            sx={{
+              my: 0.5,
+            }}
+          />
 
           <FormControlLabel
             control={
@@ -131,16 +146,22 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
               />
             }
             label={
-              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                }}
+              >
                 <span>Unused Volumes</span>
-                <Typography
+                <AppTypography
                   component="span"
                   variant="caption"
                   color="error"
                   fontWeight={600}
                 >
                   (Potentially Destructive!)
-                </Typography>
+                </AppTypography>
               </div>
             }
           />
@@ -150,19 +171,25 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           <Alert
             severity="warning"
             icon={<Icon icon="mdi:alert" width={22} height={22} />}
-            sx={{ mt: 2 }}
+            sx={{
+              mt: 2,
+            }}
           >
-            <Typography variant="body2">
+            <AppTypography variant="body2">
               <strong>Warning:</strong> Removing unused volumes will permanently
               delete data that is not attached to any container. This cannot be
               undone.
-            </Typography>
+            </AppTypography>
           </Alert>
         )}
       </DialogContent>
 
       <DialogActions
-        sx={{ p: 2, borderTop: "1px solid", borderColor: "divider" }}
+        sx={{
+          p: 2,
+          borderTop: "1px solid",
+          borderColor: "divider",
+        }}
       >
         <Button onClick={handleClose} disabled={isLoading} color="inherit">
           Cancel
@@ -180,5 +207,4 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
     </GeneralDialog>
   );
 };
-
 export default PruneDialog;

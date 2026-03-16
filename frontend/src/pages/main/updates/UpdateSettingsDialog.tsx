@@ -3,28 +3,23 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  Typography,
   useTheme,
 } from "@mui/material";
 import React from "react";
-
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
-
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import Chip from "@/components/ui/AppChip";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface UpdateSettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
-
 const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   open,
   onClose,
 }) => {
   const theme = useTheme();
   const settingsState = useUpdateSettingsState(open);
-
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle
@@ -42,9 +37,14 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
             gap: theme.spacing(1),
           }}
         >
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+          <AppTypography
+            variant="h6"
+            style={{
+              flexGrow: 1,
+            }}
+          >
             Automatic Updates
-          </Typography>
+          </AppTypography>
           {settingsState.serverState ? (
             <Chip
               size="small"
@@ -62,11 +62,15 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
         </div>
       </DialogTitle>
 
-      <DialogContent sx={{ px: 3, py: 3 }}>
+      <DialogContent
+        sx={{
+          px: 3,
+          py: 3,
+        }}
+      >
         <UpdateSettings disablePadding state={settingsState} />
       </DialogContent>
     </GeneralDialog>
   );
 };
-
 export default UpdateSettingsDialog;

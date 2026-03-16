@@ -7,7 +7,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
   Checkbox,
   Button,
   Dialog,
@@ -24,6 +23,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { alpha } from "@/utils/color";
+import AppTypography from "@/components/ui/AppTypography";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -393,7 +393,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
             },
           }}
         />
-        <Typography fontWeight="bold">{filtered.length} shown</Typography>
+        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -435,9 +435,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
                           handleSelectOne(network.Id, e.target.checked)
                         }
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {network.Name}
-                      </Typography>
+                      </AppTypography>
                     </div>
                     <Chip
                       label={network.Driver}
@@ -477,18 +477,18 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     />
                   </div>
 
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    sx={{
-                      mt: 1,
-                      mb: 1,
+                    style={{
+                      marginTop: 4,
+                      marginBottom: 4,
                       fontFamily: "monospace",
                       fontSize: "0.78rem",
                       ...longTextStyles,
                     }}
                   >
                     ID: {network.Id}
-                  </Typography>
+                  </AppTypography>
 
                   <div
                     style={{
@@ -508,9 +508,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         />
                       ))
                     ) : (
-                      <Typography variant="caption" color="text.secondary">
+                      <AppTypography variant="caption" color="text.secondary">
                         No IPAM config
-                      </Typography>
+                      </AppTypography>
                     )}
                   </div>
                 </FrostedCard>
@@ -525,9 +525,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No networks found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -554,13 +554,13 @@ const NetworkList: React.FC<NetworkListProps> = ({
           renderMainRow={(network) => (
             <>
               <TableCell>
-                <Typography
+                <AppTypography
                   variant="body2"
-                  fontWeight="medium"
-                  sx={responsiveTextStyles}
+                  fontWeight={500}
+                  style={responsiveTextStyles}
                 >
                   {network.Name}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell>
                 <Chip
@@ -571,9 +571,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 />
               </TableCell>
               <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {network.Scope}
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                 <Chip
@@ -600,39 +600,39 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 />
               </TableCell>
               <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography
+                <AppTypography
                   variant="body2"
-                  sx={{
+                  style={{
                     fontFamily: "monospace",
                     fontSize: "0.85rem",
                     ...responsiveTextStyles,
                   }}
                 >
                   {network.Id?.slice(0, 12)}
-                </Typography>
+                </AppTypography>
               </TableCell>
             </>
           )}
           renderExpandedContent={(network) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Full Network ID:</b>
-              </Typography>
-              <Typography
+              </AppTypography>
+              <AppTypography
                 variant="body2"
-                sx={{
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  mb: 2,
+                  marginBottom: 8,
                   ...longTextStyles,
                 }}
               >
                 {network.Id}
-              </Typography>
+              </AppTypography>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Subnet(s):</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{
                   display: "flex",
@@ -651,15 +651,15 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no IPAM config)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Options:</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{
                   display: "flex",
@@ -678,15 +678,15 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no options)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{
                   display: "flex",
@@ -705,15 +705,15 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no labels)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Connected Containers:</b>
-              </Typography>
+              </AppTypography>
               <div>
                 {network.Containers &&
                 Object.keys(network.Containers).length > 0 ? (
@@ -753,12 +753,12 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         ([id, info]: [string, any]) => (
                           <TableRow key={id}>
                             <TableCell>
-                              <Typography
+                              <AppTypography
                                 variant="body2"
-                                sx={responsiveTextStyles}
+                                style={responsiveTextStyles}
                               >
                                 {info.Name || "-"}
-                              </Typography>
+                              </AppTypography>
                             </TableCell>
                             <TableCell
                               sx={{
@@ -770,28 +770,28 @@ const NetworkList: React.FC<NetworkListProps> = ({
                               {id.slice(0, 12)}
                             </TableCell>
                             <TableCell>
-                              <Typography
+                              <AppTypography
                                 variant="body2"
-                                sx={{
+                                style={{
                                   fontFamily: "monospace",
                                   fontSize: "0.85rem",
                                   ...longTextStyles,
                                 }}
                               >
                                 {info.IPv4Address?.replace(/\/.*/, "") || "-"}
-                              </Typography>
+                              </AppTypography>
                             </TableCell>
                             <TableCell>
-                              <Typography
+                              <AppTypography
                                 variant="body2"
-                                sx={{
+                                style={{
                                   fontFamily: "monospace",
                                   fontSize: "0.85rem",
                                   ...longTextStyles,
                                 }}
                               >
                                 {info.IPv6Address?.replace(/\/.*/, "") || "-"}
-                              </Typography>
+                              </AppTypography>
                             </TableCell>
                             <TableCell
                               sx={{
@@ -808,9 +808,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     </TableBody>
                   </Table>
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no containers)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
             </>

@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
-import { Divider, IconButton, Typography } from "@mui/material";
+import { Divider, IconButton } from "@mui/material";
 import React from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 import type { ComposeProject } from "./ComposeList";
 
@@ -86,22 +88,22 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         }}
       >
         <DockerIcon identifier={project.icon} size={36} alt={project.name} />
-        <Typography variant="subtitle1" fontWeight={600} noWrap>
+        <AppTypography variant="subtitle1" fontWeight={600} noWrap>
           {project.name}
-        </Typography>
+        </AppTypography>
       </div>
 
       {/* Stats */}
       <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-        <Typography variant="body2" color="text.secondary">
+        <AppTypography variant="body2" color="text.secondary">
           {totalServices > 0
             ? `${runningServices}/${totalServices} services`
             : "No services"}
-        </Typography>
+        </AppTypography>
         {totalContainers > 0 && (
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             {totalContainers} container{totalContainers !== 1 ? "s" : ""}
-          </Typography>
+          </AppTypography>
         )}
       </div>
 

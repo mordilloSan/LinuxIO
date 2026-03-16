@@ -1,5 +1,7 @@
-import { Typography, LinearProgress } from "@mui/material";
+import { LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 import React from "react";
 
@@ -37,14 +39,14 @@ const MetricBar: React.FC<MetricBarProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
             {icon}
-            <Typography variant="caption">{label}</Typography>
+            <AppTypography variant="caption">{label}</AppTypography>
           </div>
-          <Typography
+          <AppTypography
             variant="caption"
-            sx={{ fontVariantNumeric: "tabular-nums" }}
+            style={{ fontVariantNumeric: "tabular-nums" }}
           >
             {rightLabel}
-          </Typography>
+          </AppTypography>
         </div>
         <LinearProgress
           variant="determinate"

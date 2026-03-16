@@ -2,20 +2,17 @@ import { Icon } from "@iconify/react";
 import {
   CircularProgress,
   IconButton,
-  Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import React, { ReactNode, useCallback } from "react";
-
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
-
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
   showHiddenFiles: boolean;
@@ -32,7 +29,6 @@ interface FileBrowserHeaderProps {
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
 }
-
 const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   showHiddenFiles,
   showQuickSave = false,
@@ -53,12 +49,10 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, isIndexing, openIndexerDialog } = useFileTransfers();
-
   const handleIndexer = useCallback(() => {
     openIndexerDialog();
     void startIndexer({});
   }, [openIndexerDialog, startIndexer]);
-
   return (
     <>
       <div
@@ -85,30 +79,36 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             }}
           >
             {isDirty && (
-              <Typography
+              <AppTypography
                 variant="caption"
-                sx={{
+                style={{
                   color: theme.palette.primary.main,
                   fontWeight: 600,
                   display: "flex",
                   alignItems: "center",
-                  gap: 0.5,
+                  gap: 2,
                 }}
               >
                 • Unsaved changes
-              </Typography>
+              </AppTypography>
             )}
           </div>
         )}
         {/* Center section - File info when editing OR search bar when browsing */}
         {showQuickSave && editingFileName ? (
-          <div style={{ flex: 1, textAlign: "center", marginInline: 8 }}>
-            <Typography variant="h6" fontWeight={600}>
+          <div
+            style={{
+              flex: 1,
+              textAlign: "center",
+              marginInline: 8,
+            }}
+          >
+            <AppTypography variant="h6" fontWeight={600}>
               {editingFileName}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
+            </AppTypography>
+            <AppTypography variant="caption" color="text.secondary">
               {editingFilePath}
-            </Typography>
+            </AppTypography>
           </div>
         ) : (
           <div
@@ -237,5 +237,4 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
     </>
   );
 };
-
 export default FileBrowserHeader;

@@ -1,4 +1,4 @@
-import { Grid, Typography } from "@mui/material";
+import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
@@ -9,6 +9,7 @@ import InterfaceDetails from "./InterfaceClients";
 import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -211,9 +212,9 @@ const WireGuardDashboard: React.FC = () => {
       {isLoading ? (
         <ComponentLoader />
       ) : isError ? (
-        <Typography color="error">
+        <AppTypography color="error">
           {error?.message || "Failed to fetch interfaces"}
-        </Typography>
+        </AppTypography>
       ) : WGinterfaces.length > 0 ? (
         <>
           <AnimatePresence>
@@ -255,9 +256,9 @@ const WireGuardDashboard: React.FC = () => {
                       marginBottom: theme.spacing(2),
                     }}
                   >
-                    <Typography variant="h5" gutterBottom>
+                    <AppTypography variant="h5" gutterBottom>
                       Clients for {selectedInterface}
-                    </Typography>
+                    </AppTypography>
                   </div>
                   <div ref={interfaceDetailsRef}>
                     <InterfaceDetails params={{ id: selectedInterface }} />
@@ -268,7 +269,7 @@ const WireGuardDashboard: React.FC = () => {
           )}
         </>
       ) : (
-        <Typography color="textSecondary">No interfaces found</Typography>
+        <AppTypography color="text.secondary">No interfaces found</AppTypography>
       )}
     </>
   );

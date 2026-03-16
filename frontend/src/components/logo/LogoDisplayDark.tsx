@@ -1,7 +1,8 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import React from "react";
+
+import { alpha } from "@/utils/color";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface LogoDisplayDarkProps {
   showText?: boolean;
@@ -13,12 +14,12 @@ const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
   const theme = useTheme();
 
   return (
-    <Typography
+    <AppTypography
       variant="h6"
       noWrap
-      sx={{
-        fontWeight: 400,
-        fontSize: "1.75rem",
+      fontWeight={400}
+      fontSize="1.75rem"
+      style={{
         display: "inline-flex",
         alignItems: "center",
         color: alpha(theme.palette.common.white, 0.87),
@@ -56,7 +57,7 @@ const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
       >
         i/O
       </span>
-    </Typography>
+    </AppTypography>
   );
 };
 

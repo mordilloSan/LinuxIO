@@ -12,15 +12,13 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
-
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
-
+import AppTypography from "@/components/ui/AppTypography";
 interface PermissionsDialogProps {
   open: boolean;
   pathLabel: string;
@@ -37,17 +35,26 @@ interface PermissionsDialogProps {
     group?: string,
   ) => void;
 }
-
 interface PermissionBits {
-  owner: { read: boolean; write: boolean; execute: boolean };
-  group: { read: boolean; write: boolean; execute: boolean };
-  others: { read: boolean; write: boolean; execute: boolean };
+  owner: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
+  group: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
+  others: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
 }
-
 const parseSymbolicMode = (mode: string): PermissionBits => {
   const charAt = (index: number) => mode[index] || "";
   const hasExec = (value: string) => ["x", "s", "t"].includes(value);
-
   return {
     owner: {
       read: charAt(1) === "r",
@@ -66,14 +73,12 @@ const parseSymbolicMode = (mode: string): PermissionBits => {
     },
   };
 };
-
 const parseMode = (mode: string): PermissionBits => {
   const trimmed = mode.trim();
   const octalMatch = trimmed.match(/[0-7]{3}$/);
   if (octalMatch) {
     const octal = octalMatch[0];
     const [owner, group, others] = octal.split("").map(Number);
-
     return {
       owner: {
         read: (owner & 4) !== 0,
@@ -96,7 +101,6 @@ const parseMode = (mode: string): PermissionBits => {
   // Fallback for symbolic strings like "-rw-r--r--"
   return parseSymbolicMode(trimmed);
 };
-
 const permissionsToOctal = (perms: PermissionBits): string => {
   const ownerBits =
     (perms.owner.read ? 4 : 0) +
@@ -110,10 +114,8 @@ const permissionsToOctal = (perms: PermissionBits): string => {
     (perms.others.read ? 4 : 0) +
     (perms.others.write ? 2 : 0) +
     (perms.others.execute ? 1 : 0);
-
   return `${ownerBits}${groupBits}${othersBits}`;
 };
-
 const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   open,
   pathLabel,
@@ -138,7 +140,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   // Derive available users and groups directly from query data
   const availableUsers = usersGroupsData?.users || [];
   const availableGroups = usersGroupsData?.groups || [];
-
   const handlePermissionChange = useCallback(
     (category: keyof PermissionBits, type: "read" | "write" | "execute") => {
       setPermissions((prev) => ({
@@ -151,7 +152,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     },
     [],
   );
-
   const handleConfirm = useCallback(() => {
     const mode = permissionsToOctal(permissions);
     const nextOwner = ownerInput.trim() || undefined;
@@ -159,10 +159,8 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     onConfirm(mode, recursive, nextOwner, nextGroup);
     onClose();
   }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
-
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
   return (
     <FileBrowserDialog
       open={open}
@@ -179,19 +177,25 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           gap: 1,
         }}
       >
-        <Typography component="span" variant="h6">
+        <AppTypography component="span" variant="h6">
           Change Permissions
-        </Typography>
-        <Typography
+        </AppTypography>
+        <AppTypography
           component="span"
           variant="caption"
           color="text.secondary"
-          sx={{ textAlign: "right" }}
+          style={{
+            textAlign: "right",
+          }}
         >
           {pathLabel}
-        </Typography>
+        </AppTypography>
       </DialogTitle>
-      <DialogContent sx={{ overflow: "visible" }}>
+      <DialogContent
+        sx={{
+          overflow: "visible",
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -261,9 +265,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           <TableBody>
             <TableRow>
               <TableCell>
-                <Typography variant="body2" fontWeight="medium">
+                <AppTypography variant="body2" fontWeight={500}>
                   Owner
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell align="center">
                 <Checkbox
@@ -286,9 +290,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             </TableRow>
             <TableRow>
               <TableCell>
-                <Typography variant="body2" fontWeight="medium">
+                <AppTypography variant="body2" fontWeight={500}>
                   Group
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell align="center">
                 <Checkbox
@@ -311,9 +315,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             </TableRow>
             <TableRow>
               <TableCell>
-                <Typography variant="body2" fontWeight="medium">
+                <AppTypography variant="body2" fontWeight={500}>
                   Others
-                </Typography>
+                </AppTypography>
               </TableCell>
               <TableCell align="center">
                 <Checkbox
@@ -338,7 +342,11 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         </Table>
 
         {isDirectory && (
-          <div style={{ marginTop: theme.spacing(2) }}>
+          <div
+            style={{
+              marginTop: theme.spacing(2),
+            }}
+          >
             <FormControlLabel
               control={
                 <Checkbox
@@ -360,5 +368,4 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     </FileBrowserDialog>
   );
 };
-
 export default PermissionsDialog;
