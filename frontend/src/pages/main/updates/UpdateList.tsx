@@ -1,4 +1,4 @@
-import { CardContent, CircularProgress, Collapse, Grid } from "@mui/material";
+import { CardContent, CircularProgress, Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -8,6 +8,7 @@ import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { Update } from "@/types/update";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -96,17 +97,17 @@ const UpdateList: React.FC<Props> = ({
     return null; // Hide list while updating; only the progress bar should show
   }
   return (
-    <Grid
+    <AppGrid
       container
       spacing={2}
-      sx={{
-        px: 2,
-        pb: 2,
+      style={{
+        paddingInline: 16,
+        paddingBottom: 16,
       }}
       ref={containerRef}
     >
       {updates.map((update, idx) => (
-        <Grid
+        <AppGrid
           key={idx}
           size={{
             xs: 12,
@@ -232,9 +233,9 @@ const UpdateList: React.FC<Props> = ({
               </Collapse>
             </CardContent>
           </FrostedCard>
-        </Grid>
+        </AppGrid>
       ))}
-    </Grid>
+    </AppGrid>
   );
 };
 export default UpdateList;

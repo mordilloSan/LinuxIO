@@ -1,4 +1,4 @@
-import { Divider, TextField, Alert } from "@mui/material";
+import { TextField } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -12,7 +12,9 @@ import { toast } from "sonner";
 import { linuxio } from "@/api";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
+import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -219,14 +221,14 @@ const DockerFolderSettingsSection: React.FC = () => {
         />
 
         {!indexerEnabled && (
-          <Alert severity="info">
+          <AppAlert severity="info">
             {indexerStatus === "unknown"
               ? "Indexer availability is being checked. You can still save this path and reindex later."
               : "Indexer service is unavailable. You can still save this path and reindex later."}
-          </Alert>
+          </AppAlert>
         )}
 
-        <Divider />
+        <AppDivider />
 
         <div
           style={{

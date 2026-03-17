@@ -1,12 +1,8 @@
 import { Icon } from "@iconify/react";
-import {
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-} from "@mui/material";
+import { Menu, MenuItem, ListItemIcon, ListItemText } from "@mui/material";
 import React, { useEffect, useEffectEvent, useRef } from "react";
+
+import AppDivider from "@/components/ui/AppDivider";
 
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
@@ -123,7 +119,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         <ListItemText>Upload</ListItemText>
       </MenuItem>
 
-      <Divider />
+      <AppDivider />
 
       {/* Open containing folder (search results only) */}
       {canOpenContainingFolder && (
@@ -135,7 +131,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         </MenuItem>
       )}
 
-      {canOpenContainingFolder && <Divider />}
+      {canOpenContainingFolder && <AppDivider />}
 
       {/* Selection-based actions */}
       <MenuItem onClick={onChangePermissions} disabled={!hasSelection}>
@@ -173,7 +169,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         <ListItemText>Paste</ListItemText>
       </MenuItem>
 
-      <Divider />
+      <AppDivider />
 
       <MenuItem onClick={onDownload} disabled={!hasSelection}>
         <ListItemIcon>

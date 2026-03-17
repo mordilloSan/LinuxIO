@@ -1,8 +1,8 @@
-import { Alert } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 import { Navigate } from "react-router-dom";
 
 import PageLoader from "@/components/loaders/PageLoader";
+import AppAlert from "@/components/ui/AppAlert";
 import useAuth from "@/hooks/useAuth";
 
 export const PrivilegedGuard: React.FC<PropsWithChildren> = ({ children }) => {
@@ -22,9 +22,9 @@ export const PrivilegedGuard: React.FC<PropsWithChildren> = ({ children }) => {
   if (!privileged) {
     return (
       <div style={{ padding: 16 }}>
-        <Alert severity="error">
+        <AppAlert severity="error">
           Access Denied: This page requires administrator privileges.
-        </Alert>
+        </AppAlert>
       </div>
     );
   }

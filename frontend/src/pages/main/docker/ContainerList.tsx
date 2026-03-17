@@ -13,7 +13,6 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Grid } from "@mui/material";
 import React, { Suspense, useMemo } from "react";
 
 import ContainerTable from "./ContainerTable";
@@ -21,6 +20,7 @@ import ContainerCard from "../../../components/cards/ContainerCard";
 
 import { linuxio } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
+import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 
@@ -115,18 +115,18 @@ const ContainerList: React.FC<ContainerListProps> = ({
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={containerIds} strategy={rectSortingStrategy}>
-            <Grid container spacing={2}>
+            <AppGrid container spacing={2}>
               {orderedContainers.map((container) => (
-                <Grid
+                <AppGrid
                   key={container.Id}
                   size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}
                 >
                   <SortableCard id={container.Id} editMode={editMode}>
                     <ContainerCard container={container} />
                   </SortableCard>
-                </Grid>
+                </AppGrid>
               ))}
-            </Grid>
+            </AppGrid>
           </SortableContext>
         </DndContext>
       </div>

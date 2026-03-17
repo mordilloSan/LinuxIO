@@ -1,4 +1,3 @@
-import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
@@ -9,6 +8,7 @@ import InterfaceDetails from "./InterfaceClients";
 import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -218,9 +218,9 @@ const WireGuardDashboard: React.FC = () => {
       ) : WGinterfaces.length > 0 ? (
         <>
           <AnimatePresence>
-            <Grid container spacing={3}>
+            <AppGrid container spacing={3}>
               {WGinterfaces.map((iface) => (
-                <Grid
+                <AppGrid
                   size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
                   key={iface.name}
                 >
@@ -236,13 +236,13 @@ const WireGuardDashboard: React.FC = () => {
                     handleDelete={handleDelete}
                     handleAddPeer={handleAddPeer}
                   />
-                </Grid>
+                </AppGrid>
               ))}
-            </Grid>
+            </AppGrid>
           </AnimatePresence>
           {selectedInterface && (
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
+            <AppGrid container spacing={3}>
+              <AppGrid size={{ xs: 12 }}>
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -264,8 +264,8 @@ const WireGuardDashboard: React.FC = () => {
                     <InterfaceDetails params={{ id: selectedInterface }} />
                   </div>
                 </motion.div>
-              </Grid>
-            </Grid>
+              </AppGrid>
+            </AppGrid>
           )}
         </>
       ) : (

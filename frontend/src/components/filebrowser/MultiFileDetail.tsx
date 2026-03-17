@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Button, Divider, Paper, useTheme } from "@mui/material";
+import { Button, Paper, useTheme } from "@mui/material";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
+import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -209,7 +210,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         </div>
       </div>
 
-      <Divider />
+      <AppDivider />
 
       <div
         style={{
@@ -229,7 +230,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         />
       </div>
 
-      <Divider />
+      <AppDivider />
 
       <div
         className="custom-scrollbar"

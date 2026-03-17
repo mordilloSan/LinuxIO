@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Button, Grid, useMediaQuery, useTheme } from "@mui/material";
+import { Button, useMediaQuery, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -9,6 +9,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
@@ -748,18 +749,18 @@ export function UnitCardsView<T extends UnitListItem>({
 
   if (!expandedItem) {
     return (
-      <Grid container spacing={3}>
+      <AppGrid container spacing={3}>
         {items.map((item) => (
-          <Grid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+          <AppGrid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
             <UnitCard
               item={item}
               isSelected={false}
               onExpand={onExpand}
               renderSummaryRows={renderSummaryRows}
             />
-          </Grid>
+          </AppGrid>
         ))}
-      </Grid>
+      </AppGrid>
     );
   }
 

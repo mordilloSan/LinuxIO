@@ -1,4 +1,4 @@
-import { Collapse, Divider, Switch } from "@mui/material";
+import { Collapse, Switch } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -18,6 +18,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { ContainerInfo } from "@/types/container";
@@ -500,7 +501,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
       {/* Ports section */}
       <Collapse in={expanded} timeout={250} unmountOnExit>
-        <Divider sx={{ mt: 1, mb: 1.5 }} />
+        <AppDivider style={{ marginTop: 8, marginBottom: 12 }} />
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {ports.map((p, i) => {
             const label = p.PublicPort

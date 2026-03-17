@@ -1,6 +1,6 @@
-import { Alert } from "@mui/material";
 import React from "react";
 
+import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 
 interface ErrorStateProps {
@@ -10,7 +10,7 @@ interface ErrorStateProps {
 
 const ErrorState: React.FC<ErrorStateProps> = ({ message, onReset }) => {
   return (
-    <Alert
+    <AppAlert
       severity="error"
       action={
         onReset && (
@@ -21,7 +21,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({ message, onReset }) => {
       }
     >
       {message}
-    </Alert>
+    </AppAlert>
   );
 };
 

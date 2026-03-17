@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Alert, AlertTitle, Button, IconButton, useTheme } from "@mui/material";
+import { Button, IconButton, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import VolumeList from "./VolumeList";
 import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -114,12 +115,12 @@ const DockerPage: React.FC = () => {
           padding: theme.spacing(3),
         }}
       >
-        <Alert severity="info">
-          <AlertTitle>Checking Docker</AlertTitle>
+        <AppAlert severity="info">
+          <AppAlertTitle>Checking Docker</AppAlertTitle>
           <AppTypography variant="body2">
             Verifying Docker daemon access...
           </AppTypography>
-        </Alert>
+        </AppAlert>
       </div>
     );
   }
@@ -132,8 +133,8 @@ const DockerPage: React.FC = () => {
           padding: theme.spacing(3),
         }}
       >
-        <Alert severity="warning">
-          <AlertTitle>Docker Not Available</AlertTitle>
+        <AppAlert severity="warning">
+          <AppAlertTitle>Docker Not Available</AppAlertTitle>
           <AppTypography
             variant="body2"
             style={{
@@ -165,7 +166,7 @@ const DockerPage: React.FC = () => {
               </li>
             </ul>
           </AppTypography>
-        </Alert>
+        </AppAlert>
       </div>
     );
   }

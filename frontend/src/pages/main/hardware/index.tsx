@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Collapse, Grid, TableCell } from "@mui/material";
+import { Collapse, TableCell } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
@@ -11,6 +11,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -404,7 +405,7 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("overview")}
       />
       <Collapse in={sections.overview}>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+        <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
           {(
             [
               {
@@ -441,7 +442,7 @@ const HardwarePage: React.FC = () => {
               icon: string;
             }[]
           ).map(({ label, value, detail, icon }) => (
-            <Grid key={label} size={{ xs: 6, md: 3 }}>
+            <AppGrid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard
                 style={{
                   paddingInline: 10,
@@ -497,9 +498,9 @@ const HardwarePage: React.FC = () => {
                   </AppTypography>
                 </div>
               </FrostedCard>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
+        </AppGrid>
       </Collapse>
 
       {/* ── System Information ──────────────────────────────────────────── */}
@@ -509,7 +510,7 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("systemInfo")}
       />
       <Collapse in={sections.systemInfo}>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+        <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
           {(
             [
               { label: "Type", value: systemInfo?.chassisType },
@@ -522,7 +523,7 @@ const HardwarePage: React.FC = () => {
               { label: "CPU", value: systemInfo?.cpuSummary },
             ] as { label: string; value: string | undefined }[]
           ).map(({ label, value }) => (
-            <Grid key={label} size={{ xs: 6, md: 3 }}>
+            <AppGrid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard style={{ paddingInline: 10, paddingBlock: 8 }}>
                 <AppTypography
                   variant="overline"
@@ -540,9 +541,9 @@ const HardwarePage: React.FC = () => {
                   {value || "—"}
                 </AppTypography>
               </FrostedCard>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
+        </AppGrid>
       </Collapse>
 
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
@@ -590,19 +591,19 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("hardware")}
       />
       <Collapse in={sections.hardware}>
-        <Grid container spacing={4} sx={{ mb: 2 }}>
+        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
           {[
             { id: "cpu", component: MemoProcessor },
             { id: "memory", component: MemoMemory },
             { id: "gpu", component: MemoGpuInfo },
           ].map(({ id, component: CardComponent }) => (
-            <Grid key={id} size={{ xs: 12, lg: 4 }}>
+            <AppGrid key={id} size={{ xs: 12, lg: 4 }}>
               <ErrorBoundary>
                 <CardComponent />
               </ErrorBoundary>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
+        </AppGrid>
       </Collapse>
 
       {/* ── Sensor Readings ────────────────────────────────────────────── */}
@@ -622,8 +623,8 @@ const HardwarePage: React.FC = () => {
         ) : (
           <>
             {/* Summary bar */}
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid size={{ xs: 12 }}>
+            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
+              <AppGrid size={{ xs: 12 }}>
                 <FrostedCard
                   style={{
                     paddingInline: 12,
@@ -661,20 +662,20 @@ const HardwarePage: React.FC = () => {
                     />
                   )}
                 </FrostedCard>
-              </Grid>
-            </Grid>
+              </AppGrid>
+            </AppGrid>
 
             {/* Sensor group cards */}
-            <Grid container spacing={2} sx={{ mb: 2 }}>
+            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
               {sensorGroups.map((group, idx) => (
-                <Grid
+                <AppGrid
                   key={`${group.adapter}-${idx}`}
                   size={{ xs: 12, sm: 6, lg: 4 }}
                 >
                   <SensorGroupCard group={group} />
-                </Grid>
+                </AppGrid>
               ))}
-            </Grid>
+            </AppGrid>
           </>
         )}
       </Collapse>

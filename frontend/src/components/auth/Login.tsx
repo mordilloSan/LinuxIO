@@ -1,15 +1,10 @@
 import { Icon } from "@iconify/react";
-import {
-  Alert,
-  Button,
-  IconButton,
-  InputAdornment,
-  TextField,
-} from "@mui/material";
+import { Button, IconButton, InputAdornment, TextField } from "@mui/material";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import "./login.css";
+import AppAlert from "@/components/ui/AppAlert";
 import useAuth from "@/hooks/useAuth";
 import { alpha } from "@/utils/color";
 
@@ -79,21 +74,19 @@ function LogIn() {
   return (
     <form noValidate onSubmit={handleSubmit}>
       {error && (
-        <Alert
+        <AppAlert
           severity="warning"
           className="login-reveal"
-          style={{ "--login-reveal-delay": "60ms" } as React.CSSProperties}
-          sx={{
-            mb: 2,
-            borderRadius: 2,
-            border: (theme) =>
-              `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
-            backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.18),
-            color: "text.primary",
-          }}
+          style={
+            {
+              "--login-reveal-delay": "60ms",
+              marginBottom: 16,
+              borderRadius: 16,
+            } as React.CSSProperties
+          }
         >
           {error}
-        </Alert>
+        </AppAlert>
       )}
       <div
         className="login-reveal"

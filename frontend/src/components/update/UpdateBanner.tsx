@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Alert, Button, IconButton, Link, useMediaQuery } from "@mui/material";
+import { Button, IconButton, Link, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import UpdateDialog from "./UpdateDialog";
 
+import AppAlert from "@/components/ui/AppAlert";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 
 interface UpdateInfo {
@@ -79,10 +80,16 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         onContinue={handleContinue}
         targetVersion={targetVersion}
       />
-      <Alert
+      <AppAlert
         severity="info"
-        sx={{ mx: { xs: 6, md: 8 }, mt: 0, mb: 0, borderRadius: 2 }}
-        slotProps={{ message: { sx: { width: "100%", p: 0 } } }}
+        style={{
+          marginInline: 64,
+          marginTop: 0,
+          marginBottom: 0,
+          borderRadius: 16,
+          width: "100%",
+          padding: 0,
+        }}
         action={
           <IconButton
             aria-label="close"
@@ -150,7 +157,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             )}
           </div>
         </div>
-      </Alert>
+      </AppAlert>
     </>
   );
 };

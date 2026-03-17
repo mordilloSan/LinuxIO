@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Divider, IconButton } from "@mui/material";
+import { IconButton } from "@mui/material";
 import React from "react";
 
 import type { ComposeProject } from "./ComposeList";
@@ -7,6 +7,7 @@ import type { ComposeProject } from "./ComposeList";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
@@ -106,7 +107,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         )}
       </div>
 
-      <Divider sx={{ my: 1.5 }} />
+      <AppDivider style={{ marginBlock: 12 }} />
 
       {/* Actions */}
       <div

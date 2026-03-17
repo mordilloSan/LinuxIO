@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Alert, LinearProgress } from "@mui/material";
+import { LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -54,9 +55,9 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
     <div style={{ marginBottom: theme.spacing(3) }}>
       {/* Error Alert */}
       {error && (
-        <Alert
+        <AppAlert
           severity="error"
-          sx={{ mb: 2 }}
+          style={{ marginBottom: 16 }}
           action={
             onClearError && (
               <AppIconButton
@@ -71,7 +72,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
           }
         >
           {error}
-        </Alert>
+        </AppAlert>
       )}
 
       {/* Progress Indicator */}

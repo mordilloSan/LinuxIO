@@ -1,16 +1,11 @@
 import { Icon } from "@iconify/react";
-import {
-  Button,
-  CircularProgress,
-  Divider,
-  Paper,
-  useTheme,
-} from "@mui/material";
+import { Button, CircularProgress, Paper, useTheme } from "@mui/material";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 import { isEditableFile } from "@/components/filebrowser/utils";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { formatDate, formatFileSize } from "@/utils/formaters";
@@ -178,7 +173,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
         </div>
       </div>
 
-      <Divider />
+      <AppDivider />
 
       {/* Details section */}
       <div
@@ -221,7 +216,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {/* Permissions and Ownership Section */}
       {statData && (
         <>
-          <Divider />
+          <AppDivider />
           <AppTypography variant="subtitle2" fontWeight={600}>
             Permissions & Ownership
           </AppTypography>
@@ -241,7 +236,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
       )}
       {isLoadingStat && (
         <>
-          <Divider />
+          <AppDivider />
           <div
             style={{
               display: "flex",
@@ -260,7 +255,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {/* Download and Edit buttons - only for files */}
       {!isDirectory && (
         <>
-          <Divider />
+          <AppDivider />
           <div
             style={{
               display: "flex",

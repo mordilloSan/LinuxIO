@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Divider,
   Menu,
   MenuItem,
   Dialog,
@@ -14,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
@@ -96,10 +96,10 @@ function NavbarUserDropdown() {
             Signed in as {user.name}
           </MenuItem>
         )}
-        <Divider />
+        <AppDivider />
         <MenuItem onClick={() => setConfirm("reboot")}>Reboot</MenuItem>
         <MenuItem onClick={() => setConfirm("poweroff")}>Power Down</MenuItem>
-        <Divider />
+        <AppDivider />
         <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
       </Menu>
 

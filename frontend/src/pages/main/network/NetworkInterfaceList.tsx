@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -11,6 +10,7 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
@@ -162,11 +162,11 @@ const NetworkInterfaceList = () => {
 
   return (
     <div>
-      <Grid container spacing={4}>
+      <AppGrid container spacing={4}>
         <AnimatePresence>
           {interfaces.map((iface) =>
             expanded && expanded !== iface.name ? null : (
-              <Grid
+              <AppGrid
                 key={iface.name}
                 size={
                   expanded === iface.name
@@ -292,13 +292,13 @@ const NetworkInterfaceList = () => {
                     onSave={handleSave}
                   />
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ),
           )}
 
           {/* Traffic graphs — appear on the right when a NIC is selected */}
           {selectedIface && (
-            <Grid
+            <AppGrid
               key="traffic-graphs"
               size={{ xs: 12, md: 8, lg: 9 }}
               component={motion.div}
@@ -379,10 +379,10 @@ const NetworkInterfaceList = () => {
                   </div>
                 </div>
               </div>
-            </Grid>
+            </AppGrid>
           )}
         </AnimatePresence>
-      </Grid>
+      </AppGrid>
     </div>
   );
 };
