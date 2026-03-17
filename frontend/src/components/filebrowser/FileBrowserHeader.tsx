@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useMediaQuery, useTheme } from "@mui/material";
+import { shadowSm } from "@/constants";
 import React, { ReactNode, useCallback } from "react";
 
 import IndexerDialog from "./IndexerDialog";
@@ -64,7 +65,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             theme.palette.mode === "light"
               ? theme.darken(theme.sidebar.background, 0.13)
               : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: theme.shadows[2].replace(/;$/, ""),
+          boxShadow: shadowSm,
         }}
       >
         {/* Left section - Status indicator when editing */}

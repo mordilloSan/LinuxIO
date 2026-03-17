@@ -8,6 +8,7 @@ import {
   Popover,
   useTheme,
 } from "@mui/material";
+import { shadowSm } from "@/constants";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -513,7 +514,7 @@ function NavbarNotificationsDropdown() {
             sx: {
               width: 360,
               border: `1px solid ${theme.palette.divider}`,
-              boxShadow: theme.shadows[1],
+              boxShadow: shadowSm,
             },
           },
         }}

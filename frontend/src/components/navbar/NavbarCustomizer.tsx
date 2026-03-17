@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { iconSize } from "@/constants";
+import { iconSize, shadowSm } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 import { COLOR_TOKENS } from "@/theme/colors";
 import { alpha } from "@/utils/color";
@@ -46,11 +46,12 @@ function NavbarColorCustomizer() {
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         slotProps={{
           paper: {
-            elevation: 6,
+            elevation: 0,
             sx: {
               p: 2,
               bgcolor: muiTheme.palette.background.paper,
               borderRadius: 2,
+              boxShadow: shadowSm,
             },
           },
         }}

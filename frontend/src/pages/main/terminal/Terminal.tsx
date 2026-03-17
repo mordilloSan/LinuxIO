@@ -1,5 +1,6 @@
 import { Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { shadowSm } from "@/constants";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -337,7 +338,7 @@ const TerminalXTerm: React.FC = () => {
             theme.palette.mode === "light"
               ? theme.darken(theme.sidebar.background, 0.13)
               : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: theme.shadows[2],
+          boxShadow: shadowSm,
         }}
       >
         {/* Font Size Controls */}

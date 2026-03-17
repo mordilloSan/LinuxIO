@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
+import { shadowSm } from "@/constants";
 import React from "react";
 
 import "@/components/cards/frosted-card.css";
@@ -39,12 +40,12 @@ const DevToolsButton: React.FC = () => {
               borderColor: isOpen ? theme.palette.primary.main : "transparent",
               borderRadius: 4,
               padding: 4,
-              boxShadow: isOpen ? theme.shadows[2] : "none",
+              boxShadow: isOpen ? shadowSm : "none",
               whiteSpace: "nowrap",
               minWidth: 90,
               transition: "all 0.2s",
               "--devtools-hover-border": theme.palette.primary.main,
-              "--devtools-hover-shadow": theme.shadows[1],
+              "--devtools-hover-shadow": shadowSm,
             } as React.CSSProperties
           }
         >

@@ -8,6 +8,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import { shadowSm } from "@/constants";
 import React, { useState } from "react";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
@@ -31,10 +32,11 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
   return (
     <AppBar
       position="sticky"
-      elevation={1}
+      elevation={0}
       sx={{
         background: theme.header.background,
         color: theme.header.color,
+        boxShadow: shadowSm,
       }}
     >
       <Toolbar>

@@ -6,7 +6,6 @@ import {
 import variants from "@/theme/variants";
 import typography from "@/theme/typography";
 import breakpoints from "@/theme/breakpoints";
-import shadows from "@/theme/shadows";
 import components from "@/theme/components";
 import { resolvePrimaryColor, getContrastText } from "@/theme/colors";
 import { ThemeColors } from "@/types/config";
@@ -133,7 +132,6 @@ const createTheme = (
       breakpoints,
       components: components as Components<Theme>,
       typography,
-      shadows,
       palette,
       cssVariables: { nativeColor: true },
     },

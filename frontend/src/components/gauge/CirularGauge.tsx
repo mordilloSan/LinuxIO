@@ -1,6 +1,6 @@
 import { useTheme } from "@mui/material";
-import { grey } from "@mui/material/colors";
 import React, { useMemo } from "react";
+import { GREY_TOKENS as grey } from "@/theme/colors";
 
 // Utility functions
 function clamp(n: number, min: number, max: number) {

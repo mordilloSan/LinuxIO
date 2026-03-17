@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
+import { shadowSm } from "@/constants";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
@@ -69,7 +70,7 @@ function UnifiedCollapsibleTable<T>({
           style={
             {
               "--uct-hover-bg": hoverBg,
-              boxShadow: theme.shadows[2],
+              boxShadow: shadowSm,
             } as React.CSSProperties
           }
         >
