@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton } from "@mui/material";
 import React, { useState } from "react";
 
 import GroupsTab from "./GroupsTab";
 import UsersTab from "./UsersTab";
 
 import { TabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -42,7 +43,7 @@ const AccountsPage: React.FC = () => {
                     : "Switch to table view"
                 }
               >
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() =>
                     setUsersView(usersView === "table" ? "card" : "table")
@@ -53,17 +54,17 @@ const AccountsPage: React.FC = () => {
                   ) : (
                     <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
               {createUserHandler && (
-                <Button
+                <AppButton
                   variant="contained"
                   size="small"
                   onClick={createUserHandler}
                   startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Add User
-                </Button>
+                </AppButton>
               )}
             </>
           ),
@@ -88,7 +89,7 @@ const AccountsPage: React.FC = () => {
                     : "Switch to table view"
                 }
               >
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() =>
                     setGroupsView(groupsView === "table" ? "card" : "table")
@@ -99,17 +100,17 @@ const AccountsPage: React.FC = () => {
                   ) : (
                     <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
               {createGroupHandler && (
-                <Button
+                <AppButton
                   variant="contained"
                   size="small"
                   onClick={createGroupHandler}
                   startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Add Group
-                </Button>
+                </AppButton>
               )}
             </>
           ),

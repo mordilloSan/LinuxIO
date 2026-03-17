@@ -2,13 +2,13 @@ import { Icon } from "@iconify/react";
 import {
   DialogContent,
   DialogTitle,
-  IconButton,
   LinearProgress,
   useTheme,
 } from "@mui/material";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography, {
   type AppTypographyProps,
 } from "@/components/ui/AppTypography";
@@ -107,9 +107,9 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
           )}
           <AppTypography variant="h6">{title}</AppTypography>
         </div>
-        <IconButton onClick={onClose} size="small">
+        <AppIconButton onClick={onClose} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
-        </IconButton>
+        </AppIconButton>
       </DialogTitle>
 
       <DialogContent

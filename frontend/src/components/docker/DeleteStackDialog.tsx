@@ -4,7 +4,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
   FormControlLabel,
   Radio,
   RadioGroup,
@@ -13,6 +12,7 @@ import {
 } from "@mui/material";
 import React, { useState } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 export type DeleteOption = "containers" | "file" | "directory";
 interface DeleteStackDialogProps {
@@ -184,10 +184,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Button onClick={handleClose} disabled={isLoading} color="inherit">
+        <AppButton onClick={handleClose} disabled={isLoading} color="inherit">
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleConfirm}
           disabled={isLoading}
           variant="contained"
@@ -201,7 +201,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           }
         >
           {isLoading ? "Deleting..." : "Delete"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );

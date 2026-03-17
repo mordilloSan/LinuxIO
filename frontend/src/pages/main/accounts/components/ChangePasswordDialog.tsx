@@ -1,5 +1,4 @@
 import {
-  Button,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -12,6 +11,7 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {
@@ -103,16 +103,16 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isPending}>
+        <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleSubmit}
           variant="contained"
           disabled={isPending || !password || password !== confirmPassword}
         >
           {isPending ? "Changing..." : "Change Password"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </GeneralDialog>
   );

@@ -1,16 +1,12 @@
 import { Icon } from "@iconify/react";
-import {
-  CircularProgress,
-  IconButton,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { CircularProgress, useMediaQuery, useTheme } from "@mui/material";
 import React, { ReactNode, useCallback } from "react";
 
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -147,21 +143,21 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             {showQuickSave && (
               <>
                 <AppTooltip title="Close editor">
-                  <IconButton
+                  <AppIconButton
                     onClick={onCloseEditor || (() => {})}
                     disabled={isSaving}
                   >
                     <Icon icon="mdi:close" width={22} height={22} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
 
                 <AppTooltip title="Save changes">
-                  <IconButton
+                  <AppIconButton
                     onClick={onSaveFile || (() => {})}
                     disabled={isSaving}
                   >
                     <Icon icon="mdi:content-save" width={22} height={22} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
               </>
             )}
@@ -169,9 +165,12 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             {!showQuickSave && (
               <>
                 <AppTooltip title="Switch view">
-                  <IconButton onClick={onSwitchView} aria-label="Switch view">
+                  <AppIconButton
+                    onClick={onSwitchView}
+                    aria-label="Switch view"
+                  >
                     {viewIcon}
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
 
                 <AppTooltip
@@ -179,7 +178,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                     showHiddenFiles ? "Hide hidden files" : "Show hidden files"
                   }
                 >
-                  <IconButton
+                  <AppIconButton
                     onClick={onToggleHiddenFiles}
                     aria-label={
                       showHiddenFiles
@@ -192,7 +191,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                     ) : (
                       <Icon icon="mdi:eye-off" width={22} height={22} />
                     )}
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
 
                 <AppTooltip
@@ -205,11 +204,11 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                   }
                 >
                   <span>
-                    <IconButton
+                    <AppIconButton
                       onClick={handleIndexer}
                       disabled={isIndexing || !indexerEnabled}
                       aria-label="Index filesystem"
-                      sx={{
+                      style={{
                         position: "relative",
                       }}
                     >
@@ -227,7 +226,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                           }}
                         />
                       )}
-                    </IconButton>
+                    </AppIconButton>
                   </span>
                 </AppTooltip>
               </>

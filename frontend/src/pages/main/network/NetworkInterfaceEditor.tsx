@@ -1,5 +1,4 @@
 import {
-  Button,
   Collapse,
   FormControlLabel,
   Switch,
@@ -15,6 +14,7 @@ import { toast } from "sonner";
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -463,12 +463,12 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             marginTop: theme.spacing(2),
           }}
         >
-          <Button onClick={onClose} disabled={saving}>
+          <AppButton onClick={onClose} disabled={saving}>
             Cancel
-          </Button>
-          <Button variant="contained" onClick={handleSave} disabled={saving}>
+          </AppButton>
+          <AppButton variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Apply Configuration"}
-          </Button>
+          </AppButton>
         </div>
       </div>
     </Collapse>

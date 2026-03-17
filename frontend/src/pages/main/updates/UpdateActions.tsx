@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Alert, IconButton, LinearProgress } from "@mui/material";
+import { Alert, LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
@@ -58,14 +59,14 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
           sx={{ mb: 2 }}
           action={
             onClearError && (
-              <IconButton
+              <AppIconButton
                 aria-label="close"
                 color="inherit"
                 size="small"
                 onClick={onClearError}
               >
                 <Icon icon="mdi:close" width={18} height={18} />
-              </IconButton>
+              </AppIconButton>
             )
           }
         >
@@ -99,9 +100,13 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
               </AppTypography>
               {onCancel && (
                 <AppTooltip title="Cancel update">
-                  <IconButton size="small" onClick={onCancel} sx={{ ml: 0.5 }}>
+                  <AppIconButton
+                    size="small"
+                    onClick={onCancel}
+                    style={{ marginLeft: 2 }}
+                  >
                     <Icon icon="mdi:cancel" width={20} height={20} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
               )}
             </div>

@@ -1,7 +1,6 @@
 import {
   Alert,
   Autocomplete,
-  Button,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -31,6 +30,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
@@ -260,12 +260,16 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isMounting}>
+        <AppButton onClick={handleClose} disabled={isMounting}>
           Cancel
-        </Button>
-        <Button onClick={handleMount} variant="contained" disabled={isMounting}>
+        </AppButton>
+        <AppButton
+          onClick={handleMount}
+          variant="contained"
+          disabled={isMounting}
+        >
           {isMounting ? "Mounting..." : "Mount"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -337,17 +341,17 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isUnmounting}>
+        <AppButton onClick={handleClose} disabled={isUnmounting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleUnmount}
           variant="contained"
           color="error"
           disabled={isUnmounting}
         >
           {isUnmounting ? "Unmounting..." : "Unmount"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -550,16 +554,16 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isRemounting}>
+        <AppButton onClick={handleClose} disabled={isRemounting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleSave}
           variant="contained"
           disabled={isRemounting}
         >
           {isRemounting ? "Saving..." : "Save"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -753,20 +757,20 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       gap: 4,
                     }}
                   >
-                    <Button
+                    <AppButton
                       size="small"
                       variant="outlined"
                       onClick={() => handleEdit(mount)}
                     >
                       Edit
-                    </Button>
-                    <Button
+                    </AppButton>
+                    <AppButton
                       size="small"
                       color="error"
                       onClick={() => handleUnmount(mount)}
                     >
                       Unmount
-                    </Button>
+                    </AppButton>
                   </div>
                 </FrostedCard>
               </Grid>
@@ -852,7 +856,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     gap: 4,
                   }}
                 >
-                  <Button
+                  <AppButton
                     size="small"
                     variant="outlined"
                     onClick={(e) => {
@@ -861,8 +865,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     }}
                   >
                     Edit
-                  </Button>
-                  <Button
+                  </AppButton>
+                  <AppButton
                     size="small"
                     color="error"
                     onClick={(e) => {
@@ -871,7 +875,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     }}
                   >
                     Unmount
-                  </Button>
+                  </AppButton>
                 </div>
               </TableCell>
             </>

@@ -1,5 +1,4 @@
 import {
-  Button,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -11,6 +10,7 @@ import { toast } from "sonner";
 
 import { linuxio, type CreateGroupRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {
@@ -91,16 +91,16 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isPending}>
+        <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleSubmit}
           variant="contained"
           disabled={isPending || !name.trim()}
         >
           {isPending ? "Creating..." : "Create"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </GeneralDialog>
   );

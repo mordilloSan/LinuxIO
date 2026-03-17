@@ -1,5 +1,4 @@
 import {
-  Button,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -25,6 +24,7 @@ import {
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
 interface Props {
@@ -457,7 +457,7 @@ const TerminalDialog: React.FC<Props> = ({
         </Menu>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleDialogClose}>Close</Button>
+        <AppButton onClick={handleDialogClose}>Close</AppButton>
       </DialogActions>
     </GeneralDialog>
   );

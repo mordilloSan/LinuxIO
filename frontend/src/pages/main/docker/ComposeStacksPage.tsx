@@ -1,5 +1,4 @@
 import {
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
@@ -29,6 +28,7 @@ import DeleteStackDialog, {
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
 import { useConfig } from "@/hooks/useConfig";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
@@ -558,16 +558,16 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             </DialogContentText>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleOverwriteCancel} color="inherit">
+            <AppButton onClick={handleOverwriteCancel} color="inherit">
               Cancel
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               onClick={handleOverwriteConfirm}
               color="warning"
               variant="contained"
             >
               Overwrite
-            </Button>
+            </AppButton>
           </DialogActions>
         </Dialog>
       </div>

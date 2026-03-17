@@ -1,8 +1,8 @@
-import { Button } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { useState, useRef, useEffect, useEffectEvent } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import { alpha } from "@/utils/color";
 
 interface DevToolsPanelProps {
@@ -151,7 +151,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             ×
           </button>
         </div>
-        <Button
+        <AppButton
           variant="contained"
           color="primary"
           size="small"
@@ -159,9 +159,9 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
           fullWidth
         >
           {isDevtoolsOpen ? "Close" : "Open"} React Query Devtools
-        </Button>
+        </AppButton>
         {!shown ? (
-          <Button
+          <AppButton
             variant="contained"
             color="warning"
             size="small"
@@ -169,9 +169,9 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             fullWidth
           >
             Show Update Notification
-          </Button>
+          </AppButton>
         ) : (
-          <Button
+          <AppButton
             variant="contained"
             color="secondary"
             size="small"
@@ -179,7 +179,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             fullWidth
           >
             Hide Update Notification
-          </Button>
+          </AppButton>
         )}
       </div>
 

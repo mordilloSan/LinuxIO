@@ -2,11 +2,9 @@ import { Icon } from "@iconify/react";
 import {
   Alert,
   AlertTitle,
-  Button,
   DialogActions,
   DialogContent,
   DialogTitle,
-  IconButton,
   List,
   ListItem,
   ListItemText,
@@ -53,6 +51,8 @@ import {
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig } from "@/hooks/useConfig";
@@ -1188,9 +1188,9 @@ const FileBrowser: React.FC = () => {
           {detailTarget && detailTarget.length > 1
             ? "Multiple Items Details"
             : "File Details"}
-          <IconButton onClick={handleCloseDetailDialog} size="small">
+          <AppIconButton onClick={handleCloseDetailDialog} size="small">
             <Icon icon="mdi:close" width={18} height={18} />
-          </IconButton>
+          </AppIconButton>
         </DialogTitle>
         <DialogContent
           dividers
@@ -1285,12 +1285,12 @@ const FileBrowser: React.FC = () => {
               flexWrap: "wrap",
             }}
           >
-            <Button variant="outlined" onClick={handlePickFiles}>
+            <AppButton variant="outlined" onClick={handlePickFiles}>
               Select files
-            </Button>
-            <Button variant="outlined" onClick={handlePickFolder}>
+            </AppButton>
+            <AppButton variant="outlined" onClick={handlePickFolder}>
               Select folders
-            </Button>
+            </AppButton>
           </div>
           <input
             ref={fileInputRef}
@@ -1347,25 +1347,25 @@ const FileBrowser: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button
+          <AppButton
             onClick={handleClearUploadSelection}
             disabled={!uploadEntries.length || isUploadProcessing}
           >
             Clear
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             onClick={handleCloseUploadDialog}
             disabled={isUploadProcessing}
           >
             Cancel
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             onClick={handleStartUpload}
             variant="contained"
             disabled={!uploadEntries.length || isUploadProcessing}
           >
             {isUploadProcessing ? "Uploading..." : "Upload"}
-          </Button>
+          </AppButton>
         </DialogActions>
       </FileBrowserDialog>
 
@@ -1395,14 +1395,14 @@ const FileBrowser: React.FC = () => {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancelOverwrite}>Skip</Button>
-          <Button
+          <AppButton onClick={handleCancelOverwrite}>Skip</AppButton>
+          <AppButton
             onClick={handleConfirmOverwrite}
             variant="contained"
             color="warning"
           >
             Overwrite
-          </Button>
+          </AppButton>
         </DialogActions>
       </FileBrowserDialog>
 

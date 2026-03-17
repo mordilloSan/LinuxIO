@@ -1,5 +1,4 @@
 import {
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
@@ -12,6 +11,7 @@ import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
@@ -219,10 +219,10 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           p: 2,
         }}
       >
-        <Button onClick={onClose} disabled={isValidating}>
+        <AppButton onClick={onClose} disabled={isValidating}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleConfirm}
           variant="contained"
           color="primary"
@@ -230,7 +230,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           startIcon={isValidating ? <CircularProgress size={20} /> : undefined}
         >
           {isValidating ? "Validating..." : "Next"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );

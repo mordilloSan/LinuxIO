@@ -3,11 +3,12 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Button,
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
+
+import AppButton from "@/components/ui/AppButton";
 
 interface InputDialogProps {
   open: boolean;
@@ -85,14 +86,14 @@ const InputDialog: React.FC<InputDialogProps> = ({
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
+        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton
           onClick={handleConfirm}
           disabled={!value.trim()}
           variant="contained"
         >
           {confirmText}
-        </Button>
+        </AppButton>
       </DialogActions>
     </FileBrowserDialog>
   );

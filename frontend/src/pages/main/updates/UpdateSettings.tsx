@@ -1,5 +1,4 @@
 import {
-  Button,
   FormControlLabel,
   MenuItem,
   Select,
@@ -20,6 +19,7 @@ import {
   type AutoUpdateState,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const updatesToastMeta = {
@@ -331,20 +331,24 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           marginTop: 4,
         }}
       >
-        <Button variant="contained" onClick={save} disabled={saving || !dirty}>
+        <AppButton
+          variant="contained"
+          onClick={save}
+          disabled={saving || !dirty}
+        >
           Save
-        </Button>
-        <Button variant="text" onClick={reset} disabled={saving || !dirty}>
+        </AppButton>
+        <AppButton variant="text" onClick={reset} disabled={saving || !dirty}>
           Cancel
-        </Button>
+        </AppButton>
         <div
           style={{
             flexGrow: 1,
           }}
         />
-        <Button variant="contained" onClick={applyOffline} disabled={saving}>
+        <AppButton variant="contained" onClick={applyOffline} disabled={saving}>
           Apply at next reboot (offline)
-        </Button>
+        </AppButton>
         {serverState.notes?.length ? (
           <AppTypography
             variant="body2"

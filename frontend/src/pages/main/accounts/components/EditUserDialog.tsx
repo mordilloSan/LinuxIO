@@ -1,5 +1,4 @@
 import {
-  Button,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -13,6 +12,7 @@ import { toast } from "sonner";
 
 import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -149,12 +149,16 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={isPending}>
+        <AppButton onClick={onClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={isPending}>
+        </AppButton>
+        <AppButton
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={isPending}
+        >
           {isPending ? "Saving..." : "Save"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </GeneralDialog>
   );

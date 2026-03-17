@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Collapse, Grid, IconButton, TableCell } from "@mui/material";
+import { Collapse, Grid, TableCell } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
@@ -11,6 +11,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import "@/theme/section.css";
@@ -84,11 +85,10 @@ const SectionHeader: React.FC<{
     <AppTypography variant="subtitle1" fontWeight={700}>
       {title}
     </AppTypography>
-    <IconButton
+    <AppIconButton
       size="small"
       className="section-toggle"
-      component="span"
-      sx={{
+      style={{
         opacity: 0,
         transition: "opacity 0.15s",
         pointerEvents: "none",
@@ -103,7 +103,7 @@ const SectionHeader: React.FC<{
           transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
         }}
       />
-    </IconButton>
+    </AppIconButton>
   </div>
 );
 

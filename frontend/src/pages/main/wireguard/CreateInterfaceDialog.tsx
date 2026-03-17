@@ -1,6 +1,5 @@
 import {
   Alert,
-  Button,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -15,6 +14,7 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 
 interface CreateInterfaceDialogProps {
   open: boolean;
@@ -157,10 +157,10 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="secondary" disabled={loading}>
+        <AppButton onClick={onClose} color="secondary" disabled={loading}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={onCreate}
           color="primary"
           disabled={
@@ -174,7 +174,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
           }
         >
           {loading ? "Creating..." : "Create Interface"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </GeneralDialog>
   );

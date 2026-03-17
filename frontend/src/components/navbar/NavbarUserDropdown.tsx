@@ -3,18 +3,18 @@ import {
   Divider,
   Menu,
   MenuItem,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogContentText,
   DialogActions,
-  Button,
 } from "@mui/material";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
 import useAuth from "@/hooks/useAuth";
@@ -80,9 +80,9 @@ function NavbarUserDropdown() {
   return (
     <>
       <AppTooltip title="Account">
-        <IconButton color="inherit" ref={ref} onClick={toggleMenu}>
+        <AppIconButton color="inherit" ref={ref} onClick={toggleMenu}>
           <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
-        </IconButton>
+        </AppIconButton>
       </AppTooltip>
 
       <Menu
@@ -115,15 +115,15 @@ function NavbarUserDropdown() {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeConfirm}>Cancel</Button>
-          <Button
+          <AppButton onClick={closeConfirm}>Cancel</AppButton>
+          <AppButton
             onClick={handleConfirmedAction}
             color="error"
             variant="contained"
             autoFocus
           >
             {confirm === "reboot" ? "Reboot" : "Power Down"}
-          </Button>
+          </AppButton>
         </DialogActions>
       </Dialog>
     </>

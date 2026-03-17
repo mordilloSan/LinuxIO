@@ -1,5 +1,4 @@
 import {
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,6 +22,7 @@ import ComposeValidationFeedback, {
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 interface ComposeEditorDialogProps {
   open: boolean;
@@ -300,29 +300,29 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           }}
         >
           {readOnly ? (
-            <Button onClick={handleClose} variant="contained">
+            <AppButton onClick={handleClose} variant="contained">
               Close
-            </Button>
+            </AppButton>
           ) : (
             <>
-              <Button onClick={handleClose} disabled={isSaving}>
+              <AppButton onClick={handleClose} disabled={isSaving}>
                 Cancel
-              </Button>
-              <Button
+              </AppButton>
+              <AppButton
                 onClick={handleValidate}
                 disabled={isSaving || isValidating}
                 variant="outlined"
               >
                 {isValidating ? "Validating..." : "Validate"}
-              </Button>
-              <Button
+              </AppButton>
+              <AppButton
                 onClick={handleSave}
                 disabled={isSaving || isValidating}
                 variant="contained"
                 color="primary"
               >
                 {isSaving ? "Saving..." : "Save"}
-              </Button>
+              </AppButton>
             </>
           )}
         </DialogActions>

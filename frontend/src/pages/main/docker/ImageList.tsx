@@ -4,7 +4,6 @@ import {
   TableCell,
   TextField,
   Checkbox,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -21,6 +20,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import {
@@ -137,17 +137,17 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
         </DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isDeleting}>
+        <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleDelete}
           variant="contained"
           color="error"
           disabled={isDeleting}
         >
           {isDeleting ? "Deleting..." : "Delete"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -314,7 +314,7 @@ const ImageList: React.FC<ImageListProps> = ({
         />
         <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
-          <Button
+          <AppButton
             variant="contained"
             color="error"
             size="small"
@@ -322,7 +322,7 @@ const ImageList: React.FC<ImageListProps> = ({
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
-          </Button>
+          </AppButton>
         )}
       </div>
       {viewMode === "card" ? (

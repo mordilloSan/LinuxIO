@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Badge,
-  Button,
-  IconButton,
   LinearProgress,
   List,
   ListItem,
@@ -14,6 +12,8 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { iconSize as iconSizes } from "@/constants";
@@ -173,9 +173,9 @@ function TransferItem({
       onClick={isIndexer ? onIndexerClick : undefined}
       secondaryAction={
         !isIndexer ? (
-          <IconButton edge="end" size="small" onClick={onCancel}>
+          <AppIconButton edge="end" size="small" onClick={onCancel}>
             <Icon icon="mdi:close" width={22} height={22} />
-          </IconButton>
+          </AppIconButton>
         ) : undefined
       }
     >
@@ -484,7 +484,7 @@ function NavbarNotificationsDropdown() {
       </div>
 
       <AppTooltip title="Notifications">
-        <IconButton color="inherit" ref={ref} onClick={handleOpen}>
+        <AppIconButton color="inherit" ref={ref} onClick={handleOpen}>
           <Badge
             badgeContent={badgeCount}
             sx={{
@@ -499,7 +499,7 @@ function NavbarNotificationsDropdown() {
           >
             <Icon icon="mdi:bell" width={22} height={22} />
           </Badge>
-        </IconButton>
+        </AppIconButton>
       </AppTooltip>
 
       {/* Full dropdown — everything */}
@@ -628,20 +628,22 @@ function NavbarNotificationsDropdown() {
                             {formatTimeAgo(toastItem.createdAt)}
                           </AppTypography>
                           {toastItem.meta?.href && (
-                            <Button
-                              size="small"
-                              component={Link}
+                            <Link
                               to={toastItem.meta.href}
                               onClick={handleClose}
-                              sx={{
-                                ml: "auto",
-                                minWidth: "auto",
-                                p: 0,
-                                lineHeight: 1.2,
-                              }}
+                              style={{ marginLeft: "auto" }}
                             >
-                              {toastItem.meta.label || "Open"}
-                            </Button>
+                              <AppButton
+                                size="small"
+                                style={{
+                                  minWidth: "auto",
+                                  padding: 0,
+                                  lineHeight: 1.2,
+                                }}
+                              >
+                                {toastItem.meta.label || "Open"}
+                              </AppButton>
+                            </Link>
                           )}
                         </div>
                       }
@@ -663,7 +665,7 @@ function NavbarNotificationsDropdown() {
             borderTop: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Button
+          <AppButton
             size="small"
             onClick={() => {
               clearToastHistory();
@@ -672,7 +674,7 @@ function NavbarNotificationsDropdown() {
             disabled={recentToastCount === 0 && completedTransfers.length === 0}
           >
             Clear
-          </Button>
+          </AppButton>
         </div>
       </Popover>
     </>

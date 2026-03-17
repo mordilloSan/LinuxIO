@@ -3,7 +3,6 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  IconButton,
   LinearProgress,
   useTheme,
 } from "@mui/material";
@@ -11,6 +10,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
 import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
 interface ComposeOperationDialogProps {
@@ -202,9 +202,9 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             {getActionLabel()} Stack: {projectName}
           </AppTypography>
         </div>
-        <IconButton onClick={handleClose} size="small">
+        <AppIconButton onClick={handleClose} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
-        </IconButton>
+        </AppIconButton>
       </DialogTitle>
 
       <DialogContent

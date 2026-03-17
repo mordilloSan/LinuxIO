@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Alert,
-  Button,
   Checkbox,
   DialogActions,
   DialogContent,
@@ -12,6 +11,7 @@ import {
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 export interface PruneOptions {
   containers: boolean;
@@ -192,10 +192,10 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           borderColor: "divider",
         }}
       >
-        <Button onClick={handleClose} disabled={isLoading} color="inherit">
+        <AppButton onClick={handleClose} disabled={isLoading} color="inherit">
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={() => onConfirm(opts)}
           disabled={isLoading || selectedCount === 0}
           variant="contained"
@@ -203,7 +203,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
         >
           {isLoading ? "Pruning..." : `Prune Selected (${selectedCount})`}
-        </Button>
+        </AppButton>
       </DialogActions>
     </GeneralDialog>
   );

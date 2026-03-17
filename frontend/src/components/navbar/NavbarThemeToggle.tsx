@@ -1,8 +1,8 @@
 // src/components/NavbarThemeToggle.tsx
 import { Icon } from "@iconify/react";
-import { IconButton } from "@mui/material";
 import React from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -17,7 +17,7 @@ function NavbarThemeToggle() {
 
   return (
     <AppTooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
-      <IconButton color="inherit" onClick={toggleTheme}>
+      <AppIconButton color="inherit" onClick={toggleTheme}>
         {isDark ? (
           <Icon
             icon="mdi:weather-night"
@@ -31,7 +31,7 @@ function NavbarThemeToggle() {
             height={iconSize.md}
           />
         )}
-      </IconButton>
+      </AppIconButton>
     </AppTooltip>
   );
 }

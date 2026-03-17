@@ -1,4 +1,4 @@
-import { Button, Divider, TextField, Alert } from "@mui/material";
+import { Divider, TextField, Alert } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { linuxio } from "@/api";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -234,16 +235,16 @@ const DockerFolderSettingsSection: React.FC = () => {
             gap: theme.spacing(1.5),
           }}
         >
-          <Button onClick={handleReset} disabled={!isDirty || isSaving}>
+          <AppButton onClick={handleReset} disabled={!isDirty || isSaving}>
             Reset
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             variant="contained"
             onClick={() => void handleSave()}
             disabled={!isDirty || isSaving}
           >
             {isSaving ? "Saving..." : "Save"}
-          </Button>
+          </AppButton>
         </div>
       </div>
 

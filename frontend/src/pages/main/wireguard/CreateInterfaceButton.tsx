@@ -1,4 +1,3 @@
-import { Button } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
@@ -6,6 +5,7 @@ import { toast } from "sonner";
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 import { linuxio, type NetworkInterface } from "@/api";
+import AppButton from "@/components/ui/AppButton";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {
@@ -206,9 +206,9 @@ const CreateInterfaceButton = () => {
 
   return (
     <>
-      <Button variant="contained" color="primary" onClick={handleOpenDialog}>
+      <AppButton variant="contained" color="primary" onClick={handleOpenDialog}>
         Create New Interface
-      </Button>
+      </AppButton>
       <CreateInterfaceDialog
         open={showDialog}
         onClose={() => setShowDialog(false)}

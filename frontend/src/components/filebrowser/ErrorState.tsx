@@ -1,5 +1,7 @@
-import { Alert, Button } from "@mui/material";
+import { Alert } from "@mui/material";
 import React from "react";
+
+import AppButton from "@/components/ui/AppButton";
 
 interface ErrorStateProps {
   message: string;
@@ -12,9 +14,9 @@ const ErrorState: React.FC<ErrorStateProps> = ({ message, onReset }) => {
       severity="error"
       action={
         onReset && (
-          <Button color="inherit" size="small" onClick={onReset}>
+          <AppButton color="inherit" size="small" onClick={onReset}>
             Go to root
-          </Button>
+          </AppButton>
         )
       }
     >

@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
@@ -11,6 +10,7 @@ import {
 import { useTheme } from "@mui/material/styles";
 import { useEffect, useRef } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 interface UpdateDialogProps {
   open: boolean;
@@ -192,24 +192,19 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
       </DialogContent>
       <DialogActions>
         {updateComplete && updateSuccess && onContinue && (
-          <Button
-            onClick={onContinue}
-            variant="contained"
-            color="success"
-            size="large"
-          >
+          <AppButton onClick={onContinue} variant="contained" color="success">
             Continue to Login
-          </Button>
+          </AppButton>
         )}
         {updateComplete && !updateSuccess && (
-          <Button onClick={onClose} variant="contained">
+          <AppButton onClick={onClose} variant="contained">
             Close
-          </Button>
+          </AppButton>
         )}
         {!updateComplete && canClose && (
-          <Button onClick={onClose} variant="contained">
+          <AppButton onClick={onClose} variant="contained">
             Close
-          </Button>
+          </AppButton>
         )}
         {!updateComplete && !canClose && (
           <AppTypography

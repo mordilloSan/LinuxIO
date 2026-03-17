@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import {
   DialogTitle,
   DialogContent,
-  IconButton,
   Alert,
   Switch,
   FormControlLabel,
@@ -12,6 +11,7 @@ import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
@@ -95,9 +95,9 @@ const LogDialog: React.FC<LogDialogProps> = ({
             }}
           />
         </AppTooltip>
-        <IconButton onClick={onClose} size="small">
+        <AppIconButton onClick={onClose} size="small">
           <Icon icon="mdi:close" width={18} height={18} />
-        </IconButton>
+        </AppIconButton>
       </DialogTitle>
 
       <DialogContent

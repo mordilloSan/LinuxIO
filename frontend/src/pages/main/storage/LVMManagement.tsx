@@ -4,14 +4,12 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
   FormControl,
-  IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
@@ -36,7 +34,9 @@ import {
   type VolumeGroup,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
@@ -159,16 +159,16 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isCreating}>
+        <AppButton onClick={handleClose} disabled={isCreating}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleCreate}
           variant="contained"
           disabled={isCreating}
         >
           {isCreating ? "Creating..." : "Create"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -262,16 +262,16 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isResizing}>
+        <AppButton onClick={handleClose} disabled={isResizing}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleResize}
           variant="contained"
           disabled={isResizing}
         >
           {isResizing ? "Resizing..." : "Resize"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -338,17 +338,17 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
         </DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isDeleting}>
+        <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleDelete}
           variant="contained"
           color="error"
           disabled={isDeleting || !!lv?.mountpoint}
         >
           {isDeleting ? "Deleting..." : "Delete"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </Dialog>
   );
@@ -537,18 +537,18 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
               </TableCell>
               <TableCell align="right">
                 <AppTooltip title="Resize">
-                  <IconButton size="small" onClick={() => onResize(lv)}>
+                  <AppIconButton size="small" onClick={() => onResize(lv)}>
                     <Icon icon="mdi:pencil" width={20} height={20} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
                 <AppTooltip title="Delete">
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     color="error"
                     onClick={() => onDelete(lv)}
                   >
                     <Icon icon="mdi:delete" width={20} height={20} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
               </TableCell>
             </TableRow>

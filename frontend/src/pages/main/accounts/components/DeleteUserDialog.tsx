@@ -1,5 +1,4 @@
 import {
-  Button,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -12,6 +11,7 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -84,17 +84,17 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
         </DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={isDeleting}>
+        <AppButton onClick={onClose} disabled={isDeleting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleDelete}
           variant="contained"
           color="error"
           disabled={isDeleting}
         >
           {isDeleting ? "Deleting..." : "Delete"}
-        </Button>
+        </AppButton>
       </DialogActions>
     </GeneralDialog>
   );

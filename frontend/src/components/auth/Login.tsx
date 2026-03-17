@@ -6,14 +6,12 @@ import {
   InputAdornment,
   TextField,
 } from "@mui/material";
-
-import { alpha } from "@/utils/color";
-
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import "./login.css";
 import useAuth from "@/hooks/useAuth";
+import { alpha } from "@/utils/color";
 
 const fieldSx = (theme: any) => ({
   my: 1,

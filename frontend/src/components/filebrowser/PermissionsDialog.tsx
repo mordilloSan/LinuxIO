@@ -1,6 +1,5 @@
 import {
   Autocomplete,
-  Button,
   Checkbox,
   DialogActions,
   DialogContent,
@@ -19,6 +18,7 @@ import React, { useState, useCallback } from "react";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 interface PermissionsDialogProps {
   open: boolean;
@@ -361,10 +361,10 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={handleConfirm} variant="contained">
+        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton onClick={handleConfirm} variant="contained">
           Apply
-        </Button>
+        </AppButton>
       </DialogActions>
     </FileBrowserDialog>
   );

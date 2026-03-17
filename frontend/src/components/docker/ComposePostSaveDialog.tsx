@@ -1,6 +1,8 @@
-import { Button, Dialog, useTheme } from "@mui/material";
+import { Dialog } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 
@@ -114,54 +116,33 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
             marginTop: theme.spacing(2),
           }}
         >
-          <Button
+          <AppButton
             onClick={onDoNothing}
             disabled={isExecuting}
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
+            color="inherit"
+            style={{
+              paddingInline: 12,
+              paddingBlock: 6,
               fontWeight: 600,
               letterSpacing: "0.5px",
               color: theme.palette.text.secondary,
-              backgroundColor: "transparent",
-              "&:hover": {
-                backgroundColor: `${theme.palette.primary.main}22`,
-                boxShadow: `0 0 12px ${theme.palette.primary.main}44`,
-              },
-              "&:disabled": {
-                opacity: 0.5,
-                cursor: "not-allowed",
-              },
             }}
           >
             Do Nothing
-          </Button>
+          </AppButton>
 
-          <Button
+          <AppButton
             onClick={handleAction}
             disabled={isExecuting}
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
+            style={{
+              paddingInline: 12,
+              paddingBlock: 6,
               fontWeight: 600,
               letterSpacing: "0.5px",
-              color: theme.palette.primary.main,
-              "&:hover": {
-                backgroundColor: `${theme.palette.primary.main}22`,
-                boxShadow: `0 0 12px ${theme.palette.primary.main}44`,
-              },
-              "&:disabled": {
-                opacity: 0.5,
-                cursor: "not-allowed",
-              },
             }}
           >
             {getActionLabel()}
-          </Button>
+          </AppButton>
         </div>
       </div>
     </Dialog>
