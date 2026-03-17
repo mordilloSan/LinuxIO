@@ -1,4 +1,4 @@
-import { IconButton, Menu, MenuItem } from "@mui/material";
+import { Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -16,6 +16,7 @@ import {
   openTerminalStream,
   type Stream,
 } from "@/api";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 
 const MIN_FONT = 10;
@@ -348,13 +349,13 @@ const TerminalXTerm: React.FC = () => {
         >
           Font
         </AppTypography>
-        <IconButton
+        <AppIconButton
           size="small"
-          sx={{ color: "text.secondary" }}
+          style={{ color: "var(--mui-palette-text-secondary)" }}
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
         >
           <Minus size={18} />
-        </IconButton>
+        </AppIconButton>
         <AppTypography
           variant="body2"
           color="text.secondary"
@@ -363,25 +364,25 @@ const TerminalXTerm: React.FC = () => {
         >
           {fontSize}
         </AppTypography>
-        <IconButton
+        <AppIconButton
           size="small"
-          sx={{ color: "text.secondary" }}
+          style={{ color: "var(--mui-palette-text-secondary)" }}
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
         >
           <Plus size={18} />
-        </IconButton>
+        </AppIconButton>
 
         <div style={{ flex: 1 }} />
 
         {/* Reset Button */}
-        <IconButton
+        <AppIconButton
           size="small"
-          sx={{ color: "text.secondary", ml: 1 }}
+          style={{ color: "var(--mui-palette-text-secondary)", marginLeft: 8 }}
           onClick={handleReset}
           title="Reset Terminal"
         >
           <RotateCcw size={18} />
-        </IconButton>
+        </AppIconButton>
       </div>
       {/* TERMINAL */}
       <div

@@ -1,7 +1,8 @@
 import { Icon } from "@iconify/react";
-import { IconButton, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useRef } from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -178,14 +179,14 @@ function ThemeColorsSection() {
           }
         >
           <span>
-            <IconButton
+            <AppIconButton
               size="small"
               onClick={() => setThemeColors(undefined)}
               disabled={!hasAnyOverride}
               aria-label="Reset all colors to default"
             >
               <Icon icon="mdi:refresh" width={14} height={14} />
-            </IconButton>
+            </AppIconButton>
           </span>
         </AppTooltip>
       </div>
@@ -222,13 +223,13 @@ function ThemeColorsSection() {
             >
               {isOverridden && (
                 <AppTooltip title="Reset to default">
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() => handleReset(key)}
                     aria-label={`Reset ${label} to default`}
                   >
                     <Icon icon="mdi:refresh" width={14} height={14} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
               )}
               <ColorSwatch

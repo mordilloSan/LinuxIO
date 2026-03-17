@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
-import { IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppIconButton from "@/components/ui/AppIconButton";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
@@ -84,8 +85,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               <AppTooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
-                <IconButton
-                  sx={{
+                <AppIconButton
+                  style={{
                     color:
                       iface.isConnected === "Active"
                         ? theme.palette.primary.light
@@ -101,7 +102,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   }}
                 >
                   <Icon icon="mdi:power" width={22} height={22} />
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
               <AppTooltip
                 title={
@@ -110,8 +111,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     : "Enable Boot Persistence"
                 }
               >
-                <IconButton
-                  sx={{
+                <AppIconButton
+                  style={{
                     color: iface.isEnabled
                       ? theme.palette.success.main
                       : theme.palette.text.disabled,
@@ -123,28 +124,28 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   }}
                 >
                   <Icon icon="mdi:restart" width={22} height={22} />
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
               <AppTooltip title="Add Peer">
-                <IconButton
+                <AppIconButton
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddPeer(iface.name, {});
                   }}
                 >
                   <Icon icon="mdi:plus" width={22} height={22} />
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
               <AppTooltip title="Delete Interface">
-                <IconButton
+                <AppIconButton
+                  color="error"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDelete(iface.name);
                   }}
-                  sx={{ color: theme.palette.error.main }}
                 >
                   <Icon icon="mdi:delete" width={22} height={22} />
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
             </div>
           </div>

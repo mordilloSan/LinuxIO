@@ -1,6 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton, InputAdornment, TextField } from "@mui/material";
+import { InputAdornment, TextField } from "@mui/material";
 import React, { useState } from "react";
+
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import "./login.css";
@@ -120,20 +123,17 @@ function LogIn() {
             input: {
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton
+                  <AppIconButton
                     onClick={() => setShowPassword((p) => !p)}
                     edge="end"
-                    sx={{
-                      color: "text.secondary",
-                      "&:hover": { color: "text.primary" },
-                    }}
+                    className="login-password-toggle"
                   >
                     {showPassword ? (
                       <Icon icon="mdi:eye-off" width={22} height={22} />
                     ) : (
                       <Icon icon="mdi:eye" width={22} height={22} />
                     )}
-                  </IconButton>
+                  </AppIconButton>
                 </InputAdornment>
               ),
             },
@@ -145,37 +145,16 @@ function LogIn() {
         className="login-reveal"
         style={{ "--login-reveal-delay": "300ms" } as React.CSSProperties}
       >
-        <Button
+        <AppButton
           type="submit"
           variant="contained"
           fullWidth
           color="primary"
           disabled={loading}
-          sx={(theme) => ({
-            my: 2,
-            py: 1.6,
-            borderRadius: 999,
-            fontWeight: 600,
-            letterSpacing: "0.02em",
-            backgroundImage:
-              "linear-gradient(135deg, var(--accent), var(--accent-soft))",
-            boxShadow: `0 18px 40px -26px ${alpha(theme.palette.primary.main, 0.75)}`,
-            "&:hover": {
-              backgroundImage:
-                "linear-gradient(135deg, var(--accent-strong), var(--accent))",
-              boxShadow: `0 22px 46px -28px ${alpha(theme.palette.primary.main, 0.9)}`,
-            },
-            "&:active": { transform: "translateY(1px)" },
-            [theme.breakpoints.down("md")]: {
-              py: 1.25,
-            },
-            "@media (prefers-reduced-motion: reduce)": {
-              transition: "none",
-            },
-          })}
+          className="login-submit-btn"
         >
           Sign in
-        </Button>
+        </AppButton>
       </div>
     </form>
   );

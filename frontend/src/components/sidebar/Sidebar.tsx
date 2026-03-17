@@ -1,5 +1,7 @@
 import { Icon } from "@iconify/react";
-import { Drawer, useTheme, List, IconButton } from "@mui/material";
+import { Drawer, useTheme, List } from "@mui/material";
+
+import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState, useCallback } from "react";
 
 import SidebarNavList from "./SidebarNavList";
@@ -78,10 +80,10 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
 
         {isDesktop && (!collapsed || (hovered && collapsed)) && (
           <AppTooltip title={collapsed ? "Expand" : "Collapse"}>
-            <IconButton
+            <AppIconButton
               onClick={toggleCollapse}
               size="small"
-              sx={{
+              style={{
                 position: "absolute",
                 right: 4,
                 top: "50%",
@@ -96,7 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
               {hovered && collapsed && (
                 <Icon icon="mdi:chevron-right" width={22} height={22} />
               )}
-            </IconButton>
+            </AppIconButton>
           </AppTooltip>
         )}
       </div>

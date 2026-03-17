@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Button, useMediaQuery, useTheme } from "@mui/material";
+import { useMediaQuery, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -10,6 +10,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppGrid from "@/components/ui/AppGrid";
+import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
@@ -330,7 +331,7 @@ export const UnitCardActions: React.FC<{
     >
       {isActive ? (
         <AppTooltip title="Stop">
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
             color="error"
@@ -339,11 +340,11 @@ export const UnitCardActions: React.FC<{
             disabled={anyPending}
           >
             Stop
-          </Button>
+          </AppButton>
         </AppTooltip>
       ) : (
         <AppTooltip title="Start">
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
             color="success"
@@ -352,12 +353,12 @@ export const UnitCardActions: React.FC<{
             disabled={anyPending}
           >
             Start
-          </Button>
+          </AppButton>
         </AppTooltip>
       )}
       <AppTooltip title="Restart (stop then start)">
         <span>
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
             startIcon={<Icon icon="mdi:restart" width={20} height={20} />}
@@ -365,12 +366,12 @@ export const UnitCardActions: React.FC<{
             disabled={!isActive || anyPending}
           >
             Restart
-          </Button>
+          </AppButton>
         </span>
       </AppTooltip>
       <AppTooltip title="Reload configuration without restarting (if supported)">
         <span>
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
             startIcon={<Icon icon="mdi:refresh" width={20} height={20} />}
@@ -378,13 +379,13 @@ export const UnitCardActions: React.FC<{
             disabled={!isActive || anyPending}
           >
             Reload
-          </Button>
+          </AppButton>
         </span>
       </AppTooltip>
       {isEnabled ? (
         <AppTooltip title="Disable autostart at boot">
           <span>
-            <Button
+            <AppButton
               size="small"
               variant="outlined"
               startIcon={
@@ -394,13 +395,13 @@ export const UnitCardActions: React.FC<{
               disabled={isMasked || anyPending}
             >
               Disable
-            </Button>
+            </AppButton>
           </span>
         </AppTooltip>
       ) : (
         <AppTooltip title="Enable autostart at boot">
           <span>
-            <Button
+            <AppButton
               size="small"
               variant="outlined"
               color="success"
@@ -409,13 +410,13 @@ export const UnitCardActions: React.FC<{
               disabled={isMasked || anyPending}
             >
               Enable
-            </Button>
+            </AppButton>
           </span>
         </AppTooltip>
       )}
       {isMasked ? (
         <AppTooltip title="Unmask to allow the unit to be started">
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
             color="warning"
@@ -424,11 +425,11 @@ export const UnitCardActions: React.FC<{
             disabled={anyPending}
           >
             Unmask
-          </Button>
+          </AppButton>
         </AppTooltip>
       ) : (
         <AppTooltip title="Mask to completely prevent the unit from starting">
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
             startIcon={<Icon icon="mdi:eye-off" width={20} height={20} />}
@@ -436,7 +437,7 @@ export const UnitCardActions: React.FC<{
             disabled={anyPending}
           >
             Mask
-          </Button>
+          </AppButton>
         </AppTooltip>
       )}
     </div>

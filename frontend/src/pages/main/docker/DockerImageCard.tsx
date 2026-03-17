@@ -1,5 +1,7 @@
 import { Icon } from "@iconify/react";
-import { Collapse, IconButton, useMediaQuery, useTheme } from "@mui/material";
+import { Collapse, useMediaQuery, useTheme } from "@mui/material";
+
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useMemo, useState } from "react";
 
 import AppCardContent from "@/components/ui/AppCardContent";
@@ -95,7 +97,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           ))}
 
           {/* ONLY chevron expands */}
-          <IconButton
+          <AppIconButton
             size="small"
             onClick={(e) => {
               e.stopPropagation();
@@ -107,7 +109,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
             ) : (
               <Icon icon="mdi:chevron-down" width={24} height={24} />
             )}
-          </IconButton>
+          </AppIconButton>
         </AppCardContent>
 
         <Collapse in={open} unmountOnExit>

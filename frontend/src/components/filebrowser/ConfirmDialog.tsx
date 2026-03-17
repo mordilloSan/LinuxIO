@@ -1,9 +1,9 @@
-import { Button } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 
 interface ConfirmDialogProps {
@@ -67,47 +67,21 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             marginTop: theme.spacing(2),
           }}
         >
-          <Button
+          <AppButton
             onClick={onClose}
             type="button"
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              color: "text.secondary",
-              backgroundColor: "transparent",
-              "&:hover": {
-                backgroundColor: (theme) => `${theme.palette.primary.main}22`,
-                boxShadow: (theme) =>
-                  `0 0 12px ${theme.palette.primary.main}44`,
-              },
-            }}
+            className="app-btn--dialog-action"
+            style={{ color: "var(--mui-palette-text-secondary)" }}
           >
             {cancelText}
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             type="submit"
             autoFocus
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              color: "primary.main",
-              "&:hover": {
-                backgroundColor: (theme) => `${theme.palette.primary.main}22`,
-                boxShadow: (theme) =>
-                  `0 0 12px ${theme.palette.primary.main}44`,
-              },
-            }}
+            className="app-btn--dialog-action"
           >
             {confirmText}
-          </Button>
+          </AppButton>
         </div>
       </form>
     </GeneralDialog>

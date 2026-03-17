@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton } from "@mui/material";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState } from "react";
 
 import DiskOverview from "./DiskOverview";
@@ -38,14 +39,14 @@ const StoragePage: React.FC = () => {
             />
           ),
           rightContent: createLVHandler ? (
-            <Button
+            <AppButton
               variant="contained"
               size="small"
               onClick={createLVHandler}
               startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
             >
               Create LV
-            </Button>
+            </AppButton>
           ) : undefined,
         },
         {
@@ -68,7 +69,7 @@ const StoragePage: React.FC = () => {
                     : "Switch to table view"
                 }
               >
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() =>
                     setNfsView(nfsView === "table" ? "card" : "table")
@@ -79,17 +80,17 @@ const StoragePage: React.FC = () => {
                   ) : (
                     <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
               {mountNFSHandler && (
-                <Button
+                <AppButton
                   variant="contained"
                   size="small"
                   onClick={mountNFSHandler}
                   startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Mount NFS
-                </Button>
+                </AppButton>
               )}
             </>
           ),

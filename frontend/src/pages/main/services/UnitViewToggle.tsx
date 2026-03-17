@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { IconButton } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -18,7 +18,7 @@ const UnitViewToggle: React.FC<UnitViewToggleProps> = ({ viewModeKey }) => {
         viewMode === "table" ? "Switch to card view" : "Switch to table view"
       }
     >
-      <IconButton
+      <AppIconButton
         size="small"
         onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
       >
@@ -27,7 +27,7 @@ const UnitViewToggle: React.FC<UnitViewToggleProps> = ({ viewModeKey }) => {
         ) : (
           <Icon icon="mdi:table-row" width={20} height={20} />
         )}
-      </IconButton>
+      </AppIconButton>
     </AppTooltip>
   );
 };

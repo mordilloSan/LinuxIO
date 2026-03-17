@@ -1,6 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton, Link, useMediaQuery } from "@mui/material";
+import { useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 
 import UpdateDialog from "./UpdateDialog";
 
@@ -91,7 +94,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           padding: 0,
         }}
         action={
-          <IconButton
+          <AppIconButton
             aria-label="close"
             color="inherit"
             size="small"
@@ -99,7 +102,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             disabled={isUpdating}
           >
             <Icon icon="mdi:close" width={18} height={18} />
-          </IconButton>
+          </AppIconButton>
         }
       >
         <div
@@ -126,7 +129,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               gap: theme.spacing(1),
             }}
           >
-            <Button
+            <AppButton
               variant="contained"
               size="small"
               startIcon={
@@ -136,24 +139,27 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               }
               onClick={handleUpdate}
               disabled={isUpdating}
-              sx={{ whiteSpace: "nowrap" }}
+              style={{ whiteSpace: "nowrap" }}
             >
               {isUpdating ? "Updating..." : "Update Now"}
-            </Button>
+            </AppButton>
 
             {updateInfo.release_url && (
-              <Button
-                variant="outlined"
-                size="small"
-                component={Link}
+              <a
                 href={updateInfo.release_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                disabled={isUpdating}
-                sx={{ whiteSpace: "nowrap" }}
+                style={{ textDecoration: "none" }}
               >
-                Release Notes
-              </Button>
+                <AppButton
+                  variant="outlined"
+                  size="small"
+                  disabled={isUpdating}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  Release Notes
+                </AppButton>
+              </a>
             )}
           </div>
         </div>

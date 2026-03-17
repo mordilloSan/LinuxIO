@@ -125,3 +125,25 @@
 .app-btn--outlined:disabled {
   border-color: var(--mui-palette-action-disabled);
 }
+
+/* ── dialog action modifier ───────────────────── */
+.app-btn--dialog-action {
+  padding: 12px 24px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.app-btn--dialog-action:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--mui-palette-primary-main) 13%,
+    transparent
+  );
+  box-shadow: 0 0 12px
+    color-mix(in srgb, var(--mui-palette-primary-main) 27%, transparent);
+}
+
+.app-btn--dialog-action:disabled {
+  opacity: 0.5;
+}

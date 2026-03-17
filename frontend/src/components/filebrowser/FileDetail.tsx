@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import { Button, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 import { isEditableFile } from "@/components/filebrowser/utils";
+import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
@@ -264,21 +265,21 @@ const FileDetail: React.FC<FileDetailProps> = ({
               gap: theme.spacing(1),
             }}
           >
-            <Button
+            <AppButton
               variant="contained"
               startIcon={<Icon icon="mdi:download" width={20} height={20} />}
               onClick={() => onDownload(resource.path)}
             >
               Download
-            </Button>
+            </AppButton>
             {canEdit && onEdit && (
-              <Button
+              <AppButton
                 variant="outlined"
                 startIcon={<Icon icon="mdi:pencil" width={20} height={20} />}
                 onClick={() => onEdit(resource.path)}
               >
                 Edit
-              </Button>
+              </AppButton>
             )}
           </div>
         </>

@@ -1,5 +1,7 @@
 import { Icon } from "@iconify/react";
-import { IconButton, InputAdornment, TextField, useTheme } from "@mui/material";
+import { InputAdornment, TextField, useTheme } from "@mui/material";
+
+import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState, useCallback } from "react";
 
 import { alpha } from "@/utils/color";
@@ -72,17 +74,15 @@ const SearchBar: React.FC<SearchBarProps> = ({
           ),
           endAdornment: value && (
             <InputAdornment position="end">
-              <IconButton
+              <AppIconButton
                 onClick={handleClear}
                 size="small"
                 edge="end"
                 aria-label="clear search"
-                sx={{
-                  padding: 0.5,
-                }}
+                style={{ padding: 4 }}
               >
                 <Icon icon="mdi:close" width={18} height={18} />
-              </IconButton>
+              </AppIconButton>
             </InputAdornment>
           ),
         },

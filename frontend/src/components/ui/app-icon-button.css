@@ -83,3 +83,23 @@
   color: var(--mui-palette-action-disabled);
   background-color: transparent;
 }
+
+/* ── quick action modifier ────────────────────── */
+.app-icon-btn--quick-action {
+  width: 3em;
+  height: 3em;
+  box-shadow: none !important;
+}
+
+@media (min-width: 600px) {
+  .app-icon-btn--quick-action {
+    width: 2.5em;
+    height: 2.5em;
+  }
+}
+
+.app-icon-btn--quick-action:hover {
+  background-color: var(--mui-palette-primary-main);
+  color: var(--mui-palette-primary-contrastText);
+  box-shadow: none !important;
+}

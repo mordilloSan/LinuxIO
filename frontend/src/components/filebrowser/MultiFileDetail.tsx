@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Button, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
+import AppButton from "@/components/ui/AppButton";
 import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
@@ -153,13 +154,13 @@ const MultiFileItemRow: React.FC<{
           </AppTypography>
         </div>
         {!isDir && (
-          <Button
+          <AppButton
             size="small"
             startIcon={<Icon icon="mdi:download" width={18} height={18} />}
             onClick={() => onDownload(item.path)}
           >
             Download
-          </Button>
+          </AppButton>
         )}
       </div>
       <AppTypography variant="body2" color="text.secondary">

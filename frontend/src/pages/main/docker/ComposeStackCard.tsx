@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { IconButton } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React from "react";
 
 import type { ComposeProject } from "./ComposeList";
@@ -145,7 +145,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
             <div style={{ display: "flex", gap: 2 }}>
               {onEdit && project.config_files.length > 0 && (
                 <AppTooltip title="Edit">
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       onEdit(project.name, project.config_files[0])
@@ -153,49 +153,49 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                     disabled={isLoading}
                   >
                     <Icon icon="mdi:pencil" width={20} height={20} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
               )}
               {isRunning ? (
                 <>
                   <AppTooltip title="Restart">
-                    <IconButton
+                    <AppIconButton
                       size="small"
                       onClick={() => onRestart(project.name)}
                       disabled={isLoading}
                     >
                       <Icon icon="mdi:restart" width={20} height={20} />
-                    </IconButton>
+                    </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title="Stop">
-                    <IconButton
+                    <AppIconButton
                       size="small"
                       onClick={() => onStop(project.name)}
                       disabled={isLoading}
                     >
                       <Icon icon="mdi:stop-circle" width={20} height={20} />
-                    </IconButton>
+                    </AppIconButton>
                   </AppTooltip>
                 </>
               ) : (
                 <AppTooltip title="Start">
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() => onStart(project.name)}
                     disabled={isLoading}
                   >
                     <Icon icon="mdi:play" width={20} height={20} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
               )}
               <AppTooltip title="Delete">
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() => onDelete(project)}
                   disabled={isLoading}
                 >
                   <Icon icon="mdi:delete" width={20} height={20} />
-                </IconButton>
+                </AppIconButton>
               </AppTooltip>
             </div>
           </>

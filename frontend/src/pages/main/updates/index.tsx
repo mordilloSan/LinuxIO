@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -69,16 +71,16 @@ const Updates: React.FC = () => {
                 }}
               >
                 <AppTooltip title="Update settings">
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     aria-label="Open update settings"
                     onClick={() => setSettingsOpen(true)}
                   >
                     <Icon icon="mdi:cog" width={20} height={20} />
-                  </IconButton>
+                  </AppIconButton>
                 </AppTooltip>
                 {updates.length > 0 ? (
-                  <Button
+                  <AppButton
                     variant="contained"
                     size="small"
                     startIcon={
@@ -88,7 +90,7 @@ const Updates: React.FC = () => {
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
                   >
                     Update All ({updates.length})
-                  </Button>
+                  </AppButton>
                 ) : null}
               </div>
             ),

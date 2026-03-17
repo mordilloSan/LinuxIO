@@ -1,8 +1,9 @@
-import { Button, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 
 interface UnsavedChangesDialogProps {
@@ -71,78 +72,30 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
             marginTop: theme.spacing(2),
           }}
         >
-          <Button
+          <AppButton
             onClick={onKeepEditing}
             disabled={isSaving}
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              color: theme.palette.text.secondary,
-              backgroundColor: "transparent",
-              "&:hover": {
-                backgroundColor: `${theme.palette.primary.main}22`,
-                boxShadow: `0 0 12px ${theme.palette.primary.main}44`,
-              },
-              "&:disabled": {
-                opacity: 0.5,
-                cursor: "not-allowed",
-              },
-            }}
+            className="app-btn--dialog-action"
+            style={{ color: "var(--mui-palette-text-secondary)" }}
           >
             Keep Editing
-          </Button>
+          </AppButton>
 
-          <Button
+          <AppButton
             onClick={onDiscardAndExit}
             disabled={isSaving}
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              color: theme.palette.primary.main,
-              "&:hover": {
-                backgroundColor: `${theme.palette.primary.main}22`,
-                boxShadow: `0 0 12px ${theme.palette.primary.main}44`,
-              },
-              "&:disabled": {
-                opacity: 0.5,
-                cursor: "not-allowed",
-              },
-            }}
+            className="app-btn--dialog-action"
           >
             Discard and Exit
-          </Button>
+          </AppButton>
 
-          <Button
+          <AppButton
             onClick={onSaveAndExit}
             disabled={isSaving}
-            sx={{
-              px: 3,
-              py: 1.5,
-              textTransform: "uppercase",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              color: theme.palette.primary.main,
-              "&:hover": {
-                backgroundColor: `${theme.palette.primary.main}22`,
-                boxShadow: `0 0 12px ${theme.palette.primary.main}44`,
-              },
-              "&:disabled": {
-                opacity: 0.5,
-                cursor: "not-allowed",
-              },
-            }}
+            className="app-btn--dialog-action"
           >
             {isSaving ? "Saving..." : "Save and Exit"}
-          </Button>
+          </AppButton>
         </div>
       </div>
     </FileBrowserDialog>
