@@ -48,15 +48,33 @@ const Dashboard: React.FC = () => {
           };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100dvh",
+        minHeight: "100vh",
+        overflow: "hidden",
+      }}
+    >
       <CssBaseline />
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
         <Sidebar items={sidebarItems} />
         <div
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
             transition: theme.transitions.create(["margin-left", "width"], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.leavingScreen,
@@ -75,6 +93,8 @@ const Dashboard: React.FC = () => {
             className="custom-scrollbar"
             style={{
               flex: 1,
+              minHeight: 0,
+              minWidth: 0,
               overflow: "auto",
               background: theme.palette.background.default,
               position: "relative",

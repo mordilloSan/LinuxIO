@@ -44,8 +44,8 @@
 }
 
 .login-paper {
-  padding: 12px;
-  padding-top: 24px;
+  padding: 24px;
+  padding-top: 48px;
   opacity: 0;
   transform: translateY(18px) scale(0.98);
   animation: login-lift-in 0.5s ease forwards;
@@ -53,8 +53,8 @@
 
 @media (min-width: 600px) {
   .login-paper {
-    padding: 18px;
-    padding-top: 28px;
+    padding: 36px;
+    padding-top: 56px;
   }
 }
 
