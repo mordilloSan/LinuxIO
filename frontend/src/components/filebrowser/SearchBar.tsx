@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useState, useCallback } from "react";
 
 import "./search-bar.css";

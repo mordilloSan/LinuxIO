@@ -2,9 +2,9 @@ import { Icon } from "@iconify/react";
 import {
   DialogContent,
   DialogTitle,
-  IconButton,
-  useTheme,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
@@ -54,13 +54,13 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
               variant="soft"
             />
           ) : null}
-          <IconButton
+          <AppIconButton
             size="small"
             onClick={onClose}
             aria-label="Close update settings"
           >
             <Icon icon="mdi:close" width={18} height={18} />
-          </IconButton>
+          </AppIconButton>
         </div>
       </DialogTitle>
 

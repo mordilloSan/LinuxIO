@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { FormControlLabel, Switch, useTheme } from "@mui/material";
+import { FormControlLabel, Switch } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";

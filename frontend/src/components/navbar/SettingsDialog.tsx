@@ -2,11 +2,11 @@ import { Icon } from "@iconify/react";
 import {
   DialogContent,
   DialogTitle,
-  IconButton,
   Tab,
   Tabs,
-  useTheme,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
@@ -53,13 +53,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           >
             Settings
           </AppTypography>
-          <IconButton
+          <AppIconButton
             size="small"
             onClick={handleClose}
             aria-label="Close settings"
           >
             <Icon icon="mdi:close" width={18} height={18} />
-          </IconButton>
+          </AppIconButton>
         </div>
       </DialogTitle>
 

@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { useMediaQuery, useTheme } from "@mui/material";
+import { useMediaQuery } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { shadowSm } from "@/constants";
 import React, { ReactNode, useCallback } from "react";
 

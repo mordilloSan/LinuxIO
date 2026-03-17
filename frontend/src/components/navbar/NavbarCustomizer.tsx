@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
 import {
-  IconButton,
   Button,
   Popover,
   useTheme as useMuiTheme,
 } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useMemo, useState } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -29,13 +29,13 @@ function NavbarColorCustomizer() {
   return (
     <>
       <AppTooltip title="Customize primary color">
-        <IconButton
+        <AppIconButton
           color="inherit"
           onClick={(e) => setAnchorEl(e.currentTarget)}
           aria-label="Customize primary color"
         >
           <Icon icon="mdi:brush" width={iconSize.md} height={iconSize.md} />
-        </IconButton>
+        </AppIconButton>
       </AppTooltip>
 
       <Popover

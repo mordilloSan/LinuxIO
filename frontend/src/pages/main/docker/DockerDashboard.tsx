@@ -4,10 +4,10 @@ import {
   Collapse,
   Divider,
   Grid,
-  IconButton,
   MenuItem,
   Select,
 } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -342,11 +342,10 @@ const DockerDashboard: React.FC = () => {
         <AppTypography variant="subtitle1" fontWeight={700}>
           Overview
         </AppTypography>
-        <IconButton
+        <AppIconButton
           size="small"
           className="section-toggle"
-          component="span"
-          sx={{
+          style={{
             opacity: 0,
             transition: "opacity 0.15s",
             pointerEvents: "none",
@@ -361,7 +360,7 @@ const DockerDashboard: React.FC = () => {
               transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
             }}
           />
-        </IconButton>
+        </AppIconButton>
       </div>
       <Collapse in={sections.overview}>
         <Grid
@@ -491,11 +490,10 @@ const DockerDashboard: React.FC = () => {
         <AppTypography variant="subtitle1" fontWeight={700}>
           Docker Daemon
         </AppTypography>
-        <IconButton
+        <AppIconButton
           size="small"
           className="section-toggle"
-          component="span"
-          sx={{
+          style={{
             opacity: 0,
             transition: "opacity 0.15s",
             pointerEvents: "none",
@@ -510,7 +508,7 @@ const DockerDashboard: React.FC = () => {
               transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
             }}
           />
-        </IconButton>
+        </AppIconButton>
       </div>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <Collapse in={sections.daemon}>
@@ -858,11 +856,10 @@ const DockerDashboard: React.FC = () => {
         <AppTypography variant="subtitle1" fontWeight={700}>
           Resources
         </AppTypography>
-        <IconButton
+        <AppIconButton
           size="small"
           className="section-toggle"
-          component="span"
-          sx={{
+          style={{
             opacity: 0,
             transition: "opacity 0.15s",
             pointerEvents: "none",
@@ -877,7 +874,7 @@ const DockerDashboard: React.FC = () => {
               transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
             }}
           />
-        </IconButton>
+        </AppIconButton>
       </div>
       <Collapse in={sections.resources}>
         <Grid container spacing={2}>

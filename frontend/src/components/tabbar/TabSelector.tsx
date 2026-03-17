@@ -3,10 +3,10 @@ import {
   Paper,
   ToggleButton,
   ToggleButtonGroup,
-  IconButton,
   Popover,
   useMediaQuery,
 } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -100,13 +100,13 @@ const TabSelector: React.FC<TabSelectorProps> = ({
         <>
           {isMobile ? (
             <>
-              <IconButton
+              <AppIconButton
                 size="small"
                 onClick={(e) => setAnchorEl(e.currentTarget)}
-                sx={{ mt: 0.5, flexShrink: 0 }}
+                style={{ marginTop: 2, flexShrink: 0 }}
               >
                 <Icon icon="mdi:tune" width={20} height={20} />
-              </IconButton>
+              </AppIconButton>
               <Popover
                 open={Boolean(anchorEl)}
                 anchorEl={anchorEl}

@@ -3,7 +3,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import {
   Collapse,
-  IconButton,
   Switch,
   Table,
   TableBody,
@@ -13,6 +12,7 @@ import {
   TableRow,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
@@ -623,11 +623,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 />
               </span>
             </AppTooltip>
-            <IconButton
+            <AppIconButton
               size="small"
               onClick={() => setExpanded((v) => !v)}
-              sx={{
-                ml: 0.5,
+              style={{
+                marginLeft: 2,
                 visibility:
                   ports.length > 2 || mounts.length > 2 ? "visible" : "hidden",
               }}
@@ -641,7 +641,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   transition: "0.2s",
                 }}
               />
-            </IconButton>
+            </AppIconButton>
           </div>
         </TableCell>
       </TableRow>

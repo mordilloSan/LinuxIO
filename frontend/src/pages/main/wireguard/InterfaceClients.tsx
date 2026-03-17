@@ -4,8 +4,8 @@ import {
   Dialog,
   DialogContent,
   Grid,
-  IconButton,
 } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
@@ -263,27 +263,25 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                           display: "flex",
                         }}
                       >
-                        <IconButton
+                        <AppIconButton
                           aria-label="Delete"
                           onClick={() => handleDeletePeer(peer.name)}
-                          sx={{
-                            color: "error.main",
-                          }}
+                          color="error"
                         >
                           <Icon icon="mdi:delete" width={22} height={22} />
-                        </IconButton>
-                        <IconButton
+                        </AppIconButton>
+                        <AppIconButton
                           aria-label="Download Config"
                           onClick={() => handleDownloadConfig(peer.name)}
                         >
                           <Icon icon="mdi:download" width={22} height={22} />
-                        </IconButton>
-                        <IconButton
+                        </AppIconButton>
+                        <AppIconButton
                           aria-label="View QR Code"
                           onClick={() => handleViewQrCode(peer.name)}
                         >
                           <Icon icon="mdi:qrcode" width={22} height={22} />
-                        </IconButton>
+                        </AppIconButton>
                       </div>
                     </div>
 

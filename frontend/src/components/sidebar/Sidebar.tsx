@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { Drawer, useTheme, List } from "@mui/material";
+import { Drawer, List } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useState, useCallback } from "react";
 
 import SidebarNavList from "./SidebarNavList";

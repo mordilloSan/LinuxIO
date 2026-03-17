@@ -3,11 +3,11 @@ import {
   Grid,
   InputBase,
   AppBar,
-  IconButton,
   Toolbar,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { shadowSm } from "@/constants";
 import React, { useState } from "react";
 
@@ -43,13 +43,13 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
         <Grid container alignItems="center" sx={{ width: "100%" }}>
           {/* Mobile menu button */}
           <Grid sx={{ display: { xs: "block", md: "none" } }}>
-            <IconButton
+            <AppIconButton
               color="inherit"
               aria-label="Open drawer"
               onClick={onDrawerToggle}
             >
               <Icon icon="mdi:menu" width={iconSize.md} height={iconSize.md} />
-            </IconButton>
+            </AppIconButton>
           </Grid>
 
           {/* Search Field (only desktop) */}

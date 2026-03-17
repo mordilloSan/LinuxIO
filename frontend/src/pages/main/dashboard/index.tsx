@@ -17,10 +17,10 @@ import {
   Checkbox,
   FormControlLabel,
   Grid,
-  IconButton,
   Popover,
-  useTheme,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useCallback, useMemo, useState } from "react";
 
 import DockerInfo from "./Docker";
@@ -138,21 +138,21 @@ const Dashboard: React.FC = () => {
         }}
       >
         <AppTooltip title="Card visibility">
-          <IconButton
+          <AppIconButton
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
             <Icon icon="mdi:cog" width={20} height={20} />
-          </IconButton>
+          </AppIconButton>
         </AppTooltip>
         <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>
-          <IconButton
+          <AppIconButton
             onClick={() => setEditMode((prev) => !prev)}
             color={editMode ? "primary" : "default"}
             size="small"
           >
             <Icon icon="mdi:drag" width={20} height={20} />
-          </IconButton>
+          </AppIconButton>
         </AppTooltip>
       </div>
 

@@ -4,7 +4,6 @@ import {
   Autocomplete,
   FormControl,
   FormControlLabel,
-  IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
@@ -12,6 +11,7 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -635,24 +635,24 @@ const GeneralLogsPage: React.FC = () => {
         />
         <AppTooltip title="Copy logs">
           <span>
-            <IconButton
+            <AppIconButton
               onClick={handleCopy}
               size="small"
               disabled={filteredLogs.length === 0}
             >
               <Icon icon="mdi:content-copy" width={20} height={20} />
-            </IconButton>
+            </AppIconButton>
           </span>
         </AppTooltip>
         <AppTooltip title="Download logs">
           <span>
-            <IconButton
+            <AppIconButton
               onClick={handleDownload}
               size="small"
               disabled={filteredLogs.length === 0}
             >
               <Icon icon="mdi:download" width={20} height={20} />
-            </IconButton>
+            </AppIconButton>
           </span>
         </AppTooltip>
         <AppTooltip
