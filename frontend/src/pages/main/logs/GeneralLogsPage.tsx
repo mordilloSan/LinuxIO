@@ -10,7 +10,6 @@ import {
   MenuItem,
   Select,
   Switch,
-  TableCell,
   TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -28,6 +27,7 @@ import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
 import AppPaper from "@/components/ui/AppPaper";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
@@ -141,7 +141,7 @@ const GeneralLogsPage: React.FC = () => {
     {
       field: "priority",
       headerName: "Priority",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     { field: "identifier", headerName: "Identifier" },
     { field: "timestamp", headerName: "Timestamp" },
@@ -432,11 +432,9 @@ const GeneralLogsPage: React.FC = () => {
   const renderMainRow = useCallback((log: LogEntry) => {
     return (
       <>
-        <TableCell
-          sx={{
-            width: "1%",
-            display: { xs: "none", sm: "table-cell" },
-          }}
+        <AppTableCell
+          className="app-table-hide-below-sm"
+          style={{ width: "1%" }}
         >
           <Chip
             label={getPriorityLabel(log.priority)}
@@ -445,24 +443,24 @@ const GeneralLogsPage: React.FC = () => {
             variant="soft"
             sx={{ fontSize: "0.7rem" }}
           />
-        </TableCell>
-        <TableCell sx={{ width: "1%" }}>
+        </AppTableCell>
+        <AppTableCell style={{ width: "1%" }}>
           <AppTypography
             variant="body2"
             style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
           >
             {log.identifier}
           </AppTypography>
-        </TableCell>
-        <TableCell sx={{ width: "1%" }}>
+        </AppTableCell>
+        <AppTableCell style={{ width: "1%" }}>
           <AppTypography
             variant="body2"
             style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
           >
             {log.timestamp}
           </AppTypography>
-        </TableCell>
-        <TableCell sx={{ maxWidth: 0 }}>
+        </AppTableCell>
+        <AppTableCell style={{ maxWidth: 0 }}>
           <AppTypography
             variant="body2"
             color="text.secondary"
@@ -471,7 +469,7 @@ const GeneralLogsPage: React.FC = () => {
           >
             {log.message}
           </AppTypography>
-        </TableCell>
+        </AppTableCell>
       </>
     );
   }, []);

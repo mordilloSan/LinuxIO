@@ -2,12 +2,11 @@ import { Icon } from "@iconify/react";
 import { useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
-import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
-
 import UpdateDialog from "./UpdateDialog";
 
 import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 
 interface UpdateInfo {

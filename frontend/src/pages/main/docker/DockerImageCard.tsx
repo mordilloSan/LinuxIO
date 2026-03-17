@@ -1,10 +1,9 @@
 import { Icon } from "@iconify/react";
 import { Collapse, useMediaQuery, useTheme } from "@mui/material";
-
-import AppIconButton from "@/components/ui/AppIconButton";
 import { useMemo, useState } from "react";
 
 import AppCardContent from "@/components/ui/AppCardContent";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardBorderRadius } from "@/constants";
 import { CollapsibleTableProps } from "@/types/collapsible";

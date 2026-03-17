@@ -21,7 +21,14 @@ function Page404() {
         The page you are looking for might have been removed.
       </AppTypography>
 
-      <Link to="/" style={{ textDecoration: "none", marginTop: 16, display: "inline-block" }}>
+      <Link
+        to="/"
+        style={{
+          textDecoration: "none",
+          marginTop: 16,
+          display: "inline-block",
+        }}
+      >
         <AppButton variant="contained" color="secondary">
           Return to website
         </AppButton>

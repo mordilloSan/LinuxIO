@@ -9,7 +9,6 @@ import {
   FormControlLabel,
   Grid,
   Switch,
-  TableCell,
   TextField,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,6 +31,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -627,12 +627,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       headerName: "Usage",
       align: "left",
       width: "200px",
-      sx: {
-        display: {
-          xs: "none",
-          sm: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "actions",
@@ -797,7 +792,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           getRowKey={(mount) => mount.mountpoint}
           renderMainRow={(mount) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <AppTypography
                   variant="body2"
                   style={{
@@ -806,8 +801,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 >
                   {mount.source}
                 </AppTypography>
-              </TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>
                 <AppTypography
                   variant="body2"
                   style={{
@@ -816,15 +811,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 >
                   {mount.mountpoint}
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <div
                   style={{
                     width: "100%",
@@ -850,8 +838,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
                   </AppTypography>
                 </div>
-              </TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>
                 <div
                   style={{
                     display: "flex",
@@ -879,7 +867,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     Unmount
                   </AppButton>
                 </div>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(mount) => (

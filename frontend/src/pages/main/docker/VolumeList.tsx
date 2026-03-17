@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Grid,
-  TableCell,
   TextField,
   Checkbox,
   Dialog,
@@ -22,6 +21,7 @@ import UnifiedCollapsibleTable, {
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -213,35 +213,20 @@ const VolumeList: React.FC<VolumeListProps> = ({
       headerName: "Driver",
       align: "left",
       width: "120px",
-      sx: {
-        display: {
-          xs: "none",
-          sm: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "mountpoint",
       headerName: "Mountpoint",
       align: "left",
-      sx: {
-        display: {
-          xs: "none",
-          md: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-md",
     },
     {
       field: "scope",
       headerName: "Scope",
       align: "left",
       width: "100px",
-      sx: {
-        display: {
-          xs: "none",
-          sm: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-sm",
     },
   ];
   return (
@@ -408,7 +393,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
           )}
           renderMainRow={(volume) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <AppTypography
                   variant="body2"
                   fontWeight={500}
@@ -416,15 +401,8 @@ const VolumeList: React.FC<VolumeListProps> = ({
                 >
                   {volume.Name}
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <Chip
                   label={volume.Driver}
                   size="small"
@@ -433,15 +411,8 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     fontSize: "0.75rem",
                   }}
                 />
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    md: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
                 <AppTypography
                   variant="body2"
                   style={{
@@ -452,19 +423,12 @@ const VolumeList: React.FC<VolumeListProps> = ({
                 >
                   {volume.Mountpoint || "-"}
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <AppTypography variant="body2" style={responsiveTextStyles}>
                   {volume.Scope || "local"}
                 </AppTypography>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(volume) => (

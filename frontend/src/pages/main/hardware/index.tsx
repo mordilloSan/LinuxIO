@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Collapse, TableCell } from "@mui/material";
+import { Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
@@ -13,6 +13,7 @@ import UnifiedCollapsibleTable, {
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import "@/theme/section.css";
@@ -562,11 +563,11 @@ const HardwarePage: React.FC = () => {
             getRowKey={(mod, idx) => `${mod.id}-${idx}`}
             renderMainRow={(mod) => (
               <>
-                <TableCell>{mod.id || "—"}</TableCell>
-                <TableCell>{mod.technology}</TableCell>
-                <TableCell>{mod.type}</TableCell>
-                <TableCell>{mod.size}</TableCell>
-                <TableCell>
+                <AppTableCell>{mod.id || "—"}</AppTableCell>
+                <AppTableCell>{mod.technology}</AppTableCell>
+                <AppTableCell>{mod.type}</AppTableCell>
+                <AppTableCell>{mod.size}</AppTableCell>
+                <AppTableCell>
                   <Chip
                     size="small"
                     label={mod.state}
@@ -574,9 +575,9 @@ const HardwarePage: React.FC = () => {
                     variant="soft"
                     sx={{ height: 22, fontSize: "0.75rem" }}
                   />
-                </TableCell>
-                <TableCell>{mod.rank}</TableCell>
-                <TableCell>{mod.speed}</TableCell>
+                </AppTableCell>
+                <AppTableCell>{mod.rank}</AppTableCell>
+                <AppTableCell>{mod.speed}</AppTableCell>
               </>
             )}
             emptyMessage="No memory module data available. Ensure dmidecode is installed."
@@ -696,12 +697,14 @@ const HardwarePage: React.FC = () => {
             getRowKey={(dev, idx) => `${dev.slot}-${idx}`}
             renderMainRow={(dev) => (
               <>
-                <TableCell>{dev.class || "—"}</TableCell>
-                <TableCell>{dev.model || "—"}</TableCell>
-                <TableCell>{dev.vendor || "—"}</TableCell>
-                <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                <AppTableCell>{dev.class || "—"}</AppTableCell>
+                <AppTableCell>{dev.model || "—"}</AppTableCell>
+                <AppTableCell>{dev.vendor || "—"}</AppTableCell>
+                <AppTableCell
+                  style={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                >
                   {dev.slot || "—"}
-                </TableCell>
+                </AppTableCell>
               </>
             )}
             emptyMessage="No PCI devices found"

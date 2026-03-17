@@ -22,7 +22,14 @@ function Page500() {
         complete the request.
       </AppTypography>
 
-      <Link to="/" style={{ textDecoration: "none", marginTop: 16, display: "inline-block" }}>
+      <Link
+        to="/"
+        style={{
+          textDecoration: "none",
+          marginTop: 16,
+          display: "inline-block",
+        }}
+      >
         <AppButton variant="contained" color="secondary">
           Return to website
         </AppButton>

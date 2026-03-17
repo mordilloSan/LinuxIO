@@ -1,0 +1,97 @@
+/* ── AppTable ───────────────────────────────────── */
+
+.app-table-container {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.app-table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.app-table-head {
+  display: table-header-group;
+}
+
+.app-table-body {
+  display: table-row-group;
+}
+
+.app-table-row {
+  display: table-row;
+  vertical-align: middle;
+  outline: 0;
+  color: inherit;
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-table-row--interactive {
+  cursor: pointer;
+}
+
+.app-table-row--interactive:hover {
+  background-color: var(--uct-hover-bg);
+}
+
+/* ── Cell ──────────────────────────────────────── */
+
+.app-table-cell {
+  display: table-cell;
+  vertical-align: inherit;
+  text-align: left;
+  padding: 6px 16px;
+  font-size: 0.8125rem;
+  line-height: 1.43;
+  letter-spacing: 0.01071em;
+  border-bottom: none;
+  color: inherit;
+  font-family: inherit;
+}
+
+.app-table-head .app-table-cell {
+  font-weight: 500;
+  line-height: 1.5rem;
+}
+
+/* ── responsive ───────────────────────────────── */
+
+@media (max-width: 600px) {
+  .app-table-container .app-table {
+    min-width: 100%;
+  }
+
+  .app-table-cell {
+    font-size: 0.75rem;
+    padding: 8px 4px;
+  }
+}
+
+/* ── responsive column hiding ────────────────── */
+/* MUI breakpoints: sm=600 md=900 lg=1200        */
+
+@media (max-width: 599.95px) {
+  .app-table-hide-below-sm {
+    display: none !important;
+  }
+}
+
+@media (max-width: 899.95px) {
+  .app-table-hide-below-md {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1199.95px) {
+  .app-table-hide-below-lg {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1535.95px) {
+  .app-table-hide-below-xl {
+    display: none !important;
+  }
+}

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Table, TableBody, TableCell, TableRow } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -8,8 +7,13 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppChip from "@/components/ui/AppChip";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
-import { responsiveTextStyles } from "@/theme/tableStyles";
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {
@@ -30,15 +34,9 @@ const UpdateHistory: React.FC = () => {
       field: "packages",
       headerName: "Packages Updated",
       align: "center",
-      sx: {
-        width: {
-          xs: 112,
-          sm: 148,
-        },
-        minWidth: {
-          xs: 112,
-          sm: 148,
-        },
+      style: {
+        width: 148,
+        minWidth: 112,
         whiteSpace: "nowrap",
       },
     },
@@ -61,26 +59,23 @@ const UpdateHistory: React.FC = () => {
       )}
       renderMainRow={(row) => (
         <>
-          <TableCell>
+          <AppTableCell>
             <AppTypography
               variant="body2"
               fontWeight={500}
-              style={responsiveTextStyles}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               {row.date}
             </AppTypography>
-          </TableCell>
-          <TableCell
+          </AppTableCell>
+          <AppTableCell
             align="center"
-            sx={{
-              width: {
-                xs: 112,
-                sm: 148,
-              },
-              minWidth: {
-                xs: 112,
-                sm: 148,
-              },
+            style={{
+              width: 148,
+              minWidth: 112,
             }}
           >
             <AppChip
@@ -92,7 +87,7 @@ const UpdateHistory: React.FC = () => {
                 minWidth: 40,
               }}
             />
-          </TableCell>
+          </AppTableCell>
         </>
       )}
       renderExpandedContent={(row) => (
@@ -100,49 +95,43 @@ const UpdateHistory: React.FC = () => {
           <AppTypography variant="subtitle2" gutterBottom>
             <b>Packages Installed:</b>
           </AppTypography>
-          <Table
-            size="small"
-            sx={{
+          <AppTable
+            style={{
               borderCollapse: "collapse",
-              "& .MuiTableCell-root": {
-                border: "none",
-              },
               overflowX: "auto",
               display: "block",
             }}
           >
-            <TableBody>
+            <AppTableBody>
               {chunkArray(row.upgrades, 5).map((group, i) => (
-                <TableRow key={i}>
+                <AppTableRow key={i}>
                   {group.map((pkg, j) => (
-                    <TableCell
+                    <AppTableCell
                       key={j}
-                      sx={{
+                      style={{
                         width: "20%",
                         padding: "8px 12px",
-                        color: "text.secondary",
+                        color: "var(--mui-palette-text-secondary)",
                         fontFamily: theme.typography.fontFamily,
                         fontSize: "0.85rem",
-                        ...responsiveTextStyles,
+                        wordBreak: "break-word",
+                        overflowWrap: "break-word",
                       }}
                     >
                       {pkg.package}
-                    </TableCell>
+                    </AppTableCell>
                   ))}
                   {group.length < 5 &&
                     [...Array(5 - group.length)].map((_, j) => (
-                      <TableCell
+                      <AppTableCell
                         key={`empty-${j}`}
-                        sx={{
-                          width: "20%",
-                          border: "none",
-                        }}
+                        style={{ width: "20%" }}
                       />
                     ))}
-                </TableRow>
+                </AppTableRow>
               ))}
-            </TableBody>
-          </Table>
+            </AppTableBody>
+          </AppTable>
         </>
       )}
       emptyMessage="No update history available."

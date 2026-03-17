@@ -1,4 +1,3 @@
-import { TableCell } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -6,6 +5,7 @@ import { UnitTableView, statusDot } from "./UnitViews";
 
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
+import { AppTableCell } from "@/components/ui/AppTable";
 
 interface SocketTableViewProps {
   sockets: Socket[];
@@ -20,7 +20,7 @@ const desktopColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "120px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const, width: "220px" },
   { field: "listen", headerName: "Listen", align: "left" as const },
@@ -44,7 +44,7 @@ const mobileColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "110px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const },
 ];
@@ -107,14 +107,14 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
       )}
       renderMainRow={(socket, isMobile) => (
         <>
-          <TableCell sx={{ paddingLeft: "8px" }}>
+          <AppTableCell style={{ paddingLeft: 8 }}>
             {statusDot(socket.active_state)}
             {socket.active_state}
-          </TableCell>
-          <TableCell>{socket.name}</TableCell>
+          </AppTableCell>
+          <AppTableCell>{socket.name}</AppTableCell>
           {!isMobile && (
             <>
-              <TableCell>
+              <AppTableCell>
                 <div
                   style={{
                     display: "flex",
@@ -133,9 +133,9 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
                       ))
                     : "—"}
                 </div>
-              </TableCell>
-              <TableCell align="right">{socket.n_connections}</TableCell>
-              <TableCell align="right">{socket.n_accepted}</TableCell>
+              </AppTableCell>
+              <AppTableCell align="right">{socket.n_connections}</AppTableCell>
+              <AppTableCell align="right">{socket.n_accepted}</AppTableCell>
             </>
           )}
         </>

@@ -1,17 +1,18 @@
 import { Icon } from "@iconify/react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Collapse,
-} from "@mui/material";
+import { Collapse } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableContainer,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 
@@ -20,7 +21,8 @@ export interface UnifiedTableColumn {
   headerName: string;
   align?: "left" | "center" | "right";
   width?: string | number;
-  sx?: object;
+  style?: React.CSSProperties;
+  className?: string;
 }
 
 interface UnifiedCollapsibleTableProps<T> {
@@ -51,108 +53,83 @@ function UnifiedCollapsibleTable<T>({
   emptyMessage = "No data available.",
 }: UnifiedCollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState<string | number | null>(null);
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+
+  const headRowBg = alpha(theme.palette.text.primary, 0.08);
+  const selectedBg = alpha(theme.palette.primary.main, isDark ? 0.15 : 0.1);
+  const altBg = alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
+  const hoverBg = alpha(theme.palette.primary.main, 0.08);
+  const isInteractive = !!onRowClick || !!onRowDoubleClick;
 
   return (
     <div>
-      <TableContainer
-        className="custom-scrollbar"
-        sx={{
-          overflowX: "auto",
-          "@media (max-width: 600px)": {
-            "& .MuiTable-root": {
-              minWidth: "100%",
-            },
-          },
-        }}
-      >
-        <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
-          <TableHead>
-            <TableRow
-              sx={(theme) => ({
-                "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor: alpha(theme.palette.text.primary, 0.08),
-                borderRadius: "6px",
-                boxShadow: "none",
-              })}
-            >
+      <AppTableContainer>
+        <AppTable
+          style={
+            {
+              "--uct-hover-bg": hoverBg,
+              boxShadow: theme.shadows[2],
+            } as React.CSSProperties
+          }
+        >
+          <AppTableHead>
+            <AppTableRow style={{ backgroundColor: headRowBg }}>
               {renderFirstCell && (
-                <TableCell width="40px" sx={{ padding: "8px 4px 8px 4px" }}>
+                <AppTableCell
+                  component="th"
+                  style={{ width: 40, padding: "8px 4px" }}
+                >
                   {renderHeaderFirstCell?.()}
-                </TableCell>
+                </AppTableCell>
               )}
               {columns.map((column) => (
-                <TableCell
+                <AppTableCell
+                  component="th"
                   key={column.field}
                   align={column.align || "left"}
-                  width={column.width}
-                  sx={{
-                    "@media (max-width: 600px)": {
-                      fontSize: "0.75rem",
-                      padding: "8px 4px",
-                    },
-                    ...column.sx,
-                  }}
+                  className={column.className}
+                  style={{ width: column.width, ...column.style }}
                 >
                   {column.headerName}
-                </TableCell>
+                </AppTableCell>
               ))}
-              {renderExpandedContent && <TableCell width="40px" />}
-            </TableRow>
-          </TableHead>
-          <TableBody>
+              {renderExpandedContent && (
+                <AppTableCell component="th" style={{ width: 40 }} />
+              )}
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
             {data.map((row, index) => {
               const rowKey = getRowKey(row, index);
               const isExpanded = expanded === rowKey;
+              const isSelected = rowKey === selectedKey;
 
               return (
                 <React.Fragment key={rowKey}>
-                  <TableRow
+                  <AppTableRow
+                    className={
+                      isInteractive ? "app-table-row--interactive" : ""
+                    }
                     onClick={() => onRowClick?.(row, index)}
                     onDoubleClick={() => onRowDoubleClick?.(row, index)}
-                    sx={(theme) => ({
-                      "& .MuiTableCell-root": { borderBottom: "none" },
-                      cursor:
-                        onRowClick || onRowDoubleClick ? "pointer" : "default",
-                      backgroundColor:
-                        rowKey === selectedKey
-                          ? alpha(
-                              theme.palette.primary.main,
-                              theme.palette.mode === "dark" ? 0.15 : 0.1,
-                            )
-                          : index % 2 === 0
-                            ? "transparent"
-                            : alpha(
-                                theme.palette.text.primary,
-                                theme.palette.mode === "dark" ? 0.04 : 0.05,
-                              ),
-                      "&:hover": onRowClick
-                        ? {
-                            backgroundColor: alpha(
-                              theme.palette.primary.main,
-                              0.08,
-                            ),
-                          }
-                        : undefined,
-                      "@media (max-width: 600px)": {
-                        "& .MuiTableCell-root": {
-                          fontSize: "0.75rem",
-                          padding: "8px 4px",
-                        },
-                      },
-                    })}
+                    style={{
+                      backgroundColor: isSelected
+                        ? selectedBg
+                        : index % 2 === 0
+                          ? "transparent"
+                          : altBg,
+                    }}
                   >
                     {renderFirstCell && (
-                      <TableCell
-                        width="40px"
-                        sx={{ padding: "8px 4px 8px 4px" }}
-                      >
+                      <AppTableCell style={{ width: 40, padding: "8px 4px" }}>
                         {renderFirstCell(row, index)}
-                      </TableCell>
+                      </AppTableCell>
                     )}
                     {renderMainRow(row, index)}
                     {renderExpandedContent && (
-                      <TableCell>
-                        <IconButton
+                      <AppTableCell>
+                        <AppIconButton
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -170,18 +147,13 @@ function UnifiedCollapsibleTable<T>({
                               transition: "0.2s",
                             }}
                           />
-                        </IconButton>
-                      </TableCell>
+                        </AppIconButton>
+                      </AppTableCell>
                     )}
-                  </TableRow>
+                  </AppTableRow>
                   {renderExpandedContent && (
-                    <TableRow
-                      sx={{
-                        "& .MuiTableCell-root": { borderBottom: "none" },
-                        backgroundColor: "transparent",
-                      }}
-                    >
-                      <TableCell
+                    <AppTableRow style={{ backgroundColor: "transparent" }}>
+                      <AppTableCell
                         style={{ paddingBottom: 0, paddingTop: 0 }}
                         colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                       >
@@ -202,15 +174,15 @@ function UnifiedCollapsibleTable<T>({
                             </div>
                           </motion.div>
                         </Collapse>
-                      </TableCell>
-                    </TableRow>
+                      </AppTableCell>
+                    </AppTableRow>
                   )}
                 </React.Fragment>
               );
             })}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </AppTableBody>
+        </AppTable>
+      </AppTableContainer>
       {data.length === 0 && (
         <div
           style={{

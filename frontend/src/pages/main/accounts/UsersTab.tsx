@@ -1,12 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Grid,
-  TableCell,
-  TextField,
-  Checkbox,
-  Button,
-  IconButton,
-} from "@mui/material";
+import { Grid, TextField, Checkbox, Button, IconButton } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -22,6 +15,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
@@ -189,46 +183,26 @@ const UsersTab: React.FC<UsersTabProps> = ({
       field: "gecos",
       headerName: "Full Name",
       align: "left",
-      sx: {
-        display: {
-          xs: "none",
-          sm: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "uid",
       headerName: "ID",
       align: "left",
       width: "80px",
-      sx: {
-        display: {
-          xs: "none",
-          md: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-md",
     },
     {
       field: "lastLogin",
       headerName: "Last Active",
       align: "left",
-      sx: {
-        display: {
-          xs: "none",
-          lg: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-lg",
     },
     {
       field: "groups",
       headerName: "Groups",
       align: "left",
-      sx: {
-        display: {
-          xs: "none",
-          xl: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-xl",
     },
     {
       field: "actions",
@@ -488,7 +462,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           )}
           renderMainRow={(user) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <div
                   style={{
                     display: "flex",
@@ -529,39 +503,18 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <AppTypography variant="body2" style={responsiveTextStyles}>
                   {user.gecos || "-"}
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    md: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
                 <AppTypography variant="body2" style={responsiveTextStyles}>
                   {user.uid}
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    lg: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-lg">
                 <AppTypography
                   variant="body2"
                   color={
@@ -573,15 +526,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                 >
                   {formatLastLogin(user.lastLogin, user.username)}
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    xl: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-xl">
                 <div
                   style={{
                     display: "flex",
@@ -622,8 +568,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell align="right">
+              </AppTableCell>
+              <AppTableCell align="right">
                 <div
                   style={{
                     display: "flex",
@@ -680,7 +626,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     </IconButton>
                   </AppTooltip>
                 </div>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(user) => (

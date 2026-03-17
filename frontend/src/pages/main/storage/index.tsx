@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState } from "react";
 
 import DiskOverview from "./DiskOverview";
@@ -8,6 +6,8 @@ import LVMManagement from "./LVMManagement";
 import NFSMounts from "./NFSMounts";
 
 import { TabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 

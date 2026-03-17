@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Grid,
-  TableCell,
   TextField,
   Checkbox,
   Dialog,
@@ -22,6 +21,7 @@ import UnifiedCollapsibleTable, {
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -257,12 +257,7 @@ const ImageList: React.FC<ImageListProps> = ({
       headerName: "Image ID",
       align: "left",
       width: "140px",
-      sx: {
-        display: {
-          xs: "none",
-          md: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-md",
     },
     {
       field: "size",
@@ -274,12 +269,7 @@ const ImageList: React.FC<ImageListProps> = ({
       field: "created",
       headerName: "Created",
       align: "left",
-      sx: {
-        display: {
-          xs: "none",
-          sm: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "usedBy",
@@ -479,7 +469,7 @@ const ImageList: React.FC<ImageListProps> = ({
           )}
           renderMainRow={(image) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <AppTypography
                   variant="body2"
                   fontWeight={500}
@@ -487,8 +477,8 @@ const ImageList: React.FC<ImageListProps> = ({
                 >
                   {image.repo}
                 </AppTypography>
-              </TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>
                 <Chip
                   label={image.tag}
                   size="small"
@@ -497,15 +487,8 @@ const ImageList: React.FC<ImageListProps> = ({
                     fontSize: "0.75rem",
                   }}
                 />
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    md: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
                 <AppTypography
                   variant="body2"
                   style={{
@@ -516,20 +499,13 @@ const ImageList: React.FC<ImageListProps> = ({
                 >
                   {image.shortId}
                 </AppTypography>
-              </TableCell>
-              <TableCell align="right">
+              </AppTableCell>
+              <AppTableCell align="right">
                 <AppTypography variant="body2" style={responsiveTextStyles}>
                   {image.size} MB
                 </AppTypography>
-              </TableCell>
-              <TableCell
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "table-cell",
-                  },
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <AppTypography
                   variant="body2"
                   style={{
@@ -539,8 +515,8 @@ const ImageList: React.FC<ImageListProps> = ({
                 >
                   {image.created}
                 </AppTypography>
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <Chip
                   label={image.containers}
                   size="small"
@@ -550,7 +526,7 @@ const ImageList: React.FC<ImageListProps> = ({
                     minWidth: 40,
                   }}
                 />
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(image) => (

@@ -1,11 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Checkbox,
   Dialog,
@@ -32,6 +27,13 @@ import UnifiedCollapsibleTable, {
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -341,35 +343,35 @@ const NetworkList: React.FC<NetworkListProps> = ({
       headerName: "Scope",
       align: "left",
       width: "100px",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      className: "app-table-hide-below-md",
     },
     {
       field: "internal",
       headerName: "Internal",
       align: "left",
       width: "100px",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      className: "app-table-hide-below-md",
     },
     {
       field: "ipv4",
       headerName: "IPv4",
       align: "left",
       width: "100px",
-      sx: { display: { xs: "none", lg: "table-cell" } },
+      className: "app-table-hide-below-lg",
     },
     {
       field: "ipv6",
       headerName: "IPv6",
       align: "left",
       width: "100px",
-      sx: { display: { xs: "none", lg: "table-cell" } },
+      className: "app-table-hide-below-lg",
     },
     {
       field: "id",
       headerName: "Network ID",
       align: "left",
       width: "140px",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      className: "app-table-hide-below-md",
     },
   ];
 
@@ -557,7 +559,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
           )}
           renderMainRow={(network) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <AppTypography
                   variant="body2"
                   fontWeight={500}
@@ -565,45 +567,45 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 >
                   {network.Name}
                 </AppTypography>
-              </TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>
                 <Chip
                   label={network.Driver}
                   size="small"
                   variant="soft"
                   sx={{ fontSize: "0.75rem" }}
                 />
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
                 <AppTypography variant="body2" style={responsiveTextStyles}>
                   {network.Scope}
                 </AppTypography>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
                 <Chip
                   label={network.Internal ? "Yes" : "No"}
                   size="small"
                   variant="soft"
                   color={network.Internal ? "warning" : "default"}
                 />
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-lg">
                 <Chip
                   label={network.EnableIPv4 !== false ? "Yes" : "No"}
                   size="small"
                   variant="soft"
                   color={network.EnableIPv4 !== false ? "success" : "default"}
                 />
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-lg">
                 <Chip
                   label={network.EnableIPv6 ? "Yes" : "No"}
                   size="small"
                   variant="soft"
                   color={network.EnableIPv6 ? "success" : "default"}
                 />
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
                 <AppTypography
                   variant="body2"
                   style={{
@@ -614,7 +616,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 >
                   {network.Id?.slice(0, 12)}
                 </AppTypography>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(network) => (
@@ -721,59 +723,57 @@ const NetworkList: React.FC<NetworkListProps> = ({
               <div>
                 {network.Containers &&
                 Object.keys(network.Containers).length > 0 ? (
-                  <Table
-                    size="small"
-                    sx={{
-                      bgcolor: (theme) =>
-                        alpha(
-                          theme.palette.text.primary,
-                          theme.palette.mode === "dark" ? 0.2 : 0.08,
-                        ),
+                  <AppTable
+                    style={{
+                      backgroundColor: alpha(
+                        theme.palette.text.primary,
+                        theme.palette.mode === "dark" ? 0.2 : 0.08,
+                      ),
                       overflowX: "auto",
                       display: "block",
                     }}
                   >
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>
+                    <AppTableHead>
+                      <AppTableRow>
+                        <AppTableCell>
                           <b>Name</b>
-                        </TableCell>
-                        <TableCell>
+                        </AppTableCell>
+                        <AppTableCell>
                           <b>Container ID</b>
-                        </TableCell>
-                        <TableCell>
+                        </AppTableCell>
+                        <AppTableCell>
                           <b>IPv4</b>
-                        </TableCell>
-                        <TableCell>
+                        </AppTableCell>
+                        <AppTableCell>
                           <b>IPv6</b>
-                        </TableCell>
-                        <TableCell>
+                        </AppTableCell>
+                        <AppTableCell>
                           <b>MAC</b>
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
+                        </AppTableCell>
+                      </AppTableRow>
+                    </AppTableHead>
+                    <AppTableBody>
                       {Object.entries(network.Containers).map(
                         ([id, info]: [string, any]) => (
-                          <TableRow key={id}>
-                            <TableCell>
+                          <AppTableRow key={id}>
+                            <AppTableCell>
                               <AppTypography
                                 variant="body2"
                                 style={responsiveTextStyles}
                               >
                                 {info.Name || "-"}
                               </AppTypography>
-                            </TableCell>
-                            <TableCell
-                              sx={{
+                            </AppTableCell>
+                            <AppTableCell
+                              style={{
                                 fontFamily: "monospace",
                                 fontSize: "0.85rem",
                                 ...longTextStyles,
                               }}
                             >
                               {id.slice(0, 12)}
-                            </TableCell>
-                            <TableCell>
+                            </AppTableCell>
+                            <AppTableCell>
                               <AppTypography
                                 variant="body2"
                                 style={{
@@ -784,8 +784,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
                               >
                                 {info.IPv4Address?.replace(/\/.*/, "") || "-"}
                               </AppTypography>
-                            </TableCell>
-                            <TableCell>
+                            </AppTableCell>
+                            <AppTableCell>
                               <AppTypography
                                 variant="body2"
                                 style={{
@@ -796,21 +796,21 @@ const NetworkList: React.FC<NetworkListProps> = ({
                               >
                                 {info.IPv6Address?.replace(/\/.*/, "") || "-"}
                               </AppTypography>
-                            </TableCell>
-                            <TableCell
-                              sx={{
+                            </AppTableCell>
+                            <AppTableCell
+                              style={{
                                 fontFamily: "monospace",
                                 fontSize: "0.85rem",
                                 ...longTextStyles,
                               }}
                             >
                               {info.MacAddress || "-"}
-                            </TableCell>
-                          </TableRow>
+                            </AppTableCell>
+                          </AppTableRow>
                         ),
                       )}
-                    </TableBody>
-                  </Table>
+                    </AppTableBody>
+                  </AppTable>
                 ) : (
                   <AppTypography variant="body2" color="text.secondary">
                     (no containers)

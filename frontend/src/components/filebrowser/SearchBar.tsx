@@ -1,9 +1,8 @@
 import { Icon } from "@iconify/react";
 import { InputAdornment, TextField, useTheme } from "@mui/material";
-
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState, useCallback } from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import { alpha } from "@/utils/color";
 
 interface SearchBarProps {

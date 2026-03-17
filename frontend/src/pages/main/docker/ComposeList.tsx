@@ -2,11 +2,6 @@ import { Icon } from "@iconify/react";
 import {
   Grid,
   IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   useMediaQuery,
   useTheme,
@@ -19,6 +14,13 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
@@ -100,22 +102,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
     {
       field: "config",
       headerName: "Config Files",
-      sx: {
-        display: {
-          xs: "none",
-          sm: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "location",
       headerName: "Location",
-      sx: {
-        display: {
-          xs: "none",
-          lg: "table-cell",
-        },
-      },
+      className: "app-table-hide-below-lg",
     },
     {
       field: "actions",
@@ -131,18 +123,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
       const statusColor = getStatusColor(project.status);
       return (
         <>
-          <TableCell
-            sx={{
-              px: {
-                xs: 1,
-                sm: 2,
-              },
-              py: {
-                xs: 1.5,
-                sm: 2,
-              },
-            }}
-          >
+          <AppTableCell>
             <div
               style={{
                 display: "flex",
@@ -176,8 +157,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 }}
               />
             </div>
-          </TableCell>
-          <TableCell>
+          </AppTableCell>
+          <AppTableCell>
             <div
               style={{
                 display: "flex",
@@ -194,16 +175,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 {project.name}
               </AppTypography>
             </div>
-          </TableCell>
-          <TableCell align="center">{getTotalContainers(project)}</TableCell>
-          <TableCell
-            sx={{
-              display: {
-                xs: "none",
-                sm: "table-cell",
-              },
-            }}
-          >
+          </AppTableCell>
+          <AppTableCell align="center">
+            {getTotalContainers(project)}
+          </AppTableCell>
+          <AppTableCell className="app-table-hide-below-sm">
             <AppTooltip title={project.config_files.join(", ") || "Unknown"}>
               <div
                 style={{
@@ -232,15 +208,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 </AppTypography>
               </div>
             </AppTooltip>
-          </TableCell>
-          <TableCell
-            sx={{
-              display: {
-                xs: "none",
-                lg: "table-cell",
-              },
-            }}
-          >
+          </AppTableCell>
+          <AppTableCell className="app-table-hide-below-lg">
             <AppTooltip title={project.working_dir || "Unknown"}>
               <AppTypography
                 variant="body2"
@@ -254,8 +223,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 {project.working_dir || "-"}
               </AppTypography>
             </AppTooltip>
-          </TableCell>
-          <TableCell align="right">
+          </AppTableCell>
+          <AppTableCell align="right">
             <div
               style={{
                 display: "flex",
@@ -394,7 +363,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 </>
               )}
             </div>
-          </TableCell>
+          </AppTableCell>
         </>
       );
     },
@@ -416,47 +385,26 @@ const ComposeList: React.FC<ComposeListProps> = ({
     (project: ComposeProject) => {
       return (
         <>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Service Name</TableCell>
-                <TableCell
-                  sx={{
-                    display: {
-                      xs: "none",
-                      sm: "table-cell",
-                    },
-                  }}
-                >
+          <AppTable>
+            <AppTableHead>
+              <AppTableRow>
+                <AppTableCell>Service Name</AppTableCell>
+                <AppTableCell className="app-table-hide-below-sm">
                   Image
-                </TableCell>
-                <TableCell>State</TableCell>
-                <TableCell
-                  sx={{
-                    display: {
-                      xs: "none",
-                      md: "table-cell",
-                    },
-                  }}
-                >
+                </AppTableCell>
+                <AppTableCell>State</AppTableCell>
+                <AppTableCell className="app-table-hide-below-md">
                   Containers
-                </TableCell>
-                <TableCell
-                  sx={{
-                    display: {
-                      xs: "none",
-                      md: "table-cell",
-                    },
-                  }}
-                >
+                </AppTableCell>
+                <AppTableCell className="app-table-hide-below-md">
                   Ports
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+                </AppTableCell>
+              </AppTableRow>
+            </AppTableHead>
+            <AppTableBody>
               {Object.values(project.services).map((service) => (
-                <TableRow key={service.name}>
-                  <TableCell>
+                <AppTableRow key={service.name}>
+                  <AppTableCell>
                     <div
                       style={{
                         display: "flex",
@@ -471,15 +419,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       />
                       {service.name}
                     </div>
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      display: {
-                        xs: "none",
-                        sm: "table-cell",
-                      },
-                    }}
-                  >
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-sm">
                     <AppTypography
                       variant="body2"
                       noWrap
@@ -489,8 +430,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     >
                       {service.image}
                     </AppTypography>
-                  </TableCell>
-                  <TableCell>
+                  </AppTableCell>
+                  <AppTableCell>
                     <Chip
                       label={service.state}
                       size="small"
@@ -502,31 +443,17 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         textTransform: "capitalize",
                       }}
                     />
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      display: {
-                        xs: "none",
-                        md: "table-cell",
-                      },
-                    }}
-                  >
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-md">
                     {service.container_count}
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      display: {
-                        xs: "none",
-                        md: "table-cell",
-                      },
-                    }}
-                  >
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-md">
                     {service.ports.length > 0 ? service.ports.join(", ") : "-"}
-                  </TableCell>
-                </TableRow>
+                  </AppTableCell>
+                </AppTableRow>
               ))}
-            </TableBody>
-          </Table>
+            </AppTableBody>
+          </AppTable>
           <div
             style={{
               marginTop: theme.spacing(2),

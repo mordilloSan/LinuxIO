@@ -1,8 +1,5 @@
 import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
-
-import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -11,6 +8,8 @@ import UpdateStatus from "./UpdateStatus";
 
 import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 

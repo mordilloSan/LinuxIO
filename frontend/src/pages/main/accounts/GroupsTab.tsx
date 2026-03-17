@@ -1,12 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Grid,
-  TableCell,
-  TextField,
-  Checkbox,
-  Button,
-  IconButton,
-} from "@mui/material";
+import { Grid, TextField, Checkbox, Button, IconButton } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -19,6 +12,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
@@ -121,7 +115,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
       headerName: "GID",
       align: "left",
       width: "80px",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "members",
@@ -294,7 +288,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           )}
           renderMainRow={(group) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <AppTypography
                     variant="body2"
@@ -312,13 +306,13 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <AppTypography variant="body2" style={responsiveTextStyles}>
                   {group.gid}
                 </AppTypography>
-              </TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
                   {group.members.length > 0 ? (
                     group.members
@@ -346,8 +340,8 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell align="right">
+              </AppTableCell>
+              <AppTableCell align="right">
                 <div
                   style={{
                     display: "flex",
@@ -368,7 +362,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     </IconButton>
                   </AppTooltip>
                 </div>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(group) => (

@@ -75,11 +75,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           >
             {cancelText}
           </AppButton>
-          <AppButton
-            type="submit"
-            autoFocus
-            className="app-btn--dialog-action"
-          >
+          <AppButton type="submit" autoFocus className="app-btn--dialog-action">
             {confirmText}
           </AppButton>
         </div>

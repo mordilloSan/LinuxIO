@@ -1,12 +1,11 @@
 import { Icon } from "@iconify/react";
 import { Drawer, useTheme, List } from "@mui/material";
-
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState, useCallback } from "react";
 
 import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";

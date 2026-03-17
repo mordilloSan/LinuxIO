@@ -1,9 +1,9 @@
 import { Icon } from "@iconify/react";
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useCallback, useState } from "react";
 
 import SettingsDialog from "./SettingsDialog";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
 
