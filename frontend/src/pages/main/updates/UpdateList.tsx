@@ -1,4 +1,4 @@
-import { CircularProgress, Collapse } from "@mui/material";
+import { CircularProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppCardContent from "@/components/ui/AppCardContent";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { Update } from "@/types/update";
@@ -206,7 +207,11 @@ const UpdateList: React.FC<Props> = ({
                 />
               </div>
 
-              <Collapse in={expandedIdx === idx} timeout="auto" unmountOnExit>
+              <AppCollapse
+                in={expandedIdx === idx}
+                timeout="auto"
+                unmountOnExit
+              >
                 <div
                   style={{
                     whiteSpace: "pre-wrap",
@@ -231,7 +236,7 @@ const UpdateList: React.FC<Props> = ({
                     </AppTypography>
                   )}
                 </div>
-              </Collapse>
+              </AppCollapse>
             </AppCardContent>
           </FrostedCard>
         </AppGrid>

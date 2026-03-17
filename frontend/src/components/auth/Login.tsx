@@ -1,46 +1,29 @@
 import { Icon } from "@iconify/react";
-import { InputAdornment, TextField } from "@mui/material";
+import { useTheme } from "@mui/material";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppTextField from "@/components/ui/AppTextField";
 import "./login.css";
 import useAuth from "@/hooks/useAuth";
 import { alpha } from "@/utils/color";
 
-const fieldSx = (theme: any) => ({
-  my: 1,
-
-  "& .MuiInputLabel-root": {
-    color: theme.palette.text.secondary,
-    fontWeight: 500,
-  },
-
-  "& .MuiOutlinedInput-root": {
-    borderRadius: 3,
-    backgroundColor: alpha(theme.palette.background.default, 0.65),
-    transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-    "& fieldset": { borderColor: alpha(theme.palette.text.secondary, 0.3) },
-    "&:hover fieldset": {
-      borderColor: alpha(theme.palette.text.secondary, 0.55),
-    },
-    "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
-    "&.Mui-focused": {
-      boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.35)}`,
-    },
-  },
-
-  // Smaller size on smaller screens
-  "& .MuiOutlinedInput-input": {
-    color: theme.palette.text.primary,
-    [theme.breakpoints.down("md")]: {
-      padding: "8.5px 14px",
-    },
-  },
-});
-
 function LogIn() {
+  const theme = useTheme();
+  const [focusedField, setFocusedField] = useState<"username" | "password" | null>(null);
+
+  const makeFieldStyle = (field: "username" | "password") => ({
+    "--lf-bg": alpha(theme.palette.background.default, 0.65),
+    "--lf-border": alpha(theme.palette.text.secondary, 0.3),
+    "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
+    "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.35),
+    "--lf-card-bg": alpha(theme.palette.background.default, 0.9),
+    "--lf-label-color": focusedField === field ? theme.palette.primary.main : theme.palette.text.secondary,
+  } as React.CSSProperties);
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -93,14 +76,17 @@ function LogIn() {
         className="login-reveal"
         style={{ "--login-reveal-delay": "140ms" } as React.CSSProperties}
       >
-        <TextField
+        <AppTextField
           label="Username"
           fullWidth
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
-          sx={fieldSx}
-          slotProps={{ inputLabel: { shrink: true } }}
+          className="login-field"
+          shrinkLabel
+          style={makeFieldStyle("username")}
+          onFocus={() => setFocusedField("username")}
+          onBlur={() => setFocusedField(null)}
         />
       </div>
 
@@ -108,34 +94,31 @@ function LogIn() {
         className="login-reveal"
         style={{ "--login-reveal-delay": "220ms" } as React.CSSProperties}
       >
-        <TextField
+        <AppTextField
           label="Password"
           type={showPassword ? "text" : "password"}
           fullWidth
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
-          sx={fieldSx}
-          slotProps={{
-            inputLabel: { shrink: true },
-            input: {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <AppIconButton
-                    onClick={() => setShowPassword((p) => !p)}
-                    edge="end"
-                    className="login-password-toggle"
-                  >
-                    {showPassword ? (
-                      <Icon icon="mdi:eye-off" width={22} height={22} />
-                    ) : (
-                      <Icon icon="mdi:eye" width={22} height={22} />
-                    )}
-                  </AppIconButton>
-                </InputAdornment>
-              ),
-            },
-          }}
+          className="login-field"
+          shrinkLabel
+          style={makeFieldStyle("password")}
+          onFocus={() => setFocusedField("password")}
+          onBlur={() => setFocusedField(null)}
+          endAdornment={
+            <AppIconButton
+              onClick={() => setShowPassword((p) => !p)}
+              edge="end"
+              className="login-password-toggle"
+            >
+              {showPassword ? (
+                <Icon icon="mdi:eye-off" width={22} height={22} />
+              ) : (
+                <Icon icon="mdi:eye" width={22} height={22} />
+              )}
+            </AppIconButton>
+          }
         />
       </div>
 

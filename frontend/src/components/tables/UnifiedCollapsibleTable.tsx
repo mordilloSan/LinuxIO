@@ -1,9 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
   AppTable,
@@ -157,7 +157,11 @@ function UnifiedCollapsibleTable<T>({
                         style={{ paddingBottom: 0, paddingTop: 0 }}
                         colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                       >
-                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                        <AppCollapse
+                          in={isExpanded}
+                          timeout="auto"
+                          unmountOnExit
+                        >
                           <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -173,7 +177,7 @@ function UnifiedCollapsibleTable<T>({
                               {renderExpandedContent(row, index)}
                             </div>
                           </motion.div>
-                        </Collapse>
+                        </AppCollapse>
                       </AppTableCell>
                     </AppTableRow>
                   )}

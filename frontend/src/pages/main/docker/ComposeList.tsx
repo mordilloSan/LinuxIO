@@ -1,11 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Grid,
-  IconButton,
-  TextField,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { useMediaQuery, useTheme } from "@mui/material";
 import React, { useCallback, useState } from "react";
 
 import ComposeStackCard from "./ComposeStackCard";
@@ -14,6 +8,8 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
 import {
   AppTable,
   AppTableBody,
@@ -21,6 +17,7 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
@@ -260,103 +257,67 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 <>
                   {onEdit && project.config_files.length > 0 && (
                     <AppTooltip title="Edit">
-                      <IconButton
+                      <AppIconButton
                         size="small"
                         onClick={() =>
                           onEdit(project.name, project.config_files[0])
                         }
                         disabled={isLoading}
-                        sx={{
-                          p: {
-                            xs: 0.5,
-                            sm: 1,
-                          },
-                        }}
                       >
                         <Icon icon="mdi:pencil" width={20} height={20} />
-                      </IconButton>
+                      </AppIconButton>
                     </AppTooltip>
                   )}
                   {project.status === "running" ||
                   project.status === "partial" ? (
                     <>
                       <AppTooltip title="Restart">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => onRestart(project.name)}
                           disabled={isLoading}
-                          sx={{
-                            p: {
-                              xs: 0.5,
-                              sm: 1,
-                            },
-                          }}
                         >
                           <Icon icon="mdi:restart" width={20} height={20} />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Stop">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => onStop(project.name)}
                           disabled={isLoading}
-                          sx={{
-                            p: {
-                              xs: 0.5,
-                              sm: 1,
-                            },
-                          }}
                         >
                           <Icon icon="mdi:stop-circle" width={20} height={20} />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Delete">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => onDelete(project)}
                           disabled={isLoading}
-                          sx={{
-                            p: {
-                              xs: 0.5,
-                              sm: 1,
-                            },
-                          }}
                         >
                           <Icon icon="mdi:delete" width={20} height={20} />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                     </>
                   ) : (
                     <>
                       <AppTooltip title="Start">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => onStart(project.name)}
                           disabled={isLoading}
-                          sx={{
-                            p: {
-                              xs: 0.5,
-                              sm: 1,
-                            },
-                          }}
                         >
                           <Icon icon="mdi:play" width={20} height={20} />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Delete">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => onDelete(project)}
                           disabled={isLoading}
-                          sx={{
-                            p: {
-                              xs: 0.5,
-                              sm: 1,
-                            },
-                          }}
                         >
                           <Icon icon="mdi:delete" width={20} height={20} />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                     </>
                   )}
@@ -494,13 +455,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
         marginBottom: theme.spacing(2),
       }}
     >
-      <TextField
-        variant="outlined"
+      <AppTextField
         size="small"
         placeholder="Search stacks…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        sx={{
+        style={{
           width: 320,
         }}
       />
@@ -525,9 +485,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
             </AppTypography>
           </div>
         ) : (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((project) => (
-              <Grid
+              <AppGrid
                 key={project.name}
                 size={{
                   xs: 12,
@@ -546,9 +506,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   onPreview={onPreview}
                   isLoading={isLoading}
                 />
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         )}
       </div>
     );

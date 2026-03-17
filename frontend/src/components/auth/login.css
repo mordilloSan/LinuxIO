@@ -59,6 +59,52 @@
   }
 }
 
+.login-field {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.login-field .app-text-field__label {
+  position: absolute !important;
+  font-weight: 500;
+  color: var(--lf-label-color);
+}
+
+.login-field .app-text-field__label--shrunk {
+  /* Center the label on the wrapper's top border */
+  top: 0;
+  transform: translate(14px, -50%) scale(0.75);
+  /* Notch: match the login card background so it cuts through the border */
+  background-color: var(--lf-card-bg);
+  padding: 0 5px;
+}
+
+.login-field .app-text-field__wrapper {
+  border-radius: 24px;
+  background-color: var(--lf-bg);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  border: 1px solid var(--lf-border);
+}
+
+.login-field .app-text-field__wrapper:hover {
+  border-color: var(--lf-border-hover);
+}
+
+.login-field.app-text-field--focused .app-text-field__wrapper {
+  border: 1px solid var(--mui-palette-primary-main);
+  box-shadow: 0 0 0 3px var(--lf-focus-shadow);
+}
+
+.login-field .app-text-field__input {
+  color: var(--mui-palette-text-primary);
+}
+
+@media (max-width: 899.95px) {
+  .login-field .app-text-field__input {
+    padding: 8.5px 14px;
+  }
+}
+
 .login-password-toggle {
   color: var(--mui-palette-text-secondary);
 }

@@ -1,0 +1,17 @@
+.search-bar {
+  max-width: 400px;
+  min-width: 250px;
+}
+
+.search-bar .app-text-field__wrapper {
+  border-radius: 24px;
+  background-color: var(--search-bar-bg);
+  transition: all 0.2s;
+  border: none;
+  box-shadow: var(--search-bar-focus-ring, none);
+}
+
+.search-bar.app-text-field--focused .app-text-field__wrapper,
+.search-bar .app-text-field__wrapper:hover {
+  background-color: var(--search-bar-bg-hover);
+}

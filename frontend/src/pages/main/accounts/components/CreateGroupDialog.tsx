@@ -1,9 +1,3 @@
-import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-} from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -11,6 +5,12 @@ import { toast } from "sonner";
 import { linuxio, type CreateGroupRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {
@@ -62,8 +62,8 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create Group</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Create Group</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -72,7 +72,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
             marginTop: 4,
           }}
         >
-          <TextField
+          <AppTextField
             label="Group Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -80,7 +80,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
             required
             autoFocus
           />
-          <TextField
+          <AppTextField
             label="GID (optional)"
             value={gid}
             onChange={(e) => setGid(e.target.value.replace(/\D/g, ""))}
@@ -89,8 +89,8 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
             type="number"
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
         </AppButton>
@@ -101,7 +101,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
         >
           {isPending ? "Creating..." : "Create"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

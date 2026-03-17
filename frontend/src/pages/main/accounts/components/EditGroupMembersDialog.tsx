@@ -1,10 +1,4 @@
-import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Autocomplete,
-} from "@mui/material";
+import { TextField, Autocomplete } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
@@ -18,6 +12,11 @@ import {
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -80,8 +79,8 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Edit Group Members: {group.name}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Edit Group Members: {group.name}</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -115,8 +114,8 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
             }
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={onClose} disabled={isPending}>
           Cancel
         </AppButton>
@@ -127,7 +126,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
         >
           {isPending ? "Saving..." : "Save"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

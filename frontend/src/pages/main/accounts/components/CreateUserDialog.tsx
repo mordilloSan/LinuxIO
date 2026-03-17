@@ -1,7 +1,4 @@
 import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
   FormControlLabel,
   Checkbox,
@@ -15,6 +12,12 @@ import { linuxio, type CreateUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {
@@ -97,8 +100,8 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create User</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Create User</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -107,7 +110,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             marginTop: 4,
           }}
         >
-          <TextField
+          <AppTextField
             label="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -115,13 +118,13 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             required
             autoFocus
           />
-          <TextField
+          <AppTextField
             label="Full Name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             fullWidth
           />
-          <TextField
+          <AppTextField
             label="Password"
             type="password"
             value={password}
@@ -129,7 +132,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             fullWidth
             required
           />
-          <TextField
+          <AppTextField
             label="Confirm Password"
             type="password"
             value={confirmPassword}
@@ -143,7 +146,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                 : ""
             }
           />
-          <TextField
+          <AppTextField
             label="Home Directory"
             value={homeDir}
             onChange={(e) => setHomeDir(e.target.value)}
@@ -193,8 +196,8 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             label="Create home directory"
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
         </AppButton>
@@ -207,7 +210,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
         >
           {isPending ? "Creating..." : "Create"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

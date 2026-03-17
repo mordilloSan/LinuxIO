@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, TextField, Checkbox, Button, IconButton } from "@mui/material";
+import { Checkbox } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -11,8 +11,12 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
@@ -141,22 +145,16 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <TextField
-          variant="outlined"
+        <AppTextField
           size="small"
           placeholder="Search groups…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
         <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
         {effectiveSelected.size > 0 && (
-          <Button
+          <AppButton
             variant="contained"
             color="error"
             size="small"
@@ -164,14 +162,14 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
-          </Button>
+          </AppButton>
         )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((group) => (
-              <Grid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <AppGrid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <FrostedCard style={{ padding: 8 }}>
                   <div
                     style={{
@@ -198,13 +196,13 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       </AppTypography>
                     </div>
                     <AppTooltip title="Edit Members">
-                      <IconButton
+                      <AppIconButton
                         size="small"
                         onClick={() => handleEditMembers(group)}
                         disabled={group.name === "root"}
                       >
                         <Icon icon="mdi:pencil" width={20} height={20} />
-                      </IconButton>
+                      </AppIconButton>
                     </AppTooltip>
                   </div>
 
@@ -254,9 +252,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     )}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
             <AppTypography variant="body2" color="text.secondary">
@@ -350,7 +348,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                   }}
                 >
                   <AppTooltip title="Edit Members">
-                    <IconButton
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -359,7 +357,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       disabled={group.name === "root"}
                     >
                       <Icon icon="mdi:pencil" width={20} height={20} />
-                    </IconButton>
+                    </AppIconButton>
                   </AppTooltip>
                 </div>
               </AppTableCell>

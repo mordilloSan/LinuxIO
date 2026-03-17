@@ -1,8 +1,11 @@
 import { Icon } from "@iconify/react";
-import { InputAdornment, TextField, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
+import "./search-bar.css";
+
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppTextField from "@/components/ui/AppTextField";
 import { alpha } from "@/utils/color";
 
 interface SearchBarProps {
@@ -38,14 +41,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
   }, [onChange]);
 
   const handleChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       onChange(event.target.value);
     },
     [onChange],
   );
 
   return (
-    <TextField
+    <AppTextField
       value={value}
       onChange={handleChange}
       onFocus={() => setIsFocused(true)}
@@ -54,57 +57,40 @@ const SearchBar: React.FC<SearchBarProps> = ({
       disabled={disabled}
       size="small"
       fullWidth
-      slotProps={{
-        input: {
-          startAdornment: (
-            <InputAdornment position="start">
-              <Icon
-                icon="mdi:magnify"
-                width={20}
-                height={20}
-                style={{
-                  color: isFocused
-                    ? theme.palette.primary.main
-                    : theme.palette.text.secondary,
-                  transition: "color 0.2s",
-                }}
-              />
-            </InputAdornment>
-          ),
-          endAdornment: value && (
-            <InputAdornment position="end">
-              <AppIconButton
-                onClick={handleClear}
-                size="small"
-                edge="end"
-                aria-label="clear search"
-                style={{ padding: 4 }}
-              >
-                <Icon icon="mdi:close" width={18} height={18} />
-              </AppIconButton>
-            </InputAdornment>
-          ),
-        },
+      className="search-bar"
+      style={{
+        ["--search-bar-bg" as string]: ribbonBackground,
+        ["--search-bar-bg-hover" as string]: ribbonHoverBackground,
+        ["--search-bar-focus-ring" as string]: isFocused
+          ? `0 0 0 1px ${focusRing}`
+          : "none",
       }}
-      sx={{
-        maxWidth: 400,
-        minWidth: 250,
-        "& .MuiOutlinedInput-root": {
-          borderRadius: "24px",
-          backgroundColor: ribbonBackground,
-          transition: "all 0.2s",
-          boxShadow: isFocused ? `0 0 0 1px ${focusRing}` : "none",
-          "& fieldset": {
-            border: "none",
-          },
-          "&.Mui-focused": {
-            backgroundColor: ribbonHoverBackground,
-          },
-          "&:hover": {
-            backgroundColor: ribbonHoverBackground,
-          },
-        },
-      }}
+      startAdornment={
+        <Icon
+          icon="mdi:magnify"
+          width={20}
+          height={20}
+          style={{
+            color: isFocused
+              ? theme.palette.primary.main
+              : theme.palette.text.secondary,
+            transition: "color 0.2s",
+          }}
+        />
+      }
+      endAdornment={
+        value ? (
+          <AppIconButton
+            onClick={handleClear}
+            size="small"
+            edge="end"
+            aria-label="clear search"
+            style={{ padding: 4 }}
+          >
+            <Icon icon="mdi:close" width={18} height={18} />
+          </AppIconButton>
+        ) : undefined
+      }
     />
   );
 };

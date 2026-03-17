@@ -1,9 +1,3 @@
-import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
@@ -12,6 +6,12 @@ import { toast } from "sonner";
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {
@@ -67,8 +67,8 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Change Password: {username}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Change Password: {username}</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -77,7 +77,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <TextField
+          <AppTextField
             label="New Password"
             type="password"
             value={password}
@@ -86,7 +86,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             required
             autoFocus
           />
-          <TextField
+          <AppTextField
             label="Confirm Password"
             type="password"
             value={confirmPassword}
@@ -101,8 +101,8 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             }
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
         </AppButton>
@@ -113,7 +113,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
         >
           {isPending ? "Changing..." : "Change Password"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

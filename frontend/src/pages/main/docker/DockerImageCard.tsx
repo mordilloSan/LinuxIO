@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Collapse, useMediaQuery, useTheme } from "@mui/material";
+import { useMediaQuery, useTheme } from "@mui/material";
 import { useMemo, useState } from "react";
 
 import AppCardContent from "@/components/ui/AppCardContent";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardBorderRadius } from "@/constants";
@@ -111,7 +112,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           </AppIconButton>
         </AppCardContent>
 
-        <Collapse in={open} unmountOnExit>
+        <AppCollapse in={open} unmountOnExit>
           <div
             style={{
               paddingLeft: isSmallScreen ? theme.spacing(1) : theme.spacing(2),
@@ -121,7 +122,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           >
             {renderCollapseContent(row)}
           </div>
-        </Collapse>
+        </AppCollapse>
       </div>
     </div>
   );

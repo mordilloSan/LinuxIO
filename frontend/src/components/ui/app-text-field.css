@@ -1,0 +1,226 @@
+/* ── AppTextField ───────────────────────────── */
+
+.app-text-field {
+  display: inline-flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.app-text-field--fullwidth {
+  width: 100%;
+}
+
+/* ── input wrapper ─────────────────────────── */
+
+.app-text-field__wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  cursor: text;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.4375em;
+  color: var(--mui-palette-text-primary);
+  box-sizing: border-box;
+}
+
+/* outlined variant */
+.app-text-field--outlined .app-text-field__wrapper {
+  border: 1px solid var(--mui-palette-action-disabled);
+  background-color: transparent;
+  transition:
+    border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-text-field--outlined .app-text-field__wrapper:hover {
+  border-color: var(--mui-palette-text-primary);
+}
+
+.app-text-field--outlined.app-text-field--focused .app-text-field__wrapper {
+  border-color: var(--mui-palette-primary-main);
+  border-width: 2px;
+}
+
+.app-text-field--error .app-text-field__wrapper {
+  border-color: var(--mui-palette-error-main) !important;
+}
+
+/* standard variant */
+.app-text-field--standard .app-text-field__wrapper {
+  border: none;
+  border-bottom: 1px solid var(--mui-palette-action-disabled);
+  border-radius: 0;
+  transition: border-color 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-text-field--standard .app-text-field__wrapper:hover {
+  border-bottom-color: var(--mui-palette-text-primary);
+}
+
+.app-text-field--standard.app-text-field--focused .app-text-field__wrapper {
+  border-bottom-color: var(--mui-palette-primary-main);
+  border-bottom-width: 2px;
+}
+
+/* ── input ─────────────────────────────────── */
+
+.app-text-field__input {
+  font: inherit;
+  letter-spacing: inherit;
+  color: currentColor;
+  border: 0;
+  box-sizing: content-box;
+  background: none;
+  height: 1.4375em;
+  margin: 0;
+  display: block;
+  min-width: 0;
+  width: 100%;
+  padding: 16.5px 14px;
+  outline: none;
+}
+
+.app-text-field__input::placeholder {
+  color: var(--mui-palette-text-secondary);
+  opacity: 1;
+}
+
+.app-text-field__input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.app-text-field--small .app-text-field__input {
+  padding: 8.5px 14px;
+}
+
+.app-text-field--standard .app-text-field__input {
+  padding: 4px 0;
+}
+
+.app-text-field--standard.app-text-field--small .app-text-field__input {
+  padding: 4px 0;
+}
+
+textarea.app-text-field__input {
+  height: auto;
+  resize: vertical;
+}
+
+/* adjust padding when adornments present */
+.app-text-field__wrapper--has-start .app-text-field__input {
+  padding-left: 0;
+}
+
+.app-text-field__wrapper--has-end .app-text-field__input {
+  padding-right: 0;
+}
+
+/* ── label ─────────────────────────────────── */
+
+.app-text-field__label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(14px, 16px) scale(1);
+  transform-origin: top left;
+  color: var(--mui-palette-text-secondary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.4375em;
+  pointer-events: none;
+  transition:
+    color 200ms cubic-bezier(0, 0, 0.2, 1),
+    transform 200ms cubic-bezier(0, 0, 0.2, 1),
+    max-width 200ms cubic-bezier(0, 0, 0.2, 1);
+  z-index: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 24px);
+}
+
+.app-text-field--small .app-text-field__label {
+  transform: translate(14px, 9px) scale(1);
+}
+
+.app-text-field__label--shrunk {
+  transform: translate(14px, -9px) scale(0.75);
+  max-width: calc(133% - 32px);
+  padding: 0 5px;
+  background-color: var(--mui-palette-background-paper);
+}
+
+.app-text-field--focused .app-text-field__label {
+  color: var(--mui-palette-primary-main);
+}
+
+.app-text-field--error .app-text-field__label {
+  color: var(--mui-palette-error-main);
+}
+
+/* standard variant label */
+.app-text-field--standard .app-text-field__label {
+  transform: translate(0, 20px) scale(1);
+}
+
+.app-text-field--standard .app-text-field__label--shrunk {
+  transform: translate(0, -1.5px) scale(0.75);
+  background-color: transparent;
+  padding: 0;
+}
+
+/* ── adornments ────────────────────────────── */
+
+.app-text-field__adornment {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  color: var(--mui-palette-text-secondary);
+}
+
+.app-text-field__adornment--start {
+  margin-right: 8px;
+  padding-left: 14px;
+}
+
+.app-text-field__adornment--end {
+  margin-left: 8px;
+  padding-right: 14px;
+}
+
+.app-text-field--standard .app-text-field__adornment--start {
+  padding-left: 0;
+}
+
+.app-text-field--standard .app-text-field__adornment--end {
+  padding-right: 0;
+}
+
+/* ── helper text ───────────────────────────── */
+
+.app-text-field__helper {
+  font-size: 0.75rem;
+  line-height: 1.66;
+  letter-spacing: 0.03333em;
+  color: var(--mui-palette-text-secondary);
+  margin: 3px 14px 0;
+}
+
+.app-text-field--error .app-text-field__helper {
+  color: var(--mui-palette-error-main);
+}
+
+/* ── disabled ──────────────────────────────── */
+
+.app-text-field--disabled .app-text-field__wrapper {
+  pointer-events: none;
+  opacity: 0.65;
+}

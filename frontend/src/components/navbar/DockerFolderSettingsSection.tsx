@@ -1,4 +1,3 @@
-import { TextField } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -15,6 +14,7 @@ import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppDivider from "@/components/ui/AppDivider";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -204,7 +204,7 @@ const DockerFolderSettingsSection: React.FC = () => {
           Set the directory scanned for Docker Compose stacks.
         </AppTypography>
 
-        <TextField
+        <AppTextField
           label="Docker folder"
           value={draft}
           onChange={(event) => {

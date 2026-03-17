@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
@@ -11,6 +10,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
@@ -405,7 +405,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.overview}
         onClick={() => toggleSection("overview")}
       />
-      <Collapse in={sections.overview}>
+      <AppCollapse in={sections.overview}>
         <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
           {(
             [
@@ -502,7 +502,7 @@ const HardwarePage: React.FC = () => {
             </AppGrid>
           ))}
         </AppGrid>
-      </Collapse>
+      </AppCollapse>
 
       {/* ── System Information ──────────────────────────────────────────── */}
       <SectionHeader
@@ -510,7 +510,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.systemInfo}
         onClick={() => toggleSection("systemInfo")}
       />
-      <Collapse in={sections.systemInfo}>
+      <AppCollapse in={sections.systemInfo}>
         <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
           {(
             [
@@ -545,7 +545,7 @@ const HardwarePage: React.FC = () => {
             </AppGrid>
           ))}
         </AppGrid>
-      </Collapse>
+      </AppCollapse>
 
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
       <SectionHeader
@@ -553,7 +553,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.memoryModules}
         onClick={() => toggleSection("memoryModules")}
       />
-      <Collapse in={sections.memoryModules}>
+      <AppCollapse in={sections.memoryModules}>
         <FrostedCard
           style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
         >
@@ -583,7 +583,7 @@ const HardwarePage: React.FC = () => {
             emptyMessage="No memory module data available. Ensure dmidecode is installed."
           />
         </FrostedCard>
-      </Collapse>
+      </AppCollapse>
 
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
@@ -591,7 +591,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.hardware}
         onClick={() => toggleSection("hardware")}
       />
-      <Collapse in={sections.hardware}>
+      <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
           {[
             { id: "cpu", component: MemoProcessor },
@@ -605,7 +605,7 @@ const HardwarePage: React.FC = () => {
             </AppGrid>
           ))}
         </AppGrid>
-      </Collapse>
+      </AppCollapse>
 
       {/* ── Sensor Readings ────────────────────────────────────────────── */}
       <SectionHeader
@@ -613,7 +613,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.sensors}
         onClick={() => toggleSection("sensors")}
       />
-      <Collapse in={sections.sensors}>
+      <AppCollapse in={sections.sensors}>
         {!sensorGroups || sensorGroups.length === 0 ? (
           <FrostedCard style={{ padding: 16, textAlign: "center" }}>
             <AppTypography variant="body2" color="text.secondary">
@@ -679,7 +679,7 @@ const HardwarePage: React.FC = () => {
             </AppGrid>
           </>
         )}
-      </Collapse>
+      </AppCollapse>
 
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}
       <SectionHeader
@@ -687,7 +687,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.pciDevices}
         onClick={() => toggleSection("pciDevices")}
       />
-      <Collapse in={sections.pciDevices}>
+      <AppCollapse in={sections.pciDevices}>
         <FrostedCard
           style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
         >
@@ -710,7 +710,7 @@ const HardwarePage: React.FC = () => {
             emptyMessage="No PCI devices found"
           />
         </FrostedCard>
-      </Collapse>
+      </AppCollapse>
     </div>
   );
 };

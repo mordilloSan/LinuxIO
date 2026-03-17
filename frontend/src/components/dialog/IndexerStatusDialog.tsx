@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { DialogContent, DialogTitle, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography, {
@@ -62,8 +63,8 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
         },
       }}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.header.background,
           borderBottom: `1px solid ${theme.palette.divider}`,
           display: "flex",
@@ -106,11 +107,11 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
         <AppIconButton onClick={onClose} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
         </AppIconButton>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        sx={{
-          p: 3,
+      <AppDialogContent
+        style={{
+          padding: 12,
         }}
       >
         <div
@@ -231,7 +232,7 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
             </AppTypography>
           )}
         </div>
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };

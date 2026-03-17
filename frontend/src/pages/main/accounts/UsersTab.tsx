@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, TextField, Checkbox, Button, IconButton } from "@mui/material";
+import { Checkbox } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -14,8 +14,12 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
@@ -222,18 +226,12 @@ const UsersTab: React.FC<UsersTabProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <TextField
-          variant="outlined"
+        <AppTextField
           size="small"
           placeholder="Search users…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
         <span
           style={{
@@ -243,7 +241,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           {filtered.length} shown
         </span>
         {effectiveSelected.size > 0 && (
-          <Button
+          <AppButton
             variant="contained"
             color="error"
             size="small"
@@ -251,14 +249,14 @@ const UsersTab: React.FC<UsersTabProps> = ({
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
-          </Button>
+          </AppButton>
         )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((user) => (
-              <Grid
+              <AppGrid
                 key={user.username}
                 size={{
                   xs: 12,
@@ -310,16 +308,16 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       }}
                     >
                       <AppTooltip title="Edit">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => handleEditUser(user)}
                           disabled={user.username === "root"}
                         >
                           <Icon icon="mdi:pencil" width={20} height={20} />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Change Password">
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => handleChangePassword(user)}
                         >
@@ -328,10 +326,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                             width={20}
                             height={20}
                           />
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                        <IconButton
+                        <AppIconButton
                           size="small"
                           onClick={() => handleToggleLock(user)}
                           disabled={
@@ -346,7 +344,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           ) : (
                             <Icon icon="mdi:lock" width={20} height={20} />
                           )}
-                        </IconButton>
+                        </AppIconButton>
                       </AppTooltip>
                     </div>
                   </div>
@@ -421,9 +419,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     ))}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div
             style={{
@@ -578,7 +576,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                   }}
                 >
                   <AppTooltip title="Edit">
-                    <IconButton
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -587,10 +585,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       disabled={user.username === "root"}
                     >
                       <Icon icon="mdi:pencil" width={20} height={20} />
-                    </IconButton>
+                    </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title="Change Password">
-                    <IconButton
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -602,10 +600,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         width={20}
                         height={20}
                       />
-                    </IconButton>
+                    </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                    <IconButton
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -623,7 +621,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       ) : (
                         <Icon icon="mdi:lock" width={20} height={20} />
                       )}
-                    </IconButton>
+                    </AppIconButton>
                   </AppTooltip>
                 </div>
               </AppTableCell>

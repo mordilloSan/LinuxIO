@@ -1,8 +1,8 @@
-import { Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
 
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface ValidationError {
@@ -45,12 +45,12 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
 
   if (isValidating) {
     return (
-      <Collapse in={true}>
+      <AppCollapse in={true}>
         <AppAlert severity="info" style={{ marginBottom: 16 }}>
           <AppAlertTitle>Validating...</AppAlertTitle>
           Checking compose file syntax and structure.
         </AppAlert>
-      </Collapse>
+      </AppCollapse>
     );
   }
 
@@ -63,7 +63,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
 
   if (validation.valid && validation.errors.length === 0) {
     return (
-      <Collapse in={visible}>
+      <AppCollapse in={visible}>
         <AppAlert
           severity="success"
           style={{ marginBottom: 16 }}
@@ -72,7 +72,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
           <AppAlertTitle>Valid</AppAlertTitle>
           Compose file is valid.
         </AppAlert>
-      </Collapse>
+      </AppCollapse>
     );
   }
 
@@ -82,7 +82,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   return (
     <div style={{ marginBottom: theme.spacing(2) }}>
       {errors.length > 0 && (
-        <Collapse in={visible}>
+        <AppCollapse in={visible}>
           <AppAlert
             severity="error"
             style={{ marginBottom: warnings.length > 0 ? 16 : 0 }}
@@ -112,11 +112,11 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
               </div>
             ))}
           </AppAlert>
-        </Collapse>
+        </AppCollapse>
       )}
 
       {warnings.length > 0 && (
-        <Collapse in={visible}>
+        <AppCollapse in={visible}>
           <AppAlert severity="warning" onClose={dismiss}>
             <AppAlertTitle>Warnings ({warnings.length})</AppAlertTitle>
             {warnings.map((warning, index) => (
@@ -142,7 +142,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
               </div>
             ))}
           </AppAlert>
-        </Collapse>
+        </AppCollapse>
       )}
     </div>
   );

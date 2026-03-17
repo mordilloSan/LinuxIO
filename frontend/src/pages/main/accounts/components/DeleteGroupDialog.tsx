@@ -1,9 +1,3 @@
-import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
-} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
@@ -13,6 +7,12 @@ import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteGroupDialogProps {
@@ -58,12 +58,14 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete Group{groupNames.length > 1 ? "s" : ""}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+      <AppDialogTitle>
+        Delete Group{groupNames.length > 1 ? "s" : ""}
+      </AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the following group
           {groupNames.length > 1 ? "s" : ""}?
-        </DialogContentText>
+        </AppDialogContentText>
         <div
           style={{
             marginTop: theme.spacing(2),
@@ -80,12 +82,14 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
             />
           ))}
         </div>
-        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+        <AppDialogContentText
+          style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}
+        >
           This action cannot be undone. Groups that are primary groups for users
           cannot be deleted.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={onClose} disabled={isDeleting}>
           Cancel
         </AppButton>
@@ -97,7 +101,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
-import { TextField } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
@@ -67,13 +67,13 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       titleContent={
         <>
           <Icon icon="mdi:magnify" width={20} height={20} />
-          <TextField
+          <AppTextField
             variant="standard"
             placeholder="Search logs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             size="small"
-            sx={{ ml: 1, flex: 1 }}
+            style={{ marginLeft: 8, flex: 1 }}
           />
         </>
       }

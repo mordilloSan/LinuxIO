@@ -1,4 +1,3 @@
-import { TextField } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -7,6 +6,7 @@ import type { UnitListItem } from "./UnitViews";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
+import AppTextField from "@/components/ui/AppTextField";
 import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
@@ -122,13 +122,12 @@ function UnitListTab<T extends UnitListItem>({
               gap: theme.spacing(2),
             }}
           >
-            <TextField
-              variant="outlined"
+            <AppTextField
               size="small"
               placeholder={searchPlaceholder}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              sx={{ width: 320 }}
+              style={{ width: 320 }}
             />
             <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
           </div>

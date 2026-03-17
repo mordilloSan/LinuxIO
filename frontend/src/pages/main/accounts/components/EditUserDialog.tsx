@@ -1,10 +1,4 @@
-import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Autocomplete,
-} from "@mui/material";
+import { TextField, Autocomplete } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
@@ -14,6 +8,12 @@ import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditUserDialogProps {
@@ -85,8 +85,8 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Edit User: {user.username}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Edit User: {user.username}</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -95,19 +95,19 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <TextField
+          <AppTextField
             label="Username"
             value={user.username}
             fullWidth
             disabled
           />
-          <TextField
+          <AppTextField
             label="Full Name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             fullWidth
           />
-          <TextField
+          <AppTextField
             label="Home Directory"
             value={homeDir}
             onChange={(e) => setHomeDir(e.target.value)}
@@ -147,8 +147,8 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
             }
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={onClose} disabled={isPending}>
           Cancel
         </AppButton>
@@ -159,7 +159,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
         >
           {isPending ? "Saving..." : "Save"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

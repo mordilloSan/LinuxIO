@@ -1,9 +1,11 @@
 import { Icon } from "@iconify/react";
-import { Dialog, DialogTitle, DialogContent, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
 import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
@@ -137,25 +139,23 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={handleClose}
       maxWidth="md"
       fullWidth
+      paperStyle={{
+        backgroundColor: theme.palette.background.default,
+        maxHeight: "80vh",
+      }}
       slotProps={{
-        paper: {
-          sx: {
-            backgroundColor: theme.palette.background.default,
-            maxHeight: "80vh",
-          },
-        },
         transition: {
           onExited: resetState,
         },
       }}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.header.background,
           borderBottom: `1px solid ${theme.palette.divider}`,
           display: "flex",
@@ -200,11 +200,11 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         <AppIconButton onClick={handleClose} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
         </AppIconButton>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        sx={{
-          p: 0,
+      <AppDialogContent
+        style={{
+          padding: 0,
         }}
       >
         <div
@@ -241,8 +241,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             </AppTypography>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </AppDialogContent>
+    </GeneralDialog>
   );
 };
 export default ComposeOperationDialog;
