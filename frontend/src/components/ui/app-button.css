@@ -20,7 +20,7 @@
   /* typography */
   font-family: inherit;
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.75;
   letter-spacing: 0.02857em;
   text-transform: uppercase;
@@ -96,7 +96,7 @@
 /* ── sizes ─────────────────────────────────────── */
 .app-btn--small {
   padding: 4px 10px;
-  font-size: 0.8125rem;
+  font-size: 0.7545rem;
 }
 
 .app-btn--small.app-btn--outlined {
