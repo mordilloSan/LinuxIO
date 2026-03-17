@@ -69,7 +69,6 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
           style={{ marginBottom: 16 }}
           onClose={dismiss}
         >
-          <AppAlertTitle>Valid</AppAlertTitle>
           Compose file is valid.
         </AppAlert>
       </AppCollapse>

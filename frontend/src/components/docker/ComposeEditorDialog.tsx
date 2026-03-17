@@ -1,11 +1,5 @@
-import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  TextField,
-  useTheme,
-} from "@mui/material";
+import { TextField } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, {
   Suspense,
   useCallback,
@@ -21,8 +15,14 @@ import ComposeValidationFeedback, {
 
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogTitle,
+  AppDialogContent,
+  AppDialogActions,
+} from "@/components/ui/AppDialog";
 import AppTypography from "@/components/ui/AppTypography";
 interface ComposeEditorDialogProps {
   open: boolean;
@@ -186,23 +186,22 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   };
   return (
     <>
-      <Dialog
+      <GeneralDialog
         open={open}
         onClose={handleClose}
         maxWidth="lg"
         fullWidth
         fullScreen
-        slotProps={{
-          paper: {
-            sx: {
-              backgroundColor: theme.palette.background.default,
-              m: 0,
-            },
-          },
+        paperStyle={{
+          backgroundColor: theme.palette.background.default,
+          margin: 0,
+          borderRadius: 0,
+          border: "none",
+          boxShadow: "none",
         }}
       >
-        <DialogTitle
-          sx={{
+        <AppDialogTitle
+          style={{
             backgroundColor: theme.header.background,
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
@@ -234,7 +233,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
                 disabled={isSaving}
               />
             ) : (
-              <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 <AppTypography variant="body2" color="text.secondary">
                   Stack: <strong>{stackName}</strong>
                 </AppTypography>
@@ -244,11 +243,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
               </div>
             )}
           </div>
-        </DialogTitle>
+        </AppDialogTitle>
 
-        <DialogContent
-          sx={{
-            p: 0,
+        <AppDialogContent
+          style={{
+            padding: 0,
             display: "flex",
             flexDirection: "column",
           }}
@@ -290,13 +289,13 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
               />
             </Suspense>
           </div>
-        </DialogContent>
+        </AppDialogContent>
 
-        <DialogActions
-          sx={{
+        <AppDialogActions
+          style={{
             backgroundColor: theme.header.background,
             borderTop: `1px solid ${theme.palette.divider}`,
-            p: 2,
+            padding: 8,
           }}
         >
           {readOnly ? (
@@ -325,8 +324,8 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
               </AppButton>
             </>
           )}
-        </DialogActions>
-      </Dialog>
+        </AppDialogActions>
+      </GeneralDialog>
 
       <UnsavedChangesDialog
         open={showUnsavedDialog}
