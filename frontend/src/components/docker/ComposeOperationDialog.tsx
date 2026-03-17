@@ -1,16 +1,11 @@
 import { Icon } from "@iconify/react";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  LinearProgress,
-  useTheme,
-} from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, useTheme } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
 import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
 interface ComposeOperationDialogProps {
@@ -176,8 +171,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           }}
         >
           {isRunning && (
-            <LinearProgress
-              sx={{
+            <AppLinearProgress
+              style={{
                 width: 100,
               }}
             />

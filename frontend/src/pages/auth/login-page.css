@@ -37,3 +37,31 @@
     animation: none;
   }
 }
+
+@keyframes login-lift-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-paper {
+  padding: 12px;
+  padding-top: 24px;
+  opacity: 0;
+  transform: translateY(18px) scale(0.98);
+  animation: login-lift-in 0.5s ease forwards;
+}
+
+@media (min-width: 600px) {
+  .login-paper {
+    padding: 18px;
+    padding-top: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-paper {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

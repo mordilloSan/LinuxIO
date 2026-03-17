@@ -1,7 +1,6 @@
 import {
   Alert,
   Autocomplete,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -9,7 +8,6 @@ import {
   DialogTitle,
   FormControlLabel,
   Grid,
-  LinearProgress,
   Switch,
   TableCell,
   TextField,
@@ -32,6 +30,8 @@ import UnifiedCollapsibleTable, {
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -204,7 +204,9 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
                     ...params.InputProps,
                     endAdornment: (
                       <>
-                        {loadingExports ? <CircularProgress size={20} /> : null}
+                        {loadingExports ? (
+                          <AppCircularProgress size={20} />
+                        ) : null}
                         {params.InputProps.endAdornment}
                       </>
                     ),
@@ -710,13 +712,13 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       marginBottom: 4,
                     }}
                   >
-                    <LinearProgress
+                    <AppLinearProgress
                       variant="determinate"
                       value={mount.usedPct}
-                      sx={{
+                      style={{
                         height: 6,
                         borderRadius: 3,
-                        mb: 0.5,
+                        marginBottom: 2,
                       }}
                       color={
                         mount.usedPct > 90
@@ -828,13 +830,13 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     width: "100%",
                   }}
                 >
-                  <LinearProgress
+                  <AppLinearProgress
                     variant="determinate"
                     value={mount.usedPct}
-                    sx={{
+                    style={{
                       height: 6,
                       borderRadius: 3,
-                      mb: 0.5,
+                      marginBottom: 2,
                     }}
                     color={
                       mount.usedPct > 90

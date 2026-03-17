@@ -5,14 +5,14 @@ import {
   FormControlLabel,
   Checkbox,
   Alert,
-  Paper,
   Typography,
-  CircularProgress,
 } from "@mui/material";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppPaper from "@/components/ui/AppPaper";
 import type { ValidationResult, InstallResult } from "@/types/module";
 
 interface InstallModuleProps {
@@ -79,7 +79,7 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
 
   return (
     <Box sx={{ mt: 2, maxWidth: 800 }}>
-      <Paper sx={{ p: 3 }}>
+      <AppPaper style={{ padding: 12 }}>
         <Typography variant="h6" gutterBottom>
           Install Module from Path
         </Typography>
@@ -128,14 +128,14 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
               onClick={handleValidate}
               disabled={validatePending || installPending || !path}
             >
-              {validatePending ? <CircularProgress size={20} /> : "Validate"}
+              {validatePending ? <AppCircularProgress size={20} /> : "Validate"}
             </Button>
             <Button
               variant="contained"
               onClick={handleInstall}
               disabled={validatePending || installPending || !path}
             >
-              {installPending ? <CircularProgress size={20} /> : "Install"}
+              {installPending ? <AppCircularProgress size={20} /> : "Install"}
             </Button>
           </Box>
 
@@ -176,7 +176,7 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
             </Box>
           )}
         </Box>
-      </Paper>
+      </AppPaper>
     </Box>
   );
 };

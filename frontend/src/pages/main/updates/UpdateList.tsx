@@ -1,4 +1,4 @@
-import { CardContent, CircularProgress, Collapse } from "@mui/material";
+import { CircularProgress, Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppCardContent from "@/components/ui/AppCardContent";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -118,7 +119,7 @@ const UpdateList: React.FC<Props> = ({
           }}
         >
           <FrostedCard hoverLift>
-            <CardContent>
+            <AppCardContent>
               <div
                 style={{
                   display: "flex",
@@ -231,7 +232,7 @@ const UpdateList: React.FC<Props> = ({
                   )}
                 </div>
               </Collapse>
-            </CardContent>
+            </AppCardContent>
           </FrostedCard>
         </AppGrid>
       ))}

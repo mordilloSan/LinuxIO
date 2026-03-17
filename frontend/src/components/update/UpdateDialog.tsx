@@ -4,13 +4,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  LinearProgress,
-  Paper,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useEffect, useRef } from "react";
 
 import AppButton from "@/components/ui/AppButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 interface UpdateDialogProps {
   open: boolean;
@@ -140,10 +140,10 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
               >
                 Progress
               </AppTypography>
-              <LinearProgress
+              <AppLinearProgress
                 variant={progress > 0 ? "determinate" : "indeterminate"}
                 value={progress}
-                sx={{
+                style={{
                   height: 8,
                   borderRadius: 1,
                 }}
@@ -161,14 +161,14 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
               >
                 Installation Output
               </AppTypography>
-              <Paper
+              <AppPaper
                 variant="outlined"
-                sx={{
+                style={{
                   maxHeight: 300,
                   overflowY: "auto",
-                  bgcolor: "grey.900",
-                  color: "grey.100",
-                  p: 2,
+                  backgroundColor: "var(--mui-palette-grey-900)",
+                  color: "var(--mui-palette-grey-100)",
+                  padding: 8,
                   fontFamily: "monospace",
                   fontSize: "0.875rem",
                 }}
@@ -185,7 +185,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                   </div>
                 ))}
                 <div ref={outputEndRef} />
-              </Paper>
+              </AppPaper>
             </div>
           )}
         </div>

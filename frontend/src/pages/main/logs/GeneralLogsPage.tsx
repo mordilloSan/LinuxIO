@@ -8,7 +8,6 @@ import {
   InputAdornment,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   Switch,
   TableCell,
@@ -28,6 +27,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppPaper from "@/components/ui/AppPaper";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
@@ -477,68 +477,71 @@ const GeneralLogsPage: React.FC = () => {
   }, []);
 
   // Render expanded content
-  const renderExpandedContent = useCallback((log: LogEntry) => {
-    return (
-      <>
-        <AppTypography variant="subtitle2" gutterBottom>
-          <b>Full Message:</b>
-        </AppTypography>
-        <Paper
-          sx={(theme) => ({
-            p: 2,
-            mb: 2,
-            bgcolor: alpha(
-              theme.palette.common.black,
-              theme.palette.mode === "dark" ? 0.3 : 0.02,
-            ),
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            maxWidth: "100%",
-            overflowX: "auto",
-          })}
-        >
-          {log.message}
-        </Paper>
+  const renderExpandedContent = useCallback(
+    (log: LogEntry) => {
+      return (
+        <>
+          <AppTypography variant="subtitle2" gutterBottom>
+            <b>Full Message:</b>
+          </AppTypography>
+          <AppPaper
+            style={{
+              padding: 8,
+              marginBottom: 8,
+              backgroundColor: alpha(
+                theme.palette.common.black,
+                theme.palette.mode === "dark" ? 0.3 : 0.02,
+              ),
+              fontFamily: "monospace",
+              fontSize: "0.85rem",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              maxWidth: "100%",
+              overflowX: "auto",
+            }}
+          >
+            {log.message}
+          </AppPaper>
 
-        {log.rawJson && (
-          <>
-            <AppTypography variant="subtitle2" gutterBottom>
-              <b>Raw Journal Entry:</b>
-            </AppTypography>
-            <Paper
-              className="custom-scrollbar"
-              sx={(theme) => ({
-                p: 2,
-                bgcolor: alpha(
-                  theme.palette.common.black,
-                  theme.palette.mode === "dark" ? 0.3 : 0.02,
-                ),
-                fontFamily: "monospace",
-                fontSize: "0.75rem",
-                maxHeight: 300,
-                overflowY: "auto",
-                maxWidth: "100%",
-                overflowX: "auto",
-              })}
-            >
-              <pre
+          {log.rawJson && (
+            <>
+              <AppTypography variant="subtitle2" gutterBottom>
+                <b>Raw Journal Entry:</b>
+              </AppTypography>
+              <AppPaper
+                className="custom-scrollbar"
                 style={{
-                  margin: 0,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  overflowWrap: "anywhere",
+                  padding: 8,
+                  backgroundColor: alpha(
+                    theme.palette.common.black,
+                    theme.palette.mode === "dark" ? 0.3 : 0.02,
+                  ),
+                  fontFamily: "monospace",
+                  fontSize: "0.75rem",
+                  maxHeight: 300,
+                  overflowY: "auto",
+                  maxWidth: "100%",
+                  overflowX: "auto",
                 }}
               >
-                {JSON.stringify(log.rawJson, null, 2)}
-              </pre>
-            </Paper>
-          </>
-        )}
-      </>
-    );
-  }, []);
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {JSON.stringify(log.rawJson, null, 2)}
+                </pre>
+              </AppPaper>
+            </>
+          )}
+        </>
+      );
+    },
+    [theme.palette.common.black, theme.palette.mode],
+  );
 
   return (
     <div>

@@ -1,13 +1,8 @@
 import { Icon } from "@iconify/react";
-import {
-  CardContent,
-  Collapse,
-  IconButton,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { Collapse, IconButton, useMediaQuery, useTheme } from "@mui/material";
 import { useMemo, useState } from "react";
 
+import AppCardContent from "@/components/ui/AppCardContent";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardBorderRadius } from "@/constants";
 import { CollapsibleTableProps } from "@/types/collapsible";
@@ -79,13 +74,13 @@ export default function CollapsibleCard<T extends Record<string, any>>({
 
       {/* content */}
       <div style={{ position: "relative", zIndex: 1 }}>
-        <CardContent
-          sx={{
+        <AppCardContent
+          style={{
             display: "flex",
             flexDirection: isSmallScreen ? "column" : "row",
             alignItems: isSmallScreen ? "flex-start" : "center",
             minHeight: 64,
-            gap: isSmallScreen ? 0.5 : 1,
+            gap: isSmallScreen ? 2 : 4,
           }}
         >
           {columns.map((col) => (
@@ -113,7 +108,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
               <Icon icon="mdi:chevron-down" width={24} height={24} />
             )}
           </IconButton>
-        </CardContent>
+        </AppCardContent>
 
         <Collapse in={open} unmountOnExit>
           <div

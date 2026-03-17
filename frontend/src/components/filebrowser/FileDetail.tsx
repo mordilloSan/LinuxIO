@@ -1,11 +1,13 @@
 import { Icon } from "@iconify/react";
-import { Button, CircularProgress, Paper, useTheme } from "@mui/material";
+import { Button, useTheme } from "@mui/material";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 import { isEditableFile } from "@/components/filebrowser/utils";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
+import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { formatDate, formatFileSize } from "@/utils/formaters";
@@ -78,17 +80,17 @@ const FileDetail: React.FC<FileDetailProps> = ({
       : null;
   if (!resource) {
     return (
-      <Paper
+      <AppPaper
         variant="outlined"
-        sx={{
-          borderRadius: 2,
-          p: 3,
+        style={{
+          borderRadius: 8,
+          padding: 12,
         }}
       >
         <AppTypography variant="body2" color="text.secondary">
           Select an item to view its details.
         </AppTypography>
-      </Paper>
+      </AppPaper>
     );
   }
   const isSymlink = resource.symlink;
@@ -105,14 +107,14 @@ const FileDetail: React.FC<FileDetailProps> = ({
     return "File";
   };
   return (
-    <Paper
+    <AppPaper
       variant="outlined"
-      sx={{
-        borderRadius: 2,
+      style={{
+        borderRadius: 8,
         display: "flex",
         flexDirection: "column",
-        p: 3,
-        gap: 2,
+        padding: 12,
+        gap: 8,
       }}
     >
       {/* Header with icon and name */}
@@ -197,7 +199,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
                   gap: theme.spacing(1),
                 }}
               >
-                <CircularProgress size={16} />
+                <AppCircularProgress size={16} />
                 <AppTypography variant="body2">Calculating...</AppTypography>
               </div>
             ) : size !== undefined && size !== null && size !== 0 ? (
@@ -244,7 +246,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
               gap: theme.spacing(1),
             }}
           >
-            <CircularProgress size={16} />
+            <AppCircularProgress size={16} />
             <AppTypography variant="body2">
               Loading permissions...
             </AppTypography>
@@ -281,7 +283,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
           </div>
         </>
       )}
-    </Paper>
+    </AppPaper>
   );
 };
 export default FileDetail;

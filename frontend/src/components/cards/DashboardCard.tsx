@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  CardContent,
   FormControl,
   Select,
   MenuItem,
@@ -12,6 +11,7 @@ import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
+import AppCardContent from "@/components/ui/AppCardContent";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
@@ -221,7 +221,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         ...(hovered && getAccentCardHoverStyles(theme, primaryColor)),
       }}
     >
-      <CardContent>
+      <AppCardContent>
         {/* Header */}
         <div
           style={{
@@ -364,7 +364,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
             {stats}
           </div>
         )}
-      </CardContent>
+      </AppCardContent>
     </FrostedCard>
   );
 };

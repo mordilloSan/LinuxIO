@@ -1,0 +1,26 @@
+/* ── AppFormControlLabel ─────────────────────────────── */
+.app-form-control-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  vertical-align: middle;
+  -webkit-tap-highlight-color: transparent;
+  margin-left: -11px;
+  margin-right: 16px;
+}
+
+.app-form-control-label:has(:disabled) {
+  cursor: default;
+}
+
+.app-form-control-label__text {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.43;
+  letter-spacing: 0.01071em;
+  color: var(--mui-palette-text-primary);
+}
+
+.app-form-control-label:has(:disabled) .app-form-control-label__text {
+  color: var(--mui-palette-text-disabled);
+}

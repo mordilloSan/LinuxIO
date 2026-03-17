@@ -1,18 +1,12 @@
-import { Paper } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { keyframes } from "@mui/system";
 import React from "react";
 
 import LoginComponent from "@/components/auth/Login";
+import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 
 import "./login-page.css";
-
-const liftIn = keyframes`
-  from { opacity: 0; transform: translateY(18px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-`;
 
 const Login: React.FC = () => {
   const theme = useTheme();
@@ -58,24 +52,15 @@ const Login: React.FC = () => {
         </div>
       </div>
 
-      <Paper
-        sx={(theme) => ({
-          p: { xs: 3, sm: 4.5 },
-          pt: { xs: 6, sm: 7 },
-          borderRadius: 4,
+      <AppPaper
+        className="login-paper"
+        style={{
+          borderRadius: 16,
           backgroundColor: alpha(theme.palette.background.default, 0.9),
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.2)}`,
           boxShadow: `0 26px 60px -40px ${alpha(theme.palette.common.black, 0.75)}`,
           backdropFilter: "blur(14px)",
-          opacity: 0,
-          transform: "translateY(18px) scale(0.98)",
-          animation: `${liftIn} 0.5s ease forwards`,
-          "@media (prefers-reduced-motion: reduce)": {
-            animation: "none",
-            opacity: 1,
-            transform: "none",
-          },
-        })}
+        }}
       >
         <div
           style={{
@@ -91,7 +76,7 @@ const Login: React.FC = () => {
           </AppTypography>
         </div>
         <LoginComponent />
-      </Paper>
+      </AppPaper>
     </div>
   );
 };

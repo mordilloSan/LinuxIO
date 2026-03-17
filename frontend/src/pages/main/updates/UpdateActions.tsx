@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
-import { LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
@@ -112,10 +112,10 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
               )}
             </div>
           </div>
-          <LinearProgress
+          <AppLinearProgress
             variant="determinate"
             value={progress}
-            sx={{ height: 8, borderRadius: 1 }}
+            style={{ height: 8, borderRadius: 1 }}
           />
           {eventLog && eventLog.length > 0 && (
             <div style={{ marginTop: theme.spacing(1) }}>

@@ -1,14 +1,10 @@
 import { Icon } from "@iconify/react";
-import {
-  DialogContent,
-  DialogTitle,
-  LinearProgress,
-  useTheme,
-} from "@mui/material";
+import { DialogContent, DialogTitle, useTheme } from "@mui/material";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography, {
   type AppTypographyProps,
 } from "@/components/ui/AppTypography";
@@ -83,8 +79,8 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
           }}
         >
           {isRunning && (
-            <LinearProgress
-              sx={{
+            <AppLinearProgress
+              style={{
                 width: 100,
               }}
             />

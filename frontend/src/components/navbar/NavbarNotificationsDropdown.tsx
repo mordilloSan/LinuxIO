@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Badge,
-  LinearProgress,
   List,
   ListItem,
   ListItemIcon,
@@ -14,6 +13,7 @@ import { Link } from "react-router-dom";
 
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { iconSize as iconSizes } from "@/constants";
@@ -192,10 +192,10 @@ function TransferItem({
         secondary={
           <div style={{ marginTop: 4 }}>
             <AppTooltip title={detailText} arrow placement="top">
-              <LinearProgress
+              <AppLinearProgress
                 variant="determinate"
                 value={transfer.progress}
-                sx={{ height: 5, borderRadius: 1, mb: 0.5 }}
+                style={{ height: 5, borderRadius: 1, marginBottom: 2 }}
               />
             </AppTooltip>
             <AppTypography variant="caption" color="text.secondary">
@@ -464,10 +464,10 @@ function NavbarNotificationsDropdown() {
       >
         {peekTransfer && (
           <>
-            <LinearProgress
+            <AppLinearProgress
               variant="determinate"
               value={peekTransfer.progress}
-              sx={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
+              style={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
             />
             <AppTypography
               variant="caption"

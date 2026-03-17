@@ -5,13 +5,13 @@ import {
   DialogTitle,
   TextField,
   useTheme,
-  CircularProgress,
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
@@ -227,7 +227,9 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           variant="contained"
           color="primary"
           disabled={isValidating}
-          startIcon={isValidating ? <CircularProgress size={20} /> : undefined}
+          startIcon={
+            isValidating ? <AppCircularProgress size={20} /> : undefined
+          }
         >
           {isValidating ? "Validating..." : "Next"}
         </AppButton>

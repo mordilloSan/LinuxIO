@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import { Button, Paper, useTheme } from "@mui/material";
+import { Button, useTheme } from "@mui/material";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
 import AppDivider from "@/components/ui/AppDivider";
+import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -181,14 +182,14 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
   }
 
   return (
-    <Paper
+    <AppPaper
       variant="outlined"
-      sx={{
-        borderRadius: 2,
+      style={{
+        borderRadius: 8,
         display: "flex",
         flexDirection: "column",
-        p: 3,
-        gap: 2,
+        padding: 12,
+        gap: 8,
       }}
     >
       <div
@@ -258,7 +259,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           })}
         </div>
       </div>
-    </Paper>
+    </AppPaper>
   );
 };
 

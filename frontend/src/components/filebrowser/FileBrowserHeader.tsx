@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import { CircularProgress, useMediaQuery, useTheme } from "@mui/material";
+import { useMediaQuery, useTheme } from "@mui/material";
 import React, { ReactNode, useCallback } from "react";
 
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -213,7 +214,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       }}
                     >
                       {isIndexing ? (
-                        <CircularProgress size={24} />
+                        <AppCircularProgress size={24} />
                       ) : (
                         <Icon
                           icon="mdi:sync"

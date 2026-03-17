@@ -1,0 +1,8 @@
+/* ── AppCardContent ──────────────────────────────────── */
+.app-card-content {
+  padding: 16px;
+}
+
+.app-card-content:last-child {
+  padding-bottom: 24px;
+}

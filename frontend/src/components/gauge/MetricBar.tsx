@@ -1,7 +1,7 @@
-import { LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
@@ -47,23 +47,22 @@ const MetricBar: React.FC<MetricBarProps> = ({
             {rightLabel}
           </AppTypography>
         </div>
-        <LinearProgress
+        <AppLinearProgress
           variant="determinate"
           value={percent}
-          sx={{
-            width: "100%",
-            height: 7,
-            borderRadius: 4,
-            overflow: "hidden",
-            backgroundColor: alpha(
-              theme.chart.neutral,
-              theme.palette.mode === "dark" ? 0.18 : 0.12,
-            ),
-            "& .MuiLinearProgress-bar": {
-              backgroundColor: color,
+          style={
+            {
+              width: "100%",
+              height: 7,
               borderRadius: 4,
-            },
-          }}
+              overflow: "hidden",
+              backgroundColor: alpha(
+                theme.chart.neutral,
+                theme.palette.mode === "dark" ? 0.18 : 0.12,
+              ),
+              "--_lp-color": color,
+            } as React.CSSProperties
+          }
         />
       </div>
     </AppTooltip>

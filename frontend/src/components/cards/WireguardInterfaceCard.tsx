@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import { CardContent, IconButton } from "@mui/material";
+import { IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
+import AppCardContent from "@/components/ui/AppCardContent";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import {
@@ -68,7 +69,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
         }}
         onClick={() => handleSelectInterface(iface)}
       >
-        <CardContent>
+        <AppCardContent>
           <div
             style={{
               display: "flex",
@@ -156,7 +157,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
           <AppTypography variant="body2" color="text.secondary">
             Peers: {iface.peerCount}
           </AppTypography>
-        </CardContent>
+        </AppCardContent>
       </FrostedCard>
     </motion.div>
   );

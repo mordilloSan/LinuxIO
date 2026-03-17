@@ -11,7 +11,6 @@ import {
   DialogTitle,
   FormControl,
   InputLabel,
-  LinearProgress,
   MenuItem,
   Select,
   Table,
@@ -37,6 +36,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
@@ -511,13 +511,13 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                       width: 100,
                     }}
                   >
-                    <LinearProgress
+                    <AppLinearProgress
                       variant="determinate"
                       value={lv.usedPct}
-                      sx={{
+                      style={{
                         height: 6,
                         borderRadius: 3,
-                        mb: 0.5,
+                        marginBottom: 2,
                       }}
                       color={
                         lv.usedPct > 90
