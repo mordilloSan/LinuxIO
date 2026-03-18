@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, Checkbox } from "@mui/material";
-import AppTextField from "@/components/ui/AppTextField";
+import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -21,6 +20,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -345,7 +345,7 @@ const ImageList: React.FC<ImageListProps> = ({
                         gap: theme.spacing(1),
                       }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(image.id)}
                         onChange={(e) =>
@@ -448,7 +448,7 @@ const ImageList: React.FC<ImageListProps> = ({
           columns={columns}
           getRowKey={(image) => `${image.id}-${image.tag}`}
           renderFirstCell={(image) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(image.id)}
               onChange={(e) => handleSelectOne(image.id, e.target.checked)}
@@ -456,7 +456,7 @@ const ImageList: React.FC<ImageListProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}

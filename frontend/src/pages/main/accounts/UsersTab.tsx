@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Checkbox } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +14,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -286,7 +286,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         gap: 4,
                       }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(user.username)}
                         onChange={(e) =>
@@ -440,7 +440,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           columns={columns}
           getRowKey={(user) => user.username}
           renderFirstCell={(user) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(user.username)}
               onChange={(e) => handleSelectOne(user.username, e.target.checked)}
@@ -451,7 +451,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}

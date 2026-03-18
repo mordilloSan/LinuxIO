@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, Checkbox } from "@mui/material";
-import AppTextField from "@/components/ui/AppTextField";
+import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -21,6 +20,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -294,7 +294,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                         gap: theme.spacing(1),
                       }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(volume.Name)}
                         onChange={(e) =>
@@ -370,7 +370,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
           columns={columns}
           getRowKey={(volume) => volume.Name}
           renderFirstCell={(volume) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(volume.Name)}
               onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
@@ -378,7 +378,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}

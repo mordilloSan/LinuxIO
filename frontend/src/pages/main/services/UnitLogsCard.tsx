@@ -1,12 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppSwitch from "@/components/ui/AppSwitch";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 import { alpha } from "@/utils/color";

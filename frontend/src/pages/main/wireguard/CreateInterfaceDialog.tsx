@@ -9,7 +9,6 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppTextField from "@/components/ui/AppTextField";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -17,6 +16,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 
 interface CreateInterfaceDialogProps {
   open: boolean;

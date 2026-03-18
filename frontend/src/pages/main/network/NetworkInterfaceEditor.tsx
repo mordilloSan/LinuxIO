@@ -1,10 +1,4 @@
-import {
-  Collapse,
-  ToggleButton,
-  ToggleButtonGroup,
-} from "@mui/material";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppSwitch from "@/components/ui/AppSwitch";
+import { Collapse, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
@@ -13,9 +7,11 @@ import { toast } from "sonner";
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
-import AppTextField from "@/components/ui/AppTextField";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
 

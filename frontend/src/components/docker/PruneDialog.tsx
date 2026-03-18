@@ -1,16 +1,17 @@
 import { Icon } from "@iconify/react";
-import { Checkbox, Divider } from "@mui/material";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import { Divider } from "@mui/material";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
 export interface PruneOptions {
   containers: boolean;
@@ -90,7 +91,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         >
           <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={opts.containers}
                 onChange={() => toggle("containers")}
                 disabled={isLoading}
@@ -100,7 +101,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           />
           <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={opts.images}
                 onChange={() => toggle("images")}
                 disabled={isLoading}
@@ -110,7 +111,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           />
           <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={opts.buildCache}
                 onChange={() => toggle("buildCache")}
                 disabled={isLoading}
@@ -120,7 +121,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           />
           <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={opts.networks}
                 onChange={() => toggle("networks")}
                 disabled={isLoading}
@@ -137,7 +138,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
 
           <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={opts.volumes}
                 onChange={() => toggle("volumes")}
                 disabled={isLoading}

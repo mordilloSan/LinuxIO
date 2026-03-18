@@ -1,5 +1,4 @@
 import { useTheme } from "@mui/material/styles";
-import AppTextField from "@/components/ui/AppTextField";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -12,6 +11,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
@@ -53,7 +53,9 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       .replace(/^-+|-+$/g, "")
       .substring(0, 63);
   };
-  const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleStackNameChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
     const sanitized = sanitizeStackName(e.target.value);
     setStackName(sanitized);
 
@@ -71,7 +73,9 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       });
     }
   };
-  const handleWorkingDirChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleWorkingDirChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
     setWorkingDir(e.target.value);
     setIsWorkingDirManuallyEdited(true);
     if (errors.workingDir) {

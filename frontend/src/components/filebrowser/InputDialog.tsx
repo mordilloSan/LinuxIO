@@ -1,4 +1,3 @@
-import AppTextField from "@/components/ui/AppTextField";
 import React, { useState, useCallback } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
@@ -9,6 +8,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 
 interface InputDialogProps {
   open: boolean;

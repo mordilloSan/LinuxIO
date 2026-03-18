@@ -7,8 +7,6 @@ import {
   Select,
   TextField,
 } from "@mui/material";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppSwitch from "@/components/ui/AppSwitch";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -19,15 +17,17 @@ import React, {
 } from "react";
 
 import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
-import AppTextField from "@/components/ui/AppTextField";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
 import Chip from "@/components/ui/AppChip";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPaper from "@/components/ui/AppPaper";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";

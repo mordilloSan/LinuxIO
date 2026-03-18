@@ -1,18 +1,15 @@
-import {
-  Box,
-  TextField,
-  Button,
-  FormControlLabel,
-  Checkbox,
-  Alert,
-  Typography,
-} from "@mui/material";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
+import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppPaper from "@/components/ui/AppPaper";
+import AppTextField from "@/components/ui/AppTextField";
+import AppTypography from "@/components/ui/AppTypography";
 import type { ValidationResult, InstallResult } from "@/types/module";
 
 interface InstallModuleProps {
@@ -26,7 +23,6 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
   const [validationResult, setValidationResult] =
     useState<ValidationResult | null>(null);
 
-  // Mutations
   const { mutate: validateMutation, isPending: validatePending } =
     linuxio.modules.validate_module.useMutation();
 
@@ -64,37 +60,32 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
     installMutation([path, targetName, createSymlink ? "true" : "false"], {
       onSuccess: (result: InstallResult) => {
         toast.success(result.message || "Module installed successfully!");
-
-        // Reset form
         setPath("");
         setTargetName("");
         setCreateSymlink(false);
         setValidationResult(null);
-
-        // Navigate to installed modules
         onInstalled();
       },
     });
   };
 
   return (
-    <Box sx={{ mt: 2, maxWidth: 800 }}>
+    <div style={{ marginTop: 8, maxWidth: 800 }}>
       <AppPaper style={{ padding: 12 }}>
-        <Typography variant="h6" gutterBottom>
+        <AppTypography variant="h6" gutterBottom>
           Install Module from Path
-        </Typography>
-        <Typography
+        </AppTypography>
+        <AppTypography
           variant="body2"
           color="text.secondary"
-          component="p"
-          sx={{ mb: 2 }}
+          style={{ marginBottom: 8 }}
         >
           Install a module from a local filesystem path. The module must contain
           a valid <code>module.yaml</code> file.
-        </Typography>
+        </AppTypography>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <TextField
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <AppTextField
             label="Module Path"
             value={path}
             onChange={(e) => setPath(e.target.value)}
@@ -103,7 +94,7 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
             helperText="Absolute path to the module directory"
           />
 
-          <TextField
+          <AppTextField
             label="Target Name (Optional)"
             value={targetName}
             onChange={(e) => setTargetName(e.target.value)}
@@ -112,9 +103,9 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
             helperText="Custom name for the installed module"
           />
 
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={createSymlink}
                 onChange={(e) => setCreateSymlink(e.target.checked)}
               />
@@ -122,47 +113,46 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
             label="Create symlink (for development)"
           />
 
-          <Box sx={{ display: "flex", gap: 2 }}>
-            <Button
+          <div style={{ display: "flex", gap: 8 }}>
+            <AppButton
               variant="outlined"
               onClick={handleValidate}
               disabled={validatePending || installPending || !path}
             >
               {validatePending ? <AppCircularProgress size={20} /> : "Validate"}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="contained"
               onClick={handleInstall}
               disabled={validatePending || installPending || !path}
             >
               {installPending ? <AppCircularProgress size={20} /> : "Install"}
-            </Button>
-          </Box>
+            </AppButton>
+          </div>
 
-          {/* Validation Results */}
           {validationResult && (
-            <Box sx={{ mt: 2 }}>
+            <div style={{ marginTop: 8 }}>
               {validationResult.valid ? (
-                <Alert severity="success">
+                <AppAlert severity="success">
                   Module is valid!
                   {validationResult.manifest && (
-                    <Box sx={{ mt: 1 }}>
-                      <Typography variant="body2">
+                    <div style={{ marginTop: 4 }}>
+                      <AppTypography variant="body2">
                         <strong>Name:</strong> {validationResult.manifest.name}
-                      </Typography>
-                      <Typography variant="body2">
+                      </AppTypography>
+                      <AppTypography variant="body2">
                         <strong>Version:</strong>{" "}
                         {validationResult.manifest.version}
-                      </Typography>
-                      <Typography variant="body2">
+                      </AppTypography>
+                      <AppTypography variant="body2">
                         <strong>Title:</strong>{" "}
                         {validationResult.manifest.title}
-                      </Typography>
-                    </Box>
+                      </AppTypography>
+                    </div>
                   )}
-                </Alert>
+                </AppAlert>
               ) : (
-                <Alert severity="error">
+                <AppAlert severity="error">
                   Validation failed:
                   <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
                     {validationResult.errors?.map(
@@ -171,13 +161,13 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
                       ),
                     )}
                   </ul>
-                </Alert>
+                </AppAlert>
               )}
-            </Box>
+            </div>
           )}
-        </Box>
+        </div>
       </AppPaper>
-    </Box>
+    </div>
   );
 };
 

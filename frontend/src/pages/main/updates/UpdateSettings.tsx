@@ -1,10 +1,4 @@
-import {
-  MenuItem,
-  Select,
-  type SelectChangeEvent,
-} from "@mui/material";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppSwitch from "@/components/ui/AppSwitch";
+import { MenuItem, Select, type SelectChangeEvent } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -17,9 +11,11 @@ import {
   type AutoUpdateScope,
   type AutoUpdateState,
 } from "@/api";
-import AppTextField from "@/components/ui/AppTextField";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const updatesToastMeta = {

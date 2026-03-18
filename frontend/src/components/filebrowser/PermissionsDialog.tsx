@@ -1,6 +1,5 @@
 import {
   Autocomplete,
-  Checkbox,
   Table,
   TableBody,
   TableCell,
@@ -11,7 +10,6 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
@@ -21,6 +19,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
 interface PermissionsDialogProps {
   open: boolean;
@@ -273,19 +272,19 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
                 </AppTypography>
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.owner.read}
                   onChange={() => handlePermissionChange("owner", "read")}
                 />
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.owner.write}
                   onChange={() => handlePermissionChange("owner", "write")}
                 />
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.owner.execute}
                   onChange={() => handlePermissionChange("owner", "execute")}
                 />
@@ -298,19 +297,19 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
                 </AppTypography>
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.group.read}
                   onChange={() => handlePermissionChange("group", "read")}
                 />
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.group.write}
                   onChange={() => handlePermissionChange("group", "write")}
                 />
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.group.execute}
                   onChange={() => handlePermissionChange("group", "execute")}
                 />
@@ -323,19 +322,19 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
                 </AppTypography>
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.others.read}
                   onChange={() => handlePermissionChange("others", "read")}
                 />
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.others.write}
                   onChange={() => handlePermissionChange("others", "write")}
                 />
               </TableCell>
               <TableCell align="center">
-                <Checkbox
+                <AppCheckbox
                   checked={permissions.others.execute}
                   onChange={() => handlePermissionChange("others", "execute")}
                 />
@@ -352,7 +351,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           >
             <AppFormControlLabel
               control={
-                <Checkbox
+                <AppCheckbox
                   checked={recursive}
                   onChange={(e) => setRecursive(e.target.checked)}
                 />

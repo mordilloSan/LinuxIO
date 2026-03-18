@@ -1,21 +1,11 @@
 import { Icon } from "@iconify/react";
-import {
-  Grid,
-  Checkbox,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-} from "@mui/material";
+import { Grid, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppSwitch from "@/components/ui/AppSwitch";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
-import AppTextField from "@/components/ui/AppTextField";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
@@ -29,6 +19,8 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import {
   AppTable,
   AppTableBody,
@@ -36,6 +28,7 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -432,7 +425,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         gap: theme.spacing(1),
                       }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(network.Id)}
                         onChange={(e) =>
@@ -540,7 +533,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
           columns={columns}
           getRowKey={(network) => network.Id}
           renderFirstCell={(network) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(network.Id)}
               onChange={(e) => handleSelectOne(network.Id, e.target.checked)}
@@ -548,7 +541,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}

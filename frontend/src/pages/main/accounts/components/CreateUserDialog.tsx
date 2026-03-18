@@ -1,9 +1,4 @@
-import {
-  TextField,
-  Checkbox,
-  Autocomplete,
-} from "@mui/material";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import { TextField, Autocomplete } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -11,12 +6,14 @@ import { toast } from "sonner";
 import { linuxio, type CreateUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTextField from "@/components/ui/AppTextField";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -188,7 +185,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
           />
           <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={createHome}
                 onChange={(e) => setCreateHome(e.target.checked)}
               />

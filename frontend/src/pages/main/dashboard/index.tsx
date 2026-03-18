@@ -13,8 +13,7 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { Checkbox, Grid, Popover } from "@mui/material";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import { Grid, Popover } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo, useState } from "react";
 
@@ -30,6 +29,7 @@ import SystemHealth from "./System";
 
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
@@ -170,7 +170,7 @@ const Dashboard: React.FC = () => {
             <AppFormControlLabel
               key={card.id}
               control={
-                <Checkbox
+                <AppCheckbox
                   checked={!hiddenCards?.includes(card.id)}
                   onChange={() => toggleCard(card.id)}
                   size="small"

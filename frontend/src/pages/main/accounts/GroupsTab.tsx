@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Checkbox } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -12,6 +11,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -183,7 +183,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 4 }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(group.name)}
                         onChange={(e) =>
@@ -268,7 +268,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           columns={columns}
           getRowKey={(group) => group.name}
           renderFirstCell={(group) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(group.name)}
               onChange={(e) => handleSelectOne(group.name, e.target.checked)}
@@ -277,7 +277,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}
