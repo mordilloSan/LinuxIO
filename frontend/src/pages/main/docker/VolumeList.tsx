@@ -28,6 +28,7 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";

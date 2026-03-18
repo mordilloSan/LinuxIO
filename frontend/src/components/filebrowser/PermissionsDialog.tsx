@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
+import AppCheckbox from "../ui/AppCheckbox";
 interface PermissionsDialogProps {
   open: boolean;
   pathLabel: string;
