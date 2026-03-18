@@ -1,19 +1,14 @@
 import { Icon } from "@iconify/react";
-import {
-  Alert,
-  Checkbox,
-  Divider,
-  FormControlLabel,
-} from "@mui/material";
+import { Alert, Checkbox, Divider, FormControlLabel } from "@mui/material";
+import React, { useState } from "react";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import React, { useState } from "react";
-
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 export interface PruneOptions {
   containers: boolean;

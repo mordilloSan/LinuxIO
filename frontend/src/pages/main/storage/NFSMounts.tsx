@@ -6,13 +6,6 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
@@ -25,6 +18,7 @@ import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -32,6 +26,12 @@ import UnifiedCollapsibleTable, {
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";

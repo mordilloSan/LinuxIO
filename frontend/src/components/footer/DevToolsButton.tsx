@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
-import { shadowSm } from "@/constants";
 import React from "react";
 
 import "@/components/cards/frosted-card.css";
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
 import AppTypography from "@/components/ui/AppTypography";
+import { shadowSm } from "@/constants";
 
 const DevToolsButton: React.FC = () => {
   const theme = useTheme();

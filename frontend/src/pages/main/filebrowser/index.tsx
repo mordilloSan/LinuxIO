@@ -1,16 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Alert,
-  AlertTitle,
-  List,
-  ListItem,
-  ListItemText,
-} from "@mui/material";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
+import { Alert, AlertTitle, List, ListItem, ListItemText } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -54,6 +43,11 @@ import {
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -1275,7 +1269,9 @@ const FileBrowser: React.FC = () => {
         disableEscapeKeyDown={isUploadProcessing}
       >
         <AppDialogTitle>Upload files or folders</AppDialogTitle>
-        <AppDialogContent style={{ borderTop: `1px solid ${theme.palette.divider}` }}>
+        <AppDialogContent
+          style={{ borderTop: `1px solid ${theme.palette.divider}` }}
+        >
           <AppTypography variant="body2" color="text.secondary">
             Items will be uploaded to {normalizedPath}
           </AppTypography>
@@ -1378,7 +1374,9 @@ const FileBrowser: React.FC = () => {
         fullWidth
       >
         <AppDialogTitle>Overwrite existing items?</AppDialogTitle>
-        <AppDialogContent style={{ borderTop: `1px solid ${theme.palette.divider}` }}>
+        <AppDialogContent
+          style={{ borderTop: `1px solid ${theme.palette.divider}` }}
+        >
           <AppTypography
             variant="body2"
             style={{

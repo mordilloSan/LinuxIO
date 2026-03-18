@@ -6,9 +6,8 @@ import {
   ListItemIcon,
   ListItemText,
   Popover,
-  useTheme,
 } from "@mui/material";
-import { shadowSm } from "@/constants";
+import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -17,6 +16,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { shadowSm } from "@/constants";
 import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useFileTransfers } from "@/hooks/useFileTransfers";

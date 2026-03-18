@@ -7,16 +7,16 @@ import {
   Select,
   TextField,
 } from "@mui/material";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 
 interface CreateInterfaceDialogProps {
   open: boolean;

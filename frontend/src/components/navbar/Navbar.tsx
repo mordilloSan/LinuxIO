@@ -5,10 +5,8 @@ import {
   AppBar,
   Toolbar,
   useMediaQuery,
-  useTheme,
 } from "@mui/material";
-import AppIconButton from "@/components/ui/AppIconButton";
-import { shadowSm } from "@/constants";
+import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
@@ -16,6 +14,8 @@ import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
 import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
 
+import AppIconButton from "@/components/ui/AppIconButton";
+import { shadowSm } from "@/constants";
 import { iconSize } from "@/constants";
 import { getHoverBackground } from "@/theme/components";
 

@@ -11,16 +11,16 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
 import React, { useState, useCallback } from "react";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import AppTypography from "@/components/ui/AppTypography";
 interface PermissionsDialogProps {
   open: boolean;

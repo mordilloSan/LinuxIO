@@ -1,11 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  CardContent,
-  Grid,
-} from "@mui/material";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import { AppDialogContent } from "@/components/ui/AppDialog";
-import AppIconButton from "@/components/ui/AppIconButton";
+import { CardContent, Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
@@ -13,8 +7,11 @@ import { toast } from "sonner";
 
 import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
+import { AppDialogContent } from "@/components/ui/AppDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";

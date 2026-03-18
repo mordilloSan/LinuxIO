@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { shadowSm } from "@/constants";
 import React, { ReactNode, useCallback } from "react";
 
 import IndexerDialog from "./IndexerDialog";
@@ -12,6 +11,7 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { shadowSm } from "@/constants";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 interface FileBrowserHeaderProps {

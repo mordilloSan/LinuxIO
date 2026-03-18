@@ -13,9 +13,9 @@ import ComposeValidationFeedback, {
   ValidationResult,
 } from "./ComposeValidationFeedback";
 
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import {

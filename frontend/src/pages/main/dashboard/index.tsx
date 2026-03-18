@@ -13,14 +13,8 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import {
-  Checkbox,
-  FormControlLabel,
-  Grid,
-  Popover,
-} from "@mui/material";
+import { Checkbox, FormControlLabel, Grid, Popover } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useCallback, useMemo, useState } from "react";
 
 import DockerInfo from "./Docker";
@@ -35,6 +29,7 @@ import SystemHealth from "./System";
 
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";

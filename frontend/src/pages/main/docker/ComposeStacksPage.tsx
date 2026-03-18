@@ -1,10 +1,3 @@
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -18,6 +11,7 @@ import {
   openFileUploadStream,
   STREAM_CHUNK_SIZE,
 } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
@@ -29,6 +23,12 @@ import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
 import { useStreamResult } from "@/hooks/useStreamResult";
 

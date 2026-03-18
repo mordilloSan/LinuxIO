@@ -6,27 +6,28 @@ import {
   Select,
   SelectChangeEvent,
 } from "@mui/material";
+
+import { useTheme } from "@mui/material/styles";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+
+import "@xterm/xterm/css/xterm.css";
+import {
+  decodeString,
+  encodeString,
+  linuxio,
+  openContainerStream,
+  useStreamMux,
+} from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import { useTheme } from "@mui/material/styles";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import React, { useEffect, useRef, useState, useCallback } from "react";
-
-import "@xterm/xterm/css/xterm.css";
-import {
-  linuxio,
-  useStreamMux,
-  encodeString,
-  decodeString,
-  openContainerStream,
-} from "@/api";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
-import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
 interface Props {

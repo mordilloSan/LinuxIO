@@ -1,14 +1,6 @@
 import { Icon } from "@iconify/react";
-import {
-  Tab,
-  Tabs,
-} from "@mui/material";
-import {
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
+import { Tab, Tabs } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
@@ -16,6 +8,8 @@ import NavbarCustomizer from "./NavbarCustomizer";
 import ThemeColorsSection from "./ThemeColorsSection";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 type SettingsTab = "general" | "docker";
 interface SettingsDialogProps {

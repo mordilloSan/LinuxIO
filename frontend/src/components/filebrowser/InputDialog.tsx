@@ -1,16 +1,14 @@
-import {
-  TextField,
-} from "@mui/material";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
+import { TextField } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 
 interface InputDialogProps {
   open: boolean;

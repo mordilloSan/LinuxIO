@@ -11,24 +11,24 @@ import {
   Switch,
   useTheme,
 } from "@mui/material";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import {
   AppTable,
   AppTableBody,
@@ -243,7 +243,9 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
             />
           ))}
         </div>
-        <AppDialogContentText style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}>
+        <AppDialogContentText
+          style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}
+        >
           This action cannot be undone. Networks with connected containers
           cannot be deleted.
         </AppDialogContentText>

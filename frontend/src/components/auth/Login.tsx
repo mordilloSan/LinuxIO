@@ -13,16 +13,22 @@ import { alpha } from "@/utils/color";
 
 function LogIn() {
   const theme = useTheme();
-  const [focusedField, setFocusedField] = useState<"username" | "password" | null>(null);
+  const [focusedField, setFocusedField] = useState<
+    "username" | "password" | null
+  >(null);
 
-  const makeFieldStyle = (field: "username" | "password") => ({
-    "--lf-bg": alpha(theme.palette.background.default, 0.65),
-    "--lf-border": alpha(theme.palette.text.secondary, 0.3),
-    "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
-    "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.35),
-    "--lf-card-bg": alpha(theme.palette.background.default, 0.9),
-    "--lf-label-color": focusedField === field ? theme.palette.primary.main : theme.palette.text.secondary,
-  } as React.CSSProperties);
+  const makeFieldStyle = (field: "username" | "password") =>
+    ({
+      "--lf-bg": alpha(theme.palette.background.default, 0.65),
+      "--lf-border": alpha(theme.palette.text.secondary, 0.3),
+      "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
+      "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.35),
+      "--lf-card-bg": alpha(theme.palette.background.default, 0.9),
+      "--lf-label-color":
+        focusedField === field
+          ? theme.palette.primary.main
+          : theme.palette.text.secondary,
+    }) as React.CSSProperties;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

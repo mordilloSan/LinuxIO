@@ -1,6 +1,5 @@
 import { Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { shadowSm } from "@/constants";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -19,6 +18,7 @@ import {
 } from "@/api";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { shadowSm } from "@/constants";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;

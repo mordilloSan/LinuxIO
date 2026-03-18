@@ -135,12 +135,8 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          sx: {
-            backgroundColor: theme.palette.background.default,
-          },
-        },
+      paperStyle={{
+        backgroundColor: theme.palette.background.default,
       }}
     >
       <AppDialogTitle

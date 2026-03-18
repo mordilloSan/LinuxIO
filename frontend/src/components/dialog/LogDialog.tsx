@@ -1,18 +1,11 @@
 import { Icon } from "@iconify/react";
-import {
-  Alert,
-  Switch,
-  FormControlLabel,
-} from "@mui/material";
-import {
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
+import { Alert, Switch, FormControlLabel } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";

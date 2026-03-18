@@ -1,15 +1,7 @@
 import { Icon } from "@iconify/react";
-import {
-  Collapse,
-  Divider,
-  Grid,
-  MenuItem,
-  Select,
-} from "@mui/material";
-import AppIconButton from "@/components/ui/AppIconButton";
+import { Collapse, Divider, Grid, MenuItem, Select } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
-import AppButton from "@/components/ui/AppButton";
 import { useSearchParams } from "react-router-dom";
 
 import "@/theme/section.css";
@@ -18,7 +10,9 @@ import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formaters";
