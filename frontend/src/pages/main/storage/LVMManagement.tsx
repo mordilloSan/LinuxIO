@@ -7,12 +7,6 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,6 +32,14 @@ import {
 } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableContainer,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -362,30 +364,30 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
 const PVTable: React.FC<{
   data: PhysicalVolume[];
 }> = ({ data }) => (
-  <TableContainer>
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Name</TableCell>
-          <TableCell>Volume Group</TableCell>
-          <TableCell>Size</TableCell>
-          <TableCell>Free</TableCell>
-          <TableCell>Format</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
+  <AppTableContainer>
+    <AppTable>
+      <AppTableHead>
+        <AppTableRow>
+          <AppTableCell>Name</AppTableCell>
+          <AppTableCell>Volume Group</AppTableCell>
+          <AppTableCell>Size</AppTableCell>
+          <AppTableCell>Free</AppTableCell>
+          <AppTableCell>Format</AppTableCell>
+        </AppTableRow>
+      </AppTableHead>
+      <AppTableBody>
         {data.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={5}>
+          <AppTableRow>
+            <AppTableCell colSpan={5}>
               <AppTypography color="text.secondary" align="center">
                 No physical volumes found
               </AppTypography>
-            </TableCell>
-          </TableRow>
+            </AppTableCell>
+          </AppTableRow>
         ) : (
           data.map((pv) => (
-            <TableRow key={pv.name}>
-              <TableCell>
+            <AppTableRow key={pv.name}>
+              <AppTableCell>
                 <AppTypography
                   variant="body2"
                   style={{
@@ -394,61 +396,61 @@ const PVTable: React.FC<{
                 >
                   {pv.name}
                 </AppTypography>
-              </TableCell>
-              <TableCell>{pv.vgName || "-"}</TableCell>
-              <TableCell>{formatFileSize(pv.size)}</TableCell>
-              <TableCell>{formatFileSize(pv.free)}</TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>{pv.vgName || "-"}</AppTableCell>
+              <AppTableCell>{formatFileSize(pv.size)}</AppTableCell>
+              <AppTableCell>{formatFileSize(pv.free)}</AppTableCell>
+              <AppTableCell>
                 <Chip label={pv.format} size="small" variant="soft" />
-              </TableCell>
-            </TableRow>
+              </AppTableCell>
+            </AppTableRow>
           ))
         )}
-      </TableBody>
-    </Table>
-  </TableContainer>
+      </AppTableBody>
+    </AppTable>
+  </AppTableContainer>
 );
 const VGTable: React.FC<{
   data: VolumeGroup[];
 }> = ({ data }) => (
-  <TableContainer>
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Name</TableCell>
-          <TableCell>Size</TableCell>
-          <TableCell>Free</TableCell>
-          <TableCell>PVs</TableCell>
-          <TableCell>LVs</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
+  <AppTableContainer>
+    <AppTable>
+      <AppTableHead>
+        <AppTableRow>
+          <AppTableCell>Name</AppTableCell>
+          <AppTableCell>Size</AppTableCell>
+          <AppTableCell>Free</AppTableCell>
+          <AppTableCell>PVs</AppTableCell>
+          <AppTableCell>LVs</AppTableCell>
+        </AppTableRow>
+      </AppTableHead>
+      <AppTableBody>
         {data.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={5}>
+          <AppTableRow>
+            <AppTableCell colSpan={5}>
               <AppTypography color="text.secondary" align="center">
                 No volume groups found
               </AppTypography>
-            </TableCell>
-          </TableRow>
+            </AppTableCell>
+          </AppTableRow>
         ) : (
           data.map((vg) => (
-            <TableRow key={vg.name}>
-              <TableCell>
+            <AppTableRow key={vg.name}>
+              <AppTableCell>
                 <AppTypography variant="body2" fontWeight={600}>
                   {vg.name}
                 </AppTypography>
-              </TableCell>
-              <TableCell>{formatFileSize(vg.size)}</TableCell>
-              <TableCell>{formatFileSize(vg.free)}</TableCell>
-              <TableCell>{vg.pvCount}</TableCell>
-              <TableCell>{vg.lvCount}</TableCell>
-            </TableRow>
+              </AppTableCell>
+              <AppTableCell>{formatFileSize(vg.size)}</AppTableCell>
+              <AppTableCell>{formatFileSize(vg.free)}</AppTableCell>
+              <AppTableCell>{vg.pvCount}</AppTableCell>
+              <AppTableCell>{vg.lvCount}</AppTableCell>
+            </AppTableRow>
           ))
         )}
-      </TableBody>
-    </Table>
-  </TableContainer>
+      </AppTableBody>
+    </AppTable>
+  </AppTableContainer>
 );
 interface LVTableProps {
   data: LogicalVolume[];
@@ -456,31 +458,31 @@ interface LVTableProps {
   onDelete: (lv: LogicalVolume) => void;
 }
 const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
-  <TableContainer>
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Name</TableCell>
-          <TableCell>Volume Group</TableCell>
-          <TableCell>Size</TableCell>
-          <TableCell>Mountpoint</TableCell>
-          <TableCell>Usage</TableCell>
-          <TableCell align="right">Actions</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
+  <AppTableContainer>
+    <AppTable>
+      <AppTableHead>
+        <AppTableRow>
+          <AppTableCell>Name</AppTableCell>
+          <AppTableCell>Volume Group</AppTableCell>
+          <AppTableCell>Size</AppTableCell>
+          <AppTableCell>Mountpoint</AppTableCell>
+          <AppTableCell>Usage</AppTableCell>
+          <AppTableCell align="right">Actions</AppTableCell>
+        </AppTableRow>
+      </AppTableHead>
+      <AppTableBody>
         {data.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={6}>
+          <AppTableRow>
+            <AppTableCell colSpan={6}>
               <AppTypography color="text.secondary" align="center">
                 No logical volumes found
               </AppTypography>
-            </TableCell>
-          </TableRow>
+            </AppTableCell>
+          </AppTableRow>
         ) : (
           data.map((lv) => (
-            <TableRow key={lv.path}>
-              <TableCell>
+            <AppTableRow key={lv.path}>
+              <AppTableCell>
                 <AppTypography variant="body2" fontWeight={600}>
                   {lv.name}
                 </AppTypography>
@@ -493,10 +495,10 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                 >
                   {lv.path}
                 </AppTypography>
-              </TableCell>
-              <TableCell>{lv.vgName}</TableCell>
-              <TableCell>{formatFileSize(lv.size)}</TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>{lv.vgName}</AppTableCell>
+              <AppTableCell>{formatFileSize(lv.size)}</AppTableCell>
+              <AppTableCell>
                 {lv.mountpoint ? (
                   <AppTypography
                     variant="body2"
@@ -509,8 +511,8 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                 ) : (
                   <Chip label="Not mounted" size="small" variant="soft" />
                 )}
-              </TableCell>
-              <TableCell>
+              </AppTableCell>
+              <AppTableCell>
                 {lv.mountpoint ? (
                   <div
                     style={{
@@ -540,8 +542,8 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                 ) : (
                   "-"
                 )}
-              </TableCell>
-              <TableCell align="right">
+              </AppTableCell>
+              <AppTableCell align="right">
                 <AppTooltip title="Resize">
                   <AppIconButton size="small" onClick={() => onResize(lv)}>
                     <Icon icon="mdi:pencil" width={20} height={20} />
@@ -556,13 +558,13 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                     <Icon icon="mdi:delete" width={20} height={20} />
                   </AppIconButton>
                 </AppTooltip>
-              </TableCell>
-            </TableRow>
+              </AppTableCell>
+            </AppTableRow>
           ))
         )}
-      </TableBody>
-    </Table>
-  </TableContainer>
+      </AppTableBody>
+    </AppTable>
+  </AppTableContainer>
 );
 const LVMManagement: React.FC<LVMManagementProps> = ({
   onMountCreateHandler,

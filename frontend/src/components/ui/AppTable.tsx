@@ -60,13 +60,17 @@ AppTableBody.displayName = "AppTableBody";
 
 /* ── Row ────────────────────────────────────── */
 
+interface AppTableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
+  selected?: boolean;
+}
+
 export const AppTableRow = React.forwardRef<
   HTMLTableRowElement,
-  React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
+  AppTableRowProps
+>(({ className, selected, ...props }, ref) => (
   <tr
     ref={ref}
-    className={`app-table-row ${className || ""}`.trim()}
+    className={`app-table-row${selected ? " app-table-row--selected" : ""} ${className || ""}`.trim()}
     {...props}
   />
 ));

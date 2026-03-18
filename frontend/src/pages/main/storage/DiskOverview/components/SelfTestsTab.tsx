@@ -1,16 +1,16 @@
-import {
-  CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableContainer,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 interface SelfTestsTabProps {
   startPending: "short" | "long" | null;
@@ -63,7 +63,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             }}
             startIcon={
               startPending === "short" ? (
-                <CircularProgress size={16} />
+                <AppCircularProgress size={16} />
               ) : undefined
             }
           >
@@ -79,7 +79,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             }}
             startIcon={
               startPending === "long" ? (
-                <CircularProgress size={16} />
+                <AppCircularProgress size={16} />
               ) : undefined
             }
           >
@@ -106,55 +106,22 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
       </AppTypography>
       {selfTestLog?.standard?.table &&
       (selfTestLog.standard.table as unknown[]).length > 0 ? (
-        <TableContainer
+        <AppTableContainer
           className="custom-scrollbar"
-          sx={{
-            maxHeight: 400,
-          }}
+          style={{ maxHeight: 400 }}
         >
-          <Table
-            size="small"
-            stickyHeader
-            sx={{
-              "& .MuiTableCell-root": {
-                borderColor: "divider",
-              },
-            }}
-          >
-            <TableHead>
-              <TableRow>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                >
-                  #
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                >
-                  Type
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                >
-                  Status
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                  align="right"
-                >
+          <AppTable className="app-table--sticky">
+            <AppTableHead>
+              <AppTableRow>
+                <AppTableCell style={{ fontWeight: 600 }}>#</AppTableCell>
+                <AppTableCell style={{ fontWeight: 600 }}>Type</AppTableCell>
+                <AppTableCell style={{ fontWeight: 600 }}>Status</AppTableCell>
+                <AppTableCell style={{ fontWeight: 600 }} align="right">
                   Lifetime Hours
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+                </AppTableCell>
+              </AppTableRow>
+            </AppTableHead>
+            <AppTableBody>
               {(
                 selfTestLog.standard.table as {
                   num?: number;
@@ -168,70 +135,43 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
                   lifetime_hours?: number;
                 }[]
               ).map((entry, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>{entry.num ?? idx + 1}</TableCell>
-                  <TableCell>{entry.type?.string || "Unknown"}</TableCell>
-                  <TableCell
-                    sx={{
+                <AppTableRow key={idx}>
+                  <AppTableCell>{entry.num ?? idx + 1}</AppTableCell>
+                  <AppTableCell>{entry.type?.string || "Unknown"}</AppTableCell>
+                  <AppTableCell
+                    style={{
                       color: entry.status?.passed
-                        ? "success.main"
-                        : "error.main",
+                        ? "var(--mui-palette-success-main)"
+                        : "var(--mui-palette-error-main)",
                     }}
                   >
                     {entry.status?.string || "Unknown"}
-                  </TableCell>
-                  <TableCell align="right">
+                  </AppTableCell>
+                  <AppTableCell align="right">
                     {entry.lifetime_hours?.toLocaleString() || "N/A"}
-                  </TableCell>
-                </TableRow>
+                  </AppTableCell>
+                </AppTableRow>
               ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </AppTableBody>
+          </AppTable>
+        </AppTableContainer>
       ) : nvmeSelfTestLog?.table &&
         (nvmeSelfTestLog.table as unknown[]).length > 0 ? (
-        <TableContainer
+        <AppTableContainer
           className="custom-scrollbar"
-          sx={{
-            maxHeight: 400,
-          }}
+          style={{ maxHeight: 400 }}
         >
-          <Table
-            size="small"
-            stickyHeader
-            sx={{
-              "& .MuiTableCell-root": {
-                borderColor: "divider",
-              },
-            }}
-          >
-            <TableHead>
-              <TableRow>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                >
-                  Type
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                >
-                  Result
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                  align="right"
-                >
+          <AppTable className="app-table--sticky">
+            <AppTableHead>
+              <AppTableRow>
+                <AppTableCell style={{ fontWeight: 600 }}>Type</AppTableCell>
+                <AppTableCell style={{ fontWeight: 600 }}>Result</AppTableCell>
+                <AppTableCell style={{ fontWeight: 600 }} align="right">
                   Power On Hours
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+                </AppTableCell>
+              </AppTableRow>
+            </AppTableHead>
+            <AppTableBody>
               {(
                 nvmeSelfTestLog.table as {
                   self_test_code?: {
@@ -244,28 +184,28 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
                   power_on_hours?: number;
                 }[]
               ).map((entry, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>
+                <AppTableRow key={idx}>
+                  <AppTableCell>
                     {entry.self_test_code?.string || "Unknown"}
-                  </TableCell>
-                  <TableCell
-                    sx={{
+                  </AppTableCell>
+                  <AppTableCell
+                    style={{
                       color:
                         entry.self_test_result?.value === 0
-                          ? "success.main"
-                          : "error.main",
+                          ? "var(--mui-palette-success-main)"
+                          : "var(--mui-palette-error-main)",
                     }}
                   >
                     {entry.self_test_result?.string || "Unknown"}
-                  </TableCell>
-                  <TableCell align="right">
+                  </AppTableCell>
+                  <AppTableCell align="right">
                     {entry.power_on_hours?.toLocaleString() || "N/A"}
-                  </TableCell>
-                </TableRow>
+                  </AppTableCell>
+                </AppTableRow>
               ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </AppTableBody>
+          </AppTable>
+        </AppTableContainer>
       ) : (
         <AppTypography color="text.secondary">
           No self-test history available.

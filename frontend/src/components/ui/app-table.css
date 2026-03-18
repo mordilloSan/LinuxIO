@@ -36,6 +36,19 @@
   background-color: var(--uct-hover-bg);
 }
 
+.app-table-row--selected {
+  background-color: var(--mui-palette-action-selected);
+}
+
+/* ── Sticky header ─────────────────────────── */
+
+.app-table--sticky .app-table-head .app-table-cell {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--mui-palette-background-paper);
+}
+
 /* ── Cell ──────────────────────────────────────── */
 
 .app-table-cell {

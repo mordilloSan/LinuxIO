@@ -1,10 +1,5 @@
 import {
   Autocomplete,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   useMediaQuery,
   useTheme,
@@ -22,6 +17,13 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 interface PermissionsDialogProps {
   open: boolean;
@@ -257,93 +259,93 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           />
         </div>
 
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell></TableCell>
-              <TableCell align="center">Read</TableCell>
-              <TableCell align="center">Write</TableCell>
-              <TableCell align="center">Execute</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            <TableRow>
-              <TableCell>
+        <AppTable>
+          <AppTableHead>
+            <AppTableRow>
+              <AppTableCell></AppTableCell>
+              <AppTableCell align="center">Read</AppTableCell>
+              <AppTableCell align="center">Write</AppTableCell>
+              <AppTableCell align="center">Execute</AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
+            <AppTableRow>
+              <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Owner
                 </AppTypography>
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.owner.read}
                   onChange={() => handlePermissionChange("owner", "read")}
                 />
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.owner.write}
                   onChange={() => handlePermissionChange("owner", "write")}
                 />
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.owner.execute}
                   onChange={() => handlePermissionChange("owner", "execute")}
                 />
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell>
+              </AppTableCell>
+            </AppTableRow>
+            <AppTableRow>
+              <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Group
                 </AppTypography>
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.group.read}
                   onChange={() => handlePermissionChange("group", "read")}
                 />
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.group.write}
                   onChange={() => handlePermissionChange("group", "write")}
                 />
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.group.execute}
                   onChange={() => handlePermissionChange("group", "execute")}
                 />
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell>
+              </AppTableCell>
+            </AppTableRow>
+            <AppTableRow>
+              <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Others
                 </AppTypography>
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.others.read}
                   onChange={() => handlePermissionChange("others", "read")}
                 />
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.others.write}
                   onChange={() => handlePermissionChange("others", "write")}
                 />
-              </TableCell>
-              <TableCell align="center">
+              </AppTableCell>
+              <AppTableCell align="center">
                 <AppCheckbox
                   checked={permissions.others.execute}
                   onChange={() => handlePermissionChange("others", "execute")}
                 />
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+              </AppTableCell>
+            </AppTableRow>
+          </AppTableBody>
+        </AppTable>
 
         {isDirectory && (
           <div

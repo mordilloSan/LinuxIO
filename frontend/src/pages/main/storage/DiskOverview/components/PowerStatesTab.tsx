@@ -1,17 +1,17 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import type { PowerData } from "../types";
 
 import Chip from "@/components/ui/AppChip";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableContainer,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 interface PowerStatesTabProps {
   power: PowerData;
@@ -49,75 +49,42 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
       <AppTypography variant="subtitle2" gutterBottom>
         Supported Power States
       </AppTypography>
-      <TableContainer
+      <AppTableContainer
         className="custom-scrollbar"
-        sx={{
+        style={{
           maxHeight: 400,
         }}
       >
-        <Table
-          size="small"
-          stickyHeader
-          sx={{
-            "& .MuiTableCell-root": {
-              borderColor: "divider",
-            },
-          }}
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell
-                sx={{
-                  fontWeight: 600,
-                }}
-              >
-                State
-              </TableCell>
-              <TableCell
-                sx={{
-                  fontWeight: 600,
-                }}
-              >
-                Op
-              </TableCell>
-              <TableCell
-                sx={{
-                  fontWeight: 600,
-                }}
-                align="right"
-              >
+        <AppTable className="app-table--sticky">
+          <AppTableHead>
+            <AppTableRow>
+              <AppTableCell style={{ fontWeight: 600 }}>State</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }}>Op</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Max Power
-              </TableCell>
-              <TableCell
-                sx={{
-                  fontWeight: 600,
-                }}
-              >
+              </AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }}>
                 Description
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+              </AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
             {power.states.map((ps) => (
-              <TableRow
+              <AppTableRow
                 key={ps.state}
                 selected={ps.state === power.currentState}
               >
-                <TableCell>{ps.state}</TableCell>
-                <TableCell>+</TableCell>
-                <TableCell align="right">{ps.maxPowerW}W</TableCell>
-                <TableCell
-                  sx={{
-                    fontSize: "0.75rem",
-                  }}
-                >
+                <AppTableCell>{ps.state}</AppTableCell>
+                <AppTableCell>+</AppTableCell>
+                <AppTableCell align="right">{ps.maxPowerW}W</AppTableCell>
+                <AppTableCell style={{ fontSize: "0.75rem" }}>
                   {ps.description}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </AppTableBody>
+        </AppTable>
+      </AppTableContainer>
     </>
   );
 };
