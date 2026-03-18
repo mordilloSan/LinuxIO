@@ -23,7 +23,6 @@ import {
   STREAM_CHUNK_SIZE,
 } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
-import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -43,6 +42,7 @@ import {
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,

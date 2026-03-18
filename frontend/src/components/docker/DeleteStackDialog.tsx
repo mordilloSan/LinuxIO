@@ -1,10 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  FormControlLabel,
-  Radio,
-  RadioGroup,
-  useTheme,
-} from "@mui/material";
+import { FormControlLabel, Radio, RadioGroup, useTheme } from "@mui/material";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -52,12 +47,8 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
-      slotProps={{
-        paper: {
-          sx: {
-            backgroundColor: theme.palette.background.default,
-          },
-        },
+      paperStyle={{
+        backgroundColor: theme.palette.background.default,
       }}
     >
       <AppDialogTitle

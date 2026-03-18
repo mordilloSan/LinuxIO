@@ -27,8 +27,8 @@ import {
   type VolumeGroup,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppAlert from "@/components/ui/AppAlert";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import {
@@ -157,7 +157,9 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
             helperText="Use K, M, G, T suffix for size units"
             fullWidth
           />
-          {validationError && <AppAlert severity="error">{validationError}</AppAlert>}
+          {validationError && (
+            <AppAlert severity="error">{validationError}</AppAlert>
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>
@@ -260,7 +262,9 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
             helperText="Use K, M, G, T suffix for size units"
             fullWidth
           />
-          {validationError && <AppAlert severity="error">{validationError}</AppAlert>}
+          {validationError && (
+            <AppAlert severity="error">{validationError}</AppAlert>
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>

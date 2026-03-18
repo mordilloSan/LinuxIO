@@ -172,13 +172,21 @@ const ResourceCardHeader: React.FC<{
     </div>
     <AppButton
       size="small"
-      endIcon={<Icon icon="mdi:chevron-right" width={20} height={20} />}
       onClick={onViewAll}
-      sx={{
+      style={{
         flexShrink: 0,
       }}
     >
-      View All
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        View All
+        <Icon icon="mdi:chevron-right" width={20} height={20} />
+      </span>
     </AppButton>
   </div>
 );

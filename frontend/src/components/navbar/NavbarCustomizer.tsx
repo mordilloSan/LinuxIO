@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { Popover } from "@mui/material";
 import { useTheme as useMuiTheme } from "@mui/material/styles";
+import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
@@ -106,15 +107,14 @@ function NavbarColorCustomizer() {
             fullWidth
             size="small"
             onClick={() => setPrimaryColor("blue")}
-            sx={{
-              mt: 2,
-              color: COLOR_TOKENS.blue,
-              borderColor: COLOR_TOKENS.blue,
-              "&:hover": {
-                borderColor: COLOR_TOKENS.blue,
-                backgroundColor: COLOR_TOKENS.blue,
-              },
-            }}
+            style={
+              {
+                marginTop: muiTheme.spacing(2),
+                "--_btn-main": COLOR_TOKENS.blue,
+                "--_btn-dark": COLOR_TOKENS.blue,
+                "--_btn-contrast": muiTheme.palette.common.white,
+              } as CSSProperties
+            }
           >
             Reset to Default
           </AppButton>

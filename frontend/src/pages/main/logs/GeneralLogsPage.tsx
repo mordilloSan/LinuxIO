@@ -20,10 +20,10 @@ import React, {
 } from "react";
 
 import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
-import AppAlert from "@/components/ui/AppAlert";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import AppAlert from "@/components/ui/AppAlert";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPaper from "@/components/ui/AppPaper";
