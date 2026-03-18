@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Collapse, Divider, Grid, MenuItem, Select } from "@mui/material";
+import { Grid, MenuItem, Select } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -11,6 +11,8 @@ import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppButton from "@/components/ui/AppButton";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppDivider from "@/components/ui/AppDivider";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
@@ -364,7 +366,7 @@ const DockerDashboard: React.FC = () => {
           />
         </AppIconButton>
       </div>
-      <Collapse in={sections.overview}>
+      <AppCollapse in={sections.overview}>
         <Grid
           container
           spacing={2}
@@ -475,7 +477,7 @@ const DockerDashboard: React.FC = () => {
             </Grid>
           ))}
         </Grid>
-      </Collapse>
+      </AppCollapse>
 
       <div
         className="dd-section-header"
@@ -513,7 +515,7 @@ const DockerDashboard: React.FC = () => {
         </AppIconButton>
       </div>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
-      <Collapse in={sections.daemon}>
+      <AppCollapse in={sections.daemon}>
         <Grid
           container
           spacing={2}
@@ -840,7 +842,7 @@ const DockerDashboard: React.FC = () => {
             </>
           )}
         </Grid>
-      </Collapse>
+      </AppCollapse>
 
       {/* ── Resources ──────────────────────────────────────────────────────── */}
       <div
@@ -878,7 +880,7 @@ const DockerDashboard: React.FC = () => {
           />
         </AppIconButton>
       </div>
-      <Collapse in={sections.resources}>
+      <AppCollapse in={sections.resources}>
         <Grid container spacing={2}>
           {/* Containers table */}
           <Grid
@@ -969,7 +971,7 @@ const DockerDashboard: React.FC = () => {
                   </AppTypography>
                 ))}
               </div>
-              <Divider />
+              <AppDivider />
 
               <div
                 className="custom-scrollbar"
@@ -1048,14 +1050,14 @@ const DockerDashboard: React.FC = () => {
                             {container.Status.replace(/\s*\(.*?\)\s*$/, "")}
                           </AppTypography>
                         </div>
-                        {i < previewContainers.length - 1 && <Divider />}
+                        {i < previewContainers.length - 1 && <AppDivider />}
                       </React.Fragment>
                     );
                   })
                 )}
               </div>
 
-              <Divider />
+              <AppDivider />
               <div
                 style={{
                   paddingInline: 8,
@@ -1159,7 +1161,7 @@ const DockerDashboard: React.FC = () => {
                   </AppTypography>
                 ))}
               </div>
-              <Divider />
+              <AppDivider />
 
               <div
                 className="custom-scrollbar"
@@ -1233,14 +1235,14 @@ const DockerDashboard: React.FC = () => {
                             {formatFileSize(image.Size)}
                           </AppTypography>
                         </div>
-                        {i < previewImages.length - 1 && <Divider />}
+                        {i < previewImages.length - 1 && <AppDivider />}
                       </React.Fragment>
                     );
                   })
                 )}
               </div>
 
-              <Divider />
+              <AppDivider />
               <div
                 style={{
                   paddingInline: 8,
@@ -1254,7 +1256,7 @@ const DockerDashboard: React.FC = () => {
             </FrostedCard>
           </Grid>
         </Grid>
-      </Collapse>
+      </AppCollapse>
     </div>
   );
 };

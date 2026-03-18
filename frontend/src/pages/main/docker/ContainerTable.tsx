@@ -1,7 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import { Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -14,6 +13,7 @@ import "@/components/cards/frosted-card.css";
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSwitch from "@/components/ui/AppSwitch";
 import {
@@ -634,7 +634,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             style={{ paddingBottom: 0, paddingTop: 0 }}
             colSpan={editMode ? 10 : 9}
           >
-            <Collapse in={expanded} timeout="auto" unmountOnExit>
+            <AppCollapse in={expanded} timeout="auto" unmountOnExit>
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -751,7 +751,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   </div>
                 )}
               </motion.div>
-            </Collapse>
+            </AppCollapse>
           </AppTableCell>
         </AppTableRow>
       )}

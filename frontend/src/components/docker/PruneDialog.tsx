@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Divider } from "@mui/material";
+import AppDivider from "@/components/ui/AppDivider";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -130,11 +130,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             label="Unused Networks"
           />
 
-          <Divider
-            sx={{
-              my: 0.5,
-            }}
-          />
+          <AppDivider style={{ marginBlock: 2 }} />
 
           <AppFormControlLabel
             control={

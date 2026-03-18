@@ -1,4 +1,4 @@
-import { Collapse, ToggleButton, ToggleButtonGroup } from "@mui/material";
+import { ToggleButton, ToggleButtonGroup } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
@@ -8,6 +8,7 @@ import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import AppCollapse from "@/components/ui/AppCollapse";
 import Chip from "@/components/ui/AppChip";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
@@ -322,7 +323,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     }
   };
   return (
-    <Collapse in={expanded} timeout="auto" unmountOnExit>
+    <AppCollapse in={expanded} timeout="auto" unmountOnExit>
       <div
         style={{
           marginTop: theme.spacing(2),
@@ -461,7 +462,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           </AppButton>
         </div>
       </div>
-    </Collapse>
+    </AppCollapse>
   );
 };
 export default NetworkInterfaceEditor;
