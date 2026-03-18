@@ -29,12 +29,12 @@ import SystemHealth from "./System";
 
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 
 const MemoSystemHealth = React.memo(SystemHealth);
 const MemoProcessor = React.memo(Processor);

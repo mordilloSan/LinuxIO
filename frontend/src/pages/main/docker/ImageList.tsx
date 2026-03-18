@@ -12,6 +12,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -27,7 +28,6 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";

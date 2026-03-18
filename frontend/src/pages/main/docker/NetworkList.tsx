@@ -12,6 +12,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -37,7 +38,6 @@ import {
 } from "@/theme/tableStyles";
 import { alpha } from "@/utils/color";
 import { getMutationErrorMessage } from "@/utils/mutations";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
