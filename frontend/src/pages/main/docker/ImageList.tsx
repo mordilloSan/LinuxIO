@@ -27,6 +27,7 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";

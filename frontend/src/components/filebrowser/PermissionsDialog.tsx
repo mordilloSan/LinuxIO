@@ -11,6 +11,8 @@ import {
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
+import AppCheckbox from "../ui/AppCheckbox";
+
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -21,7 +23,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
-import AppCheckbox from "../ui/AppCheckbox";
 interface PermissionsDialogProps {
   open: boolean;
   pathLabel: string;

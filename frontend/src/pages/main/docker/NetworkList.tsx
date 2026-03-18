@@ -37,6 +37,7 @@ import {
 } from "@/theme/tableStyles";
 import { alpha } from "@/utils/color";
 import { getMutationErrorMessage } from "@/utils/mutations";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
