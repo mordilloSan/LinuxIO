@@ -3,11 +3,6 @@ import {
   Grid,
   TextField,
   Checkbox,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
   FormControl,
   InputLabel,
   Select,
@@ -16,6 +11,13 @@ import {
   Switch,
   useTheme,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -95,9 +97,9 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
-      <DialogTitle>Create Network</DialogTitle>
-      <DialogContent>
+    <GeneralDialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
+      <AppDialogTitle>Create Network</AppDialogTitle>
+      <AppDialogContent>
         <div style={{ marginTop: theme.spacing(2) }}>
           <TextField
             label="Network Name"
@@ -144,8 +146,8 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
             sx={{ mt: 1 }}
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton
           onClick={handleClose}
           color="secondary"
@@ -160,8 +162,8 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
         >
           {isCreating ? "Creating..." : "Create"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 
@@ -214,15 +216,15 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>
         Delete Network{networkNames.length > 1 ? "s" : ""}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+      </AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the following network
           {networkNames.length > 1 ? "s" : ""}?
-        </DialogContentText>
+        </AppDialogContentText>
         <div
           style={{
             display: "flex",
@@ -241,12 +243,12 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
             />
           ))}
         </div>
-        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+        <AppDialogContentText style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}>
           This action cannot be undone. Networks with connected containers
           cannot be deleted.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
         </AppButton>
@@ -258,8 +260,8 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 

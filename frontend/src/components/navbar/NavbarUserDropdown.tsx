@@ -2,12 +2,14 @@ import { Icon } from "@iconify/react";
 import {
   Menu,
   MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -103,18 +105,18 @@ function NavbarUserDropdown() {
         <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
       </Menu>
 
-      <Dialog open={confirm !== null} onClose={closeConfirm}>
-        <DialogTitle>
+      <GeneralDialog open={confirm !== null} onClose={closeConfirm}>
+        <AppDialogTitle>
           {confirm === "reboot" ? "Confirm Reboot" : "Confirm Power Down"}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
+        </AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
             Are you sure you want to{" "}
             {confirm === "reboot" ? "reboot" : "power off"} the server? This
             action will terminate all services and disconnect users.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
+          </AppDialogContentText>
+        </AppDialogContent>
+        <AppDialogActions>
           <AppButton onClick={closeConfirm}>Cancel</AppButton>
           <AppButton
             onClick={handleConfirmedAction}
@@ -124,8 +126,8 @@ function NavbarUserDropdown() {
           >
             {confirm === "reboot" ? "Reboot" : "Power Down"}
           </AppButton>
-        </DialogActions>
-      </Dialog>
+        </AppDialogActions>
+      </GeneralDialog>
     </>
   );
 }

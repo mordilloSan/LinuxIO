@@ -1,10 +1,12 @@
 import { Icon } from "@iconify/react";
 import {
-  DialogContent,
-  DialogTitle,
   Tab,
   Tabs,
 } from "@mui/material";
+import {
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import AppIconButton from "@/components/ui/AppIconButton";
 import React, { useState } from "react";
@@ -30,12 +32,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   };
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
-          py: 1.5,
-          px: 2,
+          paddingTop: 6,
+          paddingBottom: 6,
+          paddingLeft: 8,
+          paddingRight: 8,
         }}
       >
         <div
@@ -61,7 +65,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             <Icon icon="mdi:close" width={18} height={18} />
           </AppIconButton>
         </div>
-      </DialogTitle>
+      </AppDialogTitle>
 
       <Tabs
         value={activeTab}
@@ -76,10 +80,12 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         <Tab label="Docker" value="docker" />
       </Tabs>
 
-      <DialogContent
-        sx={{
-          px: 3,
-          py: 3,
+      <AppDialogContent
+        style={{
+          paddingLeft: 12,
+          paddingRight: 12,
+          paddingTop: 12,
+          paddingBottom: 12,
         }}
       >
         {activeTab === "general" ? (
@@ -122,7 +128,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         ) : (
           <DockerFolderSettingsSection />
         )}
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };

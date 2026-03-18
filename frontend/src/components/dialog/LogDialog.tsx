@@ -1,11 +1,13 @@
 import { Icon } from "@iconify/react";
 import {
-  DialogTitle,
-  DialogContent,
   Alert,
   Switch,
   FormControlLabel,
 } from "@mui/material";
+import {
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -61,11 +63,11 @@ const LogDialog: React.FC<LogDialogProps> = ({
         },
       }}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           display: "flex",
           alignItems: "center",
-          gap: 1,
+          gap: 4,
         }}
       >
         <div
@@ -98,12 +100,12 @@ const LogDialog: React.FC<LogDialogProps> = ({
         <AppIconButton onClick={onClose} size="small">
           <Icon icon="mdi:close" width={18} height={18} />
         </AppIconButton>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        dividers
-        sx={{
-          p: 0,
+      <AppDialogContent
+        style={{
+          padding: 0,
+          borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
         {error ? (
@@ -153,7 +155,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
               ))}
           </div>
         )}
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };

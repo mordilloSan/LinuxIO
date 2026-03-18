@@ -1,8 +1,8 @@
 import { Icon } from "@iconify/react";
 import {
-  DialogContent,
-  DialogTitle,
-} from "@mui/material";
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import AppIconButton from "@/components/ui/AppIconButton";
 import React from "react";
@@ -24,12 +24,14 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   const settingsState = useUpdateSettingsState(open);
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
-          py: 1.5,
-          px: 2,
+          paddingTop: 6,
+          paddingBottom: 6,
+          paddingLeft: 8,
+          paddingRight: 8,
         }}
       >
         <div
@@ -62,16 +64,18 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
             <Icon icon="mdi:close" width={18} height={18} />
           </AppIconButton>
         </div>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        sx={{
-          px: 3,
-          py: 3,
+      <AppDialogContent
+        style={{
+          paddingLeft: 12,
+          paddingRight: 12,
+          paddingTop: 12,
+          paddingBottom: 12,
         }}
       >
         <UpdateSettings disablePadding state={settingsState} />
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };

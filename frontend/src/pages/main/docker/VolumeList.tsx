@@ -3,13 +3,15 @@ import {
   Grid,
   TextField,
   Checkbox,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
   useTheme,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -75,15 +77,15 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>
         Delete Volume{volumeNames.length > 1 ? "s" : ""}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+      </AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the following volume
           {volumeNames.length > 1 ? "s" : ""}?
-        </DialogContentText>
+        </AppDialogContentText>
         <div
           style={{
             display: "flex",
@@ -105,17 +107,17 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
             />
           ))}
         </div>
-        <DialogContentText
-          sx={{
-            mt: 2,
-            color: "warning.main",
+        <AppDialogContentText
+          style={{
+            marginTop: 8,
+            color: "var(--mui-palette-warning-main)",
           }}
         >
           This action cannot be undone. Volumes in use by containers cannot be
           deleted.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
         </AppButton>
@@ -127,8 +129,8 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const VolumeList: React.FC<VolumeListProps> = ({

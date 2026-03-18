@@ -4,11 +4,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -21,6 +16,13 @@ import {
   TableRow,
   TextField,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
@@ -110,9 +112,9 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   };
   const selectedVG = volumeGroups.find((vg) => vg.name === vgName);
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create Logical Volume</DialogTitle>
-      <DialogContent>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>Create Logical Volume</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -157,8 +159,8 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isCreating}>
           Cancel
         </AppButton>
@@ -169,8 +171,8 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
         >
           {isCreating ? "Creating..." : "Create"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
@@ -223,15 +225,15 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog
+    <GeneralDialog
       key={lv?.path}
       open={open}
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>Resize Logical Volume</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Resize Logical Volume</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -260,8 +262,8 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isResizing}>
           Cancel
         </AppButton>
@@ -272,8 +274,8 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
         >
           {isResizing ? "Resizing..." : "Resize"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
@@ -310,13 +312,13 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete Logical Volume</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>Delete Logical Volume</AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the logical volume{" "}
           <strong>{lv?.name}</strong>?
-        </DialogContentText>
+        </AppDialogContentText>
         {lv?.mountpoint && (
           <Alert
             severity="warning"
@@ -328,16 +330,16 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
             . Please unmount it first.
           </Alert>
         )}
-        <DialogContentText
-          sx={{
-            mt: 2,
-            color: "error.main",
+        <AppDialogContentText
+          style={{
+            marginTop: 8,
+            color: "var(--mui-palette-error-main)",
           }}
         >
           This action cannot be undone. All data on this volume will be lost.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
         </AppButton>
@@ -349,8 +351,8 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const PVTable: React.FC<{

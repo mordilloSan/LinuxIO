@@ -1,11 +1,13 @@
 import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   TextField,
   useTheme,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -128,7 +130,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     }
   };
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={onClose}
       maxWidth="sm"
@@ -141,8 +143,8 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
         },
       }}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.header.background,
           borderBottom: `1px solid ${theme.palette.divider}`,
         }}
@@ -150,11 +152,11 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
         <AppTypography variant="h6">
           Create New Docker Compose Stack
         </AppTypography>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        sx={{
-          pt: 3,
+      <AppDialogContent
+        style={{
+          paddingTop: 12,
         }}
       >
         <div
@@ -210,13 +212,13 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
             </AppTypography>
           </div>
         </div>
-      </DialogContent>
+      </AppDialogContent>
 
-      <DialogActions
-        sx={{
+      <AppDialogActions
+        style={{
           backgroundColor: theme.header.background,
           borderTop: `1px solid ${theme.palette.divider}`,
-          p: 2,
+          padding: 8,
         }}
       >
         <AppButton onClick={onClose} disabled={isValidating}>
@@ -233,8 +235,8 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
         >
           {isValidating ? "Validating..." : "Next"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 export default StackSetupDialog;

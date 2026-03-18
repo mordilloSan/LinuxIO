@@ -1,8 +1,5 @@
 import {
   Alert,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControl,
   FormHelperText,
   InputLabel,
@@ -10,6 +7,11 @@ import {
   Select,
   TextField,
 } from "@mui/material";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -75,8 +77,8 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>Create New Interface</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Create New Interface</AppDialogTitle>
+      <AppDialogContent>
         <div style={{ marginTop: theme.spacing(2) }}>
           <TextField
             label="Interface Name"
@@ -155,8 +157,8 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
             </Alert>
           )}
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={onClose} color="secondary" disabled={loading}>
           Cancel
         </AppButton>
@@ -175,7 +177,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
         >
           {loading ? "Creating..." : "Create Interface"}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

@@ -1,7 +1,4 @@
 import {
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControl,
   InputLabel,
   Menu,
@@ -9,6 +6,11 @@ import {
   Select,
   SelectChangeEvent,
 } from "@mui/material";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -297,7 +299,7 @@ const TerminalDialog: React.FC<Props> = ({
         },
       }}
     >
-      <DialogTitle>
+      <AppDialogTitle>
         <div
           style={{
             display: "flex",
@@ -328,15 +330,15 @@ const TerminalDialog: React.FC<Props> = ({
             </Select>
           </FormControl>
         </div>
-      </DialogTitle>
-      <DialogContent
-        dividers
-        sx={{
+      </AppDialogTitle>
+      <AppDialogContent
+        style={{
           minHeight: 350,
           maxHeight: 600,
           fontFamily: "Fira Mono, monospace",
-          p: 0,
+          padding: 0,
           background: theme.palette.background.default,
+          borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
         {loadingShells ? (
@@ -455,10 +457,10 @@ const TerminalDialog: React.FC<Props> = ({
             </div>
           </MenuItem>
         </Menu>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleDialogClose}>Close</AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

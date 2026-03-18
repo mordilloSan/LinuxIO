@@ -1,12 +1,12 @@
 import { Icon } from "@iconify/react";
 import {
-  Button,
   Popover,
   useTheme as useMuiTheme,
 } from "@mui/material";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { useMemo, useState } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { iconSize, shadowSm } from "@/constants";
@@ -103,7 +103,7 @@ function NavbarColorCustomizer() {
             marginTop: muiTheme.spacing(2),
           }}
         >
-          <Button
+          <AppButton
             variant="outlined"
             fullWidth
             size="small"
@@ -119,7 +119,7 @@ function NavbarColorCustomizer() {
             }}
           >
             Reset to Default
-          </Button>
+          </AppButton>
         </div>
       </Popover>
     </>

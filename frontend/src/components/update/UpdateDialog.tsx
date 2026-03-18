@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-} from "@mui/material";
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import { useEffect, useRef } from "react";
 
@@ -46,21 +46,21 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
     });
   }, [output]);
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       maxWidth="md"
       fullWidth
       disableEscapeKeyDown={!canClose}
       onClose={canClose ? onClose : undefined}
     >
-      <DialogTitle>
+      <AppDialogTitle>
         {updateComplete
           ? updateSuccess
             ? "Update Complete"
             : "Update Failed"
           : "Updating LinuxIO"}
-      </DialogTitle>
-      <DialogContent>
+      </AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "grid",
@@ -189,8 +189,8 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
             </div>
           )}
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         {updateComplete && updateSuccess && onContinue && (
           <AppButton onClick={onContinue} variant="contained" color="success">
             Continue to Login
@@ -218,8 +218,8 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
             Please wait...
           </AppTypography>
         )}
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 export default UpdateDialog;

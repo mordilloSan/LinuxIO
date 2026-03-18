@@ -3,13 +3,15 @@ import {
   Grid,
   TextField,
   Checkbox,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
   useTheme,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -98,13 +100,13 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete Image{imageIds.length > 1 ? "s" : ""}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>Delete Image{imageIds.length > 1 ? "s" : ""}</AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the following image
           {imageIds.length > 1 ? "s" : ""}?
-        </DialogContentText>
+        </AppDialogContentText>
         <div
           style={{
             display: "flex",
@@ -126,17 +128,17 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
             />
           ))}
         </div>
-        <DialogContentText
-          sx={{
-            mt: 2,
-            color: "warning.main",
+        <AppDialogContentText
+          style={{
+            marginTop: 8,
+            color: "var(--mui-palette-warning-main)",
           }}
         >
           This action cannot be undone. Images in use by containers cannot be
           deleted.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
         </AppButton>
@@ -148,8 +150,8 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const ImageList: React.FC<ImageListProps> = ({

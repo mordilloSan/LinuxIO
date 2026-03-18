@@ -1,15 +1,17 @@
 import { Icon } from "@iconify/react";
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   FormControlLabel,
   Radio,
   RadioGroup,
   Alert,
   useTheme,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import React, { useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
@@ -45,7 +47,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
     }
   };
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={handleClose}
       maxWidth="sm"
@@ -58,13 +60,13 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
         },
       }}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.header.background,
           borderBottom: `1px solid ${theme.palette.divider}`,
           display: "flex",
           alignItems: "center",
-          gap: 1,
+          gap: 4,
         }}
       >
         <Icon
@@ -74,11 +76,11 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           color={theme.palette.error.main}
         />
         <AppTypography variant="h6">Delete Stack: {projectName}</AppTypography>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        sx={{
-          pt: 3,
+      <AppDialogContent
+        style={{
+          paddingTop: 12,
         }}
       >
         <AppTypography variant="body2" color="text.secondary" gutterBottom>
@@ -176,11 +178,11 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             </AppTypography>
           </Alert>
         )}
-      </DialogContent>
+      </AppDialogContent>
 
-      <DialogActions
-        sx={{
-          p: 2,
+      <AppDialogActions
+        style={{
+          padding: 8,
           borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
@@ -202,8 +204,8 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
         >
           {isLoading ? "Deleting..." : "Delete"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 export default DeleteStackDialog;

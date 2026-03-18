@@ -1,16 +1,18 @@
 import {
   Alert,
   Autocomplete,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   FormControlLabel,
   Grid,
   Switch,
   TextField,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
@@ -168,9 +170,9 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Mount NFS Share</DialogTitle>
-      <DialogContent>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>Mount NFS Share</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -260,8 +262,8 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isMounting}>
           Cancel
         </AppButton>
@@ -272,8 +274,8 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
         >
           {isMounting ? "Mounting..." : "Mount"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const UnmountDialog: React.FC<UnmountDialogProps> = ({
@@ -311,12 +313,12 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Unmount NFS Share</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>Unmount NFS Share</AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to unmount the NFS share?
-        </DialogContentText>
+        </AppDialogContentText>
         {mount && (
           <div
             style={{
@@ -341,8 +343,8 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
           }
           label="Also remove from /etc/fstab"
         />
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isUnmounting}>
           Cancel
         </AppButton>
@@ -354,8 +356,8 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
         >
           {isUnmounting ? "Unmounting..." : "Unmount"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
@@ -466,15 +468,15 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     onClose();
   };
   return (
-    <Dialog
+    <GeneralDialog
       key={mount?.mountpoint}
       open={open}
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>Edit NFS Mount Options</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Edit NFS Mount Options</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -554,8 +556,8 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             size="small"
           />
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={handleClose} disabled={isRemounting}>
           Cancel
         </AppButton>
@@ -566,8 +568,8 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
         >
           {isRemounting ? "Saving..." : "Save"}
         </AppButton>
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
 const NFSMounts: React.FC<NFSMountsProps> = ({

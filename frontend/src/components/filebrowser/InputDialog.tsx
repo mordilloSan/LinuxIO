@@ -1,9 +1,11 @@
 import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
 } from "@mui/material";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import React, { useState, useCallback } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
@@ -71,8 +73,8 @@ const InputDialog: React.FC<InputDialogProps> = ({
 
   return (
     <FileBrowserDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>{title}</AppDialogTitle>
+      <AppDialogContent>
         <TextField
           autoFocus
           margin="dense"
@@ -84,8 +86,8 @@ const InputDialog: React.FC<InputDialogProps> = ({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyPress}
         />
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={onClose}>Cancel</AppButton>
         <AppButton
           onClick={handleConfirm}
@@ -94,7 +96,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
         >
           {confirmText}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </FileBrowserDialog>
   );
 };

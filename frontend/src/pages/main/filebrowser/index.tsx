@@ -2,13 +2,15 @@ import { Icon } from "@iconify/react";
 import {
   Alert,
   AlertTitle,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   List,
   ListItem,
   ListItemText,
 } from "@mui/material";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -1177,12 +1179,12 @@ const FileBrowser: React.FC = () => {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle
-          sx={{
+        <AppDialogTitle
+          style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            pr: 2,
+            paddingRight: 8,
           }}
         >
           {detailTarget && detailTarget.length > 1
@@ -1191,11 +1193,11 @@ const FileBrowser: React.FC = () => {
           <AppIconButton onClick={handleCloseDetailDialog} size="small">
             <Icon icon="mdi:close" width={18} height={18} />
           </AppIconButton>
-        </DialogTitle>
-        <DialogContent
-          dividers
-          sx={{
+        </AppDialogTitle>
+        <AppDialogContent
+          style={{
             minHeight: 200,
+            borderTop: `1px solid ${theme.palette.divider}`,
           }}
         >
           {shouldShowDetailLoader && <ComponentLoader />}
@@ -1223,7 +1225,7 @@ const FileBrowser: React.FC = () => {
               isLoadingDetails={multiItemsStats.isAnyLoading}
             />
           )}
-        </DialogContent>
+        </AppDialogContent>
       </FileBrowserDialog>
 
       <InputDialog
@@ -1272,8 +1274,8 @@ const FileBrowser: React.FC = () => {
         fullWidth
         disableEscapeKeyDown={isUploadProcessing}
       >
-        <DialogTitle>Upload files or folders</DialogTitle>
-        <DialogContent dividers>
+        <AppDialogTitle>Upload files or folders</AppDialogTitle>
+        <AppDialogContent style={{ borderTop: `1px solid ${theme.palette.divider}` }}>
           <AppTypography variant="body2" color="text.secondary">
             Items will be uploaded to {normalizedPath}
           </AppTypography>
@@ -1345,8 +1347,8 @@ const FileBrowser: React.FC = () => {
               ))}
             </List>
           )}
-        </DialogContent>
-        <DialogActions>
+        </AppDialogContent>
+        <AppDialogActions>
           <AppButton
             onClick={handleClearUploadSelection}
             disabled={!uploadEntries.length || isUploadProcessing}
@@ -1366,7 +1368,7 @@ const FileBrowser: React.FC = () => {
           >
             {isUploadProcessing ? "Uploading..." : "Upload"}
           </AppButton>
-        </DialogActions>
+        </AppDialogActions>
       </FileBrowserDialog>
 
       <FileBrowserDialog
@@ -1375,8 +1377,8 @@ const FileBrowser: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Overwrite existing items?</DialogTitle>
-        <DialogContent dividers>
+        <AppDialogTitle>Overwrite existing items?</AppDialogTitle>
+        <AppDialogContent style={{ borderTop: `1px solid ${theme.palette.divider}` }}>
           <AppTypography
             variant="body2"
             style={{
@@ -1393,8 +1395,8 @@ const FileBrowser: React.FC = () => {
               </ListItem>
             ))}
           </List>
-        </DialogContent>
-        <DialogActions>
+        </AppDialogContent>
+        <AppDialogActions>
           <AppButton onClick={handleCancelOverwrite}>Skip</AppButton>
           <AppButton
             onClick={handleConfirmOverwrite}
@@ -1403,7 +1405,7 @@ const FileBrowser: React.FC = () => {
           >
             Overwrite
           </AppButton>
-        </DialogActions>
+        </AppDialogActions>
       </FileBrowserDialog>
 
       <UnsavedChangesDialog

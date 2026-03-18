@@ -1,9 +1,6 @@
 import {
   Autocomplete,
   Checkbox,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
   Table,
   TableBody,
@@ -14,6 +11,11 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import React, { useState, useCallback } from "react";
 
 import { linuxio } from "@/api";
@@ -170,12 +172,12 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
       fullWidth
       key={open ? `${currentMode}-${owner}-${group}` : "closed"}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 1,
+          gap: 4,
         }}
       >
         <AppTypography component="span" variant="h6">
@@ -191,9 +193,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         >
           {pathLabel}
         </AppTypography>
-      </DialogTitle>
-      <DialogContent
-        sx={{
+      </AppDialogTitle>
+      <AppDialogContent
+        style={{
           overflow: "visible",
         }}
       >
@@ -359,13 +361,13 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             />
           </div>
         )}
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         <AppButton onClick={onClose}>Cancel</AppButton>
         <AppButton onClick={handleConfirm} variant="contained">
           Apply
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </FileBrowserDialog>
   );
 };

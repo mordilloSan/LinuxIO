@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Button,
   Collapse,
   Divider,
   Grid,
@@ -11,6 +10,7 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
+import AppButton from "@/components/ui/AppButton";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -275,29 +275,29 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             alignItems: "center",
           }}
         >
-          <Button
+          <AppButton
             variant="outlined"
             onClick={() => onBrowse(filesystem.mountpoint)}
           >
             Browse
-          </Button>
+          </AppButton>
           {backingDrive && (
-            <Button
+            <AppButton
               variant="outlined"
               onClick={() => onInspectDrive(backingDrive.name)}
             >
               Inspect Drive
-            </Button>
+            </AppButton>
           )}
           {canUnmountFilesystem(filesystem) && (
-            <Button
+            <AppButton
               color="error"
               variant="outlined"
               onClick={() => onUnmount(filesystem.mountpoint)}
               disabled={isUnmounting}
             >
               {isUnmounting ? "Unmounting..." : "Unmount"}
-            </Button>
+            </AppButton>
           )}
         </div>
 
@@ -325,7 +325,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               }}
               onClick={(event) => event.stopPropagation()}
             />
-            <Button
+            <AppButton
               variant="outlined"
               onClick={() => onCreateSubvolume(filesystem.mountpoint)}
               disabled={
@@ -333,7 +333,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               }
             >
               {isCreatingSubvolume ? "Creating..." : "Create subvolume"}
-            </Button>
+            </AppButton>
           </div>
         )}
       </div>

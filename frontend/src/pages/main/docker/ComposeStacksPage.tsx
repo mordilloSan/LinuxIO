@@ -1,10 +1,10 @@
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-} from "@mui/material";
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -544,20 +544,20 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           isLoading={deleteLoading}
         />
 
-        <Dialog
+        <GeneralDialog
           open={overwriteDialogOpen}
           onClose={handleOverwriteCancel}
           maxWidth="sm"
           fullWidth
         >
-          <DialogTitle>File Already Exists</DialogTitle>
-          <DialogContent>
-            <DialogContentText>
+          <AppDialogTitle>File Already Exists</AppDialogTitle>
+          <AppDialogContent>
+            <AppDialogContentText>
               The file <strong>{pendingSaveData?.filePath}</strong> already
               exists. Do you want to overwrite it?
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions>
+            </AppDialogContentText>
+          </AppDialogContent>
+          <AppDialogActions>
             <AppButton onClick={handleOverwriteCancel} color="inherit">
               Cancel
             </AppButton>
@@ -568,8 +568,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             >
               Overwrite
             </AppButton>
-          </DialogActions>
-        </Dialog>
+          </AppDialogActions>
+        </GeneralDialog>
       </div>
     </Suspense>
   );

@@ -2,12 +2,14 @@ import { Icon } from "@iconify/react";
 import {
   Alert,
   Checkbox,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControlLabel,
 } from "@mui/material";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -54,23 +56,22 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
   };
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           display: "flex",
           alignItems: "center",
-          gap: 1,
-          borderBottom: "1px solid",
-          borderColor: "divider",
+          gap: 4,
+          borderBottom: "1px solid var(--mui-palette-divider)",
         }}
       >
         <Icon icon="mdi:broom" width={24} height={24} />
         <AppTypography variant="h6">Prune System</AppTypography>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent
-        sx={{
-          pt: 2.5,
-          pb: 1,
+      <AppDialogContent
+        style={{
+          paddingTop: 10,
+          paddingBottom: 4,
         }}
       >
         <AppTypography
@@ -183,13 +184,12 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             </AppTypography>
           </Alert>
         )}
-      </DialogContent>
+      </AppDialogContent>
 
-      <DialogActions
-        sx={{
-          p: 2,
-          borderTop: "1px solid",
-          borderColor: "divider",
+      <AppDialogActions
+        style={{
+          padding: 8,
+          borderTop: "1px solid var(--mui-palette-divider)",
         }}
       >
         <AppButton onClick={handleClose} disabled={isLoading} color="inherit">
@@ -204,7 +204,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         >
           {isLoading ? "Pruning..." : `Prune Selected (${selectedCount})`}
         </AppButton>
-      </DialogActions>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

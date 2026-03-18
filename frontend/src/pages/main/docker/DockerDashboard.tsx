@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Button,
   Collapse,
   Divider,
   Grid,
@@ -10,6 +9,7 @@ import {
 import AppIconButton from "@/components/ui/AppIconButton";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
+import AppButton from "@/components/ui/AppButton";
 import { useSearchParams } from "react-router-dom";
 
 import "@/theme/section.css";
@@ -176,7 +176,7 @@ const ResourceCardHeader: React.FC<{
         </AppTypography>
       </div>
     </div>
-    <Button
+    <AppButton
       size="small"
       endIcon={<Icon icon="mdi:chevron-right" width={20} height={20} />}
       onClick={onViewAll}
@@ -185,7 +185,7 @@ const ResourceCardHeader: React.FC<{
       }}
     >
       View All
-    </Button>
+    </AppButton>
   </div>
 );
 

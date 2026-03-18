@@ -1,5 +1,4 @@
 import {
-  Button,
   CircularProgress,
   Table,
   TableBody,
@@ -11,6 +10,7 @@ import {
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 interface SelfTestsTabProps {
   startPending: "short" | "long" | null;
@@ -53,7 +53,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             alignItems: "center",
           }}
         >
-          <Button
+          <AppButton
             variant="outlined"
             size="small"
             disabled={testActionsDisabled}
@@ -68,8 +68,8 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             }
           >
             {startPending === "short" ? "Starting..." : "Short Test"}
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             variant="outlined"
             size="small"
             disabled={testActionsDisabled}
@@ -84,7 +84,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             }
           >
             {startPending === "long" ? "Starting..." : "Extended Test"}
-          </Button>
+          </AppButton>
         </div>
         <AppTypography
           variant="caption"

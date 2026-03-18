@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
 import {
   CardContent,
-  Dialog,
-  DialogContent,
   Grid,
 } from "@mui/material";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -352,14 +352,14 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         )}
       </Grid>
 
-      <Dialog
+      <GeneralDialog
         open={openDialog}
         onClose={() => {
           setOpenDialog(false);
           setQrCode(null);
         }}
       >
-        <DialogContent>
+        <AppDialogContent>
           {isLoadingQrCode ? (
             <AppTypography>Loading QR code...</AppTypography>
           ) : qrCode ? (
@@ -376,8 +376,8 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
           ) : (
             <AppTypography>Failed to load QR code</AppTypography>
           )}
-        </DialogContent>
-      </Dialog>
+        </AppDialogContent>
+      </GeneralDialog>
     </>
   );
 };
