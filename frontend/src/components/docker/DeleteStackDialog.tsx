@@ -1,5 +1,7 @@
 import { Icon } from "@iconify/react";
-import { FormControlLabel, Radio, RadioGroup, useTheme } from "@mui/material";
+import { Radio, RadioGroup } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -82,7 +84,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           value={deleteOption}
           onChange={(e) => setDeleteOption(e.target.value as DeleteOption)}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             value="containers"
             control={<Radio />}
             label={
@@ -96,13 +98,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                 </AppTypography>
               </div>
             }
-            sx={{
-              alignItems: "flex-start",
-              mb: 1,
-            }}
+            style={{ alignItems: "flex-start", marginBottom: 4 }}
           />
 
-          <FormControlLabel
+          <AppFormControlLabel
             value="file"
             control={<Radio />}
             label={
@@ -115,13 +114,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                 </AppTypography>
               </div>
             }
-            sx={{
-              alignItems: "flex-start",
-              mb: 1,
-            }}
+            style={{ alignItems: "flex-start", marginBottom: 4 }}
           />
 
-          <FormControlLabel
+          <AppFormControlLabel
             value="directory"
             control={<Radio color="error" />}
             label={
@@ -134,9 +130,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                 </AppTypography>
               </div>
             }
-            sx={{
-              alignItems: "flex-start",
-            }}
+            style={{ alignItems: "flex-start" }}
           />
         </RadioGroup>
 

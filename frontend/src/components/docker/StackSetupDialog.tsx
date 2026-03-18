@@ -1,4 +1,5 @@
-import { TextField, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import AppTextField from "@/components/ui/AppTextField";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -52,7 +53,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       .replace(/^-+|-+$/g, "")
       .substring(0, 63);
   };
-  const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const sanitized = sanitizeStackName(e.target.value);
     setStackName(sanitized);
 
@@ -70,7 +71,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       });
     }
   };
-  const handleWorkingDirChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWorkingDirChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setWorkingDir(e.target.value);
     setIsWorkingDirManuallyEdited(true);
     if (errors.workingDir) {
@@ -159,7 +160,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
             gap: theme.spacing(3),
           }}
         >
-          <TextField
+          <AppTextField
             label="Stack Name"
             value={stackName}
             onChange={handleStackNameChange}
@@ -173,7 +174,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
             autoFocus
           />
 
-          <TextField
+          <AppTextField
             label="Working Directory"
             value={workingDir}
             onChange={handleWorkingDirChange}

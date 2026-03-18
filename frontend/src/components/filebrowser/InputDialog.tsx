@@ -1,4 +1,4 @@
-import { TextField } from "@mui/material";
+import AppTextField from "@/components/ui/AppTextField";
 import React, { useState, useCallback } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
@@ -73,9 +73,8 @@ const InputDialog: React.FC<InputDialogProps> = ({
     <FileBrowserDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <AppDialogTitle>{title}</AppDialogTitle>
       <AppDialogContent>
-        <TextField
+        <AppTextField
           autoFocus
-          margin="dense"
           label={label}
           type="text"
           fullWidth

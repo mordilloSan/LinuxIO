@@ -1,11 +1,10 @@
 import {
   Collapse,
-  FormControlLabel,
-  Switch,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
 } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -342,9 +342,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             marginBottom: theme.spacing(2),
           }}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={isConnected || isConnecting}
                 onChange={handleConnectionToggle}
                 disabled={toggling}
@@ -414,7 +414,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
               Configure static network settings. All fields are required.
             </AppTypography>
 
-            <TextField
+            <AppTextField
               fullWidth
               required
               label="IPv4 Address (CIDR)"
@@ -422,12 +422,10 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
               value={editForm.ipv4 ?? ""}
               onChange={(e) => handleChange("ipv4", e.target.value)}
               helperText="Format: IP/prefix (e.g., 192.168.1.10/24)"
-              sx={{
-                mb: 2,
-              }}
+              style={{ marginBottom: 8 }}
             />
 
-            <TextField
+            <AppTextField
               fullWidth
               required
               label="Gateway"
@@ -435,12 +433,10 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
               value={editForm.gateway ?? ""}
               onChange={(e) => handleChange("gateway", e.target.value)}
               helperText="The IP address of your network gateway/router"
-              sx={{
-                mb: 2,
-              }}
+              style={{ marginBottom: 8 }}
             />
 
-            <TextField
+            <AppTextField
               fullWidth
               required
               label="DNS Servers"
@@ -448,9 +444,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
               value={editForm.dns ?? ""}
               onChange={(e) => handleDNSChange(e.target.value)}
               helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
-              sx={{
-                mb: 2,
-              }}
+              style={{ marginBottom: 8 }}
             />
           </div>
         )}

@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { Checkbox, Divider, FormControlLabel } from "@mui/material";
+import { Checkbox, Divider } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -87,7 +88,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             gap: 2,
           }}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             control={
               <Checkbox
                 checked={opts.containers}
@@ -97,7 +98,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             }
             label="Stopped Containers"
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
               <Checkbox
                 checked={opts.images}
@@ -107,7 +108,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             }
             label="Unused Images (Not Used by Any Container)"
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
               <Checkbox
                 checked={opts.buildCache}
@@ -117,7 +118,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             }
             label="Build Cache"
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
               <Checkbox
                 checked={opts.networks}
@@ -134,7 +135,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             }}
           />
 
-          <FormControlLabel
+          <AppFormControlLabel
             control={
               <Checkbox
                 checked={opts.volumes}

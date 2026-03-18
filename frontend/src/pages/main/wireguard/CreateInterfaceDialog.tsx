@@ -4,12 +4,12 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppTextField from "@/components/ui/AppTextField";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -80,53 +80,48 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
       <AppDialogTitle>Create New Interface</AppDialogTitle>
       <AppDialogContent>
         <div style={{ marginTop: theme.spacing(2) }}>
-          <TextField
+          <AppTextField
             label="Interface Name"
             value={serverName}
             onChange={(e) => setServerName(e.target.value)}
             fullWidth
-            margin="normal"
             error={!!nameTaken}
             helperText={nameTaken ? "This interface name already exists." : ""}
             disabled={loading}
           />
-          <TextField
+          <AppTextField
             label="Port"
             type="number"
             value={port}
             onChange={(e) => setPort(Number(e.target.value))}
             fullWidth
-            margin="normal"
             error={!!portTaken}
             helperText={portTaken ? "This port is already in use." : ""}
             disabled={loading}
           />
-          <TextField
+          <AppTextField
             label="CIDR"
             value={CIDR}
             onChange={(e) => setCIDR(e.target.value)}
             fullWidth
-            margin="normal"
             error={!!cidrTaken}
             helperText={cidrTaken ? "This CIDR is already in use." : ""}
             disabled={loading}
           />
-          <TextField
+          <AppTextField
             label="DNS (optional, comma-separated)"
             value={dns}
             onChange={(e) => setDns(e.target.value)}
             fullWidth
-            margin="normal"
             disabled={loading}
             placeholder="e.g. 192.168.1.1, 1.1.1.1"
           />
-          <TextField
+          <AppTextField
             label="Peers"
             type="number"
             value={peers}
             onChange={(e) => setPeers(Number(e.target.value))}
             fullWidth
-            margin="normal"
             disabled={loading}
           />
           <FormControl fullWidth margin="normal" disabled={loading}>

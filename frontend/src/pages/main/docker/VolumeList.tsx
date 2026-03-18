@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { Grid, TextField, Checkbox } from "@mui/material";
+import { Grid, Checkbox } from "@mui/material";
+import AppTextField from "@/components/ui/AppTextField";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -238,18 +239,13 @@ const VolumeList: React.FC<VolumeListProps> = ({
           marginBottom: theme.spacing(2),
         }}
       >
-        <TextField
+        <AppTextField
           variant="outlined"
           size="small"
           placeholder="Search volumes…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
         <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (

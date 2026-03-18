@@ -1,11 +1,10 @@
 import {
-  FormControlLabel,
   MenuItem,
   Select,
   type SelectChangeEvent,
-  Switch,
-  TextField,
 } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -18,6 +17,7 @@ import {
   type AutoUpdateScope,
   type AutoUpdateState,
 } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
@@ -189,9 +189,9 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         gap: 8,
       }}
     >
-      <FormControlLabel
+      <AppFormControlLabel
         control={
-          <Switch
+          <AppSwitch
             checked={currentOptions.enabled}
             onChange={(e) =>
               setDraftOverrides((prev) => ({
@@ -276,9 +276,9 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           </Select>
         </div>
 
-        <FormControlLabel
+        <AppFormControlLabel
           control={
-            <Switch
+            <AppSwitch
               checked={currentOptions.download_only}
               onChange={(e) =>
                 setDraftOverrides((prev) => ({
@@ -304,20 +304,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             alignItems: "center",
           }}
         >
-          <TextField
+          <AppTextField
             size="small"
             placeholder="e.g. linux-headers-*, docker-ce"
             value={currentExcludeInput}
             onChange={(e) => setExcludeInputOverride(e.target.value)}
             disabled={saving}
-            sx={{
-              width: "100%",
-              minWidth: {
-                xs: 0,
-                sm: 420,
-              },
-              maxWidth: 600,
-            }}
+            style={{ width: "100%", maxWidth: 600 }}
           />
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
-import { Switch, FormControlLabel } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -77,18 +78,16 @@ const LogDialog: React.FC<LogDialogProps> = ({
         <AppTooltip
           title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={liveMode}
                 onChange={(_, checked) => onLiveModeChange(checked)}
                 size="small"
               />
             }
             label="Live"
-            sx={{
-              ml: 1,
-            }}
+            style={{ marginLeft: 4 }}
           />
         </AppTooltip>
         <AppIconButton onClick={onClose} size="small">

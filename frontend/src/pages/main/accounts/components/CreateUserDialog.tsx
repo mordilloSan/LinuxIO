@@ -1,9 +1,9 @@
 import {
   TextField,
-  FormControlLabel,
   Checkbox,
   Autocomplete,
 } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -186,7 +186,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
               })
             }
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
               <Checkbox
                 checked={createHome}

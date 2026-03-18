@@ -1,4 +1,4 @@
-import { TextField } from "@mui/material";
+import AppTextField from "@/components/ui/AppTextField";
 import { useTheme } from "@mui/material/styles";
 import React, {
   Suspense,
@@ -181,7 +181,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       .replace(/^-+|-+$/g, "")
       .substring(0, 63);
   };
-  const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStackNameChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setStackName(sanitizeStackName(e.target.value));
   };
   return (
@@ -222,7 +222,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             </AppTypography>
 
             {mode === "create" ? (
-              <TextField
+              <AppTextField
                 label="Stack Name"
                 value={stackName}
                 onChange={handleStackNameChange}

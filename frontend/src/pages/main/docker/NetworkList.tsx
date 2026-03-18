@@ -1,21 +1,21 @@
 import { Icon } from "@iconify/react";
 import {
   Grid,
-  TextField,
   Checkbox,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  FormControlLabel,
-  Switch,
-  useTheme,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
@@ -101,12 +101,11 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
       <AppDialogTitle>Create Network</AppDialogTitle>
       <AppDialogContent>
         <div style={{ marginTop: theme.spacing(2) }}>
-          <TextField
+          <AppTextField
             label="Network Name"
             value={networkName}
             onChange={(e) => setNetworkName(e.target.value)}
             fullWidth
-            margin="normal"
             error={!!nameTaken || (networkName.length > 0 && !isValidName)}
             helperText={
               nameTaken
@@ -134,16 +133,16 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
               <MenuItem value="none">none</MenuItem>
             </Select>
           </FormControl>
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={internal}
                 onChange={(e) => setInternal(e.target.checked)}
                 disabled={isCreating}
               />
             }
             label="Internal network (no external connectivity)"
-            sx={{ mt: 1 }}
+            style={{ marginTop: 4 }}
           />
         </div>
       </AppDialogContent>
@@ -390,18 +389,13 @@ const NetworkList: React.FC<NetworkListProps> = ({
           marginBottom: theme.spacing(2),
         }}
       >
-        <TextField
+        <AppTextField
           variant="outlined"
           size="small"
           placeholder="Search networks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
         <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (

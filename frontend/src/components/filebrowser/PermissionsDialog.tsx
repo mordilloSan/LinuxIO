@@ -1,7 +1,6 @@
 import {
   Autocomplete,
   Checkbox,
-  FormControlLabel,
   Table,
   TableBody,
   TableCell,
@@ -12,6 +11,7 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
@@ -350,7 +350,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               marginTop: theme.spacing(2),
             }}
           >
-            <FormControlLabel
+            <AppFormControlLabel
               control={
                 <Checkbox
                   checked={recursive}

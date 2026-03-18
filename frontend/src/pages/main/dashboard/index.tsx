@@ -13,7 +13,8 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { Checkbox, FormControlLabel, Grid, Popover } from "@mui/material";
+import { Checkbox, Grid, Popover } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo, useState } from "react";
 
@@ -166,7 +167,7 @@ const Dashboard: React.FC = () => {
           }}
         >
           {availableCards.map((card) => (
-            <FormControlLabel
+            <AppFormControlLabel
               key={card.id}
               control={
                 <Checkbox

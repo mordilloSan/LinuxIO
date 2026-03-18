@@ -1,10 +1,10 @@
 import {
   Autocomplete,
-  FormControlLabel,
   Grid,
-  Switch,
   TextField,
 } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
@@ -16,6 +16,7 @@ import React, {
 import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -181,7 +182,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             marginTop: 4,
           }}
         >
-          <TextField
+          <AppTextField
             label="NFS Server"
             value={server}
             onChange={(e) => setServer(e.target.value)}
@@ -217,7 +218,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
               />
             )}
           />
-          <TextField
+          <AppTextField
             label="Local Mountpoint"
             value={mountpoint}
             onChange={(e) => setMountpoint(e.target.value)}
@@ -233,25 +234,25 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
           >
             Mount Options
           </AppTypography>
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={mountAtBoot}
                 onChange={(e) => setMountAtBoot(e.target.checked)}
               />
             }
             label="Mount at boot (add to /etc/fstab)"
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={readOnly}
                 onChange={(e) => setReadOnly(e.target.checked)}
               />
             }
             label="Mount read-only"
           />
-          <TextField
+          <AppTextField
             label="Custom Mount Options"
             value={customOptions}
             onChange={(e) => setCustomOptions(e.target.value)}
@@ -336,9 +337,9 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
             </AppTypography>
           </div>
         )}
-        <FormControlLabel
+        <AppFormControlLabel
           control={
-            <Switch
+            <AppSwitch
               checked={removeFstab}
               onChange={(e) => setRemoveFstab(e.target.checked)}
             />
@@ -487,37 +488,25 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             marginTop: 4,
           }}
         >
-          <TextField
+          <AppTextField
             label="Server Address"
             value={server}
-            slotProps={{
-              input: {
-                readOnly: true,
-              },
-            }}
+            disabled
             fullWidth
             size="small"
           />
-          <TextField
+          <AppTextField
             label="Path on Server"
             value={exportPath}
-            slotProps={{
-              input: {
-                readOnly: true,
-              },
-            }}
+            disabled
             fullWidth
             size="small"
           />
           {mount && (
-            <TextField
+            <AppTextField
               label="Local Mountpoint"
               value={mount.mountpoint}
-              slotProps={{
-                input: {
-                  readOnly: true,
-                },
-              }}
+              disabled
               fullWidth
               size="small"
             />
@@ -530,25 +519,25 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           >
             Mount Options
           </AppTypography>
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={mountAtBoot}
                 onChange={(e) => setMountAtBoot(e.target.checked)}
               />
             }
             label="Mount at boot (add to /etc/fstab)"
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={readOnly}
                 onChange={(e) => setReadOnly(e.target.checked)}
               />
             }
             label="Mount read-only"
           />
-          <TextField
+          <AppTextField
             label="Custom Mount Options"
             value={customOptions}
             onChange={(e) => setCustomOptions(e.target.value)}
@@ -651,18 +640,13 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <TextField
+        <AppTextField
           variant="outlined"
           size="small"
           placeholder="Search NFS mounts..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
         <AppTypography fontWeight={700}>{filtered.length} mounts</AppTypography>
       </div>

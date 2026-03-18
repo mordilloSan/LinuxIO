@@ -1,4 +1,4 @@
-import { Switch } from "@mui/material";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -476,25 +476,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         </AppTypography>
         <AppTooltip title={autoUpdateTooltip}>
           <span style={{ display: "inline-flex" }}>
-            <Switch
+            <AppSwitch
               size="small"
               checked={autoUpdateChecked}
               onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
               disabled={autoUpdateDisabled}
-              sx={
-                isWatchtowerContainer
-                  ? {
-                      "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
-                        color: "action.disabled",
-                      },
-                      "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
-                        {
-                          opacity: 1,
-                          backgroundColor: "action.disabledBackground",
-                        },
-                    }
-                  : undefined
-              }
             />
           </span>
         </AppTooltip>

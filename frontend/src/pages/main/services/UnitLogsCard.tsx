@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
-import { FormControlLabel, Switch } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
@@ -45,9 +46,9 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
         <AppTooltip
           title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={liveMode}
                 onChange={(_, value) => setLiveMode(value)}
                 size="small"

@@ -2,14 +2,13 @@ import { Icon } from "@iconify/react";
 import {
   Autocomplete,
   FormControl,
-  FormControlLabel,
-  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
-  Switch,
   TextField,
 } from "@mui/material";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -20,6 +19,7 @@ import React, {
 } from "react";
 
 import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
@@ -617,21 +617,13 @@ const GeneralLogsPage: React.FC = () => {
           sx={{ minWidth: 180 }}
         />
 
-        <TextField
+        <AppTextField
           size="small"
           placeholder="Search logs..."
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 220, flex: "1 1 260px" }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Icon icon="mdi:magnify" width={20} height={20} />
-                </InputAdornment>
-              ),
-            },
-          }}
+          style={{ minWidth: 220, flex: "1 1 260px" }}
+          startAdornment={<Icon icon="mdi:magnify" width={20} height={20} />}
         />
         <AppTooltip title="Copy logs">
           <span>
@@ -658,9 +650,9 @@ const GeneralLogsPage: React.FC = () => {
         <AppTooltip
           title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={liveMode}
                 onChange={handleLiveModeChange}
                 size="small"

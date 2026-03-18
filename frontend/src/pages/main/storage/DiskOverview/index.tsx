@@ -6,7 +6,6 @@ import {
   LinearProgress,
   Tab,
   Tabs,
-  TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -42,6 +41,7 @@ import {
   type ApiDisk,
   type NFSMount,
 } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
@@ -311,7 +311,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               marginTop: 12,
             }}
           >
-            <TextField
+            <AppTextField
               size="small"
               label="Subvolume name"
               value={subvolumeName}
@@ -319,10 +319,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
                 onSubvolumeNameChange(filesystem.mountpoint, event.target.value)
               }
               placeholder="@data"
-              sx={{
-                minWidth: 220,
-                flex: "1 1 220px",
-              }}
+              style={{ minWidth: 220, flex: "1 1 220px" }}
               onClick={(event) => event.stopPropagation()}
             />
             <AppButton

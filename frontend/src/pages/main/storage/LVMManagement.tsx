@@ -13,7 +13,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,6 +25,7 @@ import {
   type PhysicalVolume,
   type VolumeGroup,
 } from "@/api";
+import AppTextField from "@/components/ui/AppTextField";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
@@ -142,14 +142,14 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
               Available space: {formatFileSize(selectedVG.free)}
             </AppTypography>
           )}
-          <TextField
+          <AppTextField
             label="Logical Volume Name"
             value={lvName}
             onChange={(e) => setLvName(e.target.value)}
             placeholder="e.g., data, backup"
             fullWidth
           />
-          <TextField
+          <AppTextField
             label="Size"
             value={size}
             onChange={(e) => setSize(e.target.value)}
@@ -254,7 +254,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
               </AppTypography>
             </>
           )}
-          <TextField
+          <AppTextField
             label="New Size"
             value={newSize}
             onChange={(e) => setNewSize(e.target.value)}
