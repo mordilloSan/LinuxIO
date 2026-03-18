@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Alert, AlertTitle, List, ListItem, ListItemText } from "@mui/material";
+import { List, ListItem, ListItemText } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -23,6 +23,7 @@ import {
   STREAM_CHUNK_SIZE,
 } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -980,18 +981,19 @@ const FileBrowser: React.FC = () => {
 
         {/* Indexer unavailable warning */}
         {!indexerEnabled && !editingPath && (
-          <Alert
+          <AppAlert
             severity="info"
-            sx={{
-              mx: 2,
-              mt: 1,
+            style={{
+              marginLeft: 8,
+              marginRight: 8,
+              marginTop: 4,
             }}
           >
-            <AlertTitle>
+            <AppAlertTitle>
               {indexerStatus === "unknown"
                 ? "Checking Indexer Availability"
                 : "Indexer Service Unavailable"}
-            </AlertTitle>
+            </AppAlertTitle>
             {indexerStatus === "unknown" ? (
               <AppTypography variant="body2">
                 Directory size calculations and file search stay disabled until
@@ -1004,7 +1006,7 @@ const FileBrowser: React.FC = () => {
                 features.
               </AppTypography>
             )}
-          </Alert>
+          </AppAlert>
         )}
 
         <div

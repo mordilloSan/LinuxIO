@@ -3,12 +3,12 @@ import {
   FormControlLabel,
   Radio,
   RadioGroup,
-  Alert,
   useTheme,
 } from "@mui/material";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -150,11 +150,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
         </RadioGroup>
 
         {deleteOption === "directory" && (
-          <Alert
+          <AppAlert
             severity="warning"
-            icon={<Icon icon="mdi:alert" width={22} height={22} />}
-            sx={{
-              mt: 2,
+            style={{
+              marginTop: 8,
             }}
           >
             <AppTypography variant="body2">
@@ -162,21 +161,21 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
               stack directory including all configuration files, data, and
               subdirectories. This action cannot be undone!
             </AppTypography>
-          </Alert>
+          </AppAlert>
         )}
 
         {deleteOption === "file" && (
-          <Alert
+          <AppAlert
             severity="info"
-            sx={{
-              mt: 2,
+            style={{
+              marginTop: 8,
             }}
           >
             <AppTypography variant="body2">
               The compose file will be deleted, but volumes and other data in
               the directory will be preserved.
             </AppTypography>
-          </Alert>
+          </AppAlert>
         )}
       </AppDialogContent>
 

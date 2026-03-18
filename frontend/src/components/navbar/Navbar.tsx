@@ -1,11 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Grid,
-  InputBase,
-  AppBar,
-  Toolbar,
-  useMediaQuery,
-} from "@mui/material";
+import { Grid, InputBase, AppBar, Toolbar, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 

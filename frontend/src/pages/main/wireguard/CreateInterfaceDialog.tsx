@@ -1,5 +1,4 @@
 import {
-  Alert,
   FormControl,
   FormHelperText,
   InputLabel,
@@ -11,6 +10,7 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -152,9 +152,9 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
             </FormHelperText>
           </FormControl>
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <AppAlert severity="error" style={{ marginTop: 8 }}>
               {error}
-            </Alert>
+            </AppAlert>
           )}
         </div>
       </AppDialogContent>

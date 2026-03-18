@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { Alert, Checkbox, Divider, FormControlLabel } from "@mui/material";
+import { Checkbox, Divider, FormControlLabel } from "@mui/material";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -165,11 +166,10 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         </div>
 
         {opts.volumes && (
-          <Alert
+          <AppAlert
             severity="warning"
-            icon={<Icon icon="mdi:alert" width={22} height={22} />}
-            sx={{
-              mt: 2,
+            style={{
+              marginTop: 8,
             }}
           >
             <AppTypography variant="body2">
@@ -177,7 +177,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
               delete data that is not attached to any container. This cannot be
               undone.
             </AppTypography>
-          </Alert>
+          </AppAlert>
         )}
       </AppDialogContent>
 

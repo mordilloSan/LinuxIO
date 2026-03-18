@@ -1,5 +1,4 @@
 import {
-  Alert,
   Autocomplete,
   FormControlLabel,
   Grid,
@@ -17,6 +16,7 @@ import React, {
 import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
+import AppAlert from "@/components/ui/AppAlert";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -260,7 +260,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          {validationError && <Alert severity="error">{validationError}</Alert>}
+          {validationError && <AppAlert severity="error">{validationError}</AppAlert>}
         </div>
       </AppDialogContent>
       <AppDialogActions>

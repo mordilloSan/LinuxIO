@@ -3,7 +3,6 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
-  Alert,
   FormControl,
   InputLabel,
   MenuItem,
@@ -28,6 +27,7 @@ import {
   type VolumeGroup,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -157,7 +157,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
             helperText="Use K, M, G, T suffix for size units"
             fullWidth
           />
-          {validationError && <Alert severity="error">{validationError}</Alert>}
+          {validationError && <AppAlert severity="error">{validationError}</AppAlert>}
         </div>
       </AppDialogContent>
       <AppDialogActions>
@@ -260,7 +260,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
             helperText="Use K, M, G, T suffix for size units"
             fullWidth
           />
-          {validationError && <Alert severity="error">{validationError}</Alert>}
+          {validationError && <AppAlert severity="error">{validationError}</AppAlert>}
         </div>
       </AppDialogContent>
       <AppDialogActions>
@@ -320,15 +320,15 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
           <strong>{lv?.name}</strong>?
         </AppDialogContentText>
         {lv?.mountpoint && (
-          <Alert
+          <AppAlert
             severity="warning"
-            sx={{
-              mt: 2,
+            style={{
+              marginTop: 8,
             }}
           >
             This volume is currently mounted at <strong>{lv.mountpoint}</strong>
             . Please unmount it first.
-          </Alert>
+          </AppAlert>
         )}
         <AppDialogContentText
           style={{

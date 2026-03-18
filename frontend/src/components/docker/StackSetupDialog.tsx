@@ -1,19 +1,16 @@
-import {
-  TextField,
-  useTheme,
-} from "@mui/material";
+import { TextField, useTheme } from "@mui/material";
+import React, { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import React, { useEffect, useState } from "react";
-import { toast } from "sonner";
-
-import { linuxio } from "@/api";
-import AppButton from "@/components/ui/AppButton";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {

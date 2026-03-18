@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Alert, Switch, FormControlLabel } from "@mui/material";
+import { Switch, FormControlLabel } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -102,14 +103,14 @@ const LogDialog: React.FC<LogDialogProps> = ({
         }}
       >
         {error ? (
-          <Alert
+          <AppAlert
             severity="error"
-            sx={{
-              m: 2,
+            style={{
+              margin: 8,
             }}
           >
             {error}
-          </Alert>
+          </AppAlert>
         ) : (
           <div
             ref={logsBoxRef}

@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Alert,
   Autocomplete,
   FormControl,
   FormControlLabel,
@@ -21,6 +20,7 @@ import React, {
 } from "react";
 
 import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
+import AppAlert from "@/components/ui/AppAlert";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
@@ -676,7 +676,7 @@ const GeneralLogsPage: React.FC = () => {
 
       {isLoading && <ComponentLoader />}
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && <AppAlert severity="error">{error}</AppAlert>}
 
       {!isLoading && !error && (
         <div ref={logsBoxRef}>
