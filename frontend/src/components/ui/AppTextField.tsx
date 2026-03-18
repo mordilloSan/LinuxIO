@@ -14,7 +14,7 @@ type AppTextFieldSlotProps = {
 
 export interface AppTextFieldProps {
   label?: string;
-  value?: string;
+  value?: string | number;
   onChange?: (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;
@@ -41,6 +41,7 @@ export interface AppTextFieldProps {
   onFocus?: (e: React.FocusEvent) => void;
   onBlur?: (e: React.FocusEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
   /** @deprecated Use startAdornment/endAdornment and shrinkLabel instead */
   slotProps?: AppTextFieldSlotProps;
 }
@@ -80,6 +81,7 @@ const AppTextField = React.forwardRef<
     onFocus,
     onBlur,
     onKeyDown,
+    onClick,
     slotProps: legacySlotProps,
   } = props as AppTextFieldInternalProps;
 
@@ -104,7 +106,10 @@ const AppTextField = React.forwardRef<
     onBlur?.(e);
   };
 
-  const handleWrapperClick = () => {
+  const handleWrapperClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    onClick?.(event);
+    if (event.defaultPrevented) return;
+
     const input = wrapperRef.current?.querySelector(
       "input, textarea",
     ) as HTMLElement | null;
