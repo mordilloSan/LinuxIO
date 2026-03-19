@@ -14,7 +14,8 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "mui:count": "node scripts/count-mui-usage.mjs",
     "build": "vite build",
-    "analyze": "BUNDLE_ANALYZE=true vite build"
+    "analyze": "BUNDLE_ANALYZE=true vite build",
+    "update": "npm update && npm outdated"
   },
   "browserslist": [
     "> 0.5%",
