@@ -1,11 +1,4 @@
-import {
-  FormControl,
-  InputLabel,
-  Menu,
-  MenuItem,
-  Select,
-  SelectChangeEvent,
-} from "@mui/material";
+import { Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -22,6 +15,7 @@ import {
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
+import AppSelect from "@/components/ui/AppSelect";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -225,7 +219,7 @@ const TerminalDialog: React.FC<Props> = ({
   ]);
 
   // Shell picker handler
-  const handleShellChange = (e: SelectChangeEvent) => {
+  const handleShellChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newShell = e.target.value;
     // Close existing stream
     closeStream();
@@ -311,24 +305,18 @@ const TerminalDialog: React.FC<Props> = ({
           <span>
             {containerName ? `Shell for ${containerName}` : "Container Shell"}
           </span>
-          <FormControl size="small" variant="standard">
-            <InputLabel id="shell-label">Shell</InputLabel>
-            <Select
-              labelId="shell-label"
-              value={activeShell}
-              onChange={handleShellChange}
-              sx={{
-                minWidth: 80,
-              }}
-              disabled={!isOpen || availableShells.length === 0}
-            >
-              {availableShells.map((s) => (
-                <MenuItem value={s} key={s}>
-                  {s}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <AppSelect
+            size="small"
+            variant="standard"
+            value={activeShell}
+            onChange={handleShellChange}
+            style={{ minWidth: 80 }}
+            disabled={!isOpen || availableShells.length === 0}
+          >
+            {availableShells.map((s) => (
+              <option value={s} key={s}>{s}</option>
+            ))}
+          </AppSelect>
         </div>
       </AppDialogTitle>
       <AppDialogContent

@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { CardContent, Grid } from "@mui/material";
+import AppCardContent from "@/components/ui/AppCardContent";
+import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
@@ -189,9 +190,9 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     );
   return (
     <>
-      <Grid container spacing={3}>
+      <AppGrid container spacing={3}>
         {peersWithStatus.length === 0 ? (
-          <Grid
+          <AppGrid
             size={{
               xs: 6,
               sm: 4,
@@ -201,12 +202,12 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
             }}
           >
             <AppTypography>No peers found for this interface.</AppTypography>
-          </Grid>
+          </AppGrid>
         ) : (
           peersWithStatus.map((peer, idx) => {
             const isOnline = peer.isOnline;
             return (
-              <Grid
+              <AppGrid
                 size={{
                   xs: 12,
                   sm: 6,
@@ -217,7 +218,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                 key={peer.name || idx}
               >
                 <FrostedCard>
-                  <CardContent>
+                  <AppCardContent>
                     <div
                       style={{
                         display: "flex",
@@ -341,13 +342,13 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                     <AppTypography variant="body2">
                       Keep Alive: {peer.persistent_keepalive ?? "-"}
                     </AppTypography>
-                  </CardContent>
+                  </AppCardContent>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             );
           })
         )}
-      </Grid>
+      </AppGrid>
 
       <GeneralDialog
         open={openDialog}

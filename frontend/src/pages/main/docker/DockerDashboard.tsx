@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, MenuItem, Select } from "@mui/material";
+import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -13,6 +13,7 @@ import MetricBar from "@/components/gauge/MetricBar";
 import AppButton from "@/components/ui/AppButton";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
+import AppSelect from "@/components/ui/AppSelect";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
@@ -367,12 +368,10 @@ const DockerDashboard: React.FC = () => {
         </AppIconButton>
       </div>
       <AppCollapse in={sections.overview}>
-        <Grid
+        <AppGrid
           container
           spacing={2}
-          sx={{
-            mb: 2,
-          }}
+          style={{ marginBottom: 8 }}
         >
           {(
             [
@@ -419,7 +418,7 @@ const DockerDashboard: React.FC = () => {
               detail: string;
             }[]
           ).map(({ label, tab, value, detail }) => (
-            <Grid
+            <AppGrid
               key={label}
               size={{
                 xs: 6,
@@ -474,9 +473,9 @@ const DockerDashboard: React.FC = () => {
                   </AppTypography>
                 </div>
               </FrostedCard>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
+        </AppGrid>
       </AppCollapse>
 
       <div
@@ -516,19 +515,17 @@ const DockerDashboard: React.FC = () => {
       </div>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <AppCollapse in={sections.daemon}>
-        <Grid
+        <AppGrid
           container
           spacing={2}
-          sx={{
-            mb: 2,
-          }}
+          style={{ marginBottom: 8 }}
         >
           {dockerInfo && (
             <>
               {/* ── Resource Usage ────────────────────────────────────────────── */}
               {runningContainers.length > 0 && (
                 <>
-                  <Grid
+                  <AppGrid
                     size={{
                       xs: 12,
                       sm: 4,
@@ -591,8 +588,8 @@ const DockerDashboard: React.FC = () => {
                         rightLabel={`${totalCpu.toFixed(1)}%`}
                       />
                     </FrostedCard>
-                  </Grid>
-                  <Grid
+                  </AppGrid>
+                  <AppGrid
                     size={{
                       xs: 12,
                       sm: 4,
@@ -655,9 +652,9 @@ const DockerDashboard: React.FC = () => {
                         rightLabel={formatFileSize(totalMemUsage)}
                       />
                     </FrostedCard>
-                  </Grid>
+                  </AppGrid>
                   {dockerInfo.disk_total > 0 && (
-                    <Grid
+                    <AppGrid
                       size={{
                         xs: 12,
                         sm: 4,
@@ -724,11 +721,11 @@ const DockerDashboard: React.FC = () => {
                           rightLabel={formatFileSize(dockerInfo.disk_used)}
                         />
                       </FrostedCard>
-                    </Grid>
+                    </AppGrid>
                   )}
                 </>
               )}
-              <Grid
+              <AppGrid
                 size={{
                   xs: 12,
                   sm: 4,
@@ -758,8 +755,8 @@ const DockerDashboard: React.FC = () => {
                     <InfoRow label="Git Commit" value={dockerInfo.git_commit} />
                   </DaemonSection>
                 </FrostedCard>
-              </Grid>
-              <Grid
+              </AppGrid>
+              <AppGrid
                 size={{
                   xs: 12,
                   sm: 4,
@@ -795,8 +792,8 @@ const DockerDashboard: React.FC = () => {
                     />
                   </DaemonSection>
                 </FrostedCard>
-              </Grid>
-              <Grid
+              </AppGrid>
+              <AppGrid
                 size={{
                   xs: 12,
                   sm: 4,
@@ -838,10 +835,10 @@ const DockerDashboard: React.FC = () => {
                     />
                   </DaemonSection>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             </>
           )}
-        </Grid>
+        </AppGrid>
       </AppCollapse>
 
       {/* ── Resources ──────────────────────────────────────────────────────── */}
@@ -881,9 +878,9 @@ const DockerDashboard: React.FC = () => {
         </AppIconButton>
       </div>
       <AppCollapse in={sections.resources}>
-        <Grid container spacing={2}>
+        <AppGrid container spacing={2}>
           {/* Containers table */}
-          <Grid
+          <AppGrid
             size={{
               xs: 12,
               lg: 6,
@@ -901,31 +898,23 @@ const DockerDashboard: React.FC = () => {
                 }
                 title="Containers"
                 subtitle={
-                  <Select
+                  <AppSelect
                     variant="standard"
                     disableUnderline
                     value={containerSort}
                     onChange={(e) =>
                       setContainerSort(e.target.value as typeof containerSort)
                     }
-                    sx={{
+                    style={{
                       fontSize: "0.75rem",
-                      color: "text.secondary",
+                      color: "var(--mui-palette-text-secondary)",
                       lineHeight: 1.4,
-                      "& .MuiSelect-select": {
-                        p: 0,
-                        pr: "18px !important",
-                      },
-                      "& .MuiSvgIcon-root": {
-                        fontSize: "0.9rem",
-                        color: "text.secondary",
-                      },
                     }}
                   >
-                    <MenuItem value="recent">Recent containers</MenuItem>
-                    <MenuItem value="name">Sort by name</MenuItem>
-                    <MenuItem value="state">Sort by state</MenuItem>
-                  </Select>
+                    <option value="recent">Recent containers</option>
+                    <option value="name">Sort by name</option>
+                    <option value="state">Sort by state</option>
+                  </AppSelect>
                 }
                 onViewAll={() => navigateToTab("containers")}
               />
@@ -1069,10 +1058,10 @@ const DockerDashboard: React.FC = () => {
                 </AppTypography>
               </div>
             </FrostedCard>
-          </Grid>
+          </AppGrid>
 
           {/* Images table */}
-          <Grid
+          <AppGrid
             size={{
               xs: 12,
               lg: 6,
@@ -1090,32 +1079,24 @@ const DockerDashboard: React.FC = () => {
                 }
                 title="Images"
                 subtitle={
-                  <Select
+                  <AppSelect
                     variant="standard"
                     disableUnderline
                     value={imageSort}
                     onChange={(e) =>
                       setImageSort(e.target.value as typeof imageSort)
                     }
-                    sx={{
+                    style={{
                       fontSize: "0.75rem",
-                      color: "text.secondary",
+                      color: "var(--mui-palette-text-secondary)",
                       lineHeight: 1.4,
-                      "& .MuiSelect-select": {
-                        p: 0,
-                        pr: "18px !important",
-                      },
-                      "& .MuiSvgIcon-root": {
-                        fontSize: "0.9rem",
-                        color: "text.secondary",
-                      },
                     }}
                   >
-                    <MenuItem value="largest">Largest images</MenuItem>
-                    <MenuItem value="recent">Most recent</MenuItem>
-                    <MenuItem value="name">Sort by name</MenuItem>
-                    <MenuItem value="usage">Most used</MenuItem>
-                  </Select>
+                    <option value="largest">Largest images</option>
+                    <option value="recent">Most recent</option>
+                    <option value="name">Sort by name</option>
+                    <option value="usage">Most used</option>
+                  </AppSelect>
                 }
                 onViewAll={() => navigateToTab("images")}
               />
@@ -1254,8 +1235,8 @@ const DockerDashboard: React.FC = () => {
                 </AppTypography>
               </div>
             </FrostedCard>
-          </Grid>
-        </Grid>
+          </AppGrid>
+        </AppGrid>
       </AppCollapse>
     </div>
   );

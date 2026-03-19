@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid } from "@mui/material";
+import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -314,9 +314,9 @@ const ImageList: React.FC<ImageListProps> = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((image) => (
-              <Grid
+              <AppGrid
                 key={`${image.id}-${image.tag}`}
                 size={{
                   xs: 12,
@@ -427,9 +427,9 @@ const ImageList: React.FC<ImageListProps> = ({
                     {image.id}
                   </AppTypography>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div
             style={{

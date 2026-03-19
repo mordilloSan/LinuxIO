@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid } from "@mui/material";
+import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -263,9 +263,9 @@ const VolumeList: React.FC<VolumeListProps> = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((volume) => (
-              <Grid
+              <AppGrid
                 key={volume.Name}
                 size={{
                   xs: 12,
@@ -349,9 +349,9 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     )}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div
             style={{

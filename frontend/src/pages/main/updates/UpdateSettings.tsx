@@ -1,4 +1,3 @@
-import { MenuItem, Select, type SelectChangeEvent } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +13,7 @@ import {
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
@@ -213,10 +213,10 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           <AppTypography variant="subtitle2" gutterBottom>
             Frequency
           </AppTypography>
-          <Select
+          <AppSelect
             size="small"
             value={currentOptions.frequency}
-            onChange={(e: SelectChangeEvent<AutoUpdateFrequency>) =>
+            onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 frequency: e.target.value as AutoUpdateFrequency,
@@ -224,20 +224,20 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             }
             disabled={saving}
           >
-            <MenuItem value="hourly">Hourly</MenuItem>
-            <MenuItem value="daily">Daily</MenuItem>
-            <MenuItem value="weekly">Weekly</MenuItem>
-          </Select>
+            <option value="hourly">Hourly</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </AppSelect>
         </div>
 
         <div>
           <AppTypography variant="subtitle2" gutterBottom>
             Scope
           </AppTypography>
-          <Select
+          <AppSelect
             size="small"
             value={currentOptions.scope}
-            onChange={(e: SelectChangeEvent<AutoUpdateScope>) =>
+            onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 scope: e.target.value as AutoUpdateScope,
@@ -245,20 +245,20 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             }
             disabled={saving}
           >
-            <MenuItem value="security">Security only</MenuItem>
-            <MenuItem value="updates">Security + updates</MenuItem>
-            <MenuItem value="all">All (incl. extras)</MenuItem>
-          </Select>
+            <option value="security">Security only</option>
+            <option value="updates">Security + updates</option>
+            <option value="all">All (incl. extras)</option>
+          </AppSelect>
         </div>
 
         <div>
           <AppTypography variant="subtitle2" gutterBottom>
             Reboot policy
           </AppTypography>
-          <Select
+          <AppSelect
             size="small"
             value={currentOptions.reboot_policy}
-            onChange={(e: SelectChangeEvent<AutoUpdateRebootPolicy>) =>
+            onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 reboot_policy: e.target.value as AutoUpdateRebootPolicy,
@@ -266,10 +266,10 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             }
             disabled={saving}
           >
-            <MenuItem value="never">Never</MenuItem>
-            <MenuItem value="if_needed">If needed</MenuItem>
-            <MenuItem value="always">Always</MenuItem>
-          </Select>
+            <option value="never">Never</option>
+            <option value="if_needed">If needed</option>
+            <option value="always">Always</option>
+          </AppSelect>
         </div>
 
         <AppFormControlLabel

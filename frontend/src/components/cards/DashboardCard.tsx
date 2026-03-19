@@ -1,17 +1,12 @@
 import { Icon } from "@iconify/react";
-import {
-  FormControl,
-  Select,
-  MenuItem,
-  SelectChangeEvent,
-  Menu,
-} from "@mui/material";
+import { Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
 import AppCardContent from "@/components/ui/AppCardContent";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
@@ -132,7 +127,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
     return contentLayout;
   })();
 
-  const handleSelectionChange = (event: SelectChangeEvent) => {
+  const handleSelectionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onSelect?.(event.target.value);
   };
 
@@ -158,53 +153,25 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   );
 
   const renderSelect = selectOptions.length > 0 && (
-    <FormControl
+    <AppSelect
       size="small"
-      sx={{
-        ml: -2,
-        mb: 1,
-        minWidth: "auto",
-        "& .MuiOutlinedInput-root": {
-          color: "text.secondary",
-        },
-        "& .MuiOutlinedInput-notchedOutline": {
-          border: "none",
-        },
-        "& .MuiSelect-select": {
-          padding: "4px 8px",
-        },
-        "& .MuiSvgIcon-root": {
-          color: theme.palette.text.secondary,
-          fontSize: 18,
-        },
+      variant="standard"
+      disableUnderline
+      value={selectedOption}
+      onChange={handleSelectionChange}
+      style={{
+        marginLeft: 0,
+        marginBottom: 2,
+        color: "var(--mui-palette-text-secondary)",
       }}
     >
-      <Select
-        id="card-select"
-        name="cardSelect"
-        labelId="card-select-label"
-        value={selectedOption}
-        onChange={handleSelectionChange}
-        displayEmpty
-        renderValue={() =>
-          selectedOptionLabel ? (
-            <AppTypography variant="body2" color="text.secondary">
-              {selectedOptionLabel}
-            </AppTypography>
-          ) : (
-            <AppTypography variant="body2" color="text.secondary">
-              Select...
-            </AppTypography>
-          )
-        }
-      >
-        {selectOptions.map((option, index) => (
-          <MenuItem key={option.id ?? index} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
+      {!selectedOption && <option value="" disabled hidden></option>}
+      {selectOptions.map((option, index) => (
+        <option key={option.id ?? index} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </AppSelect>
   );
 
   return (

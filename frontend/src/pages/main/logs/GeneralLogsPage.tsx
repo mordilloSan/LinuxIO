@@ -1,12 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Autocomplete,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-} from "@mui/material";
+import { Autocomplete, TextField } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -21,6 +14,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
+import AppSelect from "@/components/ui/AppSelect";
 import Chip from "@/components/ui/AppChip";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -190,8 +184,8 @@ const GeneralLogsPage: React.FC = () => {
 
         const timestamp = data.__REALTIME_TIMESTAMP
           ? new Date(
-              parseInt(data.__REALTIME_TIMESTAMP) / 1000,
-            ).toLocaleTimeString([], { hour12: false })
+            parseInt(data.__REALTIME_TIMESTAMP) / 1000,
+          ).toLocaleTimeString([], { hour12: false })
           : new Date().toLocaleTimeString([], { hour12: false });
 
         const message = data.MESSAGE || "";
@@ -553,39 +547,37 @@ const GeneralLogsPage: React.FC = () => {
           marginBottom: theme.spacing(2),
         }}
       >
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Time Period</InputLabel>
-          <Select
-            value={timePeriod}
-            label="Time Period"
-            onChange={(e) => handleTimePeriodChange(e.target.value)}
-          >
-            <MenuItem value="1h">Last 1 hour</MenuItem>
-            <MenuItem value="6h">Last 6 hours</MenuItem>
-            <MenuItem value="24h">Last 24 hours</MenuItem>
-            <MenuItem value="7d">Last 7 days</MenuItem>
-            <MenuItem value="30d">Last 30 days</MenuItem>
-          </Select>
-        </FormControl>
+        <AppSelect
+          label="Time Period"
+          size="small"
+          style={{ minWidth: 150 }}
+          value={timePeriod}
+          onChange={(e) => handleTimePeriodChange(e.target.value)}
+        >
+          <option value="1h">Last 1 hour</option>
+          <option value="6h">Last 6 hours</option>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+        </AppSelect>
 
-        <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Priority</InputLabel>
-          <Select
-            value={priorityFilter}
-            label="Priority"
-            onChange={(e) => handlePriorityFilterChange(e.target.value)}
-          >
-            <MenuItem value="all">All</MenuItem>
-            <MenuItem value="0">Emergency and above</MenuItem>
-            <MenuItem value="1">Alert and above</MenuItem>
-            <MenuItem value="2">Critical and above</MenuItem>
-            <MenuItem value="3">Error and above</MenuItem>
-            <MenuItem value="4">Warning and above</MenuItem>
-            <MenuItem value="5">Notice and above</MenuItem>
-            <MenuItem value="6">Info and above</MenuItem>
-            <MenuItem value="7">Debug and above</MenuItem>
-          </Select>
-        </FormControl>
+        <AppSelect
+          label="Priority"
+          size="small"
+          style={{ minWidth: 180 }}
+          value={priorityFilter}
+          onChange={(e) => handlePriorityFilterChange(e.target.value)}
+        >
+          <option value="all">All</option>
+          <option value="0">Emergency and above</option>
+          <option value="1">Alert and above</option>
+          <option value="2">Critical and above</option>
+          <option value="3">Error and above</option>
+          <option value="4">Warning and above</option>
+          <option value="5">Notice and above</option>
+          <option value="6">Info and above</option>
+          <option value="7">Debug and above</option>
+        </AppSelect>
 
         <Autocomplete
           size="small"
@@ -611,7 +603,12 @@ const GeneralLogsPage: React.FC = () => {
               {...params}
               label="Identifier"
               placeholder="All"
-              sx={{ minWidth: 180 }}
+              sx={{
+                minWidth: 180,
+                "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+                  borderColor: "var(--mui-palette-primary-main)",
+                },
+              }}
             />
           )}
           sx={{ minWidth: 180 }}

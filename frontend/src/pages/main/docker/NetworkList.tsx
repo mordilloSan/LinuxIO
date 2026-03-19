@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
+import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -12,6 +12,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
+import AppSelect from "@/components/ui/AppSelect";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
@@ -111,22 +112,20 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
             disabled={isCreating}
             autoFocus
           />
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="driver-select-label">Driver</InputLabel>
-            <Select
-              labelId="driver-select-label"
-              value={driver}
-              onChange={(e) => setDriver(e.target.value)}
-              label="Driver"
-              disabled={isCreating}
-            >
-              <MenuItem value="bridge">bridge</MenuItem>
-              <MenuItem value="host">host</MenuItem>
-              <MenuItem value="overlay">overlay</MenuItem>
-              <MenuItem value="macvlan">macvlan</MenuItem>
-              <MenuItem value="none">none</MenuItem>
-            </Select>
-          </FormControl>
+          <AppSelect
+            label="Driver"
+            fullWidth
+            value={driver}
+            onChange={(e) => setDriver(e.target.value)}
+            disabled={isCreating}
+            style={{ marginBlock: 8 }}
+          >
+            <option value="bridge">bridge</option>
+            <option value="host">host</option>
+            <option value="overlay">overlay</option>
+            <option value="macvlan">macvlan</option>
+            <option value="none">none</option>
+          </AppSelect>
           <AppFormControlLabel
             control={
               <AppSwitch
@@ -406,9 +405,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((network) => (
-              <Grid key={network.Id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <AppGrid key={network.Id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <FrostedCard style={{ padding: 8 }}>
                   <div
                     style={{
@@ -512,9 +511,9 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     )}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div
             style={{

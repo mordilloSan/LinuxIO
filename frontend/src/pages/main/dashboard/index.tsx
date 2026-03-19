@@ -13,7 +13,8 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { Grid, Popover } from "@mui/material";
+import { Popover } from "@mui/material";
+import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo, useState } from "react";
 
@@ -189,17 +190,17 @@ const Dashboard: React.FC = () => {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={cardIds} strategy={rectSortingStrategy}>
-          <Grid container spacing={4}>
+          <AppGrid container spacing={4}>
             {cards.map(({ id, component: CardComponent }) => (
-              <Grid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
+              <AppGrid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
                 <SortableCard id={id} editMode={editMode}>
                   <ErrorBoundary>
                     <CardComponent />
                   </ErrorBoundary>
                 </SortableCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         </SortableContext>
       </DndContext>
     </div>

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Grid, InputBase, AppBar, Toolbar, useMediaQuery } from "@mui/material";
+import { InputBase, AppBar, Toolbar, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
@@ -34,9 +34,9 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
       }}
     >
       <Toolbar>
-        <Grid container alignItems="center" sx={{ width: "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
           {/* Mobile menu button */}
-          <Grid sx={{ display: { xs: "block", md: "none" } }}>
+          {!isDesktop && (
             <AppIconButton
               color="inherit"
               aria-label="Open drawer"
@@ -44,12 +44,11 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
             >
               <Icon icon="mdi:menu" width={iconSize.md} height={iconSize.md} />
             </AppIconButton>
-          </Grid>
+          )}
 
           {/* Search Field (only desktop) */}
           {isDesktop && (
-            <Grid>
-              <div
+            <div
                 onMouseEnter={() => setIsSearchHovered(true)}
                 onMouseLeave={() => setIsSearchHovered(false)}
                 style={{
@@ -94,20 +93,19 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                   }}
                 />
               </div>
-            </Grid>
           )}
 
           {/* Spacer */}
-          <Grid sx={{ flexGrow: 1 }} />
+          <div style={{ flexGrow: 1 }} />
 
           {/* User Actions */}
-          <Grid sx={{ display: "flex", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
             <NavbarNotificationsDropdown />
             <Settings />
             <NavbarSettingsDialogTrigger />
             <NavbarUserDropdown />
-          </Grid>
-        </Grid>
+          </div>
+        </div>
       </Toolbar>
     </AppBar>
   );

@@ -1,4 +1,5 @@
-import { Autocomplete, Grid, TextField } from "@mui/material";
+import { Autocomplete, TextField } from "@mui/material";
+import AppGrid from "@/components/ui/AppGrid";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
@@ -649,9 +650,9 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
 
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((mount) => (
-              <Grid
+              <AppGrid
                 key={mount.mountpoint}
                 size={{
                   xs: 12,
@@ -754,9 +755,9 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     </AppButton>
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div
             style={{

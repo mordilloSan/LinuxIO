@@ -1,10 +1,4 @@
-import {
-  FormControl,
-  FormHelperText,
-  InputLabel,
-  MenuItem,
-  Select,
-} from "@mui/material";
+import AppSelect from "@/components/ui/AppSelect";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -124,28 +118,24 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
             fullWidth
             disabled={loading}
           />
-          <FormControl fullWidth margin="normal" disabled={loading}>
-            <InputLabel id="nic-select-label">NIC</InputLabel>
-            <Select
-              labelId="nic-select-label"
-              value={nic}
-              onChange={(e) => setNic(e.target.value as string)}
-              label="NIC"
-            >
-              {availableNICs.length === 0 ? (
-                <MenuItem disabled>No NICs Available</MenuItem>
-              ) : (
-                availableNICs.map((nicOption) => (
-                  <MenuItem key={nicOption.name} value={nicOption.name}>
-                    {nicOption.label}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-            <FormHelperText>
-              {availableNICs.length === 0 ? "No NICs available" : ""}
-            </FormHelperText>
-          </FormControl>
+          <AppSelect
+            label="NIC"
+            fullWidth
+            value={nic}
+            onChange={(e) => setNic(e.target.value)}
+            disabled={loading}
+            style={{ marginBlock: 8 }}
+          >
+            {availableNICs.length === 0 ? (
+              <option value="" disabled>No NICs Available</option>
+            ) : (
+              availableNICs.map((nicOption) => (
+                <option key={nicOption.name} value={nicOption.name}>
+                  {nicOption.label}
+                </option>
+              ))
+            )}
+          </AppSelect>
           {error && (
             <AppAlert severity="error" style={{ marginTop: 8 }}>
               {error}
