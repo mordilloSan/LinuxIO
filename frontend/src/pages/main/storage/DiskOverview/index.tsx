@@ -1,8 +1,5 @@
 import { Icon } from "@iconify/react";
-import {
-  Tab,
-  Tabs,
-} from "@mui/material";
+import { Tab, Tabs } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";

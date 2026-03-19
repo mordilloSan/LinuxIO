@@ -127,7 +127,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
     return contentLayout;
   })();
 
-  const handleSelectionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSelectionChange = (
+    event: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
     onSelect?.(event.target.value);
   };
 

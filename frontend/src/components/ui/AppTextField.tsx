@@ -96,8 +96,7 @@ const AppTextField = React.forwardRef<
   const forceShrink = shrinkLabel ?? legacySlotProps?.inputLabel?.shrink;
 
   const hasValue = value !== undefined && value !== "";
-  const labelText =
-    label && required ? `${label}\u2009*` : label;
+  const labelText = label && required ? `${label}\u2009*` : label;
   const labelShrunk = !!(forceShrink || focused || hasValue || resolvedStart);
 
   const handleFocus = (e: React.FocusEvent) => {

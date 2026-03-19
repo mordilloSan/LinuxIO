@@ -6,7 +6,6 @@ import AppCheckbox from "../ui/AppCheckbox";
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
-import AppTextField from "@/components/ui/AppTextField";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -20,6 +19,7 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 interface PermissionsDialogProps {
   open: boolean;
@@ -223,7 +223,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             list="permissions-users-list"
           />
           <datalist id="permissions-users-list">
-            {availableUsers.map((u) => <option key={u} value={u} />)}
+            {availableUsers.map((u) => (
+              <option key={u} value={u} />
+            ))}
           </datalist>
 
           <AppTextField
@@ -235,13 +237,17 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             list="permissions-groups-list"
           />
           <datalist id="permissions-groups-list">
-            {availableGroups.map((g) => <option key={g} value={g} />)}
+            {availableGroups.map((g) => (
+              <option key={g} value={g} />
+            ))}
           </datalist>
         </div>
 
         <AppTable>
           <AppTableHead>
-            <AppTableRow style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}>
+            <AppTableRow
+              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+            >
               <AppTableCell></AppTableCell>
               <AppTableCell align="center">Read</AppTableCell>
               <AppTableCell align="center">Write</AppTableCell>
@@ -249,7 +255,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             </AppTableRow>
           </AppTableHead>
           <AppTableBody>
-            <AppTableRow style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}>
+            <AppTableRow
+              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+            >
               <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Owner
@@ -274,7 +282,9 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
                 />
               </AppTableCell>
             </AppTableRow>
-            <AppTableRow style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}>
+            <AppTableRow
+              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+            >
               <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Group

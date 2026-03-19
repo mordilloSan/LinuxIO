@@ -22,6 +22,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppSelect from "@/components/ui/AppSelect";
 import {
   AppTable,
   AppTableBody,
@@ -30,7 +31,6 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
-import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";

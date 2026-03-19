@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect } from "react";
 
 import "./app-select.css";
 
-interface AppSelectProps
-  extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size"> {
+interface AppSelectProps extends Omit<
+  React.SelectHTMLAttributes<HTMLSelectElement>,
+  "size"
+> {
   size?: "small" | "medium";
   variant?: "outlined" | "standard";
   disableUnderline?: boolean;

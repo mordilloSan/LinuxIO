@@ -14,11 +14,11 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
-import AppSelect from "@/components/ui/AppSelect";
 import Chip from "@/components/ui/AppChip";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPaper from "@/components/ui/AppPaper";
+import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
@@ -184,8 +184,8 @@ const GeneralLogsPage: React.FC = () => {
 
         const timestamp = data.__REALTIME_TIMESTAMP
           ? new Date(
-            parseInt(data.__REALTIME_TIMESTAMP) / 1000,
-          ).toLocaleTimeString([], { hour12: false })
+              parseInt(data.__REALTIME_TIMESTAMP) / 1000,
+            ).toLocaleTimeString([], { hour12: false })
           : new Date().toLocaleTimeString([], { hour12: false });
 
         const message = data.MESSAGE || "";
@@ -603,12 +603,7 @@ const GeneralLogsPage: React.FC = () => {
               {...params}
               label="Identifier"
               placeholder="All"
-              sx={{
-                minWidth: 180,
-                "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "var(--mui-palette-primary-main)",
-                },
-              }}
+              style={{ minWidth: 180 }}
             />
           )}
           sx={{ minWidth: 180 }}

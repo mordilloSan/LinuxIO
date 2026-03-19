@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import AppDivider from "@/components/ui/AppDivider";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,6 +10,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppDivider from "@/components/ui/AppDivider";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
 export interface PruneOptions {

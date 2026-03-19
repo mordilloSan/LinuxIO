@@ -1,4 +1,3 @@
-import AppSelect from "@/components/ui/AppSelect";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -10,6 +9,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 
 interface CreateInterfaceDialogProps {
@@ -127,7 +127,9 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
             style={{ marginBlock: 8 }}
           >
             {availableNICs.length === 0 ? (
-              <option value="" disabled>No NICs Available</option>
+              <option value="" disabled>
+                No NICs Available
+              </option>
             ) : (
               availableNICs.map((nicOption) => (
                 <option key={nicOption.name} value={nicOption.name}>

@@ -14,7 +14,6 @@ import {
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
 import { Popover } from "@mui/material";
-import AppGrid from "@/components/ui/AppGrid";
 import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo, useState } from "react";
 
@@ -32,6 +31,7 @@ import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";

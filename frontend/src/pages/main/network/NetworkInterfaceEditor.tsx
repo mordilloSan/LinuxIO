@@ -8,8 +8,8 @@ import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
-import AppCollapse from "@/components/ui/AppCollapse";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";

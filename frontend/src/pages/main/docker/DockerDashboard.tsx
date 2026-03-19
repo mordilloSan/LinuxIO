@@ -1,5 +1,7 @@
 import { Icon } from "@iconify/react";
+
 import AppGrid from "@/components/ui/AppGrid";
+
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -11,11 +13,11 @@ import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
-import AppSelect from "@/components/ui/AppSelect";
-import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formaters";
@@ -368,11 +370,7 @@ const DockerDashboard: React.FC = () => {
         </AppIconButton>
       </div>
       <AppCollapse in={sections.overview}>
-        <AppGrid
-          container
-          spacing={2}
-          style={{ marginBottom: 8 }}
-        >
+        <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
           {(
             [
               {
@@ -515,11 +513,7 @@ const DockerDashboard: React.FC = () => {
       </div>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <AppCollapse in={sections.daemon}>
-        <AppGrid
-          container
-          spacing={2}
-          style={{ marginBottom: 8 }}
-        >
+        <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
           {dockerInfo && (
             <>
               {/* ── Resource Usage ────────────────────────────────────────────── */}

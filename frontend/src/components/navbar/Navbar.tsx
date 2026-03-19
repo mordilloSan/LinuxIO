@@ -49,50 +49,50 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
           {/* Search Field (only desktop) */}
           {isDesktop && (
             <div
-                onMouseEnter={() => setIsSearchHovered(true)}
-                onMouseLeave={() => setIsSearchHovered(false)}
+              onMouseEnter={() => setIsSearchHovered(true)}
+              onMouseLeave={() => setIsSearchHovered(false)}
+              style={{
+                position: "relative",
+                borderRadius: `${baseBorderRadius * 2}px`,
+                backgroundColor: isSearchHovered
+                  ? getHoverBackground(theme)
+                  : theme.header.background,
+                width: "100%",
+              }}
+            >
+              <div
                 style={{
-                  position: "relative",
-                  borderRadius: `${baseBorderRadius * 2}px`,
-                  backgroundColor: isSearchHovered
-                    ? getHoverBackground(theme)
-                    : theme.header.background,
-                  width: "100%",
+                  position: "absolute",
+                  width: 50,
+                  height: "100%",
+                  pointerEvents: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <div
-                  style={{
-                    position: "absolute",
-                    width: 50,
-                    height: "100%",
-                    pointerEvents: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon
-                    icon="mdi:magnify"
-                    width={iconSize.md}
-                    height={iconSize.md}
-                  />
-                </div>
-                <InputBase
-                  placeholder="Search"
-                  id="search-input"
-                  name="search"
-                  inputProps={{ "aria-label": "Search containers or services" }}
-                  sx={{
-                    color: "inherit",
-                    width: "100%",
-                    input: {
-                      color: theme.header.search.color,
-                      p: theme.spacing(2.5, 2.5, 2.5, 12),
-                      width: 160,
-                    },
-                  }}
+                <Icon
+                  icon="mdi:magnify"
+                  width={iconSize.md}
+                  height={iconSize.md}
                 />
               </div>
+              <InputBase
+                placeholder="Search"
+                id="search-input"
+                name="search"
+                inputProps={{ "aria-label": "Search containers or services" }}
+                sx={{
+                  color: "inherit",
+                  width: "100%",
+                  input: {
+                    color: theme.header.search.color,
+                    p: theme.spacing(2.5, 2.5, 2.5, 12),
+                    width: 160,
+                  },
+                }}
+              />
+            </div>
           )}
 
           {/* Spacer */}

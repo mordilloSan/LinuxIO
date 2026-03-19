@@ -15,12 +15,12 @@ import {
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
-import AppSelect from "@/components/ui/AppSelect";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
 interface Props {
@@ -314,7 +314,9 @@ const TerminalDialog: React.FC<Props> = ({
             disabled={!isOpen || availableShells.length === 0}
           >
             {availableShells.map((s) => (
-              <option value={s} key={s}>{s}</option>
+              <option value={s} key={s}>
+                {s}
+              </option>
             ))}
           </AppSelect>
         </div>
