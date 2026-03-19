@@ -404,7 +404,9 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const [newSize, setNewSize] = useState("");
+  const [newSize, setNewSize] = useState(() =>
+    lv ? `${Math.round(lv.size / (1024 * 1024 * 1024))}G` : "",
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
   const { mutate: resizeLV, isPending: isResizing } =
     linuxio.storage.resize_lv.useMutation({
@@ -425,16 +427,6 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
         );
       },
     });
-  useEffect(() => {
-    if (!lv) {
-      setNewSize("");
-      setValidationError(null);
-      return;
-    }
-    const sizeGB = Math.round(lv.size / (1024 * 1024 * 1024));
-    setNewSize(`${sizeGB}G`);
-    setValidationError(null);
-  }, [lv]);
   const handleResize = () => {
     if (!lv || !newSize) {
       setValidationError("Size is required");
@@ -944,6 +936,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
       />
 
       <ResizeLVDialog
+        key={selectedLV?.name ?? ""}
         open={resizeDialogOpen}
         onClose={() => setResizeDialogOpen(false)}
         lv={selectedLV}

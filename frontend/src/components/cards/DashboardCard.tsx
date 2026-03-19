@@ -107,7 +107,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   icon_text,
   selectOptions = [],
   selectedOption = "",
-  selectedOptionLabel,
+
   onSelect,
   connectionStatus,
   contentLayout = "equal",
