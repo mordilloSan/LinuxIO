@@ -1,4 +1,4 @@
-import { TextField, Autocomplete } from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
@@ -11,6 +11,7 @@ import {
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import AppTextField from "@/components/ui/AppTextField";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -95,7 +96,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
             value={selectedMembers}
             onChange={(_, value) => setSelectedMembers(value)}
             renderInput={(params) => (
-              <TextField {...params} label="Members" fullWidth />
+              <AppTextField {...params} label="Members" fullWidth />
             )}
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {

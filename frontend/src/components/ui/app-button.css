@@ -22,7 +22,7 @@
   font-weight: 500;
   font-size: 0.8125rem;
   line-height: 1.75;
-  letter-spacing: 0.02857em;
+  letter-spacing: normal;
   text-transform: none;
 
   /* transitions */

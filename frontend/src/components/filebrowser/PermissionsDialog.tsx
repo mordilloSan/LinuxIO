@@ -1,9 +1,4 @@
-import {
-  Autocomplete,
-  TextField,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { useMediaQuery, useTheme } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 import AppCheckbox from "../ui/AppCheckbox";
@@ -11,6 +6,7 @@ import AppCheckbox from "../ui/AppCheckbox";
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import AppTextField from "@/components/ui/AppTextField";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -138,6 +134,13 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const [recursive, setRecursive] = useState(false);
   const [ownerInput, setOwnerInput] = useState(owner || "");
   const [groupInput, setGroupInput] = useState(group || "");
+
+  React.useEffect(() => {
+    if (open) {
+      setOwnerInput(owner || "");
+      setGroupInput(group || "");
+    }
+  }, [open, owner, group]);
   // Fetch users and groups when dialog opens
   const { data: usersGroupsData } = linuxio.filebrowser.users_groups.useQuery({
     enabled: open,
@@ -211,57 +214,34 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <Autocomplete
-            freeSolo
-            options={availableUsers}
+          <AppTextField
+            label="Owner"
+            size="small"
+            shrinkLabel
             value={ownerInput}
-            onInputChange={(_, newValue) => setOwnerInput(newValue)}
-            slotProps={{
-              listbox: {
-                className: "custom-scrollbar",
-                sx: {
-                  maxHeight: "200px",
-                },
-              },
-            }}
-            sx={{
-              "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline":
-                {
-                  borderColor: theme.palette.primary.main,
-                },
-            }}
-            renderInput={(params) => (
-              <TextField {...params} label="Owner" size="small" />
-            )}
+            onChange={(e) => setOwnerInput(e.target.value)}
+            list="permissions-users-list"
           />
-          <Autocomplete
-            freeSolo
-            options={availableGroups}
+          <datalist id="permissions-users-list">
+            {availableUsers.map((u) => <option key={u} value={u} />)}
+          </datalist>
+
+          <AppTextField
+            label="Group"
+            size="small"
+            shrinkLabel
             value={groupInput}
-            onInputChange={(_, newValue) => setGroupInput(newValue)}
-            slotProps={{
-              listbox: {
-                className: "custom-scrollbar",
-                sx: {
-                  maxHeight: "200px",
-                },
-              },
-            }}
-            sx={{
-              "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline":
-                {
-                  borderColor: theme.palette.primary.main,
-                },
-            }}
-            renderInput={(params) => (
-              <TextField {...params} label="Group" size="small" />
-            )}
+            onChange={(e) => setGroupInput(e.target.value)}
+            list="permissions-groups-list"
           />
+          <datalist id="permissions-groups-list">
+            {availableGroups.map((g) => <option key={g} value={g} />)}
+          </datalist>
         </div>
 
         <AppTable>
           <AppTableHead>
-            <AppTableRow>
+            <AppTableRow style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}>
               <AppTableCell></AppTableCell>
               <AppTableCell align="center">Read</AppTableCell>
               <AppTableCell align="center">Write</AppTableCell>
@@ -269,7 +249,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             </AppTableRow>
           </AppTableHead>
           <AppTableBody>
-            <AppTableRow>
+            <AppTableRow style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}>
               <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Owner
@@ -294,7 +274,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
                 />
               </AppTableCell>
             </AppTableRow>
-            <AppTableRow>
+            <AppTableRow style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}>
               <AppTableCell>
                 <AppTypography variant="body2" fontWeight={500}>
                   Group

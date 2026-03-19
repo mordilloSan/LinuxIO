@@ -1,9 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Collapse,
-  Divider,
-  Grid,
-  LinearProgress,
   Tab,
   Tabs,
 } from "@mui/material";
@@ -45,6 +41,10 @@ import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppDivider from "@/components/ui/AppDivider";
+import AppGrid from "@/components/ui/AppGrid";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -130,13 +130,9 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
   return (
-    <Collapse in timeout="auto" unmountOnExit>
+    <AppCollapse in={true} timeout="auto" unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-        <Divider
-          sx={{
-            my: 2,
-          }}
-        />
+        <AppDivider style={{ margin: "16px 0" }} />
 
         <div
           style={{
@@ -334,7 +330,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           </div>
         )}
       </div>
-    </Collapse>
+    </AppCollapse>
   );
 };
 const DriveDetails: React.FC<DriveDetailsProps> = ({
@@ -498,13 +494,9 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     | undefined;
   if (!expanded) return null;
   return (
-    <Collapse in={expanded} timeout="auto" unmountOnExit>
+    <AppCollapse in={expanded} timeout="auto" unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-        <Divider
-          sx={{
-            my: 2,
-          }}
-        />
+        <AppDivider style={{ margin: "16px 0" }} />
 
         <div
           style={{
@@ -588,7 +580,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
           />
         </TabPanel>
       </div>
-    </Collapse>
+    </AppCollapse>
   );
 };
 const DiskOverview: React.FC = () => {
@@ -789,7 +781,7 @@ const DiskOverview: React.FC = () => {
           >
             Physical Drives
           </AppTypography>
-          <Grid
+          <AppGrid
             container
             spacing={3}
             sx={{
@@ -798,7 +790,7 @@ const DiskOverview: React.FC = () => {
           >
             <AnimatePresence>
               {drives.length === 0 ? (
-                <Grid
+                <AppGrid
                   size={{
                     xs: 12,
                   }}
@@ -806,11 +798,11 @@ const DiskOverview: React.FC = () => {
                   <AppTypography color="text.secondary">
                     No drives found.
                   </AppTypography>
-                </Grid>
+                </AppGrid>
               ) : (
                 drives.map((drive) =>
                   expanded && expanded !== drive.name ? null : (
-                    <Grid
+                    <AppGrid
                       key={drive.name}
                       size={{
                         xs: 12,
@@ -979,12 +971,12 @@ const DiskOverview: React.FC = () => {
                           smartmontoolsReason={smartmontoolsReason}
                         />
                       </FrostedCard>
-                    </Grid>
+                    </AppGrid>
                   ),
                 )
               )}
             </AnimatePresence>
-          </Grid>
+          </AppGrid>
         </>
       )}
 
@@ -999,10 +991,10 @@ const DiskOverview: React.FC = () => {
           >
             Filesystems
           </AppTypography>
-          <Grid container spacing={3}>
+          <AppGrid container spacing={3}>
             <AnimatePresence>
               {relevantFS.length === 0 ? (
-                <Grid
+                <AppGrid
                   size={{
                     xs: 12,
                   }}
@@ -1010,12 +1002,12 @@ const DiskOverview: React.FC = () => {
                   <AppTypography color="text.secondary">
                     No filesystems found.
                   </AppTypography>
-                </Grid>
+                </AppGrid>
               ) : (
                 relevantFS.map((fs) =>
                   selectedMountpoint &&
                   selectedMountpoint !== fs.mountpoint ? null : (
-                    <Grid
+                    <AppGrid
                       key={fs.mountpoint}
                       size={{
                         xs: 12,
@@ -1077,13 +1069,13 @@ const DiskOverview: React.FC = () => {
                         >
                           {fs.device} ({fs.fstype})
                         </AppTypography>
-                        <LinearProgress
+                        <AppLinearProgress
                           variant="determinate"
                           value={fs.usedPercent}
-                          sx={{
+                          style={{
                             height: 8,
                             borderRadius: 4,
-                            mb: 1,
+                            marginBottom: 8,
                           }}
                           color={
                             fs.usedPercent > 90
@@ -1118,12 +1110,12 @@ const DiskOverview: React.FC = () => {
                           />
                         )}
                       </FrostedCard>
-                    </Grid>
+                    </AppGrid>
                   ),
                 )
               )}
             </AnimatePresence>
-          </Grid>
+          </AppGrid>
         </>
       )}
     </div>

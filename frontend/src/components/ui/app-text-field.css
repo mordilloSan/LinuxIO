@@ -24,31 +24,78 @@
   border-radius: 4px;
   cursor: text;
   font-family: inherit;
-  font-size: 0.8125rem;
+  font-size: 1rem;
   line-height: 1.4375em;
   color: var(--mui-palette-text-primary);
   box-sizing: border-box;
 }
 
 /* outlined variant */
-.app-text-field--outlined .app-text-field__wrapper {
-  border: 1px solid var(--mui-palette-action-disabled);
-  background-color: transparent;
-  transition:
-    border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
+.app-text-field__outline {
+  text-align: left;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  top: -5px;
+  left: 0;
+  margin: 0;
+  padding: 0 8px;
+  pointer-events: none;
+  border-radius: inherit;
+  border-style: solid;
+  border-width: 1px;
+  overflow: hidden;
+  min-width: 0%;
 }
 
-.app-text-field--outlined .app-text-field__wrapper:hover {
+.app-text-field__legend {
+  float: unset;
+  width: auto;
+  overflow: hidden;
+  padding: 0;
+  line-height: 11px;
+  transition: max-width 50ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.app-text-field__outline--with-label .app-text-field__legend {
+  height: 11px;
+  font-size: 0.75em;
+  visibility: hidden;
+  max-width: 0.01px;
+  white-space: nowrap;
+}
+
+.app-text-field__outline--with-label .app-text-field__legend > span {
+  padding-left: 5px;
+  padding-right: 5px;
+  display: inline-block;
+  opacity: 0;
+  visibility: visible;
+}
+
+.app-text-field__outline--notched .app-text-field__legend {
+  max-width: 100%;
+  transition:
+    max-width 100ms cubic-bezier(0, 0, 0.2, 1) 50ms;
+}
+
+.app-text-field--outlined .app-text-field__outline {
+  border-color: var(--mui-palette-action-disabled);
+  transition:
+    border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-text-field--outlined .app-text-field__wrapper:hover .app-text-field__outline {
   border-color: var(--mui-palette-text-primary);
 }
 
-.app-text-field--outlined.app-text-field--focused .app-text-field__wrapper {
+.app-text-field--outlined.app-text-field--focused .app-text-field__outline {
   border-color: var(--mui-palette-primary-main);
   border-width: 2px;
 }
 
-.app-text-field--error .app-text-field__wrapper {
+.app-text-field--error .app-text-field__outline {
   border-color: var(--mui-palette-error-main) !important;
 }
 
@@ -88,8 +135,17 @@
 }
 
 .app-text-field__input::placeholder {
-  color: var(--mui-palette-text-secondary);
-  opacity: 1;
+  color: currentColor;
+  opacity: 0.5;
+  transition: opacity 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.app-text-field__label[data-shrink="false"] + .app-text-field__wrapper .app-text-field__input::placeholder {
+  opacity: 0 !important;
+}
+
+.app-text-field__label[data-shrink="false"] + .app-text-field__wrapper .app-text-field__input:focus::placeholder {
+  opacity: 0.5;
 }
 
 .app-text-field__input:disabled {
@@ -126,36 +182,45 @@ textarea.app-text-field__input {
 /* ── label ─────────────────────────────────── */
 
 .app-text-field__label {
+  display: block;
   position: absolute;
   left: 0;
   top: 0;
-  transform: translate(14px, 16px) scale(1);
   transform-origin: top left;
   color: var(--mui-palette-text-secondary);
   font-family: inherit;
-  font-size: 0.8125rem;
+  font-size: 1rem;
   line-height: 1.4375em;
   pointer-events: none;
   transition:
     color 200ms cubic-bezier(0, 0, 0.2, 1),
     transform 200ms cubic-bezier(0, 0, 0.2, 1),
     max-width 200ms cubic-bezier(0, 0, 0.2, 1);
-  z-index: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.app-text-field--outlined .app-text-field__label {
+  z-index: 1;
+  pointer-events: none;
+  transform: translate(14px, 16px) scale(1);
   max-width: calc(100% - 24px);
 }
 
-.app-text-field--small .app-text-field__label {
+.app-text-field--outlined.app-text-field--small .app-text-field__label {
   transform: translate(14px, 9px) scale(1);
 }
 
-.app-text-field__label--shrunk {
+.app-text-field--outlined .app-text-field__label--shrunk {
+  user-select: none;
   transform: translate(14px, -9px) scale(0.75);
   max-width: calc(133% - 32px);
-  padding: 0 5px;
-  background-color: var(--mui-palette-background-paper);
+}
+
+.app-text-field--outlined.app-text-field--small .app-text-field__label--shrunk {
+  transform: translate(14px, -9px) scale(0.75);
 }
 
 .app-text-field--focused .app-text-field__label {
@@ -168,13 +233,16 @@ textarea.app-text-field__input {
 
 /* standard variant label */
 .app-text-field--standard .app-text-field__label {
+  position: absolute;
   transform: translate(0, 20px) scale(1);
+}
+
+.app-text-field--standard.app-text-field--small .app-text-field__label {
+  transform: translate(0, 17px) scale(1);
 }
 
 .app-text-field--standard .app-text-field__label--shrunk {
   transform: translate(0, -1.5px) scale(0.75);
-  background-color: transparent;
-  padding: 0;
 }
 
 /* ── adornments ────────────────────────────── */

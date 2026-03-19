@@ -13,22 +13,14 @@ import { alpha } from "@/utils/color";
 
 function LogIn() {
   const theme = useTheme();
-  const [focusedField, setFocusedField] = useState<
-    "username" | "password" | null
-  >(null);
-
-  const makeFieldStyle = (field: "username" | "password") =>
-    ({
-      "--lf-bg": alpha(theme.palette.background.default, 0.65),
-      "--lf-border": alpha(theme.palette.text.secondary, 0.3),
-      "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
-      "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.35),
-      "--lf-card-bg": alpha(theme.palette.background.default, 0.9),
-      "--lf-label-color":
-        focusedField === field
-          ? theme.palette.primary.main
-          : theme.palette.text.secondary,
-    }) as React.CSSProperties;
+  const fieldStyle = {
+    "--lf-bg": alpha(theme.palette.background.default, 0.65),
+    "--lf-border": alpha(theme.palette.text.secondary, 0.3),
+    "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
+    "--lf-focus-color": theme.palette.primary.main,
+    "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.28),
+    "--lf-label-color": theme.palette.text.secondary,
+  } as React.CSSProperties;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -66,12 +58,15 @@ function LogIn() {
       {error && (
         <AppAlert
           severity="warning"
-          className="login-reveal"
+          className="login-alert login-reveal"
           style={
             {
               "--login-reveal-delay": "60ms",
+              "--login-alert-bg": alpha(theme.palette.warning.main, 0.18),
+              "--login-alert-border": alpha(theme.palette.warning.main, 0.36),
+              "--login-alert-icon": theme.palette.warning.main,
+              "--login-alert-text": alpha(theme.palette.common.white, 0.92),
               marginBottom: 16,
-              borderRadius: 16,
             } as React.CSSProperties
           }
         >
@@ -90,9 +85,7 @@ function LogIn() {
           autoComplete="username"
           className="login-field"
           shrinkLabel
-          style={makeFieldStyle("username")}
-          onFocus={() => setFocusedField("username")}
-          onBlur={() => setFocusedField(null)}
+          style={fieldStyle}
         />
       </div>
 
@@ -109,9 +102,7 @@ function LogIn() {
           autoComplete="current-password"
           className="login-field"
           shrinkLabel
-          style={makeFieldStyle("password")}
-          onFocus={() => setFocusedField("password")}
-          onBlur={() => setFocusedField(null)}
+          style={fieldStyle}
           endAdornment={
             <AppIconButton
               onClick={() => setShowPassword((p) => !p)}

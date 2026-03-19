@@ -1,4 +1,4 @@
-import { TextField, Autocomplete } from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
@@ -118,7 +118,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
             value={shell}
             onChange={(_, value) => setShell(value || "/bin/bash")}
             renderInput={(params) => (
-              <TextField {...params} label="Shell" fullWidth />
+              <AppTextField {...params} label="Shell" fullWidth />
             )}
             freeSolo
           />
@@ -128,7 +128,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
             value={selectedGroups}
             onChange={(_, value) => setSelectedGroups(value)}
             renderInput={(params) => (
-              <TextField {...params} label="Secondary Groups" fullWidth />
+              <AppTextField {...params} label="Secondary Groups" fullWidth />
             )}
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {

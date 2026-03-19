@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Autocomplete, TextField } from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
@@ -599,7 +599,7 @@ const GeneralLogsPage: React.FC = () => {
             return options.filter((opt) => opt.toLowerCase().includes(lower));
           }}
           renderInput={(params) => (
-            <TextField
+            <AppTextField
               {...params}
               label="Identifier"
               placeholder="All"

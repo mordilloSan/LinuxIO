@@ -1,4 +1,4 @@
-import { TextField, Autocomplete } from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -155,7 +155,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             value={shell}
             onChange={(_, value) => setShell(value || "/bin/bash")}
             renderInput={(params) => (
-              <TextField {...params} label="Shell" fullWidth />
+              <AppTextField {...params} label="Shell" fullWidth />
             )}
             freeSolo
           />
@@ -165,7 +165,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             value={selectedGroups}
             onChange={(_, value) => setSelectedGroups(value)}
             renderInput={(params) => (
-              <TextField {...params} label="Secondary Groups" fullWidth />
+              <AppTextField {...params} label="Secondary Groups" fullWidth />
             )}
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {

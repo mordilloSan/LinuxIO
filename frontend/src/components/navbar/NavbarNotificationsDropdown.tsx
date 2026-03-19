@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Badge,
   List,
   ListItem,
   ListItemIcon,
@@ -329,8 +328,6 @@ function NavbarNotificationsDropdown() {
   const clearCompletedTransfers = () => setCompletedTransfers([]);
 
   const recentToastCount = recentToasts.length;
-  const badgeCount =
-    transfers.length + completedTransfers.length + recentToastCount;
 
   useEffect(() => {
     if (!isFullOpen) return;
@@ -486,20 +483,7 @@ function NavbarNotificationsDropdown() {
 
       <AppTooltip title="Notifications">
         <AppIconButton color="inherit" ref={ref} onClick={handleOpen}>
-          <Badge
-            badgeContent={badgeCount}
-            sx={{
-              "& .MuiBadge-badge": {
-                backgroundColor:
-                  transfers.length > 0
-                    ? theme.palette.info.main
-                    : theme.header.indicator.background,
-                color: theme.palette.common.white,
-              },
-            }}
-          >
-            <Icon icon="mdi:bell" width={22} height={22} />
-          </Badge>
+          <Icon icon="mdi:bell" width={22} height={22} />
         </AppIconButton>
       </AppTooltip>
 

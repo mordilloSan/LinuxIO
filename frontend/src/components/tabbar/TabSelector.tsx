@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Paper,
   ToggleButton,
   ToggleButtonGroup,
   Popover,
@@ -10,6 +9,7 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppPaper from "@/components/ui/AppPaper";
 
 interface TabOption {
   value: string;
@@ -49,17 +49,16 @@ const TabSelector: React.FC<TabSelectorProps> = ({
         minWidth: 0,
       }}
     >
-      <Paper
-        elevation={0}
+      <AppPaper
         className="custom-scrollbar"
-        sx={{
+        style={{
           display: "flex",
-          p: 0.5,
+          padding: 4,
           flex: "1 1 auto",
           minWidth: 0,
           borderRadius: "999px",
           backgroundColor: "transparent",
-          backdropFilter: "none",
+          boxShadow: "none",
           overflowX: "auto",
           overflowY: "hidden",
         }}
@@ -95,7 +94,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
-      </Paper>
+      </AppPaper>
 
       {rightContent && (
         <>

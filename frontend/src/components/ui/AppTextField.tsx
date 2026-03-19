@@ -38,6 +38,7 @@ export interface AppTextFieldProps {
   shrinkLabel?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  list?: string;
   onFocus?: (e: React.FocusEvent) => void;
   onBlur?: (e: React.FocusEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
@@ -76,6 +77,7 @@ const AppTextField = React.forwardRef<
     startAdornment,
     endAdornment,
     shrinkLabel,
+    list,
     className,
     style,
     onFocus,
@@ -94,7 +96,9 @@ const AppTextField = React.forwardRef<
   const forceShrink = shrinkLabel ?? legacySlotProps?.inputLabel?.shrink;
 
   const hasValue = value !== undefined && value !== "";
-  const labelShrunk = forceShrink || focused || hasValue || !!placeholder;
+  const labelText =
+    label && required ? `${label}\u2009*` : label;
+  const labelShrunk = !!(forceShrink || focused || hasValue || resolvedStart);
 
   const handleFocus = (e: React.FocusEvent) => {
     setFocused(true);
@@ -152,6 +156,7 @@ const AppTextField = React.forwardRef<
     onFocus: handleFocus,
     onBlur: handleBlur,
     onKeyDown,
+    list,
   };
 
   return (
@@ -159,10 +164,10 @@ const AppTextField = React.forwardRef<
       {label && (
         <label
           className={`app-text-field__label ${labelShrunk ? "app-text-field__label--shrunk" : ""}`}
+          data-shrink={labelShrunk ? "true" : "false"}
           htmlFor={id}
         >
-          {label}
-          {required && " *"}
+          {labelText}
         </label>
       )}
       <div
@@ -188,6 +193,25 @@ const AppTextField = React.forwardRef<
           <div className="app-text-field__adornment app-text-field__adornment--end">
             {resolvedEnd}
           </div>
+        )}
+        {variant === "outlined" && (
+          <fieldset
+            aria-hidden="true"
+            className={`app-text-field__outline ${label ? "app-text-field__outline--with-label" : ""} ${labelShrunk ? "app-text-field__outline--notched" : ""}`}
+          >
+            <legend className="app-text-field__legend">
+              {labelText ? (
+                <span>{labelText}</span>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="app-text-field__legend-zero-width"
+                >
+                  &#8203;
+                </span>
+              )}
+            </legend>
+          </fieldset>
         )}
       </div>
       {helperText && <p className="app-text-field__helper">{helperText}</p>}

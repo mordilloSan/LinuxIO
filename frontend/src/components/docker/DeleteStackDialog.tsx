@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Radio, RadioGroup } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
@@ -11,7 +10,6 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
 export type DeleteOption = "containers" | "file" | "directory";
 interface DeleteStackDialogProps {
@@ -34,6 +32,38 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
 }) => {
   const theme = useTheme();
   const [deleteOption, setDeleteOption] = useState<DeleteOption>("containers");
+
+  const deleteOptions: Array<{
+    value: DeleteOption;
+    title: string;
+    description: string;
+    color?: "error";
+  }> = [
+    {
+      value: "containers",
+      title: "Remove containers only",
+      description:
+        "Runs docker compose down, removes containers and networks, keeps compose file",
+    },
+    {
+      value: "file",
+      title: "Remove containers + delete compose file",
+      description:
+        configFiles.length > 0
+          ? `Will delete: ${configFiles[0]}`
+          : "Deletes the compose file and keeps the rest of the directory",
+    },
+    {
+      value: "directory",
+      title: "Remove containers + delete entire directory",
+      description:
+        workingDir.length > 0
+          ? `Will delete: ${workingDir}`
+          : "Deletes the entire stack directory and its contents",
+      color: "error",
+    },
+  ];
+
   const handleConfirm = () => {
     onConfirm(deleteOption);
   };
@@ -80,59 +110,80 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           Choose what to delete:
         </AppTypography>
 
-        <RadioGroup
-          value={deleteOption}
-          onChange={(e) => setDeleteOption(e.target.value as DeleteOption)}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 8,
+          }}
         >
-          <AppFormControlLabel
-            value="containers"
-            control={<Radio />}
-            label={
-              <div>
-                <AppTypography variant="body1">
-                  Remove containers only
-                </AppTypography>
-                <AppTypography variant="caption" color="text.secondary">
-                  Runs `docker compose down` - removes containers and networks,
-                  keeps compose file
-                </AppTypography>
-              </div>
-            }
-            style={{ alignItems: "flex-start", marginBottom: 4 }}
-          />
+          {deleteOptions.map((option) => {
+            const isSelected = deleteOption === option.value;
+            const accentColor =
+              option.color === "error"
+                ? theme.palette.error.main
+                : theme.palette.primary.main;
 
-          <AppFormControlLabel
-            value="file"
-            control={<Radio />}
-            label={
-              <div>
-                <AppTypography variant="body1">
-                  Remove containers + delete compose file
-                </AppTypography>
-                <AppTypography variant="caption" color="text.secondary">
-                  {configFiles.length > 0 && `Will delete: ${configFiles[0]}`}
-                </AppTypography>
-              </div>
-            }
-            style={{ alignItems: "flex-start", marginBottom: 4 }}
-          />
-
-          <AppFormControlLabel
-            value="directory"
-            control={<Radio color="error" />}
-            label={
-              <div>
-                <AppTypography variant="body1" color="error">
-                  Remove containers + delete entire directory
-                </AppTypography>
-                <AppTypography variant="caption" color="text.secondary">
-                  {workingDir && `Will delete: ${workingDir}`}
-                </AppTypography>
-              </div>
-            }
-            style={{ alignItems: "flex-start" }}
-          />
-        </RadioGroup>
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setDeleteOption(option.value)}
+                disabled={isLoading}
+                aria-pressed={isSelected}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${
+                    isSelected ? accentColor : theme.palette.divider
+                  }`,
+                  backgroundColor: isSelected
+                    ? theme.palette.action.selected
+                    : theme.palette.background.paper,
+                  cursor: isLoading ? "default" : "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                    flex: 1,
+                  }}
+                >
+                  <AppTypography
+                    variant="body1"
+                    color={option.color === "error" ? "error" : undefined}
+                  >
+                    {option.title}
+                  </AppTypography>
+                  <AppTypography variant="caption" color="text.secondary">
+                    {option.description}
+                  </AppTypography>
+                </div>
+                {isSelected && (
+                  <Icon
+                    icon={
+                      option.color === "error"
+                        ? "mdi:alert-circle"
+                        : "mdi:check-circle"
+                    }
+                    width={20}
+                    height={20}
+                    color={accentColor}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
 
         {deleteOption === "directory" && (
           <AppAlert

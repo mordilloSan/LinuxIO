@@ -450,7 +450,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           style={{
             display: "flex",
             justifyContent: "flex-end",
-            gap: theme.spacing(1),
+
             marginTop: theme.spacing(2),
           }}
         >

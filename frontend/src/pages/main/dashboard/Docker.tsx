@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Divider,
   ListItemIcon,
   Menu,
   MenuItem,
@@ -16,6 +15,7 @@ import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -356,7 +356,7 @@ const DockerInfo: React.FC = () => {
             Remove
           </MenuItem>
         )}
-        <Divider />
+        <AppDivider />
         <MenuItem
           onClick={() => {
             if (menuContainer) {

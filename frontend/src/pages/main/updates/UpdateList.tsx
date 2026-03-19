@@ -1,4 +1,3 @@
-import { CircularProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -9,6 +8,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppCardContent from "@/components/ui/AppCardContent";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -103,7 +103,6 @@ const UpdateList: React.FC<Props> = ({
       container
       spacing={2}
       style={{
-        paddingInline: 16,
         paddingBottom: 16,
       }}
       ref={containerRef}
@@ -190,7 +189,7 @@ const UpdateList: React.FC<Props> = ({
                 <Chip
                   label={
                     currentPackage === update.package_id ? (
-                      <CircularProgress size={16} />
+                      <AppCircularProgress size={16} />
                     ) : (
                       "Update"
                     )
@@ -228,7 +227,7 @@ const UpdateList: React.FC<Props> = ({
                         paddingBottom: theme.spacing(2),
                       }}
                     >
-                      <CircularProgress size={20} />
+                      <AppCircularProgress size={20} />
                     </div>
                   ) : (
                     <AppTypography variant="body2" color="text.secondary">
