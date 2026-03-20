@@ -67,21 +67,21 @@
 
 /* ── severity colors ──────────────────────────── */
 .app-alert--info {
-  color: var(--mui-palette-info-main);
-  background-color: color-mix(in srgb, var(--mui-palette-info-main) 12%, var(--mui-palette-background-default));
+  color: var(--color-info);
+  background-color: color-mix(in srgb, var(--color-info) 12%, var(--color-bg));
 }
 
 .app-alert--warning {
-  color: var(--mui-palette-warning-main);
-  background-color: color-mix(in srgb, var(--mui-palette-warning-main) 12%, var(--mui-palette-background-default));
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
 }
 
 .app-alert--error {
-  color: var(--mui-palette-error-main);
-  background-color: color-mix(in srgb, var(--mui-palette-error-main) 12%, var(--mui-palette-background-default));
+  color: var(--color-error);
+  background-color: color-mix(in srgb, var(--color-error) 12%, var(--color-bg));
 }
 
 .app-alert--success {
-  color: var(--mui-palette-success-main);
-  background-color: color-mix(in srgb, var(--mui-palette-success-main) 12%, var(--mui-palette-background-default));
+  color: var(--color-success);
+  background-color: color-mix(in srgb, var(--color-success) 12%, var(--color-bg));
 }

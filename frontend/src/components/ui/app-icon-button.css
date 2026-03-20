@@ -17,7 +17,7 @@
   border-radius: 50%;
   overflow: visible;
   background-color: transparent;
-  color: var(--mui-palette-action-active);
+  color: var(--color-action-active);
   font-size: 1.5rem;
   flex: 0 0 auto;
 
@@ -28,7 +28,7 @@
 }
 
 .app-icon-btn:hover {
-  background-color: var(--mui-palette-action-hover);
+  background-color: var(--color-action-hover);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
@@ -38,19 +38,19 @@
 }
 
 .app-icon-btn--error {
-  color: var(--mui-palette-error-main);
+  color: var(--color-error);
 }
 
 .app-icon-btn--error:hover {
-  background-color: color-mix(in srgb, var(--mui-palette-error-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--color-error) 4%, transparent);
 }
 
 .app-icon-btn--primary {
-  color: var(--mui-palette-primary-main);
+  color: var(--color-primary);
 }
 
 .app-icon-btn--primary:hover {
-  background-color: color-mix(in srgb, var(--mui-palette-primary-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--color-primary) 4%, transparent);
 }
 
 /* ── sizes ─────────────────────────────────────── */
@@ -80,7 +80,7 @@
 .app-icon-btn:disabled {
   cursor: default;
   pointer-events: none;
-  color: var(--mui-palette-action-disabled);
+  color: var(--color-action-disabled);
   background-color: transparent;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .app-icon-btn--quick-action:hover {
-  background-color: var(--mui-palette-primary-main);
-  color: var(--mui-palette-primary-contrastText);
+  background-color: var(--color-primary);
+  color: var(--color-primary-contrast);
   box-shadow: none !important;
 }

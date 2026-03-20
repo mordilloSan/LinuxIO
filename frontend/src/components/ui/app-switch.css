@@ -31,7 +31,7 @@
   width: 34px;
   height: 14px;
   border-radius: 7px;
-  background-color: var(--mui-palette-text-primary);
+  background-color: var(--color-text);
   opacity: 0.38;
   transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1),
     background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -58,13 +58,13 @@
 
 /* ── checked state ────────────────────────────── */
 .app-switch__input:checked ~ .app-switch__track {
-  background-color: var(--mui-palette-primary-main);
+  background-color: var(--color-primary);
   opacity: 0.5;
 }
 
 .app-switch__input:checked ~ .app-switch__thumb {
   left: 29px;
-  background-color: var(--mui-palette-primary-main);
+  background-color: var(--color-primary);
 }
 
 /* ── disabled state ───────────────────────────── */
@@ -73,7 +73,7 @@
 }
 
 .app-switch__input:disabled ~ .app-switch__thumb {
-  background-color: var(--mui-palette-action-disabled);
+  background-color: var(--color-action-disabled);
   box-shadow: none;
 }
 

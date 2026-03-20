@@ -1,7 +1,7 @@
 /* ── AppCircularProgress ─────────────────────────────── */
 .app-circular-progress {
   display: inline-flex;
-  color: var(--mui-palette-primary-main);
+  color: var(--color-primary);
   animation: app-circular-rotate 1.4s linear infinite;
 }
 

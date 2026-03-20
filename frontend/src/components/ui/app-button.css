@@ -54,7 +54,7 @@
 }
 
 .app-btn--inherit:hover {
-  background-color: var(--mui-palette-action-hover);
+  background-color: var(--color-action-hover);
 }
 
 /* ── variants ──────────────────────────────────── */
@@ -112,18 +112,18 @@
 .app-btn:disabled {
   cursor: default;
   pointer-events: none;
-  color: var(--mui-palette-action-disabled);
+  color: var(--color-action-disabled);
 }
 
 .app-btn--contained:disabled {
-  color: var(--mui-palette-action-disabled);
-  background-color: var(--mui-palette-action-disabledBackground);
+  color: var(--color-action-disabled);
+  background-color: var(--color-action-disabled-bg);
   box-shadow: none;
   text-shadow: none;
 }
 
 .app-btn--outlined:disabled {
-  border-color: var(--mui-palette-action-disabled);
+  border-color: var(--color-action-disabled);
 }
 
 /* ── dialog action modifier ───────────────────── */
@@ -137,11 +137,11 @@
 .app-btn--dialog-action:hover {
   background-color: color-mix(
     in srgb,
-    var(--mui-palette-primary-main) 13%,
+    var(--color-primary) 13%,
     transparent
   );
   box-shadow: 0 0 12px
-    color-mix(in srgb, var(--mui-palette-primary-main) 27%, transparent);
+    color-mix(in srgb, var(--color-primary) 27%, transparent);
 }
 
 .app-btn--dialog-action:disabled {

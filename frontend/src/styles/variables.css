@@ -1,0 +1,40 @@
+/* ── App CSS custom properties ───────────────────────────────────────────────
+ *
+ * Single source of truth for all design tokens used in component CSS files.
+ * Currently bridges to MUI-generated palette vars so the rest of CSS is
+ * decoupled from MUI naming. When MUI is removed, replace the var() references
+ * here with real color values — no other CSS file needs to change.
+ *
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Primary */
+  --color-primary:           var(--mui-palette-primary-main);
+  --color-primary-contrast:  var(--mui-palette-primary-contrastText);
+
+  /* Backgrounds */
+  --color-bg:                var(--mui-palette-background-default);
+  --color-surface:           var(--mui-palette-background-paper);
+
+  /* Text */
+  --color-text:              var(--mui-palette-text-primary);
+  --color-text-secondary:    var(--mui-palette-text-secondary);
+  --color-text-disabled:     var(--mui-palette-text-disabled);
+
+  /* Interactive / action states */
+  --color-action-active:           var(--mui-palette-action-active);
+  --color-action-hover:            var(--mui-palette-action-hover);
+  --color-action-selected:         var(--mui-palette-action-selected);
+  --color-action-disabled:         var(--mui-palette-action-disabled);
+  --color-action-disabled-bg:      var(--mui-palette-action-disabledBackground);
+  --color-action-disabled-opacity: var(--mui-palette-action-disabledOpacity);
+
+  /* Semantic status */
+  --color-error:    var(--mui-palette-error-main);
+  --color-warning:  var(--mui-palette-warning-main);
+  --color-success:  var(--mui-palette-success-main);
+  --color-info:     var(--mui-palette-info-main);
+
+  /* Divider */
+  --color-divider:  var(--mui-palette-divider);
+}

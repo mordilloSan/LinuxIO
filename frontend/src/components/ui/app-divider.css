@@ -2,13 +2,13 @@
 .app-divider {
   margin: 0;
   border: none;
-  border-top: 1px solid var(--mui-palette-divider);
+  border-top: 1px solid var(--color-divider);
   flex-shrink: 0;
 }
 
 .app-divider--vertical {
   border-top: none;
-  border-right: 1px solid var(--mui-palette-divider);
+  border-right: 1px solid var(--color-divider);
   align-self: stretch;
   height: auto;
   width: 0;

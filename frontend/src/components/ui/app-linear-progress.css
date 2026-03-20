@@ -5,14 +5,14 @@
   display: block;
   height: 4px;
   border-radius: 0;
-  background-color: color-mix(in srgb, var(--_lp-color, var(--mui-palette-primary-main)) 30%, transparent);
+  background-color: color-mix(in srgb, var(--_lp-color, var(--color-primary)) 30%, transparent);
 }
 
 .app-linear-progress__bar {
   position: absolute;
   inset: 0;
   width: 100%;
-  background-color: var(--_lp-color, var(--mui-palette-primary-main));
+  background-color: var(--_lp-color, var(--color-primary));
   border-radius: inherit;
 }
 
@@ -63,13 +63,13 @@
 
 /* ── colors ───────────────────────────────────── */
 .app-linear-progress--error {
-  --_lp-color: var(--mui-palette-error-main);
+  --_lp-color: var(--color-error);
 }
 
 .app-linear-progress--warning {
-  --_lp-color: var(--mui-palette-warning-main);
+  --_lp-color: var(--color-warning);
 }
 
 .app-linear-progress--success {
-  --_lp-color: var(--mui-palette-success-main);
+  --_lp-color: var(--color-success);
 }

@@ -12,7 +12,7 @@
     "Apple Color Emoji",
     "Segoe UI Emoji",
     "Segoe UI Symbol";
-  color: var(--mui-palette-text-primary);
+  color: var(--color-text);
 }
 
 /* heading variants */
