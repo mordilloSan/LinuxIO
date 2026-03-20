@@ -603,6 +603,7 @@ const GeneralLogsPage: React.FC = () => {
               {...params}
               label="Identifier"
               placeholder="All"
+              shrinkLabel={true}
               style={{ minWidth: 180 }}
             />
           )}
@@ -611,7 +612,7 @@ const GeneralLogsPage: React.FC = () => {
 
         <AppTextField
           size="small"
-          placeholder="Search logs..."
+          label="Search logs"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           style={{ minWidth: 220, flex: "1 1 260px" }}
