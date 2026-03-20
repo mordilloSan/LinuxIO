@@ -382,8 +382,8 @@ const TerminalDialog: React.FC<Props> = ({
           autoFocus={false}
           slotProps={{
             paper: {
-              sx: {
-                borderRadius: 2,
+              style: {
+                borderRadius: 8,
               },
             },
             backdrop: {
@@ -397,8 +397,9 @@ const TerminalDialog: React.FC<Props> = ({
         >
           <MenuItem
             onClick={handleCopy}
-            sx={{
-              py: 1,
+            style={{
+              paddingTop: 4,
+              paddingBottom: 4,
             }}
           >
             <div
@@ -422,8 +423,9 @@ const TerminalDialog: React.FC<Props> = ({
           </MenuItem>
           <MenuItem
             onClick={handlePaste}
-            sx={{
-              py: 1,
+            style={{
+              paddingTop: 4,
+              paddingBottom: 4,
             }}
           >
             <div

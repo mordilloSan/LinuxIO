@@ -98,9 +98,9 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
               label={name}
               size="small"
               variant="soft"
-              sx={{
-                mr: 1,
-                mb: 1,
+              style={{
+                marginRight: 4,
+                marginBottom: 4,
               }}
             />
           ))}
@@ -310,7 +310,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       label={volume.Driver}
                       size="small"
                       variant="soft"
-                      sx={{
+                      style={{
                         fontSize: "0.75rem",
                       }}
                     />
@@ -402,7 +402,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                   label={volume.Driver}
                   size="small"
                   variant="soft"
-                  sx={{
+                  style={{
                     fontSize: "0.75rem",
                   }}
                 />

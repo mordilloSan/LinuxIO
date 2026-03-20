@@ -38,3 +38,15 @@
   /* Divider */
   --color-divider:  var(--mui-palette-divider);
 }
+
+/* ── Utility classes ─────────────────────────────────────────────────────── */
+
+.chip-interactive {
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+
+.chip-interactive:hover {
+  opacity: 1;
+}

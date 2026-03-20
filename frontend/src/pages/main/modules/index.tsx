@@ -1,4 +1,4 @@
-import { Box, Fade } from "@mui/material";
+import { Fade } from "@mui/material";
 import React, { useState } from "react";
 
 import InstallModule from "./InstallModule";
@@ -15,35 +15,35 @@ const ModulesPage: React.FC = () => {
   const [tab, setTab] = useState("installed");
 
   return (
-    <Box sx={{ px: 2 }}>
+    <div style={{ paddingLeft: 8, paddingRight: 8 }}>
       <TabSelector value={tab} onChange={setTab} options={tabOptions} />
 
-      <Box sx={{ position: "relative", minHeight: 400 }}>
+      <div style={{ position: "relative", minHeight: 400 }}>
         <Fade in={tab === "installed"} timeout={300} unmountOnExit={false}>
-          <Box
-            sx={{
+          <div
+            style={{
               display: tab === "installed" ? "block" : "none",
               position: "absolute",
               width: "100%",
             }}
           >
             <ModulesList />
-          </Box>
+          </div>
         </Fade>
 
         <Fade in={tab === "install"} timeout={300} unmountOnExit={false}>
-          <Box
-            sx={{
+          <div
+            style={{
               display: tab === "install" ? "block" : "none",
               position: "absolute",
               width: "100%",
             }}
           >
             <InstallModule onInstalled={() => setTab("installed")} />
-          </Box>
+          </div>
         </Fade>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

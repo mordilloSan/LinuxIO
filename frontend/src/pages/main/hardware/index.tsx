@@ -290,7 +290,7 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
               label={`${r.value} ${r.unit}`}
               color={unitChipColor(r.unit)}
               variant="soft"
-              sx={{ height: 20, fontSize: "0.65rem" }}
+              style={{ height: 20, fontSize: "0.65rem" }}
             />
           </div>
         ))}
@@ -573,7 +573,7 @@ const HardwarePage: React.FC = () => {
                     label={mod.state}
                     color={mod.state === "Present" ? "success" : "default"}
                     variant="soft"
-                    sx={{ height: 22, fontSize: "0.75rem" }}
+                    style={{ height: 22, fontSize: "0.75rem" }}
                   />
                 </AppTableCell>
                 <AppTableCell>{mod.rank}</AppTableCell>

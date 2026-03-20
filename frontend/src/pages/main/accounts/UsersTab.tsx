@@ -412,7 +412,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         label={idx === 0 ? `${group} (primary)` : group}
                         size="small"
                         variant="soft"
-                        sx={{
+                        style={{
                           fontSize: "0.7rem",
                         }}
                       />
@@ -482,7 +482,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       size="small"
                       color="primary"
                       variant="soft"
-                      sx={{
+                      style={{
                         fontSize: "0.65rem",
                         height: 20,
                       }}
@@ -494,7 +494,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       size="small"
                       color="warning"
                       variant="soft"
-                      sx={{
+                      style={{
                         fontSize: "0.65rem",
                         height: 20,
                       }}
@@ -548,7 +548,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         }
                         size="small"
                         variant="soft"
-                        sx={{
+                        style={{
                           fontSize: "0.65rem",
                           height: 20,
                         }}
@@ -559,7 +559,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       label={`+${getAllGroups(user).length - 3}`}
                       size="small"
                       variant="soft"
-                      sx={{
+                      style={{
                         fontSize: "0.65rem",
                         height: 20,
                       }}
@@ -672,9 +672,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     label={idx === 0 ? `${group} (primary)` : group}
                     size="small"
                     variant="soft"
-                    sx={{
-                      mr: 1,
-                      mb: 1,
+                    style={{
+                      marginRight: 4,
+                      marginBottom: 4,
                     }}
                   />
                 ))}

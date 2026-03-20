@@ -1327,8 +1327,8 @@ const FileBrowser: React.FC = () => {
           {uploadEntries.length > 0 && (
             <List
               dense
-              sx={{
-                mt: 1.5,
+              style={{
+                marginTop: 6,
                 maxHeight: 240,
                 overflowY: "auto",
               }}

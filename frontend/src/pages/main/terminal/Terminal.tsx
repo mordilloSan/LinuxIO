@@ -410,8 +410,8 @@ const TerminalXTerm: React.FC = () => {
         autoFocus={false}
         slotProps={{
           paper: {
-            sx: {
-              borderRadius: 2,
+            style: {
+              borderRadius: 8,
             },
           },
           backdrop: {
@@ -423,7 +423,7 @@ const TerminalXTerm: React.FC = () => {
           },
         }}
       >
-        <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
+        <MenuItem onClick={handleCopy} style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div
             style={{
               display: "flex",
@@ -441,7 +441,7 @@ const TerminalXTerm: React.FC = () => {
             </AppTypography>
           </div>
         </MenuItem>
-        <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
+        <MenuItem onClick={handlePaste} style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div
             style={{
               display: "flex",

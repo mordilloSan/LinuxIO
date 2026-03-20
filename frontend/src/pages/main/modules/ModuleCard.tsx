@@ -104,8 +104,8 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
           <Typography
             variant="body2"
             color="text.secondary"
-            sx={{
-              mb: 2,
+            style={{
+              marginBottom: 8,
               overflow: "hidden",
               textOverflow: "ellipsis",
               display: "-webkit-box",

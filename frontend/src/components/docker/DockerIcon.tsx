@@ -34,7 +34,7 @@ const DockerIcon: React.FC<DockerIconProps> = ({
         variant="circular"
         width={size}
         height={size}
-        sx={{ flexShrink: 0 }}
+        style={{ flexShrink: 0 }}
       />
     );
   }

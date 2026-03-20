@@ -75,7 +75,7 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
       >
         {icon && (
           <ListItemIcon
-            sx={{
+            style={{
               minWidth: 0,
               justifyContent: "center",
               color: "inherit",

@@ -1,4 +1,3 @@
-import { Box } from "@mui/material";
 import React, { useState } from "react";
 
 import ModuleCard from "./ModuleCard";
@@ -51,7 +50,7 @@ const ModulesList: React.FC = () => {
   }
 
   return (
-    <Box sx={{ mt: 2 }}>
+    <div style={{ marginTop: 8 }}>
       <AppGrid container spacing={2}>
         {modules.map((module) => (
           <ModuleCard
@@ -68,7 +67,7 @@ const ModulesList: React.FC = () => {
         onClose={() => setDetailsDrawerOpen(false)}
         moduleName={selectedModule}
       />
-    </Box>
+    </div>
   );
 };
 

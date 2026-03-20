@@ -331,11 +331,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                     e.stopPropagation();
                     handleLogsClick();
                   }}
-                  sx={{
+                  className="chip-interactive"
+                  style={{
                     fontSize: "0.68rem",
-                    opacity: 0.7,
-                    cursor: "pointer",
-                    "&:hover": { opacity: 1 },
                   }}
                 />
               </AppTooltip>
@@ -500,7 +498,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 label={label}
                 size="small"
                 variant="soft"
-                sx={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
+                style={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
               />
             );
           })}

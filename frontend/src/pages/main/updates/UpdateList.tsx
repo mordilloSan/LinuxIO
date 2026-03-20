@@ -182,7 +182,7 @@ const UpdateList: React.FC<Props> = ({
                   size="small"
                   variant="outlined"
                   onClick={() => toggleExpanded(idx, update.package_id)}
-                  sx={{
+                  style={{
                     cursor: "pointer",
                   }}
                 />
@@ -200,7 +200,7 @@ const UpdateList: React.FC<Props> = ({
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
                   }}
-                  sx={{
+                  style={{
                     cursor: "pointer",
                   }}
                 />

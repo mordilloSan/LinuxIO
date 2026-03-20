@@ -121,9 +121,9 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
               label={tag}
               size="small"
               variant="soft"
-              sx={{
-                mr: 1,
-                mb: 1,
+              style={{
+                marginRight: 4,
+                marginBottom: 4,
               }}
             />
           ))}
@@ -361,7 +361,7 @@ const ImageList: React.FC<ImageListProps> = ({
                       label={image.tag}
                       size="small"
                       variant="soft"
-                      sx={{
+                      style={{
                         fontSize: "0.75rem",
                       }}
                     />
@@ -480,7 +480,7 @@ const ImageList: React.FC<ImageListProps> = ({
                   label={image.tag}
                   size="small"
                   variant="soft"
-                  sx={{
+                  style={{
                     fontSize: "0.75rem",
                   }}
                 />
@@ -519,7 +519,7 @@ const ImageList: React.FC<ImageListProps> = ({
                   size="small"
                   variant="soft"
                   color={image.containers > 0 ? "success" : "default"}
-                  sx={{
+                  style={{
                     minWidth: 40,
                   }}
                 />

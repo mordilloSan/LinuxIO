@@ -242,7 +242,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           label={member}
                           size="small"
                           variant="soft"
-                          sx={{ fontSize: "0.7rem" }}
+                          style={{ fontSize: "0.7rem" }}
                         />
                       ))
                     ) : (
@@ -300,7 +300,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       label="system"
                       size="small"
                       variant="soft"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      style={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
                 </div>
@@ -321,7 +321,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           label={member}
                           size="small"
                           variant="soft"
-                          sx={{ fontSize: "0.7rem" }}
+                          style={{ fontSize: "0.7rem" }}
                         />
                       ))
                   ) : (
@@ -334,7 +334,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       label={`+${group.members.length - 3}`}
                       size="small"
                       variant="soft"
-                      sx={{ fontSize: "0.7rem" }}
+                      style={{ fontSize: "0.7rem" }}
                     />
                   )}
                 </div>
@@ -378,7 +378,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       label={member}
                       size="small"
                       variant="soft"
-                      sx={{ mr: 1, mb: 1 }}
+                      style={{ marginRight: 4, marginBottom: 4 }}
                     />
                   ))
                 ) : (

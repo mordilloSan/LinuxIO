@@ -231,7 +231,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
               label={name}
               size="small"
               variant="soft"
-              sx={{ mr: 1, mb: 1 }}
+              style={{ marginRight: 4, marginBottom: 4 }}
             />
           ))}
         </div>
@@ -441,7 +441,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       size="small"
                       color="primary"
                       variant="soft"
-                      sx={{ fontSize: "0.75rem" }}
+                      style={{ fontSize: "0.75rem" }}
                     />
                   </div>
 
@@ -564,7 +564,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                   label={network.Driver}
                   size="small"
                   variant="soft"
-                  sx={{ fontSize: "0.75rem" }}
+                  style={{ fontSize: "0.75rem" }}
                 />
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-md">

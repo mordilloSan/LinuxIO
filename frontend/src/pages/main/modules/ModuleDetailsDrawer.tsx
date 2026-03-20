@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Drawer,
-  Box,
   Typography,
   IconButton,
   Divider,
@@ -38,16 +37,16 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>
-      <Box sx={{ width: 500, p: 3 }}>
+      <div style={{ width: 500, padding: 24 }}>
         {/* Header */}
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
           <Typography variant="h5">Module Details</Typography>
           <IconButton onClick={onClose}>
             <Icon icon="mdi:close" width={20} height={20} />
           </IconButton>
-        </Box>
+        </div>
 
-        <Divider sx={{ mb: 2 }} />
+        <Divider style={{ marginBottom: 8 }} />
 
         {/* Content */}
         {isPending && <ComponentLoader />}
@@ -57,7 +56,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
         )}
 
         {module && (
-          <Box>
+          <div>
             <Typography variant="h6" gutterBottom>
               {module.title}
             </Typography>
@@ -65,13 +64,13 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
               variant="body2"
               color="text.secondary"
               component="p"
-              sx={{ mb: 2 }}
+              style={{ marginBottom: 8 }}
             >
               {module.description}
             </Typography>
 
             {/* Metadata */}
-            <Box sx={{ mb: 3 }}>
+            <div style={{ marginBottom: 12 }}>
               <Typography variant="subtitle2" gutterBottom>
                 Information
               </Typography>
@@ -102,7 +101,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                   <ListItemText
                     primary="Type"
                     secondary={
-                      <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
+                      <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
                         {module.isSystem && (
                           <Chip
                             label="System Module"
@@ -121,20 +120,20 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                             variant="soft"
                           />
                         )}
-                      </Box>
+                      </div>
                     }
                   />
                 </ListItem>
               </List>
-            </Box>
+            </div>
 
             {/* Handlers */}
             {module.handlers && module.handlers.length > 0 && (
-              <Box sx={{ mb: 3 }}>
+              <div style={{ marginBottom: 12 }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Registered Handlers ({module.handlers.length})
                 </Typography>
-                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                   {module.handlers.map((handler) => (
                     <Chip
                       key={handler}
@@ -143,17 +142,17 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                       variant="soft"
                     />
                   ))}
-                </Box>
-              </Box>
+                </div>
+              </div>
             )}
 
             {/* Permissions */}
             {module.permissions && module.permissions.length > 0 && (
-              <Box sx={{ mb: 3 }}>
+              <div style={{ marginBottom: 12 }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Required Permissions
                 </Typography>
-                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                   {module.permissions.map((perm) => (
                     <Chip
                       key={perm}
@@ -163,13 +162,13 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                       color="warning"
                     />
                   ))}
-                </Box>
-              </Box>
+                </div>
+              </div>
             )}
 
             {/* Settings */}
             {module.settings && module.settings.length > 0 && (
-              <Box sx={{ mb: 3 }}>
+              <div style={{ marginBottom: 12 }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Settings ({module.settings.length})
                 </Typography>
@@ -183,12 +182,12 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                     </ListItem>
                   ))}
                 </List>
-              </Box>
+              </div>
             )}
 
             {/* Homepage Link */}
             {module.homepage && (
-              <Box>
+              <div>
                 <Typography variant="subtitle2" gutterBottom>
                   Homepage
                 </Typography>
@@ -196,15 +195,15 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                   href={module.homepage}
                   target="_blank"
                   rel="noopener noreferrer"
-                  sx={{ wordBreak: "break-all" }}
+                  style={{ wordBreak: "break-all" }}
                 >
                   {module.homepage}
                 </Link>
-              </Box>
+              </div>
             )}
-          </Box>
+          </div>
         )}
-      </Box>
+      </div>
     </Drawer>
   );
 };

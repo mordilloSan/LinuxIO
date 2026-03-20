@@ -76,11 +76,11 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
     <PowerActionContext.Provider value={value}>
       {children}
       <Backdrop
-        sx={{
-          color: "common.white",
-          zIndex: (theme) => theme.zIndex.modal + 1,
+        style={{
+          color: "#fff",
+          zIndex: 1301,
           flexDirection: "column",
-          gap: 3,
+          gap: 12,
           backdropFilter: "blur(16px)",
         }}
         open={powerAction !== null}

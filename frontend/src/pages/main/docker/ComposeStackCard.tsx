@@ -129,14 +129,13 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                   ? () => onPreview(project.name, project.config_files[0])
                   : undefined
               }
-              sx={{
+              className="chip-interactive"
+              style={{
                 fontSize: "0.68rem",
-                opacity: 0.7,
                 cursor:
                   onPreview && project.config_files.length > 0
                     ? "pointer"
                     : "default",
-                "&:hover": { opacity: 1 },
               }}
             />
           </AppTooltip>

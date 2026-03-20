@@ -78,7 +78,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
               label={name}
               size="small"
               variant="soft"
-              sx={{ mr: 1, mb: 1 }}
+              style={{ marginRight: 4, marginBottom: 4 }}
             />
           ))}
         </div>

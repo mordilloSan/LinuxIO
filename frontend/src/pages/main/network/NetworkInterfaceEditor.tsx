@@ -378,8 +378,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           exclusive
           onChange={handleModeChange}
           fullWidth
-          sx={{
-            mb: 2,
+          style={{
+            marginBottom: 8,
           }}
         >
           <ToggleButton value="auto">Automatic</ToggleButton>

@@ -435,7 +435,7 @@ const GeneralLogsPage: React.FC = () => {
             size="small"
             color={getPriorityColor(log.priority) as any}
             variant="soft"
-            sx={{ fontSize: "0.7rem" }}
+            style={{ fontSize: "0.7rem" }}
           />
         </AppTableCell>
         <AppTableCell style={{ width: "1%" }}>
@@ -607,7 +607,7 @@ const GeneralLogsPage: React.FC = () => {
               style={{ minWidth: 180 }}
             />
           )}
-          sx={{ minWidth: 180 }}
+          style={{ minWidth: 180 }}
         />
 
         <AppTextField

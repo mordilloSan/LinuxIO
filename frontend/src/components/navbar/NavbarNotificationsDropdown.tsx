@@ -166,7 +166,7 @@ function TransferItem({
   return (
     <ListItem
       divider
-      sx={{
+      style={{
         alignItems: "flex-start",
         cursor: isIndexer ? "pointer" : undefined,
       }}
@@ -179,7 +179,7 @@ function TransferItem({
         ) : undefined
       }
     >
-      <ListItemIcon sx={{ minWidth: 36, color: visuals.color, mt: 0.5 }}>
+      <ListItemIcon style={{ minWidth: 36, color: visuals.color, marginTop: 2 }}>
         {visuals.icon}
       </ListItemIcon>
       <ListItemText
@@ -495,9 +495,9 @@ function NavbarNotificationsDropdown() {
         open={isFullOpen}
         slotProps={{
           paper: {
-            sx: {
+            style: {
               width: 360,
-              border: `1px solid ${theme.palette.divider}`,
+              border: "1px solid var(--color-divider)",
               boxShadow: shadowSm,
             },
           },
@@ -519,7 +519,7 @@ function NavbarNotificationsDropdown() {
         </div>
 
         {/* Unified list */}
-        <List disablePadding sx={{ maxHeight: 400, overflow: "auto" }}>
+        <List disablePadding style={{ maxHeight: 400, overflow: "auto" }}>
           {totalItems === 0 ? (
             <ListItem>
               <ListItemText primary="You're all caught up." />
@@ -545,14 +545,14 @@ function NavbarNotificationsDropdown() {
                   <ListItem
                     key={`completed-${transfer.id}`}
                     divider
-                    sx={{
+                    style={{
                       alignItems: "center",
                       cursor: isIndexer ? "pointer" : undefined,
                     }}
                     onClick={isIndexer ? openIndexerDialog : undefined}
                   >
                     <ListItemIcon
-                      sx={{ minWidth: 36, color: theme.palette.success.main }}
+                      style={{ minWidth: 36, color: "var(--color-success)" }}
                     >
                       <Icon
                         icon="mdi:check-circle"
@@ -584,9 +584,9 @@ function NavbarNotificationsDropdown() {
                   <ListItem
                     key={toastItem.id}
                     divider
-                    sx={{ alignItems: "center" }}
+                    style={{ alignItems: "center" }}
                   >
-                    <ListItemIcon sx={{ minWidth: 36, color: visuals.color }}>
+                    <ListItemIcon style={{ minWidth: 36, color: visuals.color }}>
                       {visuals.icon}
                     </ListItemIcon>
                     <ListItemText

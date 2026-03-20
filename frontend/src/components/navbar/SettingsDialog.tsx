@@ -65,9 +65,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         value={activeTab}
         onChange={(_, nextValue: SettingsTab) => setActiveTab(nextValue)}
         aria-label="Settings tabs"
-        sx={{
-          px: 2,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+        style={{
+          paddingLeft: 8,
+          paddingRight: 8,
+          borderBottom: "1px solid var(--color-divider)",
         }}
       >
         <Tab label="General" value="general" />

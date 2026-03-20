@@ -781,8 +781,8 @@ const DiskOverview: React.FC = () => {
           <AppGrid
             container
             spacing={3}
-            sx={{
-              mb: 4,
+            style={{
+              marginBottom: 16,
             }}
           >
             <AnimatePresence>
