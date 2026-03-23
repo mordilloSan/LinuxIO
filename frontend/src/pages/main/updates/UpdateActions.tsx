@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import AppAlert from "@/components/ui/AppAlert";
@@ -7,6 +6,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface UpdateActionsProps {
   isUpdating: boolean;

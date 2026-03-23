@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { ReactNode, useCallback } from "react";
 
 import IndexerDialog from "./IndexerDialog";
@@ -13,6 +12,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
   showHiddenFiles: boolean;

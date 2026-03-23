@@ -1,15 +1,15 @@
 import { Icon } from "@iconify/react";
-import { Popover } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { iconSize, shadowSm } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 import { COLOR_TOKENS } from "@/theme/colors";
 import { alpha } from "@/utils/color";
 
@@ -37,22 +37,16 @@ function NavbarColorCustomizer() {
         </AppIconButton>
       </AppTooltip>
 
-      <Popover
+      <AppPopover
         open={open}
         anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{
-          paper: {
-            elevation: 0,
-            sx: {
-              p: 2,
-              bgcolor: theme.palette.background.paper,
-              borderRadius: 2,
-              boxShadow: shadowSm,
-            },
-          },
+        paperStyle={{
+          padding: theme.spacing(2),
+          background: theme.palette.background.paper,
+          boxShadow: shadowSm,
         }}
       >
         <AppTypography variant="h6" gutterBottom>
@@ -119,7 +113,7 @@ function NavbarColorCustomizer() {
             Reset to Default
           </AppButton>
         </div>
-      </Popover>
+      </AppPopover>
     </>
   );
 }

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { useCallback, useState } from "react";
 
 import ComposeStackCard from "./ComposeStackCard";
@@ -21,6 +20,7 @@ import {
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 interface ComposeService {
   name: string;
   image: string;

@@ -1,5 +1,4 @@
-import { Fade } from "@mui/material";
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 
@@ -34,20 +33,39 @@ const TabPanel: React.FC<TabPanelProps> = ({
   children,
 }) => {
   const isActive = activeTab === value;
+  const [isMounted, setIsMounted] = useState(isActive);
+
+  useEffect(() => {
+    if (isActive) {
+      setIsMounted(true);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsMounted(false);
+    }, timeout);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isActive, timeout]);
+
+  if (!isMounted) {
+    return null;
+  }
 
   return (
-    <Fade in={isActive} timeout={timeout} unmountOnExit={true}>
-      <div
-        style={{
-          position: "absolute",
-          width: "100%",
-          top: 0,
-          left: 0,
-        }}
-      >
-        <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>
-      </div>
-    </Fade>
+    <div
+      style={{
+        position: "absolute",
+        width: "100%",
+        top: 0,
+        left: 0,
+        opacity: isActive ? 1 : 0,
+        pointerEvents: isActive ? "auto" : "none",
+        transition: `opacity ${timeout}ms ease`,
+      }}
+    >
+      <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>
+    </div>
   );
 };
 

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -13,6 +12,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 export type { NetworkInterface };
 

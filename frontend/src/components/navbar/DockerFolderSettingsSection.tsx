@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, {
   useCallback,
   useEffect,
@@ -18,6 +17,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 
 const normalizePathInput = (value: string): string => {
   const trimmed = value.trim();

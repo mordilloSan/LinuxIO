@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
@@ -9,6 +8,7 @@ import Chip from "@/components/ui/AppChip";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface UpdateSettingsDialogProps {
   open: boolean;
   onClose: () => void;

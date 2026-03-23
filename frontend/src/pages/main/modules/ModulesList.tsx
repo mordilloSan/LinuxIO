@@ -53,12 +53,13 @@ const ModulesList: React.FC = () => {
     <div style={{ marginTop: 8 }}>
       <AppGrid container spacing={2}>
         {modules.map((module) => (
-          <ModuleCard
-            key={module.name}
-            module={module}
-            onViewDetails={() => handleViewDetails(module.name)}
-            onModuleChange={handleModuleChange}
-          />
+          <AppGrid key={module.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+            <ModuleCard
+              module={module}
+              onViewDetails={() => handleViewDetails(module.name)}
+              onModuleChange={handleModuleChange}
+            />
+          </AppGrid>
         ))}
       </AppGrid>
 

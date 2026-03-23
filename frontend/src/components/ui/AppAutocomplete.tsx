@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import AppChip from "./AppChip";
 import AppPopover from "./AppPopover";
 import AppTextField from "./AppTextField";
 
@@ -56,12 +55,12 @@ export type AppAutocompleteProps =
   | SingleAutocompleteProps
   | MultipleAutocompleteProps;
 
-const defaultFilterOptions = (options: string[], inputValue: string) => {
-  if (!inputValue) {
+const defaultFilterOptions = (options: string[], state: FilterState) => {
+  if (!state.inputValue) {
     return options;
   }
 
-  const lowerValue = inputValue.toLowerCase();
+  const lowerValue = state.inputValue.toLowerCase();
   return options.filter((option) => option.toLowerCase().includes(lowerValue));
 };
 
@@ -165,7 +164,9 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       return;
     }
 
-    const nextSelection = selectedValues.filter((_, itemIndex) => itemIndex !== index);
+    const nextSelection = selectedValues.filter(
+      (_, itemIndex) => itemIndex !== index,
+    );
     props.onChange?.(nextSelection);
     inputRef.current?.focus();
   };
@@ -200,7 +201,7 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
     });
   };
 
-  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (event: React.KeyboardEvent<Element>) => {
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -250,21 +251,22 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
   };
 
   const renderedValue = isMultiple
-    ? (props.renderValue?.(
-        selectedValues,
-        ({ index }: { index: number }) => ({
-          key: selectedValues[index] ?? String(index),
-          onDelete: () => removeSelectedValue(index),
-        }),
-      ) ??
+    ? (props.renderValue?.(selectedValues, ({ index }: { index: number }) => ({
+        key: selectedValues[index] ?? String(index),
+        onDelete: () => removeSelectedValue(index),
+      })) ??
       selectedValues.map((option, index) => (
-        <AppChip
-          key={`${option}-${index}`}
-          label={option}
-          size="small"
-          variant="soft"
-          onDelete={() => removeSelectedValue(index)}
-        />
+        <span key={`${option}-${index}`} className="app-autocomplete__tag">
+          <span className="app-autocomplete__tag-label">{option}</span>
+          <button
+            type="button"
+            className="app-autocomplete__tag-remove"
+            onClick={() => removeSelectedValue(index)}
+            aria-label={`Remove ${option}`}
+          >
+            <Icon icon="mdi:close-circle" width={16} height={16} />
+          </button>
+        </span>
       )))
     : null;
 

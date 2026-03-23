@@ -1,4 +1,3 @@
-import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { useState, useCallback } from "react";
 
 import AppCheckbox from "../ui/AppCheckbox";
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 interface PermissionsDialogProps {
   open: boolean;
   pathLabel: string;

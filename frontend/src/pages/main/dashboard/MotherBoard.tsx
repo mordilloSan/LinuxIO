@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -7,6 +6,7 @@ import DashboardCard, {
 } from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useAppTheme } from "@/theme";
 
 const MotherBoardInfo: React.FC = () => {
   const theme = useAppTheme();

@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Menu, MenuItem } from "@mui/material";
 import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
 import AppCardContent from "@/components/ui/AppCardContent";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -261,15 +261,16 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
               </div>
             )}
             {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (
-              <Menu
+              <AppMenu
                 anchorEl={iconTextMenuAnchor}
                 open={Boolean(iconTextMenuAnchor)}
                 onClose={() => setIconTextMenuAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
+                minWidth={180}
               >
                 {iconTextSelectOptions.map((opt, i) => (
-                  <MenuItem
+                  <AppMenuItem
                     key={opt.id ?? i}
                     selected={opt.value === selectedIconTextOption}
                     onClick={() => {
@@ -278,9 +279,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                     }}
                   >
                     {opt.label}
-                  </MenuItem>
+                  </AppMenuItem>
                 ))}
-              </Menu>
+              </AppMenu>
             )}
           </div>
 

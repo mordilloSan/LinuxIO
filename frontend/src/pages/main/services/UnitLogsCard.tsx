@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
@@ -9,6 +8,7 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {

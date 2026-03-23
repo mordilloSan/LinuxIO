@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import { useRef } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 import { ThemeColors } from "@/types/config";
 import { alpha } from "@/utils/color";
 

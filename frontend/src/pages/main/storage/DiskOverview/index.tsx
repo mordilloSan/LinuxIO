@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Tab, Tabs } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -36,6 +34,7 @@ import {
 } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import TabSelector from "@/components/tabbar/TabSelector";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -47,8 +46,8 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
-import { alpha } from "@/utils/color";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface DriveDetailsProps {
@@ -460,7 +459,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         setStartPending(null);
       });
   };
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
   };
   const smart = drive.smart;
@@ -500,42 +499,23 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Tabs
-            value={tabIndex}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              "& .MuiTab-root": {
-                minWidth: "auto",
-                px: 1.5,
+          <TabSelector
+            value={String(tabIndex)}
+            onChange={(nextValue) => handleTabChange(Number(nextValue))}
+            options={[
+              { value: "0", label: "Overview" },
+              { value: "1", label: "SMART Attributes" },
+              { value: "2", label: "Drive Information" },
+              ...(isNvme && power
+                ? [{ value: "3", label: "Power States" }]
+                : []),
+              {
+                value: isNvme && power ? "4" : "3",
+                label: "Self-Tests",
               },
-              "& .MuiTabs-scroller": {
-                "&::-webkit-scrollbar": {
-                  height: 8,
-                },
-                "&::-webkit-scrollbar-thumb": {
-                  backgroundColor: alpha(theme.palette.text.secondary, 0.2),
-                  borderRadius: 8,
-                  border: "2px solid transparent",
-                  backgroundClip: "content-box",
-                },
-                "&::-webkit-scrollbar-track": {
-                  background: "transparent",
-                  borderRadius: 8,
-                },
-                "&::-webkit-scrollbar-thumb:hover": {
-                  backgroundColor: alpha(theme.palette.text.secondary, 0.45),
-                },
-              },
-            }}
-          >
-            <Tab label="Overview" />
-            <Tab label="SMART Attributes" />
-            <Tab label="Drive Information" />
-            {isNvme && power && <Tab label="Power States" />}
-            <Tab label="Self-Tests" />
-          </Tabs>
+            ]}
+            style={{ marginBottom: 0 }}
+          />
         </div>
 
         <TabPanel value={tabIndex} index={0}>

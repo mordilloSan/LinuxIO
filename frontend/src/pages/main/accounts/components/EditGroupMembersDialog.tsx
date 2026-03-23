@@ -1,5 +1,3 @@
-import { Autocomplete } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +8,7 @@ import {
   type ModifyGroupMembersRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import {
@@ -17,7 +16,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -90,14 +89,13 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <Autocomplete
+          <AppAutocomplete
             multiple
             options={usersList.map((u) => u.username)}
             value={selectedMembers}
-            onChange={(_, value) => setSelectedMembers(value)}
-            renderInput={(params) => (
-              <AppTextField {...params} label="Members" fullWidth />
-            )}
+            onChange={setSelectedMembers}
+            label="Members"
+            fullWidth
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {
                 const itemProps = getItemProps({ index });

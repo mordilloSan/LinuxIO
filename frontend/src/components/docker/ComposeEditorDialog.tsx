@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, {
   Suspense,
   useCallback,
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface ComposeEditorDialogProps {
   open: boolean;
   mode: "create" | "edit";

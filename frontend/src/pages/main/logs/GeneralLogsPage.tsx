@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Autocomplete } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import React, {
   useCallback,
   useEffect,
@@ -14,6 +12,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import Chip from "@/components/ui/AppChip";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -22,11 +21,11 @@ import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
-import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 const DEFAULT_TAIL = "200";
@@ -580,34 +579,22 @@ const GeneralLogsPage: React.FC = () => {
           <option value="7">Debug and above</option>
         </AppSelect>
 
-        <Autocomplete
+        <AppAutocomplete
           size="small"
           freeSolo
           options={uniqueIdentifiers}
           value={identifierFilter === "all" ? "" : identifierFilter}
-          onChange={(_, newValue) => {
-            handleIdentifierFilterChange(newValue || "all");
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              const input = e.target as HTMLInputElement;
-              handleIdentifierFilterChange(input.value || "all");
-            }
+          onChange={(value) => {
+            handleIdentifierFilterChange(value || "all");
           }}
           filterOptions={(options, { inputValue }) => {
             if (!inputValue) return options;
             const lower = inputValue.toLowerCase();
             return options.filter((opt) => opt.toLowerCase().includes(lower));
           }}
-          renderInput={(params) => (
-            <AppTextField
-              {...params}
-              label="Identifier"
-              placeholder="All"
-              shrinkLabel={true}
-              style={{ minWidth: 180 }}
-            />
-          )}
+          label="Identifier"
+          placeholder="All"
+          shrinkLabel={true}
           style={{ minWidth: 180 }}
         />
 

@@ -1,4 +1,3 @@
-import { Autocomplete, TextField } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
@@ -17,6 +16,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -188,33 +188,20 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          <Autocomplete
+          <AppAutocomplete
             freeSolo
             options={exports}
             value={exportPath}
-            onInputChange={(_, value) => setExportPath(value)}
+            onChange={setExportPath}
+            onInputChange={setExportPath}
             loading={loadingExports}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Path on Server"
-                placeholder="e.g., /shared/data"
-                size="small"
-                slotProps={{
-                  input: {
-                    ...params.InputProps,
-                    endAdornment: (
-                      <>
-                        {loadingExports ? (
-                          <AppCircularProgress size={20} />
-                        ) : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    ),
-                  },
-                }}
-              />
-            )}
+            label="Path on Server"
+            placeholder="e.g., /shared/data"
+            size="small"
+            fullWidth
+            endAdornment={
+              loadingExports ? <AppCircularProgress size={20} /> : null
+            }
           />
           <AppTextField
             label="Local Mountpoint"

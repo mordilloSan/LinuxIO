@@ -1,7 +1,7 @@
-import { useAppTheme } from "@/theme";
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface CpuGraphProps {

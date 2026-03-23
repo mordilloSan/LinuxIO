@@ -1,10 +1,4 @@
 import { Icon } from "@iconify/react";
-import {
-  ListItemIcon,
-  Menu,
-  MenuItem,
-} from "@mui/material";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,8 +9,10 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppDivider from "@/components/ui/AppDivider";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
@@ -312,51 +308,45 @@ const DockerInfo: React.FC = () => {
           </AppTooltip>
         );
       })}
-      <Menu
+      <AppMenu
         anchorEl={menuAnchor}
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
         autoFocus={false}
-        slotProps={{
-          paper: {
-            sx: {
-              minWidth: 140,
-            },
-          },
-        }}
+        minWidth={140}
       >
         {menuContainer?.state !== "running" && (
-          <MenuItem onClick={() => handleAction("start")}>
-            <ListItemIcon>
-              <Icon icon="mdi:play" width={18} />
-            </ListItemIcon>
+          <AppMenuItem
+            onClick={() => handleAction("start")}
+            startAdornment={<Icon icon="mdi:play" width={18} />}
+          >
             Start
-          </MenuItem>
+          </AppMenuItem>
         )}
         {menuContainer?.state === "running" && (
-          <MenuItem onClick={() => handleAction("stop")}>
-            <ListItemIcon>
-              <Icon icon="mdi:stop" width={18} />
-            </ListItemIcon>
+          <AppMenuItem
+            onClick={() => handleAction("stop")}
+            startAdornment={<Icon icon="mdi:stop" width={18} />}
+          >
             Stop
-          </MenuItem>
+          </AppMenuItem>
         )}
-        <MenuItem onClick={() => handleAction("restart")}>
-          <ListItemIcon>
-            <Icon icon="mdi:restart" width={18} />
-          </ListItemIcon>
+        <AppMenuItem
+          onClick={() => handleAction("restart")}
+          startAdornment={<Icon icon="mdi:restart" width={18} />}
+        >
           Restart
-        </MenuItem>
+        </AppMenuItem>
         {menuContainer?.state !== "running" && (
-          <MenuItem onClick={() => handleAction("remove")}>
-            <ListItemIcon>
-              <Icon icon="mdi:delete-outline" width={18} />
-            </ListItemIcon>
+          <AppMenuItem
+            onClick={() => handleAction("remove")}
+            startAdornment={<Icon icon="mdi:delete-outline" width={18} />}
+          >
             Remove
-          </MenuItem>
+          </AppMenuItem>
         )}
         <AppDivider />
-        <MenuItem
+        <AppMenuItem
           onClick={() => {
             if (menuContainer) {
               setDialogContainer({
@@ -368,13 +358,11 @@ const DockerInfo: React.FC = () => {
             }
             handleMenuClose();
           }}
+          startAdornment={<Icon icon="mdi:text-box-outline" width={18} />}
         >
-          <ListItemIcon>
-            <Icon icon="mdi:text-box-outline" width={18} />
-          </ListItemIcon>
           Logs
-        </MenuItem>
-        <MenuItem
+        </AppMenuItem>
+        <AppMenuItem
           onClick={() => {
             if (menuContainer) {
               setDialogContainer({
@@ -386,13 +374,11 @@ const DockerInfo: React.FC = () => {
             }
             handleMenuClose();
           }}
+          startAdornment={<Icon icon="mdi:console" width={18} />}
         >
-          <ListItemIcon>
-            <Icon icon="mdi:console" width={18} />
-          </ListItemIcon>
           Terminal
-        </MenuItem>
-      </Menu>
+        </AppMenuItem>
+      </AppMenu>
     </div>
   );
   return (

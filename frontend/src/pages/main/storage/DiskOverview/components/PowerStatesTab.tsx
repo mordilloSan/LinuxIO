@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import type { PowerData } from "../types";
@@ -13,6 +12,7 @@ import {
   AppTableRow,
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface PowerStatesTabProps {
   power: PowerData;
 }

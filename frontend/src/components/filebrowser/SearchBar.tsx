@@ -1,5 +1,7 @@
 import { Icon } from "@iconify/react";
+
 import { useAppTheme } from "@/theme";
+
 import React, { useState, useCallback } from "react";
 
 import "./search-bar.css";

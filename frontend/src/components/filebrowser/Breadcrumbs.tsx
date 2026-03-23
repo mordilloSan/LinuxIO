@@ -1,5 +1,6 @@
-import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { useMemo } from "react";
+
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 
 export interface BreadcrumbItem {
   label: string;

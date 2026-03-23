@@ -1,9 +1,9 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface ComposePostSaveDialogProps {
   open: boolean;

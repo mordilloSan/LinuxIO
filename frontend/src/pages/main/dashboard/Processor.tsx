@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import ProcessorGraph from "./ProcessorGraph";
@@ -11,6 +10,7 @@ import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useAppTheme } from "@/theme";
 
 const Processor: React.FC = () => {
   const theme = useAppTheme();

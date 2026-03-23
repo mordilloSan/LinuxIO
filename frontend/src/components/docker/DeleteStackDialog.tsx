@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,6 +10,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 export type DeleteOption = "containers" | "file" | "directory";
 interface DeleteStackDialogProps {
   open: boolean;

@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, { useEffect, useMemo, useState } from "react";
 
 import type { UnitListItem } from "./UnitViews";
@@ -7,6 +6,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
+import { useAppTheme } from "@/theme";
 import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {

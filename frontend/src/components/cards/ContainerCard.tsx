@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -22,6 +21,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";

@@ -1,5 +1,6 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
+
+import { useAppTheme } from "@/theme";
 
 interface SelectionBoxProps {
   left: number;

@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import { List, ListItem, ListItemText } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   ReactNode,
@@ -66,6 +64,7 @@ import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useFileViewState } from "@/hooks/useFileViewState";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import { useAppTheme } from "@/theme";
 import { ViewMode, FileItem } from "@/types/filebrowser";
 import {
   buildEntriesFromFileList,
@@ -1325,25 +1324,30 @@ const FileBrowser: React.FC = () => {
               : "No items selected yet."}
           </AppTypography>
           {uploadEntries.length > 0 && (
-            <List
-              dense
+            <ul
               style={{
+                margin: 0,
                 marginTop: 6,
+                paddingLeft: 20,
                 maxHeight: 240,
                 overflowY: "auto",
               }}
+              className="custom-scrollbar"
             >
               {uploadEntries.map((entry) => (
-                <ListItem
+                <li
                   key={`${entry.isDirectory ? "dir" : "file"}-${entry.relativePath}`}
+                  style={{ marginBottom: 6 }}
                 >
-                  <ListItemText
-                    primary={entry.relativePath}
-                    secondary={entry.isDirectory ? "Folder" : "File"}
-                  />
-                </ListItem>
+                  <AppTypography variant="body2">
+                    {entry.relativePath}
+                  </AppTypography>
+                  <AppTypography variant="caption" color="text.secondary">
+                    {entry.isDirectory ? "Folder" : "File"}
+                  </AppTypography>
+                </li>
               ))}
-            </List>
+            </ul>
           )}
         </AppDialogContent>
         <AppDialogActions>
@@ -1388,13 +1392,18 @@ const FileBrowser: React.FC = () => {
             These items already exist in {normalizedPath}. Do you want to
             overwrite them?
           </AppTypography>
-          <List dense disablePadding>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 20,
+            }}
+          >
             {overwriteTargets?.map(({ relativePath }) => (
-              <ListItem key={relativePath} disableGutters>
-                <ListItemText primary={relativePath} />
-              </ListItem>
+              <li key={relativePath}>
+                <AppTypography variant="body2">{relativePath}</AppTypography>
+              </li>
             ))}
-          </List>
+          </ul>
         </AppDialogContent>
         <AppDialogActions>
           <AppButton onClick={handleCancelOverwrite}>Skip</AppButton>

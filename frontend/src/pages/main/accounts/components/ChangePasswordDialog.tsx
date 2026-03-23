@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -12,6 +11,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {

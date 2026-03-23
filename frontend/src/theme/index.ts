@@ -1,9 +1,3 @@
-import {
-  type Theme,
-  type ThemeOptions,
-  ThemeProvider as MuiThemeProvider,
-  createTheme as createMuiTheme,
-} from "@mui/material/styles";
 import React, {
   createContext,
   useContext,
@@ -329,6 +323,40 @@ function createPaletteColor(main: string): AppPaletteColor {
   };
 }
 
+function toColorChannel(color: string) {
+  const trimmed = color.trim();
+
+  if (trimmed.startsWith("#")) {
+    const hex = trimmed.slice(1);
+    const normalized =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((value) => value + value)
+            .join("")
+        : hex;
+
+    if (normalized.length === 6) {
+      const red = Number.parseInt(normalized.slice(0, 2), 16);
+      const green = Number.parseInt(normalized.slice(2, 4), 16);
+      const blue = Number.parseInt(normalized.slice(4, 6), 16);
+      return `${red} ${green} ${blue}`;
+    }
+  }
+
+  const rgbMatch = trimmed.match(/^rgba?\(([^)]+)\)$/i);
+
+  if (rgbMatch) {
+    return rgbMatch[1]
+      .split(",")
+      .slice(0, 3)
+      .map((value) => String(Math.round(Number.parseFloat(value.trim()))))
+      .join(" ");
+  }
+
+  return "0 0 0";
+}
+
 function resolveVariantTheme(
   variantName: string,
   primaryColorToken?: string,
@@ -505,71 +533,6 @@ export function buildAppTheme(
   };
 }
 
-function toMuiTypography(theme: AppTheme): ThemeOptions["typography"] {
-  return {
-    fontFamily: theme.typography.fontFamily,
-    fontSize: theme.typography.fontSize,
-    fontWeightLight: theme.typography.fontWeightLight,
-    fontWeightRegular: theme.typography.fontWeightRegular,
-    fontWeightMedium: theme.typography.fontWeightMedium,
-    fontWeightBold: theme.typography.fontWeightBold,
-    h1: theme.typography.h1,
-    h2: theme.typography.h2,
-    h3: theme.typography.h3,
-    h4: theme.typography.h4,
-    h5: theme.typography.h5,
-    h6: theme.typography.h6,
-    body1: theme.typography.body1,
-    body2: theme.typography.body2,
-    subtitle1: theme.typography.subtitle1,
-    subtitle2: theme.typography.subtitle2,
-    caption: theme.typography.caption,
-    overline: theme.typography.overline,
-    button: theme.typography.button,
-  } as ThemeOptions["typography"];
-}
-
-export function createMuiBridgeTheme(appTheme: AppTheme): Theme {
-  const theme = createMuiTheme({
-    spacing: BASE_SPACING_UNIT,
-    breakpoints: {
-      values: appTheme.breakpoints.values,
-    },
-    shape: {
-      borderRadius: appTheme.shape.borderRadius,
-    },
-    typography: toMuiTypography(appTheme),
-    palette: {
-      mode: appTheme.palette.mode,
-      primary: appTheme.palette.primary,
-      secondary: appTheme.palette.secondary,
-      error: appTheme.palette.error,
-      warning: appTheme.palette.warning,
-      success: appTheme.palette.success,
-      info: appTheme.palette.info,
-      background: appTheme.palette.background,
-      text: appTheme.palette.text,
-      divider: appTheme.palette.divider,
-      action: appTheme.palette.action,
-    },
-  });
-
-  Object.assign(theme, {
-    card: appTheme.card,
-    dialog: appTheme.dialog,
-    codeBlock: appTheme.codeBlock,
-    chart: appTheme.chart,
-    fileBrowser: appTheme.fileBrowser,
-    header: appTheme.header,
-    footer: appTheme.footer,
-    sidebar: appTheme.sidebar,
-    lighten,
-    darken,
-  });
-
-  return theme;
-}
-
 function getThemeCssVariables(theme: AppTheme): Record<string, string> {
   return {
     "--app-color-scheme": theme.colorScheme,
@@ -673,15 +636,26 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--color-success": "var(--app-palette-success-main)",
     "--color-info": "var(--app-palette-info-main)",
     "--color-divider": "var(--app-palette-divider)",
+    "--mui-palette-primary-main": theme.palette.primary.main,
+    "--mui-palette-primary-mainChannel": toColorChannel(
+      theme.palette.primary.main,
+    ),
+    "--mui-palette-warning-main": theme.palette.warning.main,
+    "--mui-palette-success-main": theme.palette.success.main,
+    "--mui-palette-error-main": theme.palette.error.main,
+    "--mui-palette-text-secondary": theme.palette.text.secondary,
+    "--mui-palette-divider": theme.palette.divider,
+    "--mui-palette-dividerChannel": toColorChannel(theme.palette.divider),
+    "--mui-palette-background-default": theme.palette.background.default,
+    "--mui-palette-action-hover": theme.palette.action.hover,
+    "--mui-palette-common-blackChannel": "0 0 0",
+    "--mui-palette-grey-100": "#f5f5f5",
+    "--mui-palette-grey-900": "#212121",
   };
 }
 
 export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
   const resolvedTheme = value;
-  const muiTheme = useMemo(
-    () => (resolvedTheme ? createMuiBridgeTheme(resolvedTheme) : null),
-    [resolvedTheme],
-  );
   const cssVariables = useMemo(
     () => (resolvedTheme ? getThemeCssVariables(resolvedTheme) : {}),
     [resolvedTheme],
@@ -692,20 +666,21 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 
     const root = document.documentElement;
     root.dataset.appTheme = resolvedTheme.name.toLowerCase();
+    root.dataset.muiColorScheme = resolvedTheme.colorScheme;
 
     for (const [key, value] of Object.entries(cssVariables)) {
       root.style.setProperty(key, value);
     }
   }, [cssVariables, resolvedTheme]);
 
-  if (!resolvedTheme || !muiTheme) {
+  if (!resolvedTheme) {
     return null;
   }
 
   return React.createElement(
     APP_THEME_CONTEXT.Provider,
     { value: resolvedTheme },
-    React.createElement(MuiThemeProvider, { theme: muiTheme }, children),
+    children,
   );
 }
 

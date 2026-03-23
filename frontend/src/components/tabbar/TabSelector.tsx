@@ -17,6 +17,8 @@ interface TabSelectorProps {
   onChange: (value: string) => void;
   options: TabOption[];
   rightContent?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 const TabSelector: React.FC<TabSelectorProps> = ({
@@ -24,6 +26,8 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   onChange,
   options,
   rightContent,
+  className,
+  style,
 }) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
@@ -36,7 +40,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
 
   return (
     <div
-      className="tab-selector"
+      className={["tab-selector", className].filter(Boolean).join(" ")}
       style={
         {
           "--tab-selector-active-bg": primaryHex,
@@ -44,6 +48,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
           "--tab-selector-border": theme.palette.divider,
           "--tab-selector-hover": theme.palette.action.hover,
           "--tab-selector-text": theme.palette.text.secondary,
+          ...style,
         } as React.CSSProperties
       }
     >

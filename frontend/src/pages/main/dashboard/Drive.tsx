@@ -1,10 +1,10 @@
-import { useAppTheme } from "@/theme";
 import React, { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 interface DriveInfo {

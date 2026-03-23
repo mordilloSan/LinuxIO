@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import AppButton from "@/components/ui/AppButton";
@@ -12,6 +11,7 @@ import {
   AppTableRow,
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface SelfTestsTabProps {
   startPending: "short" | "long" | null;
   onRunTest: (testType: "short" | "long") => void;

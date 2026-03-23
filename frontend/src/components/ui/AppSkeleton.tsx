@@ -20,11 +20,7 @@ const AppSkeleton: React.FC<AppSkeletonProps> = ({
   style,
 }) => (
   <span
-    className={[
-      "app-skeleton",
-      `app-skeleton--${variant}`,
-      className,
-    ]
+    className={["app-skeleton", `app-skeleton--${variant}`, className]
       .filter(Boolean)
       .join(" ")}
     style={{

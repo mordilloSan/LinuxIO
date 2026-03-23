@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,6 +10,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 
 interface CreateInterfaceDialogProps {
   open: boolean;

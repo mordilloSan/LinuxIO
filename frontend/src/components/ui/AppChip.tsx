@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
-import { AppTheme, useAppTheme } from "@/theme";
 import React from "react";
 
+import { AppTheme, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 import "./app-chip.css";

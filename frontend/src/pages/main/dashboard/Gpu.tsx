@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -6,6 +5,7 @@ import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 export interface UnifiedTableColumn {

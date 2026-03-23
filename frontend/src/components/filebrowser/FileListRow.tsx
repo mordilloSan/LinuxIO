@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, {
   useCallback,
   useMemo,
@@ -10,6 +9,7 @@ import React, {
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 // Styles are injected by FileCard.tsx (shared animation)

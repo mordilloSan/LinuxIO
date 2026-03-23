@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Tab, Tabs } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
@@ -8,9 +6,11 @@ import NavbarCustomizer from "./NavbarCustomizer";
 import ThemeColorsSection from "./ThemeColorsSection";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 type SettingsTab = "general" | "docker";
 interface SettingsDialogProps {
   open: boolean;
@@ -61,19 +61,23 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         </div>
       </AppDialogTitle>
 
-      <Tabs
-        value={activeTab}
-        onChange={(_, nextValue: SettingsTab) => setActiveTab(nextValue)}
-        aria-label="Settings tabs"
+      <div
         style={{
           paddingLeft: 8,
           paddingRight: 8,
           borderBottom: "1px solid var(--color-divider)",
         }}
       >
-        <Tab label="General" value="general" />
-        <Tab label="Docker" value="docker" />
-      </Tabs>
+        <TabSelector
+          value={activeTab}
+          onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
+          options={[
+            { value: "general", label: "General" },
+            { value: "docker", label: "Docker" },
+          ]}
+          style={{ marginBottom: 0 }}
+        />
+      </div>
 
       <AppDialogContent
         style={{

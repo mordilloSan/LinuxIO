@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React from "react";
+
+import { useAppTheme } from "@/theme";
 
 interface ActionButtonProps {
   icon: string;

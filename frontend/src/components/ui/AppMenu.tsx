@@ -67,7 +67,8 @@ const AppMenu: React.FC<AppMenuProps> = ({
     const currentIndex = items.findIndex(
       (item) => item === document.activeElement,
     );
-    const baseIndex = currentIndex === -1 ? (direction === 1 ? -1 : 0) : currentIndex;
+    const baseIndex =
+      currentIndex === -1 ? (direction === 1 ? -1 : 0) : currentIndex;
     const nextIndex = (baseIndex + direction + items.length) % items.length;
 
     items[nextIndex]?.focus();
@@ -134,7 +135,10 @@ const AppMenu: React.FC<AppMenuProps> = ({
   );
 };
 
-export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>(
+export const AppMenuItem = React.forwardRef<
+  HTMLButtonElement,
+  AppMenuItemProps
+>(
   (
     {
       selected = false,

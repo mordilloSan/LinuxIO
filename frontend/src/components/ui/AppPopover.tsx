@@ -137,7 +137,8 @@ const AppPopover: React.FC<AppPopoverProps> = ({
       anchorBox.left +
       getHorizontalOffset(anchorOrigin.horizontal, anchorBox.width);
     const anchorTop =
-      anchorBox.top + getVerticalOffset(anchorOrigin.vertical, anchorBox.height);
+      anchorBox.top +
+      getVerticalOffset(anchorOrigin.vertical, anchorBox.height);
 
     let nextLeft =
       anchorLeft -
@@ -247,7 +248,9 @@ const AppPopover: React.FC<AppPopoverProps> = ({
   }
 
   const anchorWidth =
-    matchAnchorWidth && anchorEl ? anchorEl.getBoundingClientRect().width : null;
+    matchAnchorWidth && anchorEl
+      ? anchorEl.getBoundingClientRect().width
+      : null;
 
   return createPortal(
     <div

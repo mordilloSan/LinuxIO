@@ -1,20 +1,13 @@
 import { Icon } from "@iconify/react";
-import {
-  Drawer,
-  Typography,
-  IconButton,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  Alert,
-  Link,
-} from "@mui/material";
 import React from "react";
+import { createPortal } from "react-dom";
 
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert from "@/components/ui/AppAlert";
 import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
+import AppIconButton from "@/components/ui/AppIconButton";
 
 interface ModuleDetailsDrawerProps {
   open: boolean;
@@ -35,9 +28,39 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
     enabled: open && !!moduleName,
   });
 
-  return (
-    <Drawer anchor="right" open={open} onClose={onClose}>
-      <div style={{ width: 500, padding: 24 }}>
+  if (!open) {
+    return null;
+  }
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 1350 }}>
+      <div
+        aria-hidden
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(0, 0, 0, 0.45)",
+          backdropFilter: "blur(6px)",
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          height: "100%",
+          width: "min(500px, calc(100vw - 16px))",
+          padding: 24,
+          overflowY: "auto",
+          background: "var(--app-palette-background-paper)",
+          color: "var(--app-palette-text-primary)",
+          boxShadow: "var(--app-panel-shadow)",
+          borderLeft: "1px solid var(--app-palette-divider)",
+        }}
+      >
         {/* Header */}
         <div
           style={{
@@ -46,99 +69,109 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
             marginBottom: 8,
           }}
         >
-          <Typography variant="h5">Module Details</Typography>
-          <IconButton onClick={onClose}>
+          <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600 }}>
+            Module Details
+          </h2>
+          <AppIconButton onClick={onClose}>
             <Icon icon="mdi:close" width={20} height={20} />
-          </IconButton>
+          </AppIconButton>
         </div>
 
-        <Divider style={{ marginBottom: 8 }} />
+        <AppDivider style={{ marginBottom: 8 }} />
 
         {/* Content */}
         {isPending && <ComponentLoader />}
 
         {isError && (
-          <Alert severity="error">Failed to load module details</Alert>
+          <AppAlert severity="error">Failed to load module details</AppAlert>
         )}
 
         {module && (
           <div>
-            <Typography variant="h6" gutterBottom>
+            <h3 style={{ margin: "0 0 8px", fontSize: "1.125rem" }}>
               {module.title}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              component="p"
-              style={{ marginBottom: 8 }}
+            </h3>
+            <p
+              style={{
+                margin: "0 0 8px",
+                color: "var(--app-palette-text-secondary)",
+                fontSize: "0.875rem",
+                lineHeight: 1.45,
+              }}
             >
               {module.description}
-            </Typography>
+            </p>
 
             {/* Metadata */}
             <div style={{ marginBottom: 12 }}>
-              <Typography variant="subtitle2" gutterBottom>
+              <p
+                style={{
+                  margin: "0 0 8px",
+                  fontSize: "0.875rem",
+                  fontWeight: 600,
+                }}
+              >
                 Information
-              </Typography>
-              <List dense>
-                <ListItem>
-                  <ListItemText primary="Name" secondary={module.name} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="Version" secondary={module.version} />
-                </ListItem>
+              </p>
+              <div style={{ display: "grid", gap: 10 }}>
+                <div>
+                  <strong>Name</strong>
+                  <div>{module.name}</div>
+                </div>
+                <div>
+                  <strong>Version</strong>
+                  <div>{module.version}</div>
+                </div>
                 {module.author && (
-                  <ListItem>
-                    <ListItemText primary="Author" secondary={module.author} />
-                  </ListItem>
+                  <div>
+                    <strong>Author</strong>
+                    <div>{module.author}</div>
+                  </div>
                 )}
                 {module.license && (
-                  <ListItem>
-                    <ListItemText
-                      primary="License"
-                      secondary={module.license}
-                    />
-                  </ListItem>
+                  <div>
+                    <strong>License</strong>
+                    <div>{module.license}</div>
+                  </div>
                 )}
-                <ListItem>
-                  <ListItemText primary="Path" secondary={module.path} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText
-                    primary="Type"
-                    secondary={
-                      <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-                        {module.isSystem && (
-                          <Chip
-                            label="System Module"
-                            size="small"
-                            color="primary"
-                            variant="soft"
-                          />
-                        )}
-                        {module.isSymlink && (
-                          <Chip label="Symlink" size="small" variant="soft" />
-                        )}
-                        {!module.isSystem && !module.isSymlink && (
-                          <Chip
-                            label="User Module"
-                            size="small"
-                            variant="soft"
-                          />
-                        )}
-                      </div>
-                    }
-                  />
-                </ListItem>
-              </List>
+                <div>
+                  <strong>Path</strong>
+                  <div style={{ wordBreak: "break-all" }}>{module.path}</div>
+                </div>
+                <div>
+                  <strong>Type</strong>
+                  <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                    {module.isSystem && (
+                      <Chip
+                        label="System Module"
+                        size="small"
+                        color="primary"
+                        variant="soft"
+                      />
+                    )}
+                    {module.isSymlink && (
+                      <Chip label="Symlink" size="small" variant="soft" />
+                    )}
+                    {!module.isSystem && !module.isSymlink && (
+                      <Chip label="User Module" size="small" variant="soft" />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Handlers */}
             {module.handlers && module.handlers.length > 0 && (
               <div style={{ marginBottom: 12 }}>
-                <Typography variant="subtitle2" gutterBottom>
+                <p
+                  style={{
+                    margin: "0 0 8px",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                  }}
+                >
                   Registered Handlers ({module.handlers.length})
-                </Typography>
+                </p>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                   {module.handlers.map((handler) => (
                     <Chip
@@ -155,9 +188,15 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
             {/* Permissions */}
             {module.permissions && module.permissions.length > 0 && (
               <div style={{ marginBottom: 12 }}>
-                <Typography variant="subtitle2" gutterBottom>
+                <p
+                  style={{
+                    margin: "0 0 8px",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                  }}
+                >
                   Required Permissions
-                </Typography>
+                </p>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                   {module.permissions.map((perm) => (
                     <Chip
@@ -175,42 +214,56 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
             {/* Settings */}
             {module.settings && module.settings.length > 0 && (
               <div style={{ marginBottom: 12 }}>
-                <Typography variant="subtitle2" gutterBottom>
+                <p
+                  style={{
+                    margin: "0 0 8px",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                  }}
+                >
                   Settings ({module.settings.length})
-                </Typography>
-                <List dense>
+                </p>
+                <div style={{ display: "grid", gap: 10 }}>
                   {module.settings.map((setting) => (
-                    <ListItem key={setting.name}>
-                      <ListItemText
-                        primary={setting.name}
-                        secondary={`${setting.type}: ${setting.description}`}
-                      />
-                    </ListItem>
+                    <div key={setting.name}>
+                      <strong>{setting.name}</strong>
+                      <div>{`${setting.type}: ${setting.description}`}</div>
+                    </div>
                   ))}
-                </List>
+                </div>
               </div>
             )}
 
             {/* Homepage Link */}
             {module.homepage && (
               <div>
-                <Typography variant="subtitle2" gutterBottom>
+                <p
+                  style={{
+                    margin: "0 0 8px",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                  }}
+                >
                   Homepage
-                </Typography>
-                <Link
+                </p>
+                <a
                   href={module.homepage}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ wordBreak: "break-all" }}
+                  style={{
+                    color: "var(--app-palette-primary-main)",
+                    wordBreak: "break-all",
+                  }}
                 >
                   {module.homepage}
-                </Link>
+                </a>
               </div>
             )}
           </div>
         )}
       </div>
-    </Drawer>
+    </div>,
+    document.body,
   );
 };
 

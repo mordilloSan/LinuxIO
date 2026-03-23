@@ -13,6 +13,42 @@
   margin-bottom: 6px;
 }
 
+.app-autocomplete__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--app-palette-primary-main), transparent 65%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-palette-primary-main), transparent 88%);
+  color: var(--app-palette-text-primary);
+  padding: 4px 8px 4px 10px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.app-autocomplete__tag-label {
+  min-width: 0;
+}
+
+.app-autocomplete__tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.app-autocomplete__tag-remove:hover,
+.app-autocomplete__tag-remove:focus-visible {
+  color: var(--app-palette-primary-main);
+  outline: none;
+}
+
 .app-autocomplete__end {
   display: inline-flex;
   align-items: center;

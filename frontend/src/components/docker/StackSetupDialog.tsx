@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +12,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
   open: boolean;

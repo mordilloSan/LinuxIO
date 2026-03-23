@@ -1,9 +1,9 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface MetricBarProps {

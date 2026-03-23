@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, {
   useMemo,
   useCallback,
@@ -10,6 +9,7 @@ import React, {
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 const fileCardStyles = `

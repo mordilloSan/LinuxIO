@@ -1,6 +1,6 @@
-import { useAppTheme } from "@/theme";
 import React, { useMemo } from "react";
 
+import { useAppTheme } from "@/theme";
 import { GREY_TOKENS as grey } from "@/theme/colors";
 
 // Utility functions

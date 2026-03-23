@@ -1,4 +1,3 @@
-import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
 import React, { PropsWithChildren, useMemo } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
@@ -11,7 +10,8 @@ import { ToastProvider } from "@/contexts/ToastContext";
 import { UpdateProvider } from "@/contexts/UpdateContext";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
-import createTheme from "@/theme";
+import { AppThemeProvider } from "@/theme";
+import buildAppTheme from "@/theme";
 
 function AuthedThemeShell({ children }: PropsWithChildren) {
   const [themeName] = useConfigValue("theme");
@@ -19,9 +19,9 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
   const [themeColors] = useConfigValue("themeColors");
   const isLoaded = useConfigReady();
 
-  const muiTheme = useMemo(
+  const appTheme = useMemo(
     () =>
-      createTheme(
+      buildAppTheme(
         String(themeName),
         primaryColorName as string | undefined,
         themeColors,
@@ -30,7 +30,7 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
   );
 
   if (!isLoaded) return <PageLoader />;
-  return <MuiThemeProvider theme={muiTheme}>{children}</MuiThemeProvider>;
+  return <AppThemeProvider value={appTheme}>{children}</AppThemeProvider>;
 }
 
 export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {

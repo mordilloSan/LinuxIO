@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -10,6 +9,7 @@ import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
 

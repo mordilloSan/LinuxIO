@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import { useEffect, useRef } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -12,6 +11,7 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface UpdateDialogProps {
   open: boolean;
   status: string;

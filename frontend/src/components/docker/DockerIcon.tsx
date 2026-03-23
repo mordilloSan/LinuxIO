@@ -1,8 +1,8 @@
-import { Skeleton } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import React from "react";
 
+import AppSkeleton from "@/components/ui/AppSkeleton";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
+import { useAppTheme } from "@/theme";
 
 interface DockerIconProps {
   identifier?: string;
@@ -30,7 +30,7 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   // Loading state
   if (isLoading) {
     return (
-      <Skeleton
+      <AppSkeleton
         variant="circular"
         width={size}
         height={size}

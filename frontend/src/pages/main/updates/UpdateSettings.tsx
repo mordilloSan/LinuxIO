@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +16,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const updatesToastMeta = {
   meta: {

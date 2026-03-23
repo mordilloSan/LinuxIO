@@ -1,9 +1,9 @@
-import { Fade } from "@mui/material";
 import React, { useState } from "react";
 
 import InstallModule from "./InstallModule";
 import ModulesList from "./ModulesList";
 
+import TabPanel from "@/components/tabbar/TabPanel";
 import TabSelector from "@/components/tabbar/TabSelector";
 
 const tabOptions = [
@@ -19,29 +19,13 @@ const ModulesPage: React.FC = () => {
       <TabSelector value={tab} onChange={setTab} options={tabOptions} />
 
       <div style={{ position: "relative", minHeight: 400 }}>
-        <Fade in={tab === "installed"} timeout={300} unmountOnExit={false}>
-          <div
-            style={{
-              display: tab === "installed" ? "block" : "none",
-              position: "absolute",
-              width: "100%",
-            }}
-          >
-            <ModulesList />
-          </div>
-        </Fade>
+        <TabPanel value="installed" activeTab={tab} timeout={300}>
+          <ModulesList />
+        </TabPanel>
 
-        <Fade in={tab === "install"} timeout={300} unmountOnExit={false}>
-          <div
-            style={{
-              display: tab === "install" ? "block" : "none",
-              position: "absolute",
-              width: "100%",
-            }}
-          >
-            <InstallModule onInstalled={() => setTab("installed")} />
-          </div>
-        </Fade>
+        <TabPanel value="install" activeTab={tab} timeout={300}>
+          <InstallModule onInstalled={() => setTab("installed")} />
+        </TabPanel>
       </div>
     </div>
   );

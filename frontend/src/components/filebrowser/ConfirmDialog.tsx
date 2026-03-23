@@ -1,10 +1,10 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface ConfirmDialogProps {
   open: boolean;

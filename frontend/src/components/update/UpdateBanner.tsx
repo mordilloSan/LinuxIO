@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
 
 import UpdateDialog from "./UpdateDialog";
 
@@ -7,6 +6,7 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 
 interface UpdateInfo {
   available: boolean;

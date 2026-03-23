@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
@@ -11,6 +10,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 interface FileDetailProps {
   resource?: FileResource;

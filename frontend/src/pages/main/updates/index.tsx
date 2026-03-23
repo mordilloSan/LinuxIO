@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -12,6 +11,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
+import { useAppTheme } from "@/theme";
 
 const Updates: React.FC = () => {
   const theme = useAppTheme();

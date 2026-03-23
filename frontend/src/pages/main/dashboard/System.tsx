@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Link } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
@@ -8,6 +6,7 @@ import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface Update {
   package_id: string;
@@ -68,14 +67,12 @@ const SystemHealth = () => {
       {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
-        <Link
-          component={RouterLink}
+        <RouterLink
           to={iconLink}
-          underline="hover"
-          color="inherit"
+          style={{ color: "inherit", textDecoration: "none" }}
         >
           <Icon icon={iconName} width={100} height={100} color={statusColor} />
-        </Link>
+        </RouterLink>
       )}
     </div>
   );
@@ -94,31 +91,21 @@ const SystemHealth = () => {
         {
           label: "Updates",
           value: (
-            <Link
-              component={RouterLink}
-              to="/updates"
-              underline="hover"
-              color="inherit"
-            >
+            <RouterLink to="/updates" style={{ color: "inherit" }}>
               {!systemHealth && (loadingHealth || fetchingHealth)
                 ? "Loading..."
                 : totalPackages > 0
                   ? `${totalPackages} available`
                   : "None available"}
-            </Link>
+            </RouterLink>
           ),
         },
         {
           label: "Services",
           value: (
-            <Link
-              component={RouterLink}
-              to="/services"
-              underline="hover"
-              color="inherit"
-            >
+            <RouterLink to="/services" style={{ color: "inherit" }}>
               {`${running}/${units} running`}
-            </Link>
+            </RouterLink>
           ),
         },
       ].map(({ label, value }, index, rows) => (

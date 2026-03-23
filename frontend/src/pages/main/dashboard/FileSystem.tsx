@@ -1,10 +1,10 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
 

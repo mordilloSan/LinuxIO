@@ -13,8 +13,6 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { Popover } from "@mui/material";
-import { useAppTheme } from "@/theme";
 import React, { useCallback, useMemo, useState } from "react";
 
 import DockerInfo from "./Docker";
@@ -33,9 +31,11 @@ import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 
 const MemoSystemHealth = React.memo(SystemHealth);
 const MemoProcessor = React.memo(Processor);
@@ -154,16 +154,18 @@ const Dashboard: React.FC = () => {
         </AppTooltip>
       </div>
 
-      <Popover
+      <AppPopover
         open={Boolean(anchorEl)}
         anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
+        paperStyle={{
+          padding: theme.spacing(2),
+        }}
       >
         <div
           style={{
-            padding: theme.spacing(2),
             display: "flex",
             flexDirection: "column",
           }}
@@ -182,7 +184,7 @@ const Dashboard: React.FC = () => {
             />
           ))}
         </div>
-      </Popover>
+      </AppPopover>
 
       <DndContext
         sensors={sensors}

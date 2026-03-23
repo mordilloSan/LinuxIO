@@ -1,5 +1,5 @@
-import { Menu, MenuItem } from "@mui/material";
 import { useAppTheme } from "@/theme";
+
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -20,6 +20,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
@@ -367,10 +368,9 @@ const TerminalDialog: React.FC<Props> = ({
           />
         ) : null}
         {/* CONTEXT MENU */}
-        <Menu
+        <AppMenu
           open={contextMenu !== null}
           onClose={handleCloseContextMenu}
-          anchorReference="anchorPosition"
           anchorPosition={
             contextMenu !== null
               ? {
@@ -380,75 +380,41 @@ const TerminalDialog: React.FC<Props> = ({
               : undefined
           }
           autoFocus={false}
-          slotProps={{
-            paper: {
-              style: {
-                borderRadius: 8,
-              },
-            },
-            backdrop: {
-              onClick: handleCloseContextMenu,
-              onContextMenu: (e: React.MouseEvent) => {
-                e.preventDefault();
-                handleCloseContextMenu();
-              },
-            },
-          }}
+          minWidth={168}
         >
-          <MenuItem
+          <AppMenuItem
             onClick={handleCopy}
-            style={{
-              paddingTop: 4,
-              paddingBottom: 4,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                width: "100%",
-              }}
-            >
-              <span>Copy</span>
+            endAdornment={
               <AppTypography
                 variant="body2"
+                color="text.secondary"
                 style={{
-                  color: "var(--mui-palette-text-secondary)",
                   marginLeft: 8,
                 }}
               >
                 Shift+C
               </AppTypography>
-            </div>
-          </MenuItem>
-          <MenuItem
-            onClick={handlePaste}
-            style={{
-              paddingTop: 4,
-              paddingBottom: 4,
-            }}
+            }
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                width: "100%",
-                gap: theme.spacing(4),
-              }}
-            >
-              <span>Paste</span>
+            Copy
+          </AppMenuItem>
+          <AppMenuItem
+            onClick={handlePaste}
+            endAdornment={
               <AppTypography
                 variant="body2"
+                color="text.secondary"
                 style={{
-                  color: "var(--mui-palette-text-secondary)",
                   marginLeft: 8,
                 }}
               >
                 Shift+V
               </AppTypography>
-            </div>
-          </MenuItem>
-        </Menu>
+            }
+          >
+            Paste
+          </AppMenuItem>
+        </AppMenu>
       </AppDialogContent>
       <AppDialogActions>
         <AppButton onClick={handleDialogClose}>Close</AppButton>

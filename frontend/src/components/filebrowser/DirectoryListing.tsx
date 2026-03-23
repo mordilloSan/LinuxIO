@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React, {
   useState,
   useRef,
@@ -23,6 +22,7 @@ import {
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "@/hooks/useFileMarqueeSelection";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useAppTheme } from "@/theme";
 
 interface DirectoryListingProps {
   resource: FileResource;

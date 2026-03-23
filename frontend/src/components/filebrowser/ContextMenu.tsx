@@ -1,8 +1,8 @@
 import { Icon } from "@iconify/react";
-import { Menu, MenuItem, ListItemIcon, ListItemText } from "@mui/material";
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import React, { useEffect, useEffectEvent } from "react";
 
 import AppDivider from "@/components/ui/AppDivider";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
@@ -55,7 +55,6 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   onOpenContainingFolder = () => {},
   canOpenContainingFolder = false,
 }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
   const detailsDisabled =
     canShowDetails === undefined ? !hasSelection : !canShowDetails;
   const compressDisabled =
@@ -79,133 +78,141 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   }, [isOpen]);
 
   return (
-    <Menu
-      ref={menuRef}
+    <AppMenu
       open={Boolean(anchorPosition)}
       onClose={onClose}
-      anchorReference="anchorPosition"
       anchorPosition={
         anchorPosition
           ? { top: anchorPosition.top, left: anchorPosition.left }
           : undefined
       }
-      slotProps={{
-        paper: {
-          sx: {
-            minWidth: 200,
-          },
-        },
-      }}
+      minWidth={200}
     >
       {/* Always available actions */}
-      <MenuItem onClick={onCreateFile}>
-        <ListItemIcon>
-          <Icon icon="mdi:file-plus" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Create File</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onCreateFile}
+        startAdornment={<Icon icon="mdi:file-plus" width={20} height={20} />}
+      >
+        Create File
+      </AppMenuItem>
 
-      <MenuItem onClick={onCreateFolder}>
-        <ListItemIcon>
-          <Icon icon="mdi:folder-plus" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Create Folder</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onCreateFolder}
+        startAdornment={<Icon icon="mdi:folder-plus" width={20} height={20} />}
+      >
+        Create Folder
+      </AppMenuItem>
 
-      <MenuItem onClick={onUpload}>
-        <ListItemIcon>
-          <Icon icon="mdi:upload" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Upload</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onUpload}
+        startAdornment={<Icon icon="mdi:upload" width={20} height={20} />}
+      >
+        Upload
+      </AppMenuItem>
 
       <AppDivider />
 
       {/* Open containing folder (search results only) */}
       {canOpenContainingFolder && (
-        <MenuItem onClick={onOpenContainingFolder}>
-          <ListItemIcon>
+        <AppMenuItem
+          onClick={onOpenContainingFolder}
+          startAdornment={
             <Icon icon="mdi:folder-open" width={20} height={20} />
-          </ListItemIcon>
-          <ListItemText>Open Containing Folder</ListItemText>
-        </MenuItem>
+          }
+        >
+          Open Containing Folder
+        </AppMenuItem>
       )}
 
       {canOpenContainingFolder && <AppDivider />}
 
       {/* Selection-based actions */}
-      <MenuItem onClick={onChangePermissions} disabled={!hasSelection}>
-        <ListItemIcon>
-          <Icon icon="mdi:shield-lock" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Change Permissions</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onChangePermissions}
+        disabled={!hasSelection}
+        startAdornment={<Icon icon="mdi:shield-lock" width={20} height={20} />}
+      >
+        Change Permissions
+      </AppMenuItem>
 
-      <MenuItem onClick={onCopy} disabled={!hasSelection}>
-        <ListItemIcon>
-          <Icon icon="mdi:content-copy" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Copy</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onCopy}
+        disabled={!hasSelection}
+        startAdornment={<Icon icon="mdi:content-copy" width={20} height={20} />}
+      >
+        Copy
+      </AppMenuItem>
 
-      <MenuItem onClick={onCut} disabled={!hasSelection}>
-        <ListItemIcon>
-          <Icon icon="mdi:content-cut" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Cut</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onCut}
+        disabled={!hasSelection}
+        startAdornment={<Icon icon="mdi:content-cut" width={20} height={20} />}
+      >
+        Cut
+      </AppMenuItem>
 
-      <MenuItem onClick={onRename} disabled={renameDisabled}>
-        <ListItemIcon>
-          <Icon icon="mdi:rename-box" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Rename</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onRename}
+        disabled={renameDisabled}
+        startAdornment={<Icon icon="mdi:rename-box" width={20} height={20} />}
+      >
+        Rename
+      </AppMenuItem>
 
-      <MenuItem onClick={onPaste} disabled={!hasClipboard}>
-        <ListItemIcon>
+      <AppMenuItem
+        onClick={onPaste}
+        disabled={!hasClipboard}
+        startAdornment={
           <Icon icon="mdi:content-paste" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Paste</ListItemText>
-      </MenuItem>
+        }
+      >
+        Paste
+      </AppMenuItem>
 
       <AppDivider />
 
-      <MenuItem onClick={onDownload} disabled={!hasSelection}>
-        <ListItemIcon>
-          <Icon icon="mdi:download" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Download</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onDownload}
+        disabled={!hasSelection}
+        startAdornment={<Icon icon="mdi:download" width={20} height={20} />}
+      >
+        Download
+      </AppMenuItem>
 
-      <MenuItem onClick={onShowDetails} disabled={detailsDisabled}>
-        <ListItemIcon>
-          <Icon icon="mdi:eye" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Show Details</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onShowDetails}
+        disabled={detailsDisabled}
+        startAdornment={<Icon icon="mdi:eye" width={20} height={20} />}
+      >
+        Show Details
+      </AppMenuItem>
 
-      <MenuItem onClick={onCompress} disabled={compressDisabled}>
-        <ListItemIcon>
-          <Icon icon="mdi:archive" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Compress to ZIP</ListItemText>
-      </MenuItem>
+      <AppMenuItem
+        onClick={onCompress}
+        disabled={compressDisabled}
+        startAdornment={<Icon icon="mdi:archive" width={20} height={20} />}
+      >
+        Compress to ZIP
+      </AppMenuItem>
 
-      <MenuItem onClick={onExtract} disabled={extractDisabled}>
-        <ListItemIcon>
+      <AppMenuItem
+        onClick={onExtract}
+        disabled={extractDisabled}
+        startAdornment={
           <Icon icon="mdi:archive-arrow-up" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Extract Here</ListItemText>
-      </MenuItem>
+        }
+      >
+        Extract Here
+      </AppMenuItem>
 
-      <MenuItem onClick={onDelete} disabled={!hasSelection}>
-        <ListItemIcon>
-          <Icon icon="mdi:delete" width={20} height={20} />
-        </ListItemIcon>
-        <ListItemText>Delete</ListItemText>
-      </MenuItem>
-    </Menu>
+      <AppMenuItem
+        onClick={onDelete}
+        disabled={!hasSelection}
+        startAdornment={<Icon icon="mdi:delete" width={20} height={20} />}
+      >
+        Delete
+      </AppMenuItem>
+    </AppMenu>
   );
 };
 

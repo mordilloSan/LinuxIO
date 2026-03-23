@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
@@ -6,6 +5,7 @@ import { UnitTableView, statusDot } from "./UnitViews";
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import { AppTableCell } from "@/components/ui/AppTable";
+import { useAppTheme } from "@/theme";
 
 interface SocketTableViewProps {
   sockets: Socket[];

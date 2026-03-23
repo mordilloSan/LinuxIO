@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -9,6 +8,7 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography, {
   type AppTypographyProps,
 } from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 export interface IndexerStat {
   value: React.ReactNode;
   label: string;

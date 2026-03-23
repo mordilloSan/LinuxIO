@@ -39,6 +39,10 @@ export interface AppTextFieldProps {
   className?: string;
   style?: React.CSSProperties;
   list?: string;
+  role?: string;
+  "aria-controls"?: string;
+  "aria-expanded"?: boolean;
+  "aria-autocomplete"?: "none" | "inline" | "list" | "both";
   onFocus?: (e: React.FocusEvent) => void;
   onBlur?: (e: React.FocusEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
@@ -84,6 +88,10 @@ const AppTextField = React.forwardRef<
     onBlur,
     onKeyDown,
     onClick,
+    role,
+    "aria-controls": ariaControls,
+    "aria-expanded": ariaExpanded,
+    "aria-autocomplete": ariaAutocomplete,
     slotProps: legacySlotProps,
   } = props as AppTextFieldInternalProps;
 
@@ -156,6 +164,10 @@ const AppTextField = React.forwardRef<
     onBlur: handleBlur,
     onKeyDown,
     list,
+    role,
+    "aria-controls": ariaControls,
+    "aria-expanded": ariaExpanded,
+    "aria-autocomplete": ariaAutocomplete,
   };
 
   return (
