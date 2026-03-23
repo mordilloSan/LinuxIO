@@ -10,8 +10,8 @@ import "./navbar.css";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { shadowSm } from "@/constants";
 import { iconSize } from "@/constants";
-import { getHoverBackground } from "@/theme/components";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { getHoverBackground } from "@/theme/components";
 
 interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;

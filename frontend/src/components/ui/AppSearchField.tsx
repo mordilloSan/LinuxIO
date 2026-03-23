@@ -11,9 +11,7 @@ const AppSearchField = React.forwardRef<
   const { className, size = "small", ...rest } = props;
   const rootClass = ["app-search-field", className].filter(Boolean).join(" ");
 
-  return (
-    <AppTextField ref={ref} className={rootClass} size={size} {...rest} />
-  );
+  return <AppTextField ref={ref} className={rootClass} size={size} {...rest} />;
 });
 
 AppSearchField.displayName = "AppSearchField";

@@ -2,8 +2,8 @@ import React, { createContext, useState, useCallback, useMemo } from "react";
 
 import { drawerWidth, collapsedDrawerWidth } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
-import breakpoints from "@/theme/breakpoints";
 import { useAppMediaQuery } from "@/theme";
+import breakpoints from "@/theme/breakpoints";
 
 export interface SidebarContextType {
   collapsed: boolean;
