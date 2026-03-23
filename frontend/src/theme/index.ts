@@ -748,14 +748,8 @@ export function useAppMediaQuery(query: string) {
     };
 
     setMatches(mediaQueryList.matches);
-
-    if (typeof mediaQueryList.addEventListener === "function") {
-      mediaQueryList.addEventListener("change", update);
-      return () => mediaQueryList.removeEventListener("change", update);
-    }
-
-    mediaQueryList.addListener(update);
-    return () => mediaQueryList.removeListener(update);
+    mediaQueryList.addEventListener("change", update);
+    return () => mediaQueryList.removeEventListener("change", update);
   }, [normalizedQuery]);
 
   return matches;
