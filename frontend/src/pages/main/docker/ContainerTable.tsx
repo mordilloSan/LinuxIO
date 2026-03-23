@@ -515,7 +515,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     setHasLoadedLogs(true);
                     setLogDialogOpen(true);
                   }}
-                  style={{ fontSize: "0.68rem", opacity: 0.7, cursor: "pointer" }}
+                  style={{
+                    fontSize: "0.68rem",
+                    opacity: 0.7,
+                    cursor: "pointer",
+                  }}
                 />
               </AppTooltip>
             ) : (

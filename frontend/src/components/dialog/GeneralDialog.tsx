@@ -1,7 +1,7 @@
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { AppDialog, AppDialogProps } from "@/components/ui/AppDialog";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface GeneralDialogProps extends AppDialogProps {
@@ -14,7 +14,7 @@ const GeneralDialog: React.FC<GeneralDialogProps> = ({
   paperStyle,
   ...dialogProps
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <AppDialog

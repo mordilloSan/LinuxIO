@@ -1,8 +1,8 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { getSubtleDividerColor } from "@/theme/surfaces";
 
 export type SortField = "name" | "size" | "modTime";
@@ -14,7 +14,7 @@ export interface SortBarProps {
 }
 
 const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [hoveredField, setHoveredField] = React.useState<SortField | null>(
     null,
   );

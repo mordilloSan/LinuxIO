@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Menu, MenuItem } from "@mui/material";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -17,16 +16,20 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
 import useAuth from "@/hooks/useAuth";
+import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import usePowerAction from "@/hooks/usePowerAction";
 
 function NavbarUserDropdown() {
-  const ref = useRef(null);
+  const ref = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { triggerReboot, triggerPowerOff } = usePowerAction();
 
-  const [anchorMenu, setAnchorMenu] = useState<null | HTMLElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
+  const layerRef = useDismissibleLayer<HTMLDivElement>(menuOpen, () =>
+    setMenuOpen(false),
+  );
 
   // Mutations for power actions
   const { mutate: reboot } = linuxio.dbus.reboot.useMutation({
@@ -49,12 +52,16 @@ function NavbarUserDropdown() {
     },
   });
 
-  const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
-    setAnchorMenu(event.currentTarget);
+  const toggleMenu = () => {
+    setMenuOpen((open) => !open);
   };
 
-  const closeMenu = () => setAnchorMenu(null);
+  const closeMenu = () => setMenuOpen(false);
   const closeConfirm = () => setConfirm(null);
+  const openConfirm = (action: "reboot" | "poweroff") => {
+    closeMenu();
+    setConfirm(action);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -78,29 +85,70 @@ function NavbarUserDropdown() {
 
   return (
     <>
-      <AppTooltip title="Account">
-        <AppIconButton color="inherit" ref={ref} onClick={toggleMenu}>
-          <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
-        </AppIconButton>
-      </AppTooltip>
+      <div ref={layerRef} className="app-navbar-dropdown">
+        <AppTooltip title="Account">
+          <AppIconButton
+            color="inherit"
+            ref={ref}
+            onClick={toggleMenu}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? "navbar-account-menu" : undefined}
+          >
+            <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
+          </AppIconButton>
+        </AppTooltip>
 
-      <Menu
-        id="menu-appbar"
-        anchorEl={anchorMenu}
-        open={Boolean(anchorMenu)}
-        onClose={closeMenu}
-      >
-        {user?.name && (
-          <MenuItem disabled style={{ opacity: 0.7, fontWeight: 600 }}>
-            Signed in as {user.name}
-          </MenuItem>
-        )}
-        <AppDivider />
-        <MenuItem onClick={() => setConfirm("reboot")}>Reboot</MenuItem>
-        <MenuItem onClick={() => setConfirm("poweroff")}>Power Down</MenuItem>
-        <AppDivider />
-        <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
-      </Menu>
+        {menuOpen ? (
+          <div
+            id="navbar-account-menu"
+            className="app-navbar-panel app-navbar-panel--compact"
+            role="menu"
+            aria-label="Account actions"
+          >
+            {user?.name ? (
+              <div className="app-navbar-panel__header">
+                <p className="app-navbar-panel__eyebrow">Signed in as</p>
+                <p className="app-navbar-panel__title">{user.name}</p>
+              </div>
+            ) : null}
+
+            {user?.name ? <AppDivider /> : null}
+
+            <div className="app-navbar-menu">
+              <button
+                type="button"
+                className="app-navbar-menu__item"
+                role="menuitem"
+                onClick={() => openConfirm("reboot")}
+              >
+                Reboot
+              </button>
+              <button
+                type="button"
+                className="app-navbar-menu__item"
+                role="menuitem"
+                onClick={() => openConfirm("poweroff")}
+              >
+                Power Down
+              </button>
+            </div>
+
+            <AppDivider />
+
+            <div className="app-navbar-menu">
+              <button
+                type="button"
+                className="app-navbar-menu__item"
+                role="menuitem"
+                onClick={handleSignOut}
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <GeneralDialog open={confirm !== null} onClose={closeConfirm}>
         <AppDialogTitle>

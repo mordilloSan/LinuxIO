@@ -13,7 +13,8 @@
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache",
     "icons:generate": "node scripts/generate-icons.mjs",
     "mui:count": "node scripts/count-mui-usage.mjs",
-    "build": "vite build",
+    "ui:guard": "node scripts/check-ui-guardrails.mjs",
+    "build": "npm run ui:guard && vite build",
     "analyze": "BUNDLE_ANALYZE=true vite build",
     "update": "npm update && npm outdated"
   },

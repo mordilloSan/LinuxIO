@@ -595,19 +595,22 @@ const DiskOverview: React.FC = () => {
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
   const {
-    data: rawDrives = [],
+    data: rawDrivesData,
     isPending: drivesLoading,
     refetch: refetchDrives,
   } = linuxio.storage.get_drive_info.useQuery({
     refetchInterval: 30000,
   });
-  const { data: filesystems = [], isPending: fsLoading } =
+  const { data: filesystemsData, isPending: fsLoading } =
     linuxio.system.get_fs_info.useQuery({
       refetchInterval: 10000,
     });
-  const { data: nfsMounts = [] } = linuxio.storage.list_nfs_mounts.useQuery({
+  const { data: nfsMountsData } = linuxio.storage.list_nfs_mounts.useQuery({
     refetchInterval: 10000,
   });
+  const rawDrives = Array.isArray(rawDrivesData) ? rawDrivesData : [];
+  const filesystems = Array.isArray(filesystemsData) ? filesystemsData : [];
+  const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     linuxio.storage.unmount_filesystem.useMutation({
       onSuccess: async () => {

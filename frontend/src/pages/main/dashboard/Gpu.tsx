@@ -39,7 +39,7 @@ const GpuInfo: React.FC = () => {
             borderBottom:
               idx === gpus.length - 1
                 ? "none"
-                : "1px solid var(--mui-palette-divider)",
+                : "1px solid var(--app-palette-divider)",
           }}
         >
           <div

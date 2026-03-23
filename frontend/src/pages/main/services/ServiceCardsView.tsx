@@ -60,8 +60,8 @@ const ServiceInfoRows: React.FC<{ service: Service }> = ({ service }) => {
             fontWeight: 500,
             color:
               service.load_state === "loaded"
-                ? "var(--mui-palette-text-primary)"
-                : "var(--mui-palette-text-secondary)",
+                ? "var(--app-palette-text-primary)"
+                : "var(--app-palette-text-secondary)",
           }}
         >
           {service.load_state}

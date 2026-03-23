@@ -19,29 +19,29 @@ const COLOR_VARS: Record<
   { main: string; dark: string; contrast: string }
 > = {
   primary: {
-    main: "var(--mui-palette-primary-main)",
-    dark: "var(--mui-palette-primary-dark)",
-    contrast: "var(--mui-palette-primary-contrastText)",
+    main: "var(--app-palette-primary-main)",
+    dark: "var(--app-palette-primary-dark)",
+    contrast: "var(--app-palette-primary-contrast-text)",
   },
   secondary: {
-    main: "var(--mui-palette-secondary-main)",
-    dark: "var(--mui-palette-secondary-dark)",
-    contrast: "var(--mui-palette-secondary-contrastText)",
+    main: "var(--app-palette-secondary-main)",
+    dark: "var(--app-palette-secondary-dark)",
+    contrast: "var(--app-palette-secondary-contrast-text)",
   },
   error: {
-    main: "var(--mui-palette-error-main)",
-    dark: "var(--mui-palette-error-dark)",
-    contrast: "var(--mui-palette-error-contrastText)",
+    main: "var(--app-palette-error-main)",
+    dark: "var(--app-palette-error-dark)",
+    contrast: "var(--app-palette-error-contrast-text)",
   },
   warning: {
-    main: "var(--mui-palette-warning-main)",
-    dark: "var(--mui-palette-warning-dark)",
-    contrast: "var(--mui-palette-warning-contrastText)",
+    main: "var(--app-palette-warning-main)",
+    dark: "var(--app-palette-warning-dark)",
+    contrast: "var(--app-palette-warning-contrast-text)",
   },
   success: {
-    main: "var(--mui-palette-success-main)",
-    dark: "var(--mui-palette-success-dark)",
-    contrast: "var(--mui-palette-success-contrastText)",
+    main: "var(--app-palette-success-main)",
+    dark: "var(--app-palette-success-dark)",
+    contrast: "var(--app-palette-success-contrast-text)",
   },
 };
 

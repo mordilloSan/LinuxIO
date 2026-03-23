@@ -54,11 +54,15 @@ export const AppDialog: React.FC<AppDialogProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const prevOpen = useRef(open);
+  const lastFocusedElement = useRef<HTMLElement | null>(null);
 
   // scroll lock
   useEffect(() => {
     if (open) {
+      lastFocusedElement.current = document.activeElement as HTMLElement | null;
       document.body.style.overflow = "hidden";
+    } else if (lastFocusedElement.current) {
+      lastFocusedElement.current.focus();
     }
     return () => {
       document.body.style.overflow = "";

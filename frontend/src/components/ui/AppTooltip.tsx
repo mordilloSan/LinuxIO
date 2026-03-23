@@ -1,4 +1,3 @@
-import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -94,26 +93,25 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
   placement = "bottom",
   className,
 }) => {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
   const [visible, setVisible] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const updatePosition = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    const target = (wrapper.firstElementChild as HTMLElement | null) ?? wrapper;
+    setTooltipStyle(calcStyle(placement, target.getBoundingClientRect()));
+  }, [placement]);
+
   const show = useCallback(() => {
     enterTimer.current = setTimeout(() => {
-      const wrapper = wrapperRef.current;
-      if (!wrapper) return;
-      // Some triggers are wrapped in a zero-sized box, for example when the
-      // trigger itself is absolutely positioned. Measure the first child
-      // element when available so the tooltip anchors to the visible target.
-      const target =
-        (wrapper.firstElementChild as HTMLElement | null) ?? wrapper;
-      setTooltipStyle(calcStyle(placement, target.getBoundingClientRect()));
+      updatePosition();
       setVisible(true);
     }, 100);
-  }, [placement]);
+  }, [updatePosition]);
 
   const hide = useCallback(() => {
     if (enterTimer.current) clearTimeout(enterTimer.current);
@@ -126,6 +124,21 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!visible) return undefined;
+
+    const handleScroll = () => updatePosition();
+    const handleResize = () => updatePosition();
+
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [updatePosition, visible]);
 
   if (!title) return <>{children}</>;
 
@@ -153,12 +166,7 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
             ]
               .filter(Boolean)
               .join(" ")}
-            style={{
-              ...tooltipStyle,
-              backgroundColor: isDark
-                ? "rgba(66, 66, 66, 0.95)"
-                : "rgba(110, 110, 110, 0.92)",
-            }}
+            style={tooltipStyle}
           >
             {title}
           </div>,

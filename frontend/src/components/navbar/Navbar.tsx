@@ -1,113 +1,83 @@
 import { Icon } from "@iconify/react";
-import { InputBase, AppBar, Toolbar, useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-import React, { useState } from "react";
+import React from "react";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
 import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
 import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
+import "./navbar.css";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import { shadowSm } from "@/constants";
 import { iconSize } from "@/constants";
 import { getHoverBackground } from "@/theme/components";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
-  const theme = useTheme();
-  const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
-  const [isSearchHovered, setIsSearchHovered] = useState(false);
-  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
+  const theme = useAppTheme();
+  const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
 
   return (
-    <AppBar
-      position="sticky"
-      elevation={0}
-      sx={{
-        background: theme.header.background,
-        color: theme.header.color,
+    <header
+      className="app-navbar"
+      style={{
         boxShadow: shadowSm,
       }}
     >
-      <Toolbar>
-        <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-          {/* Mobile menu button */}
-          {!isDesktop && (
-            <AppIconButton
-              color="inherit"
-              aria-label="Open drawer"
-              onClick={onDrawerToggle}
-            >
-              <Icon icon="mdi:menu" width={iconSize.md} height={iconSize.md} />
-            </AppIconButton>
-          )}
+      <div className="app-navbar__inner">
+        {!isDesktop && (
+          <AppIconButton
+            color="inherit"
+            aria-label="Open drawer"
+            onClick={onDrawerToggle}
+          >
+            <Icon icon="mdi:menu" width={iconSize.md} height={iconSize.md} />
+          </AppIconButton>
+        )}
 
-          {/* Search Field (only desktop) */}
-          {isDesktop && (
+        {isDesktop && (
+          <div className="app-navbar__search">
             <div
-              onMouseEnter={() => setIsSearchHovered(true)}
-              onMouseLeave={() => setIsSearchHovered(false)}
+              className="app-navbar-search"
               style={{
-                position: "relative",
-                borderRadius: `${baseBorderRadius * 2}px`,
-                backgroundColor: isSearchHovered
-                  ? getHoverBackground(theme)
-                  : theme.header.background,
-                width: "100%",
+                "--app-navbar-search-bg": theme.header.background,
+                "--app-navbar-search-hover": getHoverBackground(theme),
+                "--app-navbar-search-text": theme.header.search.color,
+                "--app-navbar-search-icon": theme.header.color,
+                borderRadius: `${theme.shape.borderRadius * 2}px`,
               }}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  width: 50,
-                  height: "100%",
-                  pointerEvents: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+              <div className="app-navbar-search__icon" aria-hidden="true">
                 <Icon
                   icon="mdi:magnify"
                   width={iconSize.md}
                   height={iconSize.md}
                 />
               </div>
-              <InputBase
+              <input
+                className="app-navbar-search__input"
                 placeholder="Search"
                 id="search-input"
                 name="search"
-                inputProps={{ "aria-label": "Search containers or services" }}
-                sx={{
-                  color: "inherit",
-                  width: "100%",
-                  input: {
-                    color: theme.header.search.color,
-                    p: theme.spacing(2.5, 2.5, 2.5, 12),
-                    width: 160,
-                  },
-                }}
+                type="search"
+                aria-label="Search containers or services"
               />
             </div>
-          )}
-
-          {/* Spacer */}
-          <div style={{ flexGrow: 1 }} />
-
-          {/* User Actions */}
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <NavbarNotificationsDropdown />
-            <Settings />
-            <NavbarSettingsDialogTrigger />
-            <NavbarUserDropdown />
           </div>
+        )}
+
+        <div className="app-navbar__actions">
+          <NavbarNotificationsDropdown />
+          <Settings />
+          <NavbarSettingsDialogTrigger />
+          <NavbarUserDropdown />
         </div>
-      </Toolbar>
-    </AppBar>
+      </div>
+    </header>
   );
 };
 

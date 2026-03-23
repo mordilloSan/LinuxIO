@@ -102,6 +102,7 @@ const Updates: React.FC = () => {
         ]}
         defaultTab="updates"
         urlParam="updateTab"
+        containerStyle={{ paddingInline: 0 }}
       />
 
       <UpdateSettingsDialog

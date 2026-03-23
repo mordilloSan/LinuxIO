@@ -1,13 +1,12 @@
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import DevToolsButton from "@/components/footer/DevToolsButton";
-import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 function Footer() {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const { data } = linuxio.control.version.useQuery({
     staleTime: CACHE_TTL_MS.FIVE_MINUTES,
@@ -15,7 +14,7 @@ function Footer() {
   });
 
   return (
-    <div
+    <footer
       style={{
         width: "100%",
         background: theme.footer?.background || theme.palette.background.paper,
@@ -41,17 +40,16 @@ function Footer() {
         >
           <ErrorBoundary>
             {data?.current_version && (
-              <AppTypography
-                variant="caption"
+              <small
+                className="text-caption"
                 style={{
                   opacity: 0.6,
-                  fontSize: "0.7rem",
                   letterSpacing: "normal",
                   transform: "translateY(5px)",
                 }}
               >
                 {data.current_version}
-              </AppTypography>
+              </small>
             )}
           </ErrorBoundary>
         </div>
@@ -68,7 +66,7 @@ function Footer() {
           </ErrorBoundary>
         </div>
       </div>
-    </div>
+    </footer>
   );
 }
 

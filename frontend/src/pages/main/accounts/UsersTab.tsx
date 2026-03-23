@@ -19,7 +19,7 @@ import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
-import AppTextField from "@/components/ui/AppTextField";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
@@ -226,8 +226,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <AppTextField
-          size="small"
+        <AppSearchField
           placeholder="Search users…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

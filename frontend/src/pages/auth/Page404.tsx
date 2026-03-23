@@ -1,25 +1,23 @@
 import { Link } from "react-router-dom";
 
 import AppButton from "@/components/ui/AppButton";
-import AppTypography from "@/components/ui/AppTypography";
 
 function Page404() {
   return (
     <div style={{ textAlign: "center" }}>
-      <AppTypography component="h1" variant="h1" align="center" gutterBottom>
-        404
-      </AppTypography>
-      <AppTypography component="h2" variant="h4" align="center" gutterBottom>
+      <h1 style={{ margin: 0, fontSize: "2rem", lineHeight: 1.25 }}>404</h1>
+      <h2
+        className="section-title"
+        style={{ marginTop: 8, marginBottom: 8, textAlign: "center" }}
+      >
         Page not found.
-      </AppTypography>
-      <AppTypography
-        component="h2"
-        variant="subtitle1"
-        align="center"
-        gutterBottom
+      </h2>
+      <p
+        className="text-muted"
+        style={{ margin: 0, fontSize: "0.9286rem", lineHeight: 1.75 }}
       >
         The page you are looking for might have been removed.
-      </AppTypography>
+      </p>
 
       <Link
         to="/"

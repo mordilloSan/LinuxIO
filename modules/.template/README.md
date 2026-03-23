@@ -9,7 +9,8 @@ example-module/
 ├── module.yaml          # Module configuration and handler definitions
 └── src/
     ├── index.tsx        # Module entry point (imports and exports component)
-    └── component.jsx    # React component for the UI (REQUIRED if ui.sidebar.enabled: true)
+    ├── component.jsx    # React component for the UI (REQUIRED if ui.sidebar.enabled: true)
+    └── component.css    # Local module styles
 ```
 
 **Important:** If your module has `ui.sidebar.enabled: true` in module.yaml, you **MUST** provide UI component files (`src/index.tsx` and `src/component.jsx`). Otherwise, you'll get a 404 error when the module loads.
@@ -21,8 +22,16 @@ example-module/
 **UI-Only Modules** (like the example):
 - Use existing LinuxIO handlers: `linuxio.system.get_cpu_info.useQuery()`
 - Execute commands via exec stream: `openExecStream("ls", ["-lh", "/home"])`
-- Access all LinuxIO components, theme, and utilities
+- Prefer app-owned LinuxIO components, `useAppTheme()`, semantic HTML, and local CSS
 - No backend handlers needed
+
+## UI Guidance
+
+- Do not build new modules on `@mui/*` or `@emotion/*`.
+- Prefer shared LinuxIO primitives such as `AppButton`, `RootCard`, and `useAppTheme()`.
+- Use semantic HTML plus module-local CSS for layout and typography.
+- Production modules should assume only the default component contract plus the host React globals.
+- Do not rely on host-provided `MaterialUI`, Emotion, or similar UI-library globals.
 
 **Backend Modules** (define new handlers in `module.yaml`):
 - Define whitelisted commands, DBus calls, or streams in `handlers:` section

@@ -39,7 +39,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
             icon="mdi:console"
             width={20}
             height={20}
-            color="var(--mui-palette-text-secondary)"
+            color="var(--app-palette-text-secondary)"
           />
           <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
         </div>
@@ -80,7 +80,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
           </div>
         )}
         {error && (
-          <div style={{ color: "var(--mui-palette-error-main)", padding: 16 }}>
+          <div style={{ color: "var(--app-palette-error-main)", padding: 16 }}>
             {error}
           </div>
         )}
@@ -103,7 +103,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
             (logs || (
               <span
                 style={{
-                  color: "var(--mui-palette-text-secondary)",
+                  color: "var(--app-palette-text-secondary)",
                   fontSize: "0.75rem",
                 }}
               >

@@ -2,6 +2,8 @@ import React from "react";
 
 import "./app-grid.css";
 
+// Frozen compatibility wrapper: do not introduce new usages.
+
 type GridSize =
   | number
   | {

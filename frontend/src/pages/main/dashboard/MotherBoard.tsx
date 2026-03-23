@@ -41,7 +41,7 @@ const MotherBoardInfo: React.FC = () => {
             borderBottom:
               index === rows.length - 1
                 ? "none"
-                : "1px solid var(--mui-palette-divider)",
+                : "1px solid var(--app-palette-divider)",
             gap: theme.spacing(1),
           }}
         >

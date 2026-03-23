@@ -6,7 +6,7 @@ import type { UnitListItem } from "./UnitViews";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
-import AppTextField from "@/components/ui/AppTextField";
+import AppSearchField from "@/components/ui/AppSearchField";
 import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
@@ -122,8 +122,7 @@ function UnitListTab<T extends UnitListItem>({
               gap: theme.spacing(2),
             }}
           >
-            <AppTextField
-              size="small"
+            <AppSearchField
               placeholder={searchPlaceholder}
               value={search}
               onChange={(event) => setSearch(event.target.value)}

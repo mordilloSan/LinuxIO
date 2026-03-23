@@ -39,7 +39,13 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
     <Drawer anchor="right" open={open} onClose={onClose}>
       <div style={{ width: 500, padding: 24 }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 8,
+          }}
+        >
           <Typography variant="h5">Module Details</Typography>
           <IconButton onClick={onClose}>
             <Icon icon="mdi:close" width={20} height={20} />

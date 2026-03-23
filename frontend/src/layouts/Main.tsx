@@ -1,5 +1,3 @@
-import { CssBaseline, useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
@@ -13,11 +11,12 @@ import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
 import { useSidebarItems } from "@/routes";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const isLoaded = useConfigReady();
   const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
     useSidebar();
@@ -57,7 +56,6 @@ const Dashboard: React.FC = () => {
         overflow: "hidden",
       }}
     >
-      <CssBaseline />
       <div
         style={{
           display: "flex",

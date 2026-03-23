@@ -1,30 +1,28 @@
-import { CssBaseline } from "@mui/material";
-import { useMediaQuery } from "@mui/material";
-import { ThemeProvider } from "@mui/material/styles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 
+import { AppThemeProvider, useAppMediaQuery, useAppTheme } from "@/theme";
 import authTheme from "@/theme/authTheme";
 import { alpha } from "@/utils/color";
 
 const Auth: React.FC = () => {
   return (
-    <ThemeProvider theme={authTheme}>
-      <CssBaseline />
+    <AppThemeProvider value={authTheme}>
       <AuthContent />
-    </ThemeProvider>
+    </AppThemeProvider>
   );
 };
 
 const AuthContent: React.FC = () => {
-  const isSmallUp = useMediaQuery(authTheme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
 
   return (
     <div
       style={{
-        ["--accent" as string]: authTheme.palette.primary.main,
-        ["--accent-strong" as string]: authTheme.palette.primary.dark,
-        ["--accent-soft" as string]: authTheme.palette.primary.light,
+        ["--accent" as string]: theme.palette.primary.main,
+        ["--accent-strong" as string]: theme.palette.primary.dark,
+        ["--accent-soft" as string]: theme.palette.primary.light,
         minHeight: "100vh",
         width: "100%",
         display: "grid",
@@ -32,11 +30,11 @@ const AuthContent: React.FC = () => {
         position: "relative",
         overflowX: "hidden",
         overflowY: "auto",
-        paddingLeft: isSmallUp ? authTheme.spacing(4) : authTheme.spacing(2),
-        paddingRight: isSmallUp ? authTheme.spacing(4) : authTheme.spacing(2),
-        paddingTop: isSmallUp ? authTheme.spacing(8) : authTheme.spacing(6),
-        paddingBottom: isSmallUp ? authTheme.spacing(8) : authTheme.spacing(6),
-        backgroundImage: `radial-gradient(900px 420px at 12% 8%, ${alpha(authTheme.palette.primary.main, 0.25)}, ${alpha(authTheme.palette.background.default, 0)} 60%), radial-gradient(800px 360px at 90% 0%, ${alpha(authTheme.palette.primary.light, 0.2)}, ${alpha(authTheme.palette.background.default, 0)} 60%), linear-gradient(160deg, ${alpha(authTheme.palette.background.default, 0.92)} 0%, ${authTheme.palette.background.default} 45%, ${alpha(authTheme.palette.background.default, 0.72)} 100%)`,
+        paddingLeft: isSmallUp ? theme.spacing(4) : theme.spacing(2),
+        paddingRight: isSmallUp ? theme.spacing(4) : theme.spacing(2),
+        paddingTop: isSmallUp ? theme.spacing(8) : theme.spacing(6),
+        paddingBottom: isSmallUp ? theme.spacing(8) : theme.spacing(6),
+        backgroundImage: `radial-gradient(900px 420px at 12% 8%, ${alpha(theme.palette.primary.main, 0.25)}, ${alpha(theme.palette.background.default, 0)} 60%), radial-gradient(800px 360px at 90% 0%, ${alpha(theme.palette.primary.light, 0.2)}, ${alpha(theme.palette.background.default, 0)} 60%), linear-gradient(160deg, ${alpha(theme.palette.background.default, 0.92)} 0%, ${theme.palette.background.default} 45%, ${alpha(theme.palette.background.default, 0.72)} 100%)`,
       }}
     >
       <div
@@ -48,7 +46,7 @@ const AuthContent: React.FC = () => {
           width: 420,
           height: 420,
           borderRadius: "50%",
-          background: `radial-gradient(circle at 30% 30%, ${alpha(authTheme.palette.primary.main, 0.35)}, ${alpha(authTheme.palette.primary.main, 0)} 70%)`,
+          background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.primary.main, 0.35)}, ${alpha(theme.palette.primary.main, 0)} 70%)`,
           opacity: 0.9,
         }}
       />
@@ -61,7 +59,7 @@ const AuthContent: React.FC = () => {
           width: 460,
           height: 460,
           borderRadius: "50%",
-          background: `radial-gradient(circle at 70% 40%, ${alpha(authTheme.palette.primary.dark, 0.3)}, ${alpha(authTheme.palette.primary.dark, 0)} 70%)`,
+          background: `radial-gradient(circle at 70% 40%, ${alpha(theme.palette.primary.dark, 0.3)}, ${alpha(theme.palette.primary.dark, 0)} 70%)`,
           opacity: 0.8,
         }}
       />

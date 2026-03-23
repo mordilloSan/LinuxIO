@@ -498,7 +498,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 label={label}
                 size="small"
                 variant="soft"
-                style={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: "0.7rem",
+                  height: 22,
+                }}
               />
             );
           })}

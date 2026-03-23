@@ -1,12 +1,4 @@
 import { Icon } from "@iconify/react";
-import {
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Popover,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -14,12 +6,12 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
-import AppTypography from "@/components/ui/AppTypography";
-import { shadowSm } from "@/constants";
 import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
+import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
+import { useAppTheme } from "@/theme";
 
 const MAX_RECENT_TOASTS = 5;
 const PEEK_DURATION_MS = 3000;
@@ -164,54 +156,54 @@ function TransferItem({
   const detailText = detailParts.join(" \u2022 ");
 
   return (
-    <ListItem
-      divider
-      style={{
-        alignItems: "flex-start",
-        cursor: isIndexer ? "pointer" : undefined,
-      }}
+    <li
+      className={`app-navbar-notifications__item ${isIndexer ? "app-navbar-notifications__item--interactive" : ""}`.trim()}
       onClick={isIndexer ? onIndexerClick : undefined}
-      secondaryAction={
-        !isIndexer ? (
-          <AppIconButton edge="end" size="small" onClick={onCancel}>
-            <Icon icon="mdi:close" width={22} height={22} />
-          </AppIconButton>
-        ) : undefined
+      onKeyDown={
+        isIndexer
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onIndexerClick();
+              }
+            }
+          : undefined
       }
+      role={isIndexer ? "button" : undefined}
+      tabIndex={isIndexer ? 0 : undefined}
     >
-      <ListItemIcon style={{ minWidth: 36, color: visuals.color, marginTop: 2 }}>
+      <div
+        className="app-navbar-notifications__icon"
+        style={{ color: visuals.color }}
+      >
         {visuals.icon}
-      </ListItemIcon>
-      <ListItemText
-        disableTypography
-        primary={
-          <AppTypography variant="subtitle2" color="text.primary">
-            {label}
-          </AppTypography>
-        }
-        secondary={
-          <div style={{ marginTop: 4 }}>
-            <AppTooltip title={detailText} arrow placement="top">
-              <AppLinearProgress
-                variant="determinate"
-                value={transfer.progress}
-                style={{ height: 5, borderRadius: 1, marginBottom: 2 }}
-              />
-            </AppTooltip>
-            <AppTypography variant="caption" color="text.secondary">
-              {detailText}
-            </AppTypography>
-          </div>
-        }
-      />
-    </ListItem>
+      </div>
+      <div className="app-navbar-notifications__content">
+        <p className="app-navbar-notifications__title">{label}</p>
+        <div className="app-navbar-notifications__meta">
+          <AppTooltip title={detailText} arrow placement="top">
+            <AppLinearProgress
+              variant="determinate"
+              value={transfer.progress}
+              style={{ height: 5, borderRadius: 1, marginBottom: 2 }}
+            />
+          </AppTooltip>
+          <p className="app-navbar-notifications__caption">{detailText}</p>
+        </div>
+      </div>
+      {!isIndexer ? (
+        <AppIconButton size="small" onClick={onCancel} aria-label="Cancel task">
+          <Icon icon="mdi:close" width={22} height={22} />
+        </AppIconButton>
+      ) : null}
+    </li>
   );
 }
 
 // --- Main component ---
 
 function NavbarNotificationsDropdown() {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const iconSize = iconSizes.md;
 
@@ -219,6 +211,9 @@ function NavbarNotificationsDropdown() {
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [now, setNow] = useState(0);
   const isFullOpen = Boolean(anchorEl);
+  const layerRef = useDismissibleLayer<HTMLDivElement>(isFullOpen, () =>
+    setAnchorEl(null),
+  );
 
   // Peek state (auto-triggered)
   const [peekOpen, setPeekOpen] = useState(false);
@@ -302,7 +297,7 @@ function NavbarNotificationsDropdown() {
     window.clearTimeout(peekTimerRef.current);
     setPeekOpen(false);
     setNow(Date.now());
-    setAnchorEl(ref.current);
+    setAnchorEl((current) => (current ? null : ref.current));
   };
 
   const handleClose = () => setAnchorEl(null);
@@ -448,16 +443,12 @@ function NavbarNotificationsDropdown() {
       {/* Inline peek — compact progress in the navbar */}
       <div
         onClick={handlePeekClick}
+        className="app-navbar-notifications__peek"
         style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
           cursor: peekVisible ? "pointer" : undefined,
           overflow: "hidden",
           maxWidth: peekVisible ? 200 : 0,
           opacity: peekVisible ? 1 : 0,
-          transition: "max-width 300ms ease, opacity 300ms ease",
-          whiteSpace: "nowrap",
         }}
       >
         {peekTransfer && (
@@ -467,201 +458,181 @@ function NavbarNotificationsDropdown() {
               value={peekTransfer.progress}
               style={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
             />
-            <AppTypography
-              variant="caption"
-              color="inherit"
-              style={{ opacity: 0.8, fontSize: "0.7rem" }}
-            >
+            <span className="app-navbar-notifications__peek-copy">
               {peekTransfer.label
                 ? removePercentage(peekTransfer.label)
                 : getTransferTitle(peekTransfer.type)}{" "}
               {Math.round(peekTransfer.progress)}%
-            </AppTypography>
+            </span>
           </>
         )}
       </div>
 
-      <AppTooltip title="Notifications">
-        <AppIconButton color="inherit" ref={ref} onClick={handleOpen}>
-          <Icon icon="mdi:bell" width={22} height={22} />
-        </AppIconButton>
-      </AppTooltip>
-
-      {/* Full dropdown — everything */}
-      <Popover
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        anchorEl={anchorEl}
-        onClose={handleClose}
-        open={isFullOpen}
-        slotProps={{
-          paper: {
-            style: {
-              width: 360,
-              border: "1px solid var(--color-divider)",
-              boxShadow: shadowSm,
-            },
-          },
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            textAlign: "center",
-            borderBottom: `1px solid ${theme.palette.divider}`,
-            padding: theme.spacing(2),
-          }}
-        >
-          <AppTypography variant="subtitle2" color="text.primary">
-            {totalItems === 0
-              ? "No notifications yet"
-              : `${totalItems} notification${totalItems === 1 ? "" : "s"}`}
-          </AppTypography>
-        </div>
-
-        {/* Unified list */}
-        <List disablePadding style={{ maxHeight: 400, overflow: "auto" }}>
-          {totalItems === 0 ? (
-            <ListItem>
-              <ListItemText primary="You're all caught up." />
-            </ListItem>
-          ) : (
-            <>
-              {/* Active transfers - always at the top */}
-              {transfers.map((transfer) => (
-                <TransferItem
-                  key={`transfer-${transfer.id}`}
-                  transfer={transfer}
-                  iconSize={iconSize}
-                  getTransferIcon={getTransferIcon}
-                  onCancel={() => handleCancel(transfer)}
-                  onIndexerClick={openIndexerDialog}
-                />
-              ))}
-
-              {/* Completed transfers */}
-              {completedTransfers.map((transfer) => {
-                const isIndexer = transfer.type === "indexer";
-                return (
-                  <ListItem
-                    key={`completed-${transfer.id}`}
-                    divider
-                    style={{
-                      alignItems: "center",
-                      cursor: isIndexer ? "pointer" : undefined,
-                    }}
-                    onClick={isIndexer ? openIndexerDialog : undefined}
-                  >
-                    <ListItemIcon
-                      style={{ minWidth: 36, color: "var(--color-success)" }}
-                    >
-                      <Icon
-                        icon="mdi:check-circle"
-                        width={iconSize}
-                        height={iconSize}
-                      />
-                    </ListItemIcon>
-                    <ListItemText
-                      disableTypography
-                      primary={
-                        <AppTypography variant="subtitle2" color="text.primary">
-                          {transfer.label || getCompletedTitle(transfer.type)}
-                        </AppTypography>
-                      }
-                      secondary={
-                        <AppTypography variant="caption" color="text.secondary">
-                          just now
-                        </AppTypography>
-                      }
-                    />
-                  </ListItem>
-                );
-              })}
-
-              {/* Toast notifications */}
-              {recentToasts.map((toastItem) => {
-                const visuals = getToastVisuals(toastItem.type);
-                return (
-                  <ListItem
-                    key={toastItem.id}
-                    divider
-                    style={{ alignItems: "center" }}
-                  >
-                    <ListItemIcon style={{ minWidth: 36, color: visuals.color }}>
-                      {visuals.icon}
-                    </ListItemIcon>
-                    <ListItemText
-                      disableTypography
-                      primary={
-                        <AppTypography variant="subtitle2" color="text.primary">
-                          {toastItem.description
-                            ? `${toastItem.title} — ${toastItem.description}`
-                            : toastItem.title}
-                        </AppTypography>
-                      }
-                      secondary={
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: theme.spacing(1),
-                          }}
-                        >
-                          <AppTypography
-                            variant="caption"
-                            color="text.secondary"
-                          >
-                            {formatTimeAgo(toastItem.createdAt)}
-                          </AppTypography>
-                          {toastItem.meta?.href && (
-                            <Link
-                              to={toastItem.meta.href}
-                              onClick={handleClose}
-                              style={{ marginLeft: "auto" }}
-                            >
-                              <AppButton
-                                size="small"
-                                style={{
-                                  minWidth: "auto",
-                                  padding: 0,
-                                  lineHeight: 1.2,
-                                }}
-                              >
-                                {toastItem.meta.label || "Open"}
-                              </AppButton>
-                            </Link>
-                          )}
-                        </div>
-                      }
-                    />
-                  </ListItem>
-                );
-              })}
-            </>
-          )}
-        </List>
-
-        {/* Footer */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: theme.spacing(1),
-            padding: theme.spacing(1),
-            borderTop: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <AppButton
-            size="small"
-            onClick={() => {
-              clearToastHistory();
-              clearCompletedTransfers();
-            }}
-            disabled={recentToastCount === 0 && completedTransfers.length === 0}
+      <div ref={layerRef} className="app-navbar-dropdown">
+        <AppTooltip title="Notifications">
+          <AppIconButton
+            color="inherit"
+            ref={ref}
+            onClick={handleOpen}
+            aria-haspopup="dialog"
+            aria-expanded={isFullOpen}
+            aria-controls={
+              isFullOpen ? "navbar-notifications-panel" : undefined
+            }
           >
-            Clear
-          </AppButton>
-        </div>
-      </Popover>
+            <Icon icon="mdi:bell" width={22} height={22} />
+          </AppIconButton>
+        </AppTooltip>
+
+        {isFullOpen ? (
+          <div
+            id="navbar-notifications-panel"
+            className="app-navbar-panel app-navbar-panel--notifications"
+            role="dialog"
+            aria-label="Notifications"
+          >
+            <div className="app-navbar-panel__header app-navbar-panel__header--centered">
+              <p className="app-navbar-panel__title">
+                {totalItems === 0
+                  ? "No notifications yet"
+                  : `${totalItems} notification${totalItems === 1 ? "" : "s"}`}
+              </p>
+            </div>
+
+            <ul className="app-navbar-notifications__list">
+              {totalItems === 0 ? (
+                <li className="app-navbar-notifications__item">
+                  <div className="app-navbar-notifications__content">
+                    <p className="app-navbar-notifications__title">
+                      You're all caught up.
+                    </p>
+                  </div>
+                </li>
+              ) : (
+                <>
+                  {transfers.map((transfer) => (
+                    <TransferItem
+                      key={`transfer-${transfer.id}`}
+                      transfer={transfer}
+                      iconSize={iconSize}
+                      getTransferIcon={getTransferIcon}
+                      onCancel={() => handleCancel(transfer)}
+                      onIndexerClick={openIndexerDialog}
+                    />
+                  ))}
+
+                  {completedTransfers.map((transfer) => {
+                    const isIndexer = transfer.type === "indexer";
+                    return (
+                      <li
+                        key={`completed-${transfer.id}`}
+                        className={`app-navbar-notifications__item ${isIndexer ? "app-navbar-notifications__item--interactive" : ""}`.trim()}
+                        onClick={isIndexer ? openIndexerDialog : undefined}
+                        onKeyDown={
+                          isIndexer
+                            ? (event) => {
+                                if (
+                                  event.key === "Enter" ||
+                                  event.key === " "
+                                ) {
+                                  event.preventDefault();
+                                  openIndexerDialog();
+                                }
+                              }
+                            : undefined
+                        }
+                        role={isIndexer ? "button" : undefined}
+                        tabIndex={isIndexer ? 0 : undefined}
+                      >
+                        <div
+                          className="app-navbar-notifications__icon"
+                          style={{ color: "var(--color-success)" }}
+                        >
+                          <Icon
+                            icon="mdi:check-circle"
+                            width={iconSize}
+                            height={iconSize}
+                          />
+                        </div>
+                        <div className="app-navbar-notifications__content">
+                          <p className="app-navbar-notifications__title">
+                            {transfer.label || getCompletedTitle(transfer.type)}
+                          </p>
+                          <p className="app-navbar-notifications__caption">
+                            just now
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+
+                  {recentToasts.map((toastItem) => {
+                    const visuals = getToastVisuals(toastItem.type);
+                    return (
+                      <li
+                        key={toastItem.id}
+                        className="app-navbar-notifications__item"
+                      >
+                        <div
+                          className="app-navbar-notifications__icon"
+                          style={{ color: visuals.color }}
+                        >
+                          {visuals.icon}
+                        </div>
+                        <div className="app-navbar-notifications__content">
+                          <p className="app-navbar-notifications__title">
+                            {toastItem.description
+                              ? `${toastItem.title} - ${toastItem.description}`
+                              : toastItem.title}
+                          </p>
+                          <div className="app-navbar-notifications__meta-row">
+                            <p className="app-navbar-notifications__caption">
+                              {formatTimeAgo(toastItem.createdAt)}
+                            </p>
+                            {toastItem.meta?.href ? (
+                              <Link
+                                to={toastItem.meta.href}
+                                onClick={handleClose}
+                                className="app-navbar-notifications__link"
+                              >
+                                <AppButton
+                                  size="small"
+                                  style={{
+                                    minWidth: "auto",
+                                    padding: 0,
+                                    lineHeight: 1.2,
+                                  }}
+                                >
+                                  {toastItem.meta.label || "Open"}
+                                </AppButton>
+                              </Link>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </>
+              )}
+            </ul>
+
+            <div className="app-navbar-panel__footer">
+              <AppButton
+                size="small"
+                onClick={() => {
+                  clearToastHistory();
+                  clearCompletedTransfers();
+                }}
+                disabled={
+                  recentToastCount === 0 && completedTransfers.length === 0
+                }
+              >
+                Clear
+              </AppButton>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </>
   );
 }

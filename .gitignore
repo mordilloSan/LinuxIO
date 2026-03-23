@@ -28,6 +28,8 @@ modules/
 .vscode/
 .claude/
 *.swp
-frontend/.eslintcache
 .script-server.pid
 backend/backend
+frontend/.eslintcache-a
+frontend/.eslintcache-b
+frontend/.eslintcache-c

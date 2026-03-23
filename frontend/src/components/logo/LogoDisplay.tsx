@@ -1,25 +1,25 @@
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface LogoDisplayProps {
   showText?: boolean;
 }
 
 const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const dur = theme.transitions.duration.standard;
 
   return (
-    <AppTypography
-      variant="h6"
-      noWrap
-      fontWeight={400}
-      fontSize="1.45rem"
+    <div
       style={{
         display: "inline-flex",
         alignItems: "center",
+        margin: 0,
+        fontFamily: theme.typography.fontFamily,
+        fontSize: "1.45rem",
+        fontWeight: 400,
+        lineHeight: 1.25,
       }}
     >
       <span
@@ -53,7 +53,7 @@ const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
       >
         i/O
       </span>
-    </AppTypography>
+    </div>
   );
 };
 

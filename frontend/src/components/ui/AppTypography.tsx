@@ -2,6 +2,8 @@ import React from "react";
 
 import "./app-typography.css";
 
+// Frozen compatibility wrapper: do not introduce new usages.
+
 type Variant =
   | "h1"
   | "h2"
@@ -41,12 +43,12 @@ const VARIANT_ELEMENT: Record<Variant, keyof React.JSX.IntrinsicElements> = {
 };
 
 const COLOR_MAP: Record<SemanticColor, string> = {
-  "text.primary": "var(--mui-palette-text-primary)",
-  "text.secondary": "var(--mui-palette-text-secondary)",
-  "text.disabled": "var(--mui-palette-text-disabled)",
-  error: "var(--mui-palette-error-main)",
-  success: "var(--mui-palette-success-main)",
-  warning: "var(--mui-palette-warning-main)",
+  "text.primary": "var(--app-palette-text-primary)",
+  "text.secondary": "var(--app-palette-text-secondary)",
+  "text.disabled": "var(--app-palette-text-disabled)",
+  error: "var(--app-palette-error-main)",
+  success: "var(--app-palette-success-main)",
+  warning: "var(--app-palette-warning-main)",
   inherit: "inherit",
 };
 

@@ -1,0 +1,70 @@
+.tab-selector {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
+.tab-selector__scroller {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tab-selector__pills {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.tab-selector__pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tab-selector-text);
+  padding: 0 12px;
+  min-height: 28px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.tab-selector__pill:hover {
+  background: var(--tab-selector-hover);
+}
+
+.tab-selector__pill--active,
+.tab-selector__pill--active:hover {
+  background: var(--tab-selector-active-bg);
+  color: var(--tab-selector-active-color);
+}
+
+.tab-selector__actions {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.tab-selector__mobile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

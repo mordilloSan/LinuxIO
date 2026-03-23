@@ -6,6 +6,8 @@ import { alpha } from "@/utils/color";
 
 import "./app-chip.css";
 
+// Frozen compatibility wrapper: do not introduce new usages.
+
 type AppChipColor =
   | "default"
   | "primary"

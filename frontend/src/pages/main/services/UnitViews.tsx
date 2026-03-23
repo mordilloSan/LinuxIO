@@ -70,7 +70,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
   fontSize: "0.6rem",
-  color: "var(--mui-palette-text-secondary)",
+  color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
   paddingTop: 3,
@@ -120,8 +120,8 @@ export const DetailRow: React.FC<{
     className="svc-detail-row"
     style={{
       display: "flex",
-      padding: "1px 0",
-      borderTop: noBorder ? undefined : "1px solid var(--mui-palette-divider)",
+      padding: "3px 0",
+      borderTop: noBorder ? undefined : "1px solid var(--app-palette-divider)",
       alignItems: "flex-start",
     }}
   >
@@ -207,14 +207,14 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
             icon="mdi:check"
             width={15}
             height={15}
-            color="var(--mui-palette-success-main)"
+            color="var(--app-palette-success-main)"
           />
         ) : (
           <Icon
             icon="mdi:block-helper"
             width={15}
             height={15}
-            color="var(--mui-palette-text-disabled)"
+            color="var(--app-palette-text-disabled)"
           />
         )}
         <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{label}</span>
@@ -249,7 +249,7 @@ export function UnitStatusRows({
   return (
     <>
       <DetailRow label="Status" noBorder>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span
             style={{
               fontSize: "0.85rem",
@@ -261,7 +261,7 @@ export function UnitStatusRows({
             {subState && subState !== activeState && (
               <span
                 style={{
-                  color: "var(--mui-palette-text-secondary)",
+                  color: "var(--app-palette-text-secondary)",
                   marginLeft: 8,
                   fontWeight: 400,
                 }}
@@ -274,7 +274,7 @@ export function UnitStatusRows({
             <span
               style={{
                 fontSize: "0.7rem",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
               }}
             >
               {isActive ? "Active" : "Inactive"} since {timestamp}
@@ -507,7 +507,7 @@ export function UnitInfoPanel({
             cursor: "pointer",
             padding: 4,
             borderRadius: 4,
-            color: "var(--mui-palette-text-secondary)",
+            color: "var(--app-palette-text-secondary)",
             display: "flex",
             alignItems: "center",
             flexShrink: 0,
@@ -525,7 +525,7 @@ export function UnitInfoPanel({
                 height: 18,
                 width: "80%",
                 borderRadius: 4,
-                backgroundColor: "var(--mui-palette-action-hover)",
+                backgroundColor: "var(--app-palette-action-hover)",
               }}
             />
           ) : (
@@ -678,8 +678,9 @@ function UnitCard<T extends UnitListItem>({
           {item.description && (
             <div
               style={{
+                marginTop: 2,
                 fontSize: "0.7rem",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -740,7 +741,7 @@ export function UnitCardsView<T extends UnitListItem>({
         <span
           style={{
             fontSize: "0.875rem",
-            color: "var(--mui-palette-text-secondary)",
+            color: "var(--app-palette-text-secondary)",
           }}
         >
           {emptyMessage}

@@ -80,7 +80,7 @@ const TimerTableView: React.FC<TimerTableViewProps> = ({
                 fontSize: "0.6rem",
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
                 width: 80,
                 flexShrink: 0,
                 paddingTop: 2,

@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 
 import "./app-select.css";
 
+// Frozen compatibility wrapper: do not introduce new usages.
+
 interface AppSelectProps extends Omit<
   React.SelectHTMLAttributes<HTMLSelectElement>,
   "size"

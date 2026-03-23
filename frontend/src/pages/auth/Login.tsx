@@ -1,17 +1,14 @@
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import LoginComponent from "@/components/auth/Login";
-import AppPaper from "@/components/ui/AppPaper";
-import AppTypography from "@/components/ui/AppTypography";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 import "./login-page.css";
 
 const Login: React.FC = () => {
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const paperRadius = Number(theme.shape.borderRadius) * 4;
   const paperOverlay = `linear-gradient(${alpha(theme.palette.common.white, 0.051)}, ${alpha(theme.palette.common.white, 0.051)})`;
 
@@ -31,17 +28,17 @@ const Login: React.FC = () => {
           WebkitBackdropFilter: "blur(10px)",
         }}
       >
-        <AppTypography
-          fontWeight={600}
-          fontSize={isSmallUp ? "0.82rem" : "0.78rem"}
-          color="text.primary"
+        <span
           style={{
             fontFamily: theme.typography.fontFamily,
+            fontWeight: 600,
+            fontSize: isSmallUp ? "0.82rem" : "0.78rem",
+            color: theme.palette.text.primary,
             letterSpacing: "0.06em",
           }}
         >
           Linux
-        </AppTypography>
+        </span>
         <div
           className="login-badge-icon"
           style={{
@@ -60,8 +57,8 @@ const Login: React.FC = () => {
         </div>
       </div>
 
-      <AppPaper
-        className="login-paper"
+      <div
+        className="login-paper panel"
         style={{
           borderRadius: paperRadius,
           backgroundColor: alpha(theme.palette.background.default, 0.9),
@@ -80,9 +77,9 @@ const Login: React.FC = () => {
             marginBottom: theme.spacing(2),
           }}
         >
-          <AppTypography
-            variant="h4"
+          <h1
             style={{
+              margin: 0,
               fontFamily: theme.typography.fontFamily,
               fontSize: "2.125rem",
               fontWeight: 600,
@@ -91,21 +88,21 @@ const Login: React.FC = () => {
             }}
           >
             Welcome back
-          </AppTypography>
-          <AppTypography
-            variant="body2"
+          </h1>
+          <p
+            className="text-muted"
             style={{
+              margin: 0,
               fontFamily: theme.typography.fontFamily,
               fontSize: "0.875rem",
               lineHeight: 1.43,
-              color: theme.palette.text.secondary,
             }}
           >
             Sign in to manage your Linux i/O instance.
-          </AppTypography>
+          </p>
         </div>
         <LoginComponent />
-      </AppPaper>
+      </div>
     </div>
   );
 };

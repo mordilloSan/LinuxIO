@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
@@ -8,6 +7,7 @@ import AppCardContent from "@/components/ui/AppCardContent";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
@@ -37,7 +37,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
   handleDelete,
   handleAddPeer,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const color = "primary";
   const activeAccentColor =
     theme.palette[color]?.main || theme.palette.primary.main;

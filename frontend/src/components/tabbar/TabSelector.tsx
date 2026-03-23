@@ -1,15 +1,12 @@
 import { Icon } from "@iconify/react";
-import {
-  ToggleButton,
-  ToggleButtonGroup,
-  Popover,
-  useMediaQuery,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import "./tab-selector.css";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppPaper from "@/components/ui/AppPaper";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface TabOption {
   value: string;
@@ -28,73 +25,42 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   options,
   rightContent,
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
     null,
   );
 
   const primaryHex = theme.palette.primary.main;
-  const contrast = theme.palette.getContrastText(primaryHex);
+  const contrast = theme.palette.primary.contrastText;
 
   return (
     <div
+      className="tab-selector"
       style={{
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 8,
-        width: "100%",
-        minWidth: 0,
+        "--tab-selector-active-bg": primaryHex,
+        "--tab-selector-active-color": contrast,
+        "--tab-selector-border": theme.palette.divider,
+        "--tab-selector-hover": theme.palette.action.hover,
+        "--tab-selector-text": theme.palette.text.secondary,
       }}
     >
-      <AppPaper
-        className="custom-scrollbar"
-        style={{
-          display: "flex",
-          padding: 4,
-          flex: "1 1 auto",
-          minWidth: 0,
-          borderRadius: "999px",
-          backgroundColor: "transparent",
-          boxShadow: "none",
-          overflowX: "auto",
-          overflowY: "hidden",
-        }}
-      >
-        <ToggleButtonGroup
-          value={value}
-          exclusive
-          onChange={(_, newValue) => newValue && onChange(newValue)}
-          size="small"
-          sx={{
-            flexWrap: "nowrap",
-            "& .MuiToggleButton-root": {
-              color: "text.secondary",
-              border: "none",
-              borderRadius: "999px",
-              px: 2,
-              minHeight: 28,
-              py: 0,
-              fontWeight: 500,
-              transition: "background 0.1s",
-              whiteSpace: "nowrap",
-            },
-            "& .MuiToggleButton-root.Mui-selected": {
-              backgroundColor: primaryHex,
-              color: contrast,
-              "&:hover": { backgroundColor: primaryHex },
-            },
-          }}
-        >
+      <div className="tab-selector__scroller custom-scrollbar">
+        <div className="tab-selector__pills" role="tablist" aria-label="Tabs">
           {options.map((opt) => (
-            <ToggleButton key={opt.value} value={opt.value}>
+            <button
+              key={opt.value}
+              type="button"
+              role="tab"
+              aria-selected={value === opt.value}
+              className={`tab-selector__pill ${value === opt.value ? "tab-selector__pill--active" : ""}`.trim()}
+              onClick={() => onChange(opt.value)}
+            >
               {opt.label}
-            </ToggleButton>
+            </button>
           ))}
-        </ToggleButtonGroup>
-      </AppPaper>
+        </div>
+      </div>
 
       {rightContent && (
         <>
@@ -107,38 +73,22 @@ const TabSelector: React.FC<TabSelectorProps> = ({
               >
                 <Icon icon="mdi:tune" width={20} height={20} />
               </AppIconButton>
-              <Popover
+              <GeneralDialog
                 open={Boolean(anchorEl)}
-                anchorEl={anchorEl}
                 onClose={() => setAnchorEl(null)}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
+                maxWidth="xs"
+                fullWidth
               >
-                <div
-                  style={{
-                    padding: 6,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                  }}
-                >
-                  {rightContent}
-                </div>
-              </Popover>
+                <AppDialogTitle>Actions</AppDialogTitle>
+                <AppDialogContent>
+                  <div className="tab-selector__mobile-actions">
+                    {rightContent}
+                  </div>
+                </AppDialogContent>
+              </GeneralDialog>
             </>
           ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                alignSelf: "flex-start",
-                marginTop: 2,
-                gap: 4,
-                flexShrink: 0,
-              }}
-            >
-              {rightContent}
-            </div>
+            <div className="tab-selector__actions">{rightContent}</div>
           )}
         </>
       )}

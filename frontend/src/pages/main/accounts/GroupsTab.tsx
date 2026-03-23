@@ -16,7 +16,7 @@ import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
-import AppTextField from "@/components/ui/AppTextField";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
@@ -145,8 +145,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <AppTextField
-          size="small"
+        <AppSearchField
           placeholder="Search groups…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -9,10 +8,11 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import "./login.css";
 import useAuth from "@/hooks/useAuth";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 function LogIn() {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const fieldStyle = {
     "--lf-bg": alpha(theme.palette.background.default, 0.65),
     "--lf-border": alpha(theme.palette.text.secondary, 0.3),

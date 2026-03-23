@@ -2,6 +2,8 @@ import React from "react";
 
 import "./app-paper.css";
 
+// Frozen compatibility wrapper: do not introduce new usages.
+
 export interface AppPaperProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: "elevation" | "outlined";
 }

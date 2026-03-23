@@ -298,8 +298,31 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo "🔎 Running ESLint..."
-	@bash -c 'cd frontend && npm run --silent lint && echo "✅ Frontend linting passed!"'
+	@echo "🔎 Running ESLint (parallel, auto-fix)..."
+	@bash -c ' \
+	  cd frontend; \
+	  entries=(); \
+	  while IFS= read -r e; do \
+	    if echo "$$e" | grep -qE "\.(ts|tsx)$$"; then \
+	      entries+=("$$e"); \
+	    elif [ -d "$$e" ] && find "$$e" \( -name "*.ts" -o -name "*.tsx" \) -print -quit 2>/dev/null | grep -q .; then \
+	      entries+=("$$e"); \
+	    fi; \
+	  done < <(find src -maxdepth 1 -mindepth 1 | sort); \
+	  total=$${#entries[@]}; \
+	  chunk=$$(( (total + 2) / 3 )); \
+	  g1=("$${entries[@]:0:$$chunk}"); \
+	  g2=("$${entries[@]:$$chunk:$$chunk}"); \
+	  g3=("$${entries[@]:$$((chunk*2))}"); \
+	  npx eslint --fix --cache --cache-location .eslintcache-a "$${g1[@]}" & pid_a=$$!; \
+	  npx eslint --fix --cache --cache-location .eslintcache-b "$${g2[@]}" & pid_b=$$!; \
+	  npx eslint --fix --cache --cache-location .eslintcache-c "$${g3[@]}" & pid_c=$$!; \
+	  failed=0; \
+	  wait $$pid_a || failed=1; \
+	  wait $$pid_b || failed=1; \
+	  wait $$pid_c || failed=1; \
+	  [ $$failed -eq 0 ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit 1; } \
+	'
 
 tsc-only:
 	@echo "🔎 Running TypeScript type checks..."

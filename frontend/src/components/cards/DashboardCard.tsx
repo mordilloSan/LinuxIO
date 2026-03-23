@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import { Menu, MenuItem } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
@@ -10,6 +9,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
+import { useAppTheme } from "@/theme";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
@@ -115,7 +115,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   selectedIconTextOption,
   onIconTextSelect,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
   const [hovered, setHovered] = useState(false);
   const [iconTextMenuAnchor, setIconTextMenuAnchor] =
@@ -164,7 +164,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
       style={{
         marginLeft: 0,
         marginBottom: 2,
-        color: "var(--mui-palette-text-secondary)",
+        color: theme.palette.text.secondary,
+        fontSize: "0.75rem",
+        lineHeight: theme.typography.body2.lineHeight,
       }}
     >
       {!selectedOption && <option value="" disabled hidden></option>}
