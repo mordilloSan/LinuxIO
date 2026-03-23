@@ -100,9 +100,6 @@ export default defineConfig({
         'react-dom',
         'react/jsx-runtime',
         'react/jsx-dev-runtime',
-        '@mui/material',
-        '@emotion/react',
-        '@emotion/styled',
       ],
       output: {
         globals: {
@@ -110,9 +107,6 @@ export default defineConfig({
           'react-dom': 'window.ReactDOM',
           'react/jsx-runtime': 'window.React',
           'react/jsx-dev-runtime': 'window.React',
-          '@mui/material': 'window.MaterialUI',
-          '@emotion/react': 'window.EmotionReact',
-          '@emotion/styled': 'window.EmotionStyled',
         },
         compact: isProduction,
         ...(isProduction && {
