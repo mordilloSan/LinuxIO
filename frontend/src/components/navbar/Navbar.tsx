@@ -43,13 +43,15 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
           <div className="app-navbar__search">
             <div
               className="app-navbar-search"
-              style={{
-                "--app-navbar-search-bg": theme.header.background,
-                "--app-navbar-search-hover": getHoverBackground(theme),
-                "--app-navbar-search-text": theme.header.search.color,
-                "--app-navbar-search-icon": theme.header.color,
-                borderRadius: `${theme.shape.borderRadius * 2}px`,
-              } as React.CSSProperties}
+              style={
+                {
+                  "--app-navbar-search-bg": theme.header.background,
+                  "--app-navbar-search-hover": getHoverBackground(theme),
+                  "--app-navbar-search-text": theme.header.search.color,
+                  "--app-navbar-search-icon": theme.header.color,
+                  borderRadius: `${theme.shape.borderRadius * 2}px`,
+                } as React.CSSProperties
+              }
             >
               <div className="app-navbar-search__icon" aria-hidden="true">
                 <Icon

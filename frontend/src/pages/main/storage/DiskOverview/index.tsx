@@ -608,9 +608,18 @@ const DiskOverview: React.FC = () => {
   const { data: nfsMountsData } = linuxio.storage.list_nfs_mounts.useQuery({
     refetchInterval: 10000,
   });
-  const rawDrives = Array.isArray(rawDrivesData) ? rawDrivesData : [];
-  const filesystems = Array.isArray(filesystemsData) ? filesystemsData : [];
-  const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
+  const rawDrives = useMemo(
+    () => (Array.isArray(rawDrivesData) ? rawDrivesData : []),
+    [rawDrivesData],
+  );
+  const filesystems = useMemo(
+    () => (Array.isArray(filesystemsData) ? filesystemsData : []),
+    [filesystemsData],
+  );
+  const nfsMounts = useMemo(
+    () => (Array.isArray(nfsMountsData) ? nfsMountsData : []),
+    [nfsMountsData],
+  );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     linuxio.storage.unmount_filesystem.useMutation({
       onSuccess: async () => {

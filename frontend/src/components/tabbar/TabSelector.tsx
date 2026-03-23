@@ -37,13 +37,15 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   return (
     <div
       className="tab-selector"
-      style={{
-        "--tab-selector-active-bg": primaryHex,
-        "--tab-selector-active-color": contrast,
-        "--tab-selector-border": theme.palette.divider,
-        "--tab-selector-hover": theme.palette.action.hover,
-        "--tab-selector-text": theme.palette.text.secondary,
-      } as React.CSSProperties}
+      style={
+        {
+          "--tab-selector-active-bg": primaryHex,
+          "--tab-selector-active-color": contrast,
+          "--tab-selector-border": theme.palette.divider,
+          "--tab-selector-hover": theme.palette.action.hover,
+          "--tab-selector-text": theme.palette.text.secondary,
+        } as React.CSSProperties
+      }
     >
       <div className="tab-selector__scroller custom-scrollbar">
         <div className="tab-selector__pills" role="tablist" aria-label="Tabs">
