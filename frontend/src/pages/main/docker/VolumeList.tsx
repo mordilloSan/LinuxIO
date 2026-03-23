@@ -20,8 +20,8 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppSearchField from "@/components/ui/AppSearchField";
+import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,

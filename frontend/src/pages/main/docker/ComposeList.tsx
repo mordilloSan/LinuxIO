@@ -11,6 +11,7 @@ import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleT
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppSearchField from "@/components/ui/AppSearchField";
 import {
   AppTable,
   AppTableBody,
@@ -18,7 +19,6 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
-import AppSearchField from "@/components/ui/AppSearchField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";

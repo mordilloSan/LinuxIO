@@ -504,7 +504,7 @@ function NavbarNotificationsDropdown() {
                 <li className="app-navbar-notifications__item">
                   <div className="app-navbar-notifications__content">
                     <p className="app-navbar-notifications__title">
-                      You're all caught up.
+                      You&apos;re all caught up.
                     </p>
                   </div>
                 </li>

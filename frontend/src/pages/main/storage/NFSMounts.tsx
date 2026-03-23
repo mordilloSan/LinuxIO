@@ -29,9 +29,9 @@ import {
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
-import AppSearchField from "@/components/ui/AppSearchField";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
