@@ -1,13 +1,11 @@
 import { Icon } from "@iconify/react";
-
-import { useAppTheme } from "@/theme";
-
 import React, { useState, useCallback } from "react";
 
 import "./search-bar.css";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface SearchBarProps {

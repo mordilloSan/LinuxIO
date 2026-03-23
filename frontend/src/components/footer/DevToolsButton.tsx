@@ -1,13 +1,11 @@
 import { Icon } from "@iconify/react";
-
-import { useAppTheme } from "@/theme";
-
 import React from "react";
 
 import "@/components/cards/frosted-card.css";
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
 import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
+import { useAppTheme } from "@/theme";
 
 const DevToolsButton: React.FC = () => {
   const theme = useAppTheme();

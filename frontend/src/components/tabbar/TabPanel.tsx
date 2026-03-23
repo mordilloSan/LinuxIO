@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+
+import "./tab-panel.css";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 
@@ -33,35 +35,29 @@ const TabPanel: React.FC<TabPanelProps> = ({
   children,
 }) => {
   const isActive = activeTab === value;
-  const [isMounted, setIsMounted] = useState(isActive);
+  const [isPresent, setIsPresent] = useState(false);
+  const shouldRender = isActive || isPresent;
 
-  useEffect(() => {
-    if (isActive) {
-      setIsMounted(true);
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setIsMounted(false);
-    }, timeout);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [isActive, timeout]);
-
-  if (!isMounted) {
+  if (!shouldRender) {
     return null;
   }
 
   return (
     <div
+      className="tab-panel"
+      onAnimationStart={() => {
+        if (isActive) {
+          setIsPresent(true);
+        }
+      }}
+      onAnimationEnd={() => {
+        if (!isActive) {
+          setIsPresent(false);
+        }
+      }}
       style={{
-        position: "absolute",
-        width: "100%",
-        top: 0,
-        left: 0,
-        opacity: isActive ? 1 : 0,
+        animation: `${isActive ? "app-tab-panel-fade-in" : "app-tab-panel-fade-out"} ${timeout}ms ease forwards`,
         pointerEvents: isActive ? "auto" : "none",
-        transition: `opacity ${timeout}ms ease`,
       }}
     >
       <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>

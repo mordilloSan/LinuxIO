@@ -1,23 +1,22 @@
-import { useAppTheme } from "@/theme";
-
 import {
-  useState,
+  forwardRef,
+  useCallback,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
-  forwardRef,
   useRef,
-  useCallback,
+  useState,
 } from "react";
 import ReactAce from "react-ace";
+
+import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useAppTheme } from "@/theme";
 
 // react-ace CJS exports the component as .default — Rolldown may not unwrap it
 const AceEditor =
   typeof (ReactAce as any).default === "function"
     ? (ReactAce as any).default
     : ReactAce;
-
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface FileEditorProps {
   filePath: string;

@@ -1,5 +1,3 @@
-import { useAppTheme } from "@/theme";
-
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -24,6 +22,8 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { useAppTheme } from "@/theme";
+
 interface Props {
   open: boolean;
   onClose: () => void;

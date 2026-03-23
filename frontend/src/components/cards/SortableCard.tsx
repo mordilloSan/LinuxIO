@@ -4,10 +4,9 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { useAppTheme } from "@/theme";
+import { cardBorderRadius } from "@/theme/constants";
 
 import "./frosted-card.css";
-
-import { cardBorderRadius } from "@/theme/constants";
 
 interface SortableCardProps {
   id: string;

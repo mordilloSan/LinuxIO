@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import AppPopover from "./AppPopover";
 import AppTextField from "./AppTextField";
@@ -90,21 +90,30 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [singleInputValue, setSingleInputValue] = useState(
+  const [singleInputDraft, setSingleInputDraft] = useState<string | null>(null);
+  const [singleInputDraftBaseValue, setSingleInputDraftBaseValue] = useState(
     isMultiple ? "" : props.value,
   );
   const [multipleInputValue, setMultipleInputValue] = useState("");
 
-  const selectedValues = isMultiple ? props.value : [];
-  const inputValue = isMultiple ? multipleInputValue : singleInputValue;
+  const setContainerNode = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
+    setAnchorEl(node);
+  }, []);
 
-  useEffect(() => {
-    if (!isMultiple) {
-      setSingleInputValue(props.value);
-    }
-  }, [isMultiple, props.value]);
+  const singleValue = props.multiple === true ? "" : props.value;
+  const selectedValues = useMemo(
+    () => (isMultiple ? props.value : []),
+    [isMultiple, props.value],
+  );
+  const singleInputValue =
+    singleInputDraft !== null && singleInputDraftBaseValue === singleValue
+      ? singleInputDraft
+      : singleValue;
+  const inputValue = isMultiple ? multipleInputValue : singleInputValue;
 
   const filteredOptions = useMemo(() => {
     const uniqueOptions = Array.from(new Set(options));
@@ -114,28 +123,19 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
 
     return filterOptions(availableOptions, { inputValue });
   }, [filterOptions, inputValue, isMultiple, options, selectedValues]);
-
-  useEffect(() => {
-    if (!open) {
-      setActiveIndex(-1);
-      return;
-    }
-
-    if (!filteredOptions.length) {
-      setActiveIndex(-1);
-      return;
-    }
-
-    setActiveIndex((current) =>
-      current >= 0 && current < filteredOptions.length ? current : 0,
-    );
-  }, [filteredOptions.length, open]);
+  const resolvedActiveIndex =
+    open && filteredOptions.length > 0
+      ? activeIndex >= 0 && activeIndex < filteredOptions.length
+        ? activeIndex
+        : 0
+      : -1;
 
   const updateInputValue = (nextValue: string) => {
     if (isMultiple) {
       setMultipleInputValue(nextValue);
     } else {
-      setSingleInputValue(nextValue);
+      setSingleInputDraft(nextValue);
+      setSingleInputDraftBaseValue(singleValue);
     }
 
     onInputChange?.(nextValue);
@@ -153,7 +153,8 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       return;
     }
 
-    setSingleInputValue(nextValue);
+    setSingleInputDraft(nextValue);
+    setSingleInputDraftBaseValue(singleValue);
     onInputChange?.(nextValue);
     props.onChange?.(nextValue);
     setOpen(false);
@@ -176,6 +177,8 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
 
     if (!nextValue) {
       if (!isMultiple) {
+        setSingleInputDraft("");
+        setSingleInputDraftBaseValue(singleValue);
         props.onChange?.("");
       }
       setOpen(false);
@@ -206,10 +209,10 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       case "ArrowDown":
         event.preventDefault();
         setOpen(true);
-        setActiveIndex((current) =>
+        setActiveIndex(
           filteredOptions.length
-            ? current < filteredOptions.length - 1
-              ? current + 1
+            ? resolvedActiveIndex < filteredOptions.length - 1
+              ? resolvedActiveIndex + 1
               : 0
             : -1,
         );
@@ -217,18 +220,22 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       case "ArrowUp":
         event.preventDefault();
         setOpen(true);
-        setActiveIndex((current) =>
+        setActiveIndex(
           filteredOptions.length
-            ? current > 0
-              ? current - 1
+            ? resolvedActiveIndex > 0
+              ? resolvedActiveIndex - 1
               : filteredOptions.length - 1
             : -1,
         );
         break;
       case "Enter":
-        if (open && activeIndex >= 0 && filteredOptions[activeIndex]) {
+        if (
+          open &&
+          resolvedActiveIndex >= 0 &&
+          filteredOptions[resolvedActiveIndex]
+        ) {
           event.preventDefault();
-          handleSelect(filteredOptions[activeIndex]);
+          handleSelect(filteredOptions[resolvedActiveIndex]);
           break;
         }
 
@@ -272,7 +279,7 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
 
   return (
     <div
-      ref={containerRef}
+      ref={setContainerNode}
       className={[
         "app-autocomplete",
         fullWidth && "app-autocomplete--fullwidth",
@@ -320,7 +327,7 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       <AppPopover
         open={open && !disabled && (loading || filteredOptions.length > 0)}
         onClose={() => setOpen(false)}
-        anchorEl={containerRef.current}
+        anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
         transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
@@ -340,10 +347,11 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
                 key={option}
                 type="button"
                 role="option"
-                aria-selected={index === activeIndex}
+                aria-selected={index === resolvedActiveIndex}
                 className={[
                   "app-autocomplete__option",
-                  index === activeIndex && "app-autocomplete__option--active",
+                  index === resolvedActiveIndex &&
+                    "app-autocomplete__option--active",
                 ]
                   .filter(Boolean)
                   .join(" ")}
