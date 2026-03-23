@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
@@ -86,7 +86,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   index,
   editMode,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const {
@@ -793,7 +793,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
   containers,
   editMode = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <div>
       <AppTableContainer className="custom-scrollbar">

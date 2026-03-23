@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "../dialog/GeneralDialog";
@@ -25,7 +25,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const handleConfirm: React.SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();

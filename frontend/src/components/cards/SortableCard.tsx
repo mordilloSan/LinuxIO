@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import "./frosted-card.css";
@@ -19,7 +19,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
   editMode,
   children,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     attributes,
     listeners,

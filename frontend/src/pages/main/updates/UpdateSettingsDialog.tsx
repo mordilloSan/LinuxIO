@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
@@ -17,7 +17,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   open,
   onClose,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const settingsState = useUpdateSettingsState(open);
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>

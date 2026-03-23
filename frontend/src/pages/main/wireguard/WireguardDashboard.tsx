@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ const wireguardToastMeta = {
 };
 
 const WireGuardDashboard: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );

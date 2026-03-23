@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -106,7 +106,7 @@ const NetworkInterfaceList = () => {
       return prev;
     });
   };
-  const theme = useTheme();
+  const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
   const rxCanvasRef = useRef<HTMLCanvasElement>(null);
   const txCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -205,7 +205,7 @@ const NetworkInterfaceList = () => {
                               ? theme.palette.warning.main
                               : iface.state === 30 || iface.state === 120
                                 ? theme.palette.error.main
-                                : theme.palette.grey[500],
+                                : theme.palette.text.disabled,
                       }}
                     />
                   </AppTooltip>

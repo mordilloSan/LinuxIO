@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -12,7 +12,7 @@ const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
 const MemoryUsage = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     data: memoryData,
     isPending,

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Popover } from "@mui/material";
-import { useTheme as useMuiTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
@@ -15,7 +15,7 @@ import { alpha } from "@/utils/color";
 
 function NavbarColorCustomizer() {
   const [primaryColor, setPrimaryColor] = useConfigValue("primaryColor");
-  const muiTheme = useMuiTheme();
+  const theme = useAppTheme();
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
@@ -48,7 +48,7 @@ function NavbarColorCustomizer() {
             elevation: 0,
             sx: {
               p: 2,
-              bgcolor: muiTheme.palette.background.paper,
+              bgcolor: theme.palette.background.paper,
               borderRadius: 2,
               boxShadow: shadowSm,
             },
@@ -63,9 +63,9 @@ function NavbarColorCustomizer() {
         <div
           style={{
             display: "flex",
-            gap: muiTheme.spacing(1),
+            gap: theme.spacing(1),
             flexWrap: "wrap",
-            marginBottom: muiTheme.spacing(1),
+            marginBottom: theme.spacing(1),
           }}
         >
           {tokenSwatches.map(({ name, hex }) => (
@@ -78,12 +78,12 @@ function NavbarColorCustomizer() {
               style={{
                 width: 28,
                 height: 28,
-                borderRadius: muiTheme.shape.borderRadius,
+                borderRadius: theme.shape.borderRadius,
                 backgroundColor: hex,
                 border:
-                  muiTheme.palette.mode === "dark"
-                    ? `1px solid ${alpha(muiTheme.palette.common.white, 0.3)}`
-                    : `1px solid ${alpha(muiTheme.palette.common.black, 0.1)}`,
+                  theme.palette.mode === "dark"
+                    ? `1px solid ${alpha(theme.palette.common.white, 0.3)}`
+                    : `1px solid ${alpha(theme.palette.common.black, 0.1)}`,
                 cursor: "pointer",
                 outline:
                   primaryColor?.toLowerCase() === name.toLowerCase()
@@ -98,8 +98,8 @@ function NavbarColorCustomizer() {
         <div
           style={{
             display: "flex",
-            gap: muiTheme.spacing(1),
-            marginTop: muiTheme.spacing(2),
+            gap: theme.spacing(1),
+            marginTop: theme.spacing(2),
           }}
         >
           <AppButton
@@ -109,10 +109,10 @@ function NavbarColorCustomizer() {
             onClick={() => setPrimaryColor("blue")}
             style={
               {
-                marginTop: muiTheme.spacing(2),
+                marginTop: theme.spacing(2),
                 "--_btn-main": COLOR_TOKENS.blue,
                 "--_btn-dark": COLOR_TOKENS.blue,
-                "--_btn-contrast": muiTheme.palette.common.white,
+                "--_btn-contrast": theme.palette.common.white,
               } as CSSProperties
             }
           >

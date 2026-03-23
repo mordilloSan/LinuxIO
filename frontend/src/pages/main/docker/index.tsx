@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const DockerPage: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");

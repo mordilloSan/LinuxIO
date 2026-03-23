@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import AppAlert from "@/components/ui/AppAlert";
@@ -29,7 +29,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   onClearError,
   onCancel,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   // Build the status text: "Status: packageName" or just "Status" or "Preparing..."
   const getStatusText = () => {
     if (!currentPackage) {

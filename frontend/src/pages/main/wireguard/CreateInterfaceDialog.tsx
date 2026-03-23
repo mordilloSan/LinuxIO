@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -59,7 +59,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
   dns,
   setDns,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
   const portTaken =
     port && existingPorts.some((p) => Number(port) === Number(p));

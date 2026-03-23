@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Tab, Tabs } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -338,7 +338,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   smartmontoolsAvailable,
   smartmontoolsReason,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
@@ -581,7 +581,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   );
 };
 const DiskOverview: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();

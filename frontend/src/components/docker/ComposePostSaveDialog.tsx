@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -24,7 +24,7 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
   onDoNothing,
   isExecuting = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const getActionLabel = () => {
     if (stackState === "running") {

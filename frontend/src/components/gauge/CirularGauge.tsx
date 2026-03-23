@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useMemo } from "react";
 
 import { GREY_TOKENS as grey } from "@/theme/colors";
@@ -69,7 +69,7 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
-  const theme = useTheme();
+  const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
 
   const total = useMemo(
@@ -202,7 +202,7 @@ export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
 
-  const theme = useTheme();
+  const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
   const backgroundColor = isDark ? grey[700] : grey[300];
   // Create multiple segments for smooth gradient effect

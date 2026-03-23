@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
@@ -23,7 +23,7 @@ const DetailRow: React.FC<{
   label: string;
   value: React.ReactNode;
 }> = ({ label, value }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <div
       style={{
@@ -61,7 +61,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
   statData,
   isLoadingStat,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
 

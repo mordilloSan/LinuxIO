@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
@@ -112,7 +112,7 @@ const SectionHeader: React.FC<{
 // ─── sensor card ─────────────────────────────────────────────────────────────
 
 const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const temps = group.readings.filter((r) => {
     const u = r.unit.toLowerCase();
     return u === "c" || u === "°c";
@@ -334,7 +334,7 @@ const MemoMemory = React.memo(MemoryUsage);
 const MemoGpuInfo = React.memo(GpuInfo);
 
 const HardwarePage: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   // ── data ──
   const { data: hostInfo } = linuxio.system.get_host_info.useQuery({

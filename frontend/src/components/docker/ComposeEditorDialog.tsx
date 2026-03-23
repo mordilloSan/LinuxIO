@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, {
   Suspense,
   useCallback,
@@ -53,7 +53,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   onSave,
   onValidate,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const editorRef = useRef<FileEditorHandle>(null);
   const [stackName, setStackName] = useState(initialStackName);
   const [isEditorDirty, setIsEditorDirty] = useState(false);

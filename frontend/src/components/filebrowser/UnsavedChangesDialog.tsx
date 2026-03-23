@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
@@ -21,7 +21,7 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
   onSaveAndExit,
   isSaving = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <FileBrowserDialog

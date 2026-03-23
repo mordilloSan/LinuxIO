@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useEffect, useRef } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -36,7 +36,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   onContinue,
   targetVersion,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const outputEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new output arrives

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -45,7 +45,7 @@ function parseSizeToBytes(input: string | undefined | null): number {
 }
 
 const Drive: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     data: rawDrives = [],
     isPending: isLoading,

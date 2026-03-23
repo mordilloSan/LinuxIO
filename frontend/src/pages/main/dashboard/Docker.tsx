@@ -3,9 +3,8 @@ import {
   ListItemIcon,
   Menu,
   MenuItem,
-  useMediaQuery,
-  useTheme,
 } from "@mui/material";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -31,8 +30,8 @@ const getStatusLabel = (status: string, state: string): string => {
 };
 const getCollectionCount = <T,>(items: T[]) => items.length;
 const DockerInfo: React.FC = () => {
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
@@ -62,7 +61,7 @@ const DockerInfo: React.FC = () => {
         case "restarting":
           return theme.palette.info.main;
         default:
-          return theme.palette.grey[500];
+          return theme.palette.text.disabled;
       }
     },
     [theme],

@@ -1,5 +1,5 @@
 import { Autocomplete } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onClose,
   user,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState(user.gecos);
   const [homeDir, setHomeDir] = useState(user.homeDir);

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 interface SelectionBoxProps {
@@ -17,7 +17,7 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({
   width,
   height,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <div

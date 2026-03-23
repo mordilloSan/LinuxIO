@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -12,7 +12,7 @@ const FsInfoCard: React.FC = () => {
   const { data: fsInfo, isPending } = linuxio.system.get_fs_info.useQuery({
     refetchInterval: 2000,
   });
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const isRelevantMount = (fs: FilesystemInfo): boolean => {
     const mount = fs.mountpoint;

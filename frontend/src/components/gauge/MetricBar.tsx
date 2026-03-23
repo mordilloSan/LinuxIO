@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -23,7 +23,7 @@ const MetricBar: React.FC<MetricBarProps> = ({
   rightLabel,
   icon,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <AppTooltip title={tooltip ?? ""}>

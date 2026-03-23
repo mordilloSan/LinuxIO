@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
@@ -17,7 +17,7 @@ interface UnitLogsCardProps {
 }
 
 const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
     useLogStream({
       open: true,

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Tab, Tabs } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
@@ -17,7 +17,7 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const handleClose = () => {

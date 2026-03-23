@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Theme, useTheme } from "@mui/material/styles";
+import { AppTheme, useAppTheme } from "@/theme";
 import React from "react";
 
 import { alpha } from "@/utils/color";
@@ -48,7 +48,7 @@ export interface AppChipProps extends NativeChipProps {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const getPaletteColor = (theme: Theme, color: AppChipColor) => {
+const getPaletteColor = (theme: AppTheme, color: AppChipColor) => {
   switch (color) {
     case "primary":
       return theme.palette.primary.main;
@@ -69,12 +69,12 @@ const getPaletteColor = (theme: Theme, color: AppChipColor) => {
   }
 };
 
-const toSpacing = (theme: Theme, value: unknown) =>
+const toSpacing = (theme: AppTheme, value: unknown) =>
   typeof value === "number" ? theme.spacing(value) : value;
 
 const applySpacing = (
   style: React.CSSProperties,
-  theme: Theme,
+  theme: AppTheme,
   key: string,
   value: unknown,
 ) => {
@@ -164,7 +164,7 @@ const applyDisplay = (
 const applyStyleObject = (
   target: React.CSSProperties,
   source: Record<string, unknown>,
-  theme: Theme,
+  theme: AppTheme,
 ) => {
   for (const [key, value] of Object.entries(source)) {
     if (value == null) continue;
@@ -206,7 +206,7 @@ const applyStyleObject = (
   }
 };
 
-const getChipSxStyles = (sx: AppChipSx | undefined, theme: Theme) => {
+const getChipSxStyles = (sx: AppChipSx | undefined, theme: AppTheme) => {
   const rootStyle: React.CSSProperties = {};
   const labelStyle: React.CSSProperties = {};
   const cssVars: React.CSSProperties = {};
@@ -307,7 +307,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
     },
     ref,
   ) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
     const chipColor = getPaletteColor(theme, color);
     const isDefaultColor = color === "default";
     const isOutlined = variant === "outlined";
@@ -400,7 +400,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
                           : 0.28,
                     )),
             "--app-chip-font-family": theme.typography.fontFamily,
-            "--app-chip-font-size": theme.typography.pxToRem(13),
+            "--app-chip-font-size": "0.8125rem",
             "--app-chip-font-weight": isSoft
               ? 600
               : theme.typography.fontWeightRegular,

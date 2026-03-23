@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -160,7 +160,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
   disablePadding = false,
   state,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     loading,
     serverState,

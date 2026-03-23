@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
@@ -28,7 +28,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   projectName,
   composePath,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [output, setOutput] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);

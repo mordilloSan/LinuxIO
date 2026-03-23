@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import ProcessorGraph from "./ProcessorGraph";
@@ -13,7 +13,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 
 const Processor: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const {
     data: CPUInfo,

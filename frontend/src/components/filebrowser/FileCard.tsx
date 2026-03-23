@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, {
   useMemo,
   useCallback,
@@ -83,7 +83,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     onCancelRename,
     disableHover = false,
   }) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 

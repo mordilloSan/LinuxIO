@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -25,7 +25,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   onClose,
   username,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

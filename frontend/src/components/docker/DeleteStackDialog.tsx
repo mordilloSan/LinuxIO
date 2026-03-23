@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -30,7 +30,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
   workingDir,
   isLoading = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [deleteOption, setDeleteOption] = useState<DeleteOption>("containers");
 
   const deleteOptions: Array<{

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { toast } from "sonner";
@@ -28,7 +28,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
   groupNames,
   onSuccess,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
 
   const { mutateAsync: deleteGroup, isPending: isDeleting } =

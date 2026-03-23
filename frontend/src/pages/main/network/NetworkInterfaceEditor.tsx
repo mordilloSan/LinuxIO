@@ -1,5 +1,4 @@
-import { ToggleButton, ToggleButtonGroup } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -90,7 +89,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onClose,
   onSave,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
   const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
@@ -216,11 +215,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       setEditForm((prev) => (Object.keys(prev).length === 0 ? prev : {}));
     }
   }, [expanded, mode, defaults, dirty, setEditForm]);
-  const handleModeChange = (
-    _: React.MouseEvent<HTMLElement>,
-    newMode: "auto" | "manual" | null,
-  ) => {
-    if (!newMode) return;
+  const handleModeChange = (newMode: "auto" | "manual") => {
     setMode(newMode);
     if (newMode === "auto") {
       setEditForm({});
@@ -373,18 +368,22 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           />
         </div>
 
-        <ToggleButtonGroup
-          value={mode}
-          exclusive
-          onChange={handleModeChange}
-          fullWidth
-          style={{
-            marginBottom: 8,
-          }}
-        >
-          <ToggleButton value="auto">Automatic</ToggleButton>
-          <ToggleButton value="manual">Manual</ToggleButton>
-        </ToggleButtonGroup>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <AppButton
+            fullWidth
+            variant={mode === "auto" ? "contained" : "outlined"}
+            onClick={() => handleModeChange("auto")}
+          >
+            Automatic
+          </AppButton>
+          <AppButton
+            fullWidth
+            variant={mode === "manual" ? "contained" : "outlined"}
+            onClick={() => handleModeChange("manual")}
+          >
+            Manual
+          </AppButton>
+        </div>
 
         {mode === "auto" ? (
           <div>
@@ -414,6 +413,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             <AppTextField
               fullWidth
               required
+              size="small"
               label="IPv4 Address (CIDR)"
               placeholder="192.168.1.10/24"
               value={editForm.ipv4 ?? ""}
@@ -425,6 +425,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             <AppTextField
               fullWidth
               required
+              size="small"
               label="Gateway"
               placeholder="192.168.1.1"
               value={editForm.gateway ?? ""}
@@ -436,6 +437,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             <AppTextField
               fullWidth
               required
+              size="small"
               label="DNS Servers"
               placeholder="8.8.8.8, 8.8.4.4"
               value={editForm.dns ?? ""}

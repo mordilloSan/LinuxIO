@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,7 +26,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
   onConfirm,
   defaultWorkingDir,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [isWorkingDirManuallyEdited, setIsWorkingDirManuallyEdited] =

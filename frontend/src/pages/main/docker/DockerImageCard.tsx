@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { useMemo, useState } from "react";
 
 import AppCardContent from "@/components/ui/AppCardContent";
@@ -27,8 +26,8 @@ export default function CollapsibleCard<T extends Record<string, any>>({
   onToggleSelected,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
-  const theme = useTheme();
-  const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isSmallScreen = useAppMediaQuery(theme.breakpoints.down("sm"));
 
   const leftColor = useMemo(
     () => (selected || open ? theme.palette.primary.main : "transparent"),

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 interface TabPanelProps {
@@ -12,7 +12,7 @@ export const TabPanel: React.FC<TabPanelProps> = ({
   value,
   index,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <div

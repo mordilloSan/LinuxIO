@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useEffect, useState } from "react";
 
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -28,7 +28,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   validation,
   isValidating = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   // Track which validation result has been dismissed. When a new validation
   // arrives (different object reference), visible resets automatically without

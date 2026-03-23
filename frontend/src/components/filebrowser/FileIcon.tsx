@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { FILE_TYPE_COLORS } from "@/constants/fileTypeColors";
@@ -171,7 +171,7 @@ const FileIcon = React.memo(
     size = 70,
     isSymlink = false,
   }: FileIconProps) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
     const iconName = isDirectory ? "mdi:folder" : getIconForType(filename);
     const defaultIconColor =
       theme.palette.mode === "dark"

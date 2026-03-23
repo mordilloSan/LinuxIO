@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, {
   useCallback,
   useMemo,
@@ -65,7 +65,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onCancelRename,
     borderRadius,
   }) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 

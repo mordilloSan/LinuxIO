@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -47,7 +47,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useMutation({
       onError: () => {
@@ -158,7 +158,7 @@ const ImageList: React.FC<ImageListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });

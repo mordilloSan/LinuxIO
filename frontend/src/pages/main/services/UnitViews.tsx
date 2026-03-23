@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -596,8 +595,8 @@ export function UnitTableView<T>({
   onDoubleClick,
   emptyMessage,
 }: UnitTableViewProps<T>) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
 
   return (
     <UnifiedCollapsibleTable
@@ -731,8 +730,8 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
-  const theme = useTheme();
-  const isCompactLayout = useMediaQuery(theme.breakpoints.down("md"));
+  const theme = useAppTheme();
+  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
   if (items.length === 0) {

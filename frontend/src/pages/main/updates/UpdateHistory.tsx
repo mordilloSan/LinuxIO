@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -22,7 +22,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   return result;
 };
 const UpdateHistory: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { data: rows = [] } = linuxio.dbus.get_update_history.useQuery();
   const columns: UnifiedTableColumn[] = [
     {

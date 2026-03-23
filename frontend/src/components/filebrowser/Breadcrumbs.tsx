@@ -1,5 +1,4 @@
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { useMemo } from "react";
 
 export interface BreadcrumbItem {
@@ -243,8 +242,8 @@ const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
   gallerySize = 4,
   onGallerySizeChange,
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const normalizedPath = normalizePath(path);
 
   const breadcrumbs = useMemo(() => {

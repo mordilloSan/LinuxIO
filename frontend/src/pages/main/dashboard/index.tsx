@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
 import { Popover } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useCallback, useMemo, useState } from "react";
 
 import DockerInfo from "./Docker";
@@ -60,7 +60,7 @@ const allCards = [
 ];
 
 const Dashboard: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { dockerAvailable } = useAuth();
   const [editMode, setEditMode] = useState(false);
   const [dashboardOrder, setDashboardOrder] = useConfigValue("dashboardOrder");

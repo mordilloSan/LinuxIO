@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Autocomplete } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, {
   useCallback,
   useEffect,
@@ -115,7 +115,7 @@ const getPriorityIcon = (priority: LogPriority) => {
 };
 
 const GeneralLogsPage: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { FC } from "react";
 
 import CreateInterfaceButton from "./CreateInterfaceButton";
@@ -7,7 +7,7 @@ import WireGuardDashboard from "./WireguardDashboard";
 import AppTypography from "@/components/ui/AppTypography";
 
 const Page: FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <>
       <div

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import {
   useState,
   useEffect,
@@ -126,7 +126,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         : createEditorState(filePath, initialContent);
     const { content, isDirty } = normalizedState;
     const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
-    const theme = useTheme();
+    const theme = useAppTheme();
     const isDarkMode = theme.palette.mode === "dark";
     const language = getLanguageMode(fileName);
     const aceTheme = isDarkMode ? "monokai" : "github";

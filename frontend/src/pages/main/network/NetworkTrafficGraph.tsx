@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useEffect, useImperativeHandle, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
@@ -14,7 +14,7 @@ const NetworkTrafficGraph = React.forwardRef<
   HTMLCanvasElement,
   NetworkTrafficGraphProps
 >(({ value, color, label }, ref) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { useState, useRef, useEffect, useEffectEvent } from "react";
 
@@ -15,7 +15,7 @@ interface DevToolsPanelProps {
  * Only rendered when import.meta.env.DEV is true.
  */
 export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -47,7 +47,7 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   summaryTitle,
   summaryStats = [],
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const sectionBackground = theme.codeBlock.background;
   const hasProgressStats = showProgressStats && progressStats.length > 0;
   const hasSummary = Boolean(summaryTitle) && summaryStats.length > 0;

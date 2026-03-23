@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -41,7 +41,7 @@ const InfoRow: React.FC<{
   label: string;
   value: React.ReactNode;
 }> = ({ label, value }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <div
       className="dd-info-row"
@@ -197,7 +197,7 @@ const ResourceCardHeader: React.FC<{
 // ─── main component ───────────────────────────────────────────────────────────
 
 const DockerDashboard: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [, setSearchParams] = useSearchParams();
   const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,

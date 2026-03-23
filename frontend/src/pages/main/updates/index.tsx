@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -14,7 +14,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 
 const Updates: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Query updates - use GetUpdatesBasic for fast initial load

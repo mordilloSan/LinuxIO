@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -28,7 +28,7 @@ const UpdateList: React.FC<Props> = ({
   currentPackage,
   isLoading,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, string>>({});
@@ -172,9 +172,8 @@ const UpdateList: React.FC<Props> = ({
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: theme.spacing(3),
-                  marginTop: theme.spacing(4),
-                  marginBottom: `-${theme.spacing(2)}`,
+                  gap: theme.spacing(1),
+                  marginTop: theme.spacing(1.5),
                 }}
               >
                 <Chip
@@ -182,9 +181,6 @@ const UpdateList: React.FC<Props> = ({
                   size="small"
                   variant="outlined"
                   onClick={() => toggleExpanded(idx, update.package_id)}
-                  style={{
-                    cursor: "pointer",
-                  }}
                 />
                 <Chip
                   label={
@@ -199,9 +195,6 @@ const UpdateList: React.FC<Props> = ({
                   disabled={!!isUpdating}
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
-                  }}
-                  style={{
-                    cursor: "pointer",
                   }}
                 />
               </div>

@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { useCallback, useState } from "react";
 
 import ComposeStackCard from "./ComposeStackCard";
@@ -65,8 +64,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
   viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );

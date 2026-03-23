@@ -1,5 +1,5 @@
 import { Menu, MenuItem } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -46,7 +46,7 @@ const TerminalDialog: React.FC<Props> = ({
     mouseY: number;
   } | null>(null);
   const { isOpen } = useStreamMux();
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   // Fetch available shells when dialog opens
   const {

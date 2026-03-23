@@ -1,5 +1,5 @@
 import { Menu, MenuItem } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -30,7 +30,7 @@ const TerminalXTerm: React.FC = () => {
   const fitAddon = useRef<FitAddon | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const unbindRef = useRef<(() => void) | null>(null);
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);

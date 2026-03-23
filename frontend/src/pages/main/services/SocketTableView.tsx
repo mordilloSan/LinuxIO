@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
@@ -55,7 +55,7 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
   onSelect,
   onDoubleClick,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <UnitTableView

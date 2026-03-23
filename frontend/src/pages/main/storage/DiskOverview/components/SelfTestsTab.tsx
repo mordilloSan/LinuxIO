@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import AppButton from "@/components/ui/AppButton";
@@ -34,7 +34,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   smartmontoolsAvailable,
   smartmontoolsReason,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
   return (
     <>

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -9,7 +9,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 
 const MotherBoardInfo: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const { data: motherboardInfo } =
     linuxio.system.get_motherboard_info.useQuery({

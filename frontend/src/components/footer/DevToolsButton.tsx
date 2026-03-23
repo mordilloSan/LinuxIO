@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import "@/components/cards/frosted-card.css";
@@ -8,7 +8,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
 
 const DevToolsButton: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [isOpen, setIsOpen] = React.useState(false);
 
   // Only show in development mode

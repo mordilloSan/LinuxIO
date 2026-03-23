@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useRef } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -26,7 +26,7 @@ interface ColorEntry {
 }
 
 function ThemeColorsSection() {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
@@ -252,7 +252,7 @@ interface ColorSwatchProps {
 }
 
 function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const inputRef = useRef<HTMLInputElement>(null);
   const normalized = toInputColor(color);
 

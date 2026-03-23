@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { List, ListItem, ListItemText } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   ReactNode,
@@ -86,7 +86,7 @@ const FileBrowser: React.FC = () => {
     (config.chunkSizeMB ?? 0) > 0
       ? (config.chunkSizeMB as number) * 1024 * 1024
       : STREAM_CHUNK_SIZE;
-  const theme = useTheme();
+  const theme = useAppTheme();
   const location = useLocation();
   const navigate = useNavigate();
 

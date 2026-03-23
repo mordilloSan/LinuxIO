@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
@@ -68,7 +68,7 @@ const formatAgo = (unix?: number) => {
   return `${d}d ago`;
 };
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
@@ -13,7 +13,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
   const usageRef = useRef(usage);
-  const theme = useTheme();
+  const theme = useAppTheme();
   const color = theme.palette.primary.main;
   const neutral = theme.chart.neutral;
 

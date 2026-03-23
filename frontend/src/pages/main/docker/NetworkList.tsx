@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -58,7 +58,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
   existingNames,
 }) => {
   const queryClient = useQueryClient();
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
@@ -176,7 +176,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const { mutateAsync: deleteNetwork, isPending: isDeleting } =
     linuxio.docker.delete_network.useMutation({
@@ -264,7 +264,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 10000,
   });

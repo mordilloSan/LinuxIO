@@ -1,5 +1,5 @@
 import { Autocomplete } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -31,7 +31,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   onClose,
   group,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,

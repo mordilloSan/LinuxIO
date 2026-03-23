@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -45,7 +45,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
   onExited,
   maxWidth = "md",
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <GeneralDialog
       open={open}

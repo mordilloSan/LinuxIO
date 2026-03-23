@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
@@ -54,7 +54,7 @@ function UnifiedCollapsibleTable<T>({
   emptyMessage = "No data available.",
 }: UnifiedCollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState<string | number | null>(null);
-  const theme = useTheme();
+  const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
 
   const headRowBg = alpha(theme.palette.text.primary, 0.08);

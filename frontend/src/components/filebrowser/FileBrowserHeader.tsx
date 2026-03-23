@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { ReactNode, useCallback } from "react";
 
 import IndexerDialog from "./IndexerDialog";
@@ -45,8 +44,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   searchQuery = "",
   onSearchChange = () => {},
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, isIndexing, openIndexerDialog } = useFileTransfers();

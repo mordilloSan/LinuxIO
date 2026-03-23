@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -62,7 +62,7 @@ interface ContainerCardProps {
 }
 
 const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
 
   // dialogs

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import type { PowerData } from "../types";
@@ -17,7 +17,7 @@ interface PowerStatesTabProps {
   power: PowerData;
 }
 export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <>
       <div

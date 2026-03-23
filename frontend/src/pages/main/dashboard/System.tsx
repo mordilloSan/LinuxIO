@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Link } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
@@ -25,7 +25,7 @@ interface SystemUpdatesResponse {
 }
 
 const SystemHealth = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const {
     data: updatesRaw,

@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 
 import UpdateDialog from "./UpdateDialog";
 
@@ -25,8 +24,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   updateInfo,
   onDismiss,
 }) => {
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const {
     startUpdate,
     resetUpdate,

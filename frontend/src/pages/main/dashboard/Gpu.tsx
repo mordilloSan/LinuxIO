@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -9,7 +9,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     data: gpus,
     isPending: isLoading,

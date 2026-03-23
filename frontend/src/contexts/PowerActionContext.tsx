@@ -1,5 +1,4 @@
 import { Backdrop } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, {
   createContext,
   useState,
@@ -26,7 +25,6 @@ export const PowerActionContext = createContext<
 export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const theme = useTheme();
   const navigate = useNavigate();
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);
 
@@ -88,8 +86,8 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
         <div
           style={{
             textAlign: "center",
-            paddingLeft: theme.spacing(3),
-            paddingRight: theme.spacing(3),
+            paddingLeft: "12px",
+            paddingRight: "12px",
           }}
         >
           <AppTypography variant="h5" component="div" gutterBottom>

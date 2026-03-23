@@ -1,4 +1,4 @@
-import { useMediaQuery, useTheme } from "@mui/material";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import React, { useState, useCallback } from "react";
 
 import AppCheckbox from "../ui/AppCheckbox";
@@ -168,8 +168,8 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     onConfirm(mode, recursive, nextOwner, nextGroup);
     onClose();
   }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   return (
     <FileBrowserDialog
       open={open}

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, {
   useState,
   useRef,
@@ -61,7 +61,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onConfirmRename,
   onCancelRename,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;

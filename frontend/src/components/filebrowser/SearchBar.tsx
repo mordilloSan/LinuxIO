@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useState, useCallback } from "react";
 
 import "./search-bar.css";
@@ -21,14 +21,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
   placeholder = "Search files...",
   disabled = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [isFocused, setIsFocused] = useState(false);
   const ribbonBackground = alpha(
-    theme.palette.grey[500],
+    theme.palette.text.secondary,
     theme.palette.mode === "dark" ? 0.16 : 0.1,
   );
   const ribbonHoverBackground = alpha(
-    theme.palette.grey[500],
+    theme.palette.text.secondary,
     theme.palette.mode === "dark" ? 0.24 : 0.18,
   );
   const focusRing = alpha(

@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, {
   useCallback,
   useEffect,
@@ -30,7 +30,7 @@ const ensureTrailingSlash = (path: string): string =>
   path.endsWith("/") ? path : `${path}/`;
 
 const DockerFolderSettingsSection: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [dockerFolder, setDockerFolder] = useConfigValue("dockerFolder");
   const {
     isEnabled: indexerEnabled,

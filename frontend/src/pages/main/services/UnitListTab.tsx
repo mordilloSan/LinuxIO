@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { useEffect, useMemo, useState } from "react";
 
 import type { UnitListItem } from "./UnitViews";
@@ -56,7 +56,7 @@ function UnitListTab<T extends UnitListItem>({
   renderCardsView,
   renderDetailPanel,
 }: UnitListTabProps<T>) {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [returnToTable, setReturnToTable] = useState(false);

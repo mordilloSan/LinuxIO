@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -46,7 +46,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
     linuxio.docker.delete_volume.useMutation({
       onError: (error: Error) => {
@@ -135,7 +135,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });

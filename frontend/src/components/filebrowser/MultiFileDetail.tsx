@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
@@ -49,7 +49,7 @@ const DetailRow: React.FC<{
   value: React.ReactNode;
   isLoading?: boolean;
 }> = ({ label, value, isLoading = false }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <div
@@ -94,7 +94,7 @@ const MultiFileItemRow: React.FC<{
   item: MultiFileDetailItem;
   onDownload: (path: string) => void;
 }> = ({ item, onDownload }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const baseBorderRadius =
     typeof theme.shape.borderRadius === "number"
       ? theme.shape.borderRadius
@@ -176,7 +176,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
   totalSize,
   isLoadingDetails,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   if (!multiItems?.length) {
     return null;

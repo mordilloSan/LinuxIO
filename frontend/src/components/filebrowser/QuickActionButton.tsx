@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { useAppTheme } from "@/theme";
 import React, { ReactNode } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -20,7 +20,7 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
   disabled,
   ariaLabel,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
 
   return (
