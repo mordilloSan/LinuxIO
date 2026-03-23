@@ -18,7 +18,7 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
-import AppTextField from "@/components/ui/AppTextField";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
@@ -456,14 +456,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
         marginBottom: theme.spacing(2),
       }}
     >
-      <AppTextField
-        size="small"
+      <AppSearchField
         placeholder="Search stacks…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{
-          width: 320,
-        }}
+        style={{ width: 320 }}
       />
       <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
     </div>

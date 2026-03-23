@@ -21,6 +21,7 @@ import AppPaper from "@/components/ui/AppPaper";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -610,8 +611,7 @@ const GeneralLogsPage: React.FC = () => {
           style={{ minWidth: 180 }}
         />
 
-        <AppTextField
-          size="small"
+        <AppSearchField
           label="Search logs"
           value={search}
           onChange={(event) => setSearch(event.target.value)}

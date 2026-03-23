@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppTextField from "@/components/ui/AppTextField";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
@@ -67,12 +67,11 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       titleContent={
         <>
           <Icon icon="mdi:magnify" width={20} height={20} />
-          <AppTextField
+          <AppSearchField
             variant="standard"
             placeholder="Search logs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            size="small"
             style={{ marginLeft: 8, flex: 1 }}
           />
         </>

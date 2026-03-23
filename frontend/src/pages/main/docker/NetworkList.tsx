@@ -30,6 +30,7 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import {
@@ -382,9 +383,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
           marginBottom: theme.spacing(2),
         }}
       >
-        <AppTextField
-          variant="outlined"
-          size="small"
+        <AppSearchField
           placeholder="Search networks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

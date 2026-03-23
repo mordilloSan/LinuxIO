@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import { AppTableCell } from "@/components/ui/AppTable";
-import AppTextField from "@/components/ui/AppTextField";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
@@ -291,9 +291,7 @@ const ImageList: React.FC<ImageListProps> = ({
           marginBottom: theme.spacing(2),
         }}
       >
-        <AppTextField
-          variant="outlined"
-          size="small"
+        <AppSearchField
           placeholder="Search images…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

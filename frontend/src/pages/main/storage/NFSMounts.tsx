@@ -31,6 +31,7 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
@@ -637,9 +638,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <AppTextField
-          variant="outlined"
-          size="small"
+        <AppSearchField
           placeholder="Search NFS mounts..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
