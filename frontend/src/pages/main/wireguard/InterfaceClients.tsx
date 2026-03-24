@@ -28,6 +28,63 @@ interface InterfaceDetailsProps {
   };
 }
 
+interface PeerCardRowProps {
+  label: string;
+  value: React.ReactNode;
+  wrap?: boolean;
+  noDivider?: boolean;
+}
+
+const PeerCardRow: React.FC<PeerCardRowProps> = ({
+  label,
+  value,
+  wrap = false,
+  noDivider = false,
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: wrap ? "flex-start" : "baseline",
+      justifyContent: "space-between",
+      gap: 8,
+      padding: "4px 0",
+      borderBottom: noDivider ? "none" : "1px solid var(--app-palette-divider)",
+    }}
+  >
+    <AppTypography
+      variant="caption"
+      color="text.secondary"
+      style={{
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        fontSize: "0.62rem",
+        flexShrink: 0,
+        paddingTop: wrap ? 2 : 0,
+      }}
+    >
+      {label}
+    </AppTypography>
+    <AppTypography
+      variant="body2"
+      fontWeight={500}
+      noWrap={!wrap}
+      style={{
+        marginLeft: "auto",
+        minWidth: 0,
+        textAlign: "right",
+        ...(wrap
+          ? {
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+            }
+          : {}),
+      }}
+    >
+      {value}
+    </AppTypography>
+  </div>
+);
+
 // --- small format helpers ---
 const formatFileSize = (n?: number) => {
   if (n == null) return "-";
@@ -283,65 +340,67 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                       </div>
                     </div>
 
-                    <AppTypography
-                      variant="body2"
-                      style={{
-                        marginTop: 2,
-                      }}
-                    >
-                      Handshake: {formatAgo(peer.last_handshake_unix)}
-                    </AppTypography>
-
-                    <AppTypography variant="body2">
-                      Rx: {formatFileSize(peer.rx_bytes)}{" "}
-                      <span
-                        style={{
-                          opacity: 0.7,
-                        }}
-                      >
-                        ({formatBps(peer.rx_bps)})
-                      </span>
-                    </AppTypography>
-
-                    <AppTypography variant="body2">
-                      Tx: {formatFileSize(peer.tx_bytes)}{" "}
-                      <span
-                        style={{
-                          opacity: 0.7,
-                        }}
-                      >
-                        ({formatBps(peer.tx_bps)})
-                      </span>
-                    </AppTypography>
-
-                    <AppTypography
-                      variant="body2"
-                      style={{
-                        marginTop: 4,
-                      }}
-                    >
-                      Allowed IPs:{" "}
-                      {(peer.allowed_ips && peer.allowed_ips.join(", ")) || "-"}
-                    </AppTypography>
-                    <AppTypography
-                      variant="body2"
-                      style={{
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      Endpoint: {peer.endpoint || "-"}
-                    </AppTypography>
-                    <AppTypography
-                      variant="body2"
-                      style={{
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      Preshared Key: {peer.preshared_key || "-"}
-                    </AppTypography>
-                    <AppTypography variant="body2">
-                      Keep Alive: {peer.persistent_keepalive ?? "-"}
-                    </AppTypography>
+                    <div style={{ marginTop: 6 }}>
+                      <PeerCardRow
+                        label="Handshake"
+                        value={formatAgo(peer.last_handshake_unix)}
+                      />
+                      <PeerCardRow
+                        label="Rx"
+                        value={
+                          <>
+                            {formatFileSize(peer.rx_bytes)}{" "}
+                            <span
+                              style={{
+                                color: "var(--app-palette-text-secondary)",
+                                fontWeight: 400,
+                              }}
+                            >
+                              ({formatBps(peer.rx_bps)})
+                            </span>
+                          </>
+                        }
+                      />
+                      <PeerCardRow
+                        label="Tx"
+                        value={
+                          <>
+                            {formatFileSize(peer.tx_bytes)}{" "}
+                            <span
+                              style={{
+                                color: "var(--app-palette-text-secondary)",
+                                fontWeight: 400,
+                              }}
+                            >
+                              ({formatBps(peer.tx_bps)})
+                            </span>
+                          </>
+                        }
+                      />
+                      <PeerCardRow
+                        label="Allowed IPs"
+                        value={
+                          (peer.allowed_ips && peer.allowed_ips.join(", ")) ||
+                          "-"
+                        }
+                        wrap
+                      />
+                      <PeerCardRow
+                        label="Endpoint"
+                        value={peer.endpoint || "-"}
+                        wrap
+                      />
+                      <PeerCardRow
+                        label="Preshared Key"
+                        value={peer.preshared_key || "-"}
+                        wrap
+                      />
+                      <PeerCardRow
+                        label="Keep Alive"
+                        value={peer.persistent_keepalive ?? "-"}
+                        noDivider
+                      />
+                    </div>
                   </AppCardContent>
                 </FrostedCard>
               </AppGrid>

@@ -27,6 +27,63 @@ interface InterfaceCardProps {
   handleAddPeer: (name: string, peerData: any) => void;
 }
 
+interface InterfaceCardRowProps {
+  label: string;
+  value: React.ReactNode;
+  wrap?: boolean;
+  noDivider?: boolean;
+}
+
+const InterfaceCardRow: React.FC<InterfaceCardRowProps> = ({
+  label,
+  value,
+  wrap = false,
+  noDivider = false,
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: wrap ? "flex-start" : "baseline",
+      justifyContent: "space-between",
+      gap: 8,
+      padding: "4px 0",
+      borderBottom: noDivider ? "none" : "1px solid var(--app-palette-divider)",
+    }}
+  >
+    <AppTypography
+      variant="caption"
+      color="text.secondary"
+      style={{
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        fontSize: "0.62rem",
+        flexShrink: 0,
+        paddingTop: wrap ? 2 : 0,
+      }}
+    >
+      {label}
+    </AppTypography>
+    <AppTypography
+      variant="body2"
+      fontWeight={500}
+      noWrap={!wrap}
+      style={{
+        marginLeft: "auto",
+        minWidth: 0,
+        textAlign: "right",
+        ...(wrap
+          ? {
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+            }
+          : {}),
+      }}
+    >
+      {value}
+    </AppTypography>
+  </div>
+);
+
 const InterfaceCard: React.FC<InterfaceCardProps> = ({
   iface,
   selectedInterface,
@@ -77,7 +134,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               alignItems: "center",
             }}
           >
-            <AppTypography variant="h6" style={{ fontSize: "1.1rem" }}>
+            <AppTypography variant="subtitle1" fontWeight={700}>
               {iface.name}
             </AppTypography>
             <div>
@@ -148,15 +205,15 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               </AppTooltip>
             </div>
           </div>
-          <AppTypography variant="body2" color="text.secondary">
-            Address: {iface.address}
-          </AppTypography>
-          <AppTypography variant="body2" color="text.secondary">
-            Port: {iface.port}
-          </AppTypography>
-          <AppTypography variant="body2" color="text.secondary">
-            Peers: {iface.peerCount}
-          </AppTypography>
+          <div style={{ marginTop: 6 }}>
+            <InterfaceCardRow label="Address" value={iface.address} wrap />
+            <InterfaceCardRow label="Port" value={iface.port} />
+            <InterfaceCardRow
+              label="Peers"
+              value={iface.peerCount}
+              noDivider
+            />
+          </div>
         </AppCardContent>
       </FrostedCard>
     </motion.div>
