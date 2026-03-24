@@ -9,7 +9,7 @@ import React, {
 import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
-import ComponentLoader from "../loaders/ComponentLoader";
+import AppCircularProgress from "../ui/AppCircularProgress";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
@@ -264,6 +264,24 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         cursor: hasPorts ? "pointer" : "default",
       }}
     >
+      {/* Loading overlay */}
+      {isActionPending && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "inherit",
+            backgroundColor: "rgba(0,0,0,0.35)",
+            zIndex: 1,
+          }}
+        >
+          <AppCircularProgress size={32} />
+        </div>
+      )}
+
       {/* Status dot */}
       <AppTooltip title={getStatusTooltip(container)} placement="top" arrow>
         <div
@@ -434,26 +452,20 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
       {/* Metrics area: full width */}
       <div style={{ marginTop: 8, width: "100%" }}>
-        {isActionPending ? (
-          <ComponentLoader />
-        ) : (
-          <>
-            <MetricBar
-              label="CPU"
-              percent={cpuPercent}
-              color={theme.palette.primary.main}
-              tooltip="CPU Usage"
-              rightLabel={`${cpuPercent.toFixed(1)}%`}
-            />
-            <MetricBar
-              label="MEM"
-              percent={memPercent}
-              color={theme.palette.primary.main}
-              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-              rightLabel={formatFileSize(memUsage)}
-            />
-          </>
-        )}
+        <MetricBar
+          label="CPU"
+          percent={cpuPercent}
+          color={theme.palette.primary.main}
+          tooltip="CPU Usage"
+          rightLabel={`${cpuPercent.toFixed(1)}%`}
+        />
+        <MetricBar
+          label="MEM"
+          percent={memPercent}
+          color={theme.palette.primary.main}
+          tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+          rightLabel={formatFileSize(memUsage)}
+        />
       </div>
 
       {/* Auto-update toggle */}
