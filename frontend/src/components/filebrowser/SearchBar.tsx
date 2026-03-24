@@ -6,7 +6,6 @@ import "./search-bar.css";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 
 interface SearchBarProps {
   value: string;
@@ -23,18 +22,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const theme = useAppTheme();
   const [isFocused, setIsFocused] = useState(false);
-  const ribbonBackground = alpha(
-    theme.palette.text.secondary,
-    theme.palette.mode === "dark" ? 0.16 : 0.1,
-  );
-  const ribbonHoverBackground = alpha(
-    theme.palette.text.secondary,
-    theme.palette.mode === "dark" ? 0.24 : 0.18,
-  );
-  const focusRing = alpha(
-    theme.palette.primary.main,
-    theme.palette.mode === "dark" ? 0.34 : 0.22,
-  );
 
   const handleClear = useCallback(() => {
     onChange("");
@@ -58,13 +45,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
       size="small"
       fullWidth
       className="search-bar"
-      style={{
-        ["--search-bar-bg" as string]: ribbonBackground,
-        ["--search-bar-bg-hover" as string]: ribbonHoverBackground,
-        ["--search-bar-focus-ring" as string]: isFocused
-          ? `0 0 0 1px ${focusRing}`
-          : "none",
-      }}
       startAdornment={
         <Icon
           icon="mdi:magnify"
