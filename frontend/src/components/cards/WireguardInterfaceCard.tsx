@@ -208,11 +208,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
           <div style={{ marginTop: 6 }}>
             <InterfaceCardRow label="Address" value={iface.address} wrap />
             <InterfaceCardRow label="Port" value={iface.port} />
-            <InterfaceCardRow
-              label="Peers"
-              value={iface.peerCount}
-              noDivider
-            />
+            <InterfaceCardRow label="Peers" value={iface.peerCount} noDivider />
           </div>
         </AppCardContent>
       </FrostedCard>
