@@ -84,7 +84,16 @@ const Dashboard: React.FC = () => {
           <Navbar onDrawerToggle={toggleMobileOpen} />
 
           {updateInfo?.available && (
-            <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
+            <div
+              style={{
+                paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
+                paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+                paddingTop: 0,
+                paddingBottom: theme.spacing(1),
+              }}
+            >
+              <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
+            </div>
           )}
 
           <div
