@@ -314,9 +314,9 @@ lint-only:
 	  g1=("$${entries[@]:0:$$chunk}"); \
 	  g2=("$${entries[@]:$$chunk:$$chunk}"); \
 	  g3=("$${entries[@]:$$((chunk*2))}"); \
-	  npx eslint --fix --cache --cache-location .eslintcache-a "$${g1[@]}" & pid_a=$$!; \
-	  npx eslint --fix --cache --cache-location .eslintcache-b "$${g2[@]}" & pid_b=$$!; \
-	  npx eslint --fix --cache --cache-location .eslintcache-c "$${g3[@]}" & pid_c=$$!; \
+	  ./node_modules/.bin/eslint --fix --cache --cache-location .eslintcache-a "$${g1[@]}" & pid_a=$$!; \
+	  ./node_modules/.bin/eslint --fix --cache --cache-location .eslintcache-b "$${g2[@]}" & pid_b=$$!; \
+	  ./node_modules/.bin/eslint --fix --cache --cache-location .eslintcache-c "$${g3[@]}" & pid_c=$$!; \
 	  failed=0; \
 	  wait $$pid_a || failed=1; \
 	  wait $$pid_b || failed=1; \
@@ -326,7 +326,7 @@ lint-only:
 
 tsc-only:
 	@echo "🔎 Running TypeScript type checks..."
-	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript checks passed!"'
+	@bash -c 'cd frontend && ./node_modules/.bin/tsc && echo "✅ TypeScript checks passed!"'
 
 golint-only:
 	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
