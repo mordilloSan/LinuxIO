@@ -83,6 +83,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
                 anchorEl={anchorEl}
                 anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
                 transformOrigin={{ vertical: "top", horizontal: "right" }}
+                minWidth="unset"
               >
                 <div className="tab-selector__mobile-actions">
                   {rightContent}

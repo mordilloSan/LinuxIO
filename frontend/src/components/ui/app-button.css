@@ -147,3 +147,20 @@
 .app-btn--dialog-action:disabled {
   opacity: 0.5;
 }
+
+/* ── mobile: hide text labels, keep icons only ─── */
+@media (max-width: 769.95px) {
+  .app-btn__label {
+    display: none;
+  }
+
+  .app-btn:has(.app-btn__label) {
+    min-width: unset;
+    padding-inline: 8px;
+  }
+
+  .app-btn:has(.app-btn__label) .app-btn__icon {
+    margin-right: 0;
+    margin-left: 0;
+  }
+}

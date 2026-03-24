@@ -54,6 +54,7 @@ export interface AppButtonProps extends Omit<
   size?: ButtonSize;
   startIcon?: React.ReactNode;
   fullWidth?: boolean;
+  keepTextOnMobile?: boolean;
 }
 
 const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
@@ -64,6 +65,7 @@ const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
       size = "medium",
       startIcon,
       fullWidth,
+      keepTextOnMobile = false,
       className,
       style,
       children,
@@ -100,7 +102,11 @@ const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
         {...rest}
       >
         {startIcon && <span className="app-btn__icon">{startIcon}</span>}
-        {children}
+        {startIcon && !keepTextOnMobile ? (
+          <span className="app-btn__label">{children}</span>
+        ) : (
+          children
+        )}
       </button>
     );
   },

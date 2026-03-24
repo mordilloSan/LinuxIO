@@ -186,6 +186,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       anchorEl={actionsAnchorEl}
                       anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
                       transformOrigin={{ vertical: "top", horizontal: "right" }}
+                      minWidth="unset"
                     >
                       <div style={{ display: "flex", gap: 8, padding: "4px 8px" }}>
                         <AppTooltip title="Switch view">
