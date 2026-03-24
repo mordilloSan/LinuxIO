@@ -1,10 +1,11 @@
-import { Chip, TableCell } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
 
 import type { Socket } from "@/api";
+import Chip from "@/components/ui/AppChip";
+import { AppTableCell } from "@/components/ui/AppTable";
+import { useAppTheme } from "@/theme";
 
 interface SocketTableViewProps {
   sockets: Socket[];
@@ -19,7 +20,7 @@ const desktopColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "120px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const, width: "220px" },
   { field: "listen", headerName: "Listen", align: "left" as const },
@@ -43,7 +44,7 @@ const mobileColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "110px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const },
 ];
@@ -54,7 +55,7 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
   onSelect,
   onDoubleClick,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <UnitTableView
@@ -89,7 +90,7 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
                   fontSize: "0.6rem",
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
-                  color: "var(--mui-palette-text-secondary)",
+                  color: "var(--app-palette-text-secondary)",
                   width: 80,
                   flexShrink: 0,
                   paddingTop: 2,
@@ -106,14 +107,14 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
       )}
       renderMainRow={(socket, isMobile) => (
         <>
-          <TableCell sx={{ paddingLeft: "8px" }}>
+          <AppTableCell style={{ paddingLeft: 8 }}>
             {statusDot(socket.active_state)}
             {socket.active_state}
-          </TableCell>
-          <TableCell>{socket.name}</TableCell>
+          </AppTableCell>
+          <AppTableCell>{socket.name}</AppTableCell>
           {!isMobile && (
             <>
-              <TableCell>
+              <AppTableCell>
                 <div
                   style={{
                     display: "flex",
@@ -127,14 +128,14 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
                           key={addr}
                           label={addr}
                           size="small"
-                          variant="outlined"
+                          variant="soft"
                         />
                       ))
                     : "—"}
                 </div>
-              </TableCell>
-              <TableCell align="right">{socket.n_connections}</TableCell>
-              <TableCell align="right">{socket.n_accepted}</TableCell>
+              </AppTableCell>
+              <AppTableCell align="right">{socket.n_connections}</AppTableCell>
+              <AppTableCell align="right">{socket.n_accepted}</AppTableCell>
             </>
           )}
         </>

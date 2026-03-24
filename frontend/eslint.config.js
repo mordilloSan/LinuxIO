@@ -6,7 +6,7 @@ import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import prettier from "eslint-plugin-prettier";
 import prettierConfig from "eslint-config-prettier";
-import importPlugin from "eslint-plugin-import";
+import importPlugin from "eslint-plugin-import-x";
 import unusedImports from "eslint-plugin-unused-imports";
 import globals from "globals";
 import tanstackQuery from "@tanstack/eslint-plugin-query";
@@ -57,38 +57,32 @@ export default [
       react,
       "react-hooks": reactHooks,
       "react-compiler": reactCompiler,
-      import: importPlugin,
+      "import-x": importPlugin,
       "unused-imports": unusedImports,
     },
     settings: {
       react: {
-        version: "detect",
+        // eslint-plugin-react's detect path is not ESLint 10-safe yet in this setup.
+        version: "19.2",
       },
     },
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-
-      // React Compiler rule (from the correct plugin!)
       "react-compiler/react-compiler": "error",
-      "react/react-in-jsx-scope": "off",
+      "react/react-in-jsx-scope": "warn",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
       "no-unused-vars": "off",
       "unused-imports/no-unused-imports": "warn",
-      "unused-imports/no-unused-vars": [
-        "warn",
-        {
+      "unused-imports/no-unused-vars": [ "warn", {
           vars: "all",
           varsIgnorePattern: "^_",
           args: "after-used",
           argsIgnorePattern: "^_",
-        },
-      ],
+        },],
 
-      "import/order": [
-        "warn",
-        {
+      "import-x/order": [ "warn", {
           groups: [
             "builtin",
             "external",

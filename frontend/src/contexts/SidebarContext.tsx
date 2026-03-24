@@ -1,8 +1,9 @@
-import { useMediaQuery, useTheme as useMuiTheme } from "@mui/material";
 import React, { createContext, useState, useCallback, useMemo } from "react";
 
 import { drawerWidth, collapsedDrawerWidth } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppMediaQuery } from "@/theme";
+import breakpoints from "@/theme/breakpoints";
 
 export interface SidebarContextType {
   collapsed: boolean;
@@ -21,8 +22,7 @@ export const SidebarContext = createContext<SidebarContextType | undefined>(
 export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const muiTheme = useMuiTheme();
-  const isDesktop = useMediaQuery(muiTheme.breakpoints.up("md"));
+  const isDesktop = useAppMediaQuery(`(min-width:${breakpoints.values.md}px)`);
 
   // persisted collapsed flag
   const [collapsed, setCollapsed] = useConfigValue("sidebarCollapsed");

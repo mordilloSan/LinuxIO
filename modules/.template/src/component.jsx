@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, useTheme } from '@mui/material';
-import RootCard from '@/components/cards/RootCard';
-import MetricBar from '@/components/gauge/MetricBar';
-import { formatFileSize } from '@/utils/formaters';
+
+import { bindStreamHandlers, decodeString, openExecStream } from '@/api';
 import linuxio from '@/api/react-query';
-import { openExecStream, bindStreamHandlers, decodeString } from '@/api';
+import RootCard from '@/components/cards/RootCard';
+import AppButton from '@/components/ui/AppButton';
+import { useAppTheme } from '@/theme';
+import { formatFileSize } from '@/utils/formaters';
+
+import './component.css';
 
 function ExampleModule() {
   const [message, setMessage] = useState('');
   const [dirListing, setDirListing] = useState('');
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const {
     data: cpuInfo,
@@ -91,140 +94,120 @@ function ExampleModule() {
   };
 
   return (
-    <Box sx={{ p: 4 }}>
-      <Typography variant="h3" gutterBottom>
-         Example Module
-      </Typography>
+    <div className="module-shell">
+      <header className="module-header">
+        <h1 className="module-title">Example Module</h1>
+        <p className="module-copy">
+          This example uses app-owned components, semantic HTML, and the
+          LinuxIO theme hook instead of MUI or Emotion.
+        </p>
+      </header>
 
-      <Typography variant="body1" sx={{ mb: 3, color: 'text.secondary' }}>
-        This is a demonstration module showing how to create LinuxIO modules with full access
-        to components, theme, and utilities.
-      </Typography>
+      <div className="module-grid">
+        <RootCard className="module-card">
+          <h2 className="module-section-title">LinuxIO Components</h2>
+          <p className="module-copy">
+            Use shared app primitives where they add value, then keep the rest
+            of the module in plain React and CSS.
+          </p>
 
-      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-        <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
-          <RootCard sx={{ height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              LinuxIO Components
-            </Typography>
-
-            <Typography gutterBottom>
-              This module has full access to LinuxIO components and theme!
-            </Typography>
-
-            <MetricBar
-              label="Example Metric"
-              percent={75}
-              color={theme.palette.primary.main}
-            />
-
-            <Button
-              variant="contained"
-              onClick={handleClick}
-              sx={{ mt: 2 }}
-              fullWidth
+          <div className="module-metric">
+            <div className="module-metric__row">
+              <span>Example Metric</span>
+              <span>75%</span>
+            </div>
+            <div
+              className="module-progress"
+              style={{
+                '--module-progress-color': theme.palette.primary.main,
+                '--module-progress-track': theme.alpha(
+                  theme.palette.primary.main,
+                  0.18,
+                ),
+                '--module-progress-value': '75%',
+              }}
             >
-              Click Me
-            </Button>
+              <div className="module-progress__bar" />
+            </div>
+          </div>
 
-            {message && (
-              <Typography sx={{ mt: 2, color: 'success.main' }}>
-                 {message}
-              </Typography>
-            )}
-          </RootCard>
-        </Box>
+          <AppButton variant="contained" onClick={handleClick} fullWidth>
+            Click Me
+          </AppButton>
 
-        <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
-          <RootCard sx={{ height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              LinuxIO API Demo
-            </Typography>
+          {message ? <p className="module-feedback">{message}</p> : null}
+        </RootCard>
 
-            <Button
-              variant="outlined"
-              onClick={getCpuInfo}
-              sx={{ mt: 1 }}
-              fullWidth
+        <RootCard className="module-card">
+          <h2 className="module-section-title">LinuxIO API Demo</h2>
+
+          <div className="module-actions">
+            <AppButton variant="outlined" onClick={getCpuInfo} fullWidth>
+              Get CPU Info
+            </AppButton>
+            <AppButton variant="outlined" onClick={listDirectory} fullWidth>
+              List /home
+            </AppButton>
+            <AppButton variant="outlined" onClick={listDirectory2} fullWidth>
+              Show Current User
+            </AppButton>
+          </div>
+
+          {cpuInfo ? (
+            <pre
+              className="module-pre"
+              style={{
+                backgroundColor: theme.palette.background.default,
+              }}
             >
-              Get CPU Info (system handler)
-            </Button>
+              {JSON.stringify(cpuInfo, null, 2)}
+            </pre>
+          ) : null}
 
-            <Button
-              variant="outlined"
-              onClick={listDirectory}
-              sx={{ mt: 1 }}
-              fullWidth
+          {dirListing ? (
+            <pre
+              className="module-pre"
+              style={{
+                backgroundColor: theme.palette.background.default,
+              }}
             >
-              List /home (exec stream)
-            </Button>
+              {dirListing}
+            </pre>
+          ) : null}
+        </RootCard>
 
-            <Button
-              variant="outlined"
-              onClick={listDirectory2}
-              sx={{ mt: 1 }}
-              fullWidth
-            >
-              who is the user (whoami)
-            </Button>
+        <RootCard className="module-card">
+          <h2 className="module-section-title">Utilities and Theme</h2>
 
-            {cpuInfo && (
-              <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                  {JSON.stringify(cpuInfo, null, 2)}
-                </Typography>
-              </Box>
-            )}
+          <dl className="module-meta">
+            <div className="module-meta__row">
+              <dt>Formatted file size</dt>
+              <dd>{formatFileSize(1073741824)}</dd>
+            </div>
+            <div className="module-meta__row">
+              <dt>Theme mode</dt>
+              <dd>{theme.palette.mode}</dd>
+            </div>
+            <div className="module-meta__row">
+              <dt>Primary color</dt>
+              <dd className="module-color-value">
+                {theme.palette.primary.main}
+                <span
+                  className="module-color-swatch"
+                  style={{ backgroundColor: theme.palette.primary.main }}
+                />
+              </dd>
+            </div>
+          </dl>
 
-            {dirListing && (
-              <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', whiteSpace: 'pre-wrap' }}>
-                  {dirListing}
-                </Typography>
-              </Box>
-            )}
-
-          </RootCard>
-        </Box>
-
-        <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
-          <RootCard sx={{ height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Utilities & Theme
-            </Typography>
-
-            <Typography variant="body2" gutterBottom>
-              <strong>Formatted file size:</strong> {formatFileSize(1073741824)}
-            </Typography>
-
-            <Typography variant="body2" gutterBottom>
-              <strong>Theme mode:</strong> {theme.palette.mode}
-            </Typography>
-
-            <Typography variant="body2" gutterBottom>
-              <strong>Primary color:</strong>{' '}
-              <Box
-                component="span"
-                sx={{
-                  display: 'inline-block',
-                  width: 16,
-                  height: 16,
-                  bgcolor: theme.palette.primary.main,
-                  borderRadius: 1,
-                  verticalAlign: 'middle',
-                  ml: 1,
-                }}
-              />
-            </Typography>
-
-            <Typography variant="body2" sx={{ mt: 2, fontFamily: 'monospace', fontSize: '0.75rem' }}>
-               Edit this module in:<br />
-              modules/example-module/src/component.jsx
-            </Typography>
-          </RootCard>
-        </Box>
-      </Box>
-    </Box>
+          <p className="module-code">
+            Edit this module in:
+            <br />
+            <code>modules/example-module/src/component.jsx</code>
+          </p>
+        </RootCard>
+      </div>
+    </div>
   );
 }
 

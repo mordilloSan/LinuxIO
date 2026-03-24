@@ -1,5 +1,6 @@
-import { CircularProgress } from "@mui/material";
 import React from "react";
+
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 
 function ComponentLoader() {
   return (
@@ -11,7 +12,7 @@ function ComponentLoader() {
         minHeight: "100%",
       }}
     >
-      <CircularProgress color="primary" />
+      <AppCircularProgress />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import ExampleModule from './component.jsx';
 
 // Declare global type for production bundle mode

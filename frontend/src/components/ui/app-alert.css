@@ -1,0 +1,87 @@
+/* ── AppAlert ────────────────────────────────────────── */
+.app-alert {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.43;
+  letter-spacing: 0.01071em;
+}
+
+/* ── icon ──────────────────────────────────────── */
+.app-alert__icon {
+  flex-shrink: 0;
+  margin-right: 12px;
+  padding-top: 7px;
+  display: flex;
+  opacity: 0.9;
+}
+
+/* ── message ──────────────────────────────────── */
+.app-alert__message {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+/* ── title ────────────────────────────────────── */
+.app-alert__title {
+  font-weight: 500;
+  margin-top: -2px;
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+/* ── action ───────────────────────────────────── */
+.app-alert__action {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 16px;
+  margin-right: -8px;
+}
+
+/* ── close button ─────────────────────────────── */
+.app-alert__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  margin-left: 8px;
+  margin-right: -8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.app-alert__close:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* ── severity colors ──────────────────────────── */
+.app-alert--info {
+  color: var(--color-info);
+  background-color: color-mix(in srgb, var(--color-info) 12%, var(--color-bg));
+}
+
+.app-alert--warning {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
+}
+
+.app-alert--error {
+  color: var(--color-error);
+  background-color: color-mix(in srgb, var(--color-error) 12%, var(--color-bg));
+}
+
+.app-alert--success {
+  color: var(--color-success);
+  background-color: color-mix(in srgb, var(--color-success) 12%, var(--color-bg));
+}

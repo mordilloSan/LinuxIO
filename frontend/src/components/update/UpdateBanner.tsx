@@ -1,11 +1,12 @@
-import CloseIcon from "@mui/icons-material/Close";
-import DownloadIcon from "@mui/icons-material/Download";
-import { Alert, Button, IconButton, Link, useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 
 import UpdateDialog from "./UpdateDialog";
 
+import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 
 interface UpdateInfo {
   available: boolean;
@@ -23,8 +24,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   updateInfo,
   onDismiss,
 }) => {
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const {
     startUpdate,
     resetUpdate,
@@ -80,20 +81,26 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         onContinue={handleContinue}
         targetVersion={targetVersion}
       />
-      <Alert
+      <AppAlert
         severity="info"
-        sx={{ mx: { xs: 6, md: 8 }, mt: 0, mb: 0, borderRadius: 2 }}
-        slotProps={{ message: { sx: { width: "100%", p: 0 } } }}
+        style={{
+          marginInline: 64,
+          marginTop: 0,
+          marginBottom: 0,
+          borderRadius: 16,
+          width: "100%",
+          padding: 0,
+        }}
         action={
-          <IconButton
+          <AppIconButton
             aria-label="close"
             color="inherit"
             size="small"
             onClick={onDismiss}
             disabled={isUpdating}
           >
-            <CloseIcon fontSize="small" />
-          </IconButton>
+            <Icon icon="mdi:close" width={18} height={18} />
+          </AppIconButton>
         }
       >
         <div
@@ -120,34 +127,41 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               gap: theme.spacing(1),
             }}
           >
-            <Button
+            <AppButton
               variant="contained"
               size="small"
-              startIcon={!isUpdating ? <DownloadIcon /> : null}
+              startIcon={
+                !isUpdating ? (
+                  <Icon icon="mdi:download" width={20} height={20} />
+                ) : null
+              }
               onClick={handleUpdate}
               disabled={isUpdating}
-              sx={{ whiteSpace: "nowrap" }}
+              style={{ whiteSpace: "nowrap" }}
             >
               {isUpdating ? "Updating..." : "Update Now"}
-            </Button>
+            </AppButton>
 
             {updateInfo.release_url && (
-              <Button
-                variant="outlined"
-                size="small"
-                component={Link}
+              <a
                 href={updateInfo.release_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                disabled={isUpdating}
-                sx={{ whiteSpace: "nowrap" }}
+                style={{ textDecoration: "none" }}
               >
-                Release Notes
-              </Button>
+                <AppButton
+                  variant="outlined"
+                  size="small"
+                  disabled={isUpdating}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  Release Notes
+                </AppButton>
+              </a>
             )}
           </div>
         </div>
-      </Alert>
+      </AppAlert>
     </>
   );
 };

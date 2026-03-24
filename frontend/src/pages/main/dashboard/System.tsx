@@ -1,12 +1,12 @@
-import GppGoodOutlinedIcon from "@mui/icons-material/GppGoodOutlined";
-import SecurityUpdateWarningIcon from "@mui/icons-material/SecurityUpdateWarning";
-import { Link, Typography, useTheme } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface Update {
   package_id: string;
@@ -24,7 +24,7 @@ interface SystemUpdatesResponse {
 }
 
 const SystemHealth = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const {
     data: updatesRaw,
@@ -55,11 +55,11 @@ const SystemHealth = () => {
   const distro = distroInfo?.platform || "Unknown";
 
   let statusColor = theme.palette.success.dark;
-  let IconComponent = GppGoodOutlinedIcon;
+  let iconName = "mdi:shield-check-outline";
   let iconLink = "/updates";
   if (totalPackages > 0) {
     statusColor = theme.palette.warning.main;
-    IconComponent = SecurityUpdateWarningIcon;
+    iconName = "mdi:shield-alert-outline";
   }
 
   const stats2 = (
@@ -67,14 +67,12 @@ const SystemHealth = () => {
       {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
-        <Link
-          component={RouterLink}
+        <RouterLink
           to={iconLink}
-          underline="hover"
-          color="inherit"
+          style={{ color: "inherit", textDecoration: "none" }}
         >
-          <IconComponent sx={{ fontSize: 100, color: statusColor }} />
-        </Link>
+          <Icon icon={iconName} width={100} height={100} color={statusColor} />
+        </RouterLink>
       )}
     </div>
   );
@@ -93,31 +91,21 @@ const SystemHealth = () => {
         {
           label: "Updates",
           value: (
-            <Link
-              component={RouterLink}
-              to="/updates"
-              underline="hover"
-              color="inherit"
-            >
+            <RouterLink to="/updates" style={{ color: "inherit" }}>
               {!systemHealth && (loadingHealth || fetchingHealth)
                 ? "Loading..."
                 : totalPackages > 0
                   ? `${totalPackages} available`
                   : "None available"}
-            </Link>
+            </RouterLink>
           ),
         },
         {
           label: "Services",
           value: (
-            <Link
-              component={RouterLink}
-              to="/services"
-              underline="hover"
-              color="inherit"
-            >
+            <RouterLink to="/services" style={{ color: "inherit" }}>
               {`${running}/${units} running`}
-            </Link>
+            </RouterLink>
           ),
         },
       ].map(({ label, value }, index, rows) => (
@@ -132,14 +120,14 @@ const SystemHealth = () => {
             borderBottom:
               index === rows.length - 1
                 ? "none"
-                : "1px solid var(--mui-palette-divider)",
+                : "1px solid var(--app-palette-divider)",
             gap: theme.spacing(1),
           }}
         >
-          <Typography
+          <AppTypography
             variant="caption"
             color="text.secondary"
-            sx={{
+            style={{
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               fontSize: "0.62rem",
@@ -147,10 +135,10 @@ const SystemHealth = () => {
             }}
           >
             {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
+          </AppTypography>
+          <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
-          </Typography>
+          </AppTypography>
         </div>
       ))}
     </div>

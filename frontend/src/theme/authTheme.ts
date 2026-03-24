@@ -1,33 +1,36 @@
-import { createTheme } from "@mui/material/styles";
+import { type AppTheme, buildAppTheme } from "@/theme";
 
-const authTheme = createTheme({
-  palette: {
-    mode: "dark",
-    primary: {
-      main: "#407AD6",
-      light: "#6395E0",
-      dark: "#2F65CB",
-      contrastText: "#FFF",
-    },
-    secondary: {
-      main: "#6395E0",
-      contrastText: "#FFF",
-    },
-    background: {
-      default: "#1B2635",
-      paper: "#233044",
-    },
-    text: {
-      primary: "rgba(255, 255, 255, 0.95)",
-      secondary: "rgba(255, 255, 255, 0.6)",
-    },
-  },
-  shape: { borderRadius: 16 },
-  typography: {
-    fontFamily: '"Space Grotesk", "Sora", sans-serif',
-    button: { textTransform: "none", fontWeight: 600 },
-    h4: { fontWeight: 600, letterSpacing: "-0.02em" },
+const authThemeBase = buildAppTheme({
+  theme: "DARK",
+  primaryColor: "#407AD6",
+  themeColors: {
+    backgroundDefault: "#1B2635",
+    backgroundPaper: "#233044",
+    footerBackground: "#1B2635",
+    headerBackground: "#1B2635",
+    sidebarBackground: "#1B2635",
+    cardBackground: "#233044",
   },
 });
+
+const authTheme: AppTheme = {
+  ...authThemeBase,
+  shape: {
+    borderRadius: 16,
+  },
+  typography: {
+    ...authThemeBase.typography,
+    fontFamily: '"Space Grotesk", "Sora", sans-serif',
+    h4: {
+      ...authThemeBase.typography.h4,
+      fontWeight: 600,
+      letterSpacing: "-0.02em",
+    },
+    button: {
+      textTransform: "none",
+      fontWeight: 600,
+    },
+  },
+};
 
 export default authTheme;

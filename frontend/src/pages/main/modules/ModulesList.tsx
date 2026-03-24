@@ -1,4 +1,3 @@
-import { Box, Grid, Alert } from "@mui/material";
 import React, { useState } from "react";
 
 import ModuleCard from "./ModuleCard";
@@ -6,6 +5,8 @@ import ModuleDetailsDrawer from "./ModuleDetailsDrawer";
 
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert from "@/components/ui/AppAlert";
+import AppGrid from "@/components/ui/AppGrid";
 
 const ModulesList: React.FC = () => {
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
@@ -34,39 +35,40 @@ const ModulesList: React.FC = () => {
 
   if (isError) {
     return (
-      <Alert severity="error">
+      <AppAlert severity="error">
         {error instanceof Error ? error.message : "Failed to load modules"}
-      </Alert>
+      </AppAlert>
     );
   }
 
   if (!modules || modules.length === 0) {
     return (
-      <Alert severity="info" sx={{ mt: 2 }}>
+      <AppAlert severity="info" style={{ marginTop: 16 }}>
         No modules installed. Go to the Install tab to add modules.
-      </Alert>
+      </AppAlert>
     );
   }
 
   return (
-    <Box sx={{ mt: 2 }}>
-      <Grid container spacing={2}>
+    <div style={{ marginTop: 8 }}>
+      <AppGrid container spacing={2}>
         {modules.map((module) => (
-          <ModuleCard
-            key={module.name}
-            module={module}
-            onViewDetails={() => handleViewDetails(module.name)}
-            onModuleChange={handleModuleChange}
-          />
+          <AppGrid key={module.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+            <ModuleCard
+              module={module}
+              onViewDetails={() => handleViewDetails(module.name)}
+              onModuleChange={handleModuleChange}
+            />
+          </AppGrid>
         ))}
-      </Grid>
+      </AppGrid>
 
       <ModuleDetailsDrawer
         open={detailsDrawerOpen}
         onClose={() => setDetailsDrawerOpen(false)}
         moduleName={selectedModule}
       />
-    </Box>
+    </div>
   );
 };
 

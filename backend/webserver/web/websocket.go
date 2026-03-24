@@ -46,7 +46,7 @@ type streamRelay struct {
 	streams map[uint32]*relayStream
 	ws      *websocket.Conn
 	wsMu    sync.Mutex
-	closed  uint32
+	closed  atomic.Uint32
 	done    chan struct{} // Signal to stop ping goroutine
 }
 
@@ -428,7 +428,7 @@ func (r *streamRelay) relayFromBridge(rs *relayStream) {
 
 // sendFrame sends a binary frame to WebSocket
 func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
-	if atomic.LoadUint32(&r.closed) == 1 {
+	if r.closed.Load() == 1 {
 		return
 	}
 
@@ -477,7 +477,7 @@ func (r *streamRelay) closeStream(streamID uint32) {
 
 // closeAll closes all streams and the WebSocket
 func (r *streamRelay) closeAll() {
-	if !atomic.CompareAndSwapUint32(&r.closed, 0, 1) {
+	if !r.closed.CompareAndSwap(0, 1) {
 		return // Already closed
 	}
 
@@ -508,7 +508,7 @@ func (r *streamRelay) pingLoop() {
 		case <-r.done:
 			return
 		case <-ticker.C:
-			if atomic.LoadUint32(&r.closed) == 1 {
+			if r.closed.Load() == 1 {
 				return
 			}
 

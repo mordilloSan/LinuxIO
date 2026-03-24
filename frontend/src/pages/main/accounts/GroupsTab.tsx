@@ -1,16 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import {
-  Grid,
-  TableCell,
-  TextField,
-  Chip,
-  Typography,
-  Checkbox,
-  Button,
-  IconButton,
-  Tooltip,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -22,6 +10,15 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppSearchField from "@/components/ui/AppSearchField";
+import { AppTableCell } from "@/components/ui/AppTable";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 interface GroupsTabProps {
@@ -122,7 +119,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
       headerName: "GID",
       align: "left",
       width: "80px",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "members",
@@ -148,37 +145,30 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <TextField
-          variant="outlined"
-          size="small"
+        <AppSearchField
           placeholder="Search groups…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
         <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
         {effectiveSelected.size > 0 && (
-          <Button
+          <AppButton
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
-          </Button>
+          </AppButton>
         )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((group) => (
-              <Grid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <AppGrid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <FrostedCard style={{ padding: 8 }}>
                   <div
                     style={{
@@ -192,7 +182,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 4 }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(group.name)}
                         onChange={(e) =>
@@ -200,19 +190,19 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         }
                         disabled={group.name === "root"}
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {group.name}
-                      </Typography>
+                      </AppTypography>
                     </div>
-                    <Tooltip title="Edit Members">
-                      <IconButton
+                    <AppTooltip title="Edit Members">
+                      <AppIconButton
                         size="small"
                         onClick={() => handleEditMembers(group)}
                         disabled={group.name === "root"}
                       >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                        <Icon icon="mdi:pencil" width={20} height={20} />
+                      </AppIconButton>
+                    </AppTooltip>
                   </div>
 
                   <div
@@ -224,14 +214,18 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     }}
                   >
                     {group.isSystem && (
-                      <Chip label="System" size="small" variant="outlined" />
+                      <Chip label="System" size="small" variant="soft" />
                     )}
-                    <Chip label={`GID: ${group.gid}`} size="small" />
+                    <Chip
+                      label={`GID: ${group.gid}`}
+                      size="small"
+                      variant="soft"
+                    />
                   </div>
 
-                  <Typography variant="caption" color="text.secondary">
+                  <AppTypography variant="caption" color="text.secondary">
                     Members ({group.members.length})
-                  </Typography>
+                  </AppTypography>
                   <div
                     style={{
                       marginTop: 2,
@@ -246,24 +240,25 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           key={`${group.name}-${member}`}
                           label={member}
                           size="small"
-                          sx={{ fontSize: "0.7rem" }}
+                          variant="soft"
+                          style={{ fontSize: "0.7rem" }}
                         />
                       ))
                     ) : (
-                      <Typography variant="body2" color="text.secondary">
+                      <AppTypography variant="body2" color="text.secondary">
                         (no members)
-                      </Typography>
+                      </AppTypography>
                     )}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No groups found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -272,7 +267,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           columns={columns}
           getRowKey={(group) => group.name}
           renderFirstCell={(group) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(group.name)}
               onChange={(e) => handleSelectOne(group.name, e.target.checked)}
@@ -281,7 +276,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}
@@ -290,31 +285,31 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           )}
           renderMainRow={(group) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    fontWeight="medium"
-                    sx={responsiveTextStyles}
+                    fontWeight={500}
+                    style={responsiveTextStyles}
                   >
                     {group.name}
-                  </Typography>
+                  </AppTypography>
                   {group.isSystem && (
                     <Chip
                       label="system"
                       size="small"
-                      variant="outlined"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      variant="soft"
+                      style={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {group.gid}
-                </Typography>
-              </TableCell>
-              <TableCell>
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
                   {group.members.length > 0 ? (
                     group.members
@@ -324,25 +319,26 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           key={member}
                           label={member}
                           size="small"
-                          sx={{ fontSize: "0.7rem" }}
+                          variant="soft"
+                          style={{ fontSize: "0.7rem" }}
                         />
                       ))
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <AppTypography variant="body2" color="text.secondary">
                       (no members)
-                    </Typography>
+                    </AppTypography>
                   )}
                   {group.members.length > 3 && (
                     <Chip
                       label={`+${group.members.length - 3}`}
                       size="small"
-                      variant="outlined"
-                      sx={{ fontSize: "0.7rem" }}
+                      variant="soft"
+                      style={{ fontSize: "0.7rem" }}
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell align="right">
+              </AppTableCell>
+              <AppTableCell align="right">
                 <div
                   style={{
                     display: "flex",
@@ -350,8 +346,8 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     gap: 2,
                   }}
                 >
-                  <Tooltip title="Edit Members">
-                    <IconButton
+                  <AppTooltip title="Edit Members">
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -359,18 +355,18 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       }}
                       disabled={group.name === "root"}
                     >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                      <Icon icon="mdi:pencil" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
                 </div>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(group) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>All Members ({group.members.length}):</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
               >
@@ -380,13 +376,14 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       key={member}
                       label={member}
                       size="small"
-                      sx={{ mr: 1, mb: 1 }}
+                      variant="soft"
+                      style={{ marginRight: 4, marginBottom: 4 }}
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no members)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
             </>

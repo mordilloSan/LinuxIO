@@ -1,0 +1,32 @@
+.app-popover-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.app-popover__paper {
+  position: fixed;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  pointer-events: auto;
+  border: 1px solid var(--app-panel-border);
+  border-radius: 16px;
+  background: var(--app-panel-background);
+  color: var(--app-panel-text);
+  box-shadow: var(--app-panel-shadow);
+  backdrop-filter: blur(12px);
+  animation: app-popover-enter 140ms ease;
+}
+
+@keyframes app-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

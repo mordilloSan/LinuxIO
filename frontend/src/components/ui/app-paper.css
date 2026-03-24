@@ -1,0 +1,12 @@
+/* ── AppPaper ────────────────────────────────────────── */
+.app-paper {
+  background-color: var(--color-surface);
+  background-image: none;
+  border-radius: 4px;
+  color: var(--color-text);
+}
+
+.app-paper--outlined {
+  border: 1px solid var(--color-divider);
+  box-shadow: none;
+}

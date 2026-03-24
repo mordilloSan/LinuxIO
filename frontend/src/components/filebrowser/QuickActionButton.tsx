@@ -1,6 +1,9 @@
-import { IconButton, Tooltip, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import React, { ReactNode } from "react";
+
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 interface QuickActionButtonProps {
   icon: ReactNode;
@@ -17,44 +20,29 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
   disabled,
   ariaLabel,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
 
   return (
-    <Tooltip title={label}>
+    <AppTooltip title={label}>
       <span>
-        <IconButton
-          className="quick-toggle action"
+        <AppIconButton
+          className="quick-toggle action app-icon-btn--quick-action"
           size="small"
           onClick={onClick}
           disabled={disabled}
           aria-label={ariaLabel ?? label}
-          sx={{
-            width: { xs: "3em", sm: "2.5em" },
-            height: { xs: "3em", sm: "2.5em" },
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+          style={{
             backgroundColor: isDark
               ? alpha(theme.fileBrowser.chrome, 0.33)
               : alpha(theme.fileBrowser.chrome, 0.12),
             color: theme.palette.text.primary,
-            boxShadow: "none !important",
-            "& .MuiSvgIcon-root": {
-              fontSize: "1.6em",
-            },
-            "&:hover": {
-              backgroundColor: theme.palette.primary.main,
-              color: theme.palette.primary.contrastText,
-              boxShadow: "none",
-            },
           }}
         >
           {icon}
-        </IconButton>
+        </AppIconButton>
       </span>
-    </Tooltip>
+    </AppTooltip>
   );
 };
 

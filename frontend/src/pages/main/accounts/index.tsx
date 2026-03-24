@@ -1,15 +1,13 @@
-import {
-  Add as AddIcon,
-  GridView as GridViewIcon,
-  TableRows as TableRowsIcon,
-} from "@mui/icons-material";
-import { Button, IconButton, Tooltip } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
 import GroupsTab from "./GroupsTab";
 import UsersTab from "./UsersTab";
 
 import { TabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
 const AccountsPage: React.FC = () => {
@@ -38,35 +36,35 @@ const AccountsPage: React.FC = () => {
           ),
           rightContent: (
             <>
-              <Tooltip
+              <AppTooltip
                 title={
                   usersView === "table"
                     ? "Switch to card view"
                     : "Switch to table view"
                 }
               >
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() =>
                     setUsersView(usersView === "table" ? "card" : "table")
                   }
                 >
                   {usersView === "table" ? (
-                    <GridViewIcon fontSize="small" />
+                    <Icon icon="mdi:view-grid" width={20} height={20} />
                   ) : (
-                    <TableRowsIcon fontSize="small" />
+                    <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
-                </IconButton>
-              </Tooltip>
+                </AppIconButton>
+              </AppTooltip>
               {createUserHandler && (
-                <Button
+                <AppButton
                   variant="contained"
                   size="small"
                   onClick={createUserHandler}
-                  startIcon={<AddIcon />}
+                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Add User
-                </Button>
+                </AppButton>
               )}
             </>
           ),
@@ -84,35 +82,35 @@ const AccountsPage: React.FC = () => {
           ),
           rightContent: (
             <>
-              <Tooltip
+              <AppTooltip
                 title={
                   groupsView === "table"
                     ? "Switch to card view"
                     : "Switch to table view"
                 }
               >
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() =>
                     setGroupsView(groupsView === "table" ? "card" : "table")
                   }
                 >
                   {groupsView === "table" ? (
-                    <GridViewIcon fontSize="small" />
+                    <Icon icon="mdi:view-grid" width={20} height={20} />
                   ) : (
-                    <TableRowsIcon fontSize="small" />
+                    <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
-                </IconButton>
-              </Tooltip>
+                </AppIconButton>
+              </AppTooltip>
               {createGroupHandler && (
-                <Button
+                <AppButton
                   variant="contained"
                   size="small"
                   onClick={createGroupHandler}
-                  startIcon={<AddIcon />}
+                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Add Group
-                </Button>
+                </AppButton>
               )}
             </>
           ),

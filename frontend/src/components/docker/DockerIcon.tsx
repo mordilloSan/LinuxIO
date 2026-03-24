@@ -1,8 +1,8 @@
-import { Skeleton } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import AppSkeleton from "@/components/ui/AppSkeleton";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
+import { useAppTheme } from "@/theme";
 
 interface DockerIconProps {
   identifier?: string;
@@ -19,7 +19,7 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   size = 24,
   alt = "icon",
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { iconUri, isLoading, isError } = useDockerIcon(identifier);
 
   // No identifier provided
@@ -30,11 +30,11 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   // Loading state
   if (isLoading) {
     return (
-      <Skeleton
+      <AppSkeleton
         variant="circular"
         width={size}
         height={size}
-        sx={{ flexShrink: 0 }}
+        style={{ flexShrink: 0 }}
       />
     );
   }

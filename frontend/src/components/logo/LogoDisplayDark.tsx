@@ -1,6 +1,7 @@
-import { Typography } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
+
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 interface LogoDisplayDarkProps {
   showText?: boolean;
@@ -9,20 +10,18 @@ interface LogoDisplayDarkProps {
 const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
   showText = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
-    <Typography
-      variant="h6"
-      noWrap
-      sx={{
-        fontWeight: 400,
-        fontSize: "1.75rem",
+    <div
+      style={{
         display: "inline-flex",
         alignItems: "center",
         color: alpha(theme.palette.common.white, 0.87),
-        fontFamily:
-          '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"',
+        fontFamily: theme.typography.fontFamily,
+        fontSize: "1.75rem",
+        fontWeight: 400,
+        lineHeight: 1.25,
       }}
     >
       {showText && (
@@ -55,7 +54,7 @@ const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
       >
         i/O
       </span>
-    </Typography>
+    </div>
   );
 };
 

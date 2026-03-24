@@ -1,21 +1,21 @@
-import {
-  IconButton,
-  Button,
-  Tooltip,
-  Popover,
-  Typography,
-  useTheme as useMuiTheme,
-} from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import Paintbrush from "lucide-react/dist/esm/icons/paintbrush";
+import { Icon } from "@iconify/react";
+import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppPopover from "@/components/ui/AppPopover";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { iconSize, shadowSm } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 import { COLOR_TOKENS } from "@/theme/colors";
+import { alpha } from "@/utils/color";
 
 function NavbarColorCustomizer() {
   const [primaryColor, setPrimaryColor] = useConfigValue("primaryColor");
-  const muiTheme = useMuiTheme();
+  const theme = useAppTheme();
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
@@ -27,45 +27,39 @@ function NavbarColorCustomizer() {
 
   return (
     <>
-      <Tooltip title="Customize primary color">
-        <IconButton
+      <AppTooltip title="Customize primary color">
+        <AppIconButton
           color="inherit"
           onClick={(e) => setAnchorEl(e.currentTarget)}
-          size="large"
           aria-label="Customize primary color"
         >
-          <Paintbrush size={18} />
-        </IconButton>
-      </Tooltip>
+          <Icon icon="mdi:brush" width={iconSize.md} height={iconSize.md} />
+        </AppIconButton>
+      </AppTooltip>
 
-      <Popover
+      <AppPopover
         open={open}
         anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{
-          paper: {
-            elevation: 6,
-            sx: {
-              p: 2,
-              bgcolor: muiTheme.palette.background.paper,
-              borderRadius: 2,
-            },
-          },
+        paperStyle={{
+          padding: theme.spacing(2),
+          background: theme.palette.background.paper,
+          boxShadow: shadowSm,
         }}
       >
-        <Typography variant="h6" gutterBottom>
+        <AppTypography variant="h6" gutterBottom>
           Primary Color
-        </Typography>
+        </AppTypography>
 
         {/* Token swatches */}
         <div
           style={{
             display: "flex",
-            gap: muiTheme.spacing(1),
+            gap: theme.spacing(1),
             flexWrap: "wrap",
-            marginBottom: muiTheme.spacing(1),
+            marginBottom: theme.spacing(1),
           }}
         >
           {tokenSwatches.map(({ name, hex }) => (
@@ -78,12 +72,12 @@ function NavbarColorCustomizer() {
               style={{
                 width: 28,
                 height: 28,
-                borderRadius: muiTheme.shape.borderRadius,
+                borderRadius: theme.shape.borderRadius,
                 backgroundColor: hex,
                 border:
-                  muiTheme.palette.mode === "dark"
-                    ? `1px solid ${alpha(muiTheme.palette.common.white, 0.3)}`
-                    : `1px solid ${alpha(muiTheme.palette.common.black, 0.1)}`,
+                  theme.palette.mode === "dark"
+                    ? `1px solid ${alpha(theme.palette.common.white, 0.3)}`
+                    : `1px solid ${alpha(theme.palette.common.black, 0.1)}`,
                 cursor: "pointer",
                 outline:
                   primaryColor?.toLowerCase() === name.toLowerCase()
@@ -98,29 +92,28 @@ function NavbarColorCustomizer() {
         <div
           style={{
             display: "flex",
-            gap: muiTheme.spacing(1),
-            marginTop: muiTheme.spacing(2),
+            gap: theme.spacing(1),
+            marginTop: theme.spacing(2),
           }}
         >
-          <Button
+          <AppButton
             variant="outlined"
             fullWidth
             size="small"
             onClick={() => setPrimaryColor("blue")}
-            sx={{
-              mt: 2,
-              color: COLOR_TOKENS.blue,
-              borderColor: COLOR_TOKENS.blue,
-              "&:hover": {
-                borderColor: COLOR_TOKENS.blue,
-                backgroundColor: COLOR_TOKENS.blue,
-              },
-            }}
+            style={
+              {
+                marginTop: theme.spacing(2),
+                "--_btn-main": COLOR_TOKENS.blue,
+                "--_btn-dark": COLOR_TOKENS.blue,
+                "--_btn-contrast": theme.palette.common.white,
+              } as CSSProperties
+            }
           >
             Reset to Default
-          </Button>
+          </AppButton>
         </div>
-      </Popover>
+      </AppPopover>
     </>
   );
 }

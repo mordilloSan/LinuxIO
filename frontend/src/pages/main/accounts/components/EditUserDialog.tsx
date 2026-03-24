@@ -1,19 +1,19 @@
-import {
-  Button,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Autocomplete,
-  Chip,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useEffect, useEffectEvent } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
+import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditUserDialogProps {
@@ -27,7 +27,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onClose,
   user,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState(user.gecos);
   const [homeDir, setHomeDir] = useState(user.homeDir);
@@ -41,17 +41,6 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
-
-  const syncUserState = useEffectEvent(() => {
-    setFullName(user.gecos);
-    setHomeDir(user.homeDir);
-    setShell(user.shell);
-    setSelectedGroups(user.groups || []);
-  });
-
-  useEffect(() => {
-    syncUserState();
-  }, [user]);
 
   const { mutate: modifyUser, isPending } =
     linuxio.accounts.modify_user.useMutation({
@@ -96,8 +85,8 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Edit User: {user.username}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Edit User: {user.username}</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -106,61 +95,70 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <TextField
+          <AppTextField
             label="Username"
             value={user.username}
             fullWidth
             disabled
           />
-          <TextField
+          <AppTextField
             label="Full Name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             fullWidth
           />
-          <TextField
+          <AppTextField
             label="Home Directory"
             value={homeDir}
             onChange={(e) => setHomeDir(e.target.value)}
             fullWidth
           />
-          <Autocomplete
+          <AppAutocomplete
             options={shellsList}
             value={shell}
-            onChange={(_, value) => setShell(value || "/bin/bash")}
-            renderInput={(params) => (
-              <TextField {...params} label="Shell" fullWidth />
-            )}
+            onChange={(value) => setShell(value || "/bin/bash")}
+            onInputChange={setShell}
+            label="Shell"
+            fullWidth
             freeSolo
           />
-          <Autocomplete
+          <AppAutocomplete
             multiple
             options={groupsList.map((g) => g.name)}
             value={selectedGroups}
-            onChange={(_, value) => setSelectedGroups(value)}
-            renderInput={(params) => (
-              <TextField {...params} label="Secondary Groups" fullWidth />
-            )}
+            onChange={setSelectedGroups}
+            label="Secondary Groups"
+            fullWidth
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {
                 const itemProps = getItemProps({ index });
                 const { key, ...chipProps } = itemProps;
                 return (
-                  <Chip key={key} label={option} size="small" {...chipProps} />
+                  <Chip
+                    key={key}
+                    label={option}
+                    size="small"
+                    variant="soft"
+                    {...chipProps}
+                  />
                 );
               })
             }
           />
         </div>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isPending}>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={isPending}>
+        </AppButton>
+        <AppButton
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={isPending}
+        >
           {isPending ? "Saving..." : "Save"}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

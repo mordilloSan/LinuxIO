@@ -1,6 +1,10 @@
-import { Tooltip, Typography, LinearProgress } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
+
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 interface MetricBarProps {
   label: string;
@@ -19,10 +23,10 @@ const MetricBar: React.FC<MetricBarProps> = ({
   rightLabel,
   icon,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
-    <Tooltip title={tooltip ?? ""}>
+    <AppTooltip title={tooltip ?? ""}>
       <div style={{ width: "100%", marginBottom: 4 }}>
         <div
           style={{
@@ -34,35 +38,34 @@ const MetricBar: React.FC<MetricBarProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
             {icon}
-            <Typography variant="caption">{label}</Typography>
+            <AppTypography variant="caption">{label}</AppTypography>
           </div>
-          <Typography
+          <AppTypography
             variant="caption"
-            sx={{ fontVariantNumeric: "tabular-nums" }}
+            style={{ fontVariantNumeric: "tabular-nums" }}
           >
             {rightLabel}
-          </Typography>
+          </AppTypography>
         </div>
-        <LinearProgress
+        <AppLinearProgress
           variant="determinate"
           value={percent}
-          sx={{
-            width: "100%",
-            height: 7,
-            borderRadius: 4,
-            overflow: "hidden",
-            backgroundColor: alpha(
-              theme.chart.neutral,
-              theme.palette.mode === "dark" ? 0.18 : 0.12,
-            ),
-            "& .MuiLinearProgress-bar": {
-              backgroundColor: color,
+          style={
+            {
+              width: "100%",
+              height: 7,
               borderRadius: 4,
-            },
-          }}
+              overflow: "hidden",
+              backgroundColor: alpha(
+                theme.chart.neutral,
+                theme.palette.mode === "dark" ? 0.18 : 0.12,
+              ),
+              "--_lp-color": color,
+            } as React.CSSProperties
+          }
         />
       </div>
-    </Tooltip>
+    </AppTooltip>
   );
 };
 

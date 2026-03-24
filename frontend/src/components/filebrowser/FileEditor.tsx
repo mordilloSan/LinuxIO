@@ -1,16 +1,22 @@
-import { useTheme } from "@mui/material";
 import {
-  useState,
+  forwardRef,
+  useCallback,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
-  forwardRef,
   useRef,
-  useCallback,
+  useState,
 } from "react";
-import AceEditor from "react-ace";
+import ReactAce from "react-ace";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useAppTheme } from "@/theme";
+
+// react-ace CJS exports the component as .default — Rolldown may not unwrap it
+const AceEditor =
+  typeof (ReactAce as any).default === "function"
+    ? (ReactAce as any).default
+    : ReactAce;
 
 interface FileEditorProps {
   filePath: string;
@@ -119,8 +125,8 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         ? editorState
         : createEditorState(filePath, initialContent);
     const { content, isDirty } = normalizedState;
-    const editorRef = useRef<AceEditor>(null);
-    const theme = useTheme();
+    const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
+    const theme = useAppTheme();
     const isDarkMode = theme.palette.mode === "dark";
     const language = getLanguageMode(fileName);
     const aceTheme = isDarkMode ? "monokai" : "github";

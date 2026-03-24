@@ -1,13 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
-import {
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  Tab,
-  Tabs,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
@@ -15,32 +6,34 @@ import NavbarCustomizer from "./NavbarCustomizer";
 import ThemeColorsSection from "./ThemeColorsSection";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-
+import TabSelector from "@/components/tabbar/TabSelector";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 type SettingsTab = "general" | "docker";
-
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
-
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
-
   const handleClose = () => {
     setActiveTab("general");
     onClose();
   };
-
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
-          py: 1.5,
-          px: 2,
+          paddingTop: 6,
+          paddingBottom: 6,
+          paddingLeft: 8,
+          paddingRight: 8,
         }}
       >
         <div
@@ -50,33 +43,50 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             gap: theme.spacing(1),
           }}
         >
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+          <AppTypography
+            variant="h6"
+            style={{
+              flexGrow: 1,
+            }}
+          >
             Settings
-          </Typography>
-          <IconButton
+          </AppTypography>
+          <AppIconButton
             size="small"
             onClick={handleClose}
             aria-label="Close settings"
           >
-            <CloseIcon fontSize="small" />
-          </IconButton>
+            <Icon icon="mdi:close" width={18} height={18} />
+          </AppIconButton>
         </div>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <Tabs
-        value={activeTab}
-        onChange={(_, nextValue: SettingsTab) => setActiveTab(nextValue)}
-        aria-label="Settings tabs"
-        sx={{
-          px: 2,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+      <div
+        style={{
+          paddingLeft: 8,
+          paddingRight: 8,
+          borderBottom: "1px solid var(--color-divider)",
         }}
       >
-        <Tab label="General" value="general" />
-        <Tab label="Docker" value="docker" />
-      </Tabs>
+        <TabSelector
+          value={activeTab}
+          onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
+          options={[
+            { value: "general", label: "General" },
+            { value: "docker", label: "Docker" },
+          ]}
+          style={{ marginBottom: 0 }}
+        />
+      </div>
 
-      <DialogContent sx={{ px: 3, py: 3 }}>
+      <AppDialogContent
+        style={{
+          paddingLeft: 12,
+          paddingRight: 12,
+          paddingTop: 12,
+          paddingBottom: 12,
+        }}
+      >
         {activeTab === "general" ? (
           <div
             style={{
@@ -87,9 +97,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               gap: theme.spacing(2),
             }}
           >
-            <Typography variant="body1" fontWeight={600}>
+            <AppTypography variant="body1" fontWeight={600}>
               Appearance
-            </Typography>
+            </AppTypography>
 
             <div
               style={{
@@ -102,12 +112,12 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               }}
             >
               <div>
-                <Typography variant="body2" fontWeight={600}>
+                <AppTypography variant="body2" fontWeight={600}>
                   Primary color
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
                   Change the app accent color.
-                </Typography>
+                </AppTypography>
               </div>
               <NavbarCustomizer />
             </div>
@@ -117,9 +127,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         ) : (
           <DockerFolderSettingsSection />
         )}
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };
-
 export default SettingsDialog;

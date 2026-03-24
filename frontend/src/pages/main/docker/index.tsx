@@ -1,21 +1,4 @@
-import {
-  Add as AddIcon,
-  CleaningServices as CleaningServicesIcon,
-  DragIndicator,
-  GridView as GridViewIcon,
-  PlayArrow as PlayArrowIcon,
-  Stop as StopIcon,
-  TableRows as TableRowsIcon,
-} from "@mui/icons-material";
-import {
-  Alert,
-  AlertTitle,
-  Button,
-  IconButton,
-  Tooltip,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -30,22 +13,25 @@ import VolumeList from "./VolumeList";
 import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 const DockerPage: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
-
   const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
-
   const stoppedContainers = useMemo(
     () => containers.filter((c) => c.State === "exited" || c.State === "dead"),
     [containers],
@@ -54,7 +40,6 @@ const DockerPage: React.FC = () => {
     () => containers.filter((c) => c.State === "running"),
     [containers],
   );
-
   const { mutate: startAllStopped, isPending: isStartingAll } =
     linuxio.docker.start_all_stopped.useMutation({
       onSuccess: (data: any) => {
@@ -66,7 +51,6 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Failed to start containers")),
     });
-
   const { mutate: stopAllRunning, isPending: isStoppingAll } =
     linuxio.docker.stop_all_running.useMutation({
       onSuccess: (data: any) => {
@@ -78,7 +62,6 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Failed to stop containers")),
     });
-
   const { mutate: systemPrune, isPending: isPruning } =
     linuxio.docker.system_prune.useMutation({
       onSuccess: () => {
@@ -100,7 +83,6 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Prune failed")),
     });
-
   const [containerView, setContainerView] = useViewMode(
     "docker.containers",
     "card",
@@ -112,7 +94,6 @@ const DockerPage: React.FC = () => {
   );
   const [volumesView, setVolumesView] = useViewMode("docker.volumes", "table");
   const [imagesView, setImagesView] = useViewMode("docker.images", "table");
-
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
   >(null);
@@ -129,16 +110,19 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
-
   if (dockerStatus === "unknown") {
     return (
-      <div style={{ padding: theme.spacing(3) }}>
-        <Alert severity="info">
-          <AlertTitle>Checking Docker</AlertTitle>
-          <Typography variant="body2">
+      <div
+        style={{
+          padding: theme.spacing(3),
+        }}
+      >
+        <AppAlert severity="info">
+          <AppAlertTitle>Checking Docker</AppAlertTitle>
+          <AppTypography variant="body2">
             Verifying Docker daemon access...
-          </Typography>
-        </Alert>
+          </AppTypography>
+        </AppAlert>
       </div>
     );
   }
@@ -146,13 +130,22 @@ const DockerPage: React.FC = () => {
   // Show error if Docker is not available
   if (dockerStatus === "unavailable") {
     return (
-      <div style={{ padding: theme.spacing(3) }}>
-        <Alert severity="warning">
-          <AlertTitle>Docker Not Available</AlertTitle>
-          <Typography variant="body2" sx={{ mb: 2 }}>
+      <div
+        style={{
+          padding: theme.spacing(3),
+        }}
+      >
+        <AppAlert severity="warning">
+          <AppAlertTitle>Docker Not Available</AppAlertTitle>
+          <AppTypography
+            variant="body2"
+            style={{
+              marginBottom: 8,
+            }}
+          >
             Docker daemon is not accessible
-          </Typography>
-          <Typography variant="body2" component="div">
+          </AppTypography>
+          <AppTypography variant="body2" component="div">
             <strong>Common causes:</strong>
             <ul
               style={{
@@ -174,12 +167,11 @@ const DockerPage: React.FC = () => {
                 environment variable)
               </li>
             </ul>
-          </Typography>
-        </Alert>
+          </AppTypography>
+        </AppAlert>
       </div>
     );
   }
-
   return (
     <>
       <TabContainer
@@ -190,35 +182,35 @@ const DockerPage: React.FC = () => {
             component: <DockerDashboard />,
             rightContent: (
               <>
-                <Button
+                <AppButton
                   size="small"
                   variant="outlined"
-                  startIcon={<PlayArrowIcon />}
+                  startIcon={<Icon icon="mdi:play" width={20} height={20} />}
                   disabled={isStartingAll || stoppedContainers.length === 0}
                   onClick={() => startAllStopped([])}
                 >
                   Start All
-                </Button>
-                <Button
+                </AppButton>
+                <AppButton
                   size="small"
                   variant="outlined"
                   color="warning"
-                  startIcon={<StopIcon />}
+                  startIcon={<Icon icon="mdi:stop" width={20} height={20} />}
                   disabled={isStoppingAll || runningContainers.length === 0}
                   onClick={() => stopAllRunning([])}
                 >
                   Stop All
-                </Button>
-                <Button
+                </AppButton>
+                <AppButton
                   size="small"
                   variant="outlined"
                   color="error"
-                  startIcon={<CleaningServicesIcon />}
+                  startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
                   disabled={isPruning}
                   onClick={() => setPruneDialogOpen(true)}
                 >
                   Prune All
-                </Button>
+                </AppButton>
               </>
             ),
           },
@@ -233,14 +225,14 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     containerView === "card"
                       ? "Switch to table view"
                       : "Switch to card view"
                   }
                 >
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       setContainerView(
@@ -249,23 +241,23 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {containerView === "card" ? (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     ) : (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     )}
-                  </IconButton>
-                </Tooltip>
-                <Tooltip
+                  </AppIconButton>
+                </AppTooltip>
+                <AppTooltip
                   title={containerEditMode ? "Lock layout" : "Edit layout"}
                 >
-                  <IconButton
+                  <AppIconButton
                     onClick={() => setContainerEditMode((prev) => !prev)}
                     color={containerEditMode ? "primary" : "default"}
                     size="small"
                   >
-                    <DragIndicator />
-                  </IconButton>
-                </Tooltip>
+                    <Icon icon="mdi:drag" width={20} height={20} />
+                  </AppIconButton>
+                </AppTooltip>
               </>
             ),
           },
@@ -285,28 +277,28 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     stacksView === "table"
                       ? "Switch to card view"
                       : "Switch to table view"
                   }
                 >
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       setStacksView(stacksView === "table" ? "card" : "table")
                     }
                   >
                     {stacksView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
-                  </IconButton>
-                </Tooltip>
+                  </AppIconButton>
+                </AppTooltip>
                 {reindexStackHandler && (
-                  <Tooltip
+                  <AppTooltip
                     title={
                       !indexerEnabled
                         ? indexerReason
@@ -315,27 +307,27 @@ const DockerPage: React.FC = () => {
                     arrow
                   >
                     <span>
-                      <Button
+                      <AppButton
                         variant="outlined"
                         size="small"
                         onClick={reindexStackHandler}
                         disabled={!indexerEnabled}
-                        sx={{ mr: 1 }}
+                        style={{ marginRight: 8 }}
                       >
                         Scan
-                      </Button>
+                      </AppButton>
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
                 {createStackHandler && (
-                  <Button
+                  <AppButton
                     variant="contained"
                     size="small"
                     onClick={createStackHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Create Stack
-                  </Button>
+                  </AppButton>
                 )}
               </>
             ),
@@ -353,14 +345,14 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     networksView === "table"
                       ? "Switch to card view"
                       : "Switch to table view"
                   }
                 >
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       setNetworksView(
@@ -369,21 +361,21 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {networksView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
-                  </IconButton>
-                </Tooltip>
+                  </AppIconButton>
+                </AppTooltip>
                 {createNetworkHandler && (
-                  <Button
+                  <AppButton
                     variant="contained"
                     size="small"
                     onClick={createNetworkHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Add Network
-                  </Button>
+                  </AppButton>
                 )}
               </>
             ),
@@ -401,35 +393,35 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     volumesView === "table"
                       ? "Switch to card view"
                       : "Switch to table view"
                   }
                 >
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       setVolumesView(volumesView === "table" ? "card" : "table")
                     }
                   >
                     {volumesView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
-                  </IconButton>
-                </Tooltip>
+                  </AppIconButton>
+                </AppTooltip>
                 {createVolumeHandler && (
-                  <Button
+                  <AppButton
                     variant="contained"
                     size="small"
                     onClick={createVolumeHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Add Volume
-                  </Button>
+                  </AppButton>
                 )}
               </>
             ),
@@ -447,35 +439,35 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     imagesView === "table"
                       ? "Switch to card view"
                       : "Switch to table view"
                   }
                 >
-                  <IconButton
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       setImagesView(imagesView === "table" ? "card" : "table")
                     }
                   >
                     {imagesView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
-                  </IconButton>
-                </Tooltip>
+                  </AppIconButton>
+                </AppTooltip>
                 {createImageHandler && (
-                  <Button
+                  <AppButton
                     variant="contained"
                     size="small"
                     onClick={createImageHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Add Image
-                  </Button>
+                  </AppButton>
                 )}
               </>
             ),
@@ -493,5 +485,4 @@ const DockerPage: React.FC = () => {
     </>
   );
 };
-
 export default DockerPage;

@@ -1,6 +1,7 @@
 // components/ErrorBoundary.tsx
-import { Typography } from "@mui/material";
 import React, { Component, ReactNode } from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 
 interface Props {
   children: ReactNode;
@@ -30,9 +31,9 @@ class ErrorBoundary extends Component<Props, State> {
       return (
         this.props.fallback || (
           <div style={{ padding: 8 }}>
-            <Typography color="error">
+            <AppTypography color="error">
               Something went wrong in this widget.
-            </Typography>
+            </AppTypography>
           </div>
         )
       );

@@ -1,32 +1,35 @@
-import {
-  Divider,
-  Tooltip,
-  Menu,
-  MenuItem,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
-  Button,
-} from "@mui/material";
-import LucidePower from "lucide-react/dist/esm/icons/power";
+import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppDivider from "@/components/ui/AppDivider";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import { iconSize } from "@/constants";
 import useAuth from "@/hooks/useAuth";
+import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import usePowerAction from "@/hooks/usePowerAction";
 
 function NavbarUserDropdown() {
-  const ref = useRef(null);
+  const ref = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { triggerReboot, triggerPowerOff } = usePowerAction();
 
-  const [anchorMenu, setAnchorMenu] = useState<null | HTMLElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
+  const layerRef = useDismissibleLayer<HTMLDivElement>(menuOpen, () =>
+    setMenuOpen(false),
+  );
 
   // Mutations for power actions
   const { mutate: reboot } = linuxio.dbus.reboot.useMutation({
@@ -49,12 +52,16 @@ function NavbarUserDropdown() {
     },
   });
 
-  const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
-    setAnchorMenu(event.currentTarget);
+  const toggleMenu = () => {
+    setMenuOpen((open) => !open);
   };
 
-  const closeMenu = () => setAnchorMenu(null);
+  const closeMenu = () => setMenuOpen(false);
   const closeConfirm = () => setConfirm(null);
+  const openConfirm = (action: "reboot" | "poweroff") => {
+    closeMenu();
+    setConfirm(action);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -78,53 +85,94 @@ function NavbarUserDropdown() {
 
   return (
     <>
-      <Tooltip title="Account">
-        <IconButton color="inherit" ref={ref} onClick={toggleMenu} size="large">
-          <LucidePower />
-        </IconButton>
-      </Tooltip>
+      <div ref={layerRef} className="app-navbar-dropdown">
+        <AppTooltip title="Account">
+          <AppIconButton
+            color="inherit"
+            ref={ref}
+            onClick={toggleMenu}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? "navbar-account-menu" : undefined}
+          >
+            <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
+          </AppIconButton>
+        </AppTooltip>
 
-      <Menu
-        id="menu-appbar"
-        anchorEl={anchorMenu}
-        open={Boolean(anchorMenu)}
-        onClose={closeMenu}
-      >
-        {user?.name && (
-          <MenuItem disabled style={{ opacity: 0.7, fontWeight: 600 }}>
-            Signed in as {user.name}
-          </MenuItem>
-        )}
-        <Divider />
-        <MenuItem onClick={() => setConfirm("reboot")}>Reboot</MenuItem>
-        <MenuItem onClick={() => setConfirm("poweroff")}>Power Down</MenuItem>
-        <Divider />
-        <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
-      </Menu>
+        {menuOpen ? (
+          <div
+            id="navbar-account-menu"
+            className="app-navbar-panel app-navbar-panel--compact"
+            role="menu"
+            aria-label="Account actions"
+          >
+            {user?.name ? (
+              <div className="app-navbar-panel__header">
+                <p className="app-navbar-panel__eyebrow">Signed in as</p>
+                <p className="app-navbar-panel__title">{user.name}</p>
+              </div>
+            ) : null}
 
-      <Dialog open={confirm !== null} onClose={closeConfirm}>
-        <DialogTitle>
+            {user?.name ? <AppDivider /> : null}
+
+            <div className="app-navbar-menu">
+              <button
+                type="button"
+                className="app-navbar-menu__item"
+                role="menuitem"
+                onClick={() => openConfirm("reboot")}
+              >
+                Reboot
+              </button>
+              <button
+                type="button"
+                className="app-navbar-menu__item"
+                role="menuitem"
+                onClick={() => openConfirm("poweroff")}
+              >
+                Power Down
+              </button>
+            </div>
+
+            <AppDivider />
+
+            <div className="app-navbar-menu">
+              <button
+                type="button"
+                className="app-navbar-menu__item"
+                role="menuitem"
+                onClick={handleSignOut}
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <GeneralDialog open={confirm !== null} onClose={closeConfirm}>
+        <AppDialogTitle>
           {confirm === "reboot" ? "Confirm Reboot" : "Confirm Power Down"}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
+        </AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
             Are you sure you want to{" "}
             {confirm === "reboot" ? "reboot" : "power off"} the server? This
             action will terminate all services and disconnect users.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeConfirm}>Cancel</Button>
-          <Button
+          </AppDialogContentText>
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton onClick={closeConfirm}>Cancel</AppButton>
+          <AppButton
             onClick={handleConfirmedAction}
             color="error"
             variant="contained"
             autoFocus
           >
             {confirm === "reboot" ? "Reboot" : "Power Down"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
     </>
   );
 }

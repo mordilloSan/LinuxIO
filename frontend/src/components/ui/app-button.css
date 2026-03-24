@@ -1,0 +1,166 @@
+/* ── AppButton ───────────────────────────────────────── */
+.app-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-sizing: border-box;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: middle;
+  appearance: none;
+  text-decoration: none;
+  outline: 0;
+  border: 0;
+  margin: 0;
+  border-radius: 4px;
+  min-width: 64px;
+  padding: 6px 16px;
+
+  /* typography */
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  letter-spacing: normal;
+  text-transform: none;
+
+  /* transitions */
+  transition:
+    background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 250ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* defaults — text variant */
+  background-color: transparent;
+  color: var(--_btn-main);
+}
+
+/* ── start icon ────────────────────────────────── */
+.app-btn__icon {
+  display: inherit;
+  margin-right: 8px;
+  margin-left: -4px;
+}
+
+.app-btn--small .app-btn__icon {
+  margin-left: -2px;
+}
+
+/* ── inherit color ─────────────────────────────── */
+.app-btn--inherit {
+  color: inherit;
+}
+
+.app-btn--inherit:hover {
+  background-color: var(--color-action-hover);
+}
+
+/* ── variants ──────────────────────────────────── */
+
+/* text (default) */
+.app-btn:hover {
+  background-color: color-mix(in srgb, var(--_btn-main) 4%, transparent);
+}
+
+/* contained */
+.app-btn--contained {
+  color: var(--_btn-contrast);
+  background-color: var(--_btn-main);
+  box-shadow: rgba(0, 0, 0, 0.05) 0 2px 4px 0;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.app-btn--contained:hover {
+  background-color: var(--_btn-dark);
+  box-shadow:
+    0px 2px 4px -1px rgba(0, 0, 0, 0.2),
+    0px 4px 5px 0px rgba(0, 0, 0, 0.14),
+    0px 1px 10px 0px rgba(0, 0, 0, 0.12);
+}
+
+/* outlined */
+.app-btn--outlined {
+  padding: 5px 15px;
+  border: 1px solid color-mix(in srgb, var(--_btn-main) 50%, transparent);
+  color: var(--_btn-main);
+  background-color: transparent;
+}
+
+.app-btn--outlined:hover {
+  border-color: var(--_btn-main);
+  background-color: color-mix(in srgb, var(--_btn-main) 4%, transparent);
+}
+
+/* ── sizes ─────────────────────────────────────── */
+.app-btn--small {
+  padding: 4px 10px;
+  font-size: 0.7545rem;
+}
+
+.app-btn--small.app-btn--outlined {
+  padding: 3px 9px;
+}
+
+/* ── full width ────────────────────────────────── */
+.app-btn--fullwidth {
+  width: 100%;
+}
+
+/* ── disabled ──────────────────────────────────── */
+.app-btn:disabled {
+  cursor: default;
+  pointer-events: none;
+  color: var(--color-action-disabled);
+}
+
+.app-btn--contained:disabled {
+  color: var(--color-action-disabled);
+  background-color: var(--color-action-disabled-bg);
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.app-btn--outlined:disabled {
+  border-color: var(--color-action-disabled);
+}
+
+/* ── dialog action modifier ───────────────────── */
+.app-btn--dialog-action {
+  padding: 12px 24px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.app-btn--dialog-action:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--color-primary) 13%,
+    transparent
+  );
+  box-shadow: 0 0 12px
+    color-mix(in srgb, var(--color-primary) 27%, transparent);
+}
+
+.app-btn--dialog-action:disabled {
+  opacity: 0.5;
+}
+
+/* ── mobile: hide text labels, keep icons only ─── */
+@media (max-width: 769.95px) {
+  .app-btn__label {
+    display: none;
+  }
+
+  .app-btn:has(.app-btn__label) {
+    min-width: unset;
+    padding-inline: 8px;
+  }
+
+  .app-btn:has(.app-btn__label) .app-btn__icon {
+    margin-right: 0;
+    margin-left: 0;
+  }
+}

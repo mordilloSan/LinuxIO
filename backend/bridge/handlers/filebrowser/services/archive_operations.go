@@ -548,7 +548,7 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 		}
 
 		filePath := cleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
-		if shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath, entry) {
+		if shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath) {
 			if entry.IsDir() && skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
 				return fs.SkipDir
 			}
@@ -570,7 +570,7 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 	})
 }
 
-func shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath string, entry fs.DirEntry) bool {
+func shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath string) bool {
 	if walkRel == rootWalkRel {
 		return true
 	}

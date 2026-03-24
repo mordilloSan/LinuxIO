@@ -1,13 +1,4 @@
-import BlockIcon from "@mui/icons-material/Block";
-import CheckIcon from "@mui/icons-material/Check";
-import CloseIcon from "@mui/icons-material/Close";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
-import { Button, Grid, Tooltip, useMediaQuery, useTheme } from "@mui/material";
+import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -17,7 +8,11 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getServiceStatusColor } from "@/constants/statusColors";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 
 export interface UnitListItem {
   name: string;
@@ -74,7 +69,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
   fontSize: "0.6rem",
-  color: "var(--mui-palette-text-secondary)",
+  color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
   paddingTop: 3,
@@ -124,8 +119,8 @@ export const DetailRow: React.FC<{
     className="svc-detail-row"
     style={{
       display: "flex",
-      padding: "1px 0",
-      borderTop: noBorder ? undefined : "1px solid var(--mui-palette-divider)",
+      padding: "3px 0",
+      borderTop: noBorder ? undefined : "1px solid var(--app-palette-divider)",
       alignItems: "flex-start",
     }}
   >
@@ -207,18 +202,18 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
     <DetailRow label="Auto-start">
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         {auto ? (
-          <CheckIcon
-            style={{
-              fontSize: 15,
-              color: "var(--mui-palette-success-main)",
-            }}
+          <Icon
+            icon="mdi:check"
+            width={15}
+            height={15}
+            color="var(--app-palette-success-main)"
           />
         ) : (
-          <BlockIcon
-            style={{
-              fontSize: 15,
-              color: "var(--mui-palette-text-disabled)",
-            }}
+          <Icon
+            icon="mdi:block-helper"
+            width={15}
+            height={15}
+            color="var(--app-palette-text-disabled)"
           />
         )}
         <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{label}</span>
@@ -253,7 +248,7 @@ export function UnitStatusRows({
   return (
     <>
       <DetailRow label="Status" noBorder>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span
             style={{
               fontSize: "0.85rem",
@@ -265,7 +260,7 @@ export function UnitStatusRows({
             {subState && subState !== activeState && (
               <span
                 style={{
-                  color: "var(--mui-palette-text-secondary)",
+                  color: "var(--app-palette-text-secondary)",
                   marginLeft: 8,
                   fontWeight: 400,
                 }}
@@ -278,7 +273,7 @@ export function UnitStatusRows({
             <span
               style={{
                 fontSize: "0.7rem",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
               }}
             >
               {isActive ? "Active" : "Inactive"} since {timestamp}
@@ -335,113 +330,115 @@ export const UnitCardActions: React.FC<{
       onClick={(e) => e.stopPropagation()}
     >
       {isActive ? (
-        <Tooltip title="Stop">
-          <Button
+        <AppTooltip title="Stop">
+          <AppButton
             size="small"
             variant="outlined"
             color="error"
-            startIcon={<StopCircleIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:stop-circle" width={20} height={20} />}
             onClick={() => stopService([unitName])}
             disabled={anyPending}
           >
             Stop
-          </Button>
-        </Tooltip>
+          </AppButton>
+        </AppTooltip>
       ) : (
-        <Tooltip title="Start">
-          <Button
+        <AppTooltip title="Start">
+          <AppButton
             size="small"
             variant="outlined"
             color="success"
-            startIcon={<PlayArrowIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:play" width={20} height={20} />}
             onClick={() => startService([unitName])}
             disabled={anyPending}
           >
             Start
-          </Button>
-        </Tooltip>
+          </AppButton>
+        </AppTooltip>
       )}
-      <Tooltip title="Restart (stop then start)">
+      <AppTooltip title="Restart (stop then start)">
         <span>
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
-            startIcon={<RestartAltIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:restart" width={20} height={20} />}
             onClick={() => restartService([unitName])}
             disabled={!isActive || anyPending}
           >
             Restart
-          </Button>
+          </AppButton>
         </span>
-      </Tooltip>
-      <Tooltip title="Reload configuration without restarting (if supported)">
+      </AppTooltip>
+      <AppTooltip title="Reload configuration without restarting (if supported)">
         <span>
-          <Button
+          <AppButton
             size="small"
             variant="outlined"
-            startIcon={<RefreshIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:refresh" width={20} height={20} />}
             onClick={() => reloadService([unitName])}
             disabled={!isActive || anyPending}
           >
             Reload
-          </Button>
+          </AppButton>
         </span>
-      </Tooltip>
+      </AppTooltip>
       {isEnabled ? (
-        <Tooltip title="Disable autostart at boot">
+        <AppTooltip title="Disable autostart at boot">
           <span>
-            <Button
+            <AppButton
               size="small"
               variant="outlined"
-              startIcon={<BlockIcon fontSize="small" />}
+              startIcon={
+                <Icon icon="mdi:block-helper" width={20} height={20} />
+              }
               onClick={() => disableService([unitName])}
               disabled={isMasked || anyPending}
             >
               Disable
-            </Button>
+            </AppButton>
           </span>
-        </Tooltip>
+        </AppTooltip>
       ) : (
-        <Tooltip title="Enable autostart at boot">
+        <AppTooltip title="Enable autostart at boot">
           <span>
-            <Button
+            <AppButton
               size="small"
               variant="outlined"
               color="success"
-              startIcon={<PlayArrowIcon fontSize="small" />}
+              startIcon={<Icon icon="mdi:play" width={20} height={20} />}
               onClick={() => enableService([unitName])}
               disabled={isMasked || anyPending}
             >
               Enable
-            </Button>
+            </AppButton>
           </span>
-        </Tooltip>
+        </AppTooltip>
       )}
       {isMasked ? (
-        <Tooltip title="Unmask to allow the unit to be started">
-          <Button
+        <AppTooltip title="Unmask to allow the unit to be started">
+          <AppButton
             size="small"
             variant="outlined"
             color="warning"
-            startIcon={<VisibilityIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:eye" width={20} height={20} />}
             onClick={() => unmaskService([unitName])}
             disabled={anyPending}
           >
             Unmask
-          </Button>
-        </Tooltip>
+          </AppButton>
+        </AppTooltip>
       ) : (
-        <Tooltip title="Mask to completely prevent the unit from starting">
-          <Button
+        <AppTooltip title="Mask to completely prevent the unit from starting">
+          <AppButton
             size="small"
             variant="outlined"
-            startIcon={<VisibilityOffIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:eye-off" width={20} height={20} />}
             onClick={() => maskService([unitName])}
             disabled={anyPending}
           >
             Mask
-          </Button>
-        </Tooltip>
+          </AppButton>
+        </AppTooltip>
       )}
     </div>
   );
@@ -509,13 +506,13 @@ export function UnitInfoPanel({
             cursor: "pointer",
             padding: 4,
             borderRadius: 4,
-            color: "var(--mui-palette-text-secondary)",
+            color: "var(--app-palette-text-secondary)",
             display: "flex",
             alignItems: "center",
             flexShrink: 0,
           }}
         >
-          <CloseIcon fontSize="small" />
+          <Icon icon="mdi:close" width={20} height={20} />
         </button>
       </div>
 
@@ -527,7 +524,7 @@ export function UnitInfoPanel({
                 height: 18,
                 width: "80%",
                 borderRadius: 4,
-                backgroundColor: "var(--mui-palette-action-hover)",
+                backgroundColor: "var(--app-palette-action-hover)",
               }}
             />
           ) : (
@@ -598,8 +595,8 @@ export function UnitTableView<T>({
   onDoubleClick,
   emptyMessage,
 }: UnitTableViewProps<T>) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
 
   return (
     <UnifiedCollapsibleTable
@@ -680,8 +677,9 @@ function UnitCard<T extends UnitListItem>({
           {item.description && (
             <div
               style={{
+                marginTop: 2,
                 fontSize: "0.7rem",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -732,8 +730,8 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
-  const theme = useTheme();
-  const isCompactLayout = useMediaQuery(theme.breakpoints.down("md"));
+  const theme = useAppTheme();
+  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
   if (items.length === 0) {
@@ -742,7 +740,7 @@ export function UnitCardsView<T extends UnitListItem>({
         <span
           style={{
             fontSize: "0.875rem",
-            color: "var(--mui-palette-text-secondary)",
+            color: "var(--app-palette-text-secondary)",
           }}
         >
           {emptyMessage}
@@ -753,18 +751,18 @@ export function UnitCardsView<T extends UnitListItem>({
 
   if (!expandedItem) {
     return (
-      <Grid container spacing={3}>
+      <AppGrid container spacing={3}>
         {items.map((item) => (
-          <Grid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+          <AppGrid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
             <UnitCard
               item={item}
               isSelected={false}
               onExpand={onExpand}
               renderSummaryRows={renderSummaryRows}
             />
-          </Grid>
+          </AppGrid>
         ))}
-      </Grid>
+      </AppGrid>
     );
   }
 

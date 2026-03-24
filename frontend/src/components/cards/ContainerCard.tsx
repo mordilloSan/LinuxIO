@@ -1,13 +1,3 @@
-import {
-  Chip,
-  Collapse,
-  Divider,
-  Switch,
-  Tooltip,
-  Typography,
-  Fade,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -19,12 +9,19 @@ import React, {
 import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
-import ComponentLoader from "../loaders/ComponentLoader";
+import AppCircularProgress from "../ui/AppCircularProgress";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppDivider from "@/components/ui/AppDivider";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -65,7 +62,7 @@ interface ContainerCardProps {
 }
 
 const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
 
   // dialogs
@@ -267,14 +264,26 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         cursor: hasPorts ? "pointer" : "default",
       }}
     >
+      {/* Loading overlay */}
+      {isActionPending && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "inherit",
+            backgroundColor: "rgba(0,0,0,0.35)",
+            zIndex: 1,
+          }}
+        >
+          <AppCircularProgress size={32} />
+        </div>
+      )}
+
       {/* Status dot */}
-      <Tooltip
-        title={getStatusTooltip(container)}
-        placement="top"
-        arrow
-        slots={{ transition: Fade }}
-        slotProps={{ transition: { timeout: 300 } }}
-      >
+      <AppTooltip title={getStatusTooltip(container)} placement="top" arrow>
         <div
           style={{
             position: "absolute",
@@ -290,7 +299,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             cursor: "default",
           }}
         />
-      </Tooltip>
+      </AppTooltip>
 
       {/* Top row: Icon + Name + Buttons */}
       <div
@@ -315,95 +324,98 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           <DockerIcon identifier={container.icon} size={48} alt={name} />
         </div>
         <div style={{ flex: 0.95, minWidth: 0 }}>
-          <Typography
+          <AppTypography
             variant="subtitle1"
-            fontWeight="600"
+            fontWeight={600}
             noWrap
-            sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
+            style={{
+              marginLeft: 4,
+              marginRight: 0.4,
+              marginBottom: 2,
+              fontSize: "1.05rem",
+            }}
           >
             {name}
-          </Typography>
+          </AppTypography>
           <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
             {container.Labels?.["com.docker.compose.project"] ===
             "linuxio-watchtower" ? (
-              <Tooltip title="View Logs" arrow>
+              <AppTooltip title="View Logs" arrow>
                 <Chip
                   label="Managed by LinuxIO"
                   size="small"
-                  variant="outlined"
+                  variant="soft"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleLogsClick();
                   }}
-                  sx={{
+                  className="chip-interactive"
+                  style={{
                     fontSize: "0.68rem",
-                    opacity: 0.7,
-                    cursor: "pointer",
-                    "&:hover": { opacity: 1 },
                   }}
                 />
-              </Tooltip>
+              </AppTooltip>
             ) : (
               <>
                 {container.State !== "running" && (
-                  <Tooltip title="Start Container" arrow>
+                  <AppTooltip title="Start Container" arrow>
                     <span onClick={(e) => e.stopPropagation()}>
                       <ActionButton
                         icon="mdi:play"
                         onClick={() => handleAction("start")}
                       />
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
                 {container.State === "running" && (
-                  <Tooltip title="Stop Container" arrow>
+                  <AppTooltip title="Stop Container" arrow>
                     <span onClick={(e) => e.stopPropagation()}>
                       <ActionButton
                         icon="mdi:stop"
                         onClick={() => handleAction("stop")}
                       />
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
-                <Tooltip title="Restart Container" arrow>
+                <AppTooltip title="Restart Container" arrow>
                   <span onClick={(e) => e.stopPropagation()}>
                     <ActionButton
                       icon="mdi:restart"
                       onClick={() => handleAction("restart")}
                     />
                   </span>
-                </Tooltip>
-                <Tooltip title="Remove Container" arrow>
+                </AppTooltip>
+                <AppTooltip title="Remove Container" arrow>
                   <span onClick={(e) => e.stopPropagation()}>
                     <ActionButton
                       icon="mdi:delete"
                       onClick={() => handleAction("remove")}
                     />
                   </span>
-                </Tooltip>
-                <Tooltip title="View Logs" arrow>
+                </AppTooltip>
+                <AppTooltip title="View Logs" arrow>
                   <span onClick={(e) => e.stopPropagation()}>
                     <ActionButton
                       icon="mdi:file-document-outline"
                       onClick={handleLogsClick}
                     />
                   </span>
-                </Tooltip>
+                </AppTooltip>
               </>
             )}
             {container.Labels?.["com.docker.compose.project"] !==
               "linuxio-watchtower" && (
-              <Tooltip title="Open Terminal" arrow>
+              <AppTooltip title="Open Terminal" arrow>
                 <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:console"
                     onClick={handleTerminalClick}
                   />
                 </span>
-              </Tooltip>
+              </AppTooltip>
             )}
             {container.url && (
-              <Tooltip title="Open App" arrow>
+              <AppTooltip title="Open App" arrow>
                 <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:open-in-new"
@@ -412,7 +424,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                     }
                   />
                 </span>
-              </Tooltip>
+              </AppTooltip>
             )}
           </div>
         </div>
@@ -440,26 +452,20 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
       {/* Metrics area: full width */}
       <div style={{ marginTop: 8, width: "100%" }}>
-        {isActionPending ? (
-          <ComponentLoader />
-        ) : (
-          <>
-            <MetricBar
-              label="CPU"
-              percent={cpuPercent}
-              color={theme.palette.primary.main}
-              tooltip="CPU Usage"
-              rightLabel={`${cpuPercent.toFixed(1)}%`}
-            />
-            <MetricBar
-              label="MEM"
-              percent={memPercent}
-              color={theme.palette.primary.main}
-              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-              rightLabel={formatFileSize(memUsage)}
-            />
-          </>
-        )}
+        <MetricBar
+          label="CPU"
+          percent={cpuPercent}
+          color={theme.palette.primary.main}
+          tooltip="CPU Usage"
+          rightLabel={`${cpuPercent.toFixed(1)}%`}
+        />
+        <MetricBar
+          label="MEM"
+          percent={memPercent}
+          color={theme.palette.primary.main}
+          tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+          rightLabel={formatFileSize(memUsage)}
+        />
       </div>
 
       {/* Auto-update toggle */}
@@ -472,41 +478,27 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Typography
+        <AppTypography
           variant="caption"
           color={isWatchtowerContainer ? "text.disabled" : "text.secondary"}
         >
           Auto Update
-        </Typography>
-        <Tooltip title={autoUpdateTooltip}>
+        </AppTypography>
+        <AppTooltip title={autoUpdateTooltip}>
           <span style={{ display: "inline-flex" }}>
-            <Switch
+            <AppSwitch
               size="small"
               checked={autoUpdateChecked}
               onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
               disabled={autoUpdateDisabled}
-              sx={
-                isWatchtowerContainer
-                  ? {
-                      "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
-                        color: "action.disabled",
-                      },
-                      "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
-                        {
-                          opacity: 1,
-                          backgroundColor: "action.disabledBackground",
-                        },
-                    }
-                  : undefined
-              }
             />
           </span>
-        </Tooltip>
+        </AppTooltip>
       </div>
 
       {/* Ports section */}
-      <Collapse in={expanded} timeout={250} unmountOnExit>
-        <Divider sx={{ mt: 1, mb: 1.5 }} />
+      <AppCollapse in={expanded} timeout={250} unmountOnExit>
+        <AppDivider style={{ marginTop: 8, marginBottom: 12 }} />
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {ports.map((p, i) => {
             const label = p.PublicPort
@@ -517,12 +509,17 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 key={i}
                 label={label}
                 size="small"
-                sx={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
+                variant="soft"
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: "0.7rem",
+                  height: 22,
+                }}
               />
             );
           })}
         </div>
-      </Collapse>
+      </AppCollapse>
     </FrostedCard>
   );
 };

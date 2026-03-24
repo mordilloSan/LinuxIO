@@ -1,18 +1,17 @@
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import ErrorIcon from "@mui/icons-material/Error";
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  LinearProgress,
-  Paper,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import { useEffect, useRef } from "react";
 
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppPaper from "@/components/ui/AppPaper";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface UpdateDialogProps {
   open: boolean;
   status: string;
@@ -25,7 +24,6 @@ interface UpdateDialogProps {
   onContinue?: () => void;
   targetVersion?: string | null;
 }
-
 const UpdateDialog: React.FC<UpdateDialogProps> = ({
   open,
   status,
@@ -38,30 +36,31 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   onContinue,
   targetVersion,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const outputEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new output arrives
   useEffect(() => {
-    outputEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    outputEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
   }, [output]);
-
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       maxWidth="md"
       fullWidth
       disableEscapeKeyDown={!canClose}
       onClose={canClose ? onClose : undefined}
     >
-      <DialogTitle>
+      <AppDialogTitle>
         {updateComplete
           ? updateSuccess
             ? "Update Complete"
             : "Update Failed"
           : "Updating LinuxIO"}
-      </DialogTitle>
-      <DialogContent>
+      </AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "grid",
@@ -84,15 +83,15 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
               }}
             >
               {updateSuccess ? (
-                <CheckCircleIcon fontSize="large" />
+                <Icon icon="mdi:check-circle" width={28} height={28} />
               ) : (
-                <ErrorIcon fontSize="large" />
+                <Icon icon="mdi:alert-circle" width={28} height={28} />
               )}
               <div>
-                <Typography variant="h6" fontWeight="bold">
+                <AppTypography variant="h6" fontWeight={700}>
                   {updateSuccess ? "Update Successful!" : "Update Failed"}
-                </Typography>
-                <Typography variant="body2">
+                </AppTypography>
+                <AppTypography variant="body2">
                   {updateSuccess ? (
                     targetVersion ? (
                       <>
@@ -105,7 +104,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                   ) : (
                     "The update could not be completed. Please check the output below for details."
                   )}
-                </Typography>
+                </AppTypography>
               </div>
             </div>
           )}
@@ -114,27 +113,40 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
           {(!updateComplete || (updateComplete && !updateSuccess)) &&
             status && (
               <div>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <AppTypography
+                  variant="body2"
+                  color="text.secondary"
+                  gutterBottom
+                >
                   {updateComplete && !updateSuccess
                     ? "Error Details"
                     : "Status"}
-                </Typography>
-                <Typography variant="body1" fontWeight="medium">
+                </AppTypography>
+                <AppTypography variant="body1" fontWeight={500}>
                   {status || "Preparing..."}
-                </Typography>
+                </AppTypography>
               </div>
             )}
 
           {/* Progress bar - hide when complete */}
           {!updateComplete && progress < 100 && (
             <div>
-              <Typography variant="body2" color="text.secondary" mb={1}>
+              <AppTypography
+                variant="body2"
+                color="text.secondary"
+                style={{
+                  marginBottom: 4,
+                }}
+              >
                 Progress
-              </Typography>
-              <LinearProgress
+              </AppTypography>
+              <AppLinearProgress
                 variant={progress > 0 ? "determinate" : "indeterminate"}
                 value={progress}
-                sx={{ height: 8, borderRadius: 1 }}
+                style={{
+                  height: 8,
+                  borderRadius: 1,
+                }}
               />
             </div>
           )}
@@ -142,17 +154,21 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
           {/* Output console */}
           {output.length > 0 && (
             <div>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
+              <AppTypography
+                variant="body2"
+                color="text.secondary"
+                gutterBottom
+              >
                 Installation Output
-              </Typography>
-              <Paper
+              </AppTypography>
+              <AppPaper
                 variant="outlined"
-                sx={{
+                style={{
                   maxHeight: 300,
                   overflowY: "auto",
-                  bgcolor: "grey.900",
-                  color: "grey.100",
-                  p: 2,
+                  backgroundColor: "var(--mui-palette-grey-900)",
+                  color: "var(--mui-palette-grey-100)",
+                  padding: 8,
                   fontFamily: "monospace",
                   fontSize: "0.875rem",
                 }}
@@ -169,40 +185,41 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                   </div>
                 ))}
                 <div ref={outputEndRef} />
-              </Paper>
+              </AppPaper>
             </div>
           )}
         </div>
-      </DialogContent>
-      <DialogActions>
+      </AppDialogContent>
+      <AppDialogActions>
         {updateComplete && updateSuccess && onContinue && (
-          <Button
-            onClick={onContinue}
-            variant="contained"
-            color="success"
-            size="large"
-          >
+          <AppButton onClick={onContinue} variant="contained" color="success">
             Continue to Login
-          </Button>
+          </AppButton>
         )}
         {updateComplete && !updateSuccess && (
-          <Button onClick={onClose} variant="contained">
+          <AppButton onClick={onClose} variant="contained">
             Close
-          </Button>
+          </AppButton>
         )}
         {!updateComplete && canClose && (
-          <Button onClick={onClose} variant="contained">
+          <AppButton onClick={onClose} variant="contained">
             Close
-          </Button>
+          </AppButton>
         )}
         {!updateComplete && !canClose && (
-          <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
+          <AppTypography
+            variant="body2"
+            color="text.secondary"
+            style={{
+              paddingLeft: 8,
+              paddingRight: 8,
+            }}
+          >
             Please wait...
-          </Typography>
+          </AppTypography>
         )}
-      </DialogActions>
-    </Dialog>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
-
 export default UpdateDialog;

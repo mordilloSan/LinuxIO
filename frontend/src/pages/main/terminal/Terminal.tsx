@@ -1,5 +1,3 @@
-import { IconButton, Menu, MenuItem, Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -16,6 +14,11 @@ import {
   openTerminalStream,
   type Stream,
 } from "@/api";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
+import AppTypography from "@/components/ui/AppTypography";
+import { shadowSm } from "@/constants";
+import { useAppTheme } from "@/theme";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
@@ -27,7 +30,7 @@ const TerminalXTerm: React.FC = () => {
   const fitAddon = useRef<FitAddon | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const unbindRef = useRef<(() => void) | null>(null);
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
@@ -335,48 +338,52 @@ const TerminalXTerm: React.FC = () => {
             theme.palette.mode === "light"
               ? theme.darken(theme.sidebar.background, 0.13)
               : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: theme.shadows[2],
+          boxShadow: shadowSm,
         }}
       >
         {/* Font Size Controls */}
-        <Typography
+        <AppTypography
           variant="body2"
-          sx={{ color: "text.secondary", fontWeight: 500, mr: 2 }}
+          color="text.secondary"
+          fontWeight={500}
+          style={{ marginRight: 8 }}
         >
           Font
-        </Typography>
-        <IconButton
+        </AppTypography>
+        <AppIconButton
           size="small"
-          sx={{ color: "text.secondary" }}
+          style={{ color: "var(--mui-palette-text-secondary)" }}
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
         >
           <Minus size={18} />
-        </IconButton>
-        <Typography
+        </AppIconButton>
+        <AppTypography
           variant="body2"
-          sx={{ minWidth: 28, textAlign: "center", color: "text.secondary" }}
+          color="text.secondary"
+          align="center"
+          style={{ minWidth: 28 }}
         >
           {fontSize}
-        </Typography>
-        <IconButton
+        </AppTypography>
+        <AppIconButton
           size="small"
-          sx={{ color: "text.secondary" }}
+          style={{ color: "var(--mui-palette-text-secondary)" }}
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
         >
           <Plus size={18} />
-        </IconButton>
+        </AppIconButton>
 
         <div style={{ flex: 1 }} />
 
         {/* Reset Button */}
-        <IconButton
+        <AppIconButton
           size="small"
-          sx={{ color: "text.secondary", ml: 1 }}
+          style={{ color: "var(--mui-palette-text-secondary)", marginLeft: 8 }}
           onClick={handleReset}
           title="Reset Terminal"
         >
           <RotateCcw size={18} />
-        </IconButton>
+        </AppIconButton>
       </div>
       {/* TERMINAL */}
       <div
@@ -391,61 +398,46 @@ const TerminalXTerm: React.FC = () => {
         }}
       />
       {/* CONTEXT MENU */}
-      <Menu
+      <AppMenu
         open={contextMenu !== null}
         onClose={handleCloseContextMenu}
-        anchorReference="anchorPosition"
         anchorPosition={
           contextMenu !== null
             ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
             : undefined
         }
         autoFocus={false}
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: 2,
-            },
-          },
-          backdrop: {
-            onClick: handleCloseContextMenu,
-            onContextMenu: (e: React.MouseEvent) => {
-              e.preventDefault();
-              handleCloseContextMenu();
-            },
-          },
-        }}
+        minWidth={168}
       >
-        <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
-          >
-            <span>Copy</span>
-            <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
+        <AppMenuItem
+          onClick={handleCopy}
+          endAdornment={
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              style={{ marginLeft: 8 }}
+            >
               Shift+C
-            </Typography>
-          </div>
-        </MenuItem>
-        <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              width: "100%",
-              gap: theme.spacing(4),
-            }}
-          >
-            <span>Paste</span>
-            <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
+            </AppTypography>
+          }
+        >
+          Copy
+        </AppMenuItem>
+        <AppMenuItem
+          onClick={handlePaste}
+          endAdornment={
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              style={{ marginLeft: 8 }}
+            >
               Shift+V
-            </Typography>
-          </div>
-        </MenuItem>
-      </Menu>
+            </AppTypography>
+          }
+        >
+          Paste
+        </AppMenuItem>
+      </AppMenu>
     </div>
   );
 };

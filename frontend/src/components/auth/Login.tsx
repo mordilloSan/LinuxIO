@@ -1,51 +1,27 @@
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
-import {
-  Alert,
-  Button,
-  IconButton,
-  InputAdornment,
-  TextField,
-} from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTextField from "@/components/ui/AppTextField";
 import "./login.css";
 import useAuth from "@/hooks/useAuth";
-
-const fieldSx = (theme: any) => ({
-  my: 1,
-
-  "& .MuiInputLabel-root": {
-    color: theme.palette.text.secondary,
-    fontWeight: 500,
-  },
-
-  "& .MuiOutlinedInput-root": {
-    borderRadius: 3,
-    backgroundColor: alpha(theme.palette.background.default, 0.65),
-    transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-    "& fieldset": { borderColor: alpha(theme.palette.text.secondary, 0.3) },
-    "&:hover fieldset": {
-      borderColor: alpha(theme.palette.text.secondary, 0.55),
-    },
-    "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
-    "&.Mui-focused": {
-      boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.35)}`,
-    },
-  },
-
-  // Smaller size on smaller screens
-  "& .MuiOutlinedInput-input": {
-    color: theme.palette.text.primary,
-    [theme.breakpoints.down("md")]: {
-      padding: "8.5px 14px",
-    },
-  },
-});
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 function LogIn() {
+  const theme = useAppTheme();
+  const fieldStyle = {
+    "--lf-bg": alpha(theme.palette.background.default, 0.65),
+    "--lf-border": alpha(theme.palette.text.secondary, 0.3),
+    "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
+    "--lf-focus-color": theme.palette.primary.main,
+    "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.28),
+    "--lf-label-color": theme.palette.text.secondary,
+  } as React.CSSProperties;
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -80,34 +56,36 @@ function LogIn() {
   return (
     <form noValidate onSubmit={handleSubmit}>
       {error && (
-        <Alert
+        <AppAlert
           severity="warning"
-          className="login-reveal"
-          style={{ "--login-reveal-delay": "60ms" } as React.CSSProperties}
-          sx={{
-            mb: 2,
-            borderRadius: 2,
-            border: (theme) =>
-              `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
-            backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.18),
-            color: "text.primary",
-          }}
+          className="login-alert login-reveal"
+          style={
+            {
+              "--login-reveal-delay": "60ms",
+              "--login-alert-bg": alpha(theme.palette.warning.main, 0.18),
+              "--login-alert-border": alpha(theme.palette.warning.main, 0.36),
+              "--login-alert-icon": theme.palette.warning.main,
+              "--login-alert-text": alpha(theme.palette.common.white, 0.92),
+              marginBottom: 16,
+            } as React.CSSProperties
+          }
         >
           {error}
-        </Alert>
+        </AppAlert>
       )}
       <div
         className="login-reveal"
         style={{ "--login-reveal-delay": "140ms" } as React.CSSProperties}
       >
-        <TextField
+        <AppTextField
           label="Username"
           fullWidth
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
-          sx={fieldSx}
-          slotProps={{ inputLabel: { shrink: true } }}
+          className="login-field"
+          shrinkLabel
+          style={fieldStyle}
         />
       </div>
 
@@ -115,33 +93,29 @@ function LogIn() {
         className="login-reveal"
         style={{ "--login-reveal-delay": "220ms" } as React.CSSProperties}
       >
-        <TextField
+        <AppTextField
           label="Password"
           type={showPassword ? "text" : "password"}
           fullWidth
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
-          sx={fieldSx}
-          slotProps={{
-            inputLabel: { shrink: true },
-            input: {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword((p) => !p)}
-                    edge="end"
-                    sx={{
-                      color: "text.secondary",
-                      "&:hover": { color: "text.primary" },
-                    }}
-                  >
-                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            },
-          }}
+          className="login-field"
+          shrinkLabel
+          style={fieldStyle}
+          endAdornment={
+            <AppIconButton
+              onClick={() => setShowPassword((p) => !p)}
+              edge="end"
+              className="login-password-toggle"
+            >
+              {showPassword ? (
+                <Icon icon="mdi:eye-off" width={22} height={22} />
+              ) : (
+                <Icon icon="mdi:eye" width={22} height={22} />
+              )}
+            </AppIconButton>
+          }
         />
       </div>
 
@@ -149,37 +123,16 @@ function LogIn() {
         className="login-reveal"
         style={{ "--login-reveal-delay": "300ms" } as React.CSSProperties}
       >
-        <Button
+        <AppButton
           type="submit"
           variant="contained"
           fullWidth
           color="primary"
           disabled={loading}
-          sx={(theme) => ({
-            my: 2,
-            py: 1.6,
-            borderRadius: 999,
-            fontWeight: 600,
-            letterSpacing: "0.02em",
-            backgroundImage:
-              "linear-gradient(135deg, var(--accent), var(--accent-soft))",
-            boxShadow: `0 18px 40px -26px ${alpha(theme.palette.primary.main, 0.75)}`,
-            "&:hover": {
-              backgroundImage:
-                "linear-gradient(135deg, var(--accent-strong), var(--accent))",
-              boxShadow: `0 22px 46px -28px ${alpha(theme.palette.primary.main, 0.9)}`,
-            },
-            "&:active": { transform: "translateY(1px)" },
-            [theme.breakpoints.down("md")]: {
-              py: 1.25,
-            },
-            "@media (prefers-reduced-motion: reduce)": {
-              transition: "none",
-            },
-          })}
+          className="login-submit-btn"
         >
           Sign in
-        </Button>
+        </AppButton>
       </div>
     </form>
   );

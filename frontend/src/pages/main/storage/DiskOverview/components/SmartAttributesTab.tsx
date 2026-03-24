@@ -1,23 +1,22 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-} from "@mui/material";
 import React from "react";
 
 import type { SmartAttribute } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableContainer,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
+import AppTypography from "@/components/ui/AppTypography";
 interface SmartAttributesTabProps {
   isNvme: boolean;
   nvmeHealthRaw?: Record<string, unknown>;
   ataAttrs?: SmartAttribute[];
 }
-
 export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
   isNvme,
   nvmeHealthRaw,
@@ -25,252 +24,248 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
 }) => {
   if (isNvme && nvmeHealthRaw) {
     return (
-      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
-        <Table
-          size="small"
-          stickyHeader
-          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+      <AppTableContainer
+        className="custom-scrollbar"
+        style={{ maxHeight: 400 }}
+      >
+        <AppTable className="app-table--sticky">
+          <AppTableHead>
+            <AppTableRow>
+              <AppTableCell style={{ fontWeight: 600 }}>Attribute</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Value
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+              </AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
             {getSmartNumber(nvmeHealthRaw.critical_warning) !== null && (
-              <TableRow>
-                <TableCell>Critical Warning</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Critical Warning</AppTableCell>
+                <AppTableCell align="right">
                   0x
                   {(getSmartNumber(nvmeHealthRaw.critical_warning) ?? 0)
                     .toString(16)
                     .padStart(2, "0")
                     .toUpperCase()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.temperature) !== null && (
-              <TableRow>
-                <TableCell>Temperature</TableCell>
-                <TableCell
+              <AppTableRow>
+                <AppTableCell>Temperature</AppTableCell>
+                <AppTableCell
                   align="right"
-                  sx={{
+                  style={{
                     color:
                       (getSmartNumber(nvmeHealthRaw.temperature) ?? 0) > 70
-                        ? "error.main"
+                        ? "var(--mui-palette-error-main)"
                         : (getSmartNumber(nvmeHealthRaw.temperature) ?? 0) > 50
-                          ? "warning.main"
+                          ? "var(--mui-palette-warning-main)"
                           : "inherit",
                   }}
                 >
                   {getSmartNumber(nvmeHealthRaw.temperature)} Celsius
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.available_spare) !== null && (
-              <TableRow>
-                <TableCell>Available Spare</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Available Spare</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(nvmeHealthRaw.available_spare)}%
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.available_spare_threshold) !==
               null && (
-              <TableRow>
-                <TableCell>Available Spare Threshold</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Available Spare Threshold</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(nvmeHealthRaw.available_spare_threshold)}%
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.percentage_used) !== null && (
-              <TableRow>
-                <TableCell>Percentage Used</TableCell>
-                <TableCell
+              <AppTableRow>
+                <AppTableCell>Percentage Used</AppTableCell>
+                <AppTableCell
                   align="right"
-                  sx={{
+                  style={{
                     color:
                       (getSmartNumber(nvmeHealthRaw.percentage_used) ?? 0) > 90
-                        ? "error.main"
+                        ? "var(--mui-palette-error-main)"
                         : (getSmartNumber(nvmeHealthRaw.percentage_used) ?? 0) >
                             70
-                          ? "warning.main"
+                          ? "var(--mui-palette-warning-main)"
                           : "inherit",
                   }}
                 >
                   {getSmartNumber(nvmeHealthRaw.percentage_used)}%
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.data_units_read) !== null && (
-              <TableRow>
-                <TableCell>Data Units Read</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Data Units Read</AppTableCell>
+                <AppTableCell align="right">
                   {formatDataUnits(
                     getSmartNumber(nvmeHealthRaw.data_units_read) ?? undefined,
                   )}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.data_units_written) !== null && (
-              <TableRow>
-                <TableCell>Data Units Written</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Data Units Written</AppTableCell>
+                <AppTableCell align="right">
                   {formatDataUnits(
                     getSmartNumber(nvmeHealthRaw.data_units_written) ??
                       undefined,
                   )}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.host_reads) !== null && (
-              <TableRow>
-                <TableCell>Host Read Commands</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Host Read Commands</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(nvmeHealthRaw.host_reads)?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.host_writes) !== null && (
-              <TableRow>
-                <TableCell>Host Write Commands</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Host Write Commands</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(nvmeHealthRaw.host_writes)?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.controller_busy_time) !== null && (
-              <TableRow>
-                <TableCell>Controller Busy Time</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Controller Busy Time</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(
                     nvmeHealthRaw.controller_busy_time,
                   )?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.power_cycles) !== null && (
-              <TableRow>
-                <TableCell>Power Cycles</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Power Cycles</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(nvmeHealthRaw.power_cycles)?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.power_on_hours) !== null && (
-              <TableRow>
-                <TableCell>Power On Hours</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Power On Hours</AppTableCell>
+                <AppTableCell align="right">
                   {formatPowerOnTime(
                     getSmartNumber(nvmeHealthRaw.power_on_hours) ?? undefined,
                   )}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.unsafe_shutdowns) !== null && (
-              <TableRow>
-                <TableCell>Unsafe Shutdowns</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Unsafe Shutdowns</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(
                     nvmeHealthRaw.unsafe_shutdowns,
                   )?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.media_errors) !== null && (
-              <TableRow>
-                <TableCell>Media and Data Integrity Errors</TableCell>
-                <TableCell
+              <AppTableRow>
+                <AppTableCell>Media and Data Integrity Errors</AppTableCell>
+                <AppTableCell
                   align="right"
-                  sx={{
+                  style={{
                     color:
                       (getSmartNumber(nvmeHealthRaw.media_errors) ?? 0) > 0
-                        ? "error.main"
+                        ? "var(--mui-palette-error-main)"
                         : "inherit",
                   }}
                 >
                   {getSmartNumber(nvmeHealthRaw.media_errors)?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
             {getSmartNumber(nvmeHealthRaw.num_err_log_entries) !== null && (
-              <TableRow>
-                <TableCell>Error Information Log Entries</TableCell>
-                <TableCell align="right">
+              <AppTableRow>
+                <AppTableCell>Error Information Log Entries</AppTableCell>
+                <AppTableCell align="right">
                   {getSmartNumber(
                     nvmeHealthRaw.num_err_log_entries,
                   )?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </AppTableBody>
+        </AppTable>
+      </AppTableContainer>
     );
   }
-
   if (ataAttrs && ataAttrs.length > 0) {
     return (
-      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
-        <Table
-          size="small"
-          stickyHeader
-          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+      <AppTableContainer
+        className="custom-scrollbar"
+        style={{ maxHeight: 400 }}
+      >
+        <AppTable className="app-table--sticky">
+          <AppTableHead>
+            <AppTableRow>
+              <AppTableCell style={{ fontWeight: 600 }}>#</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }}>Attribute</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Value
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              </AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Worst
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              </AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Thresh
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              </AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Raw
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+              </AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
             {ataAttrs.map((attr) => (
-              <TableRow key={attr.id}>
-                <TableCell>{attr.id}</TableCell>
-                <TableCell>{attr.name}</TableCell>
-                <TableCell align="right">{attr.value}</TableCell>
-                <TableCell align="right">{attr.worst}</TableCell>
-                <TableCell align="right">{attr.thresh}</TableCell>
-                <TableCell
+              <AppTableRow key={attr.id}>
+                <AppTableCell>{attr.id}</AppTableCell>
+                <AppTableCell>{attr.name}</AppTableCell>
+                <AppTableCell align="right">{attr.value}</AppTableCell>
+                <AppTableCell align="right">{attr.worst}</AppTableCell>
+                <AppTableCell align="right">{attr.thresh}</AppTableCell>
+                <AppTableCell
                   align="right"
-                  sx={{
+                  style={{
                     color:
                       [5, 196, 197, 198].includes(attr.id) &&
                       attr.raw?.value &&
                       attr.raw.value > 0
-                        ? "warning.main"
+                        ? "var(--mui-palette-warning-main)"
                         : "inherit",
                   }}
                 >
                   {attr.raw?.string || attr.raw?.value?.toLocaleString()}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </AppTableBody>
+        </AppTable>
+      </AppTableContainer>
     );
   }
-
   return (
-    <Typography color="text.secondary">
+    <AppTypography color="text.secondary">
       No SMART attributes available for this drive.
-    </Typography>
+    </AppTypography>
   );
 };

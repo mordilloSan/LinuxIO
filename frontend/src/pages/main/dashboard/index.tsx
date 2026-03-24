@@ -12,16 +12,7 @@ import {
   rectSortingStrategy,
   SortableContext,
 } from "@dnd-kit/sortable";
-import { DragIndicator, Settings } from "@mui/icons-material";
-import {
-  Checkbox,
-  FormControlLabel,
-  Grid,
-  IconButton,
-  Popover,
-  Tooltip,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import React, { useCallback, useMemo, useState } from "react";
 
 import DockerInfo from "./Docker";
@@ -36,8 +27,15 @@ import SystemHealth from "./System";
 
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppPopover from "@/components/ui/AppPopover";
+import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 
 const MemoSystemHealth = React.memo(SystemHealth);
 const MemoProcessor = React.memo(Processor);
@@ -62,7 +60,7 @@ const allCards = [
 ];
 
 const Dashboard: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { dockerAvailable } = useAuth();
   const [editMode, setEditMode] = useState(false);
   const [dashboardOrder, setDashboardOrder] = useConfigValue("dashboardOrder");
@@ -137,44 +135,46 @@ const Dashboard: React.FC = () => {
           marginBottom: theme.spacing(1),
         }}
       >
-        <Tooltip title="Card visibility">
-          <IconButton
+        <AppTooltip title="Card visibility">
+          <AppIconButton
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
-            <Settings />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={editMode ? "Lock layout" : "Edit layout"}>
-          <IconButton
+            <Icon icon="mdi:cog" width={20} height={20} />
+          </AppIconButton>
+        </AppTooltip>
+        <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>
+          <AppIconButton
             onClick={() => setEditMode((prev) => !prev)}
             color={editMode ? "primary" : "default"}
             size="small"
           >
-            <DragIndicator />
-          </IconButton>
-        </Tooltip>
+            <Icon icon="mdi:drag" width={20} height={20} />
+          </AppIconButton>
+        </AppTooltip>
       </div>
 
-      <Popover
+      <AppPopover
         open={Boolean(anchorEl)}
         anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
+        paperStyle={{
+          padding: theme.spacing(2),
+        }}
       >
         <div
           style={{
-            padding: theme.spacing(2),
             display: "flex",
             flexDirection: "column",
           }}
         >
           {availableCards.map((card) => (
-            <FormControlLabel
+            <AppFormControlLabel
               key={card.id}
               control={
-                <Checkbox
+                <AppCheckbox
                   checked={!hiddenCards?.includes(card.id)}
                   onChange={() => toggleCard(card.id)}
                   size="small"
@@ -184,7 +184,7 @@ const Dashboard: React.FC = () => {
             />
           ))}
         </div>
-      </Popover>
+      </AppPopover>
 
       <DndContext
         sensors={sensors}
@@ -192,17 +192,17 @@ const Dashboard: React.FC = () => {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={cardIds} strategy={rectSortingStrategy}>
-          <Grid container spacing={4}>
+          <AppGrid container spacing={4}>
             {cards.map(({ id, component: CardComponent }) => (
-              <Grid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
+              <AppGrid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
                 <SortableCard id={id} editMode={editMode}>
                   <ErrorBoundary>
                     <CardComponent />
                   </ErrorBoundary>
                 </SortableCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         </SortableContext>
       </DndContext>
     </div>

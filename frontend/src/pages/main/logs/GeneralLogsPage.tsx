@@ -1,29 +1,4 @@
-import BugReportIcon from "@mui/icons-material/BugReport";
-import DownloadIcon from "@mui/icons-material/Download";
-import ErrorIcon from "@mui/icons-material/Error";
-import FileCopyIcon from "@mui/icons-material/FileCopy";
-import InfoIcon from "@mui/icons-material/Info";
-import SearchIcon from "@mui/icons-material/Search";
-import WarningIcon from "@mui/icons-material/Warning";
-import {
-  Alert,
-  Autocomplete,
-  Chip,
-  FormControl,
-  FormControlLabel,
-  IconButton,
-  InputAdornment,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Switch,
-  TableCell,
-  TextField,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React, {
   useCallback,
   useEffect,
@@ -36,8 +11,22 @@ import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import AppAlert from "@/components/ui/AppAlert";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
+import Chip from "@/components/ui/AppChip";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppPaper from "@/components/ui/AppPaper";
+import AppSearchField from "@/components/ui/AppSearchField";
+import AppSelect from "@/components/ui/AppSelect";
+import AppSwitch from "@/components/ui/AppSwitch";
+import { AppTableCell } from "@/components/ui/AppTable";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 const DEFAULT_TAIL = "200";
 
@@ -111,21 +100,21 @@ const getPriorityIcon = (priority: LogPriority) => {
     case LogPriority.ALERT:
     case LogPriority.CRITICAL:
     case LogPriority.ERROR:
-      return <ErrorIcon fontSize="small" />;
+      return <Icon icon="mdi:alert-circle" width={20} height={20} />;
     case LogPriority.WARNING:
-      return <WarningIcon fontSize="small" />;
+      return <Icon icon="mdi:alert" width={20} height={20} />;
     case LogPriority.INFO:
     case LogPriority.NOTICE:
-      return <InfoIcon fontSize="small" />;
+      return <Icon icon="mdi:information" width={20} height={20} />;
     case LogPriority.DEBUG:
-      return <BugReportIcon fontSize="small" />;
+      return <Icon icon="mdi:bug" width={20} height={20} />;
     default:
-      return <InfoIcon fontSize="small" />;
+      return <Icon icon="mdi:information" width={20} height={20} />;
   }
 };
 
 const GeneralLogsPage: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -146,7 +135,7 @@ const GeneralLogsPage: React.FC = () => {
     {
       field: "priority",
       headerName: "Priority",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     { field: "identifier", headerName: "Identifier" },
     { field: "timestamp", headerName: "Timestamp" },
@@ -437,119 +426,114 @@ const GeneralLogsPage: React.FC = () => {
   const renderMainRow = useCallback((log: LogEntry) => {
     return (
       <>
-        <TableCell
-          sx={{
-            width: "1%",
-            display: { xs: "none", sm: "table-cell" },
-          }}
+        <AppTableCell
+          className="app-table-hide-below-sm"
+          style={{ width: "1%" }}
         >
           <Chip
             label={getPriorityLabel(log.priority)}
             size="small"
             color={getPriorityColor(log.priority) as any}
-            sx={{
-              fontWeight: 600,
-              fontSize: "0.7rem",
-            }}
+            variant="soft"
+            style={{ fontSize: "0.7rem" }}
           />
-        </TableCell>
-        <TableCell sx={{ width: "1%" }}>
-          <Chip
-            label={log.identifier}
-            size="small"
-            variant="outlined"
-            sx={{ fontSize: "0.75rem" }}
-          />
-        </TableCell>
-        <TableCell sx={{ width: "1%" }}>
-          <Typography
+        </AppTableCell>
+        <AppTableCell style={{ width: "1%" }}>
+          <AppTypography
             variant="body2"
-            sx={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+            style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+          >
+            {log.identifier}
+          </AppTypography>
+        </AppTableCell>
+        <AppTableCell style={{ width: "1%" }}>
+          <AppTypography
+            variant="body2"
+            style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
           >
             {log.timestamp}
-          </Typography>
-        </TableCell>
-        <TableCell sx={{ maxWidth: 0 }}>
-          <Typography
+          </AppTypography>
+        </AppTableCell>
+        <AppTableCell style={{ maxWidth: 0 }}>
+          <AppTypography
             variant="body2"
-            sx={{
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
+            color="text.secondary"
+            noWrap
+            style={{ fontSize: "0.75rem" }}
           >
             {log.message}
-          </Typography>
-        </TableCell>
+          </AppTypography>
+        </AppTableCell>
       </>
     );
   }, []);
 
   // Render expanded content
-  const renderExpandedContent = useCallback((log: LogEntry) => {
-    return (
-      <>
-        <Typography variant="subtitle2" gutterBottom>
-          <b>Full Message:</b>
-        </Typography>
-        <Paper
-          sx={(theme) => ({
-            p: 2,
-            mb: 2,
-            bgcolor: alpha(
-              theme.palette.common.black,
-              theme.palette.mode === "dark" ? 0.3 : 0.02,
-            ),
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            maxWidth: "100%",
-            overflowX: "auto",
-          })}
-        >
-          {log.message}
-        </Paper>
+  const renderExpandedContent = useCallback(
+    (log: LogEntry) => {
+      return (
+        <>
+          <AppTypography variant="subtitle2" gutterBottom>
+            <b>Full Message:</b>
+          </AppTypography>
+          <AppPaper
+            style={{
+              padding: 8,
+              marginBottom: 8,
+              backgroundColor: alpha(
+                theme.palette.common.black,
+                theme.palette.mode === "dark" ? 0.3 : 0.02,
+              ),
+              fontFamily: "monospace",
+              fontSize: "0.85rem",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              maxWidth: "100%",
+              overflowX: "auto",
+            }}
+          >
+            {log.message}
+          </AppPaper>
 
-        {log.rawJson && (
-          <>
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Raw Journal Entry:</b>
-            </Typography>
-            <Paper
-              className="custom-scrollbar"
-              sx={(theme) => ({
-                p: 2,
-                bgcolor: alpha(
-                  theme.palette.common.black,
-                  theme.palette.mode === "dark" ? 0.3 : 0.02,
-                ),
-                fontFamily: "monospace",
-                fontSize: "0.75rem",
-                maxHeight: 300,
-                overflowY: "auto",
-                maxWidth: "100%",
-                overflowX: "auto",
-              })}
-            >
-              <pre
+          {log.rawJson && (
+            <>
+              <AppTypography variant="subtitle2" gutterBottom>
+                <b>Raw Journal Entry:</b>
+              </AppTypography>
+              <AppPaper
+                className="custom-scrollbar"
                 style={{
-                  margin: 0,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  overflowWrap: "anywhere",
+                  padding: 8,
+                  backgroundColor: alpha(
+                    theme.palette.common.black,
+                    theme.palette.mode === "dark" ? 0.3 : 0.02,
+                  ),
+                  fontFamily: "monospace",
+                  fontSize: "0.75rem",
+                  maxHeight: 300,
+                  overflowY: "auto",
+                  maxWidth: "100%",
+                  overflowX: "auto",
                 }}
               >
-                {JSON.stringify(log.rawJson, null, 2)}
-              </pre>
-            </Paper>
-          </>
-        )}
-      </>
-    );
-  }, []);
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {JSON.stringify(log.rawJson, null, 2)}
+                </pre>
+              </AppPaper>
+            </>
+          )}
+        </>
+      );
+    },
+    [theme.palette.common.black, theme.palette.mode],
+  );
 
   return (
     <div>
@@ -563,112 +547,92 @@ const GeneralLogsPage: React.FC = () => {
           marginBottom: theme.spacing(2),
         }}
       >
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Time Period</InputLabel>
-          <Select
-            value={timePeriod}
-            label="Time Period"
-            onChange={(e) => handleTimePeriodChange(e.target.value)}
-          >
-            <MenuItem value="1h">Last 1 hour</MenuItem>
-            <MenuItem value="6h">Last 6 hours</MenuItem>
-            <MenuItem value="24h">Last 24 hours</MenuItem>
-            <MenuItem value="7d">Last 7 days</MenuItem>
-            <MenuItem value="30d">Last 30 days</MenuItem>
-          </Select>
-        </FormControl>
+        <AppSelect
+          label="Time Period"
+          size="small"
+          style={{ minWidth: 150 }}
+          value={timePeriod}
+          onChange={(e) => handleTimePeriodChange(e.target.value)}
+        >
+          <option value="1h">Last 1 hour</option>
+          <option value="6h">Last 6 hours</option>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+        </AppSelect>
 
-        <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Priority</InputLabel>
-          <Select
-            value={priorityFilter}
-            label="Priority"
-            onChange={(e) => handlePriorityFilterChange(e.target.value)}
-          >
-            <MenuItem value="all">All</MenuItem>
-            <MenuItem value="0">Emergency and above</MenuItem>
-            <MenuItem value="1">Alert and above</MenuItem>
-            <MenuItem value="2">Critical and above</MenuItem>
-            <MenuItem value="3">Error and above</MenuItem>
-            <MenuItem value="4">Warning and above</MenuItem>
-            <MenuItem value="5">Notice and above</MenuItem>
-            <MenuItem value="6">Info and above</MenuItem>
-            <MenuItem value="7">Debug and above</MenuItem>
-          </Select>
-        </FormControl>
+        <AppSelect
+          label="Priority"
+          size="small"
+          style={{ minWidth: 180 }}
+          value={priorityFilter}
+          onChange={(e) => handlePriorityFilterChange(e.target.value)}
+        >
+          <option value="all">All</option>
+          <option value="0">Emergency and above</option>
+          <option value="1">Alert and above</option>
+          <option value="2">Critical and above</option>
+          <option value="3">Error and above</option>
+          <option value="4">Warning and above</option>
+          <option value="5">Notice and above</option>
+          <option value="6">Info and above</option>
+          <option value="7">Debug and above</option>
+        </AppSelect>
 
-        <Autocomplete
+        <AppAutocomplete
           size="small"
           freeSolo
           options={uniqueIdentifiers}
           value={identifierFilter === "all" ? "" : identifierFilter}
-          onChange={(_, newValue) => {
-            handleIdentifierFilterChange(newValue || "all");
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              const input = e.target as HTMLInputElement;
-              handleIdentifierFilterChange(input.value || "all");
-            }
+          onChange={(value) => {
+            handleIdentifierFilterChange(value || "all");
           }}
           filterOptions={(options, { inputValue }) => {
             if (!inputValue) return options;
             const lower = inputValue.toLowerCase();
             return options.filter((opt) => opt.toLowerCase().includes(lower));
           }}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Identifier"
-              placeholder="All"
-              sx={{ minWidth: 180 }}
-            />
-          )}
-          sx={{ minWidth: 180 }}
+          label="Identifier"
+          placeholder="All"
+          shrinkLabel={true}
+          style={{ minWidth: 180 }}
         />
 
-        <TextField
-          size="small"
-          placeholder="Search logs..."
+        <AppSearchField
+          label="Search logs"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 220, flex: "1 1 260px" }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            },
-          }}
+          style={{ minWidth: 220, flex: "1 1 260px" }}
+          startAdornment={<Icon icon="mdi:magnify" width={20} height={20} />}
         />
-        <Tooltip title="Copy logs">
+        <AppTooltip title="Copy logs">
           <span>
-            <IconButton
+            <AppIconButton
               onClick={handleCopy}
               size="small"
               disabled={filteredLogs.length === 0}
             >
-              <FileCopyIcon fontSize="small" />
-            </IconButton>
+              <Icon icon="mdi:content-copy" width={20} height={20} />
+            </AppIconButton>
           </span>
-        </Tooltip>
-        <Tooltip title="Download logs">
+        </AppTooltip>
+        <AppTooltip title="Download logs">
           <span>
-            <IconButton
+            <AppIconButton
               onClick={handleDownload}
               size="small"
               disabled={filteredLogs.length === 0}
             >
-              <DownloadIcon fontSize="small" />
-            </IconButton>
+              <Icon icon="mdi:download" width={20} height={20} />
+            </AppIconButton>
           </span>
-        </Tooltip>
-        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
-          <FormControlLabel
+        </AppTooltip>
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={liveMode}
                 onChange={handleLiveModeChange}
                 size="small"
@@ -676,13 +640,15 @@ const GeneralLogsPage: React.FC = () => {
             }
             label="Live"
           />
-        </Tooltip>
-        <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
+        </AppTooltip>
+        <AppTypography fontWeight={700}>
+          {filteredLogs.length} shown
+        </AppTypography>
       </div>
 
       {isLoading && <ComponentLoader />}
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {error && <AppAlert severity="error">{error}</AppAlert>}
 
       {!isLoading && !error && (
         <div ref={logsBoxRef}>

@@ -1,10 +1,12 @@
-import { Alert, Grid, TextField } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useMemo, useState } from "react";
 
 import type { UnitListItem } from "./UnitViews";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert from "@/components/ui/AppAlert";
+import AppGrid from "@/components/ui/AppGrid";
+import AppSearchField from "@/components/ui/AppSearchField";
+import { useAppTheme } from "@/theme";
 import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
@@ -54,7 +56,7 @@ function UnitListTab<T extends UnitListItem>({
   renderCardsView,
   renderDetailPanel,
 }: UnitListTabProps<T>) {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [returnToTable, setReturnToTable] = useState(false);
@@ -106,9 +108,9 @@ function UnitListTab<T extends UnitListItem>({
     <>
       {isPending && <ComponentLoader />}
       {isError && (
-        <Alert severity="error">
+        <AppAlert severity="error">
           {error instanceof Error ? error.message : errorMessage}
-        </Alert>
+        </AppAlert>
       )}
       {data !== undefined && (
         <>
@@ -120,13 +122,11 @@ function UnitListTab<T extends UnitListItem>({
               gap: theme.spacing(2),
             }}
           >
-            <TextField
-              variant="outlined"
-              size="small"
+            <AppSearchField
               placeholder={searchPlaceholder}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              sx={{ width: 320 }}
+              style={{ width: 320 }}
             />
             <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
           </div>
@@ -140,21 +140,21 @@ function UnitListTab<T extends UnitListItem>({
                 renderDetailPanel(item, () => handleCardExpand(null)),
             })
           ) : (
-            <Grid container spacing={3} alignItems="flex-start">
-              <Grid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+            <AppGrid container spacing={3} alignItems="flex-start">
+              <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
                 {renderTableView({
                   items: filtered,
                   selected: expanded,
                   onSelect: setExpanded,
                   onDoubleClick: handleOpenCardView,
                 })}
-              </Grid>
+              </AppGrid>
               {selectedItem && (
-                <Grid size={{ xs: 12, md: 5 }}>
+                <AppGrid size={{ xs: 12, md: 5 }}>
                   {renderDetailPanel(selectedItem, () => setExpanded(null))}
-                </Grid>
+                </AppGrid>
               )}
-            </Grid>
+            </AppGrid>
           )}
         </>
       )}

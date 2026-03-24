@@ -1,6 +1,8 @@
-import { alpha, useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
+
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 interface NetworkGraphProps {
   rx: number;
@@ -8,7 +10,7 @@ interface NetworkGraphProps {
 }
 
 const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());

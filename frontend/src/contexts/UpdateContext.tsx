@@ -96,7 +96,7 @@ const useUpdateController = (): UpdateContextValue => {
   const updateStartedRef = useRef(false);
   const updateRunIdRef = useRef<string | null>(null);
   const targetVersionRef = useRef<string | null>(null);
-  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const timersRef = useRef<Set<number>>(new Set());
 
   const isUpdating =
     phase === "running" || phase === "restarting" || phase === "verifying";

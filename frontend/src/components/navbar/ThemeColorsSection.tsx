@@ -1,10 +1,13 @@
-import { IconButton, Tooltip, Typography, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
+import { Icon } from "@iconify/react";
 import { useRef } from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppTheme } from "@/theme";
 import { ThemeColors } from "@/types/config";
+import { alpha } from "@/utils/color";
 
 // Expand shorthand hex so native <input type="color"> always gets #rrggbb
 function toInputColor(color: string): string {
@@ -23,7 +26,7 @@ interface ColorEntry {
 }
 
 function ThemeColorsSection() {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
@@ -165,10 +168,10 @@ function ThemeColorsSection() {
       }}
     >
       <div style={{ display: "flex", alignItems: "center" }}>
-        <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
+        <AppTypography variant="body1" fontWeight={600} style={{ flexGrow: 1 }}>
           Colors
-        </Typography>
-        <Tooltip
+        </AppTypography>
+        <AppTooltip
           title={
             hasAnyOverride
               ? "Reset all colors to default"
@@ -176,16 +179,16 @@ function ThemeColorsSection() {
           }
         >
           <span>
-            <IconButton
+            <AppIconButton
               size="small"
               onClick={() => setThemeColors(undefined)}
               disabled={!hasAnyOverride}
               aria-label="Reset all colors to default"
             >
-              <RotateCcw size={14} />
-            </IconButton>
+              <Icon icon="mdi:refresh" width={14} height={14} />
+            </AppIconButton>
           </span>
-        </Tooltip>
+        </AppTooltip>
       </div>
 
       {entries.map(({ key, label, description, effectiveColor }) => {
@@ -203,12 +206,12 @@ function ThemeColorsSection() {
             }}
           >
             <div>
-              <Typography variant="body2" fontWeight={600}>
+              <AppTypography variant="body2" fontWeight={600}>
                 {label}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary">
                 {description}
-              </Typography>
+              </AppTypography>
             </div>
 
             <div
@@ -219,15 +222,15 @@ function ThemeColorsSection() {
               }}
             >
               {isOverridden && (
-                <Tooltip title="Reset to default">
-                  <IconButton
+                <AppTooltip title="Reset to default">
+                  <AppIconButton
                     size="small"
                     onClick={() => handleReset(key)}
                     aria-label={`Reset ${label} to default`}
                   >
-                    <RotateCcw size={14} />
-                  </IconButton>
-                </Tooltip>
+                    <Icon icon="mdi:refresh" width={14} height={14} />
+                  </AppIconButton>
+                </AppTooltip>
               )}
               <ColorSwatch
                 color={effectiveColor}
@@ -249,7 +252,7 @@ interface ColorSwatchProps {
 }
 
 function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const inputRef = useRef<HTMLInputElement>(null);
   const normalized = toInputColor(color);
 

@@ -1,9 +1,9 @@
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import "./frosted-card.css";
 
 import { cardBorderRadius } from "@/constants";
+import { useAppTheme } from "@/theme";
 import {
   getFrostedCardLiftShadow,
   getFrostedCardStyles,
@@ -16,7 +16,7 @@ type FrostedCardProps = React.HTMLAttributes<HTMLDivElement> & {
 
 const FrostedCard = React.forwardRef<HTMLDivElement, FrostedCardProps>(
   ({ children, style, hoverLift, className, ...props }, ref) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
 
     const frostedStyles = {
       overflow: "hidden",

@@ -1,4 +1,3 @@
-import { useTheme } from "@mui/material/styles";
 import React, {
   useMemo,
   useCallback,
@@ -10,6 +9,7 @@ import React, {
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 const fileCardStyles = `
@@ -83,7 +83,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     onCancelRename,
     disableHover = false,
   }) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 

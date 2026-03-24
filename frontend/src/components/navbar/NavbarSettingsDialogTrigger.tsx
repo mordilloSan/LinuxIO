@@ -1,8 +1,11 @@
-import { IconButton, Tooltip } from "@mui/material";
-import Settings from "lucide-react/dist/esm/icons/settings";
+import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
 import SettingsDialog from "./SettingsDialog";
+
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import { iconSize } from "@/constants";
 
 const NavbarSettingsDialogTrigger: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -17,16 +20,15 @@ const NavbarSettingsDialogTrigger: React.FC = () => {
 
   return (
     <>
-      <Tooltip title="Open settings">
-        <IconButton
+      <AppTooltip title="Open settings">
+        <AppIconButton
           color="inherit"
-          size="large"
           aria-label="Open settings"
           onClick={handleOpen}
         >
-          <Settings size={18} />
-        </IconButton>
-      </Tooltip>
+          <Icon icon="mdi:cog" width={iconSize.md} height={iconSize.md} />
+        </AppIconButton>
+      </AppTooltip>
 
       <SettingsDialog open={open} onClose={handleClose} />
     </>

@@ -1,7 +1,4 @@
-import RefreshIcon from "@mui/icons-material/Refresh";
-import SettingsIcon from "@mui/icons-material/Settings";
-import { Button, IconButton, Tooltip } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -10,14 +7,15 @@ import UpdateStatus from "./UpdateStatus";
 
 import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
+import { useAppTheme } from "@/theme";
 
 const Updates: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  // Query updates - use GetUpdatesBasic for fast initial load
-  // This skips the slow GetUpdateDetail D-Bus call
   const {
     data: rawUpdates,
     isPending: isLoading,
@@ -68,25 +66,27 @@ const Updates: React.FC = () => {
                   gap: theme.spacing(1),
                 }}
               >
-                <Tooltip title="Update settings">
-                  <IconButton
+                <AppTooltip title="Update settings">
+                  <AppIconButton
                     size="small"
                     aria-label="Open update settings"
                     onClick={() => setSettingsOpen(true)}
                   >
-                    <SettingsIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                    <Icon icon="mdi:cog" width={20} height={20} />
+                  </AppIconButton>
+                </AppTooltip>
                 {updates.length > 0 ? (
-                  <Button
+                  <AppButton
                     variant="contained"
                     size="small"
-                    startIcon={<RefreshIcon />}
+                    startIcon={
+                      <Icon icon="mdi:refresh" width={20} height={20} />
+                    }
                     disabled={!!updatingPackage || isLoading}
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
                   >
                     Update All ({updates.length})
-                  </Button>
+                  </AppButton>
                 ) : null}
               </div>
             ),
@@ -99,6 +99,7 @@ const Updates: React.FC = () => {
         ]}
         defaultTab="updates"
         urlParam="updateTab"
+        containerStyle={{ paddingInline: 0 }}
       />
 
       <UpdateSettingsDialog

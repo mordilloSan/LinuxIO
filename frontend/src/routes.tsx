@@ -15,12 +15,15 @@ import React, { lazy, useMemo } from "react";
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
+import { ConfigProvider } from "@/contexts/ConfigContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 import {
   type AccessContext,
   type AccessPolicy,
   hasAccessPolicy,
   useAccessContext,
 } from "@/hooks/useCapabilities";
+import { ConfiguredAppThemeProvider } from "@/theme";
 import type { ModuleInfo } from "@/types/module";
 import { createModuleLazyComponent } from "@/utils/moduleLoader";
 
@@ -283,7 +286,13 @@ export function useAppRoutes() {
         path: "/",
         element: (
           <AuthGuard>
-            <MainLayout />
+            <ConfigProvider>
+              <ConfiguredAppThemeProvider>
+                <SidebarProvider>
+                  <MainLayout />
+                </SidebarProvider>
+              </ConfiguredAppThemeProvider>
+            </ConfigProvider>
           </AuthGuard>
         ),
         children: [...allProtectedRoutes, { path: "*", element: <Page404 /> }],

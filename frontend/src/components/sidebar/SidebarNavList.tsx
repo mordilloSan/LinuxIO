@@ -1,12 +1,6 @@
 import { Icon } from "@iconify/react";
-import {
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  useTheme,
-} from "@mui/material";
 import React from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 interface SidebarNavListItemProps {
   href: string;
@@ -18,16 +12,6 @@ interface SidebarNavListItemProps {
 
 const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
   ({ href, title, icon, collapsed = false, disabled = false }) => {
-    const theme = useTheme();
-    const { pathname } = useLocation();
-
-    const isActive = pathname === href || pathname.startsWith(href + "/");
-
-    // Trust the theme
-    const primaryHex = theme.palette.primary.main;
-    const contrast = theme.palette.primary.contrastText;
-    const gradStart = theme.lighten(primaryHex, 0.35);
-
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
@@ -36,69 +20,49 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
       return <IconComponent />;
     };
 
-    return (
-      <ListItemButton
-        component={NavLink}
-        to={href}
-        selected={isActive}
-        disabled={disabled}
-        aria-disabled={disabled}
-        sx={{
-          margin: theme.spacing(1, 2),
-          padding: theme.spacing(1.5, 3),
-          borderRadius: "0 9999px 9999px 0",
-          color: theme.sidebar.color,
-          textTransform: "none",
-          width: "auto",
-          justifyContent: collapsed ? "center" : "flex-start",
-          transition: "all 0.3s ease",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "not-allowed" : "pointer",
-          pointerEvents: disabled ? "none" : "auto",
-          "& svg": {
-            color: theme.sidebar.color,
-            width: 26,
-            height: 26,
-            transition: "margin 0.3s, color 0.3s",
-            marginRight: collapsed ? 0 : theme.spacing(2),
-          },
-          "&.Mui-selected": {
-            background: `linear-gradient(90deg, ${gradStart} 0%, ${primaryHex} 50%)`,
-            color: contrast,
-            "& svg": { color: contrast },
-            "& .MuiListItemText-primary": {
-              color: contrast,
-              fontWeight: theme.typography.fontWeightMedium,
-            },
-          },
-        }}
-      >
-        {icon && (
-          <ListItemIcon
-            sx={{
-              minWidth: 0,
-              justifyContent: "center",
-              color: "inherit",
-              transition: "margin 0.3s ease",
-            }}
+    const baseClassName = [
+      "app-sidebar-link",
+      collapsed && "app-sidebar-link--collapsed",
+      disabled && "app-sidebar-link--disabled",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const content = (
+      <>
+        {icon && <span className="app-sidebar-link__icon">{renderIcon()}</span>}
+        <span className="app-sidebar-link__label">{title}</span>
+      </>
+    );
+
+    if (disabled) {
+      return (
+        <li>
+          <span
+            className={baseClassName}
+            aria-disabled="true"
+            title={collapsed ? title : undefined}
           >
-            {renderIcon()}
-          </ListItemIcon>
-        )}
-        <ListItemText
-          primary={title}
-          slotProps={{
-            primary: {
-              sx: {
-                opacity: collapsed ? 0 : 1,
-                transition: "opacity 0.3s ease",
-                fontSize: theme.typography.body1.fontSize,
-                whiteSpace: "nowrap",
-              },
-            },
-          }}
-        />
-      </ListItemButton>
+            {content}
+          </span>
+        </li>
+      );
+    }
+
+    return (
+      <li>
+        <NavLink
+          to={href}
+          title={collapsed ? title : undefined}
+          className={({ isActive }) =>
+            [baseClassName, isActive && "app-sidebar-link--active"]
+              .filter(Boolean)
+              .join(" ")
+          }
+        >
+          {content}
+        </NavLink>
+      </li>
     );
   },
 );

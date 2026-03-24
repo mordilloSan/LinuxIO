@@ -1,22 +1,23 @@
-import { alpha, type Theme } from "@mui/material/styles";
+import type { AppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 const mixWithTransparency = (color: string, opacity: number) => {
   const transparentShare = `${Math.round((1 - opacity) * 100)}%`;
   return `color-mix(in srgb, ${color}, transparent ${transparentShare})`;
 };
 
-export const getFrostedCardShadow = (theme: Theme) =>
+export const getFrostedCardShadow = (theme: AppTheme) =>
   `0 16px 40px -28px ${alpha(theme.palette.common.black, 0.6)}`;
 
-export const getFrostedCardLiftShadow = (theme: Theme) =>
+export const getFrostedCardLiftShadow = (theme: AppTheme) =>
   `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`;
 
-export const getFrostedCardLiftStyles = (theme: Theme) => ({
+export const getFrostedCardLiftStyles = (theme: AppTheme) => ({
   transform: "translateY(-4px)",
   boxShadow: getFrostedCardLiftShadow(theme),
 });
 
-export const getFrostedCardStyles = (theme: Theme) => ({
+export const getFrostedCardStyles = (theme: AppTheme) => ({
   backgroundColor: alpha(
     theme.card.background,
     theme.palette.mode === "dark" ? 0.6 : 0.82,
@@ -37,7 +38,7 @@ export const getAccentCardStyles = (accentColor: string) => ({
 });
 
 export const getAccentCardHoverStyles = (
-  theme: Theme,
+  theme: AppTheme,
   accentColor: string,
 ) => ({
   boxShadow: getFrostedCardLiftShadow(theme),
@@ -47,7 +48,7 @@ export const getAccentCardHoverStyles = (
 });
 
 export const getChromeSurfaceColor = (
-  theme: Theme,
+  theme: AppTheme,
   chromeColor: string,
   emphasis: "default" | "hover" = "default",
 ) => {
@@ -63,5 +64,5 @@ export const getChromeSurfaceColor = (
   return mixWithTransparency(chromeColor, opacity);
 };
 
-export const getSubtleDividerColor = (theme: Theme) =>
+export const getSubtleDividerColor = (theme: AppTheme) =>
   alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.15 : 0.1);

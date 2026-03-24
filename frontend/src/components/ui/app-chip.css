@@ -1,0 +1,115 @@
+.app-chip {
+  display: var(--app-chip-display, inline-flex);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  height: var(--app-chip-height);
+  padding: 0;
+  border: 1px solid var(--app-chip-border);
+  border-radius: 999px;
+  background-color: var(--app-chip-background);
+  color: var(--app-chip-color);
+  font-family: var(--app-chip-font-family);
+  font-size: var(--app-chip-font-size);
+  font-weight: var(--app-chip-font-weight);
+  line-height: var(--app-chip-line-height);
+  opacity: var(--app-chip-opacity, 1);
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  text-decoration: none;
+  outline: 0;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.app-chip--small {
+  --app-chip-height: 24px;
+  --app-chip-label-padding-x: 8px;
+}
+
+.app-chip--medium {
+  --app-chip-height: 32px;
+  --app-chip-label-padding-x: 12px;
+}
+
+.app-chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--app-chip-label-padding-x);
+  padding-right: var(--app-chip-label-padding-x);
+}
+
+.app-chip--disabled {
+  opacity: var(--color-action-disabled-opacity, 0.38);
+  pointer-events: none;
+}
+
+.app-chip--interactive {
+  cursor: pointer;
+}
+
+.app-chip--interactive:hover {
+  color: var(--app-chip-hover-color, var(--app-chip-color));
+  background-color: var(
+    --app-chip-hover-background,
+    var(--app-chip-background)
+  );
+  border-color: var(--app-chip-hover-border, var(--app-chip-border));
+  opacity: var(--app-chip-hover-opacity, var(--app-chip-opacity, 1));
+}
+
+.app-chip__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 3px;
+  margin-left: -3px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.app-chip__delete:hover {
+  opacity: 1;
+}
+
+.app-chip__delete:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+@media (max-width: 599px) {
+  .app-chip {
+    display: var(--app-chip-display-xs, var(--app-chip-display, inline-flex));
+  }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .app-chip {
+    display: var(--app-chip-display-sm, var(--app-chip-display, inline-flex));
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1199px) {
+  .app-chip {
+    display: var(--app-chip-display-md, var(--app-chip-display, inline-flex));
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-chip {
+    display: var(--app-chip-display-lg, var(--app-chip-display, inline-flex));
+  }
+}

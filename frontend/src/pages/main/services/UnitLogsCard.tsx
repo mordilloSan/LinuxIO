@@ -1,12 +1,15 @@
-import TerminalIcon from "@mui/icons-material/Terminal";
-import { FormControlLabel, Switch, Tooltip, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {
   unitName: string;
@@ -14,7 +17,7 @@ interface UnitLogsCardProps {
 }
 
 const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
     useLogStream({
       open: true,
@@ -32,16 +35,20 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <TerminalIcon
-            fontSize="small"
-            style={{ color: "var(--mui-palette-text-secondary)" }}
+          <Icon
+            icon="mdi:console"
+            width={20}
+            height={20}
+            color="var(--app-palette-text-secondary)"
           />
           <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
         </div>
-        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
-          <FormControlLabel
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={liveMode}
                 onChange={(_, value) => setLiveMode(value)}
                 size="small"
@@ -49,7 +56,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
             }
             label="Live"
           />
-        </Tooltip>
+        </AppTooltip>
       </div>
       <div
         style={{
@@ -73,7 +80,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
           </div>
         )}
         {error && (
-          <div style={{ color: "var(--mui-palette-error-main)", padding: 16 }}>
+          <div style={{ color: "var(--app-palette-error-main)", padding: 16 }}>
             {error}
           </div>
         )}
@@ -96,7 +103,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
             (logs || (
               <span
                 style={{
-                  color: "var(--mui-palette-text-secondary)",
+                  color: "var(--app-palette-text-secondary)",
                   fontSize: "0.75rem",
                 }}
               >

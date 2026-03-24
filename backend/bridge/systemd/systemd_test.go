@@ -7,7 +7,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/internal/testdbus"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/testdbus"
 )
 
 func exportManager(t *testing.T, bus *testdbus.Bus) *testdbus.SystemdManager {

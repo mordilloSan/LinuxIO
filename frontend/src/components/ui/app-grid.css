@@ -1,0 +1,35 @@
+/* ── AppGrid ─────────────────────────────────────────── */
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+}
+
+/* ── items ─────────────────────────────────────── */
+.app-grid-item {
+  grid-column: span var(--_gc-xs, 12);
+  min-width: 0;
+}
+
+@media (min-width: 600px) {
+  .app-grid-item {
+    grid-column: span var(--_gc-sm);
+  }
+}
+
+@media (min-width: 900px) {
+  .app-grid-item {
+    grid-column: span var(--_gc-md);
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-grid-item {
+    grid-column: span var(--_gc-lg);
+  }
+}
+
+@media (min-width: 1536px) {
+  .app-grid-item {
+    grid-column: span var(--_gc-xl);
+  }
+}

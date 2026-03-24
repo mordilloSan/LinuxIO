@@ -1,12 +1,12 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DragIndicator } from "@mui/icons-material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
 
-import "./frosted-card.css";
-
+import { useAppTheme } from "@/theme";
 import { cardBorderRadius } from "@/theme/constants";
+
+import "./frosted-card.css";
 
 interface SortableCardProps {
   id: string;
@@ -19,7 +19,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
   editMode,
   children,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     attributes,
     listeners,
@@ -60,8 +60,11 @@ const SortableCard: React.FC<SortableCardProps> = ({
             } as React.CSSProperties
           }
         >
-          <DragIndicator
-            sx={{ fontSize: 40, color: "text.secondary", opacity: 0.7 }}
+          <Icon
+            icon="mdi:drag"
+            width={40}
+            height={40}
+            style={{ color: theme.palette.text.secondary, opacity: 0.7 }}
           />
         </div>
       )}

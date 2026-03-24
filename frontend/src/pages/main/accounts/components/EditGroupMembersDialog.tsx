@@ -1,15 +1,5 @@
-import {
-  Button,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Autocomplete,
-  Chip,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useEffect, useEffectEvent } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -18,6 +8,15 @@ import {
   type ModifyGroupMembersRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
+import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -31,7 +30,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   onClose,
   group,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,
@@ -40,14 +39,6 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   const { data: users = [] } = linuxio.accounts.list_users.useQuery();
 
   const usersList = Array.isArray(users) ? users : [];
-
-  const syncMembers = useEffectEvent(() => {
-    setSelectedMembers(group.members);
-  });
-
-  useEffect(() => {
-    syncMembers();
-  }, [group]);
 
   const { mutate: modifyGroupMembers, isPending } =
     linuxio.accounts.modify_group_members.useMutation({
@@ -88,8 +79,8 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Edit Group Members: {group.name}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Edit Group Members: {group.name}</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -98,34 +89,43 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <Autocomplete
+          <AppAutocomplete
             multiple
             options={usersList.map((u) => u.username)}
             value={selectedMembers}
-            onChange={(_, value) => setSelectedMembers(value)}
-            renderInput={(params) => (
-              <TextField {...params} label="Members" fullWidth />
-            )}
+            onChange={setSelectedMembers}
+            label="Members"
+            fullWidth
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {
                 const itemProps = getItemProps({ index });
                 const { key, ...chipProps } = itemProps;
                 return (
-                  <Chip key={key} label={option} size="small" {...chipProps} />
+                  <Chip
+                    key={key}
+                    label={option}
+                    size="small"
+                    variant="soft"
+                    {...chipProps}
+                  />
                 );
               })
             }
           />
         </div>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isPending}>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={isPending}>
+        </AppButton>
+        <AppButton
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={isPending}
+        >
           {isPending ? "Saving..." : "Save"}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

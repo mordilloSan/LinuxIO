@@ -1,25 +1,17 @@
-import DownloadIcon from "@mui/icons-material/Download";
-import EditIcon from "@mui/icons-material/Edit";
-import FolderIcon from "@mui/icons-material/Folder";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import LinkIcon from "@mui/icons-material/Link";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
-import {
-  Button,
-  CircularProgress,
-  Divider,
-  Paper,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 import { isEditableFile } from "@/components/filebrowser/utils";
+import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppDivider from "@/components/ui/AppDivider";
+import AppPaper from "@/components/ui/AppPaper";
+import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
-
 interface FileDetailProps {
   resource?: FileResource;
   onDownload: (path: string) => void;
@@ -27,13 +19,11 @@ interface FileDetailProps {
   statData?: ResourceStatData | null;
   isLoadingStat?: boolean;
 }
-
-const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
-  label,
-  value,
-}) => {
-  const theme = useTheme();
-
+const DetailRow: React.FC<{
+  label: string;
+  value: React.ReactNode;
+}> = ({ label, value }) => {
+  const theme = useAppTheme();
   return (
     <div
       style={{
@@ -41,25 +31,29 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
         gap: theme.spacing(2),
       }}
     >
-      <Typography
+      <AppTypography
         variant="body2"
         fontWeight={600}
         color="text.secondary"
-        sx={{ minWidth: 100 }}
+        style={{
+          minWidth: 100,
+        }}
       >
         {label}:
-      </Typography>
-      <Typography
+      </AppTypography>
+      <AppTypography
         component="div"
         variant="body2"
-        sx={{ flex: 1, wordBreak: "break-all" }}
+        style={{
+          flex: 1,
+          wordBreak: "break-all",
+        }}
       >
         {value}
-      </Typography>
+      </AppTypography>
     </div>
   );
 };
-
 const FileDetail: React.FC<FileDetailProps> = ({
   resource,
   onDownload,
@@ -67,7 +61,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
   statData,
   isLoadingStat,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
 
@@ -85,48 +79,43 @@ const FileDetail: React.FC<FileDetailProps> = ({
     isDirectory && resource?.path
       ? (subfoldersMap.get(resource.path)?.size ?? null)
       : null;
-
   if (!resource) {
     return (
-      <Paper
+      <AppPaper
         variant="outlined"
-        sx={{
-          borderRadius: 2,
-          p: 3,
+        style={{
+          borderRadius: 8,
+          padding: 12,
         }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <AppTypography variant="body2" color="text.secondary">
           Select an item to view its details.
-        </Typography>
-      </Paper>
+        </AppTypography>
+      </AppPaper>
     );
   }
-
   const isSymlink = resource.symlink;
   // Show edit button only for text-based files that can be edited
   const canEdit = !isDirectory && isEditableFile(resource.name);
-
   const getTypeIcon = () => {
-    if (isSymlink) return <LinkIcon fontSize="large" />;
-    if (isDirectory) return <FolderIcon fontSize="large" />;
-    return <InsertDriveFileIcon fontSize="large" />;
+    if (isSymlink) return <Icon icon="mdi:link" width={28} height={28} />;
+    if (isDirectory) return <Icon icon="mdi:folder" width={28} height={28} />;
+    return <Icon icon="mdi:file" width={28} height={28} />;
   };
-
   const getTypeLabel = () => {
     if (isSymlink) return "Symbolic Link";
     if (isDirectory) return "Directory";
     return "File";
   };
-
   return (
-    <Paper
+    <AppPaper
       variant="outlined"
-      sx={{
-        borderRadius: 2,
+      style={{
+        borderRadius: 8,
         display: "flex",
         flexDirection: "column",
-        p: 3,
-        gap: 2,
+        padding: 12,
+        gap: 8,
       }}
     >
       {/* Header with icon and name */}
@@ -137,13 +126,22 @@ const FileDetail: React.FC<FileDetailProps> = ({
           gap: theme.spacing(2),
         }}
       >
-        <div style={{ color: theme.palette.primary.main, display: "flex" }}>
+        <div
+          style={{
+            color: theme.palette.primary.main,
+            display: "flex",
+          }}
+        >
           {getTypeIcon()}
         </div>
-        <div style={{ flex: 1 }}>
-          <Typography variant="h6" fontWeight={600}>
+        <div
+          style={{
+            flex: 1,
+          }}
+        >
+          <AppTypography variant="h6" fontWeight={600}>
             {resource.name}
-          </Typography>
+          </AppTypography>
           <div
             style={{
               display: "flex",
@@ -152,14 +150,14 @@ const FileDetail: React.FC<FileDetailProps> = ({
               marginTop: theme.spacing(0.5),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               {getTypeLabel()}
-            </Typography>
+            </AppTypography>
             {resource.hidden && (
               <>
-                <Typography variant="body2" color="text.secondary">
+                <AppTypography variant="body2" color="text.secondary">
                   •
-                </Typography>
+                </AppTypography>
                 <div
                   style={{
                     display: "flex",
@@ -167,10 +165,10 @@ const FileDetail: React.FC<FileDetailProps> = ({
                     gap: theme.spacing(0.5),
                   }}
                 >
-                  <VisibilityOffIcon sx={{ fontSize: 16 }} />
-                  <Typography variant="body2" color="text.secondary">
+                  <Icon icon="mdi:eye-off" width={16} height={16} />
+                  <AppTypography variant="body2" color="text.secondary">
                     Hidden
-                  </Typography>
+                  </AppTypography>
                 </div>
               </>
             )}
@@ -178,7 +176,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
         </div>
       </div>
 
-      <Divider />
+      <AppDivider />
 
       {/* Details section */}
       <div
@@ -202,8 +200,8 @@ const FileDetail: React.FC<FileDetailProps> = ({
                   gap: theme.spacing(1),
                 }}
               >
-                <CircularProgress size={16} />
-                <Typography variant="body2">Calculating...</Typography>
+                <AppCircularProgress size={16} />
+                <AppTypography variant="body2">Calculating...</AppTypography>
               </div>
             ) : size !== undefined && size !== null && size !== 0 ? (
               formatFileSize(size)
@@ -221,10 +219,10 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {/* Permissions and Ownership Section */}
       {statData && (
         <>
-          <Divider />
-          <Typography variant="subtitle2" fontWeight={600}>
+          <AppDivider />
+          <AppTypography variant="subtitle2" fontWeight={600}>
             Permissions & Ownership
-          </Typography>
+          </AppTypography>
           <div
             style={{
               display: "flex",
@@ -241,7 +239,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
       )}
       {isLoadingStat && (
         <>
-          <Divider />
+          <AppDivider />
           <div
             style={{
               display: "flex",
@@ -249,8 +247,10 @@ const FileDetail: React.FC<FileDetailProps> = ({
               gap: theme.spacing(1),
             }}
           >
-            <CircularProgress size={16} />
-            <Typography variant="body2">Loading permissions...</Typography>
+            <AppCircularProgress size={16} />
+            <AppTypography variant="body2">
+              Loading permissions...
+            </AppTypography>
           </div>
         </>
       )}
@@ -258,34 +258,33 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {/* Download and Edit buttons - only for files */}
       {!isDirectory && (
         <>
-          <Divider />
+          <AppDivider />
           <div
             style={{
               display: "flex",
               gap: theme.spacing(1),
             }}
           >
-            <Button
+            <AppButton
               variant="contained"
-              startIcon={<DownloadIcon />}
+              startIcon={<Icon icon="mdi:download" width={20} height={20} />}
               onClick={() => onDownload(resource.path)}
             >
               Download
-            </Button>
+            </AppButton>
             {canEdit && onEdit && (
-              <Button
+              <AppButton
                 variant="outlined"
-                startIcon={<EditIcon />}
+                startIcon={<Icon icon="mdi:pencil" width={20} height={20} />}
                 onClick={() => onEdit(resource.path)}
               >
                 Edit
-              </Button>
+              </AppButton>
             )}
           </div>
         </>
       )}
-    </Paper>
+    </AppPaper>
   );
 };
-
 export default FileDetail;

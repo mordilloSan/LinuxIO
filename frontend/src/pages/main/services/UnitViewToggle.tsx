@@ -1,8 +1,8 @@
-import GridViewIcon from "@mui/icons-material/GridView";
-import TableRowsIcon from "@mui/icons-material/TableRows";
-import { IconButton, Tooltip } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
 interface UnitViewToggleProps {
@@ -13,22 +13,22 @@ const UnitViewToggle: React.FC<UnitViewToggleProps> = ({ viewModeKey }) => {
   const [viewMode, setViewMode] = useViewMode(viewModeKey, "table");
 
   return (
-    <Tooltip
+    <AppTooltip
       title={
         viewMode === "table" ? "Switch to card view" : "Switch to table view"
       }
     >
-      <IconButton
+      <AppIconButton
         size="small"
         onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
       >
         {viewMode === "table" ? (
-          <GridViewIcon fontSize="small" />
+          <Icon icon="mdi:view-grid" width={20} height={20} />
         ) : (
-          <TableRowsIcon fontSize="small" />
+          <Icon icon="mdi:table-row" width={20} height={20} />
         )}
-      </IconButton>
-    </Tooltip>
+      </AppIconButton>
+    </AppTooltip>
   );
 };
 

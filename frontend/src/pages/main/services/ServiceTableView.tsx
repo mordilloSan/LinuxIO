@@ -1,9 +1,9 @@
-import { TableCell } from "@mui/material";
 import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
 
 import type { Service } from "@/api";
+import { AppTableCell } from "@/components/ui/AppTable";
 
 interface ServiceTableViewProps {
   services: Service[];
@@ -18,7 +18,7 @@ const desktopColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "120px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const, width: "200px" },
   {
@@ -42,7 +42,7 @@ const mobileColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "110px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const },
 ];
@@ -85,7 +85,7 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
                 fontSize: "0.6rem",
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
                 width: 80,
                 flexShrink: 0,
                 paddingTop: 2,
@@ -100,16 +100,16 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
     )}
     renderMainRow={(service, isMobile) => (
       <>
-        <TableCell sx={{ paddingLeft: "8px" }}>
+        <AppTableCell style={{ paddingLeft: 8 }}>
           {statusDot(service.active_state)}
           {service.active_state}
-        </TableCell>
-        <TableCell>{service.name}</TableCell>
+        </AppTableCell>
+        <AppTableCell>{service.name}</AppTableCell>
         {!isMobile && (
           <>
-            <TableCell>{service.load_state}</TableCell>
-            <TableCell>{service.sub_state}</TableCell>
-            <TableCell>{service.description || "-"}</TableCell>
+            <AppTableCell>{service.load_state}</AppTableCell>
+            <AppTableCell>{service.sub_state}</AppTableCell>
+            <AppTableCell>{service.description || "-"}</AppTableCell>
           </>
         )}
       </>

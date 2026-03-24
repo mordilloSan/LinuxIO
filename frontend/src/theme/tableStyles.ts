@@ -1,6 +1,6 @@
-import { Theme } from "@mui/material/styles";
+import type { AppTheme } from "@/theme";
 
-export const getTableHeaderStyles = (theme: Theme) => ({
+export const getTableHeaderStyles = (theme: AppTheme) => ({
   "& .MuiTableCell-root": { borderBottom: "none" },
   backgroundColor:
     theme.palette.mode === "dark"
@@ -10,7 +10,7 @@ export const getTableHeaderStyles = (theme: Theme) => ({
   boxShadow: "none",
 });
 
-export const getTableRowStyles = (theme: Theme, index: number) => ({
+export const getTableRowStyles = (theme: AppTheme, index: number) => ({
   "& .MuiTableCell-root": { borderBottom: "none" },
   backgroundColor:
     index % 2 === 0
@@ -20,7 +20,7 @@ export const getTableRowStyles = (theme: Theme, index: number) => ({
         : "rgba(0,0,0,0.05)",
 });
 
-export const getExpandedRowStyles = (theme: Theme, index: number) => ({
+export const getExpandedRowStyles = (theme: AppTheme, index: number) => ({
   "& .MuiTableCell-root": { borderBottom: "none" },
   backgroundColor:
     index % 2 === 0
@@ -30,7 +30,7 @@ export const getExpandedRowStyles = (theme: Theme, index: number) => ({
         : "rgba(0,0,0,0.05)",
 });
 
-export const getExpandedContentStyles = (theme: Theme) => ({
+export const getExpandedContentStyles = (theme: AppTheme) => ({
   margin: 2,
   borderRadius: 2,
   p: 2,

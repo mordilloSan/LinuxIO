@@ -1,6 +1,36 @@
-import { TypographyVariantsOptions } from "@mui/material/styles";
+export type AppTypographyVariant = {
+  fontSize: string;
+  fontWeight: number;
+  lineHeight: number;
+  letterSpacing?: string;
+};
 
-const typography: TypographyVariantsOptions = {
+export type AppTypographyScale = {
+  fontFamily: string;
+  fontSize: number;
+  fontWeightLight: number;
+  fontWeightRegular: number;
+  fontWeightMedium: number;
+  fontWeightBold: number;
+  h1: AppTypographyVariant;
+  h2: AppTypographyVariant;
+  h3: AppTypographyVariant;
+  h4: AppTypographyVariant;
+  h5: AppTypographyVariant;
+  h6: AppTypographyVariant;
+  body1: AppTypographyVariant;
+  body2: AppTypographyVariant;
+  subtitle1: AppTypographyVariant;
+  subtitle2: AppTypographyVariant;
+  caption: AppTypographyVariant;
+  overline: AppTypographyVariant & { textTransform: "uppercase" };
+  button: {
+    textTransform: "none";
+    fontWeight: number;
+  };
+};
+
+const typography: AppTypographyScale = {
   fontFamily: [
     "Inter",
     "-apple-system",
@@ -50,10 +80,39 @@ const typography: TypographyVariantsOptions = {
     lineHeight: 1.25,
   },
   body1: {
-    fontSize: 13,
+    fontSize: "13px",
+    fontWeight: 400,
+    lineHeight: 1.5,
+  },
+  body2: {
+    fontSize: "0.8125rem",
+    fontWeight: 400,
+    lineHeight: 1.43,
+  },
+  subtitle1: {
+    fontSize: "0.9286rem",
+    fontWeight: 400,
+    lineHeight: 1.75,
+  },
+  subtitle2: {
+    fontSize: "0.8125rem",
+    fontWeight: 500,
+    lineHeight: 1.57,
+  },
+  caption: {
+    fontSize: "0.6964rem",
+    fontWeight: 400,
+    lineHeight: 1.66,
+  },
+  overline: {
+    fontSize: "0.6964rem",
+    fontWeight: 400,
+    lineHeight: 2.66,
+    textTransform: "uppercase",
   },
   button: {
     textTransform: "none",
+    fontWeight: 500,
   },
 };
 

@@ -1,15 +1,3 @@
-import {
-  Button,
-  Collapse,
-  Chip,
-  FormControlLabel,
-  Switch,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -17,18 +5,24 @@ import { toast } from "sonner";
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
+import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTextField from "@/components/ui/AppTextField";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 /* ================= helpers ================= */
 
 const isIPv4 = (s: string) =>
   /^\s*(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\s*$/.test(s);
-
 const toCIDR = (addr?: string, prefix?: number | string) => {
   const p = typeof prefix === "string" ? parseInt(prefix, 10) : prefix!;
   return addr && Number.isInteger(p) ? `${addr}/${p}` : "";
 };
-
 function getIPv4FromIface(i: any): string {
   if (typeof i?.ipv4_cidr === "string" && i.ipv4_cidr.includes("/")) {
     return i.ipv4_cidr;
@@ -54,7 +48,6 @@ function getIPv4FromIface(i: any): string {
   if (typeof i?.ipv4?.cidr === "string") return i.ipv4.cidr;
   return "";
 }
-
 function getGatewayV4(i: any): string {
   const cand =
     i?.gateway_v4 ??
@@ -62,7 +55,6 @@ function getGatewayV4(i: any): string {
     (typeof i?.gateway === "string" ? i.gateway : i?.gateway?.ipv4);
   return typeof cand === "string" && isIPv4(cand) ? cand.trim() : "";
 }
-
 function getDNSv4List(i: any): string[] {
   let list: any =
     i?.dns_v4 ??
@@ -89,7 +81,6 @@ interface Props {
   onClose: () => void;
   onSave: (iface: BaseNI) => void;
 }
-
 const NetworkInterfaceEditor: React.FC<Props> = ({
   iface,
   expanded,
@@ -98,7 +89,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onClose,
   onSave,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
   const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
@@ -134,7 +125,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         );
       },
     });
-
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
     linuxio.dbus.set_ipv4_manual.useMutation({
       onSuccess: () => {
@@ -154,7 +144,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         );
       },
     });
-
   const { mutate: enableConnection, isPending: isEnabling } =
     linuxio.dbus.enable_connection.useMutation({
       onSuccess: () => {
@@ -169,7 +158,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         );
       },
     });
-
   const { mutate: disableConnection, isPending: isDisabling } =
     linuxio.dbus.disable_connection.useMutation({
       onSuccess: () => {
@@ -184,12 +172,10 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         );
       },
     });
-
   const saving = isSettingIPv4 || isSettingIPv4Manual;
   const toggling = isEnabling || isDisabling;
   const isConnected = iface.state === 100;
   const isConnecting = iface.state >= 40 && iface.state <= 90;
-
   const handleConnectionToggle = () => {
     if (isConnected || isConnecting) {
       disableConnection([iface.name]);
@@ -204,7 +190,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   const defaultGateway = getGatewayV4(iface);
   const defaultDns = getDNSv4List(iface).join(", ");
   const defaults = useMemo(
-    () => ({ ipv4: defaultIpv4, gateway: defaultGateway, dns: defaultDns }),
+    () => ({
+      ipv4: defaultIpv4,
+      gateway: defaultGateway,
+      dns: defaultDns,
+    }),
     [defaultIpv4, defaultGateway, defaultDns],
   );
 
@@ -225,12 +215,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       setEditForm((prev) => (Object.keys(prev).length === 0 ? prev : {}));
     }
   }, [expanded, mode, defaults, dirty, setEditForm]);
-
-  const handleModeChange = (
-    _: React.MouseEvent<HTMLElement>,
-    newMode: "auto" | "manual" | null,
-  ) => {
-    if (!newMode) return;
+  const handleModeChange = (newMode: "auto" | "manual") => {
     setMode(newMode);
     if (newMode === "auto") {
       setEditForm({});
@@ -244,17 +229,20 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       setDirty(false);
     }
   };
-
   const handleChange = (field: string, value: string) => {
     setDirty(true);
-    setEditForm((prev) => ({ ...prev, [field]: value }));
+    setEditForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
-
   const handleDNSChange = (value: string) => {
     setDirty(true);
-    setEditForm((prev) => ({ ...prev, dns: value }));
+    setEditForm((prev) => ({
+      ...prev,
+      dns: value,
+    }));
   };
-
   const validateIPv4CIDR = (cidr: string): boolean => {
     if (!cidr.includes("/")) return false;
     const [ip, prefix] = cidr.split("/");
@@ -268,7 +256,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       return Number.isInteger(num) && num >= 0 && num <= 255;
     });
   };
-
   const validateIPv4 = (ip: string): boolean => {
     const parts = ip.split(".");
     if (parts.length !== 4) return false;
@@ -277,7 +264,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       return Number.isInteger(num) && num >= 0 && num <= 255;
     });
   };
-
   const handleSave = () => {
     if (mode === "auto") {
       // SetIPv4 with method "dhcp"
@@ -286,7 +272,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       const ipv4 = (editForm.ipv4 || "").trim();
       const gateway = (editForm.gateway || "").trim();
       const dnsInput = (editForm.dns || "").trim();
-
       if (!ipv4) {
         toast.error("IP address is required");
         return;
@@ -309,7 +294,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         toast.error("At least one DNS server is required");
         return;
       }
-
       const dnsServers: string[] = Array.from(
         new Set(
           dnsInput
@@ -318,7 +302,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             .filter(Boolean),
         ),
       );
-
       if (dnsServers.length === 0) {
         toast.error("At least one DNS server is required");
         return;
@@ -334,9 +317,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       setIPv4Manual([iface.name, ipv4, gateway, ...dnsServers]);
     }
   };
-
   return (
-    <Collapse in={expanded} timeout="auto" unmountOnExit>
+    <AppCollapse in={expanded} timeout="auto" unmountOnExit>
       <div
         style={{
           marginTop: theme.spacing(2),
@@ -352,9 +334,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             marginBottom: theme.spacing(2),
           }}
         >
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={isConnected || isConnecting}
                 onChange={handleConnectionToggle}
                 disabled={toggling}
@@ -373,6 +355,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           <Chip
             size="small"
             color="primary"
+            variant="soft"
             label={
               iface.ipv4_method === "manual"
                 ? "static IP"
@@ -385,61 +368,82 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           />
         </div>
 
-        <ToggleButtonGroup
-          value={mode}
-          exclusive
-          onChange={handleModeChange}
-          fullWidth
-          sx={{ mb: 2 }}
-        >
-          <ToggleButton value="auto">Automatic</ToggleButton>
-          <ToggleButton value="manual">Manual</ToggleButton>
-        </ToggleButtonGroup>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <AppButton
+            fullWidth
+            variant={mode === "auto" ? "contained" : "outlined"}
+            onClick={() => handleModeChange("auto")}
+          >
+            Automatic
+          </AppButton>
+          <AppButton
+            fullWidth
+            variant={mode === "manual" ? "contained" : "outlined"}
+            onClick={() => handleModeChange("manual")}
+          >
+            Manual
+          </AppButton>
+        </div>
 
         {mode === "auto" ? (
           <div>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              style={{
+                marginBottom: 8,
+              }}
+            >
               The interface will automatically obtain IP address, gateway, and
               DNS from a DHCP server.
-            </Typography>
+            </AppTypography>
           </div>
         ) : (
           <div>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              style={{
+                marginBottom: 8,
+              }}
+            >
               Configure static network settings. All fields are required.
-            </Typography>
+            </AppTypography>
 
-            <TextField
+            <AppTextField
               fullWidth
               required
+              size="small"
               label="IPv4 Address (CIDR)"
               placeholder="192.168.1.10/24"
               value={editForm.ipv4 ?? ""}
               onChange={(e) => handleChange("ipv4", e.target.value)}
               helperText="Format: IP/prefix (e.g., 192.168.1.10/24)"
-              sx={{ mb: 2 }}
+              style={{ marginBottom: 8 }}
             />
 
-            <TextField
+            <AppTextField
               fullWidth
               required
+              size="small"
               label="Gateway"
               placeholder="192.168.1.1"
               value={editForm.gateway ?? ""}
               onChange={(e) => handleChange("gateway", e.target.value)}
               helperText="The IP address of your network gateway/router"
-              sx={{ mb: 2 }}
+              style={{ marginBottom: 8 }}
             />
 
-            <TextField
+            <AppTextField
               fullWidth
               required
+              size="small"
               label="DNS Servers"
               placeholder="8.8.8.8, 8.8.4.4"
               value={editForm.dns ?? ""}
               onChange={(e) => handleDNSChange(e.target.value)}
               helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
-              sx={{ mb: 2 }}
+              style={{ marginBottom: 8 }}
             />
           </div>
         )}
@@ -448,20 +452,19 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           style={{
             display: "flex",
             justifyContent: "flex-end",
-            gap: theme.spacing(1),
+
             marginTop: theme.spacing(2),
           }}
         >
-          <Button onClick={onClose} disabled={saving}>
+          <AppButton onClick={onClose} disabled={saving}>
             Cancel
-          </Button>
-          <Button variant="contained" onClick={handleSave} disabled={saving}>
+          </AppButton>
+          <AppButton variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Apply Configuration"}
-          </Button>
+          </AppButton>
         </div>
       </div>
-    </Collapse>
+    </AppCollapse>
   );
 };
-
 export default NetworkInterfaceEditor;

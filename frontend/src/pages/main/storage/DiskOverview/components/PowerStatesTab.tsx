@@ -1,31 +1,33 @@
-import {
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import type { PowerData } from "../types";
 
+import Chip from "@/components/ui/AppChip";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableContainer,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface PowerStatesTabProps {
   power: PowerData;
 }
-
 export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
-  const theme = useTheme();
-
+  const theme = useAppTheme();
   return (
     <>
-      <div style={{ marginBottom: theme.spacing(3) }}>
-        <Typography variant="subtitle2" gutterBottom>
+      <div
+        style={{
+          marginBottom: theme.spacing(3),
+        }}
+      >
+        <AppTypography variant="subtitle2" gutterBottom>
           Current State
-        </Typography>
+        </AppTypography>
         <div
           style={{
             display: "flex",
@@ -33,49 +35,56 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
             alignItems: "center",
           }}
         >
-          <Chip label={`Power State ${power.currentState}`} color="primary" />
-          <Typography variant="body2" color="text.secondary">
+          <Chip
+            label={`Power State ${power.currentState}`}
+            color="primary"
+            variant="soft"
+          />
+          <AppTypography variant="body2" color="text.secondary">
             Estimated Power: ~{power.estimatedW.toFixed(2)}W
-          </Typography>
+          </AppTypography>
         </div>
       </div>
 
-      <Typography variant="subtitle2" gutterBottom>
+      <AppTypography variant="subtitle2" gutterBottom>
         Supported Power States
-      </Typography>
-      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
-        <Table
-          size="small"
-          stickyHeader
-          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>State</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Op</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+      </AppTypography>
+      <AppTableContainer
+        className="custom-scrollbar"
+        style={{
+          maxHeight: 400,
+        }}
+      >
+        <AppTable className="app-table--sticky">
+          <AppTableHead>
+            <AppTableRow>
+              <AppTableCell style={{ fontWeight: 600 }}>State</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }}>Op</AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }} align="right">
                 Max Power
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+              </AppTableCell>
+              <AppTableCell style={{ fontWeight: 600 }}>
+                Description
+              </AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
             {power.states.map((ps) => (
-              <TableRow
+              <AppTableRow
                 key={ps.state}
                 selected={ps.state === power.currentState}
               >
-                <TableCell>{ps.state}</TableCell>
-                <TableCell>+</TableCell>
-                <TableCell align="right">{ps.maxPowerW}W</TableCell>
-                <TableCell sx={{ fontSize: "0.75rem" }}>
+                <AppTableCell>{ps.state}</AppTableCell>
+                <AppTableCell>+</AppTableCell>
+                <AppTableCell align="right">{ps.maxPowerW}W</AppTableCell>
+                <AppTableCell style={{ fontSize: "0.75rem" }}>
                   {ps.description}
-                </TableCell>
-              </TableRow>
+                </AppTableCell>
+              </AppTableRow>
             ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </AppTableBody>
+        </AppTable>
+      </AppTableContainer>
     </>
   );
 };

@@ -1,18 +1,14 @@
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import {
-  CardContent,
-  Collapse,
-  IconButton,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import { useMemo, useState } from "react";
 
+import AppCardContent from "@/components/ui/AppCardContent";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTypography from "@/components/ui/AppTypography";
 import { cardBorderRadius } from "@/constants";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { CollapsibleTableProps } from "@/types/collapsible";
+import { alpha } from "@/utils/color";
 
 interface Props<T extends Record<string, any>> {
   row: T;
@@ -30,8 +26,8 @@ export default function CollapsibleCard<T extends Record<string, any>>({
   onToggleSelected,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
-  const theme = useTheme();
-  const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
+  const theme = useAppTheme();
+  const isSmallScreen = useAppMediaQuery(theme.breakpoints.down("sm"));
 
   const leftColor = useMemo(
     () => (selected || open ? theme.palette.primary.main : "transparent"),
@@ -80,39 +76,43 @@ export default function CollapsibleCard<T extends Record<string, any>>({
 
       {/* content */}
       <div style={{ position: "relative", zIndex: 1 }}>
-        <CardContent
-          sx={{
+        <AppCardContent
+          style={{
             display: "flex",
             flexDirection: isSmallScreen ? "column" : "row",
             alignItems: isSmallScreen ? "flex-start" : "center",
             minHeight: 64,
-            gap: isSmallScreen ? 0.5 : 1,
+            gap: isSmallScreen ? 2 : 4,
           }}
         >
           {columns.map((col) => (
             <div key={col.field} style={{ flex: 1, minWidth: 0 }}>
-              <Typography
+              <AppTypography
                 variant={col.field === "repo" ? "subtitle1" : "body2"}
                 color="text.primary"
               >
                 {(row as any)[col.field]}
-              </Typography>
+              </AppTypography>
             </div>
           ))}
 
           {/* ONLY chevron expands */}
-          <IconButton
+          <AppIconButton
             size="small"
             onClick={(e) => {
               e.stopPropagation();
               setOpen((o) => !o);
             }}
           >
-            {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
-        </CardContent>
+            {open ? (
+              <Icon icon="mdi:chevron-up" width={24} height={24} />
+            ) : (
+              <Icon icon="mdi:chevron-down" width={24} height={24} />
+            )}
+          </AppIconButton>
+        </AppCardContent>
 
-        <Collapse in={open} unmountOnExit>
+        <AppCollapse in={open} unmountOnExit>
           <div
             style={{
               paddingLeft: isSmallScreen ? theme.spacing(1) : theme.spacing(2),
@@ -122,7 +122,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           >
             {renderCollapseContent(row)}
           </div>
-        </Collapse>
+        </AppCollapse>
       </div>
     </div>
   );

@@ -1,0 +1,75 @@
+/* ── AppLinearProgress ────────────────────────────────── */
+.app-linear-progress {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  height: 4px;
+  border-radius: 0;
+  background-color: color-mix(in srgb, var(--_lp-color, var(--color-primary)) 30%, transparent);
+}
+
+.app-linear-progress__bar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background-color: var(--_lp-color, var(--color-primary));
+  border-radius: inherit;
+}
+
+/* ── determinate ──────────────────────────────── */
+.app-linear-progress--determinate .app-linear-progress__bar {
+  transition: transform 0.4s linear;
+}
+
+/* ── indeterminate ────────────────────────────── */
+.app-linear-progress--indeterminate .app-linear-progress__bar {
+  width: auto;
+  animation: app-lp-indeterminate1 2.1s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
+.app-linear-progress--indeterminate .app-linear-progress__bar2 {
+  animation: app-lp-indeterminate2 2.1s cubic-bezier(0.165, 0.84, 0.44, 1) 1.15s infinite;
+}
+
+@keyframes app-lp-indeterminate1 {
+  0% {
+    left: -35%;
+    right: 100%;
+  }
+  60% {
+    left: 100%;
+    right: -90%;
+  }
+  100% {
+    left: 100%;
+    right: -90%;
+  }
+}
+
+@keyframes app-lp-indeterminate2 {
+  0% {
+    left: -200%;
+    right: 100%;
+  }
+  60% {
+    left: 107%;
+    right: -8%;
+  }
+  100% {
+    left: 107%;
+    right: -8%;
+  }
+}
+
+/* ── colors ───────────────────────────────────── */
+.app-linear-progress--error {
+  --_lp-color: var(--color-error);
+}
+
+.app-linear-progress--warning {
+  --_lp-color: var(--color-warning);
+}
+
+.app-linear-progress--success {
+  --_lp-color: var(--color-success);
+}

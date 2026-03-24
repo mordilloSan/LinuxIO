@@ -1,34 +1,36 @@
-import { Button, Typography } from "@mui/material";
-import React from "react";
 import { Link } from "react-router-dom";
+
+import AppButton from "@/components/ui/AppButton";
 
 function Page404() {
   return (
     <div style={{ textAlign: "center" }}>
-      <Typography component="h1" variant="h1" align="center" gutterBottom>
-        404
-      </Typography>
-      <Typography component="h2" variant="h4" align="center" gutterBottom>
+      <h1 style={{ margin: 0, fontSize: "2rem", lineHeight: 1.25 }}>404</h1>
+      <h2
+        className="section-title"
+        style={{ marginTop: 8, marginBottom: 8, textAlign: "center" }}
+      >
         Page not found.
-      </Typography>
-      <Typography
-        component="h2"
-        variant="subtitle1"
-        align="center"
-        gutterBottom
+      </h2>
+      <p
+        className="text-muted"
+        style={{ margin: 0, fontSize: "0.9286rem", lineHeight: 1.75 }}
       >
         The page you are looking for might have been removed.
-      </Typography>
+      </p>
 
-      <Button
-        component={Link}
+      <Link
         to="/"
-        variant="contained"
-        color="secondary"
-        sx={{ mt: 2 }}
+        style={{
+          textDecoration: "none",
+          marginTop: 16,
+          display: "inline-block",
+        }}
       >
-        Return to website
-      </Button>
+        <AppButton variant="contained" color="secondary">
+          Return to website
+        </AppButton>
+      </Link>
     </div>
   );
 }

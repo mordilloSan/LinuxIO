@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 interface UpdateInfo {
   available: boolean;
@@ -7,21 +7,22 @@ interface UpdateInfo {
   release_url?: string;
 }
 
-export const useUpdateInfo = () => {
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-
-  useEffect(() => {
-    // Load from sessionStorage (set during login)
-    const stored = sessionStorage.getItem("update_info");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setUpdateInfo(parsed);
-      } catch (error) {
-        console.error("Failed to parse update info:", error);
-      }
+const loadUpdateInfo = (): UpdateInfo | null => {
+  const stored = sessionStorage.getItem("update_info");
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (error) {
+      console.error("Failed to parse update info:", error);
     }
-  }, []);
+  }
+  return null;
+};
+
+export const useUpdateInfo = () => {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(
+    loadUpdateInfo,
+  );
 
   const dismissUpdate = () => {
     setUpdateInfo(null);

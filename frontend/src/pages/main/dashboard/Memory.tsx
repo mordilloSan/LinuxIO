@@ -1,18 +1,17 @@
-import { Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
 const MemoryUsage = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     data: memoryData,
     isPending,
@@ -84,14 +83,14 @@ const MemoryUsage = () => {
               borderBottom:
                 index === rows.length - 1
                   ? "none"
-                  : "1px solid var(--mui-palette-divider)",
+                  : "1px solid var(--app-palette-divider)",
               gap: theme.spacing(1),
             }}
           >
-            <Typography
+            <AppTypography
               variant="caption"
               color="text.secondary"
-              sx={{
+              style={{
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
                 fontSize: "0.62rem",
@@ -99,10 +98,10 @@ const MemoryUsage = () => {
               }}
             >
               {label}
-            </Typography>
-            <Typography variant="body2" fontWeight={500} noWrap>
+            </AppTypography>
+            <AppTypography variant="body2" fontWeight={500} noWrap>
               {value}
-            </Typography>
+            </AppTypography>
           </div>
         ))}
       </div>

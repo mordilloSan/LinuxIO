@@ -1,13 +1,14 @@
-import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-} from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
+
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
 
 interface InputDialogProps {
   open: boolean;
@@ -70,11 +71,10 @@ const InputDialog: React.FC<InputDialogProps> = ({
 
   return (
     <FileBrowserDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <TextField
+      <AppDialogTitle>{title}</AppDialogTitle>
+      <AppDialogContent>
+        <AppTextField
           autoFocus
-          margin="dense"
           label={label}
           type="text"
           fullWidth
@@ -83,17 +83,17 @@ const InputDialog: React.FC<InputDialogProps> = ({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyPress}
         />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton
           onClick={handleConfirm}
           disabled={!value.trim()}
           variant="contained"
         >
           {confirmText}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </FileBrowserDialog>
   );
 };

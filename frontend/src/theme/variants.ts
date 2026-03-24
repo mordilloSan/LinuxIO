@@ -1,4 +1,4 @@
-import { grey } from "@mui/material/colors";
+import { GREY_TOKENS as grey } from "@/theme/colors";
 
 const customBlue = {
   50: "#e9f0fb",

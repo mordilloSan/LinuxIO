@@ -1,5 +1,3 @@
-import { CssBaseline, useMediaQuery } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
@@ -13,11 +11,12 @@ import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
 import { useSidebarItems } from "@/routes";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const isLoaded = useConfigReady();
   const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
     useSidebar();
@@ -48,15 +47,32 @@ const Dashboard: React.FC = () => {
           };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <CssBaseline />
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100dvh",
+        minHeight: "100vh",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
         <Sidebar items={sidebarItems} />
         <div
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
             transition: theme.transitions.create(["margin-left", "width"], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.leavingScreen,
@@ -75,6 +91,8 @@ const Dashboard: React.FC = () => {
             className="custom-scrollbar"
             style={{
               flex: 1,
+              minHeight: 0,
+              minWidth: 0,
               overflow: "auto",
               background: theme.palette.background.default,
               position: "relative",

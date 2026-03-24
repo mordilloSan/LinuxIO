@@ -1,0 +1,30 @@
+.app-skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--app-palette-text-secondary), transparent 92%) 25%,
+    color-mix(in srgb, var(--app-palette-text-secondary), transparent 84%) 37%,
+    color-mix(in srgb, var(--app-palette-text-secondary), transparent 92%) 63%
+  );
+  background-size: 400% 100%;
+  animation: app-skeleton-wave 1.4s ease infinite;
+}
+
+.app-skeleton--text,
+.app-skeleton--rectangular {
+  border-radius: 8px;
+}
+
+.app-skeleton--circular {
+  border-radius: 999px;
+}
+
+@keyframes app-skeleton-wave {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
+}

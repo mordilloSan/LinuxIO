@@ -18,7 +18,7 @@ import (
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/updates"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
 type UpdateDetail struct {

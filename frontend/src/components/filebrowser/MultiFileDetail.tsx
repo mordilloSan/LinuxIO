@@ -1,9 +1,13 @@
-import DownloadIcon from "@mui/icons-material/Download";
-import { Button, Divider, Paper, Typography, useTheme } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
+import AppButton from "@/components/ui/AppButton";
+import AppDivider from "@/components/ui/AppDivider";
+import AppPaper from "@/components/ui/AppPaper";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 // Glow animation for loading states
@@ -45,7 +49,7 @@ const DetailRow: React.FC<{
   value: React.ReactNode;
   isLoading?: boolean;
 }> = ({ label, value, isLoading = false }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <div
@@ -54,33 +58,33 @@ const DetailRow: React.FC<{
         gap: theme.spacing(2),
       }}
     >
-      <Typography
+      <AppTypography
         variant="body2"
         fontWeight={600}
         color="text.secondary"
-        sx={{ minWidth: 140 }}
+        style={{ minWidth: 140 }}
       >
         {label}:
-      </Typography>
+      </AppTypography>
       {isLoading ? (
-        <Typography
+        <AppTypography
           variant="body2"
-          sx={{
+          style={{
             flex: 1,
             wordBreak: "break-all",
             animation: "detailGlow 2.5s infinite",
           }}
         >
           —
-        </Typography>
+        </AppTypography>
       ) : (
-        <Typography
+        <AppTypography
           component="div"
           variant="body2"
-          sx={{ flex: 1, wordBreak: "break-all" }}
+          style={{ flex: 1, wordBreak: "break-all" }}
         >
           {value}
-        </Typography>
+        </AppTypography>
       )}
     </div>
   );
@@ -90,7 +94,7 @@ const MultiFileItemRow: React.FC<{
   item: MultiFileDetailItem;
   onDownload: (path: string) => void;
 }> = ({ item, onDownload }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const baseBorderRadius =
     typeof theme.shape.borderRadius === "number"
       ? theme.shape.borderRadius
@@ -142,26 +146,26 @@ const MultiFileItemRow: React.FC<{
         }}
       >
         <div>
-          <Typography variant="subtitle1" fontWeight={600}>
+          <AppTypography variant="subtitle1" fontWeight={600}>
             {item.name}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             {isDir ? "Directory" : "File"}
-          </Typography>
+          </AppTypography>
         </div>
         {!isDir && (
-          <Button
+          <AppButton
             size="small"
-            startIcon={<DownloadIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:download" width={18} height={18} />}
             onClick={() => onDownload(item.path)}
           >
             Download
-          </Button>
+          </AppButton>
         )}
       </div>
-      <Typography variant="body2" color="text.secondary">
+      <AppTypography variant="body2" color="text.secondary">
         Size: {renderSize()}
-      </Typography>
+      </AppTypography>
     </div>
   );
 };
@@ -172,21 +176,21 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
   totalSize,
   isLoadingDetails,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   if (!multiItems?.length) {
     return null;
   }
 
   return (
-    <Paper
+    <AppPaper
       variant="outlined"
-      sx={{
-        borderRadius: 2,
+      style={{
+        borderRadius: 8,
         display: "flex",
         flexDirection: "column",
-        p: 3,
-        gap: 2,
+        padding: 12,
+        gap: 8,
       }}
     >
       <div
@@ -198,17 +202,17 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         }}
       >
         <div>
-          <Typography variant="h6" fontWeight={600}>
+          <AppTypography variant="h6" fontWeight={600}>
             {multiItems.length} Selected Item
             {multiItems.length === 1 ? "" : "s"}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="body2" color="text.secondary">
             Combined statistics for the selected files and folders
-          </Typography>
+          </AppTypography>
         </div>
       </div>
 
-      <Divider />
+      <AppDivider />
 
       <div
         style={{
@@ -228,7 +232,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         />
       </div>
 
-      <Divider />
+      <AppDivider />
 
       <div
         className="custom-scrollbar"
@@ -256,7 +260,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           })}
         </div>
       </div>
-    </Paper>
+    </AppPaper>
   );
 };
 

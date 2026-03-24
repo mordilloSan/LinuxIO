@@ -1,11 +1,11 @@
-import DownloadIcon from "@mui/icons-material/Download";
-import FileCopyIcon from "@mui/icons-material/FileCopy";
-import SearchIcon from "@mui/icons-material/Search";
-import { IconButton, TextField, Tooltip } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React, { useState, useMemo } from "react";
 
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppSearchField from "@/components/ui/AppSearchField";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
 interface LogsDialogProps {
@@ -66,29 +66,28 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       onClose={onClose}
       titleContent={
         <>
-          <SearchIcon fontSize="small" />
-          <TextField
+          <Icon icon="mdi:magnify" width={20} height={20} />
+          <AppSearchField
             variant="standard"
             placeholder="Search logs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            size="small"
-            sx={{ ml: 1, flex: 1 }}
+            style={{ marginLeft: 8, flex: 1 }}
           />
         </>
       }
       extraActions={
         <>
-          <Tooltip title="Copy logs">
-            <IconButton onClick={handleCopy} size="small">
-              <FileCopyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Download logs">
-            <IconButton onClick={handleDownload} size="small">
-              <DownloadIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <AppTooltip title="Copy logs">
+            <AppIconButton onClick={handleCopy} size="small">
+              <Icon icon="mdi:content-copy" width={20} height={20} />
+            </AppIconButton>
+          </AppTooltip>
+          <AppTooltip title="Download logs">
+            <AppIconButton onClick={handleDownload} size="small">
+              <Icon icon="mdi:download" width={20} height={20} />
+            </AppIconButton>
+          </AppTooltip>
         </>
       }
       logs={filtered}

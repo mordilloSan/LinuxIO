@@ -1,16 +1,15 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
-import { Chip, Divider, IconButton, Tooltip, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import type { ComposeProject } from "./ComposeList";
 
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
 
 const getStatusColor = (status: string) => {
@@ -69,14 +68,11 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         <Chip
           label={project.status}
           size="small"
+          color={statusColor}
+          variant="soft"
           sx={{
             textTransform: "capitalize",
             fontSize: "0.65rem",
-            fontWeight: 500,
-            color: statusColor,
-            bgcolor: alpha(statusColor, 0.14),
-            border: `1px solid ${alpha(statusColor, 0.45)}`,
-            borderRadius: "999px",
             "& .MuiChip-label": { px: 1.5 },
           }}
         />
@@ -92,26 +88,26 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         }}
       >
         <DockerIcon identifier={project.icon} size={36} alt={project.name} />
-        <Typography variant="subtitle1" fontWeight={600} noWrap>
+        <AppTypography variant="subtitle1" fontWeight={600} noWrap>
           {project.name}
-        </Typography>
+        </AppTypography>
       </div>
 
       {/* Stats */}
       <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-        <Typography variant="body2" color="text.secondary">
+        <AppTypography variant="body2" color="text.secondary">
           {totalServices > 0
             ? `${runningServices}/${totalServices} services`
             : "No services"}
-        </Typography>
+        </AppTypography>
         {totalContainers > 0 && (
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             {totalContainers} container{totalContainers !== 1 ? "s" : ""}
-          </Typography>
+          </AppTypography>
         )}
       </div>
 
-      <Divider sx={{ my: 1.5 }} />
+      <AppDivider style={{ marginBlock: 12 }} />
 
       {/* Actions */}
       <div
@@ -123,84 +119,83 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         }}
       >
         {isWatchtower ? (
-          <Tooltip title="View compose file">
+          <AppTooltip title="View compose file">
             <Chip
               label="Managed by LinuxIO"
               size="small"
-              variant="outlined"
+              variant="soft"
               onClick={
                 onPreview && project.config_files.length > 0
                   ? () => onPreview(project.name, project.config_files[0])
                   : undefined
               }
-              sx={{
+              className="chip-interactive"
+              style={{
                 fontSize: "0.68rem",
-                opacity: 0.7,
                 cursor:
                   onPreview && project.config_files.length > 0
                     ? "pointer"
                     : "default",
-                "&:hover": { opacity: 1 },
               }}
             />
-          </Tooltip>
+          </AppTooltip>
         ) : (
           <>
             <div style={{ display: "flex", gap: 2 }}>
               {onEdit && project.config_files.length > 0 && (
-                <Tooltip title="Edit">
-                  <IconButton
+                <AppTooltip title="Edit">
+                  <AppIconButton
                     size="small"
                     onClick={() =>
                       onEdit(project.name, project.config_files[0])
                     }
                     disabled={isLoading}
                   >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                    <Icon icon="mdi:pencil" width={20} height={20} />
+                  </AppIconButton>
+                </AppTooltip>
               )}
               {isRunning ? (
                 <>
-                  <Tooltip title="Restart">
-                    <IconButton
+                  <AppTooltip title="Restart">
+                    <AppIconButton
                       size="small"
                       onClick={() => onRestart(project.name)}
                       disabled={isLoading}
                     >
-                      <RestartAltIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Stop">
-                    <IconButton
+                      <Icon icon="mdi:restart" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title="Stop">
+                    <AppIconButton
                       size="small"
                       onClick={() => onStop(project.name)}
                       disabled={isLoading}
                     >
-                      <StopCircleIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                      <Icon icon="mdi:stop-circle" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
                 </>
               ) : (
-                <Tooltip title="Start">
-                  <IconButton
+                <AppTooltip title="Start">
+                  <AppIconButton
                     size="small"
                     onClick={() => onStart(project.name)}
                     disabled={isLoading}
                   >
-                    <PlayArrowIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                    <Icon icon="mdi:play" width={20} height={20} />
+                  </AppIconButton>
+                </AppTooltip>
               )}
-              <Tooltip title="Delete">
-                <IconButton
+              <AppTooltip title="Delete">
+                <AppIconButton
                   size="small"
                   onClick={() => onDelete(project)}
                   disabled={isLoading}
                 >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
+                  <Icon icon="mdi:delete" width={20} height={20} />
+                </AppIconButton>
+              </AppTooltip>
             </div>
           </>
         )}

@@ -1,26 +1,20 @@
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CloseIcon from "@mui/icons-material/Close";
-import ErrorIcon from "@mui/icons-material/Error";
-import {
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  LinearProgress,
-  Typography,
-  type TypographyProps,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppTypography, {
+  type AppTypographyProps,
+} from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 export interface IndexerStat {
   value: React.ReactNode;
   label: string;
   valueColor?: string;
-  valueVariant?: TypographyProps["variant"];
+  valueVariant?: AppTypographyProps["variant"];
 }
-
 interface IndexerStatusDialogProps {
   open: boolean;
   onClose: () => void;
@@ -37,7 +31,6 @@ interface IndexerStatusDialogProps {
   summaryTitle?: string;
   summaryStats?: IndexerStat[];
 }
-
 const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   open,
   onClose,
@@ -54,11 +47,10 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   summaryTitle,
   summaryStats = [],
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const sectionBackground = theme.codeBlock.background;
   const hasProgressStats = showProgressStats && progressStats.length > 0;
   const hasSummary = Boolean(summaryTitle) && summaryStats.length > 0;
-
   return (
     <GeneralDialog
       open={open}
@@ -71,8 +63,8 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
         },
       }}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.header.background,
           borderBottom: `1px solid ${theme.palette.divider}`,
           display: "flex",
@@ -80,22 +72,58 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
           justifyContent: "space-between",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          {isRunning && <LinearProgress sx={{ width: 100 }} />}
-          {!isRunning && success && <CheckCircleIcon color="success" />}
-          {!isRunning && error && <ErrorIcon color="error" />}
-          <Typography variant="h6">{title}</Typography>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {isRunning && (
+            <AppLinearProgress
+              style={{
+                width: 100,
+              }}
+            />
+          )}
+          {!isRunning && success && (
+            <Icon
+              icon="mdi:check-circle"
+              width={24}
+              height={24}
+              color={theme.palette.success.main}
+            />
+          )}
+          {!isRunning && error && (
+            <Icon
+              icon="mdi:alert-circle"
+              width={24}
+              height={24}
+              color={theme.palette.error.main}
+            />
+          )}
+          <AppTypography variant="h6">{title}</AppTypography>
         </div>
-        <IconButton onClick={onClose} size="small">
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
+        <AppIconButton onClick={onClose} size="small">
+          <Icon icon="mdi:close" width={20} height={20} />
+        </AppIconButton>
+      </AppDialogTitle>
 
-      <DialogContent sx={{ p: 3 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Typography variant="body2" color="text.secondary">
+      <AppDialogContent
+        style={{
+          padding: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <AppTypography variant="body2" color="text.secondary">
             {phaseLabel}
-          </Typography>
+          </AppTypography>
 
           {hasProgressStats && (
             <div
@@ -109,35 +137,45 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
             >
               {progressStats.map((stat) => (
                 <div key={stat.label}>
-                  <Typography
+                  <AppTypography
                     variant={stat.valueVariant ?? "h4"}
-                    sx={
-                      stat.valueColor ? { color: stat.valueColor } : undefined
+                    style={
+                      stat.valueColor
+                        ? {
+                            color: stat.valueColor,
+                          }
+                        : undefined
                     }
                   >
                     {stat.value}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  </AppTypography>
+                  <AppTypography variant="caption" color="text.secondary">
                     {stat.label}
-                  </Typography>
+                  </AppTypography>
                 </div>
               ))}
             </div>
           )}
 
           {success && (
-            <div style={{ marginTop: 8 }}>
-              <Typography variant="body2" color="success.main" gutterBottom>
+            <div
+              style={{
+                marginTop: 8,
+              }}
+            >
+              <AppTypography variant="body2" color="success" gutterBottom>
                 ✓ {successMessage}
-              </Typography>
+              </AppTypography>
               {successDescription && (
-                <Typography
+                <AppTypography
                   variant="caption"
                   color="text.secondary"
-                  display="block"
+                  style={{
+                    display: "block",
+                  }}
                 >
                   {successDescription}
-                </Typography>
+                </AppTypography>
               )}
 
               {hasSummary && (
@@ -149,29 +187,37 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
                     borderRadius: 4,
                   }}
                 >
-                  <Typography
+                  <AppTypography
                     variant="subtitle2"
                     color="text.primary"
                     gutterBottom
                   >
                     {summaryTitle}
-                  </Typography>
-                  <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                  </AppTypography>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 12,
+                      marginTop: 4,
+                    }}
+                  >
                     {summaryStats.map((stat) => (
                       <div key={stat.label}>
-                        <Typography
+                        <AppTypography
                           variant={stat.valueVariant ?? "h5"}
-                          sx={
+                          style={
                             stat.valueColor
-                              ? { color: stat.valueColor }
+                              ? {
+                                  color: stat.valueColor,
+                                }
                               : undefined
                           }
                         >
                           {stat.value}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        </AppTypography>
+                        <AppTypography variant="caption" color="text.secondary">
                           {stat.label}
-                        </Typography>
+                        </AppTypography>
                       </div>
                     ))}
                   </div>
@@ -181,14 +227,13 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
           )}
 
           {error && (
-            <Typography color="error" variant="body2">
+            <AppTypography color="error" variant="body2">
               Error: {error}
-            </Typography>
+            </AppTypography>
           )}
         </div>
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };
-
 export default IndexerStatusDialog;

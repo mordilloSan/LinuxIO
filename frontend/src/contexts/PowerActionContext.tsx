@@ -1,5 +1,3 @@
-import { Backdrop, Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, {
   createContext,
   useState,
@@ -10,6 +8,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 
 type PowerActionState = "rebooting" | "poweringOff" | null;
 
@@ -25,7 +24,6 @@ export const PowerActionContext = createContext<
 export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const theme = useTheme();
   const navigate = useNavigate();
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);
 
@@ -74,34 +72,46 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
   return (
     <PowerActionContext.Provider value={value}>
       {children}
-      <Backdrop
-        sx={{
-          color: "common.white",
-          zIndex: (theme) => theme.zIndex.modal + 1,
-          flexDirection: "column",
-          gap: 3,
-          backdropFilter: "blur(16px)",
-        }}
-        open={powerAction !== null}
-      >
+      {powerAction !== null ? (
         <div
           style={{
-            textAlign: "center",
-            paddingLeft: theme.spacing(3),
-            paddingRight: theme.spacing(3),
+            position: "fixed",
+            inset: 0,
+            zIndex: 1301,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            color: "#fff",
+            background: "rgba(0, 0, 0, 0.52)",
+            backdropFilter: "blur(16px)",
           }}
         >
-          <Typography variant="h5" component="div" gutterBottom>
-            {powerAction === "rebooting" ? "Rebooting..." : "Shutting Down..."}
-          </Typography>
-          <Typography variant="body1" sx={{ opacity: 0.8 }}>
-            {powerAction === "rebooting"
-              ? "Please wait while the system restarts. You will be redirected once the server is back online."
-              : "The system is shutting down. You may close this window."}
-          </Typography>
-          {powerAction === "rebooting" && <ComponentLoader />}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 12,
+              textAlign: "center",
+              paddingLeft: "12px",
+              paddingRight: "12px",
+            }}
+          >
+            <AppTypography variant="h5" component="div" gutterBottom>
+              {powerAction === "rebooting"
+                ? "Rebooting..."
+                : "Shutting Down..."}
+            </AppTypography>
+            <AppTypography variant="body1" style={{ opacity: 0.8 }}>
+              {powerAction === "rebooting"
+                ? "Please wait while the system restarts. You will be redirected once the server is back online."
+                : "The system is shutting down. You may close this window."}
+            </AppTypography>
+            {powerAction === "rebooting" && <ComponentLoader />}
+          </div>
         </div>
-      </Backdrop>
+      ) : null}
     </PowerActionContext.Provider>
   );
 };

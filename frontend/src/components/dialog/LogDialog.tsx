@@ -1,20 +1,17 @@
-import CloseIcon from "@mui/icons-material/Close";
-import {
-  DialogTitle,
-  DialogContent,
-  IconButton,
-  Typography,
-  Alert,
-  Switch,
-  FormControlLabel,
-  Tooltip,
-} from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-
+import AppAlert from "@/components/ui/AppAlert";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 interface LogDialogProps {
   open: boolean;
   onClose: () => void;
@@ -33,7 +30,6 @@ interface LogDialogProps {
   onExited?: () => void;
   maxWidth?: "sm" | "md" | "lg" | "xl";
 }
-
 const LogDialog: React.FC<LogDialogProps> = ({
   open,
   onClose,
@@ -49,44 +45,71 @@ const LogDialog: React.FC<LogDialogProps> = ({
   onExited,
   maxWidth = "md",
 }) => {
-  const theme = useTheme();
-
+  const theme = useAppTheme();
   return (
     <GeneralDialog
       open={open}
       onClose={onClose}
       maxWidth={maxWidth}
       fullWidth
-      slotProps={{ transition: { onExited } }}
+      slotProps={{
+        transition: {
+          onExited,
+        },
+      }}
     >
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-          {titleContent ?? <Typography variant="h6">{title}</Typography>}
+      <AppDialogTitle
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {titleContent ?? <AppTypography variant="h6">{title}</AppTypography>}
         </div>
         {extraActions}
-        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
-          <FormControlLabel
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
+          <AppFormControlLabel
             control={
-              <Switch
+              <AppSwitch
                 checked={liveMode}
                 onChange={(_, checked) => onLiveModeChange(checked)}
                 size="small"
               />
             }
             label="Live"
-            sx={{ ml: 1 }}
+            style={{ marginLeft: 4 }}
           />
-        </Tooltip>
-        <IconButton onClick={onClose} size="small">
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </DialogTitle>
+        </AppTooltip>
+        <AppIconButton onClick={onClose} size="small">
+          <Icon icon="mdi:close" width={18} height={18} />
+        </AppIconButton>
+      </AppDialogTitle>
 
-      <DialogContent dividers sx={{ p: 0 }}>
+      <AppDialogContent
+        style={{
+          padding: 0,
+          borderTop: `1px solid ${theme.palette.divider}`,
+        }}
+      >
         {error ? (
-          <Alert severity="error" sx={{ m: 2 }}>
+          <AppAlert
+            severity="error"
+            style={{
+              margin: 8,
+            }}
+          >
             {error}
-          </Alert>
+          </AppAlert>
         ) : (
           <div
             ref={logsBoxRef}
@@ -119,15 +142,14 @@ const LogDialog: React.FC<LogDialogProps> = ({
             )}
             {!isLoading &&
               (logs || (
-                <Typography color="text.secondary">
+                <AppTypography color="text.secondary">
                   No logs available.
-                </Typography>
+                </AppTypography>
               ))}
           </div>
         )}
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };
-
 export default LogDialog;

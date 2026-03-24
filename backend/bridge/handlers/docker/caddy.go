@@ -355,9 +355,9 @@ func generateCaddyfile(routes []CaddyRoute, proxyCfg config.DockerProxy) string 
 
 	for _, r := range routes {
 		b.WriteString(r.Host + " {\n")
-		b.WriteString(fmt.Sprintf("\treverse_proxy %s:%s\n", r.Container, r.Port))
+		fmt.Fprintf(&b, "\treverse_proxy %s:%s\n", r.Container, r.Port)
 		if proxyCfg.BaseDomain != "" && proxyCfg.TLSEmail != "" {
-			b.WriteString(fmt.Sprintf("\ttls %s\n", proxyCfg.TLSEmail))
+			fmt.Fprintf(&b, "\ttls %s\n", proxyCfg.TLSEmail)
 		}
 		b.WriteString("}\n\n")
 	}

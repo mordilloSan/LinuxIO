@@ -1,13 +1,13 @@
-import AddIcon from "@mui/icons-material/Add";
-import DeleteIcon from "@mui/icons-material/Delete";
-import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import { CardContent, Typography, IconButton, Tooltip } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
+import AppCardContent from "@/components/ui/AppCardContent";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
@@ -27,6 +27,63 @@ interface InterfaceCardProps {
   handleAddPeer: (name: string, peerData: any) => void;
 }
 
+interface InterfaceCardRowProps {
+  label: string;
+  value: React.ReactNode;
+  wrap?: boolean;
+  noDivider?: boolean;
+}
+
+const InterfaceCardRow: React.FC<InterfaceCardRowProps> = ({
+  label,
+  value,
+  wrap = false,
+  noDivider = false,
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: wrap ? "flex-start" : "baseline",
+      justifyContent: "space-between",
+      gap: 8,
+      padding: "4px 0",
+      borderBottom: noDivider ? "none" : "1px solid var(--app-palette-divider)",
+    }}
+  >
+    <AppTypography
+      variant="caption"
+      color="text.secondary"
+      style={{
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        fontSize: "0.62rem",
+        flexShrink: 0,
+        paddingTop: wrap ? 2 : 0,
+      }}
+    >
+      {label}
+    </AppTypography>
+    <AppTypography
+      variant="body2"
+      fontWeight={500}
+      noWrap={!wrap}
+      style={{
+        marginLeft: "auto",
+        minWidth: 0,
+        textAlign: "right",
+        ...(wrap
+          ? {
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+            }
+          : {}),
+      }}
+    >
+      {value}
+    </AppTypography>
+  </div>
+);
+
 const InterfaceCard: React.FC<InterfaceCardProps> = ({
   iface,
   selectedInterface,
@@ -37,7 +94,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
   handleDelete,
   handleAddPeer,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const color = "primary";
   const activeAccentColor =
     theme.palette[color]?.main || theme.palette.primary.main;
@@ -69,7 +126,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
         }}
         onClick={() => handleSelectInterface(iface)}
       >
-        <CardContent>
+        <AppCardContent>
           <div
             style={{
               display: "flex",
@@ -77,15 +134,15 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               alignItems: "center",
             }}
           >
-            <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
+            <AppTypography variant="subtitle1" fontWeight={700}>
               {iface.name}
-            </Typography>
+            </AppTypography>
             <div>
-              <Tooltip
+              <AppTooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
-                <IconButton
-                  sx={{
+                <AppIconButton
+                  style={{
                     color:
                       iface.isConnected === "Active"
                         ? theme.palette.primary.light
@@ -100,18 +157,18 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     );
                   }}
                 >
-                  <PowerSettingsNewIcon />
-                </IconButton>
-              </Tooltip>
-              <Tooltip
+                  <Icon icon="mdi:power" width={22} height={22} />
+                </AppIconButton>
+              </AppTooltip>
+              <AppTooltip
                 title={
                   iface.isEnabled
                     ? "Disable Boot Persistence"
                     : "Enable Boot Persistence"
                 }
               >
-                <IconButton
-                  sx={{
+                <AppIconButton
+                  style={{
                     color: iface.isEnabled
                       ? theme.palette.success.main
                       : theme.palette.text.disabled,
@@ -122,42 +179,38 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     handleToggleBootPersistence(iface.name, iface.isEnabled);
                   }}
                 >
-                  <RestartAltIcon />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Add Peer">
-                <IconButton
+                  <Icon icon="mdi:restart" width={22} height={22} />
+                </AppIconButton>
+              </AppTooltip>
+              <AppTooltip title="Add Peer">
+                <AppIconButton
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddPeer(iface.name, {});
                   }}
                 >
-                  <AddIcon />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Delete Interface">
-                <IconButton
+                  <Icon icon="mdi:plus" width={22} height={22} />
+                </AppIconButton>
+              </AppTooltip>
+              <AppTooltip title="Delete Interface">
+                <AppIconButton
+                  color="error"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDelete(iface.name);
                   }}
-                  sx={{ color: theme.palette.error.main }}
                 >
-                  <DeleteIcon />
-                </IconButton>
-              </Tooltip>
+                  <Icon icon="mdi:delete" width={22} height={22} />
+                </AppIconButton>
+              </AppTooltip>
             </div>
           </div>
-          <Typography variant="body2" color="text.secondary">
-            Address: {iface.address}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Port: {iface.port}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Peers: {iface.peerCount}
-          </Typography>
-        </CardContent>
+          <div style={{ marginTop: 6 }}>
+            <InterfaceCardRow label="Address" value={iface.address} wrap />
+            <InterfaceCardRow label="Port" value={iface.port} />
+            <InterfaceCardRow label="Peers" value={iface.peerCount} noDivider />
+          </div>
+        </AppCardContent>
       </FrostedCard>
     </motion.div>
   );

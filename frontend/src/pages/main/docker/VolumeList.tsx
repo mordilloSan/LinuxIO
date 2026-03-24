@@ -1,47 +1,44 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import {
-  Grid,
-  TableCell,
-  TextField,
-  Chip,
-  Typography,
-  Checkbox,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppGrid from "@/components/ui/AppGrid";
+import AppSearchField from "@/components/ui/AppSearchField";
+import { AppTableCell } from "@/components/ui/AppTable";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import {
   responsiveTextStyles,
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-
 interface DeleteVolumeDialogProps {
   open: boolean;
   onClose: () => void;
   volumeNames: string[];
   onSuccess: () => void;
 }
-
 const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   open,
   onClose,
@@ -49,8 +46,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const theme = useTheme();
-
+  const theme = useAppTheme();
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
     linuxio.docker.delete_volume.useMutation({
       onError: (error: Error) => {
@@ -59,7 +55,6 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         );
       },
     });
-
   const handleDelete = async () => {
     // Delete volumes sequentially
     for (const name of volumeNames) {
@@ -76,21 +71,19 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
     onSuccess();
     handleClose();
   };
-
   const handleClose = () => {
     onClose();
   };
-
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>
         Delete Volume{volumeNames.length > 1 ? "s" : ""}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+      </AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the following volume
           {volumeNames.length > 1 ? "s" : ""}?
-        </DialogContentText>
+        </AppDialogContentText>
         <div
           style={{
             display: "flex",
@@ -100,40 +93,52 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
           }}
         >
           {volumeNames.map((name) => (
-            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
+            <Chip
+              key={name}
+              label={name}
+              size="small"
+              variant="soft"
+              style={{
+                marginRight: 4,
+                marginBottom: 4,
+              }}
+            />
           ))}
         </div>
-        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+        <AppDialogContentText
+          style={{
+            marginTop: 8,
+            color: "var(--mui-palette-warning-main)",
+          }}
+        >
           This action cannot be undone. Volumes in use by containers cannot be
           deleted.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose} disabled={isDeleting}>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={handleClose} disabled={isDeleting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleDelete}
           variant="contained"
           color="error"
           disabled={isDeleting}
         >
           {isDeleting ? "Deleting..." : "Delete"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        </AppButton>
+      </AppDialogActions>
+    </GeneralDialog>
   );
 };
-
 const VolumeList: React.FC<VolumeListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
-
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -153,7 +158,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
       onMountCreateHandler(handleCreateVolume);
     }
   }, [onMountCreateHandler, handleCreateVolume]);
-
   const filtered = volumesList.filter(
     (vol) =>
       vol.Name.toLowerCase().includes(search.toLowerCase()) ||
@@ -172,7 +176,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
     });
     return result;
   }, [selected, filtered]);
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelected(new Set(filtered.map((v) => v.Name)));
@@ -180,7 +183,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
       setSelected(new Set());
     }
   };
-
   const handleSelectOne = (name: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -192,41 +194,41 @@ const VolumeList: React.FC<VolumeListProps> = ({
       return next;
     });
   };
-
   const handleDeleteSuccess = () => {
     setSelected(new Set());
   };
-
   const selectedVolumes = filtered.filter((v) => effectiveSelected.has(v.Name));
   const allSelected =
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-
   const columns: UnifiedTableColumn[] = [
-    { field: "name", headerName: "Volume Name", align: "left" },
+    {
+      field: "name",
+      headerName: "Volume Name",
+      align: "left",
+    },
     {
       field: "driver",
       headerName: "Driver",
       align: "left",
       width: "120px",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "mountpoint",
       headerName: "Mountpoint",
       align: "left",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      className: "app-table-hide-below-md",
     },
     {
       field: "scope",
       headerName: "Scope",
       align: "left",
       width: "100px",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
   ];
-
   return (
     <div>
       <div
@@ -238,38 +240,43 @@ const VolumeList: React.FC<VolumeListProps> = ({
           marginBottom: theme.spacing(2),
         }}
       >
-        <TextField
-          variant="outlined"
-          size="small"
+        <AppSearchField
           placeholder="Search volumes…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
-        <Typography fontWeight="bold">{filtered.length} shown</Typography>
+        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
-          <Button
+          <AppButton
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
-          </Button>
+          </AppButton>
         )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((volume) => (
-              <Grid key={volume.Name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
+              <AppGrid
+                key={volume.Name}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
+              >
+                <FrostedCard
+                  style={{
+                    padding: 8,
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
@@ -286,35 +293,38 @@ const VolumeList: React.FC<VolumeListProps> = ({
                         gap: theme.spacing(1),
                       }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(volume.Name)}
                         onChange={(e) =>
                           handleSelectOne(volume.Name, e.target.checked)
                         }
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {volume.Name}
-                      </Typography>
+                      </AppTypography>
                     </div>
                     <Chip
                       label={volume.Driver}
                       size="small"
-                      sx={{ fontSize: "0.75rem" }}
+                      variant="soft"
+                      style={{
+                        fontSize: "0.75rem",
+                      }}
                     />
                   </div>
 
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    sx={{
-                      mb: 1,
+                    style={{
+                      marginBottom: 4,
                       fontFamily: "monospace",
                       fontSize: "0.8rem",
                       ...longTextStyles,
                     }}
                   >
                     {volume.Mountpoint || "-"}
-                  </Typography>
+                  </AppTypography>
 
                   <div
                     style={{
@@ -326,18 +336,20 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     <Chip
                       label={`Scope: ${volume.Scope || "local"}`}
                       size="small"
+                      variant="soft"
                     />
                     {volume.CreatedAt && (
                       <Chip
                         label={new Date(volume.CreatedAt).toLocaleDateString()}
                         size="small"
+                        variant="soft"
                       />
                     )}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
           <div
             style={{
@@ -346,9 +358,9 @@ const VolumeList: React.FC<VolumeListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No volumes found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -357,7 +369,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
           columns={columns}
           getRowKey={(volume) => volume.Name}
           renderFirstCell={(volume) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(volume.Name)}
               onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
@@ -365,7 +377,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}
@@ -374,75 +386,81 @@ const VolumeList: React.FC<VolumeListProps> = ({
           )}
           renderMainRow={(volume) => (
             <>
-              <TableCell>
-                <Typography
+              <AppTableCell>
+                <AppTypography
                   variant="body2"
-                  fontWeight="medium"
-                  sx={responsiveTextStyles}
+                  fontWeight={500}
+                  style={responsiveTextStyles}
                 >
                   {volume.Name}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
                 <Chip
                   label={volume.Driver}
                   size="small"
-                  sx={{ fontSize: "0.75rem" }}
+                  variant="soft"
+                  style={{
+                    fontSize: "0.75rem",
+                  }}
                 />
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                <AppTypography
                   variant="body2"
-                  sx={{
+                  style={{
                     fontFamily: "monospace",
                     fontSize: "0.85rem",
                     ...longTextStyles,
                   }}
                 >
                   {volume.Mountpoint || "-"}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {volume.Scope || "local"}
-                </Typography>
-              </TableCell>
+                </AppTypography>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(volume) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Full Mountpoint:</b>
-              </Typography>
-              <Typography
+              </AppTypography>
+              <AppTypography
                 variant="body2"
-                sx={{
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  mb: 2,
+                  marginBottom: 8,
                   ...longTextStyles,
                 }}
               >
                 {volume.Mountpoint || "-"}
-              </Typography>
+              </AppTypography>
 
               {volume.CreatedAt && (
                 <>
-                  <Typography variant="subtitle2" gutterBottom>
+                  <AppTypography variant="subtitle2" gutterBottom>
                     <b>Created:</b>
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="body2"
-                    sx={{ mb: 2, fontSize: "0.85rem" }}
+                    style={{
+                      marginBottom: 8,
+                      fontSize: "0.85rem",
+                    }}
                   >
                     {new Date(volume.CreatedAt).toLocaleString()}
-                  </Typography>
+                  </AppTypography>
                 </>
               )}
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
-              </Typography>
+              </AppTypography>
               <div
                 style={{
                   display: "flex",
@@ -456,19 +474,24 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                      variant="soft"
+                      sx={{
+                        mr: 1,
+                        mb: 1,
+                        ...wrappableChipStyles,
+                      }}
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no labels)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Options:</b>
-              </Typography>
+              </AppTypography>
               <div>
                 {volume.Options && Object.keys(volume.Options).length > 0 ? (
                   Object.entries(volume.Options).map(([key, val]) => (
@@ -476,13 +499,18 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                      variant="soft"
+                      sx={{
+                        mr: 1,
+                        mb: 1,
+                        ...wrappableChipStyles,
+                      }}
                     />
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <AppTypography variant="body2" color="text.secondary">
                     (no options)
-                  </Typography>
+                  </AppTypography>
                 )}
               </div>
             </>
@@ -500,5 +528,4 @@ const VolumeList: React.FC<VolumeListProps> = ({
     </div>
   );
 };
-
 export default VolumeList;

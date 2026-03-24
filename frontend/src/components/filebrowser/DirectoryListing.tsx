@@ -1,4 +1,3 @@
-import { useTheme } from "@mui/material/styles";
 import React, {
   useState,
   useRef,
@@ -23,6 +22,7 @@ import {
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "@/hooks/useFileMarqueeSelection";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useAppTheme } from "@/theme";
 
 interface DirectoryListingProps {
   resource: FileResource;
@@ -61,7 +61,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onConfirmRename,
   onCancelRename,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;

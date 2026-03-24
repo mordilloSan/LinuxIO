@@ -1,11 +1,3 @@
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-} from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +11,7 @@ import {
   openFileUploadStream,
   STREAM_CHUNK_SIZE,
 } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
@@ -29,6 +22,13 @@ import DeleteStackDialog, {
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
@@ -544,32 +544,32 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           isLoading={deleteLoading}
         />
 
-        <Dialog
+        <GeneralDialog
           open={overwriteDialogOpen}
           onClose={handleOverwriteCancel}
           maxWidth="sm"
           fullWidth
         >
-          <DialogTitle>File Already Exists</DialogTitle>
-          <DialogContent>
-            <DialogContentText>
+          <AppDialogTitle>File Already Exists</AppDialogTitle>
+          <AppDialogContent>
+            <AppDialogContentText>
               The file <strong>{pendingSaveData?.filePath}</strong> already
               exists. Do you want to overwrite it?
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleOverwriteCancel} color="inherit">
+            </AppDialogContentText>
+          </AppDialogContent>
+          <AppDialogActions>
+            <AppButton onClick={handleOverwriteCancel} color="inherit">
               Cancel
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               onClick={handleOverwriteConfirm}
               color="warning"
               variant="contained"
             >
               Overwrite
-            </Button>
-          </DialogActions>
-        </Dialog>
+            </AppButton>
+          </AppDialogActions>
+        </GeneralDialog>
       </div>
     </Suspense>
   );

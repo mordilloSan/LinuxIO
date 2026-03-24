@@ -1,25 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
-import {
-  Chip,
-  Grid,
-  IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-  Tooltip,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
 import ComposeStackCard from "./ComposeStackCard";
@@ -27,8 +6,21 @@ import ComposeStackCard from "./ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppSearchField from "@/components/ui/AppSearchField";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
-
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 interface ComposeService {
   name: string;
   image: string;
@@ -40,7 +32,6 @@ interface ComposeService {
   container_ids: string[];
   ports: string[];
 }
-
 export interface ComposeProject {
   name: string;
   icon?: string;
@@ -50,7 +41,6 @@ export interface ComposeProject {
   config_files: string[];
   working_dir: string;
 }
-
 interface ComposeListProps {
   projects: ComposeProject[];
   onStart: (projectName: string) => void;
@@ -62,7 +52,6 @@ interface ComposeListProps {
   isLoading?: boolean;
   viewMode?: "table" | "card";
 }
-
 const ComposeList: React.FC<ComposeListProps> = ({
   projects,
   onStart,
@@ -75,17 +64,14 @@ const ComposeList: React.FC<ComposeListProps> = ({
   viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
-  const theme = useTheme();
-  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
-
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
-
   const getStatusColor = (status: string) => {
     return getComposeStatusColor(status);
   };
-
   const getTotalContainers = (project: ComposeProject) => {
     return Object.values(project.services).reduce(
       (acc, service) => acc + service.container_count,
@@ -100,7 +86,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
       headerName: "",
       width: "40px",
     },
-    { field: "name", headerName: "Stack" },
+    {
+      field: "name",
+      headerName: "Stack",
+    },
     {
       field: "containers",
       headerName: "Containers",
@@ -110,12 +99,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
     {
       field: "config",
       headerName: "Config Files",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "location",
       headerName: "Location",
-      sx: { display: { xs: "none", lg: "table-cell" } },
+      className: "app-table-hide-below-lg",
     },
     {
       field: "actions",
@@ -129,11 +118,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const renderMainRow = useCallback(
     (project: ComposeProject) => {
       const statusColor = getStatusColor(project.status);
-
       return (
         <>
-          <TableCell sx={{ px: { xs: 1, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
-            <div style={{ display: "flex", alignItems: "center" }}>
+          <AppTableCell>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
               <span
                 style={{
                   display: isSmallUp ? "none" : "inline-block",
@@ -146,23 +139,23 @@ const ComposeList: React.FC<ComposeListProps> = ({
               <Chip
                 label={project.status}
                 size="small"
+                color={statusColor}
+                variant="soft"
                 sx={{
-                  display: { xs: "none", sm: "inline-flex" },
+                  display: {
+                    xs: "none",
+                    sm: "inline-flex",
+                  },
                   textTransform: "capitalize",
                   fontSize: "0.68rem",
-                  fontWeight: 500,
-                  color: statusColor,
-                  bgcolor: alpha(statusColor, 0.14),
-                  border: `1px solid ${alpha(statusColor, 0.45)}`,
-                  borderRadius: "999px",
                   "& .MuiChip-label": {
                     px: 3,
                   },
                 }}
               />
             </div>
-          </TableCell>
-          <TableCell>
+          </AppTableCell>
+          <AppTableCell>
             <div
               style={{
                 display: "flex",
@@ -175,42 +168,60 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 size={28}
                 alt={project.name}
               />
-              <Typography variant="body2" fontWeight="bold">
+              <AppTypography variant="body2" fontWeight={700}>
                 {project.name}
-              </Typography>
+              </AppTypography>
             </div>
-          </TableCell>
-          <TableCell align="center">{getTotalContainers(project)}</TableCell>
-          <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-            <Tooltip title={project.config_files.join(", ") || "Unknown"}>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <FolderOpenIcon
-                  fontSize="small"
-                  sx={{ mr: 0.5, opacity: 0.7 }}
+          </AppTableCell>
+          <AppTableCell align="center">
+            {getTotalContainers(project)}
+          </AppTableCell>
+          <AppTableCell className="app-table-hide-below-sm">
+            <AppTooltip title={project.config_files.join(", ") || "Unknown"}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <Icon
+                  icon="mdi:folder-open"
+                  width={20}
+                  height={20}
+                  style={{
+                    marginRight: 4,
+                    opacity: 0.7,
+                  }}
                 />
-                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                <AppTypography
+                  variant="body2"
+                  noWrap
+                  style={{
+                    maxWidth: 200,
+                  }}
+                >
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}
-                </Typography>
+                </AppTypography>
               </div>
-            </Tooltip>
-          </TableCell>
-          <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
-            <Tooltip title={project.working_dir || "Unknown"}>
-              <Typography
+            </AppTooltip>
+          </AppTableCell>
+          <AppTableCell className="app-table-hide-below-lg">
+            <AppTooltip title={project.working_dir || "Unknown"}>
+              <AppTypography
                 variant="body2"
                 noWrap
-                sx={{
+                style={{
                   maxWidth: 600,
                   fontSize: "0.85rem",
-                  color: "text.secondary",
+                  color: "var(--mui-palette-text-secondary)",
                 }}
               >
                 {project.working_dir || "-"}
-              </Typography>
-            </Tooltip>
-          </TableCell>
-          <TableCell align="right">
+              </AppTypography>
+            </AppTooltip>
+          </AppTableCell>
+          <AppTableCell align="right">
             <div
               style={{
                 display: "flex",
@@ -219,11 +230,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
               }}
             >
               {project.name === "linuxio-watchtower" ? (
-                <Tooltip title="View compose file" arrow>
+                <AppTooltip title="View compose file" arrow>
                   <Chip
                     label="Managed by LinuxIO"
                     size="small"
-                    variant="outlined"
+                    variant="soft"
                     onClick={
                       onPreview && project.config_files.length > 0
                         ? () => onPreview(project.name, project.config_files[0])
@@ -236,88 +247,84 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         onPreview && project.config_files.length > 0
                           ? "pointer"
                           : "default",
-                      "&:hover": { opacity: 1 },
+                      "&:hover": {
+                        opacity: 1,
+                      },
                     }}
                   />
-                </Tooltip>
+                </AppTooltip>
               ) : (
                 <>
                   {onEdit && project.config_files.length > 0 && (
-                    <Tooltip title="Edit">
-                      <IconButton
+                    <AppTooltip title="Edit">
+                      <AppIconButton
                         size="small"
                         onClick={() =>
                           onEdit(project.name, project.config_files[0])
                         }
                         disabled={isLoading}
-                        sx={{ p: { xs: 0.5, sm: 1 } }}
                       >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                        <Icon icon="mdi:pencil" width={20} height={20} />
+                      </AppIconButton>
+                    </AppTooltip>
                   )}
                   {project.status === "running" ||
                   project.status === "partial" ? (
                     <>
-                      <Tooltip title="Restart">
-                        <IconButton
+                      <AppTooltip title="Restart">
+                        <AppIconButton
                           size="small"
                           onClick={() => onRestart(project.name)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <RestartAltIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Stop">
-                        <IconButton
+                          <Icon icon="mdi:restart" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title="Stop">
+                        <AppIconButton
                           size="small"
                           onClick={() => onStop(project.name)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <StopCircleIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
+                          <Icon icon="mdi:stop-circle" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title="Delete">
+                        <AppIconButton
                           size="small"
                           onClick={() => onDelete(project)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                          <Icon icon="mdi:delete" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
                     </>
                   ) : (
                     <>
-                      <Tooltip title="Start">
-                        <IconButton
+                      <AppTooltip title="Start">
+                        <AppIconButton
                           size="small"
                           onClick={() => onStart(project.name)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <PlayArrowIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
+                          <Icon icon="mdi:play" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title="Delete">
+                        <AppIconButton
                           size="small"
                           onClick={() => onDelete(project)}
                           disabled={isLoading}
-                          sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                          <Icon icon="mdi:delete" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
                     </>
                   )}
                 </>
               )}
             </div>
-          </TableCell>
+          </AppTableCell>
         </>
       );
     },
@@ -339,26 +346,26 @@ const ComposeList: React.FC<ComposeListProps> = ({
     (project: ComposeProject) => {
       return (
         <>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Service Name</TableCell>
-                <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+          <AppTable>
+            <AppTableHead>
+              <AppTableRow>
+                <AppTableCell>Service Name</AppTableCell>
+                <AppTableCell className="app-table-hide-below-sm">
                   Image
-                </TableCell>
-                <TableCell>State</TableCell>
-                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                </AppTableCell>
+                <AppTableCell>State</AppTableCell>
+                <AppTableCell className="app-table-hide-below-md">
                   Containers
-                </TableCell>
-                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                </AppTableCell>
+                <AppTableCell className="app-table-hide-below-md">
                   Ports
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+                </AppTableCell>
+              </AppTableRow>
+            </AppTableHead>
+            <AppTableBody>
               {Object.values(project.services).map((service) => (
-                <TableRow key={service.name}>
-                  <TableCell>
+                <AppTableRow key={service.name}>
+                  <AppTableCell>
                     <div
                       style={{
                         display: "flex",
@@ -373,54 +380,72 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       />
                       {service.name}
                     </div>
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-sm">
+                    <AppTypography
+                      variant="body2"
+                      noWrap
+                      style={{
+                        maxWidth: 200,
+                      }}
+                    >
                       {service.image}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
+                    </AppTypography>
+                  </AppTableCell>
+                  <AppTableCell>
                     <Chip
                       label={service.state}
                       size="small"
                       color={
                         service.state === "running" ? "success" : "default"
                       }
-                      sx={{ textTransform: "capitalize" }}
+                      variant="soft"
+                      sx={{
+                        textTransform: "capitalize",
+                      }}
                     />
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-md">
                     {service.container_count}
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-md">
                     {service.ports.length > 0 ? service.ports.join(", ") : "-"}
-                  </TableCell>
-                </TableRow>
+                  </AppTableCell>
+                </AppTableRow>
               ))}
-            </TableBody>
-          </Table>
-          <div style={{ marginTop: theme.spacing(2) }}>
-            <Typography
+            </AppTableBody>
+          </AppTable>
+          <div
+            style={{
+              marginTop: theme.spacing(2),
+            }}
+          >
+            <AppTypography
               variant="body2"
               color="text.secondary"
-              sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               <b>Working Directory:</b> {project.working_dir || "-"}
-            </Typography>
-            <Typography
+            </AppTypography>
+            <AppTypography
               variant="body2"
               color="text.secondary"
-              sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               <b>Config Files:</b> {project.config_files.join(", ") || "-"}
-            </Typography>
+            </AppTypography>
           </div>
         </>
       );
     },
     [theme],
   );
-
   const searchBar = (
     <div
       style={{
@@ -430,18 +455,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
         marginBottom: theme.spacing(2),
       }}
     >
-      <TextField
-        variant="outlined"
-        size="small"
+      <AppSearchField
         placeholder="Search stacks…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        sx={{ width: 320 }}
+        style={{ width: 320 }}
       />
-      <Typography fontWeight="bold">{filtered.length} shown</Typography>
+      <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
     </div>
   );
-
   if (viewMode === "card") {
     return (
       <div>
@@ -454,15 +476,23 @@ const ComposeList: React.FC<ComposeListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No compose stacks found. Start containers with docker compose to
               see them here.
-            </Typography>
+            </AppTypography>
           </div>
         ) : (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((project) => (
-              <Grid key={project.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <AppGrid
+                key={project.name}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
+              >
                 <ComposeStackCard
                   project={project}
                   onStart={onStart}
@@ -473,14 +503,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   onPreview={onPreview}
                   isLoading={isLoading}
                 />
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         )}
       </div>
     );
   }
-
   return (
     <div>
       {searchBar}
@@ -495,5 +524,4 @@ const ComposeList: React.FC<ComposeListProps> = ({
     </div>
   );
 };
-
 export default ComposeList;

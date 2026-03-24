@@ -1,14 +1,3 @@
-import {
-  Button,
-  FormControlLabel,
-  MenuItem,
-  Select,
-  type SelectChangeEvent,
-  Switch,
-  TextField,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -21,10 +10,20 @@ import {
   type AutoUpdateState,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppSelect from "@/components/ui/AppSelect";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTextField from "@/components/ui/AppTextField";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-const updatesToastMeta = { meta: { href: "/updates", label: "Open updates" } };
-
+const updatesToastMeta = {
+  meta: {
+    href: "/updates",
+    label: "Open updates",
+  },
+};
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
@@ -34,44 +33,38 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
       : [],
   },
 });
-
 export const useUpdateSettingsState = (enabled = true) => {
   const {
     data: rawServerState,
     isPending: loading,
     refetch,
-  } = linuxio.dbus.get_auto_updates.useQuery({ enabled });
-
+  } = linuxio.dbus.get_auto_updates.useQuery({
+    enabled,
+  });
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
     [rawServerState],
   );
-
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<AutoUpdateOptions> | null>(null);
   const [excludeInputOverride, setExcludeInputOverride] = useState<
     string | null
   >(null);
-
   const currentOptions = useMemo(() => {
     if (!serverState) return null;
-
     return {
       ...serverState.options,
       ...draftOverrides,
     };
   }, [serverState, draftOverrides]);
-
   const currentExcludeInput = useMemo(() => {
     if (excludeInputOverride !== null) return excludeInputOverride;
     return serverState?.options.exclude_packages.join(", ") ?? "";
   }, [serverState, excludeInputOverride]);
-
   const reset = () => {
     setDraftOverrides(null);
     setExcludeInputOverride(null);
   };
-
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
     linuxio.dbus.set_auto_updates.useMutation({
       onSuccess: () => {
@@ -85,7 +78,6 @@ export const useUpdateSettingsState = (enabled = true) => {
         );
       },
     });
-
   const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
     linuxio.dbus.apply_offline_updates.useMutation({
       onSuccess: (result) => {
@@ -99,7 +91,6 @@ export const useUpdateSettingsState = (enabled = true) => {
           }
           return;
         }
-
         toast.success(
           "Offline update scheduled for next reboot",
           updatesToastMeta,
@@ -107,7 +98,6 @@ export const useUpdateSettingsState = (enabled = true) => {
       },
       onError: (error: Error) => {
         const errMsg = error?.message || String(error);
-
         if (
           errMsg.includes("no updates available") ||
           errMsg.includes("Prepared update not found")
@@ -120,12 +110,9 @@ export const useUpdateSettingsState = (enabled = true) => {
         }
       },
     });
-
   const saving = isSettingAutoUpdates || isApplyingOffline;
-
   const dirty = useMemo(() => {
     if (!serverState || !currentOptions) return false;
-
     const draftWithExcludes: AutoUpdateOptions = {
       ...currentOptions,
       exclude_packages: currentExcludeInput
@@ -133,15 +120,12 @@ export const useUpdateSettingsState = (enabled = true) => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-
     return (
       JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes)
     );
   }, [serverState, currentExcludeInput, currentOptions]);
-
   const save = () => {
     if (!currentOptions) return;
-
     const payload: AutoUpdateOptions = {
       ...currentOptions,
       exclude_packages: currentExcludeInput
@@ -149,14 +133,11 @@ export const useUpdateSettingsState = (enabled = true) => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-
     setAutoUpdates([payload]);
   };
-
   const applyOffline = () => {
     applyOfflineUpdates([]);
   };
-
   return {
     loading,
     serverState,
@@ -171,17 +152,15 @@ export const useUpdateSettingsState = (enabled = true) => {
     applyOffline,
   };
 };
-
 interface UpdateSettingsProps {
   disablePadding?: boolean;
   state: ReturnType<typeof useUpdateSettingsState>;
 }
-
 const UpdateSettings: React.FC<UpdateSettingsProps> = ({
   disablePadding = false,
   state,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const {
     loading,
     serverState,
@@ -195,16 +174,20 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
     save,
     applyOffline,
   } = state;
-
   if (loading || !serverState || !currentOptions) {
     return <ComponentLoader />;
   }
-
   return (
-    <div style={{ padding: disablePadding ? 0 : 12, display: "grid", gap: 8 }}>
-      <FormControlLabel
+    <div
+      style={{
+        padding: disablePadding ? 0 : 12,
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <AppFormControlLabel
         control={
-          <Switch
+          <AppSwitch
             checked={currentOptions.enabled}
             onChange={(e) =>
               setDraftOverrides((prev) => ({
@@ -227,13 +210,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         }}
       >
         <div>
-          <Typography variant="subtitle2" gutterBottom>
+          <AppTypography variant="subtitle2" gutterBottom>
             Frequency
-          </Typography>
-          <Select
+          </AppTypography>
+          <AppSelect
             size="small"
             value={currentOptions.frequency}
-            onChange={(e: SelectChangeEvent<AutoUpdateFrequency>) =>
+            onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 frequency: e.target.value as AutoUpdateFrequency,
@@ -241,20 +224,20 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             }
             disabled={saving}
           >
-            <MenuItem value="hourly">Hourly</MenuItem>
-            <MenuItem value="daily">Daily</MenuItem>
-            <MenuItem value="weekly">Weekly</MenuItem>
-          </Select>
+            <option value="hourly">Hourly</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </AppSelect>
         </div>
 
         <div>
-          <Typography variant="subtitle2" gutterBottom>
+          <AppTypography variant="subtitle2" gutterBottom>
             Scope
-          </Typography>
-          <Select
+          </AppTypography>
+          <AppSelect
             size="small"
             value={currentOptions.scope}
-            onChange={(e: SelectChangeEvent<AutoUpdateScope>) =>
+            onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 scope: e.target.value as AutoUpdateScope,
@@ -262,20 +245,20 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             }
             disabled={saving}
           >
-            <MenuItem value="security">Security only</MenuItem>
-            <MenuItem value="updates">Security + updates</MenuItem>
-            <MenuItem value="all">All (incl. extras)</MenuItem>
-          </Select>
+            <option value="security">Security only</option>
+            <option value="updates">Security + updates</option>
+            <option value="all">All (incl. extras)</option>
+          </AppSelect>
         </div>
 
         <div>
-          <Typography variant="subtitle2" gutterBottom>
+          <AppTypography variant="subtitle2" gutterBottom>
             Reboot policy
-          </Typography>
-          <Select
+          </AppTypography>
+          <AppSelect
             size="small"
             value={currentOptions.reboot_policy}
-            onChange={(e: SelectChangeEvent<AutoUpdateRebootPolicy>) =>
+            onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 reboot_policy: e.target.value as AutoUpdateRebootPolicy,
@@ -283,15 +266,15 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             }
             disabled={saving}
           >
-            <MenuItem value="never">Never</MenuItem>
-            <MenuItem value="if_needed">If needed</MenuItem>
-            <MenuItem value="always">Always</MenuItem>
-          </Select>
+            <option value="never">Never</option>
+            <option value="if_needed">If needed</option>
+            <option value="always">Always</option>
+          </AppSelect>
         </div>
 
-        <FormControlLabel
+        <AppFormControlLabel
           control={
-            <Switch
+            <AppSwitch
               checked={currentOptions.download_only}
               onChange={(e) =>
                 setDraftOverrides((prev) => ({
@@ -307,9 +290,9 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
       </div>
 
       <div>
-        <Typography variant="subtitle2" gutterBottom>
+        <AppTypography variant="subtitle2" gutterBottom>
           Exclude packages (comma-separated)
-        </Typography>
+        </AppTypography>
         <div
           style={{
             display: "flex",
@@ -317,13 +300,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             alignItems: "center",
           }}
         >
-          <TextField
+          <AppTextField
             size="small"
             placeholder="e.g. linux-headers-*, docker-ce"
             value={currentExcludeInput}
             onChange={(e) => setExcludeInputOverride(e.target.value)}
             disabled={saving}
-            sx={{ width: "100%", minWidth: { xs: 0, sm: 420 }, maxWidth: 600 }}
+            style={{ width: "100%", maxWidth: 600 }}
           />
         </div>
       </div>
@@ -337,28 +320,37 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           marginTop: 4,
         }}
       >
-        <Button variant="contained" onClick={save} disabled={saving || !dirty}>
+        <AppButton
+          variant="contained"
+          onClick={save}
+          disabled={saving || !dirty}
+        >
           Save
-        </Button>
-        <Button variant="text" onClick={reset} disabled={saving || !dirty}>
+        </AppButton>
+        <AppButton variant="text" onClick={reset} disabled={saving || !dirty}>
           Cancel
-        </Button>
-        <div style={{ flexGrow: 1 }} />
-        <Button variant="contained" onClick={applyOffline} disabled={saving}>
+        </AppButton>
+        <div
+          style={{
+            flexGrow: 1,
+          }}
+        />
+        <AppButton variant="contained" onClick={applyOffline} disabled={saving}>
           Apply at next reboot (offline)
-        </Button>
+        </AppButton>
         {serverState.notes?.length ? (
-          <Typography
+          <AppTypography
             variant="body2"
             color="text.secondary"
-            sx={{ width: "100%" }}
+            style={{
+              width: "100%",
+            }}
           >
             {serverState.notes.join(" • ")}
-          </Typography>
+          </AppTypography>
         ) : null}
       </div>
     </div>
   );
 };
-
 export default UpdateSettings;

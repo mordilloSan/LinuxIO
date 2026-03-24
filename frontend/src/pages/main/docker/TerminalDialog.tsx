@@ -1,32 +1,28 @@
-import {
-  Button,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  InputLabel,
-  Menu,
-  MenuItem,
-  Select,
-  SelectChangeEvent,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import {
-  linuxio,
-  useStreamMux,
-  encodeString,
   decodeString,
+  encodeString,
+  linuxio,
   openContainerStream,
+  useStreamMux,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
+import AppSelect from "@/components/ui/AppSelect";
+import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { useAppTheme } from "@/theme";
 
 interface Props {
   open: boolean;
@@ -34,7 +30,6 @@ interface Props {
   containerId: string;
   containerName?: string;
 }
-
 const TerminalDialog: React.FC<Props> = ({
   open,
   onClose,
@@ -45,16 +40,14 @@ const TerminalDialog: React.FC<Props> = ({
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const { streamRef, openStream, closeStream } = useLiveStream();
-
   const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
   } | null>(null);
-
   const { isOpen } = useStreamMux();
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   // Fetch available shells when dialog opens
   const {
@@ -64,23 +57,19 @@ const TerminalDialog: React.FC<Props> = ({
   } = linuxio.terminal.list_shells.useQuery(containerId, {
     enabled: open && !!containerId,
   });
-
   const availableShells = React.useMemo(() => {
     if (!shells) return [];
     return shells.filter((s) => s && typeof s === "string" && s.trim() !== "");
   }, [shells]);
-
   const activeShell = React.useMemo(() => {
     if (selectedShell && availableShells.includes(selectedShell)) {
       return selectedShell;
     }
     return availableShells[0] ?? "";
   }, [selectedShell, availableShells]);
-
   const handleDialogEntered = useCallback(() => {
     setSelectedShell(null);
   }, []);
-
   const handleDialogExited = useCallback(() => {
     // Close stream on dialog exit
     closeStream();
@@ -104,7 +93,6 @@ const TerminalDialog: React.FC<Props> = ({
     // Dispose previous instance
     xterm.current?.dispose();
     closeStream();
-
     xterm.current = new Terminal({
       fontFamily: "monospace",
       fontSize: 15,
@@ -116,7 +104,6 @@ const TerminalDialog: React.FC<Props> = ({
         foreground: theme.palette.text.primary,
       },
     });
-
     fitAddon.current = new FitAddon();
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
@@ -160,10 +147,8 @@ const TerminalDialog: React.FC<Props> = ({
         });
         return false; // Prevent default behavior
       }
-
       return true; // Allow default behavior for other keys
     });
-
     setTimeout(() => {
       // xterm.js 6.0 still uses .xterm-viewport for scrolling
       if (termRef.current) {
@@ -188,7 +173,6 @@ const TerminalDialog: React.FC<Props> = ({
         }
       },
     });
-
     if (opened && streamRef.current) {
       streamRef.current.resize(xterm.current.cols, xterm.current.rows);
     }
@@ -213,7 +197,6 @@ const TerminalDialog: React.FC<Props> = ({
     setTimeout(() => {
       xterm.current?.focus();
     }, 200);
-
     return () => {
       onDataDispose.dispose();
       xterm.current?.dispose();
@@ -237,7 +220,7 @@ const TerminalDialog: React.FC<Props> = ({
   ]);
 
   // Shell picker handler
-  const handleShellChange = (e: SelectChangeEvent) => {
+  const handleShellChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newShell = e.target.value;
     // Close existing stream
     closeStream();
@@ -259,19 +242,19 @@ const TerminalDialog: React.FC<Props> = ({
     // Always close first, then open at new position if it was closed
     const wasOpen = contextMenu !== null;
     setContextMenu(null);
-
     if (!wasOpen) {
       // Small timeout to ensure state updates
       setTimeout(() => {
-        setContextMenu({ mouseX: event.clientX, mouseY: event.clientY });
+        setContextMenu({
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+        });
       }, 0);
     }
   };
-
   const handleCloseContextMenu = () => {
     setContextMenu(null);
   };
-
   const handleCopy = () => {
     const selection = xterm.current?.getSelection();
     if (selection) {
@@ -279,7 +262,6 @@ const TerminalDialog: React.FC<Props> = ({
     }
     handleCloseContextMenu();
   };
-
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
       if (streamRef.current) {
@@ -299,7 +281,6 @@ const TerminalDialog: React.FC<Props> = ({
       window.removeEventListener("blur", handleBlur);
     };
   }, []);
-
   return (
     <GeneralDialog
       open={open}
@@ -313,7 +294,7 @@ const TerminalDialog: React.FC<Props> = ({
         },
       }}
     >
-      <DialogTitle>
+      <AppDialogTitle>
         <div
           style={{
             display: "flex",
@@ -325,36 +306,39 @@ const TerminalDialog: React.FC<Props> = ({
           <span>
             {containerName ? `Shell for ${containerName}` : "Container Shell"}
           </span>
-          <FormControl size="small" variant="standard">
-            <InputLabel id="shell-label">Shell</InputLabel>
-            <Select
-              labelId="shell-label"
-              value={activeShell}
-              onChange={handleShellChange}
-              sx={{ minWidth: 80 }}
-              disabled={!isOpen || availableShells.length === 0}
-            >
-              {availableShells.map((s) => (
-                <MenuItem value={s} key={s}>
-                  {s}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <AppSelect
+            size="small"
+            variant="standard"
+            value={activeShell}
+            onChange={handleShellChange}
+            style={{ minWidth: 80 }}
+            disabled={!isOpen || availableShells.length === 0}
+          >
+            {availableShells.map((s) => (
+              <option value={s} key={s}>
+                {s}
+              </option>
+            ))}
+          </AppSelect>
         </div>
-      </DialogTitle>
-      <DialogContent
-        dividers
-        sx={{
+      </AppDialogTitle>
+      <AppDialogContent
+        style={{
           minHeight: 350,
           maxHeight: 600,
           fontFamily: "Fira Mono, monospace",
-          p: 0,
+          padding: 0,
           background: theme.palette.background.default,
+          borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
         {loadingShells ? (
-          <div style={{ padding: theme.spacing(3), textAlign: "center" }}>
+          <div
+            style={{
+              padding: theme.spacing(3),
+              textAlign: "center",
+            }}
+          >
             <ComponentLoader />
           </div>
         ) : hasFetchedShells && availableShells.length === 0 ? (
@@ -384,73 +368,58 @@ const TerminalDialog: React.FC<Props> = ({
           />
         ) : null}
         {/* CONTEXT MENU */}
-        <Menu
+        <AppMenu
           open={contextMenu !== null}
           onClose={handleCloseContextMenu}
-          anchorReference="anchorPosition"
           anchorPosition={
             contextMenu !== null
-              ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+              ? {
+                  top: contextMenu.mouseY,
+                  left: contextMenu.mouseX,
+                }
               : undefined
           }
           autoFocus={false}
-          slotProps={{
-            paper: {
-              sx: {
-                borderRadius: 2,
-              },
-            },
-            backdrop: {
-              onClick: handleCloseContextMenu,
-              onContextMenu: (e: React.MouseEvent) => {
-                e.preventDefault();
-                handleCloseContextMenu();
-              },
-            },
-          }}
+          minWidth={168}
         >
-          <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                width: "100%",
-              }}
-            >
-              <span>Copy</span>
-              <Typography
+          <AppMenuItem
+            onClick={handleCopy}
+            endAdornment={
+              <AppTypography
                 variant="body2"
-                sx={{ color: "text.secondary", ml: 2 }}
+                color="text.secondary"
+                style={{
+                  marginLeft: 8,
+                }}
               >
                 Shift+C
-              </Typography>
-            </div>
-          </MenuItem>
-          <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                width: "100%",
-                gap: theme.spacing(4),
-              }}
-            >
-              <span>Paste</span>
-              <Typography
+              </AppTypography>
+            }
+          >
+            Copy
+          </AppMenuItem>
+          <AppMenuItem
+            onClick={handlePaste}
+            endAdornment={
+              <AppTypography
                 variant="body2"
-                sx={{ color: "text.secondary", ml: 2 }}
+                color="text.secondary"
+                style={{
+                  marginLeft: 8,
+                }}
               >
                 Shift+V
-              </Typography>
-            </div>
-          </MenuItem>
-        </Menu>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleDialogClose}>Close</Button>
-      </DialogActions>
+              </AppTypography>
+            }
+          >
+            Paste
+          </AppMenuItem>
+        </AppMenu>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={handleDialogClose}>Close</AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };
-
 export default TerminalDialog;

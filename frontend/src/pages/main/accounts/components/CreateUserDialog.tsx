@@ -1,20 +1,20 @@
-import {
-  Button,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControlLabel,
-  Checkbox,
-  Autocomplete,
-  Chip,
-} from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type CreateUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
+import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppTextField from "@/components/ui/AppTextField";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {
@@ -55,12 +55,6 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
         toast.error(getMutationErrorMessage(error, "Failed to create user"));
       },
     });
-
-  useEffect(() => {
-    if (username && !homeDir) {
-      // Auto-suggest home directory
-    }
-  }, [username, homeDir]);
 
   const handleClose = () => {
     setUsername("");
@@ -103,8 +97,8 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create User</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Create User</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -113,7 +107,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             marginTop: 4,
           }}
         >
-          <TextField
+          <AppTextField
             label="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -121,13 +115,13 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             required
             autoFocus
           />
-          <TextField
+          <AppTextField
             label="Full Name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             fullWidth
           />
-          <TextField
+          <AppTextField
             label="Password"
             type="password"
             value={password}
@@ -135,7 +129,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             fullWidth
             required
           />
-          <TextField
+          <AppTextField
             label="Confirm Password"
             type="password"
             value={confirmPassword}
@@ -149,43 +143,48 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                 : ""
             }
           />
-          <TextField
+          <AppTextField
             label="Home Directory"
             value={homeDir}
             onChange={(e) => setHomeDir(e.target.value)}
             fullWidth
             placeholder={username ? `/home/${username}` : "/home/username"}
           />
-          <Autocomplete
+          <AppAutocomplete
             options={shellsList}
             value={shell}
-            onChange={(_, value) => setShell(value || "/bin/bash")}
-            renderInput={(params) => (
-              <TextField {...params} label="Shell" fullWidth />
-            )}
+            onChange={(value) => setShell(value || "/bin/bash")}
+            onInputChange={setShell}
+            label="Shell"
+            fullWidth
             freeSolo
           />
-          <Autocomplete
+          <AppAutocomplete
             multiple
             options={groupsList.map((g) => g.name)}
             value={selectedGroups}
-            onChange={(_, value) => setSelectedGroups(value)}
-            renderInput={(params) => (
-              <TextField {...params} label="Secondary Groups" fullWidth />
-            )}
+            onChange={setSelectedGroups}
+            label="Secondary Groups"
+            fullWidth
             renderValue={(value, getItemProps) =>
               value.map((option, index) => {
                 const itemProps = getItemProps({ index });
                 const { key, ...chipProps } = itemProps;
                 return (
-                  <Chip key={key} label={option} size="small" {...chipProps} />
+                  <Chip
+                    key={key}
+                    label={option}
+                    size="small"
+                    variant="soft"
+                    {...chipProps}
+                  />
                 );
               })
             }
           />
-          <FormControlLabel
+          <AppFormControlLabel
             control={
-              <Checkbox
+              <AppCheckbox
                 checked={createHome}
                 onChange={(e) => setCreateHome(e.target.checked)}
               />
@@ -193,12 +192,12 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             label="Create home directory"
           />
         </div>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose} disabled={isPending}>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleSubmit}
           variant="contained"
           disabled={
@@ -206,8 +205,8 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
           }
         >
           {isPending ? "Creating..." : "Create"}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Typography, Grid, Tooltip, Fade } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -11,6 +9,10 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 export type { NetworkInterface };
 
@@ -104,7 +106,7 @@ const NetworkInterfaceList = () => {
       return prev;
     });
   };
-  const theme = useTheme();
+  const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
   const rxCanvasRef = useRef<HTMLCanvasElement>(null);
   const txCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -160,16 +162,16 @@ const NetworkInterfaceList = () => {
 
   return (
     <div>
-      <Grid container spacing={4}>
+      <AppGrid container spacing={4}>
         <AnimatePresence>
           {interfaces.map((iface) =>
             expanded && expanded !== iface.name ? null : (
-              <Grid
+              <AppGrid
                 key={iface.name}
                 size={
                   expanded === iface.name
                     ? { xs: 12, md: 4, lg: 3 }
-                    : { xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }
+                    : { xs: 12, sm: 6, md: 4, lg: 3 }
                 }
                 component={motion.div}
                 layout
@@ -186,13 +188,7 @@ const NetworkInterfaceList = () => {
                     cursor: "pointer",
                   }}
                 >
-                  <Tooltip
-                    title={getStatusTooltip(iface.state)}
-                    placement="top"
-                    arrow
-                    slots={{ transition: Fade }}
-                    slotProps={{ transition: { timeout: 300 } }}
-                  >
+                  <AppTooltip title={getStatusTooltip(iface.state)} arrow>
                     <span
                       style={{
                         position: "absolute",
@@ -209,10 +205,10 @@ const NetworkInterfaceList = () => {
                               ? theme.palette.warning.main
                               : iface.state === 30 || iface.state === 120
                                 ? theme.palette.error.main
-                                : theme.palette.grey[500],
+                                : theme.palette.text.disabled,
                       }}
                     />
-                  </Tooltip>
+                  </AppTooltip>
 
                   <div
                     style={{ display: "flex", alignItems: "flex-start" }}
@@ -236,30 +232,50 @@ const NetworkInterfaceList = () => {
                       />
                     </div>
                     <div style={{ flexGrow: 1 }}>
-                      <Typography variant="subtitle1" fontWeight={600} noWrap>
+                      <AppTypography
+                        variant="subtitle1"
+                        fontWeight={600}
+                        noWrap
+                      >
                         {iface.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      </AppTypography>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         IPv4:{" "}
                         {Array.isArray(iface.ipv4)
                           ? iface.ipv4.join(", ")
                           : "N/A"}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      </AppTypography>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         MAC: {iface.mac}
-                      </Typography>
+                      </AppTypography>
 
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         {iface.speed === "unknown" ||
                         iface.speed.startsWith("-1")
                           ? "No Carrier"
                           : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
-                      </Typography>
+                      </AppTypography>
 
-                      <Typography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
                         {formatBps(iface.tx_speed)}
-                      </Typography>
+                      </AppTypography>
                     </div>
                   </div>
                   <NetworkInterfaceEditor
@@ -276,13 +292,13 @@ const NetworkInterfaceList = () => {
                     onSave={handleSave}
                   />
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ),
           )}
 
           {/* Traffic graphs — appear on the right when a NIC is selected */}
           {selectedIface && (
-            <Grid
+            <AppGrid
               key="traffic-graphs"
               size={{ xs: 12, md: 8, lg: 9 }}
               component={motion.div}
@@ -324,9 +340,9 @@ const NetworkInterfaceList = () => {
                         display: "inline-block",
                       }}
                     />
-                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    <AppTypography variant="caption" style={{ opacity: 0.7 }}>
                       RX: {(selectedIface.rx_speed / 1024).toFixed(1)} kB/s
-                    </Typography>
+                    </AppTypography>
                   </div>
                 </div>
                 <div>
@@ -357,16 +373,16 @@ const NetworkInterfaceList = () => {
                         display: "inline-block",
                       }}
                     />
-                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    <AppTypography variant="caption" style={{ opacity: 0.7 }}>
                       TX: {(selectedIface.tx_speed / 1024).toFixed(1)} kB/s
-                    </Typography>
+                    </AppTypography>
                   </div>
                 </div>
               </div>
-            </Grid>
+            </AppGrid>
           )}
         </AnimatePresence>
-      </Grid>
+      </AppGrid>
     </div>
   );
 };

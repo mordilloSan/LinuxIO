@@ -1,18 +1,18 @@
-import {
-  Button,
-  Chip,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteUserDialogProps {
@@ -28,7 +28,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
   usernames,
   onSuccess,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
 
   const { mutateAsync: deleteUser, isPending: isDeleting } =
@@ -56,12 +56,14 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete User{usernames.length > 1 ? "s" : ""}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+      <AppDialogTitle>
+        Delete User{usernames.length > 1 ? "s" : ""}
+      </AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           Are you sure you want to delete the following user
           {usernames.length > 1 ? "s" : ""}?
-        </DialogContentText>
+        </AppDialogContentText>
         <div
           style={{
             marginTop: theme.spacing(2),
@@ -69,27 +71,35 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
           }}
         >
           {usernames.map((name) => (
-            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
+            <Chip
+              key={name}
+              label={name}
+              size="small"
+              variant="soft"
+              style={{ marginRight: 4, marginBottom: 4 }}
+            />
           ))}
         </div>
-        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+        <AppDialogContentText
+          style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}
+        >
           This action cannot be undone. The user&apos;s home directory will also
           be deleted.
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isDeleting}>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose} disabled={isDeleting}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleDelete}
           variant="contained"
           color="error"
           disabled={isDeleting}
         >
           {isDeleting ? "Deleting..." : "Delete"}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

@@ -84,8 +84,7 @@ export default defineConfig({
     outDir: resolve(moduleDir, 'dist'),
     emptyOutDir: true,
     copyPublicDir: false,  // Don't copy public assets to module dist
-    // Production optimizations
-    minify: isProduction ? 'esbuild' : false,
+    minify: isProduction,
     sourcemap: !isProduction,
     // Target modern browsers for smaller bundle
     target: 'es2020',
@@ -95,15 +94,12 @@ export default defineConfig({
       name: moduleName.replace(/-./g, (x) => x[1].toUpperCase()),
       fileName: () => 'component.js',
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: [
         'react',
         'react-dom',
         'react/jsx-runtime',
         'react/jsx-dev-runtime',
-        '@mui/material',
-        '@emotion/react',
-        '@emotion/styled',
       ],
       output: {
         globals: {
@@ -111,18 +107,12 @@ export default defineConfig({
           'react-dom': 'window.ReactDOM',
           'react/jsx-runtime': 'window.React',
           'react/jsx-dev-runtime': 'window.React',
-          '@mui/material': 'window.MaterialUI',
-          '@emotion/react': 'window.EmotionReact',
-          '@emotion/styled': 'window.EmotionStyled',
         },
-        // Additional production optimizations
         compact: isProduction,
-        // Preserve console logs in development, remove in production
         ...(isProduction && {
           banner: '/* LinuxIO Module - Built in production mode */',
         }),
       },
-      // Tree-shaking optimization
       treeshake: isProduction ? {
         moduleSideEffects: false,
         propertyReadSideEffects: false,

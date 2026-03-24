@@ -1,26 +1,26 @@
-import {
-  Autocomplete,
-  Button,
-  Checkbox,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
 import React, { useState, useCallback } from "react";
+
+import AppCheckbox from "../ui/AppCheckbox";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
-
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableHead,
+  AppTableRow,
+} from "@/components/ui/AppTable";
+import AppTextField from "@/components/ui/AppTextField";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme, useAppMediaQuery } from "@/theme";
 interface PermissionsDialogProps {
   open: boolean;
   pathLabel: string;
@@ -37,17 +37,26 @@ interface PermissionsDialogProps {
     group?: string,
   ) => void;
 }
-
 interface PermissionBits {
-  owner: { read: boolean; write: boolean; execute: boolean };
-  group: { read: boolean; write: boolean; execute: boolean };
-  others: { read: boolean; write: boolean; execute: boolean };
+  owner: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
+  group: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
+  others: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
 }
-
 const parseSymbolicMode = (mode: string): PermissionBits => {
   const charAt = (index: number) => mode[index] || "";
   const hasExec = (value: string) => ["x", "s", "t"].includes(value);
-
   return {
     owner: {
       read: charAt(1) === "r",
@@ -66,14 +75,12 @@ const parseSymbolicMode = (mode: string): PermissionBits => {
     },
   };
 };
-
 const parseMode = (mode: string): PermissionBits => {
   const trimmed = mode.trim();
   const octalMatch = trimmed.match(/[0-7]{3}$/);
   if (octalMatch) {
     const octal = octalMatch[0];
     const [owner, group, others] = octal.split("").map(Number);
-
     return {
       owner: {
         read: (owner & 4) !== 0,
@@ -96,7 +103,6 @@ const parseMode = (mode: string): PermissionBits => {
   // Fallback for symbolic strings like "-rw-r--r--"
   return parseSymbolicMode(trimmed);
 };
-
 const permissionsToOctal = (perms: PermissionBits): string => {
   const ownerBits =
     (perms.owner.read ? 4 : 0) +
@@ -110,10 +116,8 @@ const permissionsToOctal = (perms: PermissionBits): string => {
     (perms.others.read ? 4 : 0) +
     (perms.others.write ? 2 : 0) +
     (perms.others.execute ? 1 : 0);
-
   return `${ownerBits}${groupBits}${othersBits}`;
 };
-
 const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   open,
   pathLabel,
@@ -130,6 +134,13 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const [recursive, setRecursive] = useState(false);
   const [ownerInput, setOwnerInput] = useState(owner || "");
   const [groupInput, setGroupInput] = useState(group || "");
+
+  React.useEffect(() => {
+    if (open) {
+      setOwnerInput(owner || "");
+      setGroupInput(group || "");
+    }
+  }, [open, owner, group]);
   // Fetch users and groups when dialog opens
   const { data: usersGroupsData } = linuxio.filebrowser.users_groups.useQuery({
     enabled: open,
@@ -138,7 +149,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   // Derive available users and groups directly from query data
   const availableUsers = usersGroupsData?.users || [];
   const availableGroups = usersGroupsData?.groups || [];
-
   const handlePermissionChange = useCallback(
     (category: keyof PermissionBits, type: "read" | "write" | "execute") => {
       setPermissions((prev) => ({
@@ -151,7 +161,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     },
     [],
   );
-
   const handleConfirm = useCallback(() => {
     const mode = permissionsToOctal(permissions);
     const nextOwner = ownerInput.trim() || undefined;
@@ -159,10 +168,8 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     onConfirm(mode, recursive, nextOwner, nextGroup);
     onClose();
   }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
-
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   return (
     <FileBrowserDialog
       open={open}
@@ -171,27 +178,33 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
       fullWidth
       key={open ? `${currentMode}-${owner}-${group}` : "closed"}
     >
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 1,
+          gap: 4,
         }}
       >
-        <Typography component="span" variant="h6">
+        <AppTypography component="span" variant="h6">
           Change Permissions
-        </Typography>
-        <Typography
+        </AppTypography>
+        <AppTypography
           component="span"
           variant="caption"
           color="text.secondary"
-          sx={{ textAlign: "right" }}
+          style={{
+            textAlign: "right",
+          }}
         >
           {pathLabel}
-        </Typography>
-      </DialogTitle>
-      <DialogContent sx={{ overflow: "visible" }}>
+        </AppTypography>
+      </AppDialogTitle>
+      <AppDialogContent
+        style={{
+          overflow: "visible",
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -201,147 +214,138 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <Autocomplete
-            freeSolo
-            options={availableUsers}
+          <AppTextField
+            label="Owner"
+            size="small"
+            shrinkLabel
             value={ownerInput}
-            onInputChange={(_, newValue) => setOwnerInput(newValue)}
-            slotProps={{
-              listbox: {
-                className: "custom-scrollbar",
-                sx: {
-                  maxHeight: "200px",
-                },
-              },
-            }}
-            sx={{
-              "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline":
-                {
-                  borderColor: theme.palette.primary.main,
-                },
-            }}
-            renderInput={(params) => (
-              <TextField {...params} label="Owner" size="small" />
-            )}
+            onChange={(e) => setOwnerInput(e.target.value)}
+            list="permissions-users-list"
           />
-          <Autocomplete
-            freeSolo
-            options={availableGroups}
+          <datalist id="permissions-users-list">
+            {availableUsers.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
+
+          <AppTextField
+            label="Group"
+            size="small"
+            shrinkLabel
             value={groupInput}
-            onInputChange={(_, newValue) => setGroupInput(newValue)}
-            slotProps={{
-              listbox: {
-                className: "custom-scrollbar",
-                sx: {
-                  maxHeight: "200px",
-                },
-              },
-            }}
-            sx={{
-              "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline":
-                {
-                  borderColor: theme.palette.primary.main,
-                },
-            }}
-            renderInput={(params) => (
-              <TextField {...params} label="Group" size="small" />
-            )}
+            onChange={(e) => setGroupInput(e.target.value)}
+            list="permissions-groups-list"
           />
+          <datalist id="permissions-groups-list">
+            {availableGroups.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
         </div>
 
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell></TableCell>
-              <TableCell align="center">Read</TableCell>
-              <TableCell align="center">Write</TableCell>
-              <TableCell align="center">Execute</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            <TableRow>
-              <TableCell>
-                <Typography variant="body2" fontWeight="medium">
+        <AppTable>
+          <AppTableHead>
+            <AppTableRow
+              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+            >
+              <AppTableCell></AppTableCell>
+              <AppTableCell align="center">Read</AppTableCell>
+              <AppTableCell align="center">Write</AppTableCell>
+              <AppTableCell align="center">Execute</AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
+            <AppTableRow
+              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+            >
+              <AppTableCell>
+                <AppTypography variant="body2" fontWeight={500}>
                   Owner
-                </Typography>
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.owner.read}
                   onChange={() => handlePermissionChange("owner", "read")}
                 />
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.owner.write}
                   onChange={() => handlePermissionChange("owner", "write")}
                 />
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.owner.execute}
                   onChange={() => handlePermissionChange("owner", "execute")}
                 />
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell>
-                <Typography variant="body2" fontWeight="medium">
+              </AppTableCell>
+            </AppTableRow>
+            <AppTableRow
+              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+            >
+              <AppTableCell>
+                <AppTypography variant="body2" fontWeight={500}>
                   Group
-                </Typography>
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.group.read}
                   onChange={() => handlePermissionChange("group", "read")}
                 />
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.group.write}
                   onChange={() => handlePermissionChange("group", "write")}
                 />
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.group.execute}
                   onChange={() => handlePermissionChange("group", "execute")}
                 />
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell>
-                <Typography variant="body2" fontWeight="medium">
+              </AppTableCell>
+            </AppTableRow>
+            <AppTableRow>
+              <AppTableCell>
+                <AppTypography variant="body2" fontWeight={500}>
                   Others
-                </Typography>
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.others.read}
                   onChange={() => handlePermissionChange("others", "read")}
                 />
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.others.write}
                   onChange={() => handlePermissionChange("others", "write")}
                 />
-              </TableCell>
-              <TableCell align="center">
-                <Checkbox
+              </AppTableCell>
+              <AppTableCell align="center">
+                <AppCheckbox
                   checked={permissions.others.execute}
                   onChange={() => handlePermissionChange("others", "execute")}
                 />
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+              </AppTableCell>
+            </AppTableRow>
+          </AppTableBody>
+        </AppTable>
 
         {isDirectory && (
-          <div style={{ marginTop: theme.spacing(2) }}>
-            <FormControlLabel
+          <div
+            style={{
+              marginTop: theme.spacing(2),
+            }}
+          >
+            <AppFormControlLabel
               control={
-                <Checkbox
+                <AppCheckbox
                   checked={recursive}
                   onChange={(e) => setRecursive(e.target.checked)}
                 />
@@ -350,15 +354,14 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             />
           </div>
         )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={handleConfirm} variant="contained">
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton onClick={handleConfirm} variant="contained">
           Apply
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </FileBrowserDialog>
   );
 };
-
 export default PermissionsDialog;

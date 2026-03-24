@@ -1,38 +1,34 @@
-import CloseIcon from "@mui/icons-material/Close";
-import {
-  Chip,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-
+import Chip from "@/components/ui/AppChip";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 interface UpdateSettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
-
 const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   open,
   onClose,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const settingsState = useUpdateSettingsState(open);
-
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle
-        sx={{
+      <AppDialogTitle
+        style={{
           backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
-          py: 1.5,
-          px: 2,
+          paddingTop: 6,
+          paddingBottom: 6,
+          paddingLeft: 8,
+          paddingRight: 8,
         }}
       >
         <div
@@ -42,31 +38,42 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
             gap: theme.spacing(1),
           }}
         >
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+          <AppTypography
+            variant="h6"
+            style={{
+              flexGrow: 1,
+            }}
+          >
             Automatic Updates
-          </Typography>
+          </AppTypography>
           {settingsState.serverState ? (
             <Chip
               size="small"
               label={settingsState.serverState.backend}
-              variant="outlined"
+              variant="soft"
             />
           ) : null}
-          <IconButton
+          <AppIconButton
             size="small"
             onClick={onClose}
             aria-label="Close update settings"
           >
-            <CloseIcon fontSize="small" />
-          </IconButton>
+            <Icon icon="mdi:close" width={18} height={18} />
+          </AppIconButton>
         </div>
-      </DialogTitle>
+      </AppDialogTitle>
 
-      <DialogContent sx={{ px: 3, py: 3 }}>
+      <AppDialogContent
+        style={{
+          paddingLeft: 12,
+          paddingRight: 12,
+          paddingTop: 12,
+          paddingBottom: 12,
+        }}
+      >
         <UpdateSettings disablePadding state={settingsState} />
-      </DialogContent>
+      </AppDialogContent>
     </GeneralDialog>
   );
 };
-
 export default UpdateSettingsDialog;

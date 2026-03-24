@@ -1,19 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import LockIcon from "@mui/icons-material/Lock";
-import LockOpenIcon from "@mui/icons-material/LockOpen";
-import PasswordIcon from "@mui/icons-material/Password";
-import {
-  Grid,
-  TableCell,
-  TextField,
-  Chip,
-  Typography,
-  Checkbox,
-  Button,
-  IconButton,
-  Tooltip,
-} from "@mui/material";
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -28,15 +13,22 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import Chip from "@/components/ui/AppChip";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppSearchField from "@/components/ui/AppSearchField";
+import { AppTableCell } from "@/components/ui/AppTable";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-
 const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -46,7 +38,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const { data: users = [] } = linuxio.accounts.list_users.useQuery({
     refetchInterval: 10000,
   });
-
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -54,26 +45,21 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AccountUser | null>(null);
-
   const usersList = Array.isArray(users) ? users : [];
-
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
-
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleCreateUser);
     }
   }, [onMountCreateHandler, handleCreateUser]);
-
   const filtered = usersList.filter(
     (user) =>
       user.username.toLowerCase().includes(search.toLowerCase()) ||
       user.gecos.toLowerCase().includes(search.toLowerCase()) ||
       user.primaryGroup.toLowerCase().includes(search.toLowerCase()),
   );
-
   const effectiveSelected = useMemo(() => {
     const filteredNames = new Set(filtered.map((u) => u.username));
     const result = new Set<string>();
@@ -84,7 +70,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
     });
     return result;
   }, [selected, filtered]);
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       // Don't allow selecting root or current user
@@ -101,7 +86,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       setSelected(new Set());
     }
   };
-
   const handleSelectOne = (username: string, checked: boolean) => {
     if (username === "root" || username === currentUser?.name) return;
     setSelected((prev) => {
@@ -114,21 +98,17 @@ const UsersTab: React.FC<UsersTabProps> = ({
       return next;
     });
   };
-
   const handleDeleteSuccess = () => {
     setSelected(new Set());
   };
-
   const handleEditUser = (user: AccountUser) => {
     setSelectedUser(user);
     setEditDialogOpen(true);
   };
-
   const handleChangePassword = (user: AccountUser) => {
     setSelectedUser(user);
     setPasswordDialogOpen(true);
   };
-
   const { mutate: lockUser, isPending: isLocking } =
     linuxio.accounts.lock_user.useMutation({
       onSuccess: () => {
@@ -141,7 +121,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
         toast.error(getMutationErrorMessage(error, "Failed to lock user"));
       },
     });
-
   const { mutate: unlockUser, isPending: isUnlocking } =
     linuxio.accounts.unlock_user.useMutation({
       onSuccess: () => {
@@ -154,7 +133,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
         toast.error(getMutationErrorMessage(error, "Failed to unlock user"));
       },
     });
-
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;
     if (user.isLocked) {
@@ -163,7 +141,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       lockUser([user.username]);
     }
   };
-
   const selectedUsers = filtered.filter((u) =>
     effectiveSelected.has(u.username),
   );
@@ -200,33 +177,36 @@ const UsersTab: React.FC<UsersTabProps> = ({
     }
     return allGroups;
   };
-
   const columns: UnifiedTableColumn[] = [
-    { field: "username", headerName: "Username", align: "left" },
+    {
+      field: "username",
+      headerName: "Username",
+      align: "left",
+    },
     {
       field: "gecos",
       headerName: "Full Name",
       align: "left",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      className: "app-table-hide-below-sm",
     },
     {
       field: "uid",
       headerName: "ID",
       align: "left",
       width: "80px",
-      sx: { display: { xs: "none", md: "table-cell" } },
+      className: "app-table-hide-below-md",
     },
     {
       field: "lastLogin",
       headerName: "Last Active",
       align: "left",
-      sx: { display: { xs: "none", lg: "table-cell" } },
+      className: "app-table-hide-below-lg",
     },
     {
       field: "groups",
       headerName: "Groups",
       align: "left",
-      sx: { display: { xs: "none", xl: "table-cell" } },
+      className: "app-table-hide-below-xl",
     },
     {
       field: "actions",
@@ -235,7 +215,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       width: "150px",
     },
   ];
-
   return (
     <div>
       <div
@@ -247,38 +226,49 @@ const UsersTab: React.FC<UsersTabProps> = ({
           flexWrap: "wrap",
         }}
       >
-        <TextField
-          variant="outlined"
-          size="small"
+        <AppSearchField
           placeholder="Search users…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{
-            width: 320,
-            "@media (max-width: 600px)": {
-              width: "100%",
-            },
-          }}
+          style={{ width: 320 }}
         />
-        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
+        <span
+          style={{
+            fontWeight: "bold",
+          }}
+        >
+          {filtered.length} shown
+        </span>
         {effectiveSelected.size > 0 && (
-          <Button
+          <AppButton
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
-          </Button>
+          </AppButton>
         )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <Grid container spacing={2}>
+          <AppGrid container spacing={2}>
             {filtered.map((user) => (
-              <Grid key={user.username} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
+              <AppGrid
+                key={user.username}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 3,
+                }}
+              >
+                <FrostedCard
+                  style={{
+                    padding: 8,
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
@@ -289,9 +279,13 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     }}
                   >
                     <div
-                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
                     >
-                      <Checkbox
+                      <AppCheckbox
                         size="small"
                         checked={effectiveSelected.has(user.username)}
                         onChange={(e) =>
@@ -302,30 +296,39 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           user.username === currentUser?.name
                         }
                       />
-                      <Typography variant="body2" fontWeight="bold" noWrap>
+                      <AppTypography variant="body2" fontWeight={700} noWrap>
                         {user.username}
-                      </Typography>
+                      </AppTypography>
                     </div>
-                    <div style={{ display: "flex", gap: 2 }}>
-                      <Tooltip title="Edit">
-                        <IconButton
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 2,
+                      }}
+                    >
+                      <AppTooltip title="Edit">
+                        <AppIconButton
                           size="small"
                           onClick={() => handleEditUser(user)}
                           disabled={user.username === "root"}
                         >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Change Password">
-                        <IconButton
+                          <Icon icon="mdi:pencil" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title="Change Password">
+                        <AppIconButton
                           size="small"
                           onClick={() => handleChangePassword(user)}
                         >
-                          <PasswordIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                        <IconButton
+                          <Icon
+                            icon="mdi:form-textbox-password"
+                            width={20}
+                            height={20}
+                          />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
+                        <AppIconButton
                           size="small"
                           onClick={() => handleToggleLock(user)}
                           disabled={
@@ -336,12 +339,12 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           }
                         >
                           {user.isLocked ? (
-                            <LockOpenIcon fontSize="small" />
+                            <Icon icon="mdi:lock-open" width={20} height={20} />
                           ) : (
-                            <LockIcon fontSize="small" />
+                            <Icon icon="mdi:lock" width={20} height={20} />
                           )}
-                        </IconButton>
-                      </Tooltip>
+                        </AppIconButton>
+                      </AppTooltip>
                     </div>
                   </div>
 
@@ -354,32 +357,45 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     }}
                   >
                     {user.username === currentUser?.name && (
-                      <Chip label="Your account" size="small" color="primary" />
+                      <Chip
+                        label="Your account"
+                        size="small"
+                        color="primary"
+                        variant="soft"
+                      />
                     )}
                     {user.isLocked && (
-                      <Chip label="Locked" size="small" color="warning" />
+                      <Chip
+                        label="Locked"
+                        size="small"
+                        color="warning"
+                        variant="soft"
+                      />
                     )}
                   </div>
 
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     Full name: {user.gecos || "-"}
-                  </Typography>
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  </AppTypography>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     UID: {user.uid}
-                  </Typography>
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  </AppTypography>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     Last active:{" "}
                     {formatLastLogin(user.lastLogin, user.username)}
-                  </Typography>
-                  <Typography variant="body2" sx={responsiveTextStyles}>
+                  </AppTypography>
+                  <AppTypography variant="body2" style={responsiveTextStyles}>
                     Shell: {user.shell}
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="body2"
-                    sx={{ fontFamily: "monospace", ...responsiveTextStyles }}
+                    style={{
+                      fontFamily: "monospace",
+                      ...responsiveTextStyles,
+                    }}
                   >
                     Home: {user.homeDir}
-                  </Typography>
+                  </AppTypography>
 
                   <div
                     style={{
@@ -394,20 +410,27 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         key={`${user.username}-${group}`}
                         label={idx === 0 ? `${group} (primary)` : group}
                         size="small"
-                        variant={idx === 0 ? "filled" : "outlined"}
-                        sx={{ fontSize: "0.7rem" }}
+                        variant="soft"
+                        style={{
+                          fontSize: "0.7rem",
+                        }}
                       />
                     ))}
                   </div>
                 </FrostedCard>
-              </Grid>
+              </AppGrid>
             ))}
-          </Grid>
+          </AppGrid>
         ) : (
-          <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <Typography variant="body2" color="text.secondary">
+          <div
+            style={{
+              textAlign: "center",
+              paddingBlock: 16,
+            }}
+          >
+            <AppTypography variant="body2" color="text.secondary">
               No users found.
-            </Typography>
+            </AppTypography>
           </div>
         )
       ) : (
@@ -416,7 +439,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           columns={columns}
           getRowKey={(user) => user.username}
           renderFirstCell={(user) => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={effectiveSelected.has(user.username)}
               onChange={(e) => handleSelectOne(user.username, e.target.checked)}
@@ -427,7 +450,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
             />
           )}
           renderHeaderFirstCell={() => (
-            <Checkbox
+            <AppCheckbox
               size="small"
               checked={allSelected}
               indeterminate={someSelected}
@@ -436,7 +459,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           )}
           renderMainRow={(user) => (
             <>
-              <TableCell>
+              <AppTableCell>
                 <div
                   style={{
                     display: "flex",
@@ -445,19 +468,23 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     flexWrap: "wrap",
                   }}
                 >
-                  <Typography
+                  <AppTypography
                     variant="body2"
-                    fontWeight="medium"
-                    sx={responsiveTextStyles}
+                    fontWeight={500}
+                    style={responsiveTextStyles}
                   >
                     {user.username}
-                  </Typography>
+                  </AppTypography>
                   {user.username === currentUser?.name && (
                     <Chip
                       label="Your account"
                       size="small"
                       color="primary"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      variant="soft"
+                      style={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
                     />
                   )}
                   {user.isLocked && (
@@ -465,36 +492,46 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       label="locked"
                       size="small"
                       color="warning"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      variant="soft"
+                      style={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {user.gecos || "-"}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                <Typography variant="body2" sx={responsiveTextStyles}>
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                <AppTypography variant="body2" style={responsiveTextStyles}>
                   {user.uid}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
-                <Typography
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-lg">
+                <AppTypography
                   variant="body2"
-                  sx={responsiveTextStyles}
                   color={
                     user.username === currentUser?.name
                       ? "success.main"
                       : "text.secondary"
                   }
+                  style={responsiveTextStyles}
                 >
                   {formatLastLogin(user.lastLogin, user.username)}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", xl: "table-cell" } }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-xl">
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 2,
+                  }}
+                >
                   {getAllGroups(user)
                     .slice(0, 3)
                     .map((group, idx) => (
@@ -509,21 +546,27 @@ const UsersTab: React.FC<UsersTabProps> = ({
                             : group
                         }
                         size="small"
-                        variant={idx === 0 ? "filled" : "outlined"}
-                        sx={{ fontSize: "0.65rem", height: 20 }}
+                        variant="soft"
+                        style={{
+                          fontSize: "0.65rem",
+                          height: 20,
+                        }}
                       />
                     ))}
                   {getAllGroups(user).length > 3 && (
                     <Chip
                       label={`+${getAllGroups(user).length - 3}`}
                       size="small"
-                      variant="outlined"
-                      sx={{ fontSize: "0.65rem", height: 20 }}
+                      variant="soft"
+                      style={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
                     />
                   )}
                 </div>
-              </TableCell>
-              <TableCell align="right">
+              </AppTableCell>
+              <AppTableCell align="right">
                 <div
                   style={{
                     display: "flex",
@@ -531,8 +574,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     gap: 2,
                   }}
                 >
-                  <Tooltip title="Edit">
-                    <IconButton
+                  <AppTooltip title="Edit">
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -540,22 +583,26 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       }}
                       disabled={user.username === "root"}
                     >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Change Password">
-                    <IconButton
+                      <Icon icon="mdi:pencil" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title="Change Password">
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleChangePassword(user);
                       }}
                     >
-                      <PasswordIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                    <IconButton
+                      <Icon
+                        icon="mdi:form-textbox-password"
+                        width={20}
+                        height={20}
+                      />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
+                    <AppIconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -569,52 +616,65 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       }
                     >
                       {user.isLocked ? (
-                        <LockOpenIcon fontSize="small" />
+                        <Icon icon="mdi:lock-open" width={20} height={20} />
                       ) : (
-                        <LockIcon fontSize="small" />
+                        <Icon icon="mdi:lock" width={20} height={20} />
                       )}
-                    </IconButton>
-                  </Tooltip>
+                    </AppIconButton>
+                  </AppTooltip>
                 </div>
-              </TableCell>
+              </AppTableCell>
             </>
           )}
           renderExpandedContent={(user) => (
             <>
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Home Directory:</b>
-              </Typography>
-              <Typography
+              </AppTypography>
+              <AppTypography
                 variant="body2"
-                sx={{
+                style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  mb: 2,
+                  marginBottom: 8,
                 }}
               >
                 {user.homeDir}
-              </Typography>
+              </AppTypography>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>Shell:</b>
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 2, fontSize: "0.85rem" }}>
+              </AppTypography>
+              <AppTypography
+                variant="body2"
+                style={{
+                  marginBottom: 8,
+                  fontSize: "0.85rem",
+                }}
+              >
                 {user.shell}
-              </Typography>
+              </AppTypography>
 
-              <Typography variant="subtitle2" gutterBottom>
+              <AppTypography variant="subtitle2" gutterBottom>
                 <b>All Groups:</b>
-              </Typography>
+              </AppTypography>
               <div
-                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
+                style={{
+                  marginBottom: 8,
+                  display: "flex",
+                  flexWrap: "wrap",
+                }}
               >
                 {getAllGroups(user).map((group, idx) => (
                   <Chip
                     key={group}
                     label={idx === 0 ? `${group} (primary)` : group}
                     size="small"
-                    variant={idx === 0 ? "filled" : "outlined"}
-                    sx={{ mr: 1, mb: 1 }}
+                    variant="soft"
+                    style={{
+                      marginRight: 4,
+                      marginBottom: 4,
+                    }}
                   />
                 ))}
               </div>
@@ -659,5 +719,4 @@ const UsersTab: React.FC<UsersTabProps> = ({
     </div>
   );
 };
-
 export default UsersTab;

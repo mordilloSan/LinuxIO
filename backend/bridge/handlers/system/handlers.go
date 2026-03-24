@@ -13,6 +13,10 @@ type systemRegistration struct {
 
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers() {
+	onceSampler.Do(func() {
+		go runSimpleNetInfoSampler()
+	})
+
 	registerCapabilitiesHandlers()
 	registerSystemHandlers([]systemRegistration{
 		{command: "get_cpu_info", handler: handleGetCPUInfo},

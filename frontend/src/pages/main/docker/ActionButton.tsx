@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
+
+import { useAppTheme } from "@/theme";
 
 interface ActionButtonProps {
   icon: string;
@@ -8,7 +9,7 @@ interface ActionButtonProps {
 }
 
 const ActionButton: React.FC<ActionButtonProps> = ({ icon, onClick }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   return (
     <div

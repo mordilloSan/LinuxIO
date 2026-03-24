@@ -1,22 +1,15 @@
 import { Icon } from "@iconify/react";
-import {
-  CardContent,
-  Typography,
-  FormControl,
-  Select,
-  MenuItem,
-  SelectChangeEvent,
-  Tooltip,
-  Menu,
-} from "@mui/material";
-import type { SxProps } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-import type { Theme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
+import AppCardContent from "@/components/ui/AppCardContent";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
+import AppSelect from "@/components/ui/AppSelect";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
+import { useAppTheme } from "@/theme";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
@@ -88,10 +81,8 @@ export type DashboardCardProps = SelectProps & {
   stats2?: React.ReactNode;
   /** Iconify icon ID rendered as the card's top-right avatar. */
   avatarIcon: string;
-  /** Optional MUI SvgIcon component shown next to `icon_text` in the header. */
-  icon?: React.ElementType;
-  /** Style overrides forwarded to the `icon` component. */
-  iconProps?: { sx?: SxProps<Theme> };
+  /** Optional Iconify icon ID shown next to `icon_text` in the header. */
+  icon?: string;
   /** Short string (e.g. temperature) rendered beside `icon`. */
   icon_text?: string;
   /** Shows a colored dot in the header indicating connectivity state. */
@@ -112,12 +103,11 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   stats,
   stats2,
   avatarIcon,
-  icon: IconComponent,
-  iconProps,
+  icon,
   icon_text,
   selectOptions = [],
   selectedOption = "",
-  selectedOptionLabel,
+
   onSelect,
   connectionStatus,
   contentLayout = "equal",
@@ -125,7 +115,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   selectedIconTextOption,
   onIconTextSelect,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
   const [hovered, setHovered] = useState(false);
   const [iconTextMenuAnchor, setIconTextMenuAnchor] =
@@ -137,12 +127,14 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
     return contentLayout;
   })();
 
-  const handleSelectionChange = (event: SelectChangeEvent) => {
+  const handleSelectionChange = (
+    event: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
     onSelect?.(event.target.value);
   };
 
   const statusDot = connectionStatus && (
-    <Tooltip
+    <AppTooltip
       title={connectionStatus === "online" ? "Connected" : "Disconnected"}
       arrow
     >
@@ -159,55 +151,31 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
           flexShrink: 0,
         }}
       />
-    </Tooltip>
+    </AppTooltip>
   );
 
   const renderSelect = selectOptions.length > 0 && (
-    <FormControl
+    <AppSelect
       size="small"
-      sx={{
-        ml: -2,
-        mb: 1,
-        minWidth: "auto",
-        "& .MuiOutlinedInput-root": {
-          color: "text.secondary",
-        },
-        "& .MuiOutlinedInput-notchedOutline": {
-          border: "none",
-        },
-        "& .MuiSelect-select": {
-          padding: "4px 8px",
-        },
-        "& .MuiSvgIcon-root": {
-          color: theme.palette.text.secondary,
-          fontSize: 18,
-        },
+      variant="standard"
+      disableUnderline
+      value={selectedOption}
+      onChange={handleSelectionChange}
+      style={{
+        marginLeft: 0,
+        marginBottom: 2,
+        color: theme.palette.text.secondary,
+        fontSize: "0.75rem",
+        lineHeight: theme.typography.body2.lineHeight,
       }}
     >
-      <Select
-        id="card-select"
-        name="cardSelect"
-        labelId="card-select-label"
-        value={selectedOption}
-        onChange={handleSelectionChange}
-        displayEmpty
-        renderValue={() =>
-          selectedOptionLabel ? (
-            <Typography variant="body2">{selectedOptionLabel}</Typography>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Select...
-            </Typography>
-          )
-        }
-      >
-        {selectOptions.map((option, index) => (
-          <MenuItem key={option.id ?? index} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
+      {!selectedOption && <option value="" disabled hidden></option>}
+      {selectOptions.map((option, index) => (
+        <option key={option.id ?? index} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </AppSelect>
   );
 
   return (
@@ -224,7 +192,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         ...(hovered && getAccentCardHoverStyles(theme, primaryColor)),
       }}
     >
-      <CardContent>
+      <AppCardContent>
         {/* Header */}
         <div
           style={{
@@ -236,21 +204,21 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         >
           {/* Title and optional extras */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Typography
+            <AppTypography
               variant="h5"
-              sx={{
-                fontWeight: "bold",
+              fontWeight={700}
+              style={{
                 transform: "translateY(-1px)",
                 ...(titleColor && { color: titleColor }),
               }}
             >
               {title}
-            </Typography>
+            </AppTypography>
 
             {statusDot}
             {renderSelect}
 
-            {IconComponent && icon_text && (
+            {icon && icon_text && (
               <div
                 style={{
                   display: "inline-flex",
@@ -276,33 +244,33 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                     marginRight: -4,
                   }}
                 >
-                  <IconComponent
-                    {...iconProps}
-                    sx={{
-                      verticalAlign: "middle",
-                      color: primaryColor,
-                      ...iconProps?.sx,
-                    }}
+                  <Icon
+                    icon={icon}
+                    width="24px"
+                    height="24px"
+                    color={primaryColor}
                   />
                 </div>
-                <Typography
+                <AppTypography
                   variant="body2"
-                  sx={{ color: "text.secondary", ml: 0, lineHeight: 1 }}
+                  color="text.secondary"
+                  style={{ marginLeft: 0, lineHeight: 1 }}
                 >
                   {icon_text}
-                </Typography>
+                </AppTypography>
               </div>
             )}
             {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (
-              <Menu
+              <AppMenu
                 anchorEl={iconTextMenuAnchor}
                 open={Boolean(iconTextMenuAnchor)}
                 onClose={() => setIconTextMenuAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
+                minWidth={180}
               >
                 {iconTextSelectOptions.map((opt, i) => (
-                  <MenuItem
+                  <AppMenuItem
                     key={opt.id ?? i}
                     selected={opt.value === selectedIconTextOption}
                     onClick={() => {
@@ -311,9 +279,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                     }}
                   >
                     {opt.label}
-                  </MenuItem>
+                  </AppMenuItem>
                 ))}
-              </Menu>
+              </AppMenu>
             )}
           </div>
 
@@ -368,7 +336,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
             {stats}
           </div>
         )}
-      </CardContent>
+      </AppCardContent>
     </FrostedCard>
   );
 };

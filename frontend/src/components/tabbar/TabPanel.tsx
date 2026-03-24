@@ -1,5 +1,6 @@
-import { Fade } from "@mui/material";
-import React from "react";
+import React, { useState } from "react";
+
+import "./tab-panel.css";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 
@@ -34,20 +35,33 @@ const TabPanel: React.FC<TabPanelProps> = ({
   children,
 }) => {
   const isActive = activeTab === value;
+  const [isPresent, setIsPresent] = useState(false);
+  const shouldRender = isActive || isPresent;
+
+  if (!shouldRender) {
+    return null;
+  }
 
   return (
-    <Fade in={isActive} timeout={timeout} unmountOnExit={true}>
-      <div
-        style={{
-          position: "absolute",
-          width: "100%",
-          top: 0,
-          left: 0,
-        }}
-      >
-        <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>
-      </div>
-    </Fade>
+    <div
+      className="tab-panel"
+      onAnimationStart={() => {
+        if (isActive) {
+          setIsPresent(true);
+        }
+      }}
+      onAnimationEnd={() => {
+        if (!isActive) {
+          setIsPresent(false);
+        }
+      }}
+      style={{
+        animation: `${isActive ? "app-tab-panel-fade-in" : "app-tab-panel-fade-out"} ${timeout}ms ease forwards`,
+        pointerEvents: isActive ? "auto" : "none",
+      }}
+    >
+      <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>
+    </div>
   );
 };
 

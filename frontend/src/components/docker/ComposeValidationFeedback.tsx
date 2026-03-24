@@ -1,6 +1,9 @@
-import { Alert, AlertTitle, Collapse, Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
+
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 export interface ValidationError {
   line?: number;
@@ -25,7 +28,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   validation,
   isValidating = false,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   // Track which validation result has been dismissed. When a new validation
   // arrives (different object reference), visible resets automatically without
@@ -42,12 +45,12 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
 
   if (isValidating) {
     return (
-      <Collapse in={true}>
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <AlertTitle>Validating...</AlertTitle>
+      <AppCollapse in={true}>
+        <AppAlert severity="info" style={{ marginBottom: 16 }}>
+          <AppAlertTitle>Validating...</AppAlertTitle>
           Checking compose file syntax and structure.
-        </Alert>
-      </Collapse>
+        </AppAlert>
+      </AppCollapse>
     );
   }
 
@@ -60,12 +63,15 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
 
   if (validation.valid && validation.errors.length === 0) {
     return (
-      <Collapse in={visible}>
-        <Alert severity="success" sx={{ mb: 2 }} onClose={dismiss}>
-          <AlertTitle>Valid</AlertTitle>
+      <AppCollapse in={visible}>
+        <AppAlert
+          severity="success"
+          style={{ marginBottom: 16 }}
+          onClose={dismiss}
+        >
           Compose file is valid.
-        </Alert>
-      </Collapse>
+        </AppAlert>
+      </AppCollapse>
     );
   }
 
@@ -75,13 +81,13 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   return (
     <div style={{ marginBottom: theme.spacing(2) }}>
       {errors.length > 0 && (
-        <Collapse in={visible}>
-          <Alert
+        <AppCollapse in={visible}>
+          <AppAlert
             severity="error"
-            sx={{ mb: warnings.length > 0 ? 2 : 0 }}
+            style={{ marginBottom: warnings.length > 0 ? 16 : 0 }}
             onClose={dismiss}
           >
-            <AlertTitle>Validation Errors ({errors.length})</AlertTitle>
+            <AppAlertTitle>Validation Errors ({errors.length})</AppAlertTitle>
             {errors.map((error, index) => (
               <div
                 key={index}
@@ -89,7 +95,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                   marginTop: index > 0 ? theme.spacing(1) : 0,
                 }}
               >
-                <Typography variant="body2">
+                <AppTypography variant="body2">
                   {error.field && (
                     <strong style={{ marginRight: "8px" }}>
                       {error.field}:
@@ -101,17 +107,17 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                       (line {error.line})
                     </span>
                   )}
-                </Typography>
+                </AppTypography>
               </div>
             ))}
-          </Alert>
-        </Collapse>
+          </AppAlert>
+        </AppCollapse>
       )}
 
       {warnings.length > 0 && (
-        <Collapse in={visible}>
-          <Alert severity="warning" onClose={dismiss}>
-            <AlertTitle>Warnings ({warnings.length})</AlertTitle>
+        <AppCollapse in={visible}>
+          <AppAlert severity="warning" onClose={dismiss}>
+            <AppAlertTitle>Warnings ({warnings.length})</AppAlertTitle>
             {warnings.map((warning, index) => (
               <div
                 key={index}
@@ -119,7 +125,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                   marginTop: index > 0 ? theme.spacing(1) : 0,
                 }}
               >
-                <Typography variant="body2">
+                <AppTypography variant="body2">
                   {warning.field && (
                     <strong style={{ marginRight: "8px" }}>
                       {warning.field}:
@@ -131,11 +137,11 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                       (line {warning.line})
                     </span>
                   )}
-                </Typography>
+                </AppTypography>
               </div>
             ))}
-          </Alert>
-        </Collapse>
+          </AppAlert>
+        </AppCollapse>
       )}
     </div>
   );

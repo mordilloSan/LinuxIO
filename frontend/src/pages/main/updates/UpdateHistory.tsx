@@ -1,21 +1,19 @@
-import HistoryIcon from "@mui/icons-material/History";
-import {
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
 
 import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
-import { responsiveTextStyles } from "@/theme/tableStyles";
-
+import AppChip from "@/components/ui/AppChip";
+import {
+  AppTable,
+  AppTableBody,
+  AppTableCell,
+  AppTableRow,
+} from "@/components/ui/AppTable";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {
@@ -23,16 +21,26 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   }
   return result;
 };
-
 const UpdateHistory: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { data: rows = [] } = linuxio.dbus.get_update_history.useQuery();
-
   const columns: UnifiedTableColumn[] = [
-    { field: "date", headerName: "Date", align: "left" },
-    { field: "packages", headerName: "Packages Updated", align: "center" },
+    {
+      field: "date",
+      headerName: "Date",
+      align: "left",
+    },
+    {
+      field: "packages",
+      headerName: "Packages Updated",
+      align: "center",
+      style: {
+        width: 148,
+        minWidth: 112,
+        whiteSpace: "nowrap",
+      },
+    },
   ];
-
   return (
     <UnifiedCollapsibleTable
       data={rows}
@@ -46,78 +54,88 @@ const UpdateHistory: React.FC = () => {
             color: theme.palette.primary.main,
           }}
         >
-          <HistoryIcon fontSize="small" />
+          <Icon icon="mdi:history" width={20} height={20} />
         </div>
       )}
       renderMainRow={(row) => (
         <>
-          <TableCell>
-            <Typography
+          <AppTableCell>
+            <AppTypography
               variant="body2"
-              fontWeight="medium"
-              sx={responsiveTextStyles}
+              fontWeight={500}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               {row.date}
-            </Typography>
-          </TableCell>
-          <TableCell align="center">
-            <Chip
+            </AppTypography>
+          </AppTableCell>
+          <AppTableCell
+            align="center"
+            style={{
+              width: 148,
+              minWidth: 112,
+            }}
+          >
+            <AppChip
               label={row.upgrades.length}
               size="small"
               color="success"
-              sx={{ minWidth: 40 }}
+              variant="soft"
+              style={{
+                minWidth: 40,
+              }}
             />
-          </TableCell>
+          </AppTableCell>
         </>
       )}
       renderExpandedContent={(row) => (
         <>
-          <Typography variant="subtitle2" gutterBottom>
+          <AppTypography variant="subtitle2" gutterBottom>
             <b>Packages Installed:</b>
-          </Typography>
-          <Table
-            size="small"
-            sx={{
+          </AppTypography>
+          <AppTable
+            style={{
               borderCollapse: "collapse",
-              "& .MuiTableCell-root": { border: "none" },
               overflowX: "auto",
               display: "block",
             }}
           >
-            <TableBody>
+            <AppTableBody>
               {chunkArray(row.upgrades, 5).map((group, i) => (
-                <TableRow key={i}>
+                <AppTableRow key={i}>
                   {group.map((pkg, j) => (
-                    <TableCell
+                    <AppTableCell
                       key={j}
-                      sx={{
+                      style={{
                         width: "20%",
                         padding: "8px 12px",
-                        color: "text.secondary",
-                        fontFamily: "monospace",
+                        color: "var(--mui-palette-text-secondary)",
+                        fontFamily: theme.typography.fontFamily,
                         fontSize: "0.85rem",
-                        ...responsiveTextStyles,
+                        wordBreak: "break-word",
+                        overflowWrap: "break-word",
                       }}
                     >
                       {pkg.package}
-                    </TableCell>
+                    </AppTableCell>
                   ))}
                   {group.length < 5 &&
                     [...Array(5 - group.length)].map((_, j) => (
-                      <TableCell
+                      <AppTableCell
                         key={`empty-${j}`}
-                        sx={{ width: "20%", border: "none" }}
+                        style={{ width: "20%" }}
                       />
                     ))}
-                </TableRow>
+                </AppTableRow>
               ))}
-            </TableBody>
-          </Table>
+            </AppTableBody>
+          </AppTable>
         </>
       )}
       emptyMessage="No update history available."
     />
   );
 };
-
 export default UpdateHistory;

@@ -1,14 +1,11 @@
-import TuneIcon from "@mui/icons-material/Tune";
-import {
-  Paper,
-  ToggleButton,
-  ToggleButtonGroup,
-  IconButton,
-  Popover,
-  useMediaQuery,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
+
+import "./tab-selector.css";
+
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppMenu from "@/components/ui/AppMenu";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface TabOption {
   value: string;
@@ -19,6 +16,8 @@ interface TabSelectorProps {
   onChange: (value: string) => void;
   options: TabOption[];
   rightContent?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 const TabSelector: React.FC<TabSelectorProps> = ({
@@ -26,119 +25,73 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   onChange,
   options,
   rightContent,
+  className,
+  style,
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
-    null,
-  );
+  const theme = useAppTheme();
+  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
 
   const primaryHex = theme.palette.primary.main;
-  const contrast = theme.palette.getContrastText(primaryHex);
+  const contrast = theme.palette.primary.contrastText;
 
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 8,
-        width: "100%",
-        minWidth: 0,
-      }}
+      className={["tab-selector", className].filter(Boolean).join(" ")}
+      style={
+        {
+          "--tab-selector-active-bg": primaryHex,
+          "--tab-selector-active-color": contrast,
+          "--tab-selector-border": theme.palette.divider,
+          "--tab-selector-hover": theme.palette.action.hover,
+          "--tab-selector-text": theme.palette.text.secondary,
+          ...style,
+        } as React.CSSProperties
+      }
     >
-      <Paper
-        elevation={0}
-        className="custom-scrollbar"
-        sx={{
-          display: "flex",
-          p: 0.5,
-          flex: "1 1 auto",
-          minWidth: 0,
-          borderRadius: "999px",
-          backgroundColor: "transparent",
-          backdropFilter: "none",
-          overflowX: "auto",
-          overflowY: "hidden",
-        }}
-      >
-        <ToggleButtonGroup
-          value={value}
-          exclusive
-          onChange={(_, newValue) => newValue && onChange(newValue)}
-          size="small"
-          sx={{
-            flexWrap: "nowrap",
-            "& .MuiToggleButton-root": {
-              color: "text.secondary",
-              border: "none",
-              borderRadius: "999px",
-              px: 2,
-              minHeight: 28,
-              py: 0,
-              fontWeight: 500,
-              transition: "background 0.1s",
-              whiteSpace: "nowrap",
-            },
-            "& .MuiToggleButton-root.Mui-selected": {
-              backgroundColor: primaryHex,
-              color: contrast,
-              "&:hover": { backgroundColor: primaryHex },
-            },
-          }}
-        >
+      <div className="tab-selector__scroller custom-scrollbar">
+        <div className="tab-selector__pills" role="tablist" aria-label="Tabs">
           {options.map((opt) => (
-            <ToggleButton key={opt.value} value={opt.value}>
+            <button
+              key={opt.value}
+              type="button"
+              role="tab"
+              aria-selected={value === opt.value}
+              className={`tab-selector__pill ${value === opt.value ? "tab-selector__pill--active" : ""}`.trim()}
+              onClick={() => onChange(opt.value)}
+            >
               {opt.label}
-            </ToggleButton>
+            </button>
           ))}
-        </ToggleButtonGroup>
-      </Paper>
+        </div>
+      </div>
 
       {rightContent && (
         <>
           {isMobile ? (
             <>
-              <IconButton
+              <AppIconButton
                 size="small"
                 onClick={(e) => setAnchorEl(e.currentTarget)}
-                sx={{ mt: 0.5, flexShrink: 0 }}
+                style={{ marginTop: 2, flexShrink: 0 }}
               >
-                <TuneIcon fontSize="small" />
-              </IconButton>
-              <Popover
+                <Icon icon="mdi:tune" width={20} height={20} />
+              </AppIconButton>
+              <AppMenu
                 open={Boolean(anchorEl)}
-                anchorEl={anchorEl}
                 onClose={() => setAnchorEl(null)}
+                anchorEl={anchorEl}
                 anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
                 transformOrigin={{ vertical: "top", horizontal: "right" }}
+                minWidth="unset"
               >
-                <div
-                  style={{
-                    padding: 6,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                  }}
-                >
+                <div className="tab-selector__mobile-actions">
                   {rightContent}
                 </div>
-              </Popover>
+              </AppMenu>
             </>
           ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                alignSelf: "flex-start",
-                marginTop: 2,
-                gap: 4,
-                flexShrink: 0,
-              }}
-            >
-              {rightContent}
-            </div>
+            <div className="tab-selector__actions">{rightContent}</div>
           )}
         </>
       )}

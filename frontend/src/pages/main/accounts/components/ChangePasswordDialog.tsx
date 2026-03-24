@@ -1,17 +1,17 @@
-import {
-  Button,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {
@@ -25,7 +25,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   onClose,
   username,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -67,8 +67,8 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Change Password: {username}</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Change Password: {username}</AppDialogTitle>
+      <AppDialogContent>
         <div
           style={{
             display: "flex",
@@ -77,7 +77,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <TextField
+          <AppTextField
             label="New Password"
             type="password"
             value={password}
@@ -86,7 +86,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             required
             autoFocus
           />
-          <TextField
+          <AppTextField
             label="Confirm Password"
             type="password"
             value={confirmPassword}
@@ -101,19 +101,19 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             }
           />
         </div>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose} disabled={isPending}>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={handleClose} disabled={isPending}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={handleSubmit}
           variant="contained"
           disabled={isPending || !password || password !== confirmPassword}
         >
           {isPending ? "Changing..." : "Change Password"}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

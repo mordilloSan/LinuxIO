@@ -1,9 +1,4 @@
-import {
-  Add as AddIcon,
-  GridView as GridViewIcon,
-  TableRows as TableRowsIcon,
-} from "@mui/icons-material";
-import { Button, IconButton, Tooltip } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
 import DiskOverview from "./DiskOverview";
@@ -11,6 +6,9 @@ import LVMManagement from "./LVMManagement";
 import NFSMounts from "./NFSMounts";
 
 import { TabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
 const StoragePage: React.FC = () => {
@@ -41,14 +39,14 @@ const StoragePage: React.FC = () => {
             />
           ),
           rightContent: createLVHandler ? (
-            <Button
+            <AppButton
               variant="contained"
               size="small"
               onClick={createLVHandler}
-              startIcon={<AddIcon />}
+              startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
             >
               Create LV
-            </Button>
+            </AppButton>
           ) : undefined,
         },
         {
@@ -64,35 +62,35 @@ const StoragePage: React.FC = () => {
           ),
           rightContent: (
             <>
-              <Tooltip
+              <AppTooltip
                 title={
                   nfsView === "table"
                     ? "Switch to card view"
                     : "Switch to table view"
                 }
               >
-                <IconButton
+                <AppIconButton
                   size="small"
                   onClick={() =>
                     setNfsView(nfsView === "table" ? "card" : "table")
                   }
                 >
                   {nfsView === "table" ? (
-                    <GridViewIcon fontSize="small" />
+                    <Icon icon="mdi:view-grid" width={20} height={20} />
                   ) : (
-                    <TableRowsIcon fontSize="small" />
+                    <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
-                </IconButton>
-              </Tooltip>
+                </AppIconButton>
+              </AppTooltip>
               {mountNFSHandler && (
-                <Button
+                <AppButton
                   variant="contained"
                   size="small"
                   onClick={mountNFSHandler}
-                  startIcon={<AddIcon />}
+                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Mount NFS
-                </Button>
+                </AppButton>
               )}
             </>
           ),

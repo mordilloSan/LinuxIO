@@ -1,8 +1,8 @@
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import { Typography, useTheme } from "@mui/material";
+import { Icon } from "@iconify/react";
 import React from "react";
 
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { getSubtleDividerColor } from "@/theme/surfaces";
 
 export type SortField = "name" | "size" | "modTime";
@@ -14,7 +14,7 @@ export interface SortBarProps {
 }
 
 const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [hoveredField, setHoveredField] = React.useState<SortField | null>(
     null,
   );
@@ -28,18 +28,21 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
     // Only show icons on hover
     if (!isHovered) return null;
 
-    const iconStyles = {
-      fontSize: "1.15rem",
-      ml: 1,
-      transition: "opacity 0.2s ease",
-      opacity: 0.8,
-    };
-
     // If hovering show current sort direction
     return sortOrder === "asc" ? (
-      <ArrowUpwardIcon sx={iconStyles} />
+      <Icon
+        icon="mdi:arrow-up"
+        width={18}
+        height={18}
+        style={{ marginLeft: 4, transition: "opacity 0.2s ease", opacity: 0.8 }}
+      />
     ) : (
-      <ArrowDownwardIcon sx={iconStyles} />
+      <Icon
+        icon="mdi:arrow-down"
+        width={18}
+        height={18}
+        style={{ marginLeft: 4, transition: "opacity 0.2s ease", opacity: 0.8 }}
+      />
     );
   };
 
@@ -76,13 +79,13 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         onMouseEnter={() => setHoveredField("name")}
         onMouseLeave={() => setHoveredField(null)}
       >
-        <Typography
+        <AppTypography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Name
           {renderSortIcon("name")}
-        </Typography>
+        </AppTypography>
       </div>
       <div
         style={columnStyle}
@@ -97,13 +100,13 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         onMouseEnter={() => setHoveredField("size")}
         onMouseLeave={() => setHoveredField(null)}
       >
-        <Typography
+        <AppTypography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Size
           {renderSortIcon("size")}
-        </Typography>
+        </AppTypography>
       </div>
       <div
         onClick={() => onSortChange("modTime")}
@@ -122,9 +125,9 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           textAlign: "center",
         }}
       >
-        <Typography
+        <AppTypography
           variant="h6"
-          sx={{
+          style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -134,7 +137,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         >
           Last modified
           {renderSortIcon("modTime")}
-        </Typography>
+        </AppTypography>
       </div>
     </div>
   );

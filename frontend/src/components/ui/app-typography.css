@@ -1,0 +1,96 @@
+.app-typo {
+  margin: 0;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif,
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  color: var(--color-text);
+}
+
+/* heading variants */
+.app-typo--h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.app-typo--h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.app-typo--h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.app-typo--h4 {
+  font-size: 1.125rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+.app-typo--h5 {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+.app-typo--h6 {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+/* subtitle variants — scaled by theme fontSize 13/14 */
+.app-typo--subtitle1 {
+  font-size: 0.9286rem;
+  font-weight: 400;
+  line-height: 1.75;
+}
+.app-typo--subtitle2 {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.57;
+}
+
+/* body variants */
+.app-typo--body1 {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.app-typo--body2 {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.43;
+}
+
+/* caption — scaled by theme fontSize 13/14 */
+.app-typo--caption {
+  font-size: 0.6964rem;
+  font-weight: 400;
+  line-height: 1.66;
+}
+.app-typo--overline {
+  font-size: 0.6964rem;
+  font-weight: 400;
+  line-height: 2.66;
+  text-transform: uppercase;
+}
+
+/* modifiers */
+.app-typo--nowrap {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-typo--gutter {
+  margin-bottom: 0.35em;
+}

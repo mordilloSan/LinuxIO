@@ -1,0 +1,132 @@
+.app-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1190;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.app-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width, 200px);
+  background: var(--app-sidebar-background);
+  color: var(--app-sidebar-color);
+  overflow: hidden;
+}
+
+.app-sidebar--desktop {
+  transform: translateX(0);
+}
+
+.app-sidebar--mobile {
+  transform: translateX(-100%);
+  box-shadow: 0 18px 32px -28px rgba(0, 0, 0, 0.5);
+}
+
+.app-sidebar--mobile.app-sidebar--open {
+  transform: translateX(0);
+}
+
+.app-sidebar__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  padding-inline: 6px;
+  background: var(--app-sidebar-header-background);
+}
+
+.app-sidebar__nav {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.app-sidebar__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-sidebar-link {
+  display: flex;
+  align-items: center;
+  width: auto;
+  margin: 4px 8px;
+  padding: 6px 12px;
+  border-radius: 0 999px 999px 0;
+  color: var(--app-sidebar-color);
+  text-decoration: none;
+  transition: all 300ms ease;
+}
+
+.app-sidebar-link:hover {
+  background: var(--app-sidebar-item-hover-bg);
+}
+
+.app-sidebar-link--active {
+  background:
+    linear-gradient(
+      90deg,
+      var(--app-sidebar-item-grad-start) 0%,
+      var(--app-sidebar-item-grad-end) 50%
+    );
+  color: var(--app-sidebar-item-active-color);
+}
+
+.app-sidebar-link--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.app-sidebar-link--collapsed {
+  justify-content: center;
+}
+
+.app-sidebar-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  margin-right: 8px;
+}
+
+.app-sidebar-link--collapsed .app-sidebar-link__icon {
+  margin-right: 0;
+}
+
+.app-sidebar-link__label {
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.43;
+  opacity: 1;
+  transition:
+    opacity 300ms ease,
+    width 300ms ease,
+    margin 300ms ease;
+}
+
+.app-sidebar-link--active .app-sidebar-link__label {
+  font-weight: 500;
+}
+
+.app-sidebar-link--collapsed .app-sidebar-link__label {
+  width: 0;
+  opacity: 0;
+  margin: 0;
+}
+
+@media (max-width: 959.95px) {
+  .app-sidebar__header {
+    min-height: 56px;
+  }
+}

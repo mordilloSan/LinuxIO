@@ -1,7 +1,9 @@
-import { Button } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { useState, useRef, useEffect, useEffectEvent } from "react";
+
+import AppButton from "@/components/ui/AppButton";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 interface DevToolsPanelProps {
   isOpen: boolean;
@@ -13,7 +15,7 @@ interface DevToolsPanelProps {
  * Only rendered when import.meta.env.DEV is true.
  */
 export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
@@ -149,7 +151,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             ×
           </button>
         </div>
-        <Button
+        <AppButton
           variant="contained"
           color="primary"
           size="small"
@@ -157,9 +159,9 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
           fullWidth
         >
           {isDevtoolsOpen ? "Close" : "Open"} React Query Devtools
-        </Button>
+        </AppButton>
         {!shown ? (
-          <Button
+          <AppButton
             variant="contained"
             color="warning"
             size="small"
@@ -167,9 +169,9 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             fullWidth
           >
             Show Update Notification
-          </Button>
+          </AppButton>
         ) : (
-          <Button
+          <AppButton
             variant="contained"
             color="secondary"
             size="small"
@@ -177,7 +179,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             fullWidth
           >
             Hide Update Notification
-          </Button>
+          </AppButton>
         )}
       </div>
 

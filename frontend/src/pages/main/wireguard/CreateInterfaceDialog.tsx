@@ -1,20 +1,16 @@
-import {
-  Alert,
-  Button,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  FormHelperText,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppSelect from "@/components/ui/AppSelect";
+import AppTextField from "@/components/ui/AppTextField";
+import { useAppTheme } from "@/theme";
 
 interface CreateInterfaceDialogProps {
   open: boolean;
@@ -63,7 +59,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
   dns,
   setDns,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
   const portTaken =
     port && existingPorts.some((p) => Number(port) === Number(p));
@@ -75,92 +71,85 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>Create New Interface</DialogTitle>
-      <DialogContent>
+      <AppDialogTitle>Create New Interface</AppDialogTitle>
+      <AppDialogContent>
         <div style={{ marginTop: theme.spacing(2) }}>
-          <TextField
+          <AppTextField
             label="Interface Name"
             value={serverName}
             onChange={(e) => setServerName(e.target.value)}
             fullWidth
-            margin="normal"
             error={!!nameTaken}
             helperText={nameTaken ? "This interface name already exists." : ""}
             disabled={loading}
           />
-          <TextField
+          <AppTextField
             label="Port"
             type="number"
             value={port}
             onChange={(e) => setPort(Number(e.target.value))}
             fullWidth
-            margin="normal"
             error={!!portTaken}
             helperText={portTaken ? "This port is already in use." : ""}
             disabled={loading}
           />
-          <TextField
+          <AppTextField
             label="CIDR"
             value={CIDR}
             onChange={(e) => setCIDR(e.target.value)}
             fullWidth
-            margin="normal"
             error={!!cidrTaken}
             helperText={cidrTaken ? "This CIDR is already in use." : ""}
             disabled={loading}
           />
-          <TextField
+          <AppTextField
             label="DNS (optional, comma-separated)"
             value={dns}
             onChange={(e) => setDns(e.target.value)}
             fullWidth
-            margin="normal"
             disabled={loading}
             placeholder="e.g. 192.168.1.1, 1.1.1.1"
           />
-          <TextField
+          <AppTextField
             label="Peers"
             type="number"
             value={peers}
             onChange={(e) => setPeers(Number(e.target.value))}
             fullWidth
-            margin="normal"
             disabled={loading}
           />
-          <FormControl fullWidth margin="normal" disabled={loading}>
-            <InputLabel id="nic-select-label">NIC</InputLabel>
-            <Select
-              labelId="nic-select-label"
-              value={nic}
-              onChange={(e) => setNic(e.target.value as string)}
-              label="NIC"
-            >
-              {availableNICs.length === 0 ? (
-                <MenuItem disabled>No NICs Available</MenuItem>
-              ) : (
-                availableNICs.map((nicOption) => (
-                  <MenuItem key={nicOption.name} value={nicOption.name}>
-                    {nicOption.label}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-            <FormHelperText>
-              {availableNICs.length === 0 ? "No NICs available" : ""}
-            </FormHelperText>
-          </FormControl>
+          <AppSelect
+            label="NIC"
+            fullWidth
+            value={nic}
+            onChange={(e) => setNic(e.target.value)}
+            disabled={loading}
+            style={{ marginBlock: 8 }}
+          >
+            {availableNICs.length === 0 ? (
+              <option value="" disabled>
+                No NICs Available
+              </option>
+            ) : (
+              availableNICs.map((nicOption) => (
+                <option key={nicOption.name} value={nicOption.name}>
+                  {nicOption.label}
+                </option>
+              ))
+            )}
+          </AppSelect>
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <AppAlert severity="error" style={{ marginTop: 8 }}>
               {error}
-            </Alert>
+            </AppAlert>
           )}
         </div>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} color="secondary" disabled={loading}>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose} color="secondary" disabled={loading}>
           Cancel
-        </Button>
-        <Button
+        </AppButton>
+        <AppButton
           onClick={onCreate}
           color="primary"
           disabled={
@@ -174,8 +163,8 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
           }
         >
           {loading ? "Creating..." : "Create Interface"}
-        </Button>
-      </DialogActions>
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

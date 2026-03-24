@@ -1,9 +1,9 @@
-import { TableCell } from "@mui/material";
 import React from "react";
 
 import { UnitTableView, formatUsec, statusDot } from "./UnitViews";
 
 import type { Timer } from "@/api";
+import { AppTableCell } from "@/components/ui/AppTable";
 
 interface TimerTableViewProps {
   timers: Timer[];
@@ -18,7 +18,7 @@ const desktopColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "120px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const, width: "220px" },
   { field: "unit", headerName: "Unit", align: "left" as const, width: "220px" },
@@ -37,7 +37,7 @@ const mobileColumns = [
     headerName: "Status",
     align: "left" as const,
     width: "110px",
-    sx: { paddingLeft: "8px" },
+    style: { paddingLeft: 8 },
   },
   { field: "name", headerName: "Name", align: "left" as const },
 ];
@@ -80,7 +80,7 @@ const TimerTableView: React.FC<TimerTableViewProps> = ({
                 fontSize: "0.6rem",
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
                 width: 80,
                 flexShrink: 0,
                 paddingTop: 2,
@@ -95,16 +95,16 @@ const TimerTableView: React.FC<TimerTableViewProps> = ({
     )}
     renderMainRow={(timer, isMobile) => (
       <>
-        <TableCell sx={{ paddingLeft: "8px" }}>
+        <AppTableCell style={{ paddingLeft: 8 }}>
           {statusDot(timer.active_state)}
           {timer.active_state}
-        </TableCell>
-        <TableCell>{timer.name}</TableCell>
+        </AppTableCell>
+        <AppTableCell>{timer.name}</AppTableCell>
         {!isMobile && (
           <>
-            <TableCell>{timer.unit || "—"}</TableCell>
-            <TableCell>{formatUsec(timer.next_elapse_usec)}</TableCell>
-            <TableCell>{formatUsec(timer.last_trigger_usec)}</TableCell>
+            <AppTableCell>{timer.unit || "—"}</AppTableCell>
+            <AppTableCell>{formatUsec(timer.next_elapse_usec)}</AppTableCell>
+            <AppTableCell>{formatUsec(timer.last_trigger_usec)}</AppTableCell>
           </>
         )}
       </>

@@ -1,19 +1,4 @@
 import { Icon } from "@iconify/react";
-import {
-  Button,
-  Chip,
-  Collapse,
-  Divider,
-  Fade,
-  Grid,
-  LinearProgress,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -49,12 +34,22 @@ import {
 } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import TabSelector from "@/components/tabbar/TabSelector";
+import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppDivider from "@/components/ui/AppDivider";
+import AppGrid from "@/components/ui/AppGrid";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppTextField from "@/components/ui/AppTextField";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 interface DriveDetailsProps {
   drive: DriveInfo;
   expanded: boolean;
@@ -63,7 +58,6 @@ interface DriveDetailsProps {
   smartmontoolsAvailable: boolean;
   smartmontoolsReason: string;
 }
-
 interface FilesystemCardDetailsProps {
   filesystem: FilesystemInfo;
   backingDrive: DriveInfo | null;
@@ -77,41 +71,32 @@ interface FilesystemCardDetailsProps {
   onSubvolumeNameChange: (mountpoint: string, value: string) => void;
   onCreateSubvolume: (mountpoint: string) => void;
 }
-
 const SYSTEM_MOUNTPOINTS = new Set(["/", "/boot", "/boot/efi"]);
-
 const encodeFilebrowserPath = (path: string): string => {
   if (path === "/") {
     return "/filebrowser";
   }
-
   const encodedSegments = path
     .split("/")
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment));
-
   return `/filebrowser/${encodedSegments.join("/")}`;
 };
-
 const normalizeDeviceName = (device: string): string =>
   device.replace(/^\/dev\//, "");
-
 const findBackingDrive = (
   device: string,
   drives: DriveInfo[],
 ): DriveInfo | null => {
   const normalizedDevice = normalizeDeviceName(device);
-
   return (
     drives.find((drive) => {
       if (normalizedDevice === drive.name) {
         return true;
       }
-
       if (normalizedDevice.startsWith(`${drive.name}p`)) {
         return true;
       }
-
       const suffix = normalizedDevice.slice(drive.name.length);
       return (
         suffix.length > 0 &&
@@ -121,13 +106,10 @@ const findBackingDrive = (
     }) ?? null
   );
 };
-
 const canUnmountFilesystem = (filesystem: FilesystemInfo): boolean =>
   !SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
-
 const canCreateSubvolume = (filesystem: FilesystemInfo): boolean =>
   filesystem.fstype === "btrfs" && !filesystem.readOnly;
-
 const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
   filesystem,
   backingDrive,
@@ -143,11 +125,10 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
 }) => {
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
-
   return (
-    <Collapse in timeout="auto" unmountOnExit>
+    <AppCollapse in={true} timeout="auto" unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-        <Divider sx={{ my: 2 }} />
+        <AppDivider style={{ margin: "16px 0" }} />
 
         <div
           style={{
@@ -157,13 +138,29 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             marginBottom: 16,
           }}
         >
-          <Chip label={filesystem.fstype.toUpperCase()} size="small" />
+          <Chip
+            label={filesystem.fstype.toUpperCase()}
+            size="small"
+            variant="soft"
+          />
           {filesystem.readOnly && (
-            <Chip label="Read-only" size="small" color="warning" />
+            <Chip
+              label="Read-only"
+              size="small"
+              color="warning"
+              variant="soft"
+            />
           )}
-          {nfsMount && <Chip label="NFS mount" size="small" color="info" />}
+          {nfsMount && (
+            <Chip label="NFS mount" size="small" color="info" variant="soft" />
+          )}
           {isSystemMount && (
-            <Chip label="System mount" size="small" color="default" />
+            <Chip
+              label="System mount"
+              size="small"
+              color="default"
+              variant="soft"
+            />
           )}
         </div>
 
@@ -175,74 +172,74 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           }}
         >
           <div>
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               Source
-            </Typography>
-            <Typography variant="body1">
+            </AppTypography>
+            <AppTypography variant="body1">
               {nfsMount?.source || filesystem.device || "Unknown"}
-            </Typography>
+            </AppTypography>
           </div>
 
           <div>
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               Usage
-            </Typography>
-            <Typography variant="body1">
+            </AppTypography>
+            <AppTypography variant="body1">
               {formatFileSize(filesystem.used)} used of{" "}
               {formatFileSize(filesystem.total)} (
               {filesystem.usedPercent.toFixed(1)}
               %)
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
+            </AppTypography>
+            <AppTypography variant="body2" color="text.secondary">
               {formatFileSize(filesystem.free)} free
-            </Typography>
+            </AppTypography>
           </div>
 
           {typeof filesystem.inodesUsedPercent === "number" &&
             filesystem.inodesTotal &&
             filesystem.inodesTotal > 0 && (
               <div>
-                <Typography variant="body2" color="text.secondary">
+                <AppTypography variant="body2" color="text.secondary">
                   Inodes
-                </Typography>
-                <Typography variant="body1">
+                </AppTypography>
+                <AppTypography variant="body1">
                   {(filesystem.inodesUsed ?? 0).toLocaleString()} used of{" "}
                   {filesystem.inodesTotal.toLocaleString()} (
                   {filesystem.inodesUsedPercent.toFixed(1)}%)
-                </Typography>
+                </AppTypography>
               </div>
             )}
 
           {nfsMount && (
             <>
               <div>
-                <Typography variant="body2" color="text.secondary">
+                <AppTypography variant="body2" color="text.secondary">
                   Export
-                </Typography>
-                <Typography variant="body1">
+                </AppTypography>
+                <AppTypography variant="body1">
                   {nfsMount.server}:{nfsMount.exportPath}
-                </Typography>
+                </AppTypography>
               </div>
 
               <div>
-                <Typography variant="body2" color="text.secondary">
+                <AppTypography variant="body2" color="text.secondary">
                   Mount options
-                </Typography>
-                <Typography variant="body1">
+                </AppTypography>
+                <AppTypography variant="body1">
                   {nfsMount.options.length > 0
                     ? nfsMount.options.join(", ")
                     : "Default options"}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
+                </AppTypography>
+                <AppTypography variant="body2" color="text.secondary">
                   {nfsMount.inFstab
                     ? "Configured to mount at boot"
                     : "Not persisted in /etc/fstab"}
-                </Typography>
+                </AppTypography>
               </div>
             </>
           )}
 
-          <Typography variant="body2" color="text.secondary">
+          <AppTypography variant="body2" color="text.secondary">
             {nfsMount
               ? "This filesystem supports direct unmount here because NFS management already exists in the backend."
               : isNfs
@@ -252,13 +249,13 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
                   : canUnmountFilesystem(filesystem)
                     ? "This filesystem can be unmounted directly from the card."
                     : "Protected system mounts stay visible here but do not expose unmount actions."}
-          </Typography>
+          </AppTypography>
 
           {backingDrive && (
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               Backing drive: /dev/{backingDrive.name}
               {backingDrive.model ? ` (${backingDrive.model})` : ""}
-            </Typography>
+            </AppTypography>
           )}
         </div>
 
@@ -270,29 +267,29 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             alignItems: "center",
           }}
         >
-          <Button
+          <AppButton
             variant="outlined"
             onClick={() => onBrowse(filesystem.mountpoint)}
           >
             Browse
-          </Button>
+          </AppButton>
           {backingDrive && (
-            <Button
+            <AppButton
               variant="outlined"
               onClick={() => onInspectDrive(backingDrive.name)}
             >
               Inspect Drive
-            </Button>
+            </AppButton>
           )}
           {canUnmountFilesystem(filesystem) && (
-            <Button
+            <AppButton
               color="error"
               variant="outlined"
               onClick={() => onUnmount(filesystem.mountpoint)}
               disabled={isUnmounting}
             >
               {isUnmounting ? "Unmounting..." : "Unmount"}
-            </Button>
+            </AppButton>
           )}
         </div>
 
@@ -306,7 +303,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               marginTop: 12,
             }}
           >
-            <TextField
+            <AppTextField
               size="small"
               label="Subvolume name"
               value={subvolumeName}
@@ -314,10 +311,10 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
                 onSubvolumeNameChange(filesystem.mountpoint, event.target.value)
               }
               placeholder="@data"
-              sx={{ minWidth: 220, flex: "1 1 220px" }}
+              style={{ minWidth: 220, flex: "1 1 220px" }}
               onClick={(event) => event.stopPropagation()}
             />
-            <Button
+            <AppButton
               variant="outlined"
               onClick={() => onCreateSubvolume(filesystem.mountpoint)}
               disabled={
@@ -325,14 +322,13 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               }
             >
               {isCreatingSubvolume ? "Creating..." : "Create subvolume"}
-            </Button>
+            </AppButton>
           </div>
         )}
       </div>
-    </Collapse>
+    </AppCollapse>
   );
 };
-
 const DriveDetails: React.FC<DriveDetailsProps> = ({
   drive,
   expanded,
@@ -341,7 +337,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   smartmontoolsAvailable,
   smartmontoolsReason,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
@@ -349,7 +345,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const [, setTestProgress] = useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const { run: runStreamResult } = useStreamResult();
-
   const { mutate: runSmartTest } = linuxio.storage.run_smart_test.useMutation({
     onSuccess: () => {
       refetchDrives();
@@ -358,7 +353,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       toast.error(getMutationErrorMessage(error, "Failed to start SMART test"));
     },
   });
-
   useEffect(() => {
     return () => {
       if (streamRef.current) {
@@ -367,14 +361,12 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       }
     };
   }, []);
-
   const handleRunTest = (testType: "short" | "long") => {
     if (!rawDrive) return;
     if (!smartmontoolsAvailable) {
       toast.error(smartmontoolsReason);
       return;
     }
-
     setStartPending(testType);
     setTestProgress({
       type: "status",
@@ -383,11 +375,9 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       device: rawDrive.name,
       message: `Starting SMART ${testType} self-test`,
     });
-
     if (streamRef.current) {
       streamRef.current.close();
     }
-
     const stream = openSmartTestStream(rawDrive.name, testType);
     if (!stream) {
       runSmartTest([rawDrive.name, testType], {
@@ -400,7 +390,11 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         onError: () => {
           setTestProgress((prev) =>
             prev
-              ? { ...prev, status: "error", message: "Failed to start test" }
+              ? {
+                  ...prev,
+                  status: "error",
+                  message: "Failed to start test",
+                }
               : null,
           );
           setStartPending(null);
@@ -408,9 +402,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       });
       return;
     }
-
     streamRef.current = stream;
-
     void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
       open: () => stream,
       onProgress: (data) => {
@@ -436,7 +428,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
           test_type: data?.test_type ?? prev?.test_type ?? testType,
           device: data?.device ?? prev?.device ?? rawDrive.name,
         }));
-
         if (finalStatus === "completed") {
           toast.success(
             `${testType === "short" ? "Short" : "Extended"} self-test completed on /dev/${rawDrive.name}`,
@@ -451,7 +442,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         if (error instanceof Error && error.name === "AbortError") {
           return;
         }
-
         const errorMessage =
           error instanceof Error ? error.message : "SMART self-test failed";
         setTestProgress((prev) => ({
@@ -469,75 +459,63 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         setStartPending(null);
       });
   };
-
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
   };
-
   const smart = drive.smart;
   const power = drive.power;
   const isNvme = drive.transport === "nvme";
   const ataAttrs = smart?.ata_smart_attributes?.table;
-
   const smartData = rawDrive?.smart as Record<string, unknown> | undefined;
   const deviceInfo = smartData?.device as Record<string, unknown> | undefined;
   const smartHealth = smartData?.smart_status as
-    | { passed?: boolean }
+    | {
+        passed?: boolean;
+      }
     | undefined;
   const nvmeHealthRaw = smartData?.nvme_smart_health_information_log as
     | Record<string, unknown>
     | undefined;
   const selfTestLog = smartData?.ata_smart_self_test_log as
-    | { standard?: { table?: unknown[] } }
+    | {
+        standard?: {
+          table?: unknown[];
+        };
+      }
     | undefined;
   const nvmeSelfTestLog = smartData?.nvme_self_test_log as
-    | { table?: unknown[] }
+    | {
+        table?: unknown[];
+      }
     | undefined;
-
   if (!expanded) return null;
-
   return (
-    <Collapse in={expanded} timeout="auto" unmountOnExit>
+    <AppCollapse in={expanded} timeout="auto" unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-        <Divider sx={{ my: 2 }} />
+        <AppDivider style={{ margin: "16px 0" }} />
 
-        <div style={{ borderBottom: `1px solid ${theme.palette.divider}` }}>
-          <Tabs
-            value={tabIndex}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              "& .MuiTab-root": {
-                minWidth: "auto",
-                px: 1.5,
+        <div
+          style={{
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <TabSelector
+            value={String(tabIndex)}
+            onChange={(nextValue) => handleTabChange(Number(nextValue))}
+            options={[
+              { value: "0", label: "Overview" },
+              { value: "1", label: "SMART Attributes" },
+              { value: "2", label: "Drive Information" },
+              ...(isNvme && power
+                ? [{ value: "3", label: "Power States" }]
+                : []),
+              {
+                value: isNvme && power ? "4" : "3",
+                label: "Self-Tests",
               },
-              "& .MuiTabs-scroller": {
-                "&::-webkit-scrollbar": {
-                  height: 8,
-                },
-                "&::-webkit-scrollbar-thumb": {
-                  backgroundColor: alpha(theme.palette.text.secondary, 0.2),
-                  borderRadius: 8,
-                  border: "2px solid transparent",
-                  backgroundClip: "content-box",
-                },
-                "&::-webkit-scrollbar-track": {
-                  background: "transparent",
-                  borderRadius: 8,
-                },
-                "&::-webkit-scrollbar-thumb:hover": {
-                  backgroundColor: alpha(theme.palette.text.secondary, 0.45),
-                },
-              },
-            }}
-          >
-            <Tab label="Overview" />
-            <Tab label="SMART Attributes" />
-            <Tab label="Drive Information" />
-            {isNvme && power && <Tab label="Power States" />}
-            <Tab label="Self-Tests" />
-          </Tabs>
+            ]}
+            style={{ marginBottom: 0 }}
+          />
         </div>
 
         <TabPanel value={tabIndex} index={0}>
@@ -579,12 +557,11 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
           />
         </TabPanel>
       </div>
-    </Collapse>
+    </AppCollapse>
   );
 };
-
 const DiskOverview: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -597,19 +574,32 @@ const DiskOverview: React.FC = () => {
   >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-
   const {
-    data: rawDrives = [],
+    data: rawDrivesData,
     isPending: drivesLoading,
     refetch: refetchDrives,
-  } = linuxio.storage.get_drive_info.useQuery({ refetchInterval: 30000 });
-
-  const { data: filesystems = [], isPending: fsLoading } =
-    linuxio.system.get_fs_info.useQuery({ refetchInterval: 10000 });
-  const { data: nfsMounts = [] } = linuxio.storage.list_nfs_mounts.useQuery({
+  } = linuxio.storage.get_drive_info.useQuery({
+    refetchInterval: 30000,
+  });
+  const { data: filesystemsData, isPending: fsLoading } =
+    linuxio.system.get_fs_info.useQuery({
+      refetchInterval: 10000,
+    });
+  const { data: nfsMountsData } = linuxio.storage.list_nfs_mounts.useQuery({
     refetchInterval: 10000,
   });
-
+  const rawDrives = useMemo(
+    () => (Array.isArray(rawDrivesData) ? rawDrivesData : []),
+    [rawDrivesData],
+  );
+  const filesystems = useMemo(
+    () => (Array.isArray(filesystemsData) ? filesystemsData : []),
+    [filesystemsData],
+  );
+  const nfsMounts = useMemo(
+    () => (Array.isArray(nfsMountsData) ? nfsMountsData : []),
+    [nfsMountsData],
+  );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     linuxio.storage.unmount_filesystem.useMutation({
       onSuccess: async () => {
@@ -621,7 +611,6 @@ const DiskOverview: React.FC = () => {
             queryKey: linuxio.system.get_fs_info.queryKey(),
           }),
         ]);
-
         toast.success("Filesystem unmounted");
         setSearchParams((prev) => {
           prev.delete("fs");
@@ -634,23 +623,22 @@ const DiskOverview: React.FC = () => {
         );
       },
     });
-
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
     linuxio.storage.create_btrfs_subvolume.useMutation({
       onSuccess: async (result) => {
         await queryClient.invalidateQueries({
           queryKey: linuxio.system.get_fs_info.queryKey(),
         });
-
         if (result.path) {
           toast.success(`Created subvolume at ${result.path}`);
         } else {
           toast.success("Subvolume created");
         }
-
         if (result.mountpoint) {
           setSubvolumeDrafts((prev) => {
-            const next = { ...prev };
+            const next = {
+              ...prev,
+            };
             delete next[result.mountpoint!];
             return next;
           });
@@ -662,7 +650,6 @@ const DiskOverview: React.FC = () => {
         );
       },
     });
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -677,7 +664,6 @@ const DiskOverview: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setSearchParams]);
-
   const handleToggle = (driveName: string) => {
     setSearchParams((prev) => {
       if (prev.get("drive") === driveName) {
@@ -688,7 +674,6 @@ const DiskOverview: React.FC = () => {
       return prev;
     });
   };
-
   const drives = useMemo<DriveInfo[]>(
     () =>
       rawDrives.map((d) => ({
@@ -704,12 +689,10 @@ const DiskOverview: React.FC = () => {
       })),
     [rawDrives],
   );
-
   const nfsMountByMountpoint = useMemo(
     () => new Map(nfsMounts.map((mount) => [mount.mountpoint, mount])),
     [nfsMounts],
   );
-
   const relevantFS = useMemo(
     () =>
       filesystems.filter((fs) => {
@@ -727,7 +710,6 @@ const DiskOverview: React.FC = () => {
       }),
     [filesystems],
   );
-
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
     setCreatingSubvolumeMountpoint(null);
     setSearchParams((prev) => {
@@ -739,11 +721,9 @@ const DiskOverview: React.FC = () => {
       return prev;
     });
   };
-
   const handleBrowseFilesystem = (mountpoint: string) => {
     navigate(encodeFilebrowserPath(mountpoint));
   };
-
   const handleInspectDrive = (driveName: string) => {
     setSearchParams((prev) => {
       prev.set("drive", driveName);
@@ -752,25 +732,21 @@ const DiskOverview: React.FC = () => {
     });
     setCreatingSubvolumeMountpoint(null);
   };
-
   const handleUnmountFilesystem = (mountpoint: string) => {
     unmountFilesystem([mountpoint]);
   };
-
   const handleSubvolumeNameChange = (mountpoint: string, value: string) => {
     setSubvolumeDrafts((prev) => ({
       ...prev,
       [mountpoint]: value,
     }));
   };
-
   const handleCreateSubvolume = (mountpoint: string) => {
     const name = (subvolumeDrafts[mountpoint] ?? "").trim();
     if (!name) {
       toast.error("Subvolume name is required");
       return;
     }
-
     setCreatingSubvolumeMountpoint(mountpoint);
     createBtrfsSubvolume([mountpoint, name], {
       onSettled: () => {
@@ -778,30 +754,44 @@ const DiskOverview: React.FC = () => {
       },
     });
   };
-
   if (drivesLoading || fsLoading) {
     return <ComponentLoader />;
   }
-
   return (
     <div>
       {!selectedMountpoint && (
         <>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+          <AppTypography
+            variant="h6"
+            style={{
+              marginBottom: 8,
+              fontWeight: 600,
+            }}
+          >
             Physical Drives
-          </Typography>
-          <Grid container spacing={3} sx={{ mb: 4 }}>
+          </AppTypography>
+          <AppGrid
+            container
+            spacing={3}
+            style={{
+              marginBottom: 16,
+            }}
+          >
             <AnimatePresence>
               {drives.length === 0 ? (
-                <Grid size={{ xs: 12 }}>
-                  <Typography color="text.secondary">
+                <AppGrid
+                  size={{
+                    xs: 12,
+                  }}
+                >
+                  <AppTypography color="text.secondary">
                     No drives found.
-                  </Typography>
-                </Grid>
+                  </AppTypography>
+                </AppGrid>
               ) : (
                 drives.map((drive) =>
                   expanded && expanded !== drive.name ? null : (
-                    <Grid
+                    <AppGrid
                       key={drive.name}
                       size={{
                         xs: 12,
@@ -811,10 +801,21 @@ const DiskOverview: React.FC = () => {
                       }}
                       component={motion.div}
                       layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.2 }}
+                      initial={{
+                        opacity: 0,
+                        scale: 0.95,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        scale: 0.9,
+                      }}
+                      transition={{
+                        duration: 0.2,
+                      }}
                     >
                       <FrostedCard
                         hoverLift={expanded !== drive.name}
@@ -826,13 +827,7 @@ const DiskOverview: React.FC = () => {
                         onClick={() => handleToggle(drive.name)}
                       >
                         {drive.transport.toLowerCase() === "usb" ? (
-                          <Tooltip
-                            title="Create Bootable USB"
-                            placement="top"
-                            arrow
-                            slots={{ transition: Fade }}
-                            slotProps={{ transition: { timeout: 300 } }}
-                          >
+                          <AppTooltip title="Create Bootable USB" arrow>
                             <div
                               className="fc-opacity-hover"
                               style={{
@@ -852,14 +847,12 @@ const DiskOverview: React.FC = () => {
                                 color={theme.palette.text.secondary}
                               />
                             </div>
-                          </Tooltip>
+                          </AppTooltip>
                         ) : getTemperature(drive.smart) !== null ? (
-                          <Tooltip
+                          <AppTooltip
                             title="Drive Temperature"
                             placement="top"
                             arrow
-                            slots={{ transition: Fade }}
-                            slotProps={{ transition: { timeout: 300 } }}
                           >
                             <div
                               style={{
@@ -871,7 +864,7 @@ const DiskOverview: React.FC = () => {
                                 gap: 2,
                               }}
                             >
-                              <Typography
+                              <AppTypography
                                 variant="body2"
                                 fontWeight={600}
                                 color={getTemperatureColor(
@@ -879,9 +872,9 @@ const DiskOverview: React.FC = () => {
                                 )}
                               >
                                 {getTemperature(drive.smart)}°C
-                              </Typography>
+                              </AppTypography>
                             </div>
-                          </Tooltip>
+                          </AppTooltip>
                         ) : null}
                         <div
                           style={{
@@ -900,38 +893,46 @@ const DiskOverview: React.FC = () => {
                             color={theme.palette.primary.main}
                           />
                           <div
-                            style={{ marginLeft: 6, flexGrow: 1, minWidth: 0 }}
+                            style={{
+                              marginLeft: 6,
+                              flexGrow: 1,
+                              minWidth: 0,
+                            }}
                           >
-                            <Typography
+                            <AppTypography
                               variant="subtitle1"
                               fontWeight={600}
                               noWrap
                             >
                               /dev/{drive.name}
-                            </Typography>
-                            <Typography
+                            </AppTypography>
+                            <AppTypography
                               variant="body2"
                               color="text.secondary"
                               noWrap
                               title={drive.model || "Unknown Model"}
                             >
                               {drive.model || "Unknown Model"}
-                            </Typography>
+                            </AppTypography>
                           </div>
                         </div>
                         <div
-                          style={{ display: "flex", gap: 4, flexWrap: "wrap" }}
+                          style={{
+                            display: "flex",
+                            gap: 4,
+                            flexWrap: "wrap",
+                          }}
                         >
                           <Chip
                             label={formatFileSize(drive.sizeBytes)}
                             size="small"
                             color="primary"
-                            variant="outlined"
+                            variant="soft"
                           />
                           <Chip
                             label={drive.transport.toUpperCase()}
                             size="small"
-                            variant="outlined"
+                            variant="soft"
                           />
                           {drive.smart?.smart_status && (
                             <Chip
@@ -944,7 +945,7 @@ const DiskOverview: React.FC = () => {
                               }
                               size="small"
                               color={getHealthColor(drive.smart)}
-                              variant="filled"
+                              variant="soft"
                             />
                           )}
                         </div>
@@ -959,33 +960,43 @@ const DiskOverview: React.FC = () => {
                           smartmontoolsReason={smartmontoolsReason}
                         />
                       </FrostedCard>
-                    </Grid>
+                    </AppGrid>
                   ),
                 )
               )}
             </AnimatePresence>
-          </Grid>
+          </AppGrid>
         </>
       )}
 
       {!expanded && (
         <>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+          <AppTypography
+            variant="h6"
+            style={{
+              marginBottom: 8,
+              fontWeight: 600,
+            }}
+          >
             Filesystems
-          </Typography>
-          <Grid container spacing={3}>
+          </AppTypography>
+          <AppGrid container spacing={3}>
             <AnimatePresence>
               {relevantFS.length === 0 ? (
-                <Grid size={{ xs: 12 }}>
-                  <Typography color="text.secondary">
+                <AppGrid
+                  size={{
+                    xs: 12,
+                  }}
+                >
+                  <AppTypography color="text.secondary">
                     No filesystems found.
-                  </Typography>
-                </Grid>
+                  </AppTypography>
+                </AppGrid>
               ) : (
                 relevantFS.map((fs) =>
                   selectedMountpoint &&
                   selectedMountpoint !== fs.mountpoint ? null : (
-                    <Grid
+                    <AppGrid
                       key={fs.mountpoint}
                       size={{
                         xs: 12,
@@ -995,14 +1006,28 @@ const DiskOverview: React.FC = () => {
                       }}
                       component={motion.div}
                       layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.2 }}
+                      initial={{
+                        opacity: 0,
+                        scale: 0.95,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        scale: 0.9,
+                      }}
+                      transition={{
+                        duration: 0.2,
+                      }}
                     >
                       <FrostedCard
                         hoverLift={selectedMountpoint !== fs.mountpoint}
-                        style={{ padding: 8, cursor: "pointer" }}
+                        style={{
+                          padding: 8,
+                          cursor: "pointer",
+                        }}
                         onClick={() => handleFilesystemToggle(fs)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -1014,27 +1039,33 @@ const DiskOverview: React.FC = () => {
                         tabIndex={0}
                         aria-label={`Toggle details for ${fs.mountpoint}`}
                       >
-                        <Typography
+                        <AppTypography
                           variant="subtitle2"
                           fontWeight={600}
                           noWrap
                           title={fs.mountpoint}
                         >
                           {fs.mountpoint}
-                        </Typography>
-                        <Typography
+                        </AppTypography>
+                        <AppTypography
                           variant="body2"
                           color="text.secondary"
                           noWrap
-                          sx={{ mb: 1.5 }}
                           title={`${fs.device} (${fs.fstype})`}
+                          style={{
+                            marginBottom: 6,
+                          }}
                         >
                           {fs.device} ({fs.fstype})
-                        </Typography>
-                        <LinearProgress
+                        </AppTypography>
+                        <AppLinearProgress
                           variant="determinate"
                           value={fs.usedPercent}
-                          sx={{ height: 8, borderRadius: 4, mb: 1 }}
+                          style={{
+                            height: 8,
+                            borderRadius: 4,
+                            marginBottom: 8,
+                          }}
                           color={
                             fs.usedPercent > 90
                               ? "error"
@@ -1043,10 +1074,10 @@ const DiskOverview: React.FC = () => {
                                 : "primary"
                           }
                         />
-                        <Typography variant="body2" color="text.secondary">
+                        <AppTypography variant="body2" color="text.secondary">
                           {formatFileSize(fs.used)} / {formatFileSize(fs.total)}{" "}
                           ({fs.usedPercent.toFixed(1)}%)
-                        </Typography>
+                        </AppTypography>
                         {selectedMountpoint === fs.mountpoint && (
                           <FilesystemCardDetails
                             filesystem={fs}
@@ -1068,16 +1099,15 @@ const DiskOverview: React.FC = () => {
                           />
                         )}
                       </FrostedCard>
-                    </Grid>
+                    </AppGrid>
                   ),
                 )
               )}
             </AnimatePresence>
-          </Grid>
+          </AppGrid>
         </>
       )}
     </div>
   );
 };
-
 export default DiskOverview;

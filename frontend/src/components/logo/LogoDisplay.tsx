@@ -1,23 +1,25 @@
-import { Typography, useTheme } from "@mui/material";
 import React from "react";
+
+import { useAppTheme } from "@/theme";
 
 interface LogoDisplayProps {
   showText?: boolean;
 }
 
 const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const dur = theme.transitions.duration.standard;
 
   return (
-    <Typography
-      variant="h6"
-      noWrap
-      sx={{
-        fontWeight: 400,
-        fontSize: "1.45rem",
+    <div
+      style={{
         display: "inline-flex",
         alignItems: "center",
+        margin: 0,
+        fontFamily: theme.typography.fontFamily,
+        fontSize: "1.45rem",
+        fontWeight: 400,
+        lineHeight: 1.25,
       }}
     >
       <span
@@ -51,7 +53,7 @@ const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
       >
         i/O
       </span>
-    </Typography>
+    </div>
   );
 };
 

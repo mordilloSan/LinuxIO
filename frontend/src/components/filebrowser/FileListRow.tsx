@@ -1,4 +1,3 @@
-import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
   useMemo,
@@ -10,6 +9,7 @@ import React, {
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
+import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 // Styles are injected by FileCard.tsx (shared animation)
@@ -65,7 +65,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onCancelRename,
     borderRadius,
   }) => {
-    const theme = useTheme();
+    const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 

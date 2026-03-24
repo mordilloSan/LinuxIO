@@ -1,5 +1,3 @@
-import { Grid, Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -9,6 +7,9 @@ import InterfaceDetails from "./InterfaceClients";
 import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -17,7 +18,7 @@ const wireguardToastMeta = {
 };
 
 const WireGuardDashboard: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );
@@ -211,16 +212,16 @@ const WireGuardDashboard: React.FC = () => {
       {isLoading ? (
         <ComponentLoader />
       ) : isError ? (
-        <Typography color="error">
+        <AppTypography color="error">
           {error?.message || "Failed to fetch interfaces"}
-        </Typography>
+        </AppTypography>
       ) : WGinterfaces.length > 0 ? (
         <>
           <AnimatePresence>
-            <Grid container spacing={3}>
+            <AppGrid container spacing={3}>
               {WGinterfaces.map((iface) => (
-                <Grid
-                  size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
+                <AppGrid
+                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                   key={iface.name}
                 >
                   <WireguardInterfaceCard
@@ -235,13 +236,13 @@ const WireGuardDashboard: React.FC = () => {
                     handleDelete={handleDelete}
                     handleAddPeer={handleAddPeer}
                   />
-                </Grid>
+                </AppGrid>
               ))}
-            </Grid>
+            </AppGrid>
           </AnimatePresence>
           {selectedInterface && (
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
+            <AppGrid container spacing={3}>
+              <AppGrid size={{ xs: 12 }}>
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -255,20 +256,22 @@ const WireGuardDashboard: React.FC = () => {
                       marginBottom: theme.spacing(2),
                     }}
                   >
-                    <Typography variant="h5" gutterBottom>
+                    <AppTypography variant="h5" gutterBottom>
                       Clients for {selectedInterface}
-                    </Typography>
+                    </AppTypography>
                   </div>
                   <div ref={interfaceDetailsRef}>
                     <InterfaceDetails params={{ id: selectedInterface }} />
                   </div>
                 </motion.div>
-              </Grid>
-            </Grid>
+              </AppGrid>
+            </AppGrid>
           )}
         </>
       ) : (
-        <Typography color="textSecondary">No interfaces found</Typography>
+        <AppTypography color="text.secondary">
+          No interfaces found
+        </AppTypography>
       )}
     </>
   );

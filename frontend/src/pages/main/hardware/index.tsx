@@ -1,14 +1,4 @@
 import { Icon } from "@iconify/react";
-import { ExpandMore as ExpandMoreIcon } from "@mui/icons-material";
-import {
-  Chip,
-  Collapse,
-  Grid,
-  IconButton,
-  TableCell,
-  Typography,
-} from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
@@ -18,11 +8,19 @@ import MetricBar from "@/components/gauge/MetricBar";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppGrid from "@/components/ui/AppGrid";
+import AppIconButton from "@/components/ui/AppIconButton";
+import { AppTableCell } from "@/components/ui/AppTable";
+import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import "@/theme/section.css";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
 import MemoryUsage from "@/pages/main/dashboard/Memory";
 import Processor from "@/pages/main/dashboard/Processor";
+import { useAppTheme } from "@/theme";
+import { alpha } from "@/utils/color";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -86,33 +84,35 @@ const SectionHeader: React.FC<{
       userSelect: "none",
     }}
   >
-    <Typography variant="subtitle1" fontWeight={700}>
+    <AppTypography variant="subtitle1" fontWeight={700}>
       {title}
-    </Typography>
-    <IconButton
+    </AppTypography>
+    <AppIconButton
       size="small"
       className="section-toggle"
-      component="span"
-      sx={{
+      style={{
         opacity: 0,
         transition: "opacity 0.15s",
         pointerEvents: "none",
       }}
     >
-      <ExpandMoreIcon
-        sx={{
+      <Icon
+        icon="mdi:chevron-down"
+        width={24}
+        height={24}
+        style={{
           transition: "transform 0.2s",
           transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
         }}
       />
-    </IconButton>
+    </AppIconButton>
   </div>
 );
 
 // ─── sensor card ─────────────────────────────────────────────────────────────
 
 const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const temps = group.readings.filter((r) => {
     const u = r.unit.toLowerCase();
     return u === "c" || u === "°c";
@@ -153,18 +153,18 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
           />
         </div>
         <div style={{ minWidth: 0 }}>
-          <Typography
+          <AppTypography
             variant="subtitle2"
             fontWeight={700}
-            lineHeight={1.2}
+            style={{ lineHeight: 1.2 }}
             noWrap
           >
             {group.adapter}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
+          </AppTypography>
+          <AppTypography variant="caption" color="text.secondary">
             {group.readings.length} reading
             {group.readings.length !== 1 ? "s" : ""}
-          </Typography>
+          </AppTypography>
         </div>
       </div>
 
@@ -224,14 +224,14 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
                       : alpha(theme.palette.text.secondary, 0.4)
                   }
                 />
-                <Typography variant="caption">{r.label}</Typography>
+                <AppTypography variant="caption">{r.label}</AppTypography>
               </div>
-              <Typography
+              <AppTypography
                 variant="caption"
-                sx={{ fontVariantNumeric: "tabular-nums" }}
+                style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {r.value > 0 ? `${r.value} RPM` : "Off"}
-              </Typography>
+              </AppTypography>
             </div>
           ))}
         </div>
@@ -258,14 +258,14 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
                   height={14}
                   color={theme.palette.success.main}
                 />
-                <Typography variant="caption">{r.label}</Typography>
+                <AppTypography variant="caption">{r.label}</AppTypography>
               </div>
-              <Typography
+              <AppTypography
                 variant="caption"
-                sx={{ fontVariantNumeric: "tabular-nums" }}
+                style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {r.value.toFixed(2)} V
-              </Typography>
+              </AppTypography>
             </div>
           ))}
         </div>
@@ -284,13 +284,13 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
               paddingInline: 2,
             }}
           >
-            <Typography variant="caption">{r.label}</Typography>
+            <AppTypography variant="caption">{r.label}</AppTypography>
             <Chip
               size="small"
               label={`${r.value} ${r.unit}`}
               color={unitChipColor(r.unit)}
-              variant="outlined"
-              sx={{ height: 20, fontSize: "0.65rem" }}
+              variant="soft"
+              style={{ height: 20, fontSize: "0.65rem" }}
             />
           </div>
         ))}
@@ -334,7 +334,7 @@ const MemoMemory = React.memo(MemoryUsage);
 const MemoGpuInfo = React.memo(GpuInfo);
 
 const HardwarePage: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   // ── data ──
   const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
@@ -405,8 +405,8 @@ const HardwarePage: React.FC = () => {
         expanded={sections.overview}
         onClick={() => toggleSection("overview")}
       />
-      <Collapse in={sections.overview}>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+      <AppCollapse in={sections.overview}>
+        <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
           {(
             [
               {
@@ -443,7 +443,7 @@ const HardwarePage: React.FC = () => {
               icon: string;
             }[]
           ).map(({ label, value, detail, icon }) => (
-            <Grid key={label} size={{ xs: 6, md: 3 }}>
+            <AppGrid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard
                 style={{
                   paddingInline: 10,
@@ -464,13 +464,13 @@ const HardwarePage: React.FC = () => {
                     height={18}
                     color={theme.palette.primary.main}
                   />
-                  <Typography
+                  <AppTypography
                     variant="overline"
                     color="text.secondary"
-                    sx={{ lineHeight: 1.6 }}
+                    style={{ lineHeight: 1.6 }}
                   >
                     {label}
-                  </Typography>
+                  </AppTypography>
                 </div>
                 <div
                   style={{
@@ -480,28 +480,29 @@ const HardwarePage: React.FC = () => {
                     marginTop: 1,
                   }}
                 >
-                  <Typography
+                  <AppTypography
                     variant="h6"
                     fontWeight={700}
                     noWrap
-                    sx={{ lineHeight: 1.2, fontSize: "0.95rem" }}
+                    style={{ lineHeight: 1.2 }}
+                    fontSize="0.95rem"
                   >
                     {value}
-                  </Typography>
-                  <Typography
+                  </AppTypography>
+                  <AppTypography
                     variant="caption"
                     color="text.secondary"
                     noWrap
-                    sx={{ textAlign: "right" }}
+                    align="right"
                   >
                     {detail}
-                  </Typography>
+                  </AppTypography>
                 </div>
               </FrostedCard>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
-      </Collapse>
+        </AppGrid>
+      </AppCollapse>
 
       {/* ── System Information ──────────────────────────────────────────── */}
       <SectionHeader
@@ -509,8 +510,8 @@ const HardwarePage: React.FC = () => {
         expanded={sections.systemInfo}
         onClick={() => toggleSection("systemInfo")}
       />
-      <Collapse in={sections.systemInfo}>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+      <AppCollapse in={sections.systemInfo}>
+        <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
           {(
             [
               { label: "Type", value: systemInfo?.chassisType },
@@ -523,28 +524,28 @@ const HardwarePage: React.FC = () => {
               { label: "CPU", value: systemInfo?.cpuSummary },
             ] as { label: string; value: string | undefined }[]
           ).map(({ label, value }) => (
-            <Grid key={label} size={{ xs: 6, md: 3 }}>
+            <AppGrid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard style={{ paddingInline: 10, paddingBlock: 8 }}>
-                <Typography
+                <AppTypography
                   variant="overline"
                   color="text.secondary"
-                  sx={{ lineHeight: 1.6 }}
+                  style={{ lineHeight: 1.6 }}
                 >
                   {label}
-                </Typography>
-                <Typography
+                </AppTypography>
+                <AppTypography
                   variant="body2"
                   fontWeight={600}
                   noWrap
-                  sx={{ lineHeight: 1.3 }}
+                  style={{ lineHeight: 1.3 }}
                 >
                   {value || "—"}
-                </Typography>
+                </AppTypography>
               </FrostedCard>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
-      </Collapse>
+        </AppGrid>
+      </AppCollapse>
 
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
       <SectionHeader
@@ -552,7 +553,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.memoryModules}
         onClick={() => toggleSection("memoryModules")}
       />
-      <Collapse in={sections.memoryModules}>
+      <AppCollapse in={sections.memoryModules}>
         <FrostedCard
           style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
         >
@@ -562,27 +563,27 @@ const HardwarePage: React.FC = () => {
             getRowKey={(mod, idx) => `${mod.id}-${idx}`}
             renderMainRow={(mod) => (
               <>
-                <TableCell>{mod.id || "—"}</TableCell>
-                <TableCell>{mod.technology}</TableCell>
-                <TableCell>{mod.type}</TableCell>
-                <TableCell>{mod.size}</TableCell>
-                <TableCell>
+                <AppTableCell>{mod.id || "—"}</AppTableCell>
+                <AppTableCell>{mod.technology}</AppTableCell>
+                <AppTableCell>{mod.type}</AppTableCell>
+                <AppTableCell>{mod.size}</AppTableCell>
+                <AppTableCell>
                   <Chip
                     size="small"
                     label={mod.state}
                     color={mod.state === "Present" ? "success" : "default"}
-                    variant="outlined"
-                    sx={{ height: 22, fontSize: "0.75rem" }}
+                    variant="soft"
+                    style={{ height: 22, fontSize: "0.75rem" }}
                   />
-                </TableCell>
-                <TableCell>{mod.rank}</TableCell>
-                <TableCell>{mod.speed}</TableCell>
+                </AppTableCell>
+                <AppTableCell>{mod.rank}</AppTableCell>
+                <AppTableCell>{mod.speed}</AppTableCell>
               </>
             )}
             emptyMessage="No memory module data available. Ensure dmidecode is installed."
           />
         </FrostedCard>
-      </Collapse>
+      </AppCollapse>
 
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
@@ -590,36 +591,21 @@ const HardwarePage: React.FC = () => {
         expanded={sections.hardware}
         onClick={() => toggleSection("hardware")}
       />
-      <Collapse in={sections.hardware}>
-        <Grid container spacing={4} sx={{ mb: 2 }}>
+      <AppCollapse in={sections.hardware}>
+        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
           {[
             { id: "cpu", component: MemoProcessor },
             { id: "memory", component: MemoMemory },
+            { id: "gpu", component: MemoGpuInfo },
           ].map(({ id, component: CardComponent }) => (
-            <Grid key={id} size={{ xs: 12, lg: 6 }}>
+            <AppGrid key={id} size={{ xs: 12, lg: 4 }}>
               <ErrorBoundary>
                 <CardComponent />
               </ErrorBoundary>
-            </Grid>
+            </AppGrid>
           ))}
-        </Grid>
-      </Collapse>
-
-      {/* ── GPU ─────────────────────────────────────────────────────────── */}
-      <SectionHeader
-        title="GPU"
-        expanded={sections.gpu}
-        onClick={() => toggleSection("gpu")}
-      />
-      <Collapse in={sections.gpu}>
-        <Grid container spacing={4} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12 }}>
-            <ErrorBoundary>
-              <MemoGpuInfo />
-            </ErrorBoundary>
-          </Grid>
-        </Grid>
-      </Collapse>
+        </AppGrid>
+      </AppCollapse>
 
       {/* ── Sensor Readings ────────────────────────────────────────────── */}
       <SectionHeader
@@ -627,19 +613,19 @@ const HardwarePage: React.FC = () => {
         expanded={sections.sensors}
         onClick={() => toggleSection("sensors")}
       />
-      <Collapse in={sections.sensors}>
+      <AppCollapse in={sections.sensors}>
         {!sensorGroups || sensorGroups.length === 0 ? (
           <FrostedCard style={{ padding: 16, textAlign: "center" }}>
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               No sensor data available. Ensure <code>lm-sensors</code> is
               installed and configured.
-            </Typography>
+            </AppTypography>
           </FrostedCard>
         ) : (
           <>
             {/* Summary bar */}
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid size={{ xs: 12 }}>
+            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
+              <AppGrid size={{ xs: 12 }}>
                 <FrostedCard
                   style={{
                     paddingInline: 12,
@@ -654,13 +640,13 @@ const HardwarePage: React.FC = () => {
                     size="small"
                     label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
                     color="primary"
-                    variant="outlined"
+                    variant="soft"
                   />
                   <Chip
                     size="small"
                     label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
                     color="default"
-                    variant="outlined"
+                    variant="soft"
                   />
                   {sensorSummary.maxTemp != null && (
                     <Chip
@@ -673,27 +659,27 @@ const HardwarePage: React.FC = () => {
                             ? "warning"
                             : "success"
                       }
-                      variant="outlined"
+                      variant="soft"
                     />
                   )}
                 </FrostedCard>
-              </Grid>
-            </Grid>
+              </AppGrid>
+            </AppGrid>
 
             {/* Sensor group cards */}
-            <Grid container spacing={2} sx={{ mb: 2 }}>
+            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
               {sensorGroups.map((group, idx) => (
-                <Grid
+                <AppGrid
                   key={`${group.adapter}-${idx}`}
                   size={{ xs: 12, sm: 6, lg: 4 }}
                 >
                   <SensorGroupCard group={group} />
-                </Grid>
+                </AppGrid>
               ))}
-            </Grid>
+            </AppGrid>
           </>
         )}
-      </Collapse>
+      </AppCollapse>
 
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}
       <SectionHeader
@@ -701,7 +687,7 @@ const HardwarePage: React.FC = () => {
         expanded={sections.pciDevices}
         onClick={() => toggleSection("pciDevices")}
       />
-      <Collapse in={sections.pciDevices}>
+      <AppCollapse in={sections.pciDevices}>
         <FrostedCard
           style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
         >
@@ -711,18 +697,20 @@ const HardwarePage: React.FC = () => {
             getRowKey={(dev, idx) => `${dev.slot}-${idx}`}
             renderMainRow={(dev) => (
               <>
-                <TableCell>{dev.class || "—"}</TableCell>
-                <TableCell>{dev.model || "—"}</TableCell>
-                <TableCell>{dev.vendor || "—"}</TableCell>
-                <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                <AppTableCell>{dev.class || "—"}</AppTableCell>
+                <AppTableCell>{dev.model || "—"}</AppTableCell>
+                <AppTableCell>{dev.vendor || "—"}</AppTableCell>
+                <AppTableCell
+                  style={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                >
                   {dev.slot || "—"}
-                </TableCell>
+                </AppTableCell>
               </>
             )}
             emptyMessage="No PCI devices found"
           />
         </FrostedCard>
-      </Collapse>
+      </AppCollapse>
     </div>
   );
 };

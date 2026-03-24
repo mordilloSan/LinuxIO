@@ -1,14 +1,12 @@
-import CancelIcon from "@mui/icons-material/Cancel";
-import CloseIcon from "@mui/icons-material/Close";
-import {
-  Alert,
-  IconButton,
-  LinearProgress,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { Icon } from "@iconify/react";
 import React from "react";
+
+import AppAlert from "@/components/ui/AppAlert";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 interface UpdateActionsProps {
   isUpdating: boolean;
@@ -31,7 +29,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   onClearError,
   onCancel,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   // Build the status text: "Status: packageName" or just "Status" or "Preparing..."
   const getStatusText = () => {
     if (!currentPackage) {
@@ -57,24 +55,24 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
     <div style={{ marginBottom: theme.spacing(3) }}>
       {/* Error Alert */}
       {error && (
-        <Alert
+        <AppAlert
           severity="error"
-          sx={{ mb: 2 }}
+          style={{ marginBottom: 16 }}
           action={
             onClearError && (
-              <IconButton
+              <AppIconButton
                 aria-label="close"
                 color="inherit"
                 size="small"
                 onClick={onClearError}
               >
-                <CloseIcon fontSize="inherit" />
-              </IconButton>
+                <Icon icon="mdi:close" width={18} height={18} />
+              </AppIconButton>
             )
           }
         >
           {error}
-        </Alert>
+        </AppAlert>
       )}
 
       {/* Progress Indicator */}
@@ -88,9 +86,9 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
               marginBottom: theme.spacing(1),
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <AppTypography variant="body2" color="text.secondary">
               {getStatusText()}
-            </Typography>
+            </AppTypography>
             <div
               style={{
                 display: "flex",
@@ -98,34 +96,38 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                 gap: theme.spacing(1),
               }}
             >
-              <Typography variant="body2" color="text.secondary">
+              <AppTypography variant="body2" color="text.secondary">
                 {Math.round(progress)}%
-              </Typography>
+              </AppTypography>
               {onCancel && (
-                <Tooltip title="Cancel update">
-                  <IconButton size="small" onClick={onCancel} sx={{ ml: 0.5 }}>
-                    <CancelIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                <AppTooltip title="Cancel update">
+                  <AppIconButton
+                    size="small"
+                    onClick={onCancel}
+                    style={{ marginLeft: 2 }}
+                  >
+                    <Icon icon="mdi:cancel" width={20} height={20} />
+                  </AppIconButton>
+                </AppTooltip>
               )}
             </div>
           </div>
-          <LinearProgress
+          <AppLinearProgress
             variant="determinate"
             value={progress}
-            sx={{ height: 8, borderRadius: 1 }}
+            style={{ height: 8, borderRadius: 1 }}
           />
           {eventLog && eventLog.length > 0 && (
             <div style={{ marginTop: theme.spacing(1) }}>
               {eventLog.map((line, index) => (
-                <Typography
+                <AppTypography
                   key={`${index}-${line}`}
                   variant="caption"
                   color="text.secondary"
-                  sx={{ display: "block" }}
+                  style={{ display: "block" }}
                 >
                   {line}
-                </Typography>
+                </AppTypography>
               ))}
             </div>
           )}

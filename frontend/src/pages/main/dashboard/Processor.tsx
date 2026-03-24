@@ -1,6 +1,3 @@
-import TemperatureIcon from "@mui/icons-material/Thermostat";
-import { Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import ProcessorGraph from "./ProcessorGraph";
@@ -11,10 +8,12 @@ import DashboardCard, {
 } from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useAppTheme } from "@/theme";
 
 const Processor: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const {
     data: CPUInfo,
@@ -105,14 +104,14 @@ const Processor: React.FC = () => {
               borderBottom:
                 index === rows.length - 1
                   ? "none"
-                  : "1px solid var(--mui-palette-divider)",
+                  : "1px solid var(--app-palette-divider)",
               gap: theme.spacing(1),
             }}
           >
-            <Typography
+            <AppTypography
               variant="caption"
               color="text.secondary"
-              sx={{
+              style={{
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
                 fontSize: "0.62rem",
@@ -120,17 +119,16 @@ const Processor: React.FC = () => {
               }}
             >
               {label}
-            </Typography>
-            <Typography variant="body2" fontWeight={500} noWrap>
+            </AppTypography>
+            <AppTypography variant="body2" fontWeight={500} noWrap>
               {value}
-            </Typography>
+            </AppTypography>
           </div>
         ))}
       </div>
     ),
     icon_text: IconText,
-    icon: TemperatureIcon,
-    iconProps: { sx: { color: "text.secondary" } },
+    icon: "mdi:thermometer",
     ...(lmSensorsAvailable &&
       sensorOptions.length >= 1 && {
         iconTextSelectOptions: sensorOptions,

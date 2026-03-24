@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
@@ -27,7 +27,6 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
-  const queryClient = useQueryClient();
   const { isOpen } = useStreamMux();
   const isUpdating = useIsUpdating();
   const {
@@ -91,42 +90,46 @@ export const useFileQueries = ({
       },
     );
 
-  const multipleResourceQueryKey = useMemo(
-    () => [
-      ...linuxio.filebrowser.resource_get.queryKey("multi"),
-      ...(detailTarget ?? []),
-    ],
-    [detailTarget],
-  );
+  const multipleDetailTargets =
+    hasMultipleDetailTargets && detailTarget !== null && detailTarget.length > 1
+      ? detailTarget
+      : [];
+  const areMultipleResourcesEnabled =
+    isOpen && !isUpdating && multipleDetailTargets.length > 1;
 
-  const { data: multipleFileResources, isPending: isMultipleFilesPending } =
-    useQuery<Record<string, FileResource>>({
-      queryKey: multipleResourceQueryKey,
-      queryFn: async () => {
-        const currentDetailTarget = detailTarget;
-        if (!currentDetailTarget || currentDetailTarget.length <= 1) {
-          throw new Error("Invalid selection");
+  const multipleResourceQueries = useQueries({
+    queries: multipleDetailTargets.map((path) => ({
+      ...linuxio.filebrowser.resource_get.queryOptions(path, {
+        staleTime: CACHE_TTL_MS.NONE,
+      }),
+      enabled: areMultipleResourcesEnabled,
+    })),
+  });
+
+  const multipleResourceData = multipleResourceQueries.map((q) => q.data);
+
+  const multipleFileResources = useMemo(() => {
+    if (multipleDetailTargets.length <= 1) return undefined;
+    if (multipleResourceData.some((data) => data === undefined)) {
+      return undefined;
+    }
+
+    return multipleDetailTargets.reduce(
+      (acc, path, index) => {
+        const queryData = multipleResourceData[index];
+        if (queryData === undefined) {
+          return acc;
         }
-        const results: Record<string, FileResource> = {};
-        await Promise.all(
-          currentDetailTarget.map(async (path) => {
-            const data = await queryClient.fetchQuery(
-              linuxio.filebrowser.resource_get.queryOptions(path, {
-                staleTime: CACHE_TTL_MS.NONE,
-              }),
-            );
-            results[path] = normalizeResource(data);
-          }),
-        );
-        return results;
+        acc[path] = normalizeResource(queryData);
+        return acc;
       },
-      enabled:
-        isOpen &&
-        !isUpdating &&
-        hasMultipleDetailTargets &&
-        detailTarget !== null &&
-        detailTarget.length > 1,
-    });
+      {} as Record<string, FileResource>,
+    );
+  }, [multipleDetailTargets, ...multipleResourceData]);
+
+  const isMultipleFilesPending =
+    multipleDetailTargets.length > 1 &&
+    multipleResourceQueries.some((query) => query.isPending);
 
   const fileResourceMap = useMemo(() => {
     if (!multipleFileResources) return {};

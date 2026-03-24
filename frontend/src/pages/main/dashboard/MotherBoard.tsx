@@ -1,16 +1,15 @@
-import TemperatureIcon from "@mui/icons-material/Thermostat";
-import { Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
 } from "@/components/cards/DashboardCard";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useAppTheme } from "@/theme";
 
 const MotherBoardInfo: React.FC = () => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const { data: motherboardInfo } =
     linuxio.system.get_motherboard_info.useQuery({
@@ -42,14 +41,14 @@ const MotherBoardInfo: React.FC = () => {
             borderBottom:
               index === rows.length - 1
                 ? "none"
-                : "1px solid var(--mui-palette-divider)",
+                : "1px solid var(--app-palette-divider)",
             gap: theme.spacing(1),
           }}
         >
-          <Typography
+          <AppTypography
             variant="caption"
             color="text.secondary"
-            sx={{
+            style={{
               textTransform: "uppercase",
               letterSpacing: "0.06em",
               fontSize: "0.62rem",
@@ -57,15 +56,17 @@ const MotherBoardInfo: React.FC = () => {
             }}
           >
             {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
+          </AppTypography>
+          <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
-          </Typography>
+          </AppTypography>
         </div>
       ))}
     </div>
   ) : (
-    <Typography variant="body2">No system information available.</Typography>
+    <AppTypography variant="body2">
+      No system information available.
+    </AppTypography>
   );
 
   const sensors = motherboardInfo?.temperatures?.sensors ?? {};
@@ -104,8 +105,7 @@ const MotherBoardInfo: React.FC = () => {
       title="Motherboard"
       stats={visibleDetails}
       icon_text={IconText}
-      icon={TemperatureIcon}
-      iconProps={{ sx: { color: "text.secondary" } }}
+      icon="mdi:thermometer"
       avatarIcon="bi:motherboard"
       {...(lmSensorsAvailable &&
         sensorOptions.length >= 1 && {

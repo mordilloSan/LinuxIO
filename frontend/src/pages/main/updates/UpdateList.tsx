@@ -1,12 +1,3 @@
-import {
-  CardContent,
-  Chip,
-  CircularProgress,
-  Collapse,
-  Grid,
-  Typography,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,9 +5,15 @@ import { toast } from "sonner";
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppCardContent from "@/components/ui/AppCardContent";
+import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 import { Update } from "@/types/update";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
 interface Props {
   updates: Update[];
   onUpdateClick: (pkg: string) => Promise<void>;
@@ -24,7 +21,6 @@ interface Props {
   currentPackage?: string | null;
   isLoading?: boolean;
 }
-
 const UpdateList: React.FC<Props> = ({
   updates,
   onUpdateClick,
@@ -32,13 +28,12 @@ const UpdateList: React.FC<Props> = ({
   currentPackage,
   isLoading,
 }) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, string>>({});
   const [loadingChangelog, setLoadingChangelog] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
   const handleFetchChangelog = useCallback(
     async (packageId: string) => {
       if (changelogs[packageId]) return; // Already loaded
@@ -66,7 +61,6 @@ const UpdateList: React.FC<Props> = ({
     },
     [changelogs, queryClient],
   );
-
   const toggleExpanded = (index: number, packageId: string) => {
     if (index === expandedIdx) {
       setExpandedIdx(null);
@@ -75,7 +69,6 @@ const UpdateList: React.FC<Props> = ({
       handleFetchChangelog(packageId);
     }
   };
-
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -88,29 +81,36 @@ const UpdateList: React.FC<Props> = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
   if (isLoading) {
     return <ComponentLoader />;
   }
-
   if (!updates.length && !isUpdating) {
     return (
-      <div style={{ textAlign: "left" }}>
-        <Typography variant="h6">Your system is up to date </Typography>
+      <div
+        style={{
+          textAlign: "left",
+        }}
+      >
+        <AppTypography variant="h6">Your system is up to date </AppTypography>
       </div>
     );
   }
-
   if (isUpdating) {
     return null; // Hide list while updating; only the progress bar should show
   }
-
   return (
-    <Grid container spacing={2} sx={{ px: 2, pb: 2 }} ref={containerRef}>
+    <AppGrid
+      container
+      spacing={2}
+      style={{
+        paddingBottom: 16,
+      }}
+      ref={containerRef}
+    >
       {updates.map((update, idx) => (
-        <Grid key={idx} size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
+        <AppGrid key={idx} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
           <FrostedCard hoverLift>
-            <CardContent>
+            <AppCardContent>
               <div
                 style={{
                   display: "flex",
@@ -118,54 +118,53 @@ const UpdateList: React.FC<Props> = ({
                   marginBottom: theme.spacing(3),
                 }}
               >
-                <Typography
+                <AppTypography
                   variant="h6"
-                  sx={{
+                  style={{
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    maxWidth: "90%", // or a specific px/em width
+                    maxWidth: "90%",
                   }}
                 >
                   {update.summary}
-                </Typography>
+                </AppTypography>
               </div>
 
-              <Typography
+              <AppTypography
                 variant="body2"
                 color="text.secondary"
                 gutterBottom
-                sx={{
+                style={{
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: "90%", // or a specific px/em width
+                  maxWidth: "90%",
                 }}
               >
                 Package: {update.package_id}
-              </Typography>
+              </AppTypography>
 
-              <Typography
+              <AppTypography
                 variant="body2"
                 color="text.secondary"
                 gutterBottom
-                sx={{
+                style={{
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: "90%", // or a specific px/em width
+                  maxWidth: "90%",
                 }}
               >
                 Version: {update.version}
-              </Typography>
+              </AppTypography>
 
               <div
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: theme.spacing(3),
-                  marginTop: theme.spacing(4),
-                  marginBottom: `-${theme.spacing(2)}`,
+                  gap: theme.spacing(1),
+                  marginTop: theme.spacing(1.5),
                 }}
               >
                 <Chip
@@ -173,12 +172,11 @@ const UpdateList: React.FC<Props> = ({
                   size="small"
                   variant="outlined"
                   onClick={() => toggleExpanded(idx, update.package_id)}
-                  sx={{ cursor: "pointer" }}
                 />
                 <Chip
                   label={
                     currentPackage === update.package_id ? (
-                      <CircularProgress size={16} />
+                      <AppCircularProgress size={16} />
                     ) : (
                       "Update"
                     )
@@ -189,11 +187,14 @@ const UpdateList: React.FC<Props> = ({
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
                   }}
-                  sx={{ cursor: "pointer" }}
                 />
               </div>
 
-              <Collapse in={expandedIdx === idx} timeout="auto" unmountOnExit>
+              <AppCollapse
+                in={expandedIdx === idx}
+                timeout="auto"
+                unmountOnExit
+              >
                 <div
                   style={{
                     whiteSpace: "pre-wrap",
@@ -210,21 +211,20 @@ const UpdateList: React.FC<Props> = ({
                         paddingBottom: theme.spacing(2),
                       }}
                     >
-                      <CircularProgress size={20} />
+                      <AppCircularProgress size={20} />
                     </div>
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <AppTypography variant="body2" color="text.secondary">
                       {changelogs[update.package_id] || "Loading..."}
-                    </Typography>
+                    </AppTypography>
                   )}
                 </div>
-              </Collapse>
-            </CardContent>
+              </AppCollapse>
+            </AppCardContent>
           </FrostedCard>
-        </Grid>
+        </AppGrid>
       ))}
-    </Grid>
+    </AppGrid>
   );
 };
-
 export default UpdateList;
