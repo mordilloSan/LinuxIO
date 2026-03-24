@@ -16,9 +16,6 @@ import { useAppTheme } from "@/theme";
 const Updates: React.FC = () => {
   const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  // Query updates - use GetUpdatesBasic for fast initial load
-  // This skips the slow GetUpdateDetail D-Bus call
   const {
     data: rawUpdates,
     isPending: isLoading,

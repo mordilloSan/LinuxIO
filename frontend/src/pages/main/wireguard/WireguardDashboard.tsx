@@ -221,7 +221,7 @@ const WireGuardDashboard: React.FC = () => {
             <AppGrid container spacing={3}>
               {WGinterfaces.map((iface) => (
                 <AppGrid
-                  size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
+                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                   key={iface.name}
                 >
                   <WireguardInterfaceCard

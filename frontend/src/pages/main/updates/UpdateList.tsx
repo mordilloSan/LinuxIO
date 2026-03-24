@@ -110,13 +110,7 @@ const UpdateList: React.FC<Props> = ({
       {updates.map((update, idx) => (
         <AppGrid
           key={idx}
-          size={{
-            xs: 12,
-            sm: 4,
-            md: 4,
-            lg: 3,
-            xl: 2,
-          }}
+          size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
         >
           <FrostedCard hoverLift>
             <AppCardContent>
