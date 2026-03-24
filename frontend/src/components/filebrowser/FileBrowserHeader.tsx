@@ -5,10 +5,9 @@ import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
@@ -48,12 +47,12 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 }) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [actionsAnchorEl, setActionsAnchorEl] = React.useState<HTMLElement | null>(null);
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, isIndexing, openIndexerDialog } = useFileTransfers();
   const handleIndexer = useCallback(() => {
-    setActionsOpen(false);
+    setActionsAnchorEl(null);
     openIndexerDialog();
     void startIndexer({});
   }, [openIndexerDialog, startIndexer]);
@@ -176,40 +175,38 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                   <>
                     <AppIconButton
                       size="small"
-                      onClick={() => setActionsOpen(true)}
+                      onClick={(e) => setActionsAnchorEl(e.currentTarget)}
                       aria-label="Actions"
                     >
                       <Icon icon="mdi:tune" width={20} height={20} />
                     </AppIconButton>
-                    <GeneralDialog
-                      open={actionsOpen}
-                      onClose={() => setActionsOpen(false)}
-                      maxWidth="xs"
-                      fullWidth
+                    <AppMenu
+                      open={Boolean(actionsAnchorEl)}
+                      onClose={() => setActionsAnchorEl(null)}
+                      anchorEl={actionsAnchorEl}
+                      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                      transformOrigin={{ vertical: "top", horizontal: "right" }}
                     >
-                      <AppDialogTitle>Actions</AppDialogTitle>
-                      <AppDialogContent>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <AppTooltip title="Switch view">
-                            <AppIconButton onClick={() => { setActionsOpen(false); onSwitchView(); }} aria-label="Switch view">
-                              {viewIcon}
+                      <div style={{ display: "flex", gap: 8, padding: "4px 8px" }}>
+                        <AppTooltip title="Switch view">
+                          <AppIconButton onClick={() => { setActionsAnchorEl(null); onSwitchView(); }} aria-label="Switch view">
+                            {viewIcon}
+                          </AppIconButton>
+                        </AppTooltip>
+                        <AppTooltip title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}>
+                          <AppIconButton onClick={() => { setActionsAnchorEl(null); onToggleHiddenFiles(); }} aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}>
+                            {showHiddenFiles ? <Icon icon="mdi:eye" width={22} height={22} /> : <Icon icon="mdi:eye-off" width={22} height={22} />}
+                          </AppIconButton>
+                        </AppTooltip>
+                        <AppTooltip title={isIndexing ? "Indexing..." : !indexerEnabled ? indexerReason : "Index filesystem"}>
+                          <span>
+                            <AppIconButton onClick={handleIndexer} disabled={isIndexing || !indexerEnabled} aria-label="Index filesystem">
+                              {isIndexing ? <AppCircularProgress size={24} /> : <Icon icon="mdi:sync" width={22} height={22} style={{ color: !indexerEnabled ? theme.palette.text.disabled : "inherit" }} />}
                             </AppIconButton>
-                          </AppTooltip>
-                          <AppTooltip title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}>
-                            <AppIconButton onClick={() => { setActionsOpen(false); onToggleHiddenFiles(); }} aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}>
-                              {showHiddenFiles ? <Icon icon="mdi:eye" width={22} height={22} /> : <Icon icon="mdi:eye-off" width={22} height={22} />}
-                            </AppIconButton>
-                          </AppTooltip>
-                          <AppTooltip title={isIndexing ? "Indexing..." : !indexerEnabled ? indexerReason : "Index filesystem"}>
-                            <span>
-                              <AppIconButton onClick={handleIndexer} disabled={isIndexing || !indexerEnabled} aria-label="Index filesystem">
-                                {isIndexing ? <AppCircularProgress size={24} /> : <Icon icon="mdi:sync" width={22} height={22} style={{ color: !indexerEnabled ? theme.palette.text.disabled : "inherit" }} />}
-                              </AppIconButton>
-                            </span>
-                          </AppTooltip>
-                        </div>
-                      </AppDialogContent>
-                    </GeneralDialog>
+                          </span>
+                        </AppTooltip>
+                      </div>
+                    </AppMenu>
                   </>
                 ) : (
                   <>

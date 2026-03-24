@@ -3,9 +3,8 @@ import React from "react";
 
 import "./tab-selector.css";
 
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppMenu from "@/components/ui/AppMenu";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface TabOption {
@@ -31,9 +30,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
 }) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
-    null,
-  );
+  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
 
   const primaryHex = theme.palette.primary.main;
   const contrast = theme.palette.primary.contrastText;
@@ -80,19 +77,17 @@ const TabSelector: React.FC<TabSelectorProps> = ({
               >
                 <Icon icon="mdi:tune" width={20} height={20} />
               </AppIconButton>
-              <GeneralDialog
+              <AppMenu
                 open={Boolean(anchorEl)}
                 onClose={() => setAnchorEl(null)}
-                maxWidth="xs"
-                fullWidth
+                anchorEl={anchorEl}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
               >
-                <AppDialogTitle>Actions</AppDialogTitle>
-                <AppDialogContent>
-                  <div className="tab-selector__mobile-actions">
-                    {rightContent}
-                  </div>
-                </AppDialogContent>
-              </GeneralDialog>
+                <div className="tab-selector__mobile-actions">
+                  {rightContent}
+                </div>
+              </AppMenu>
             </>
           ) : (
             <div className="tab-selector__actions">{rightContent}</div>
