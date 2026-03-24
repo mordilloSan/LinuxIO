@@ -18,7 +18,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -132,11 +131,6 @@ func main() {
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan, Sess)
-
-	// -------------------------------------------------------------------------
-	// Background samplers for network
-	// -------------------------------------------------------------------------
-	system.StartSimpleNetInfoSampler()
 
 	// Handle Ctrl-C / kill properly → request shutdown once
 	sigc := make(chan os.Signal, 2)

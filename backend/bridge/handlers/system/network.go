@@ -28,13 +28,6 @@ var (
 	onceSampler        sync.Once
 )
 
-// Call this ONCE from bridge main() (or guard with once).
-func StartSimpleNetInfoSampler() {
-	onceSampler.Do(func() {
-		go runSimpleNetInfoSampler()
-	})
-}
-
 func runSimpleNetInfoSampler() {
 	for {
 		stats1Map := sampleIOCounters()
