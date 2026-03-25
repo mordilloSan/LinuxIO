@@ -87,8 +87,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         style={{
           borderRadius: 16,
           alignItems: "center",
-          backgroundColor: "#000",
-          color: "color-mix(in srgb, var(--color-info) 30%, #fff)",
+          backgroundColor: "var(--update-banner-bg)",
+          color: "var(--update-banner-color)",
           padding: "3px 16px",
         }}
         action={
