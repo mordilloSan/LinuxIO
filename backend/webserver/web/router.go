@@ -1,13 +1,10 @@
 package web
 
 import (
-	"errors"
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/go-logger/logger"
@@ -41,25 +38,6 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// failures are sent as WS close code 1008 ("no-session") rather than HTTP
 	// 401, which browsers cannot distinguish from a network error.
 	mux.Handle("GET /ws", wsAuthMiddleware(sm, WebSocketRelayHandler(sm)))
-
-	// Serve module static files
-	// SPA routes (no file extension) are public - React handles auth
-	// File routes (.js, .css, etc.) require session
-	mux.Handle("/modules/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		urlPath := strings.TrimPrefix(r.URL.Path, "/modules/")
-		ext := filepath.Ext(urlPath)
-
-		// SPA route - serve index.html, let React handle auth
-		if urlPath == "" || ext == "" {
-			serveFileFS(w, r, cfg.UI, "index.html")
-			return
-		}
-
-		// File route - require session
-		sm.RequireSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ServeModuleFiles(w, r, cfg.UI)
-		})).ServeHTTP(w, r)
-	}))
 
 	// Container reverse proxy — session-protected
 	// Requests: /proxy/{container-name}/[...] → container's internal IP:port
@@ -135,88 +113,6 @@ func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 	if _, err := io.Copy(w, f); err != nil {
 		logger.Warnf("Failed to copy %q to response: %v", name, err)
 	}
-}
-
-// ServeModuleFiles serves static files for modules from their directories
-// Note: SPA routes are handled by the router before this is called
-func ServeModuleFiles(w http.ResponseWriter, r *http.Request, ui fs.FS) {
-	// Extract path like: /modules/example-module/component.js
-	urlPath := strings.TrimPrefix(r.URL.Path, "/modules/")
-	ext := filepath.Ext(urlPath)
-
-	// Try user modules first, then system modules
-	userHome := os.Getenv("HOME")
-	if userHome == "" {
-		userHome = "/root"
-	}
-
-	moduleRoots := []string{
-		filepath.Join(userHome, ".config/linuxio/modules"),
-		"/etc/linuxio/modules",
-	}
-
-	content, err := readModuleFileFromRoots(urlPath, moduleRoots)
-	if err != nil {
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			http.NotFound(w, r)
-		case isRootEscapeError(err):
-			http.Error(w, "Invalid path", http.StatusBadRequest)
-		default:
-			logger.Warnf("Failed to read module file %q: %v", urlPath, err)
-			http.Error(w, "Failed to read file", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Set content type based on extension (ext already computed above)
-	switch ext {
-	case ".js":
-		w.Header().Set("Content-Type", "application/javascript")
-	case ".css":
-		w.Header().Set("Content-Type", "text/css")
-	case ".json":
-		w.Header().Set("Content-Type", "application/json")
-	default:
-		w.Header().Set("Content-Type", "text/plain")
-	}
-
-	// Add CORS headers for module loading
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Cache-Control", "no-cache")
-
-	if _, err := w.Write(content); err != nil {
-		logger.Warnf("Failed to write module file response: %v", err)
-	}
-}
-
-func readModuleFileFromRoots(relPath string, roots []string) ([]byte, error) {
-	for _, rootPath := range roots {
-		root, err := os.OpenRoot(rootPath)
-		if err != nil {
-			logger.Warnf("Failed to open module root %q: %v", rootPath, err)
-			continue
-		}
-
-		content, readErr := root.ReadFile(relPath)
-		if cerr := root.Close(); cerr != nil {
-			logger.Warnf("Failed to close module root %q: %v", rootPath, cerr)
-		}
-
-		if readErr == nil {
-			return content, nil
-		}
-		if errors.Is(readErr, fs.ErrNotExist) {
-			continue
-		}
-		return nil, readErr
-	}
-	return nil, fs.ErrNotExist
-}
-
-func isRootEscapeError(err error) bool {
-	var pathErr *fs.PathError
-	return errors.As(err, &pathErr) && strings.Contains(pathErr.Err.Error(), "path escapes from parent")
 }
 
 // HTTPErrorLogAdapter adapts logger.Warnf to the log.Logger interface for http.Server.ErrorLog.

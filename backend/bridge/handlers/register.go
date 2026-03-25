@@ -3,8 +3,6 @@ package handlers
 import (
 	"net"
 
-	"github.com/mordilloSan/go-logger/logger"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
@@ -13,7 +11,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/modules"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
@@ -22,11 +19,10 @@ import (
 )
 
 // JsonHandlers are functions that return JSON-serializable data.
-// Used by dynamic module system for YAML-defined handlers.
 var JsonHandlers = map[string]map[string]func([]string) (any, error){}
 
 // StreamHandlers is the registry for yamux stream handlers.
-// Used for the bridge protocol and dynamic module streams.
+// Used for the bridge protocol and other streamed handlers.
 var StreamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
@@ -47,7 +43,6 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()
 	storage.RegisterHandlers()
-	modules.RegisterHandlers(sess, StreamHandlers)
 
 	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
 	generic.RegisterStreamHandlers(StreamHandlers, JsonHandlers)
@@ -56,9 +51,4 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	dbus.RegisterStreamHandlers(StreamHandlers)
 	docker.RegisterStreamHandlers(StreamHandlers)
 	logs.RegisterStreamHandlers(StreamHandlers)
-
-	// Load modules from YAML files - log errors but don't fail
-	if err := modules.LoadModules(StreamHandlers); err != nil {
-		logger.Warnf("failed to load modules: %v", err)
-	}
 }

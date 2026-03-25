@@ -4,7 +4,6 @@ import Folder from "lucide-react/dist/esm/icons/folder";
 import HardDrive from "lucide-react/dist/esm/icons/hard-drive";
 import Home from "lucide-react/dist/esm/icons/home";
 import NetworkIcon from "lucide-react/dist/esm/icons/network";
-import Puzzle from "lucide-react/dist/esm/icons/puzzle";
 import RefreshCcw from "lucide-react/dist/esm/icons/refresh-ccw";
 import ServerCog from "lucide-react/dist/esm/icons/server-cog";
 import Share2 from "lucide-react/dist/esm/icons/share-2";
@@ -12,7 +11,6 @@ import TerminalIcon from "lucide-react/dist/esm/icons/terminal";
 import Users from "lucide-react/dist/esm/icons/users";
 import React, { lazy, useMemo } from "react";
 
-import { linuxio, CACHE_TTL_MS } from "@/api";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 import { ConfigProvider } from "@/contexts/ConfigContext";
@@ -24,8 +22,6 @@ import {
   useAccessContext,
 } from "@/hooks/useCapabilities";
 import { ConfiguredAppThemeProvider } from "@/theme";
-import type { ModuleInfo } from "@/types/module";
-import { createModuleLazyComponent } from "@/utils/moduleLoader";
 
 const DockerSvgIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -56,7 +52,6 @@ const Wireguard = lazy(() => import("@/pages/main/wireguard"));
 const TerminalPage = lazy(() => import("@/pages/main/terminal"));
 const Shares = lazy(() => import("@/pages/main/shares"));
 const FileBrowser = lazy(() => import("@/pages/main/filebrowser"));
-const ModulesPage = lazy(() => import("@/pages/main/modules"));
 const StoragePage = lazy(() => import("@/pages/main/storage"));
 const AccountsPage = lazy(() => import("@/pages/main/accounts"));
 
@@ -200,70 +195,10 @@ const coreRoutes: RouteWithSidebar[] = [
       position: 110,
     },
   },
-  {
-    path: "modules",
-    element: <ModulesPage />,
-    requiresPrivileged: true,
-    sidebar: {
-      title: "Modules",
-      icon: Puzzle,
-      position: 120,
-    },
-  },
 ];
 
-// ============================================================================
-// Dynamic Module Route Creation
-// ============================================================================
-
-function createModuleRoute(module: ModuleInfo): RouteWithSidebar {
-  const ModuleComponent = createModuleLazyComponent(module.componentUrl);
-
-  // Remove leading slash if present
-  const path = module.route.startsWith("/")
-    ? module.route.slice(1)
-    : module.route;
-
-  // Parse icon - support Iconify string format or use default puzzle icon
-  let icon: React.ElementType | string;
-  if (module.icon && module.icon.includes(":")) {
-    // Iconify format like "mdi:puzzle"
-    icon = module.icon;
-  } else {
-    // Default to puzzle icon
-    icon = Puzzle;
-  }
-
-  return {
-    path,
-    element: (
-      <React.Suspense fallback={<div>Loading module...</div>}>
-        <ModuleComponent />
-      </React.Suspense>
-    ),
-    sidebar: {
-      title: module.title,
-      icon,
-      position: module.position || 1000, // Default to end if no position
-    },
-  };
-}
-
-function buildProtectedRoutes(
-  modules: ModuleInfo[] | undefined,
-  access: AccessContext,
-) {
-  const allProtectedRoutes = coreRoutes.filter((route) =>
-    hasAccessPolicy(route, access),
-  );
-
-  if (modules && modules.length > 0) {
-    modules.forEach((module) => {
-      allProtectedRoutes.push(createModuleRoute(module));
-    });
-  }
-
-  return allProtectedRoutes;
+function buildProtectedRoutes(access: AccessContext) {
+  return coreRoutes.filter((route) => hasAccessPolicy(route, access));
 }
 
 // ============================================================================
@@ -272,13 +207,9 @@ function buildProtectedRoutes(
 
 export function useAppRoutes() {
   const access = useAccessContext();
-  const { data: modules } = linuxio.modules.get_modules.useQuery({
-    staleTime: CACHE_TTL_MS.ONE_MINUTE,
-    refetchOnMount: false,
-  });
 
   return useMemo(() => {
-    const allProtectedRoutes = buildProtectedRoutes(modules, access);
+    const allProtectedRoutes = buildProtectedRoutes(access);
 
     return [
       // Protected app
@@ -314,7 +245,7 @@ export function useAppRoutes() {
         ],
       },
     ];
-  }, [access, modules]);
+  }, [access]);
 }
 
 // ============================================================================
@@ -323,13 +254,9 @@ export function useAppRoutes() {
 
 export function useSidebarItems() {
   const access = useAccessContext();
-  const { data: modules } = linuxio.modules.get_modules.useQuery({
-    staleTime: CACHE_TTL_MS.ONE_MINUTE,
-    refetchOnMount: false,
-  });
 
   return useMemo(() => {
-    const allRoutes = buildProtectedRoutes(modules, access);
+    const allRoutes = buildProtectedRoutes(access);
 
     // Convert to sidebar format and sort by position
     return allRoutes
@@ -344,5 +271,5 @@ export function useSidebarItems() {
         title: route.sidebar!.title,
         icon: route.sidebar!.icon,
       }));
-  }, [access, modules]);
+  }, [access]);
 }
