@@ -40,25 +40,24 @@ The LinuxIO frontend API provides a clean, type-safe interface for communicating
                     └─────────────────┘
 ```
 
-## Module Summary
+## API Files
 
 | Module | Purpose | Import |
 |--------|---------|--------|
-| `react-query.ts` | Type-safe API + React Query hooks | `@/api/react-query` |
-| `linuxio-core.ts` | Framework-agnostic core API | `@/api/linuxio-core` |
-| `linuxio.ts` | Shared utilities and payload helpers | `@/api/linuxio` |
+| `react-query.ts` | Type-safe API + React Query hooks | Prefer `@/api` |
+| `linuxio-core.ts` | Framework-agnostic core API | Prefer `@/api` |
+| `linuxio.ts` | Shared utilities and payload helpers | Prefer `@/api` |
 
 ---
 
-## Type-Safe API (`@/api/react-query`)
+## Type-Safe API (`linuxio`)
 
 **Recommended for all React components.** Provides full TypeScript autocomplete, compile-time type checking, and React Query integration.
 
 ### Importing
 
 ```typescript
-import linuxio from "@/api/react-query";
-// Also available: initStreamMux, closeStreamMux, waitForStreamMux, getStreamMux
+import { linuxio } from "@/api";
 ```
 
 ### Schema & Types
@@ -117,7 +116,7 @@ const { mutate } = linuxio.docker.start_container.useMutation();
 mutate([containerId]);
 
 // Complex arguments (objects, arrays)
-const { mutate } = linuxio.dbus.SetAutoUpdates.useMutation();
+const { mutate } = linuxio.dbus.set_auto_updates.useMutation();
 mutate([
   {
     enabled: true,
@@ -154,7 +153,7 @@ For effects, contexts, or other non-hook code paths, every typed command also ex
 
 ```typescript
 import { useQueryClient } from "@tanstack/react-query";
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 const queryClient = useQueryClient();
 
@@ -169,18 +168,18 @@ const version = await linuxio.control.version.call();
 
 ---
 
-## Core API (`@/api/linuxio-core`)
+## Core API (`@/api`)
 
 For non-React code or when you need direct control.
 
 ```typescript
-import { call, spawn, openStream } from "@/api/linuxio-core";
+import { call, spawn, openStream } from "@/api";
 ```
 
 For built-in handlers, prefer the type-safe imperative helper:
 
 ```typescript
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 await linuxio.storage.get_drive_info.call();
 ```
@@ -197,7 +196,7 @@ const drives = await call<DiskInfo[]>("storage", "get_drive_info");
 const logs = await call<string>("docker", "get_container_logs", [containerId]);
 
 // With timeout
-const result = await call("dbus", "InstallPackage", [packageId], {
+const result = await call("dbus", "install_package", [packageId], {
   timeout: 60000, // 60 second timeout (default: 30000)
 });
 ```
@@ -235,7 +234,7 @@ const result = await spawn("filebrowser", "download", ["/path/to/file"])
   });
 
 // Package installation with timeout
-await spawn("dbus", "InstallPackage", [packageId], {
+await spawn("dbus", "install_package", [packageId], {
   timeout: 300000,  // 5 minutes (default: 300000)
   onProgress: (p) => setProgress(p.pct),
 });
@@ -290,20 +289,15 @@ stream.write(encodeString("ls -la\n"));
 // Close when done
 stream.close();
 
-// Docker container exec (one-off stream)
-const stream = openStream(
-  "docker",
-  "container_exec",
-  [containerId, "sh", "80", "24"]
-  // streamType defaults to "bridge" (one-off)
-);
+// One-off streams use the default "bridge" stream type
+const stream = openStream("terminal", "bash", ["120", "32"]);
 ```
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `handler` | `string` | - | Handler name (e.g., "terminal", "docker") |
-| `command` | `string` | - | Command name (e.g., "bash", "container_exec") |
+| `command` | `string` | - | Command name (e.g., "bash", handler-specific command) |
 | `args` | `string[]` | `[]` | Command arguments |
 | `streamType` | `string` | `"bridge"` | Stream type for persistence ("terminal", "container", or "bridge") |
 
@@ -323,7 +317,7 @@ const stream = openStream(
 
 ---
 
-## Utilities (`@/api/linuxio`)
+## Utilities (`@/api`)
 
 Shared utilities for stream management and payload building.
 
@@ -332,7 +326,7 @@ Shared utilities for stream management and payload building.
 React hook for accessing the stream multiplexer status. Now supports late initialization (polls for mux if not available at mount).
 
 ```typescript
-import { useStreamMux } from "@/api/linuxio";
+import { useStreamMux } from "@/api";
 
 const { status, isOpen, openStream, getStream } = useStreamMux();
 
@@ -355,7 +349,7 @@ const stream = openStream("bridge", payload);
 
 ### Mux Lifecycle Functions
 
-All available from `@/api/react-query`:
+All available from `@/api`:
 
 ```typescript
 import {
@@ -363,8 +357,7 @@ import {
   closeStreamMux,
   waitForStreamMux,
   getStreamMux
-} from "@/api/react-query";
-
+} from "@/api";
 // Initialize connection (called by AuthContext on login)
 initStreamMux();
 
@@ -390,7 +383,7 @@ import {
   downloadPayload,
   compressPayload,
   extractPayload,
-} from "@/api/linuxio";
+} from "@/api";
 
 // Terminal session
 const payload = terminalPayload(120, 32);
@@ -414,7 +407,7 @@ const payload = extractPayload("/archive.zip", "/destination/");
 ### String Encoding
 
 ```typescript
-import { encodeString, decodeString } from "@/api/linuxio";
+import { encodeString, decodeString } from "@/api";
 
 // Convert string to Uint8Array (UTF-8)
 const bytes = encodeString("Hello, World!");
@@ -430,7 +423,7 @@ const text = decodeString(bytes);
 All API methods throw/reject with `LinuxIOError`:
 
 ```typescript
-import { LinuxIOError } from "@/api/react-query";
+import { LinuxIOError, linuxio } from "@/api";
 
 try {
   await linuxio.storage.get_drive_info.call();
@@ -472,9 +465,9 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 |---------|-------------|------------------|
 | `system` | System information | `get_cpu_info`, `get_memory_info`, `get_host_info` |
 | `storage` | Storage management | `get_drive_info`, `list_vgs`, `list_nfs_mounts` |
-| `docker` | Docker management | `list_containers`, `start_container`, `container_exec` |
+| `docker` | Docker management | `list_containers`, `start_container`, `get_container_logs` |
 | `filebrowser` | File operations | `resource_get`, `subfolders`, `upload`, `download`, `compress` |
-| `dbus` | D-Bus services | `ListServices`, `GetUpdates`, `InstallPackage`, `SetAutoUpdates` |
+| `dbus` | D-Bus services | `list_services`, `get_updates`, `install_package`, `set_auto_updates` |
 | `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer`, `remove_peer` |
 | `config` | User configuration | `get`, `set` |
 | `control` | System control | `version`, `shutdown`, `update` |

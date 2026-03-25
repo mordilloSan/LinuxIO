@@ -188,10 +188,10 @@ export function spawn(
 
 /**
  * Opens a bidirectional stream for manual control
- * Use for terminal, docker attach, or custom protocols
+ * Use for terminal sessions, handler-specific streams, or custom protocols
  *
  * @param handler - Handler name (e.g., "terminal", "docker")
- * @param command - Command name (e.g., "bash", "container_exec")
+ * @param command - Command name (e.g., "bash", handler-specific command)
  * @param args - Command arguments
  * @param streamType - Stream type for persistence/reuse (default: "bridge")
  *
@@ -203,7 +203,7 @@ export function spawn(
  *
  * @example
  * // One-off stream (bridge type)
- * const stream = openStream("docker", "container_exec", ["abc123", "sh", "80", "24"]);
+ * const stream = openStream("terminal", "bash", ["120", "32"]);
  */
 export function openStream(
   handler: string,

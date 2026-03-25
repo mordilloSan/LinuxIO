@@ -1,10 +1,9 @@
 /**
  * LinuxIO Common Utilities
  *
- * Shared utilities for stream multiplexer access.
- * For API calls, use:
- * - @/api/react-query for React Query hooks (type-safe API)
- * - @/api/linuxio-core for direct calls (call, spawn, openStream)
+ * Shared utilities for stream multiplexer access and payload helpers.
+ * App code should generally import from `@/api`; this module exists to
+ * implement that public surface.
  */
 
 import { useEffect, useState, useCallback } from "react";

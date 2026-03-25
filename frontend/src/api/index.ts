@@ -9,7 +9,7 @@
  *   const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
  *
  * Direct bridge access:
- *   await core.call("handler", "command", [args])
+ *   await call("handler", "command", [args])
  */
 
 // === JSON API (React Query type-safe proxy) ===
@@ -93,87 +93,13 @@ export {
   waitForStreamResult,
   streamWriteChunks,
 } from "./stream-helpers";
-export type {
-  StreamEventHandlers,
-  WaitForStreamResultOptions,
-  WriteStreamChunksOptions,
-} from "./stream-helpers";
+export type * from "./stream-helpers";
 
 // === Cache Policy ===
 export { CACHE_TTL_MS } from "./cache-policy";
 
 // === Stream Types ===
-export type {
-  Stream,
-  ProgressFrame,
-  ResultFrame,
-  MuxStatus,
-  StreamType,
-  StreamStatus,
-} from "./StreamMultiplexer";
+export type * from "./StreamMultiplexer";
 
 // === Domain Types ===
-export type {
-  LinuxIOSchema,
-  HandlerName,
-  CommandName,
-  CommandArgs,
-  CommandResult,
-  CPUInfoResponse,
-  MemoryInfoResponse,
-  GpuDevice,
-  ApiDisk,
-  MotherboardInfo,
-  HostInfo,
-  CapabilitiesResponse,
-  DistroInfo,
-  ProcessInfo,
-  InterfaceStats,
-  NetworkInterface,
-  DockerImage,
-  DockerNetwork,
-  DockerVolume,
-  ComposeService,
-  ComposeProject,
-  AutoUpdateFrequency,
-  AutoUpdateScope,
-  AutoUpdateRebootPolicy,
-  AutoUpdateOptions,
-  AutoUpdateState,
-  Service,
-  UnitInfo,
-  Timer,
-  Socket,
-  UpgradeItem,
-  UpdateHistoryRow,
-  ApiResource,
-  FileResource,
-  DirectorySizeData,
-  SubfolderData,
-  SubfoldersResponse,
-  SearchResponse,
-  UsersGroupsResponse,
-  IndexerStatusResponse,
-  FileDownloadResult,
-  ArchiveDownloadResult,
-  CompressResult,
-  ExtractResult,
-  AccountUser,
-  AccountGroup,
-  CreateUserRequest,
-  ModifyUserRequest,
-  CreateGroupRequest,
-  ModifyGroupMembersRequest,
-  PhysicalVolume,
-  VolumeGroup,
-  LogicalVolume,
-  NFSMount,
-  VersionResponse,
-  Peer,
-  PeerConfigDownload,
-  QRCodeResponse,
-  DeleteStackResult,
-  ConfigSettings,
-  ConfigSetResult,
-  DirectoryValidationResult,
-} from "./linuxio-types";
+export type * from "./linuxio-types";

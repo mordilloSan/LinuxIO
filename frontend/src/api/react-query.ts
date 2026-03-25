@@ -1,7 +1,7 @@
 /**
  * LinuxIO API Usage Guidelines:
  *
- * 1. TYPE-SAFE API (PREFERRED for core handlers):
+ * 1. TYPE-SAFE API (preferred for built-in handlers):
  *    linuxio.docker.start_container.useMutation()
  *    linuxio.filebrowser.resource_get.useQuery()
  *
@@ -12,7 +12,7 @@
  *    await linuxio.system.get_capabilities.call()
  *    await queryClient.fetchQuery(linuxio.system.get_capabilities.queryOptions())
  *
- * For truly dynamic handlers/commands, use the core API:
+ * For lower-level or untyped calls, use the core API:
  *    await core.call("handler", "command", [args])
  */
 
@@ -43,7 +43,7 @@ import type {
 
 function serializeArg(arg: unknown): string {
   if (typeof arg === "string") return arg;
-  if (typeof arg === "object" || Array.isArray(arg)) return JSON.stringify(arg);
+  if (typeof arg === "object") return JSON.stringify(arg);
   return String(arg);
 }
 
@@ -68,16 +68,18 @@ type SelectableQueryOptions<TResult, TData = TResult> = Omit<
   "queryKey" | "queryFn"
 >;
 
+type ArgsConfig<TOptions> = {
+  args?: unknown[];
+} & TOptions;
+
 /**
  * Query config with explicit args for complex types
  */
-type QueryConfig<TResult> = {
-  args?: unknown[];
-} & QueryOptions<TResult>;
+type QueryConfig<TResult> = ArgsConfig<QueryOptions<TResult>>;
 
-type SelectableQueryConfig<TResult, TData = TResult> = {
-  args?: unknown[];
-} & SelectableQueryOptions<TResult, TData>;
+type SelectableQueryConfig<TResult, TData = TResult> = ArgsConfig<
+  SelectableQueryOptions<TResult, TData>
+>;
 
 /**
  * Mutation options type - accepts unknown[] to support complex types
@@ -171,21 +173,20 @@ interface CommandEndpoint<TResult> {
   ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
 }
 
-function parseQueryParams<TResult>(
-  params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[],
-): { args: unknown[]; options: QueryOptions<TResult> | undefined } {
-  let args: unknown[] = [];
-  let options: QueryOptions<TResult> | undefined;
+function hasExplicitArgs(value: unknown): value is { args?: unknown[] } {
+  return !!value && typeof value === "object" && "args" in value;
+}
 
-  if (
-    params.length === 1 &&
-    params[0] &&
-    typeof params[0] === "object" &&
-    "args" in params[0]
-  ) {
-    const { args: explicitArgs, ...rest } = params[0] as QueryConfig<TResult>;
+function parseQueryParams<TOptions extends object>(
+  params: (string | TOptions | ArgsConfig<TOptions>)[],
+): { args: unknown[]; options: TOptions | undefined } {
+  let args: unknown[] = [];
+  let options: TOptions | undefined;
+
+  if (params.length === 1 && hasExplicitArgs(params[0])) {
+    const { args: explicitArgs, ...rest } = params[0] as ArgsConfig<TOptions>;
     args = explicitArgs ?? [];
-    options = rest;
+    options = rest as TOptions;
     return { args, options };
   }
 
@@ -193,50 +194,26 @@ function parseQueryParams<TResult>(
     if (typeof param === "string") {
       args.push(param);
     } else if (param && typeof param === "object") {
-      options = param as QueryOptions<TResult>;
+      options = param as TOptions;
     }
   }
 
   return { args, options };
 }
 
-function parseSelectableQueryParams<TResult, TData = TResult>(
-  params: (
-    | string
-    | SelectableQueryOptions<TResult, TData>
-    | SelectableQueryConfig<TResult, TData>
-  )[],
-): {
-  args: unknown[];
-  options: SelectableQueryOptions<TResult, TData> | undefined;
-} {
-  let args: unknown[] = [];
-  let options: SelectableQueryOptions<TResult, TData> | undefined;
+function buildQueryOptions<TResult, TData = TResult>(
+  handler: string,
+  command: string,
+  rawArgs: unknown[],
+  options?: SelectableQueryOptions<TResult, TData>,
+): UseQueryOptions<TResult, LinuxIOError, TData> {
+  const serializedArgs = serializeArgs(rawArgs);
 
-  if (
-    params.length === 1 &&
-    params[0] &&
-    typeof params[0] === "object" &&
-    "args" in params[0]
-  ) {
-    const { args: explicitArgs, ...rest } = params[0] as SelectableQueryConfig<
-      TResult,
-      TData
-    >;
-    args = explicitArgs ?? [];
-    options = rest;
-    return { args, options };
-  }
-
-  for (const param of params) {
-    if (typeof param === "string") {
-      args.push(param);
-    } else if (param && typeof param === "object") {
-      options = param as SelectableQueryOptions<TResult, TData>;
-    }
-  }
-
-  return { args, options };
+  return {
+    queryKey: ["linuxio", handler, command, ...serializedArgs],
+    queryFn: () => core.call<TResult>(handler, command, serializedArgs),
+    ...(options ?? {}),
+  };
 }
 
 /**
@@ -259,14 +236,8 @@ function createEndpoint<TResult>(
   const queryOptions = (
     ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
   ): UseQueryOptions<TResult, LinuxIOError> => {
-    const { args, options } = parseQueryParams<TResult>(params);
-    const serializedArgs = serializeArgs(args);
-
-    return {
-      queryKey: ["linuxio", handler, command, ...serializedArgs],
-      queryFn: () => core.call<TResult>(handler, command, serializedArgs),
-      ...(options ?? {}),
-    };
+    const { args, options } = parseQueryParams<QueryOptions<TResult>>(params);
+    return buildQueryOptions<TResult>(handler, command, args, options);
   };
 
   const queryOptionsWithSelect = <TData = TResult>(
@@ -276,16 +247,12 @@ function createEndpoint<TResult>(
       | SelectableQueryConfig<TResult, TData>
     )[]
   ): UseQueryOptions<TResult, LinuxIOError, TData> => {
-    const { args, options } = parseSelectableQueryParams<TResult, TData>(
+    const { args, options } = parseQueryParams<
+      SelectableQueryOptions<TResult, TData>
+    >(
       params,
     );
-    const serializedArgs = serializeArgs(args);
-
-    return {
-      queryKey: ["linuxio", handler, command, ...serializedArgs],
-      queryFn: () => core.call<TResult>(handler, command, serializedArgs),
-      ...(options ?? {}),
-    };
+    return buildQueryOptions<TResult, TData>(handler, command, args, options);
   };
 
   return {
@@ -417,11 +384,11 @@ const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
  *
  * @example
  * // TYPE-SAFE API (for built-in handlers)
- * const { data } = linuxio.system.get_drive_info.useQuery();
+ * const { data } = linuxio.storage.get_drive_info.useQuery();
  * const { mutate } = linuxio.docker.start_container.useMutation();
  *
  * // CORE API (non-React, Promise-based)
- * const drives = await linuxio.system.get_drive_info.call();
+ * const drives = await linuxio.storage.get_drive_info.call();
  * const result = await linuxio.spawn("filebrowser", "compress", [...])
  *   .progress(p => setProgress(p.pct));
  */
