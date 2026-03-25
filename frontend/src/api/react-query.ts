@@ -247,11 +247,8 @@ function createEndpoint<TResult>(
       | SelectableQueryConfig<TResult, TData>
     )[]
   ): UseQueryOptions<TResult, LinuxIOError, TData> => {
-    const { args, options } = parseQueryParams<
-      SelectableQueryOptions<TResult, TData>
-    >(
-      params,
-    );
+    const { args, options } =
+      parseQueryParams<SelectableQueryOptions<TResult, TData>>(params);
     return buildQueryOptions<TResult, TData>(handler, command, args, options);
   };
 

@@ -42,7 +42,7 @@ const TabContainer: React.FC<TabContainerProps> = ({
   defaultTab,
   urlParam = "tab",
   fadeTimeout = 300,
-  containerStyle = { paddingInline: 8 },
+  containerStyle = {},
   errorFallback,
 }) => {
   // Sync tab state with URL query parameter

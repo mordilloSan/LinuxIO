@@ -398,7 +398,7 @@ const HardwarePage: React.FC = () => {
   }, [sensorGroups]);
 
   return (
-    <div style={{ padding: theme.spacing(1) }}>
+    <div>
       {/* ── System Overview ─────────────────────────────────────────────── */}
       <SectionHeader
         title="System Overview"
