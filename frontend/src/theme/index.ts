@@ -604,11 +604,13 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
         : "rgba(110, 110, 110, 0.92)",
     "--app-tooltip-color": "#ffffff",
     "--app-panel-background": theme.palette.background.paper,
+    "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
+    "--update-banner-color":
+      theme.palette.mode === "dark"
+        ? "color-mix(in srgb, var(--color-info) 30%, #fff)"
+        : "var(--color-info)",
     "--app-panel-text": theme.palette.text.primary,
-    "--app-panel-border": alpha(
-      theme.palette.divider,
-      theme.palette.mode === "dark" ? 0.75 : 1,
-    ),
+    "--app-panel-border": theme.palette.divider,
     "--app-panel-shadow":
       theme.palette.mode === "dark"
         ? "0 16px 40px -28px rgba(0, 0, 0, 0.6)"

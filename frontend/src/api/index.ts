@@ -8,7 +8,7 @@
  * Non-JSON (streaming) → openStream():
  *   const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
  *
- * Module SDK:
+ * Direct bridge access:
  *   await core.call("handler", "command", [args])
  */
 

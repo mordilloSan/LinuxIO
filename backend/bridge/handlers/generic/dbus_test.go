@@ -12,12 +12,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-type echoService struct{}
-
-func (echoService) Echo(input string) (string, *godbus.Error) {
-	return "echo:" + input, nil
-}
-
 type streamService struct {
 	conn  *godbus.Conn
 	path  godbus.ObjectPath
@@ -35,29 +29,6 @@ func (s *streamService) Run(label string) *godbus.Error {
 		return godbus.MakeFailedError(err)
 	}
 	return nil
-}
-
-func TestCallDbusMethodDirect(t *testing.T) {
-	bus := testdbus.Start(t)
-	bus.SetSystemBus(t)
-
-	const (
-		busName = "com.example.Direct"
-		iface   = "com.example.Direct"
-	)
-	path := godbus.ObjectPath("/com/example/Direct")
-	conn := bus.OwnName(t, busName)
-	if err := conn.Export(echoService{}, path, iface); err != nil {
-		t.Fatalf("export echo service: %v", err)
-	}
-
-	got, err := CallDbusMethodDirect([]string{"system", busName, string(path), iface, "Echo", "hello"})
-	if err != nil {
-		t.Fatalf("CallDbusMethodDirect: %v", err)
-	}
-	if got != "echo:hello" {
-		t.Fatalf("CallDbusMethodDirect returned %#v, want %q", got, "echo:hello")
-	}
 }
 
 func TestHandleDbusStream(t *testing.T) {

@@ -65,6 +65,12 @@
   background-color: rgba(0, 0, 0, 0.04);
 }
 
+/* ── centered variant (align-items: center on parent) ─ */
+.app-alert--centered .app-alert__icon {
+  padding-top: 0;
+  color: var(--color-info);
+}
+
 /* ── severity colors ──────────────────────────── */
 .app-alert--info {
   color: var(--color-info);

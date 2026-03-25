@@ -11,13 +11,6 @@ import type { ContainerInfo } from "@/types/container";
 import type { FilesystemInfo, ResourceStatData } from "@/types/fs";
 import type { Update } from "@/types/update";
 import type { WireGuardInterface } from "@/types/wireguard";
-import type {
-  ModuleInfo,
-  ModuleDetailsInfo,
-  ValidationResult,
-  InstallResult,
-  UninstallResult,
-} from "@/types/module";
 
 // ============================================================================
 // System Types
@@ -940,20 +933,6 @@ export interface LinuxIOSchema {
     version: { args: []; result: VersionResponse };
     update: { args: []; result: void };
     shutdown: { args: []; result: void };
-  };
-
-  modules: {
-    get_modules: { args: []; result: ModuleInfo[] };
-    get_module_details: {
-      args: [moduleName: string];
-      result: ModuleDetailsInfo;
-    };
-    validate_module: { args: [path: string]; result: ValidationResult };
-    install_module: {
-      args: [sourcePath: string, targetName?: string, createSymlink?: string];
-      result: InstallResult;
-    };
-    uninstall_module: { args: [moduleName: string]; result: UninstallResult };
   };
 
   wireguard: {

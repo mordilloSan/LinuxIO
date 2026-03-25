@@ -83,13 +83,13 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       />
       <AppAlert
         severity="info"
+        className="app-alert--centered"
         style={{
-          marginInline: 64,
-          marginTop: 0,
-          marginBottom: 0,
           borderRadius: 16,
-          width: "100%",
-          padding: 0,
+          alignItems: "center",
+          backgroundColor: "var(--update-banner-bg)",
+          color: "var(--update-banner-color)",
+          padding: "3px 16px",
         }}
         action={
           <AppIconButton
@@ -114,6 +114,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         >
           <div style={{ minWidth: 0, flexGrow: 1 }}>
             <strong>Update Available</strong>
+            {" — "}
             <span>
               LinuxIO {updateInfo.latest_version} is available. You are on{" "}
               {updateInfo.current_version}.

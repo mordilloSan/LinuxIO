@@ -17,66 +17,14 @@ import (
 
 func DbusHandlers() map[string]func([]string) (any, error) {
 	return map[string]func([]string) (any, error){
-		// NOTE: Direct DBus calls are DISABLED for security
-		// DBus calls must be defined in module YAML files
-		// Use CallDbusMethodDirect() from module loader instead
+		// NOTE: Direct D-Bus calls are disabled for security.
 		"call": disabledDbusHandler,
 	}
 }
 
 // disabledDbusHandler returns an error explaining that direct DBus calls are disabled
 func disabledDbusHandler(args []string) (any, error) {
-	return nil, fmt.Errorf("direct DBus calls are disabled - calls must be defined in module YAML files")
-}
-
-// CallDbusMethodDirect executes a DBus call directly (used by module loader)
-// This bypasses security checks and should only be called by whitelisted module handlers
-func CallDbusMethodDirect(args []string) (any, error) {
-	if len(args) < 5 {
-		return nil, fmt.Errorf("dbus call requires: bus, destination, path, interface, method")
-	}
-
-	busType := args[0]
-	destination := args[1]
-	path := args[2]
-	iface := args[3]
-	method := args[4]
-	methodArgs := args[5:]
-
-	// Open a per-call connection
-	var conn *godbus.Conn
-	var err error
-	if busType == "session" {
-		conn, err = godbus.ConnectSessionBus()
-	} else {
-		conn, err = godbus.ConnectSystemBus()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to %s bus: %w", busType, err)
-	}
-	defer conn.Close()
-
-	// Get object
-	obj := conn.Object(destination, godbus.ObjectPath(path))
-
-	// Convert string args to interface{} for DBus
-	dbusArgs := make([]any, len(methodArgs))
-	for i, arg := range methodArgs {
-		dbusArgs[i] = arg
-	}
-
-	// Call method
-	call := obj.Call(iface+"."+method, 0, dbusArgs...)
-	if call.Err != nil {
-		return nil, call.Err
-	}
-
-	// Return result (if any)
-	if len(call.Body) > 0 {
-		return call.Body[0], nil
-	}
-
-	return nil, nil
+	return nil, fmt.Errorf("direct D-Bus calls are disabled")
 }
 
 // DbusSignalData represents a D-Bus signal forwarded to the client
@@ -96,7 +44,6 @@ type dbusStreamRequest struct {
 }
 
 // HandleDbusStream handles D-Bus operations with signal streaming.
-// This allows modules to call D-Bus methods that emit progress signals.
 //
 // args format: [bus, destination, path, interface, method, signalName1, signalName2, ..., "--", methodArg1, methodArg2, ...]
 // - bus: "system" or "session"

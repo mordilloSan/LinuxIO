@@ -478,7 +478,6 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 | `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer`, `remove_peer` |
 | `config` | User configuration | `get`, `set` |
 | `control` | System control | `version`, `shutdown`, `update` |
-| `modules` | Module management | `GetModules`, `InstallModule`, `UninstallModule` |
 
 ---
 
@@ -500,4 +499,3 @@ const { mutate } = linuxio.docker.remove_container.useMutation({
 });
 mutate([containerId]);
 ```
-

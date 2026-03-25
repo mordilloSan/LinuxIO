@@ -140,7 +140,7 @@ const Dashboard: React.FC = () => {
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
-            <Icon icon="mdi:cog" width={20} height={20} />
+            <Icon icon="mdi:view-grid-outline" width={20} height={20} />
           </AppIconButton>
         </AppTooltip>
         <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>

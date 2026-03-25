@@ -45,10 +45,6 @@ export default defineConfig(async ({ command }) => {
     server: {
       port: devPort,
       strictPort: false,
-      fs: {
-        // Allow serving files from the modules directory for HMR
-        allow: ['..'],
-      },
       proxy: {
         "/ws": { target: proxyTarget, changeOrigin: true, ws: true, secure: false },
         "/auth": { target: proxyTarget, changeOrigin: true, secure: false },
@@ -61,9 +57,6 @@ export default defineConfig(async ({ command }) => {
       manifest: true,
       outDir: "../backend/webserver/web/frontend",
       emptyOutDir: true,
-      rolldownOptions: {
-        external: /\/modules\/.*\/src\/index\.tsx/,
-      },
     },
   };
 });

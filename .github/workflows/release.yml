@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -117,14 +117,14 @@ jobs:
           sudo apt-get install -y libpam0g-dev libdbus-1-dev libsystemd-dev pkg-config build-essential
 
       - name: Use Go (from Makefile)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ steps.toolchain.outputs.go }}"
           cache: true
           cache-dependency-path: backend/go.sum
 
       - name: Use Node (from Makefile)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "${{ steps.toolchain.outputs.node }}"
           cache: "npm"
