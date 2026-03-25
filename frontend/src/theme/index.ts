@@ -605,9 +605,10 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-tooltip-color": "#ffffff",
     "--app-panel-background": theme.palette.background.paper,
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
-    "--update-banner-color": theme.palette.mode === "dark"
-      ? "color-mix(in srgb, var(--color-info) 30%, #fff)"
-      : "var(--color-info)",
+    "--update-banner-color":
+      theme.palette.mode === "dark"
+        ? "color-mix(in srgb, var(--color-info) 30%, #fff)"
+        : "var(--color-info)",
     "--app-panel-text": theme.palette.text.primary,
     "--app-panel-border": theme.palette.divider,
     "--app-panel-shadow":

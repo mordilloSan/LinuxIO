@@ -12,12 +12,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-type echoService struct{}
-
-func (echoService) Echo(input string) (string, *godbus.Error) {
-	return "echo:" + input, nil
-}
-
 type streamService struct {
 	conn  *godbus.Conn
 	path  godbus.ObjectPath
