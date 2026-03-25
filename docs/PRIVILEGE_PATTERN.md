@@ -68,29 +68,29 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 
 #### Pattern B: Fine-Grained Privilege (Recommended for mixed packages)
 
-**When to use:** Some handlers are public, some require privilege (e.g., modules)
+**When to use:** Some handlers are public, some require privilege inside the same package.
 
 **Step 1**: Add `sess *session.Session` parameter to handler constructor:
 
 ```go
-// modules/handlers.go
+// mixed/handlers.go
 import (
     "github.com/mordilloSan/LinuxIO/backend/common/middleware"
     "github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-func ModuleHandlers(sess *session.Session, handlerRegistry ...) map[string]func([]string) (any, error) {
-    getDetailsHandler := func(args []string) (any, error) {
+func MixedHandlers(sess *session.Session, handlerRegistry ...) map[string]func([]string) (any, error) {
+    deleteHandler := func(args []string) (any, error) {
         // ... handler logic
     }
 
     return map[string]func([]string) (any, error){
         // Public - no privilege required
-        "GetModules": GetLoadedModulesForFrontend,
+        "GetOverview": GetOverview,
 
         // Privileged - wrapped individually
-        "GetModuleDetails": middleware.RequirePrivileged(sess, getDetailsHandler),
-        "UninstallModule":  middleware.RequirePrivileged(sess, uninstallHandler),
+        "DeleteThing": middleware.RequirePrivileged(sess, deleteHandler),
+        "ResetThing":  middleware.RequirePrivileged(sess, resetHandler),
     }
 }
 ```
@@ -99,7 +99,7 @@ func ModuleHandlers(sess *session.Session, handlerRegistry ...) map[string]func(
 
 ```go
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
-    JsonHandlers["modules"] = modules.ModuleHandlers(sess, JsonHandlers)
+    JsonHandlers["mixed"] = mixed.MixedHandlers(sess, JsonHandlers)
 }
 ```
 
@@ -165,7 +165,6 @@ A session is privileged if:
 | Handler Package | Pattern | Public Handlers | Privileged Handlers |
 |----------------|---------|-----------------|-------------------|
 | **wireguard**  | Package-Wide | *none* | **All** (list_interfaces, add_interface, remove_interface, list_peers, add_peer, remove_peer, peer_qrcode, peer_config_download, get_keys, up_interface, down_interface) |
-| **modules**    | Fine-Grained | GetModules | GetModuleDetails, UninstallModule, InstallModule, ValidateModule |
 
 ## Adding Privilege Checks to Existing Handlers
 
@@ -176,7 +175,7 @@ A session is privileged if:
 
 **Pattern Selection Guide:**
 - Use **Package-Wide** (loop in register.go) if: All handlers need privilege (docker, wireguard, control)
-- Use **Fine-Grained** (wrap in handler package) if: Mix of public and privileged handlers (modules, filebrowser, system)
+- Use **Fine-Grained** (wrap in handler package) if: Mix of public and privileged handlers (filebrowser, system)
 
 ## Testing
 
@@ -188,10 +187,10 @@ To verify privilege enforcement:
 
 Example test:
 ```bash
-# As non-sudo user, try to uninstall a module
+# As non-sudo user, try to add a WireGuard interface
 curl -X POST https://localhost:8443/api/bridge \
   -H "Cookie: session_id=<session_id>" \
-  -d '{"type":"modules","command":"UninstallModule","args":["some-module"]}'
+  -d '{"type":"wireguard","command":"add_interface","args":["wg-test"]}'
 
 # Expected: {"error": "operation requires administrator privileges"}
 ```
