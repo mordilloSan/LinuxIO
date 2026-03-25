@@ -40,8 +40,8 @@ const Dashboard: React.FC = () => {
       : location.pathname.includes("/filebrowser")
         ? { padding: 0 }
         : {
-            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
-            paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+            paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(4),
             paddingTop: theme.spacing(5),
             paddingBottom: theme.spacing(5),
           };
