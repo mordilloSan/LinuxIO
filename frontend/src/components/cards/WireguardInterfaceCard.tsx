@@ -28,7 +28,6 @@ interface InterfaceCardProps {
   handleAddPeer: (name: string, peerData: any) => void;
 }
 
-
 const InterfaceCard: React.FC<InterfaceCardProps> = ({
   iface,
   selectedInterface,
@@ -151,9 +150,13 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
             </div>
           </div>
           <div style={{ marginTop: 6 }}>
-            <InfoRow label="Address" wrap>{iface.address}</InfoRow>
+            <InfoRow label="Address" wrap>
+              {iface.address}
+            </InfoRow>
             <InfoRow label="Port">{iface.port}</InfoRow>
-            <InfoRow label="Peers" noBorder>{iface.peerCount}</InfoRow>
+            <InfoRow label="Peers" noBorder>
+              {iface.peerCount}
+            </InfoRow>
           </div>
         </AppCardContent>
       </FrostedCard>

@@ -10,13 +10,13 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import InfoRow from "@/components/ui/InfoRow";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -702,10 +702,16 @@ const DockerDashboard: React.FC = () => {
                       />
                     }
                   >
-                    <InfoRow label="Server">{dockerInfo.server_version || "—"}</InfoRow>
-                    <InfoRow label="API">{dockerInfo.api_version || "—"}</InfoRow>
+                    <InfoRow label="Server">
+                      {dockerInfo.server_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="API">
+                      {dockerInfo.api_version || "—"}
+                    </InfoRow>
                     <InfoRow label="Go">{dockerInfo.go_version || "—"}</InfoRow>
-                    <InfoRow label="Git Commit">{dockerInfo.git_commit || "—"}</InfoRow>
+                    <InfoRow label="Git Commit">
+                      {dockerInfo.git_commit || "—"}
+                    </InfoRow>
                   </DaemonSection>
                 </FrostedCard>
               </AppGrid>
@@ -734,9 +740,15 @@ const DockerDashboard: React.FC = () => {
                     }
                   >
                     <InfoRow label="Hostname">{dockerInfo.name || "—"}</InfoRow>
-                    <InfoRow label="OS">{dockerInfo.operating_system || "—"}</InfoRow>
-                    <InfoRow label="Architecture">{dockerInfo.architecture || "—"}</InfoRow>
-                    <InfoRow label="Root Dir">{dockerInfo.docker_root_dir || "—"}</InfoRow>
+                    <InfoRow label="OS">
+                      {dockerInfo.operating_system || "—"}
+                    </InfoRow>
+                    <InfoRow label="Architecture">
+                      {dockerInfo.architecture || "—"}
+                    </InfoRow>
+                    <InfoRow label="Root Dir">
+                      {dockerInfo.docker_root_dir || "—"}
+                    </InfoRow>
                   </DaemonSection>
                 </FrostedCard>
               </AppGrid>
@@ -764,10 +776,18 @@ const DockerDashboard: React.FC = () => {
                       />
                     }
                   >
-                    <InfoRow label="Storage Driver">{dockerInfo.storage_driver || "—"}</InfoRow>
-                    <InfoRow label="Cgroup Driver">{dockerInfo.cgroup_driver || "—"}</InfoRow>
-                    <InfoRow label="Cgroup Version">{dockerInfo.cgroup_version || "—"}</InfoRow>
-                    <InfoRow label="Default Runtime">{dockerInfo.default_runtime || "—"}</InfoRow>
+                    <InfoRow label="Storage Driver">
+                      {dockerInfo.storage_driver || "—"}
+                    </InfoRow>
+                    <InfoRow label="Cgroup Driver">
+                      {dockerInfo.cgroup_driver || "—"}
+                    </InfoRow>
+                    <InfoRow label="Cgroup Version">
+                      {dockerInfo.cgroup_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="Default Runtime">
+                      {dockerInfo.default_runtime || "—"}
+                    </InfoRow>
                   </DaemonSection>
                 </FrostedCard>
               </AppGrid>

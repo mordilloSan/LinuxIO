@@ -3,24 +3,24 @@
 export const SEMANTIC_STATUS_COLORS = {
   success: "#00E676",
   warning: "#FFC107",
-  error:   "#F44336",
-  danger:  "#FF5252",
-  info:    "#2196F3",
+  error: "#F44336",
+  danger: "#FF5252",
+  info: "#2196F3",
   neutral: "#BDBDBD",
-  muted:   "#9E9E9E",
+  muted: "#9E9E9E",
   caution: "#FF9800",
 } as const;
 
 export const FILE_TYPE_COLORS = {
-  code:        "#F9A825",
-  pdf:         "#D32F2F",
-  image:       "#7B1FA2",
-  video:       "#C2185B",
-  audio:       "#00897B",
-  archive:     "#F57C00",
+  code: "#F9A825",
+  pdf: "#D32F2F",
+  image: "#7B1FA2",
+  video: "#C2185B",
+  audio: "#00897B",
+  archive: "#F57C00",
   spreadsheet: "#388E3C",
-  document:    "#1976D2",
-  executable:  "#B71C1C",
+  document: "#1976D2",
+  executable: "#B71C1C",
 } as const;
 
 export const COLOR_TOKENS = {
