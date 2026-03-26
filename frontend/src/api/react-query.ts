@@ -6,7 +6,7 @@
  *    linuxio.filebrowser.resource_get.useQuery()
  *
  * 2. STREAMING API (for progress tracking):
- *    linuxio.spawn("filebrowser", "compress", [...]).progress(...)
+ *    openTerminalStream(), openFileDownloadStream(), etc. from @/api
  *
  * 3. IMPERATIVE API (contexts/effects/non-hook code):
  *    await linuxio.system.get_capabilities.call()
@@ -356,14 +356,6 @@ function createHandlerNamespace<H extends HandlerName>(
 // Export
 // ============================================================================
 
-// Static methods that exist on linuxio directly
-const staticMethods = {
-  spawn: core.spawn,
-  openStream: core.openStream,
-  LinuxIOError: core.LinuxIOError,
-  SpawnedProcess: core.SpawnedProcess,
-};
-
 // Handler namespace cache
 const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
 
@@ -377,20 +369,14 @@ const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
  *
  * // CORE API (non-React, Promise-based)
  * const drives = await linuxio.storage.get_drive_info.call();
- * const result = await linuxio.spawn("filebrowser", "compress", [...])
- *   .progress(p => setProgress(p.pct));
  */
-const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
-  get(target, prop: string) {
-    // First check static methods
-    if (prop in target) {
-      return (target as Record<string, unknown>)[prop];
-    }
+const linuxio = new Proxy({} as TypedAPI, {
+  get(_, prop: string) {
     // `linuxio.call()` alias is intentionally removed.
     if (prop === "call") {
       return undefined;
     }
-    // Then return handler namespace (lazily created)
+    // Return handler namespace (lazily created)
     if (!handlerCache.has(prop)) {
       handlerCache.set(prop, createHandlerNamespace(prop as HandlerName));
     }

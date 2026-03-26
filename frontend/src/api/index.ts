@@ -5,22 +5,13 @@
  *   linuxio.system.get_cpu_info.useQuery()
  *   linuxio.docker.start_container.useMutation()
  *
- * Non-JSON (streaming) → openStream():
- *   const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
- *
  */
 
 // === JSON API (React Query type-safe proxy) ===
 export { default as linuxio } from "./react-query";
 
 // === Core API (Promise-based) ===
-export {
-  spawn,
-  openStream,
-  LinuxIOError,
-  SpawnedProcess,
-} from "./linuxio-core";
-export type { CallOptions, SpawnOptions } from "./linuxio-core";
+export { LinuxIOError } from "./linuxio-core";
 
 // === React Hooks ===
 export { useStreamMux, useIsUpdating } from "./linuxio";
