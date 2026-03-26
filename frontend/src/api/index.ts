@@ -8,8 +8,6 @@
  * Non-JSON (streaming) → openStream():
  *   const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
  *
- * Direct bridge access:
- *   await call("handler", "command", [args])
  */
 
 // === JSON API (React Query type-safe proxy) ===
@@ -17,7 +15,6 @@ export { default as linuxio } from "./react-query";
 
 // === Core API (Promise-based) ===
 export {
-  call,
   spawn,
   openStream,
   LinuxIOError,

@@ -62,7 +62,7 @@ function openMuxStream(
  * This hook provides access to it and tracks status changes.
  *
  * @example
- * const { status, isOpen, openStream } = useStreamMux();
+ * const { status, isOpen, getStream } = useStreamMux();
  */
 export function useStreamMux() {
   const [status, setStatus] = useState<MuxStatus>(() => {
@@ -218,9 +218,6 @@ function uploadPayload(
 }
 
 function downloadPayload(paths: string[]): Uint8Array {
-  if (paths.length === 0) {
-    throw new Error("downloadPayload requires at least one path");
-  }
   if (isSingleFileDownload(paths)) {
     return encodeString([STREAM_TYPE_FB_DOWNLOAD, paths[0]].join("\0"));
   }
@@ -246,9 +243,6 @@ function extractPayload(archive: string, destination?: string): Uint8Array {
 }
 
 function packageUpdatePayload(packages: string[]): Uint8Array {
-  if (packages.length === 0) {
-    throw new Error("packageUpdatePayload requires at least one package");
-  }
   return encodeString([STREAM_TYPE_PKG_UPDATE, ...packages].join("\0"));
 }
 
@@ -286,6 +280,10 @@ function fileIndexerPayload(path?: string): Uint8Array {
     parts.push(path);
   }
   return encodeString(parts.join("\0"));
+}
+
+function fileIndexerAttachPayload(): Uint8Array {
+  return encodeString(STREAM_TYPE_FB_INDEXER_ATTACH);
 }
 
 function fileCopyPayload(source: string, destination: string): Uint8Array {
@@ -398,6 +396,7 @@ export function openExecStream(
 }
 
 export function openPackageUpdateStream(packages: string[]): Stream | null {
+  if (packages.length === 0) return null;
   return openMuxStream(STREAM_TYPE_PKG_UPDATE, packageUpdatePayload(packages));
 }
 
@@ -423,6 +422,7 @@ export function openFileUploadStream(
 }
 
 export function openFileDownloadStream(paths: string[]): Stream | null {
+  if (paths.length === 0) return null;
   const streamType = isSingleFileDownload(paths)
     ? STREAM_TYPE_FB_DOWNLOAD
     : STREAM_TYPE_FB_ARCHIVE;
@@ -455,10 +455,7 @@ export function openFileIndexerStream(path?: string): Stream | null {
 }
 
 export function openFileIndexerAttachStream(): Stream | null {
-  return openMuxStream(
-    STREAM_TYPE_FB_INDEXER_ATTACH,
-    encodeString(STREAM_TYPE_FB_INDEXER_ATTACH),
-  );
+  return openMuxStream(STREAM_TYPE_FB_INDEXER_ATTACH, fileIndexerAttachPayload());
 }
 
 export function openFileCopyStream(

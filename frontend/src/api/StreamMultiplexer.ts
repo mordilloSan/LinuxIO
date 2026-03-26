@@ -194,7 +194,7 @@ class StreamImpl implements Stream {
     // Wrap in StreamFrame for bridge: [opcode:1][streamID:4][length:4][payload]
     const bridgeFrame = new Uint8Array(9 + data.length);
     const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = 0x81; // OpStreamData
+    bridgeFrame[0] = BridgeOpcode.StreamData;
     view.setUint32(1, this.id, false);
     view.setUint32(5, data.length, false);
     bridgeFrame.set(data, 9);
@@ -229,7 +229,7 @@ class StreamImpl implements Stream {
     // Build OpStreamClose frame for bridge: [opcode:1][streamID:4][length:4]
     const closeFrame = new Uint8Array(9);
     const view = new DataView(closeFrame.buffer);
-    closeFrame[0] = 0x82; // OpStreamClose
+    closeFrame[0] = BridgeOpcode.StreamClose;
     view.setUint32(1, this.id, false);
     view.setUint32(5, 0, false); // length = 0
     this.mux.sendFrame(this.id, Flags.FIN, closeFrame);
@@ -254,7 +254,7 @@ class StreamImpl implements Stream {
     // This signals the backend's AbortMonitor to cancel the operation
     const abortFrame = new Uint8Array(9);
     const view = new DataView(abortFrame.buffer);
-    abortFrame[0] = 0x86; // OpStreamAbort
+    abortFrame[0] = BridgeOpcode.StreamAbort;
     view.setUint32(1, this.id, false);
     view.setUint32(5, 0, false); // length = 0
     this.mux.sendFrame(this.id, Flags.DATA, abortFrame);
@@ -321,18 +321,18 @@ class StreamImpl implements Stream {
 
       // Route based on opcode
       switch (opcode) {
-        case 0x81: // OpStreamData
+        case BridgeOpcode.StreamData:
           this.handleData(payload);
           break;
-        case 0x82: // OpStreamClose
+        case BridgeOpcode.StreamClose:
           // Bridge closed the stream - trigger close handler
           this.handleClose();
           this.mux.removeStream(this.id);
           break;
-        case 0x84: // OpStreamProgress
+        case BridgeOpcode.StreamProgress:
           this.handleProgress(payload);
           break;
-        case 0x85: // OpStreamResult
+        case BridgeOpcode.StreamResult:
           this.handleResult(payload);
           break;
         default:
@@ -601,7 +601,7 @@ export class StreamMultiplexer {
     const payload = initialPayload || new Uint8Array(0);
     const bridgeFrame = new Uint8Array(9 + payload.length);
     const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = 0x80; // OpStreamOpen
+    bridgeFrame[0] = BridgeOpcode.StreamOpen;
     view.setUint32(1, id, false);
     view.setUint32(5, payload.length, false);
     bridgeFrame.set(payload, 9);
@@ -672,17 +672,7 @@ export class StreamMultiplexer {
       }
     }
 
-    if (flags & Flags.FIN) {
-      if (stream) {
-        stream.handleClose();
-        this.streams.delete(streamID);
-        if (this.streamsByType.get(stream.type) === stream) {
-          this.streamsByType.delete(stream.type);
-        }
-      }
-    }
-
-    if (flags & Flags.RST) {
+    if (flags & (Flags.FIN | Flags.RST)) {
       if (stream) {
         stream.handleClose();
         this.streams.delete(streamID);

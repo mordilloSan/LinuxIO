@@ -184,38 +184,6 @@ import { linuxio } from "@/api";
 await linuxio.storage.get_drive_info.call();
 ```
 
-### `call<T>(handler, command, args?, options?)`
-
-Simple request/response call. Returns a Promise that rejects on timeout or if the connection closes.
-
-```typescript
-// Basic usage
-const drives = await call<DiskInfo[]>("storage", "get_drive_info");
-
-// With arguments
-const logs = await call<string>("docker", "get_container_logs", [containerId]);
-
-// With timeout
-const result = await call("dbus", "install_package", [packageId], {
-  timeout: 60000, // 60 second timeout (default: 30000)
-});
-```
-
-**Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `handler` | `string` | - | Handler namespace |
-| `command` | `string` | - | Command name |
-| `args` | `string[]` | `[]` | Arguments array |
-| `options.timeout` | `number` | `30000` | Timeout in milliseconds |
-
-**Returns:** `Promise<T>`
-
-**Throws:**
-- `LinuxIOError("Request timeout", "timeout")` - Request timed out
-- `LinuxIOError("Connection closed before receiving result", "connection_closed")` - Connection dropped
-- `LinuxIOError(message, code)` - Backend error
-
 ### `spawn(handler, command, args?, options?)`
 
 Streaming operation with progress and data callbacks. Returns a `SpawnedProcess` that is also a Promise.

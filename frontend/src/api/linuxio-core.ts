@@ -1,7 +1,6 @@
 /**
  * LinuxIO Core API - Promise-based bridge communication
  *
- * - Simple calls: await call()
  * - Streaming: spawn().onStream().progress().then()
  * - Bidirectional: openStream()
  *
@@ -13,7 +12,6 @@ import {
   initStreamMux,
   waitForStreamMux,
   encodeString,
-  decodeString,
 } from "./StreamMultiplexer";
 import { waitForStreamResult, bindStreamHandlers } from "./stream-helpers";
 
@@ -361,4 +359,4 @@ export class SpawnedProcess implements Promise<any> {
 
 // Re-export types
 export type { Stream, ProgressFrame, ResultFrame };
-export { encodeString, decodeString };
+export { encodeString };

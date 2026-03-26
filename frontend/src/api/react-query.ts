@@ -12,8 +12,6 @@
  *    await linuxio.system.get_capabilities.call()
  *    await queryClient.fetchQuery(linuxio.system.get_capabilities.queryOptions())
  *
- * For lower-level or untyped calls, use the core API:
- *    await core.call("handler", "command", [args])
  */
 
 import {
@@ -27,12 +25,6 @@ import {
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
 import { useStreamMux, useIsUpdating } from "./linuxio";
-import {
-  initStreamMux,
-  closeStreamMux,
-  waitForStreamMux,
-  getStreamMux,
-} from "./StreamMultiplexer";
 import type {
   HandlerName,
   CommandName,
@@ -408,9 +400,6 @@ const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
 
 export default linuxio;
 export { LinuxIOError };
-
-// Re-export mux lifecycle functions for convenience
-export { initStreamMux, closeStreamMux, waitForStreamMux, getStreamMux };
 
 // Re-export types for convenience
 export type {
