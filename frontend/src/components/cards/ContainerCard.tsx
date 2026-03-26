@@ -274,7 +274,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             alignItems: "center",
             justifyContent: "center",
             borderRadius: "inherit",
-            backgroundColor: "rgba(0,0,0,0.35)",
+            backgroundColor: "var(--app-overlay-dark)",
             zIndex: 1,
           }}
         >

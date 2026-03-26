@@ -9,6 +9,8 @@ import React, {
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
+  FILE_TYPE_COLORS,
+  SEMANTIC_STATUS_COLORS,
   getContrastText,
   resolvePrimaryColor,
 } from "@/theme/colors";
@@ -615,6 +617,10 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
       theme.palette.mode === "dark"
         ? "0 16px 40px -28px rgba(0, 0, 0, 0.6)"
         : "rgba(50, 50, 93, 0.025) 0px 2px 5px -1px, rgba(0, 0, 0, 0.05) 0px 1px 3px -1px",
+    "--breakpoint-sm": `${theme.breakpoints.values.sm}px`,
+    "--breakpoint-md": `${theme.breakpoints.values.md}px`,
+    "--breakpoint-lg": `${theme.breakpoints.values.lg}px`,
+    "--breakpoint-xl": `${theme.breakpoints.values.xl}px`,
     "--accent": theme.palette.primary.main,
     "--accent-soft": theme.palette.primary.light,
     "--accent-strong": theme.palette.primary.dark,
@@ -638,6 +644,24 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--color-success": "var(--app-palette-success-main)",
     "--color-info": "var(--app-palette-info-main)",
     "--color-divider": "var(--app-palette-divider)",
+    "--app-status-success": SEMANTIC_STATUS_COLORS.success,
+    "--app-status-warning": SEMANTIC_STATUS_COLORS.warning,
+    "--app-status-error":   SEMANTIC_STATUS_COLORS.error,
+    "--app-status-danger":  SEMANTIC_STATUS_COLORS.danger,
+    "--app-status-info":    SEMANTIC_STATUS_COLORS.info,
+    "--app-status-neutral": SEMANTIC_STATUS_COLORS.neutral,
+    "--app-status-muted":   SEMANTIC_STATUS_COLORS.muted,
+    "--app-status-caution": SEMANTIC_STATUS_COLORS.caution,
+    "--app-file-code":        FILE_TYPE_COLORS.code,
+    "--app-file-pdf":         FILE_TYPE_COLORS.pdf,
+    "--app-file-image":       FILE_TYPE_COLORS.image,
+    "--app-file-video":       FILE_TYPE_COLORS.video,
+    "--app-file-audio":       FILE_TYPE_COLORS.audio,
+    "--app-file-archive":     FILE_TYPE_COLORS.archive,
+    "--app-file-spreadsheet": FILE_TYPE_COLORS.spreadsheet,
+    "--app-file-document":    FILE_TYPE_COLORS.document,
+    "--app-file-executable":  FILE_TYPE_COLORS.executable,
+    "--app-overlay-dark":     "rgba(0, 0, 0, 0.35)",
     "--mui-palette-primary-main": theme.palette.primary.main,
     "--mui-palette-primary-mainChannel": toColorChannel(
       theme.palette.primary.main,

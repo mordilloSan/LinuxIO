@@ -1,13 +1,5 @@
-export const SEMANTIC_STATUS_COLORS = {
-  success: "#00E676",
-  warning: "#FFC107",
-  error: "#F44336",
-  danger: "#FF5252",
-  info: "#2196F3",
-  neutral: "#BDBDBD",
-  muted: "#9E9E9E",
-  caution: "#FF9800",
-} as const;
+export { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
+import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
 export const getContainerStatusColor = (state: string): string => {
   if (state === "Healthy" || state === "Running") {

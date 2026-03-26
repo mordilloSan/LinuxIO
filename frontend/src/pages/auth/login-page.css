@@ -12,7 +12,7 @@
   animation: login-float 4.5s ease-in-out infinite;
 }
 
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .login-badge {
     top: -96px;
     padding-inline: 20px;
@@ -25,7 +25,7 @@
   height: 30px;
 }
 
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .login-badge-icon {
     width: 34px;
     height: 34px;
@@ -51,7 +51,7 @@
   animation: login-lift-in 0.5s ease forwards;
 }
 
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .login-paper {
     padding: 36px;
     padding-top: 56px;

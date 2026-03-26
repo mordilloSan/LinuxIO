@@ -74,7 +74,7 @@
   transform: translateY(1px);
 }
 
-@media (max-width: 899.95px) {
+@media (max-width: 769.95px) {
   .login-submit-btn {
     padding: 10px 16px;
   }
@@ -126,7 +126,7 @@
   color: var(--color-text);
 }
 
-@media (max-width: 899.95px) {
+@media (max-width: 769.95px) {
   .login-field .app-text-field__input {
     padding: 8.5px 14px;
   }
