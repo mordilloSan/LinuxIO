@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
@@ -270,18 +271,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Name (with status dot) */}
         <AppTableCell>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <AppTooltip title={displayState}>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: getStatusDotColor(displayState),
-                  flexShrink: 0,
-                  display: "inline-block",
-                }}
-              />
-            </AppTooltip>
+            <StatusDot
+              color={getStatusDotColor(displayState)}
+              size={8}
+              tooltip={displayState}
+            />
             <DockerIcon identifier={container.icon} size={24} alt={name} />
             <AppTypography variant="body2" fontWeight={700} noWrap>
               {name}

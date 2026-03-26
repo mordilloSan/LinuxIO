@@ -1,7 +1,3 @@
-/**
- * Shared cache TTL presets (milliseconds) for React Query staleTime.
- * Keep all screen-level staleTime values sourced from here.
- */
 export const CACHE_TTL_MS = {
   NONE: 0,
   TWO_SECONDS: 2_000,

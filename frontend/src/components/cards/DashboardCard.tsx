@@ -6,8 +6,8 @@ import FrostedCard from "./RootCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { cardHeight } from "@/constants";
 import { useAppTheme } from "@/theme";
 import {
@@ -134,24 +134,15 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   };
 
   const statusDot = connectionStatus && (
-    <AppTooltip
-      title={connectionStatus === "online" ? "Connected" : "Disconnected"}
-      arrow
-    >
-      <div
-        style={{
-          width: 10,
-          height: 10,
-          marginBottom: 2,
-          borderRadius: "50%",
-          backgroundColor:
-            connectionStatus === "online"
-              ? theme.palette.success.main
-              : theme.palette.error.main,
-          flexShrink: 0,
-        }}
-      />
-    </AppTooltip>
+    <StatusDot
+      color={
+        connectionStatus === "online"
+          ? theme.palette.success.main
+          : theme.palette.error.main
+      }
+      tooltip={connectionStatus === "online" ? "Connected" : "Disconnected"}
+      style={{ marginBottom: 2 }}
+    />
   );
 
   const renderSelect = selectOptions.length > 0 && (

@@ -7,6 +7,7 @@ import AppCardContent from "@/components/ui/AppCardContent";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import { useAppTheme } from "@/theme";
 import {
   getAccentCardHoverStyles,
@@ -27,62 +28,6 @@ interface InterfaceCardProps {
   handleAddPeer: (name: string, peerData: any) => void;
 }
 
-interface InterfaceCardRowProps {
-  label: string;
-  value: React.ReactNode;
-  wrap?: boolean;
-  noDivider?: boolean;
-}
-
-const InterfaceCardRow: React.FC<InterfaceCardRowProps> = ({
-  label,
-  value,
-  wrap = false,
-  noDivider = false,
-}) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: wrap ? "flex-start" : "baseline",
-      justifyContent: "space-between",
-      gap: 8,
-      padding: "4px 0",
-      borderBottom: noDivider ? "none" : "1px solid var(--app-palette-divider)",
-    }}
-  >
-    <AppTypography
-      variant="caption"
-      color="text.secondary"
-      style={{
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        fontSize: "0.62rem",
-        flexShrink: 0,
-        paddingTop: wrap ? 2 : 0,
-      }}
-    >
-      {label}
-    </AppTypography>
-    <AppTypography
-      variant="body2"
-      fontWeight={500}
-      noWrap={!wrap}
-      style={{
-        marginLeft: "auto",
-        minWidth: 0,
-        textAlign: "right",
-        ...(wrap
-          ? {
-              whiteSpace: "normal",
-              overflowWrap: "anywhere",
-            }
-          : {}),
-      }}
-    >
-      {value}
-    </AppTypography>
-  </div>
-);
 
 const InterfaceCard: React.FC<InterfaceCardProps> = ({
   iface,
@@ -206,9 +151,9 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
             </div>
           </div>
           <div style={{ marginTop: 6 }}>
-            <InterfaceCardRow label="Address" value={iface.address} wrap />
-            <InterfaceCardRow label="Port" value={iface.port} />
-            <InterfaceCardRow label="Peers" value={iface.peerCount} noDivider />
+            <InfoRow label="Address" wrap>{iface.address}</InfoRow>
+            <InfoRow label="Port">{iface.port}</InfoRow>
+            <InfoRow label="Peers" noBorder>{iface.peerCount}</InfoRow>
           </div>
         </AppCardContent>
       </FrostedCard>
