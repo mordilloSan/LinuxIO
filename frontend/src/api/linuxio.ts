@@ -9,20 +9,11 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   getStreamMux,
-  initStreamMux,
-  closeStreamMux,
-  waitForStreamMux,
-  STREAM_CHUNK_SIZE,
-  UPLOAD_WINDOW_SIZE,
   type Stream,
-  type ProgressFrame,
-  type ResultFrame,
   type MuxStatus,
   type StreamType,
   encodeString,
-  decodeString,
 } from "./StreamMultiplexer";
-import { LinuxIOError } from "./linuxio-core";
 
 const STREAM_TYPE_TERMINAL = "terminal";
 const STREAM_TYPE_CONTAINER = "container";
@@ -125,18 +116,6 @@ export function useStreamMux() {
     };
   }, []);
 
-  const openStream = useCallback(
-    (type: StreamType, initialPayload?: Uint8Array): Stream | null => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
-        console.warn("[useStreamMux] Cannot open stream - mux not ready");
-        return null;
-      }
-      return mux.openStream(type, initialPayload);
-    },
-    [],
-  );
-
   const getStream = useCallback((type: StreamType): Stream | null => {
     const mux = getStreamMux();
     if (!mux) return null;
@@ -146,7 +125,6 @@ export function useStreamMux() {
   return {
     status,
     isOpen: status === "open",
-    openStream,
     getStream,
   };
 }
@@ -183,69 +161,51 @@ export function useIsUpdating(): boolean {
 // Payload Helpers (stream handler protocol)
 // ============================================================================
 
-/**
- * Build payload for terminal stream
- */
-export function terminalPayload(cols: number, rows: number): Uint8Array {
-  return encodeString(`${STREAM_TYPE_TERMINAL}\0${cols}\0${rows}`);
+function terminalPayload(cols: number, rows: number): Uint8Array {
+  return encodeString([STREAM_TYPE_TERMINAL, cols, rows].join("\0"));
 }
 
-/**
- * Build payload for docker logs stream
- */
-export function dockerLogsPayload(
+function dockerLogsPayload(
   containerId: string,
   tail: string = "100",
 ): Uint8Array {
-  return encodeString(`${STREAM_TYPE_DOCKER_LOGS}\0${containerId}\0${tail}`);
+  return encodeString([STREAM_TYPE_DOCKER_LOGS, containerId, tail].join("\0"));
 }
 
-/**
- * Build payload for service logs stream (journalctl)
- */
-export function serviceLogsPayload(
+function serviceLogsPayload(
   serviceName: string,
   lines: string = "100",
 ): Uint8Array {
-  return encodeString(`${STREAM_TYPE_SERVICE_LOGS}\0${serviceName}\0${lines}`);
+  return encodeString(
+    [STREAM_TYPE_SERVICE_LOGS, serviceName, lines].join("\0"),
+  );
 }
 
-/**
- * Build payload for general logs stream (journalctl)
- * @param lines - Number of initial lines to show (default "100")
- * @param timePeriod - Time range like "1h", "24h", "7d" (optional)
- * @param priority - Max priority level 0-7 (optional, empty = all)
- * @param identifier - Filter by SYSLOG_IDENTIFIER (optional, empty = all)
- */
-export function generalLogsPayload(
+function generalLogsPayload(
   lines: string = "100",
   timePeriod: string = "",
   priority: string = "",
   identifier: string = "",
 ): Uint8Array {
   return encodeString(
-    `${STREAM_TYPE_GENERAL_LOGS}\0${lines}\0${timePeriod}\0${priority}\0${identifier}`,
+    [STREAM_TYPE_GENERAL_LOGS, lines, timePeriod, priority, identifier].join(
+      "\0",
+    ),
   );
 }
 
-/**
- * Build payload for container terminal stream
- */
-export function containerPayload(
+function containerPayload(
   containerId: string,
   shell: string,
   cols: number,
   rows: number,
 ): Uint8Array {
   return encodeString(
-    `${STREAM_TYPE_CONTAINER}\0${containerId}\0${shell}\0${cols}\0${rows}`,
+    [STREAM_TYPE_CONTAINER, containerId, shell, cols, rows].join("\0"),
   );
 }
 
-/**
- * Build payload for file upload stream
- */
-export function uploadPayload(
+function uploadPayload(
   path: string,
   size: number,
   override: boolean = false,
@@ -257,39 +217,27 @@ export function uploadPayload(
   return encodeString(parts.join("\0"));
 }
 
-/**
- * Build payload for file download stream
- */
-export function downloadPayload(paths: string[]): Uint8Array {
+function downloadPayload(paths: string[]): Uint8Array {
   if (paths.length === 0) {
     throw new Error("downloadPayload requires at least one path");
   }
   if (isSingleFileDownload(paths)) {
-    return encodeString(`${STREAM_TYPE_FB_DOWNLOAD}\0${paths[0]}`);
+    return encodeString([STREAM_TYPE_FB_DOWNLOAD, paths[0]].join("\0"));
   }
-  return encodeString(`${STREAM_TYPE_FB_ARCHIVE}\0zip\0${paths.join("\0")}`);
+  return encodeString([STREAM_TYPE_FB_ARCHIVE, "zip", ...paths].join("\0"));
 }
 
-/**
- * Build payload for archive compression
- */
-export function compressPayload(
+function compressPayload(
   paths: string[],
   destination: string,
   format: string,
 ): Uint8Array {
   return encodeString(
-    `${STREAM_TYPE_FB_COMPRESS}\0${format}\0${destination}\0${paths.join("\0")}`,
+    [STREAM_TYPE_FB_COMPRESS, format, destination, ...paths].join("\0"),
   );
 }
 
-/**
- * Build payload for archive extraction
- */
-export function extractPayload(
-  archive: string,
-  destination?: string,
-): Uint8Array {
+function extractPayload(archive: string, destination?: string): Uint8Array {
   const parts = [STREAM_TYPE_FB_EXTRACT, archive];
   if (destination) {
     parts.push(destination);
@@ -297,34 +245,22 @@ export function extractPayload(
   return encodeString(parts.join("\0"));
 }
 
-/**
- * Build payload for package update stream
- */
-export function packageUpdatePayload(packages: string[]): Uint8Array {
+function packageUpdatePayload(packages: string[]): Uint8Array {
   if (packages.length === 0) {
     throw new Error("packageUpdatePayload requires at least one package");
   }
   return encodeString([STREAM_TYPE_PKG_UPDATE, ...packages].join("\0"));
 }
 
-/**
- * Build payload for exec stream
- */
-export function execPayload(program: string, args: string[] = []): Uint8Array {
+function execPayload(program: string, args: string[] = []): Uint8Array {
   return encodeString([STREAM_TYPE_EXEC, program, ...args].join("\0"));
 }
 
-/**
- * Build payload for SMART test stream
- */
-export function smartTestPayload(device: string, testType: string): Uint8Array {
-  return encodeString(`${STREAM_TYPE_SMART_TEST}\0${device}\0${testType}`);
+function smartTestPayload(device: string, testType: string): Uint8Array {
+  return encodeString([STREAM_TYPE_SMART_TEST, device, testType].join("\0"));
 }
 
-/**
- * Build payload for docker-compose stream
- */
-export function dockerComposePayload(
+function dockerComposePayload(
   action: "up" | "down" | "stop" | "restart",
   projectName: string,
   composePath?: string,
@@ -336,21 +272,15 @@ export function dockerComposePayload(
   return encodeString(parts.join("\0"));
 }
 
-/**
- * Build payload for docker reindex stream
- */
-export function dockerIndexerPayload(): Uint8Array {
+function dockerIndexerPayload(): Uint8Array {
   return encodeString(STREAM_TYPE_DOCKER_INDEXER);
 }
 
-export function dockerIndexerAttachPayload(): Uint8Array {
+function dockerIndexerAttachPayload(): Uint8Array {
   return encodeString(STREAM_TYPE_DOCKER_INDEXER_ATTACH);
 }
 
-/**
- * Build payload for file indexer stream
- */
-export function fileIndexerPayload(path?: string): Uint8Array {
+function fileIndexerPayload(path?: string): Uint8Array {
   const parts = [STREAM_TYPE_FB_REINDEX];
   if (path && path !== "/") {
     parts.push(path);
@@ -358,23 +288,11 @@ export function fileIndexerPayload(path?: string): Uint8Array {
   return encodeString(parts.join("\0"));
 }
 
-/**
- * Build payload for file copy stream
- */
-export function fileCopyPayload(
-  source: string,
-  destination: string,
-): Uint8Array {
+function fileCopyPayload(source: string, destination: string): Uint8Array {
   return encodeString([STREAM_TYPE_FB_COPY, source, destination].join("\0"));
 }
 
-/**
- * Build payload for file move stream
- */
-export function fileMovePayload(
-  source: string,
-  destination: string,
-): Uint8Array {
+function fileMovePayload(source: string, destination: string): Uint8Array {
   return encodeString([STREAM_TYPE_FB_MOVE, source, destination].join("\0"));
 }
 
@@ -562,20 +480,3 @@ export function openFileMoveStream(
     fileMovePayload(source, destination),
   );
 }
-
-// ============================================================================
-// Re-exports
-// ============================================================================
-
-export {
-  encodeString,
-  decodeString,
-  getStreamMux,
-  initStreamMux,
-  closeStreamMux,
-  waitForStreamMux,
-  STREAM_CHUNK_SIZE,
-  UPLOAD_WINDOW_SIZE,
-};
-export type { Stream, ProgressFrame, ResultFrame, MuxStatus, StreamType };
-export { LinuxIOError };

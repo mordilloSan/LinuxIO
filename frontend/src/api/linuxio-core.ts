@@ -325,13 +325,6 @@ export class SpawnedProcess implements Promise<any> {
   }
 
   /**
-   * Close/abort the process early
-   */
-  close(): void {
-    this._stream.abort();
-  }
-
-  /**
    * Abort the process immediately.
    */
   abort(): void {

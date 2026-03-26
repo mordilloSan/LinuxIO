@@ -119,7 +119,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
               {orderedContainers.map((container) => (
                 <AppGrid
                   key={container.Id}
-                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+                  size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
                 >
                   <SortableCard id={container.Id} editMode={editMode}>
                     <ContainerCard container={container} />

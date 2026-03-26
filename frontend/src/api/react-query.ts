@@ -26,14 +26,13 @@ import {
 
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
+import { useStreamMux, useIsUpdating } from "./linuxio";
 import {
-  useStreamMux,
-  useIsUpdating,
   initStreamMux,
   closeStreamMux,
   waitForStreamMux,
   getStreamMux,
-} from "./linuxio";
+} from "./StreamMultiplexer";
 import type {
   HandlerName,
   CommandName,

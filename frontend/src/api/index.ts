@@ -28,26 +28,8 @@ export type { CallOptions, SpawnOptions } from "./linuxio-core";
 // === React Hooks ===
 export { useStreamMux, useIsUpdating } from "./linuxio";
 
-// === Payload Builders ===
+// === Stream Openers ===
 export {
-  terminalPayload,
-  dockerLogsPayload,
-  serviceLogsPayload,
-  generalLogsPayload,
-  containerPayload,
-  uploadPayload,
-  downloadPayload,
-  compressPayload,
-  extractPayload,
-  packageUpdatePayload,
-  execPayload,
-  smartTestPayload,
-  dockerComposePayload,
-  dockerIndexerPayload,
-  dockerIndexerAttachPayload,
-  fileIndexerPayload,
-  fileCopyPayload,
-  fileMovePayload,
   openTerminalStream,
   openContainerStream,
   openDockerLogsStream,
