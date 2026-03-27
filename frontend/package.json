@@ -33,7 +33,6 @@
     "@xterm/xterm": "^6.0.0",
     "ace-builds": "^1.43.4",
     "framer-motion": "^12.36.0",
-    "lucide-react": "^1.7.0",
     "react": "^19.2.3",
     "react-ace": "^14.0.1",
     "react-dom": "^19.2.3",
@@ -83,6 +82,12 @@
     },
     "@tanstack/eslint-plugin-query": {
       "eslint": ">=9",
+      "typescript": "^6.0.2"
+    },
+    "@typescript-eslint/eslint-plugin": {
+      "typescript": "^6.0.2"
+    },
+    "@typescript-eslint/parser": {
       "typescript": "^6.0.2"
     }
   }

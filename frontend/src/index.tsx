@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import "./theme/variables.css";
-import "./lib/icons";
+import "./icons/icons";
 import App from "./App";
 
 // Start the App
