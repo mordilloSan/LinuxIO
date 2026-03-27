@@ -130,7 +130,9 @@ class StreamImpl implements Stream {
   private _status: StreamStatus = "opening";
   private buffer: Uint8Array[] = []; // Buffer for when handler is detached
   private bufferedBytes = 0;
-  private recvBuffer: Uint8Array = new Uint8Array(0); // Buffer for partial StreamFrames
+  private recvBuf = new Uint8Array(8192); // Pre-allocated receive buffer
+  private recvStart = 0; // Read offset into recvBuf
+  private recvEnd = 0; // Write offset into recvBuf
   private scrollback = new CircularBuffer(MAX_SCROLLBACK); // Efficient circular buffer
 
   constructor(
@@ -158,9 +160,6 @@ class StreamImpl implements Stream {
         const scrollback = this.scrollback.read();
         const overlapBytes = Math.min(this.bufferedBytes, scrollback.length);
         const replayLength = scrollback.length - overlapBytes;
-        console.log(
-          `[Stream ${this.id}] Replaying ${replayLength} bytes of scrollback`,
-        );
         if (replayLength > 0) {
           handler(scrollback.slice(0, replayLength));
         }
@@ -168,9 +167,6 @@ class StreamImpl implements Stream {
 
       // Then flush any buffered data that arrived while detached
       if (this.buffer.length > 0) {
-        console.log(
-          `[Stream ${this.id}] Flushing ${this.buffer.length} buffered items`,
-        );
         for (const data of this.buffer) {
           handler(data);
         }
@@ -271,9 +267,6 @@ class StreamImpl implements Stream {
       this._onData(data);
     } else {
       // Buffer data when no handler attached
-      console.log(
-        `[Stream ${this.id}] Buffering ${data.length} bytes (no handler)`,
-      );
       this.buffer.push(data);
       this.bufferedBytes += data.length;
 
@@ -289,35 +282,63 @@ class StreamImpl implements Stream {
   }
 
   /**
-   * Handle raw bytes from WebSocket, accumulate in recvBuffer,
+   * Ensure recvBuf has room for `needed` additional bytes.
+   * Compacts first, then grows by doubling if still insufficient.
+   */
+  private ensureRecvCapacity(needed: number): void {
+    const used = this.recvEnd - this.recvStart;
+    // Compact: shift valid data to front when >50% wasted
+    if (this.recvStart > this.recvBuf.length >>> 1) {
+      this.recvBuf.copyWithin(0, this.recvStart, this.recvEnd);
+      this.recvStart = 0;
+      this.recvEnd = used;
+    }
+    // Grow if still not enough room
+    if (this.recvEnd + needed > this.recvBuf.length) {
+      let newCap = this.recvBuf.length;
+      while (newCap < used + needed) newCap *= 2;
+      const grown = new Uint8Array(newCap);
+      grown.set(this.recvBuf.subarray(this.recvStart, this.recvEnd));
+      this.recvBuf = grown;
+      this.recvStart = 0;
+      this.recvEnd = used;
+    }
+  }
+
+  /**
+   * Handle raw bytes from WebSocket, accumulate in recvBuf,
    * and parse complete StreamFrames.
    * StreamFrame format: [opcode:1][streamID:4][length:4][payload:N]
    */
   handleRawData(data: Uint8Array): void {
-    // Append to receive buffer
-    const newBuffer = new Uint8Array(this.recvBuffer.length + data.length);
-    newBuffer.set(this.recvBuffer);
-    newBuffer.set(data, this.recvBuffer.length);
-    this.recvBuffer = newBuffer;
+    this.ensureRecvCapacity(data.length);
+    this.recvBuf.set(data, this.recvEnd);
+    this.recvEnd += data.length;
 
     // Parse complete frames from buffer
-    while (this.recvBuffer.length >= 9) {
+    while (this.recvEnd - this.recvStart >= 9) {
       const view = new DataView(
-        this.recvBuffer.buffer,
-        this.recvBuffer.byteOffset,
-        this.recvBuffer.byteLength,
+        this.recvBuf.buffer,
+        this.recvBuf.byteOffset + this.recvStart,
+        this.recvEnd - this.recvStart,
       );
-      const opcode = this.recvBuffer[0];
+      const opcode = this.recvBuf[this.recvStart];
       const payloadLength = view.getUint32(5, false); // Big endian
       const frameLength = 9 + payloadLength;
 
-      if (this.recvBuffer.length < frameLength) {
-        // Incomplete frame, wait for more data
-        break;
+      if (this.recvEnd - this.recvStart < frameLength) {
+        break; // Incomplete frame
       }
 
-      // Extract payload
-      const payload = this.recvBuffer.slice(9, frameLength);
+      // Extract payload (only allocation per frame — unavoidable for handoff)
+      const payloadStart = this.recvStart + 9;
+      const payload = this.recvBuf.slice(
+        payloadStart,
+        payloadStart + payloadLength,
+      );
+
+      // Advance read cursor past this frame
+      this.recvStart += frameLength;
 
       // Route based on opcode
       switch (opcode) {
@@ -325,7 +346,6 @@ class StreamImpl implements Stream {
           this.handleData(payload);
           break;
         case BridgeOpcode.StreamClose:
-          // Bridge closed the stream - trigger close handler
           this.handleClose();
           this.mux.removeStream(this.id);
           break;
@@ -335,14 +355,13 @@ class StreamImpl implements Stream {
         case BridgeOpcode.StreamResult:
           this.handleResult(payload);
           break;
-        default:
-          console.warn(
-            `[Stream ${this.id}] Unknown opcode: 0x${opcode.toString(16)}`,
-          );
       }
+    }
 
-      // Remove processed frame from buffer
-      this.recvBuffer = this.recvBuffer.slice(frameLength);
+    // Reset offsets when buffer is fully consumed
+    if (this.recvStart === this.recvEnd) {
+      this.recvStart = 0;
+      this.recvEnd = 0;
     }
   }
 
@@ -581,7 +600,6 @@ export class StreamMultiplexer {
     if (isPersistent) {
       const existing = this.streamsByType.get(type);
       if (existing && existing.status === "open") {
-        console.log(`[StreamMux] Reusing persistent stream "${type}"`);
         return existing;
       }
     }
@@ -720,14 +738,16 @@ export class StreamMultiplexer {
   }
 }
 
-// Utility to encode string to Uint8Array
+// Singleton encoder/decoder — avoids allocation on every call
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 export function encodeString(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
+  return textEncoder.encode(str);
 }
 
-// Utility to decode Uint8Array to string
 export function decodeString(data: Uint8Array): string {
-  return new TextDecoder().decode(data);
+  return textDecoder.decode(data);
 }
 
 // Bridge StreamFrame opcodes (must match backend ipc/stream_relay.go)

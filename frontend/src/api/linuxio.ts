@@ -455,7 +455,10 @@ export function openFileIndexerStream(path?: string): Stream | null {
 }
 
 export function openFileIndexerAttachStream(): Stream | null {
-  return openMuxStream(STREAM_TYPE_FB_INDEXER_ATTACH, fileIndexerAttachPayload());
+  return openMuxStream(
+    STREAM_TYPE_FB_INDEXER_ATTACH,
+    fileIndexerAttachPayload(),
+  );
 }
 
 export function openFileCopyStream(

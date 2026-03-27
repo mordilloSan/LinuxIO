@@ -1,4 +1,4 @@
-import type { GpuDevice } from "@/api/linuxio-types";
+import type { GpuDevice } from "@/api";
 
 export const hasGpuValue = <T>(
   value: T | null | undefined | "",

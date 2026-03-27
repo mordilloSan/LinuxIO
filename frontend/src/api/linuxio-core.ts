@@ -81,26 +81,24 @@ async function executeCallAttempt<T>(
 
   const mux = await ensureCallMuxReady(timeoutMs);
   const stream = mux.openStream("bridge", payload);
-  const operation = waitForStreamResult<T>(stream, {
-    closeMessage: "Connection closed before receiving result",
-  });
 
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await waitForStreamResult<T>(stream, {
+      closeMessage: "Connection closed before receiving result",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
       stream.close();
-      reject(new LinuxIOError("Request timeout", "timeout"));
-    }, timeoutMs);
-
-    operation
-      .then((result) => {
-        clearTimeout(timer);
-        resolve(result);
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-  });
+      throw new LinuxIOError("Request timeout", "timeout");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

@@ -7,7 +7,7 @@ import {
 import React, { ReactNode } from "react";
 import { toast } from "sonner";
 
-import { CACHE_TTL_MS } from "@/api/cache-policy";
+import { CACHE_TTL_MS } from "@/api";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;

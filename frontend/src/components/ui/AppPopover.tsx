@@ -221,7 +221,9 @@ const AppPopover: React.FC<AppPopoverProps> = ({
         return;
       }
 
-      if ((target as HTMLElement).closest?.("[data-allow-context-menu='true']")) {
+      if (
+        (target as HTMLElement).closest?.("[data-allow-context-menu='true']")
+      ) {
         return;
       }
 

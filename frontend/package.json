@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "lint": "eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache",
+    "lint": "TSESTREE_NO_INVALIDATION=true eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache",
     "icons:generate": "node scripts/generate-icons.mjs",
     "build": "vite build",
     "analyze": "BUNDLE_ANALYZE=true vite build",
@@ -82,7 +82,8 @@
       "eslint": ">=9"
     },
     "@tanstack/eslint-plugin-query": {
-      "eslint": ">=9"
+      "eslint": ">=9",
+      "typescript": "^6.0.2"
     }
   }
 }

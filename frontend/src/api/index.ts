@@ -8,7 +8,7 @@
  */
 
 // === JSON API (React Query type-safe proxy) ===
-export { default as linuxio } from "./react-query";
+export { default as linuxio, CACHE_TTL_MS } from "./react-query";
 
 // === Core API (Promise-based) ===
 export { LinuxIOError } from "./linuxio-core";
@@ -64,9 +64,6 @@ export {
   streamWriteChunks,
 } from "./stream-helpers";
 export type * from "./stream-helpers";
-
-// === Cache Policy ===
-export { CACHE_TTL_MS } from "./cache-policy";
 
 // === Stream Types ===
 export type * from "./StreamMultiplexer";

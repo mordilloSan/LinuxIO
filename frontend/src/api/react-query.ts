@@ -32,14 +32,26 @@ import type {
   CommandResult,
 } from "./linuxio-types";
 
+// Cache TTL presets for staleTime / gcTime options
+export const CACHE_TTL_MS = {
+  NONE: 0,
+  TWO_SECONDS: 2_000,
+  FIVE_SECONDS: 5_000,
+  THIRTY_SECONDS: 30_000,
+  ONE_MINUTE: 60_000,
+  FIVE_MINUTES: 5 * 60 * 1000,
+  ONE_DAY: 24 * 60 * 60 * 1000,
+} as const;
+
 function serializeArg(arg: unknown): string {
+  if (arg === undefined) return "";
   if (typeof arg === "string") return arg;
   if (typeof arg === "object") return JSON.stringify(arg);
   return String(arg);
 }
 
 function serializeArgs(args: readonly unknown[]): string[] {
-  return (args ?? []).filter((arg) => arg !== undefined).map(serializeArg);
+  return (args ?? []).map(serializeArg);
 }
 
 // ============================================================================
@@ -385,7 +397,6 @@ const linuxio = new Proxy({} as TypedAPI, {
 });
 
 export default linuxio;
-export { LinuxIOError };
 
 // Re-export types for convenience
 export type {
