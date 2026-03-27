@@ -1,14 +1,16 @@
-import Cpu from "lucide-react/dist/esm/icons/cpu";
-import FileText from "lucide-react/dist/esm/icons/file-text";
-import Folder from "lucide-react/dist/esm/icons/folder";
-import HardDrive from "lucide-react/dist/esm/icons/hard-drive";
-import Home from "lucide-react/dist/esm/icons/home";
-import NetworkIcon from "lucide-react/dist/esm/icons/network";
-import RefreshCcw from "lucide-react/dist/esm/icons/refresh-ccw";
-import ServerCog from "lucide-react/dist/esm/icons/server-cog";
-import Share2 from "lucide-react/dist/esm/icons/share-2";
-import TerminalIcon from "lucide-react/dist/esm/icons/terminal";
-import Users from "lucide-react/dist/esm/icons/users";
+import {
+  Cpu,
+  FileText,
+  Folder,
+  HardDrive,
+  Home,
+  Network as NetworkIcon,
+  RefreshCcw,
+  ServerCog,
+  Share2,
+  Terminal as TerminalIcon,
+  Users,
+} from "lucide-react";
 import React, { lazy, useMemo } from "react";
 
 import { AuthGuard } from "@/components/guards/AuthGuard";

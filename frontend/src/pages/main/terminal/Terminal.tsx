@@ -1,8 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import Minus from "lucide-react/dist/esm/icons/minus";
-import Plus from "lucide-react/dist/esm/icons/plus";
-import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
+import { Minus, Plus, RotateCcw } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
