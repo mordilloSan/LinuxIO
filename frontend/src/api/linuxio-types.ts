@@ -577,6 +577,26 @@ export interface ModifyGroupMembersRequest {
 }
 
 // ============================================================================
+// Shares Types (NFS Exports & Samba)
+// ============================================================================
+
+export interface NFSClient {
+  host: string;
+  options: string[];
+}
+
+export interface NFSExport {
+  path: string;
+  clients: NFSClient[];
+  active: boolean;
+}
+
+export interface SambaShare {
+  name: string;
+  properties: Record<string, string>;
+}
+
+// ============================================================================
 // Storage Types (LVM & NFS)
 // ============================================================================
 
@@ -988,6 +1008,37 @@ export interface LinuxIOSchema {
     modify_group_members: { args: [request: string]; result: void };
     // Utility
     list_shells: { args: []; result: string[] };
+  };
+
+  shares: {
+    // NFS exports (server-side shares)
+    list_nfs_shares: { args: []; result: NFSExport[] };
+    create_nfs_share: {
+      args: [path: string, clients: NFSClient[]];
+      result: { success: boolean; path: string };
+    };
+    update_nfs_share: {
+      args: [path: string, clients: NFSClient[]];
+      result: { success: boolean; path: string };
+    };
+    delete_nfs_share: {
+      args: [path: string];
+      result: { success: boolean };
+    };
+    // Samba shares
+    list_samba_shares: { args: []; result: SambaShare[] };
+    create_samba_share: {
+      args: [name: string, properties: Record<string, string>];
+      result: { success: boolean; name: string };
+    };
+    update_samba_share: {
+      args: [name: string, properties: Record<string, string>];
+      result: { success: boolean; name: string };
+    };
+    delete_samba_share: {
+      args: [name: string];
+      result: { success: boolean };
+    };
   };
 
   storage: {
