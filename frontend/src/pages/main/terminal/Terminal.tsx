@@ -1,6 +1,6 @@
+import { Icon } from "@iconify/react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { Minus, Plus, RotateCcw } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
@@ -353,7 +353,7 @@ const TerminalXTerm: React.FC = () => {
           style={{ color: "var(--mui-palette-text-secondary)" }}
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
         >
-          <Minus size={18} />
+          <Icon icon="mdi:minus" width={18} height={18} />
         </AppIconButton>
         <AppTypography
           variant="body2"
@@ -368,7 +368,7 @@ const TerminalXTerm: React.FC = () => {
           style={{ color: "var(--mui-palette-text-secondary)" }}
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
         >
-          <Plus size={18} />
+          <Icon icon="mdi:plus" width={18} height={18} />
         </AppIconButton>
 
         <div style={{ flex: 1 }} />
@@ -380,7 +380,7 @@ const TerminalXTerm: React.FC = () => {
           onClick={handleReset}
           title="Reset Terminal"
         >
-          <RotateCcw size={18} />
+          <Icon icon="mdi:restart" width={18} height={18} />
         </AppIconButton>
       </div>
       {/* TERMINAL */}
