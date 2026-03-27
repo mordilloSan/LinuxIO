@@ -1,20 +1,26 @@
 /**
  * LinuxIO API - Unified Entry Point
  *
- * JSON (request/response) → React Query:
+ * JSON API (request/response via bridge streams) → React Query:
  *   linuxio.system.get_cpu_info.useQuery()
  *   linuxio.docker.start_container.useMutation()
  *
+ * Streaming API (persistent/long-lived streams):
+ *   const stream = openTerminalStream(cols, rows);
+ *   stream.onData = (data) => ...;
  */
 
 // === JSON API (React Query type-safe proxy) ===
 export { default as linuxio, CACHE_TTL_MS } from "./react-query";
 
-// === Core API (Promise-based) ===
+// === Core API (Promise-based, used by React Query internally) ===
 export { LinuxIOError } from "./linuxio-core";
 
 // === React Hooks ===
 export { useStreamMux, useIsUpdating } from "./linuxio";
+
+// === Connection Utilities ===
+export { isConnected, getStatus } from "./linuxio";
 
 // === Stream Openers ===
 export {
@@ -37,8 +43,6 @@ export {
   openFileIndexerAttachStream,
   openFileCopyStream,
   openFileMoveStream,
-  isConnected,
-  getStatus,
 } from "./linuxio";
 
 // === Connection Management ===
@@ -49,7 +53,7 @@ export {
   getStreamMux,
 } from "./StreamMultiplexer";
 
-// === Utilities ===
+// === Stream Constants & Encoding ===
 export {
   encodeString,
   decodeString,
