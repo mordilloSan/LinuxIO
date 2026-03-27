@@ -3,6 +3,13 @@ import React, { lazy, useMemo } from "react";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 import { ConfigProvider } from "@/contexts/ConfigContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
+import {
+  type AccessContext,
+  type AccessPolicy,
+  hasAccessPolicy,
+  useAccessContext,
+} from "@/hooks/useCapabilities";
 import {
   CpuIcon,
   DockerIcon,
@@ -18,13 +25,6 @@ import {
   UsersIcon,
   WireguardIcon,
 } from "@/icons/svg";
-import { SidebarProvider } from "@/contexts/SidebarContext";
-import {
-  type AccessContext,
-  type AccessPolicy,
-  hasAccessPolicy,
-  useAccessContext,
-} from "@/hooks/useCapabilities";
 import { ConfiguredAppThemeProvider } from "@/theme";
 
 // Lazy load layouts
