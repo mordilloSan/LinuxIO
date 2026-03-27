@@ -57,8 +57,8 @@ export {
 export {
   encodeString,
   decodeString,
-  STREAM_CHUNK_SIZE,
-  UPLOAD_WINDOW_SIZE,
+  STREAM_MULTIPLEXER_CONFIG,
+  configureStreamMultiplexer,
 } from "./StreamMultiplexer";
 
 // === Streaming Helpers ===

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
+import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -71,23 +72,9 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       seriesRef.current.append(Date.now(), usageRef.current);
     }, 1000);
 
-    // Flip tooltip to the left when mouse is on the right half
-    const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
-    const onMove = (evt: MouseEvent) => {
-      const tooltip = chartAny.tooltipEl;
-      if (!tooltip || tooltip.style.display === "none") return;
-      const canvasRect = canvas.getBoundingClientRect();
-      const mouseRelX = evt.clientX - canvasRect.left;
-      if (mouseRelX > canvasRect.width / 2) {
-        tooltip.style.left = `${Math.round(evt.pageX) - tooltip.offsetWidth - 10}px`;
-      }
-    };
-    canvas.addEventListener("mousemove", onMove);
-
     return () => {
       clearInterval(intervalId);
       chart.stop();
-      canvas.removeEventListener("mousemove", onMove);
     };
   }, [color, neutral]);
 
@@ -95,8 +82,9 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
     <div
       style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}
     >
-      <canvas
+      <SmoothieCanvas
         ref={canvasRef}
+        chartRef={chartRef}
         style={{ flex: 1, minWidth: 0, height: "100%" }}
       />
       <div

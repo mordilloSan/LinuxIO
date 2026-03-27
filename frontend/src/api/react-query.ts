@@ -43,6 +43,33 @@ export const CACHE_TTL_MS = {
   ONE_DAY: 24 * 60 * 60 * 1000,
 } as const;
 
+const RETRYABLE_COMMAND_PREFIXES = ["get_", "list_", "validate_"] as const;
+const RETRYABLE_COMMANDS = new Set([
+  "control.version",
+  "filebrowser.dir_size",
+  "filebrowser.indexer_status",
+  "filebrowser.resource_get",
+  "filebrowser.resource_stat",
+  "filebrowser.search",
+  "filebrowser.subfolders",
+  "filebrowser.users_groups",
+  "wireguard.peer_config_download",
+  "wireguard.peer_qrcode",
+]);
+
+function getRetryPolicy(
+  handler: string,
+  command: string,
+): core.CallOptions["retryPolicy"] {
+  if (
+    RETRYABLE_COMMAND_PREFIXES.some((prefix) => command.startsWith(prefix)) ||
+    RETRYABLE_COMMANDS.has(`${handler}.${command}`)
+  ) {
+    return "connection_closed";
+  }
+  return "none";
+}
+
 function serializeArg(arg: unknown): string {
   if (arg === undefined) return "";
   if (typeof arg === "string") return arg;
@@ -214,7 +241,10 @@ function buildQueryOptions<TResult, TData = TResult>(
 
   return {
     queryKey: ["linuxio", handler, command, ...serializedArgs],
-    queryFn: () => core.call<TResult>(handler, command, serializedArgs),
+    queryFn: () =>
+      core.call<TResult>(handler, command, serializedArgs, {
+        retryPolicy: getRetryPolicy(handler, command),
+      }),
     ...(options ?? {}),
   };
 }
@@ -226,6 +256,7 @@ function createEndpoint<TResult>(
   handler: string,
   command: string,
 ): CommandEndpoint<TResult> {
+  const retryPolicy = getRetryPolicy(handler, command);
   const queryKey = (...rawArgs: unknown[]): QueryKey => {
     const serialized = serializeArgs(rawArgs);
     return ["linuxio", handler, command, ...serialized] as const;
@@ -233,7 +264,7 @@ function createEndpoint<TResult>(
 
   const call = (...rawArgs: unknown[]): Promise<TResult> => {
     const serialized = serializeArgs(rawArgs);
-    return core.call<TResult>(handler, command, serialized);
+    return core.call<TResult>(handler, command, serialized, { retryPolicy });
   };
 
   const queryOptions = (
@@ -296,7 +327,9 @@ function createEndpoint<TResult>(
       return useMutation<TResult, LinuxIOError, unknown[]>({
         mutationFn: (args: unknown[]) => {
           const serializedArgs = serializeArgs(args ?? []);
-          return core.call<TResult>(handler, command, serializedArgs);
+          return core.call<TResult>(handler, command, serializedArgs, {
+            retryPolicy,
+          });
         },
         ...options,
       });

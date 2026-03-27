@@ -21,7 +21,7 @@ import {
   openFileIndexerAttachStream,
   openFileCopyStream,
   openFileMoveStream,
-  STREAM_CHUNK_SIZE,
+  STREAM_MULTIPLEXER_CONFIG,
   type Stream,
   type ProgressFrame,
 } from "@/api";
@@ -284,8 +284,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const chunkSize =
     (configCtx?.config.chunkSizeMB ?? 0) > 0
       ? (configCtx!.config.chunkSizeMB as number) * 1024 * 1024
-      : STREAM_CHUNK_SIZE;
-  const uploadWindowSize = chunkSize * 4;
+      : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
+  const uploadWindowSize =
+    chunkSize * STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks;
 
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);

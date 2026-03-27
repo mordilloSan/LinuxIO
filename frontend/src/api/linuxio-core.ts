@@ -10,6 +10,7 @@ import {
   initStreamMux,
   waitForStreamMux,
   encodeString,
+  STREAM_MULTIPLEXER_CONFIG,
 } from "./StreamMultiplexer";
 import { waitForStreamResult } from "./stream-helpers";
 
@@ -31,9 +32,9 @@ export class LinuxIOError extends Error {
  */
 export interface CallOptions {
   timeout?: number; // Timeout in milliseconds (default: 30000)
+  retryPolicy?: "connection_closed" | "none";
 }
 
-const DEFAULT_CALL_TIMEOUT_MS = 30000;
 const MAX_CALL_ATTEMPTS = 2;
 
 function isConnectionClosedError(error: unknown): boolean {
@@ -110,7 +111,9 @@ export async function call<T = unknown>(
   args: string[] = [],
   options?: CallOptions,
 ): Promise<T> {
-  const timeoutMs = options?.timeout ?? DEFAULT_CALL_TIMEOUT_MS;
+  const timeoutMs =
+    options?.timeout ?? STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs;
+  const retryPolicy = options?.retryPolicy ?? "none";
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown = null;
 
@@ -126,7 +129,9 @@ export async function call<T = unknown>(
       lastError = error;
 
       const canRetry =
-        attempt < MAX_CALL_ATTEMPTS && isConnectionClosedError(error);
+        retryPolicy === "connection_closed" &&
+        attempt < MAX_CALL_ATTEMPTS &&
+        isConnectionClosedError(error);
       if (!canRetry) {
         throw error;
       }

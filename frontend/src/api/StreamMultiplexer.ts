@@ -51,10 +51,84 @@ export interface Stream {
 
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
-// Max scrollback to retain (64KB should cover a full screen + some history)
-const MAX_SCROLLBACK = 64 * 1024;
-// Max buffered bytes while no handler is attached (prevents unbounded memory growth)
-const MAX_DETACHED_BUFFER = 4 * 1024 * 1024;
+export interface StreamMultiplexerConfig {
+  scrollbackBytes: number;
+  detachedBufferBytes: number;
+  uploadChunkSize: number;
+  uploadWindowChunks: number;
+  defaultCallTimeoutMs: number;
+}
+
+function readPositiveInt(
+  rawValue: string | undefined,
+  fallback: number,
+): number {
+  if (!rawValue) return fallback;
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizePositiveInt(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+export const STREAM_MULTIPLEXER_CONFIG: StreamMultiplexerConfig = {
+  scrollbackBytes: readPositiveInt(
+    import.meta.env.VITE_STREAM_SCROLLBACK_BYTES,
+    64 * 1024,
+  ),
+  detachedBufferBytes: readPositiveInt(
+    import.meta.env.VITE_STREAM_DETACHED_BUFFER_BYTES,
+    4 * 1024 * 1024,
+  ),
+  uploadChunkSize: readPositiveInt(
+    import.meta.env.VITE_STREAM_UPLOAD_CHUNK_SIZE,
+    1 * 1024 * 1024,
+  ),
+  uploadWindowChunks: readPositiveInt(
+    import.meta.env.VITE_STREAM_UPLOAD_WINDOW_CHUNKS,
+    4,
+  ),
+  defaultCallTimeoutMs: readPositiveInt(
+    import.meta.env.VITE_STREAM_DEFAULT_CALL_TIMEOUT_MS,
+    30000,
+  ),
+};
+
+export function configureStreamMultiplexer(
+  config: Partial<StreamMultiplexerConfig>,
+): void {
+  if (config.scrollbackBytes !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.scrollbackBytes = normalizePositiveInt(
+      config.scrollbackBytes,
+      STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,
+    );
+  }
+  if (config.detachedBufferBytes !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes = normalizePositiveInt(
+      config.detachedBufferBytes,
+      STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes,
+    );
+  }
+  if (config.uploadChunkSize !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.uploadChunkSize = normalizePositiveInt(
+      config.uploadChunkSize,
+      STREAM_MULTIPLEXER_CONFIG.uploadChunkSize,
+    );
+  }
+  if (config.uploadWindowChunks !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks = normalizePositiveInt(
+      config.uploadWindowChunks,
+      STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks,
+    );
+  }
+  if (config.defaultCallTimeoutMs !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs = normalizePositiveInt(
+      config.defaultCallTimeoutMs,
+      STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs,
+    );
+  }
+}
 
 /**
  * Efficient circular buffer - pre-allocated, no reallocations on write.
@@ -133,13 +207,19 @@ class StreamImpl implements Stream {
   private recvBuf = new Uint8Array(8192); // Pre-allocated receive buffer
   private recvStart = 0; // Read offset into recvBuf
   private recvEnd = 0; // Write offset into recvBuf
-  private scrollback = new CircularBuffer(MAX_SCROLLBACK); // Efficient circular buffer
+  private readonly detachedBufferBytes: number;
+  private readonly scrollback: CircularBuffer;
 
   constructor(
     public readonly id: number,
     public readonly type: StreamType,
     private mux: StreamMultiplexer,
-  ) {}
+  ) {
+    this.detachedBufferBytes = STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes;
+    this.scrollback = new CircularBuffer(
+      STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,
+    );
+  }
 
   get status(): StreamStatus {
     return this._status;
@@ -271,7 +351,7 @@ class StreamImpl implements Stream {
       this.bufferedBytes += data.length;
 
       while (
-        this.bufferedBytes > MAX_DETACHED_BUFFER &&
+        this.bufferedBytes > this.detachedBufferBytes &&
         this.buffer.length > 0
       ) {
         const dropped = this.buffer.shift();
@@ -761,12 +841,6 @@ export const BridgeOpcode = {
   StreamAbort: 0x86,
 } as const;
 
-// File transfer constants (must match backend bridge/handlers/filebrowser/stream.go)
-export const STREAM_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
-
-// Flow control: max bytes in flight before waiting for ACK (progress update)
-export const UPLOAD_WINDOW_SIZE = 4 * 1024 * 1024; // 4MB window (4 chunks max in flight)
-
 // ============================================================================
 // Singleton Management
 // ============================================================================
@@ -785,7 +859,12 @@ export function getStreamMux(): StreamMultiplexer | null {
  * Initialize the singleton StreamMultiplexer.
  * Should be called once after successful authentication.
  */
-export function initStreamMux(): StreamMultiplexer {
+export function initStreamMux(
+  config?: Partial<StreamMultiplexerConfig>,
+): StreamMultiplexer {
+  if (config) {
+    configureStreamMultiplexer(config);
+  }
   if (instance) {
     if (instance.status === "closed") {
       instance.reconnect();
