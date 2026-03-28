@@ -208,6 +208,7 @@ const PathPicker: React.FC<{
           value={value}
           size="small"
           fullWidth
+          shrinkLabel
           onClick={handleOpen}
           style={{ cursor: "pointer" }}
           placeholder="Click to select a folder"
