@@ -1,0 +1,60 @@
+/* ── DirectoryTree ─────────────────────────────── */
+
+.directory-tree {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.directory-tree:focus {
+  outline: none;
+}
+
+.directory-tree__node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 1px 4px;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+  user-select: none;
+  font-size: 0.85rem;
+}
+
+.directory-tree__node:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.directory-tree__node--selected {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+}
+
+.directory-tree__node--selected:hover {
+  background: color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.directory-tree__chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.directory-tree__icon {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.directory-tree__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

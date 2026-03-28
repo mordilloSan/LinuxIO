@@ -1,6 +1,5 @@
 .search-bar {
   max-width: 400px;
-  min-width: 250px;
 }
 
 .search-bar .app-text-field__wrapper {
@@ -23,11 +22,4 @@
 .search-bar.app-text-field--focused .app-text-field__wrapper {
   background-color: var(--app-header-search-bg-hover);
   box-shadow: 0 0 0 1px var(--color-primary);
-}
-
-@media (max-width: 600px) {
-  .search-bar {
-    min-width: 0;
-    max-width: none;
-  }
 }

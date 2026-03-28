@@ -37,7 +37,8 @@ install_debian_packages() {
         libpam0g \
         policykit-1 \
         smartmontools \
-        curl
+        curl \
+        nfs-common
 
     log_ok "Debian/Ubuntu packages installed"
 }

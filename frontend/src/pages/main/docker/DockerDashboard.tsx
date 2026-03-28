@@ -16,6 +16,7 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -36,46 +37,6 @@ const StateChip: React.FC<{
   if (state === "exited" || state === "dead")
     return <Chip size="small" label="Stopped" color="error" variant="soft" />;
   return <Chip size="small" label={state} variant="soft" />;
-};
-const InfoRow: React.FC<{
-  label: string;
-  value: React.ReactNode;
-}> = ({ label, value }) => {
-  const theme = useAppTheme();
-  return (
-    <div
-      className="dd-info-row"
-      style={
-        {
-          "--dd-divider": theme.palette.divider,
-        } as React.CSSProperties
-      }
-    >
-      <AppTypography
-        variant="caption"
-        color="text.secondary"
-        style={{
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          fontSize: "0.62rem",
-          flexShrink: 0,
-        }}
-      >
-        {label}
-      </AppTypography>
-      <AppTypography
-        variant="body2"
-        fontWeight={500}
-        noWrap
-        style={{
-          textAlign: "right",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value || "—"}
-      </AppTypography>
-    </div>
-  );
 };
 const DaemonSection: React.FC<{
   title: string;
@@ -741,10 +702,16 @@ const DockerDashboard: React.FC = () => {
                       />
                     }
                   >
-                    <InfoRow label="Server" value={dockerInfo.server_version} />
-                    <InfoRow label="API" value={dockerInfo.api_version} />
-                    <InfoRow label="Go" value={dockerInfo.go_version} />
-                    <InfoRow label="Git Commit" value={dockerInfo.git_commit} />
+                    <InfoRow label="Server">
+                      {dockerInfo.server_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="API">
+                      {dockerInfo.api_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="Go">{dockerInfo.go_version || "—"}</InfoRow>
+                    <InfoRow label="Git Commit">
+                      {dockerInfo.git_commit || "—"}
+                    </InfoRow>
                   </DaemonSection>
                 </FrostedCard>
               </AppGrid>
@@ -772,16 +739,16 @@ const DockerDashboard: React.FC = () => {
                       />
                     }
                   >
-                    <InfoRow label="Hostname" value={dockerInfo.name} />
-                    <InfoRow label="OS" value={dockerInfo.operating_system} />
-                    <InfoRow
-                      label="Architecture"
-                      value={dockerInfo.architecture}
-                    />
-                    <InfoRow
-                      label="Root Dir"
-                      value={dockerInfo.docker_root_dir}
-                    />
+                    <InfoRow label="Hostname">{dockerInfo.name || "—"}</InfoRow>
+                    <InfoRow label="OS">
+                      {dockerInfo.operating_system || "—"}
+                    </InfoRow>
+                    <InfoRow label="Architecture">
+                      {dockerInfo.architecture || "—"}
+                    </InfoRow>
+                    <InfoRow label="Root Dir">
+                      {dockerInfo.docker_root_dir || "—"}
+                    </InfoRow>
                   </DaemonSection>
                 </FrostedCard>
               </AppGrid>
@@ -809,22 +776,18 @@ const DockerDashboard: React.FC = () => {
                       />
                     }
                   >
-                    <InfoRow
-                      label="Storage Driver"
-                      value={dockerInfo.storage_driver}
-                    />
-                    <InfoRow
-                      label="Cgroup Driver"
-                      value={dockerInfo.cgroup_driver}
-                    />
-                    <InfoRow
-                      label="Cgroup Version"
-                      value={dockerInfo.cgroup_version}
-                    />
-                    <InfoRow
-                      label="Default Runtime"
-                      value={dockerInfo.default_runtime}
-                    />
+                    <InfoRow label="Storage Driver">
+                      {dockerInfo.storage_driver || "—"}
+                    </InfoRow>
+                    <InfoRow label="Cgroup Driver">
+                      {dockerInfo.cgroup_driver || "—"}
+                    </InfoRow>
+                    <InfoRow label="Cgroup Version">
+                      {dockerInfo.cgroup_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="Default Runtime">
+                      {dockerInfo.default_runtime || "—"}
+                    </InfoRow>
                   </DaemonSection>
                 </FrostedCard>
               </AppGrid>

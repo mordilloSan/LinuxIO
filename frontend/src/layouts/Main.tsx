@@ -33,15 +33,15 @@ const Dashboard: React.FC = () => {
     location.pathname === "/"
       ? {
           paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-          paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+          paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
           paddingTop: 0,
           paddingBottom: 0,
         }
       : location.pathname.includes("/filebrowser")
         ? { padding: 0 }
         : {
-            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
-            paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+            paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
             paddingTop: theme.spacing(5),
             paddingBottom: theme.spacing(5),
           };
@@ -86,8 +86,8 @@ const Dashboard: React.FC = () => {
           {updateInfo?.available && (
             <div
               style={{
-                paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
-                paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+                paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+                paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
                 paddingTop: 0,
                 paddingBottom: theme.spacing(1),
               }}

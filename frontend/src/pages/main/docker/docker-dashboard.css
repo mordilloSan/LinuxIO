@@ -3,7 +3,7 @@
   display: grid;
   grid-template-columns: 1fr 80px;
 }
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .dd-containers-grid {
     grid-template-columns: 1fr 220px 80px 80px;
   }
@@ -14,7 +14,7 @@
   display: grid;
   grid-template-columns: 1fr 80px;
 }
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .dd-images-grid {
     grid-template-columns: 1fr 80px 80px 80px;
   }
@@ -24,7 +24,7 @@
   display: none;
 }
 
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .dd-hidden-xs {
     display: block;
   }

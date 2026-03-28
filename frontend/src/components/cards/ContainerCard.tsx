@@ -21,6 +21,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
@@ -274,7 +275,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             alignItems: "center",
             justifyContent: "center",
             borderRadius: "inherit",
-            backgroundColor: "rgba(0,0,0,0.35)",
+            backgroundColor: "var(--app-overlay-dark)",
             zIndex: 1,
           }}
         >
@@ -283,23 +284,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       )}
 
       {/* Status dot */}
-      <AppTooltip title={getStatusTooltip(container)} placement="top" arrow>
-        <div
-          style={{
-            position: "absolute",
-            top: 18,
-            right: 8,
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            backgroundColor: resolveColor(
-              theme.palette,
-              getStatusColor(container),
-            ),
-            cursor: "default",
-          }}
-        />
-      </AppTooltip>
+      <StatusDot
+        color={resolveColor(theme.palette, getStatusColor(container))}
+        tooltip={getStatusTooltip(container)}
+        absolute
+      />
 
       {/* Top row: Icon + Name + Buttons */}
       <div

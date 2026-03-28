@@ -1,19 +1,17 @@
 /**
  * LinuxIO API Usage Guidelines:
  *
- * 1. TYPE-SAFE API (PREFERRED for core handlers):
+ * 1. TYPE-SAFE API (preferred for built-in handlers):
  *    linuxio.docker.start_container.useMutation()
  *    linuxio.filebrowser.resource_get.useQuery()
  *
  * 2. STREAMING API (for progress tracking):
- *    linuxio.spawn("filebrowser", "compress", [...]).progress(...)
+ *    openTerminalStream(), openFileDownloadStream(), etc. from @/api
  *
  * 3. IMPERATIVE API (contexts/effects/non-hook code):
  *    await linuxio.system.get_capabilities.call()
  *    await queryClient.fetchQuery(linuxio.system.get_capabilities.queryOptions())
  *
- * For truly dynamic handlers/commands, use the core API:
- *    await core.call("handler", "command", [args])
  */
 
 import {
@@ -26,14 +24,7 @@ import {
 
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
-import {
-  useStreamMux,
-  useIsUpdating,
-  initStreamMux,
-  closeStreamMux,
-  waitForStreamMux,
-  getStreamMux,
-} from "./linuxio";
+import { useStreamMux, useIsUpdating } from "./linuxio";
 import type {
   HandlerName,
   CommandName,
@@ -41,14 +32,53 @@ import type {
   CommandResult,
 } from "./linuxio-types";
 
+// Cache TTL presets for staleTime / gcTime options
+export const CACHE_TTL_MS = {
+  NONE: 0,
+  TWO_SECONDS: 2_000,
+  FIVE_SECONDS: 5_000,
+  THIRTY_SECONDS: 30_000,
+  ONE_MINUTE: 60_000,
+  FIVE_MINUTES: 5 * 60 * 1000,
+  ONE_DAY: 24 * 60 * 60 * 1000,
+} as const;
+
+const RETRYABLE_COMMAND_PREFIXES = ["get_", "list_", "validate_"] as const;
+const RETRYABLE_COMMANDS = new Set([
+  "control.version",
+  "filebrowser.dir_size",
+  "filebrowser.indexer_status",
+  "filebrowser.resource_get",
+  "filebrowser.resource_stat",
+  "filebrowser.search",
+  "filebrowser.subfolders",
+  "filebrowser.users_groups",
+  "wireguard.peer_config_download",
+  "wireguard.peer_qrcode",
+]);
+
+function getRetryPolicy(
+  handler: string,
+  command: string,
+): core.CallOptions["retryPolicy"] {
+  if (
+    RETRYABLE_COMMAND_PREFIXES.some((prefix) => command.startsWith(prefix)) ||
+    RETRYABLE_COMMANDS.has(`${handler}.${command}`)
+  ) {
+    return "connection_closed";
+  }
+  return "none";
+}
+
 function serializeArg(arg: unknown): string {
+  if (arg === undefined) return "";
   if (typeof arg === "string") return arg;
-  if (typeof arg === "object" || Array.isArray(arg)) return JSON.stringify(arg);
+  if (typeof arg === "object") return JSON.stringify(arg);
   return String(arg);
 }
 
 function serializeArgs(args: readonly unknown[]): string[] {
-  return (args ?? []).filter((arg) => arg !== undefined).map(serializeArg);
+  return (args ?? []).map(serializeArg);
 }
 
 // ============================================================================
@@ -68,16 +98,18 @@ type SelectableQueryOptions<TResult, TData = TResult> = Omit<
   "queryKey" | "queryFn"
 >;
 
+type ArgsConfig<TOptions> = {
+  args?: unknown[];
+} & TOptions;
+
 /**
  * Query config with explicit args for complex types
  */
-type QueryConfig<TResult> = {
-  args?: unknown[];
-} & QueryOptions<TResult>;
+type QueryConfig<TResult> = ArgsConfig<QueryOptions<TResult>>;
 
-type SelectableQueryConfig<TResult, TData = TResult> = {
-  args?: unknown[];
-} & SelectableQueryOptions<TResult, TData>;
+type SelectableQueryConfig<TResult, TData = TResult> = ArgsConfig<
+  SelectableQueryOptions<TResult, TData>
+>;
 
 /**
  * Mutation options type - accepts unknown[] to support complex types
@@ -171,21 +203,20 @@ interface CommandEndpoint<TResult> {
   ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
 }
 
-function parseQueryParams<TResult>(
-  params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[],
-): { args: unknown[]; options: QueryOptions<TResult> | undefined } {
-  let args: unknown[] = [];
-  let options: QueryOptions<TResult> | undefined;
+function hasExplicitArgs(value: unknown): value is { args?: unknown[] } {
+  return !!value && typeof value === "object" && "args" in value;
+}
 
-  if (
-    params.length === 1 &&
-    params[0] &&
-    typeof params[0] === "object" &&
-    "args" in params[0]
-  ) {
-    const { args: explicitArgs, ...rest } = params[0] as QueryConfig<TResult>;
+function parseQueryParams<TOptions extends object>(
+  params: (string | TOptions | ArgsConfig<TOptions>)[],
+): { args: unknown[]; options: TOptions | undefined } {
+  let args: unknown[] = [];
+  let options: TOptions | undefined;
+
+  if (params.length === 1 && hasExplicitArgs(params[0])) {
+    const { args: explicitArgs, ...rest } = params[0] as ArgsConfig<TOptions>;
     args = explicitArgs ?? [];
-    options = rest;
+    options = rest as TOptions;
     return { args, options };
   }
 
@@ -193,50 +224,29 @@ function parseQueryParams<TResult>(
     if (typeof param === "string") {
       args.push(param);
     } else if (param && typeof param === "object") {
-      options = param as QueryOptions<TResult>;
+      options = param as TOptions;
     }
   }
 
   return { args, options };
 }
 
-function parseSelectableQueryParams<TResult, TData = TResult>(
-  params: (
-    | string
-    | SelectableQueryOptions<TResult, TData>
-    | SelectableQueryConfig<TResult, TData>
-  )[],
-): {
-  args: unknown[];
-  options: SelectableQueryOptions<TResult, TData> | undefined;
-} {
-  let args: unknown[] = [];
-  let options: SelectableQueryOptions<TResult, TData> | undefined;
+function buildQueryOptions<TResult, TData = TResult>(
+  handler: string,
+  command: string,
+  rawArgs: unknown[],
+  options?: SelectableQueryOptions<TResult, TData>,
+): UseQueryOptions<TResult, LinuxIOError, TData> {
+  const serializedArgs = serializeArgs(rawArgs);
 
-  if (
-    params.length === 1 &&
-    params[0] &&
-    typeof params[0] === "object" &&
-    "args" in params[0]
-  ) {
-    const { args: explicitArgs, ...rest } = params[0] as SelectableQueryConfig<
-      TResult,
-      TData
-    >;
-    args = explicitArgs ?? [];
-    options = rest;
-    return { args, options };
-  }
-
-  for (const param of params) {
-    if (typeof param === "string") {
-      args.push(param);
-    } else if (param && typeof param === "object") {
-      options = param as SelectableQueryOptions<TResult, TData>;
-    }
-  }
-
-  return { args, options };
+  return {
+    queryKey: ["linuxio", handler, command, ...serializedArgs],
+    queryFn: () =>
+      core.call<TResult>(handler, command, serializedArgs, {
+        retryPolicy: getRetryPolicy(handler, command),
+      }),
+    ...(options ?? {}),
+  };
 }
 
 /**
@@ -246,6 +256,7 @@ function createEndpoint<TResult>(
   handler: string,
   command: string,
 ): CommandEndpoint<TResult> {
+  const retryPolicy = getRetryPolicy(handler, command);
   const queryKey = (...rawArgs: unknown[]): QueryKey => {
     const serialized = serializeArgs(rawArgs);
     return ["linuxio", handler, command, ...serialized] as const;
@@ -253,20 +264,14 @@ function createEndpoint<TResult>(
 
   const call = (...rawArgs: unknown[]): Promise<TResult> => {
     const serialized = serializeArgs(rawArgs);
-    return core.call<TResult>(handler, command, serialized);
+    return core.call<TResult>(handler, command, serialized, { retryPolicy });
   };
 
   const queryOptions = (
     ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
   ): UseQueryOptions<TResult, LinuxIOError> => {
-    const { args, options } = parseQueryParams<TResult>(params);
-    const serializedArgs = serializeArgs(args);
-
-    return {
-      queryKey: ["linuxio", handler, command, ...serializedArgs],
-      queryFn: () => core.call<TResult>(handler, command, serializedArgs),
-      ...(options ?? {}),
-    };
+    const { args, options } = parseQueryParams<QueryOptions<TResult>>(params);
+    return buildQueryOptions<TResult>(handler, command, args, options);
   };
 
   const queryOptionsWithSelect = <TData = TResult>(
@@ -276,16 +281,9 @@ function createEndpoint<TResult>(
       | SelectableQueryConfig<TResult, TData>
     )[]
   ): UseQueryOptions<TResult, LinuxIOError, TData> => {
-    const { args, options } = parseSelectableQueryParams<TResult, TData>(
-      params,
-    );
-    const serializedArgs = serializeArgs(args);
-
-    return {
-      queryKey: ["linuxio", handler, command, ...serializedArgs],
-      queryFn: () => core.call<TResult>(handler, command, serializedArgs),
-      ...(options ?? {}),
-    };
+    const { args, options } =
+      parseQueryParams<SelectableQueryOptions<TResult, TData>>(params);
+    return buildQueryOptions<TResult, TData>(handler, command, args, options);
   };
 
   return {
@@ -329,7 +327,9 @@ function createEndpoint<TResult>(
       return useMutation<TResult, LinuxIOError, unknown[]>({
         mutationFn: (args: unknown[]) => {
           const serializedArgs = serializeArgs(args ?? []);
-          return core.call<TResult>(handler, command, serializedArgs);
+          return core.call<TResult>(handler, command, serializedArgs, {
+            retryPolicy,
+          });
         },
         ...options,
       });
@@ -401,14 +401,6 @@ function createHandlerNamespace<H extends HandlerName>(
 // Export
 // ============================================================================
 
-// Static methods that exist on linuxio directly
-const staticMethods = {
-  spawn: core.spawn,
-  openStream: core.openStream,
-  LinuxIOError: core.LinuxIOError,
-  SpawnedProcess: core.SpawnedProcess,
-};
-
 // Handler namespace cache
 const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
 
@@ -417,25 +409,19 @@ const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
  *
  * @example
  * // TYPE-SAFE API (for built-in handlers)
- * const { data } = linuxio.system.get_drive_info.useQuery();
+ * const { data } = linuxio.storage.get_drive_info.useQuery();
  * const { mutate } = linuxio.docker.start_container.useMutation();
  *
  * // CORE API (non-React, Promise-based)
- * const drives = await linuxio.system.get_drive_info.call();
- * const result = await linuxio.spawn("filebrowser", "compress", [...])
- *   .progress(p => setProgress(p.pct));
+ * const drives = await linuxio.storage.get_drive_info.call();
  */
-const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
-  get(target, prop: string) {
-    // First check static methods
-    if (prop in target) {
-      return (target as Record<string, unknown>)[prop];
-    }
+const linuxio = new Proxy({} as TypedAPI, {
+  get(_, prop: string) {
     // `linuxio.call()` alias is intentionally removed.
     if (prop === "call") {
       return undefined;
     }
-    // Then return handler namespace (lazily created)
+    // Return handler namespace (lazily created)
     if (!handlerCache.has(prop)) {
       handlerCache.set(prop, createHandlerNamespace(prop as HandlerName));
     }
@@ -444,10 +430,6 @@ const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
 });
 
 export default linuxio;
-export { LinuxIOError };
-
-// Re-export mux lifecycle functions for convenience
-export { initStreamMux, closeStreamMux, waitForStreamMux, getStreamMux };
 
 // Re-export types for convenience
 export type {

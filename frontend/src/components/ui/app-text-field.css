@@ -158,6 +158,10 @@
   font-size: 0.875rem;
 }
 
+.app-text-field--compact-copy .app-text-field__input {
+  font-size: 0.8125rem;
+}
+
 .app-text-field--standard .app-text-field__input {
   padding: 4px 0;
 }

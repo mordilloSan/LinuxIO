@@ -18,7 +18,7 @@ import {
   CACHE_TTL_MS,
   isConnected,
   openFileUploadStream,
-  STREAM_CHUNK_SIZE,
+  STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
@@ -84,7 +84,7 @@ const FileBrowser: React.FC = () => {
   const chunkSize =
     (config.chunkSizeMB ?? 0) > 0
       ? (config.chunkSizeMB as number) * 1024 * 1024
-      : STREAM_CHUNK_SIZE;
+      : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
   const theme = useAppTheme();
   const location = useLocation();
   const navigate = useNavigate();

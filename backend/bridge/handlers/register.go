@@ -11,6 +11,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
@@ -43,6 +44,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()
 	storage.RegisterHandlers()
+	shares.RegisterHandlers()
 
 	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
 	generic.RegisterStreamHandlers(StreamHandlers, JsonHandlers)

@@ -1,6 +1,7 @@
 import React, { useEffect, useImperativeHandle, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
+import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -77,26 +78,19 @@ const NetworkTrafficGraph = React.forwardRef<
       seriesRef.current.append(Date.now(), valueRef.current);
     }, 1000);
 
-    const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
-    const onMove = (evt: MouseEvent) => {
-      const tooltip = chartAny.tooltipEl;
-      if (!tooltip || tooltip.style.display === "none") return;
-      const canvasRect = canvas.getBoundingClientRect();
-      const mouseRelX = evt.clientX - canvasRect.left;
-      if (mouseRelX > canvasRect.width / 2) {
-        tooltip.style.left = `${Math.round(evt.pageX) - tooltip.offsetWidth - 10}px`;
-      }
-    };
-    canvas.addEventListener("mousemove", onMove);
-
     return () => {
       clearInterval(intervalId);
       chart.stop();
-      canvas.removeEventListener("mousemove", onMove);
     };
   }, [color, label, theme.chart.neutral]);
 
-  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />;
+  return (
+    <SmoothieCanvas
+      ref={canvasRef}
+      chartRef={chartRef}
+      style={{ width: "100%", height: "100%" }}
+    />
+  );
 });
 
 NetworkTrafficGraph.displayName = "NetworkTrafficGraph";

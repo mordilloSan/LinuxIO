@@ -76,14 +76,14 @@ If you prefer to install dependencies manually:
 
 ```bash
 sudo apt update
-sudo apt install -y lm-sensors libpam0g policykit-1 smartmontools
+sudo apt install -y lm-sensors libpam0g policykit-1 smartmontools nfs-common
 curl -fsSL https://get.docker.com | sudo bash
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y lm_sensors pam polkit smartmontools
+sudo dnf install -y lm_sensors pam polkit smartmontools nfs-common
 curl -fsSL https://get.docker.com | sudo bash
 ```
 

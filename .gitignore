@@ -9,18 +9,9 @@ frontend/vite.config.module-build.tmp.js
 linuxio-webserver
 linuxio-auth
 linuxio-bridge
-
 .cache
 .go-cache
 .gocache
-
-# Module build artifacts
-modules/
-!modules/.*
-
-# Modules are visible to Vite for HMR during development
-# Add specific development modules to gitignore if needed:
-# modules/my-dev-module/
 
 # Logs and misc
 *.log

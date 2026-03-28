@@ -6,7 +6,7 @@ import {
   type ProgressFrame,
   type Stream,
 } from "@/api";
-import { streamWriteChunks, waitForStreamResult } from "@/api/stream-helpers";
+import { streamWriteChunks, waitForStreamResult } from "@/api";
 
 export interface RunStreamResultOptions<
   TResult = unknown,

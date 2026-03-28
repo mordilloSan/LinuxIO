@@ -1,8 +1,8 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import { FILE_TYPE_COLORS } from "@/constants/fileTypeColors";
 import { useAppTheme } from "@/theme";
+import { FILE_TYPE_COLORS } from "@/theme/colors";
 import { alpha } from "@/utils/color";
 
 interface FileIconProps {

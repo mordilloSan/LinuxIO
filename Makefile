@@ -314,14 +314,15 @@ lint-only:
 	  g1=("$${entries[@]:0:$$chunk}"); \
 	  g2=("$${entries[@]:$$chunk:$$chunk}"); \
 	  g3=("$${entries[@]:$$((chunk*2))}"); \
-	  ./node_modules/.bin/eslint --fix --cache --cache-location .eslintcache-a "$${g1[@]}" & pid_a=$$!; \
-	  ./node_modules/.bin/eslint --fix --cache --cache-location .eslintcache-b "$${g2[@]}" & pid_b=$$!; \
-	  ./node_modules/.bin/eslint --fix --cache --cache-location .eslintcache-c "$${g3[@]}" & pid_c=$$!; \
-	  failed=0; \
-	  wait $$pid_a || failed=1; \
-	  wait $$pid_b || failed=1; \
-	  wait $$pid_c || failed=1; \
-	  [ $$failed -eq 0 ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit 1; } \
+	  filter_ts_warn() { grep -v -F -e "=============" -e "WARNING: You are currently running" -e "@typescript-eslint/typescript-estree version:" -e "Supported TypeScript versions:" -e "Your TypeScript version:" -e "Please only submit bug reports" || true; }; \
+	  run_eslint() { ./node_modules/.bin/eslint --fix --cache --cache-location "$$1" "$${@:2}"; }; \
+	  { run_eslint .eslintcache-a "$${g1[@]}"; echo $$? > /tmp/.eslint_a; } 2>&1 | filter_ts_warn & pid_a=$$!; \
+	  { run_eslint .eslintcache-b "$${g2[@]}"; echo $$? > /tmp/.eslint_b; } 2>&1 | filter_ts_warn & pid_b=$$!; \
+	  { run_eslint .eslintcache-c "$${g3[@]}"; echo $$? > /tmp/.eslint_c; } 2>&1 | filter_ts_warn & pid_c=$$!; \
+	  wait $$pid_a; wait $$pid_b; wait $$pid_c; \
+	  a=$$(cat /tmp/.eslint_a 2>/dev/null); b=$$(cat /tmp/.eslint_b 2>/dev/null); c=$$(cat /tmp/.eslint_c 2>/dev/null); \
+	  rm -f /tmp/.eslint_a /tmp/.eslint_b /tmp/.eslint_c; \
+	  [ "$${a:-0}$${b:-0}$${c:-0}" = "000" ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit 1; } \
 	'
 
 tsc-only:

@@ -1,53 +1,29 @@
 /**
  * LinuxIO API - Unified Entry Point
  *
- * JSON (request/response) → React Query:
+ * JSON API (request/response via bridge streams) → React Query:
  *   linuxio.system.get_cpu_info.useQuery()
  *   linuxio.docker.start_container.useMutation()
  *
- * Non-JSON (streaming) → openStream():
- *   const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
- *
- * Direct bridge access:
- *   await core.call("handler", "command", [args])
+ * Streaming API (persistent/long-lived streams):
+ *   const stream = openTerminalStream(cols, rows);
+ *   stream.onData = (data) => ...;
  */
 
 // === JSON API (React Query type-safe proxy) ===
-export { default as linuxio } from "./react-query";
+export { default as linuxio, CACHE_TTL_MS } from "./react-query";
 
-// === Core API (Promise-based) ===
-export {
-  call,
-  spawn,
-  openStream,
-  LinuxIOError,
-  SpawnedProcess,
-} from "./linuxio-core";
-export type { CallOptions, SpawnOptions } from "./linuxio-core";
+// === Core API (Promise-based, used by React Query internally) ===
+export { LinuxIOError } from "./linuxio-core";
 
 // === React Hooks ===
 export { useStreamMux, useIsUpdating } from "./linuxio";
 
-// === Payload Builders ===
+// === Connection Utilities ===
+export { isConnected, getStatus } from "./linuxio";
+
+// === Stream Openers ===
 export {
-  terminalPayload,
-  dockerLogsPayload,
-  serviceLogsPayload,
-  generalLogsPayload,
-  containerPayload,
-  uploadPayload,
-  downloadPayload,
-  compressPayload,
-  extractPayload,
-  packageUpdatePayload,
-  execPayload,
-  smartTestPayload,
-  dockerComposePayload,
-  dockerIndexerPayload,
-  dockerIndexerAttachPayload,
-  fileIndexerPayload,
-  fileCopyPayload,
-  fileMovePayload,
   openTerminalStream,
   openContainerStream,
   openDockerLogsStream,
@@ -67,8 +43,6 @@ export {
   openFileIndexerAttachStream,
   openFileCopyStream,
   openFileMoveStream,
-  isConnected,
-  getStatus,
 } from "./linuxio";
 
 // === Connection Management ===
@@ -79,12 +53,12 @@ export {
   getStreamMux,
 } from "./StreamMultiplexer";
 
-// === Utilities ===
+// === Stream Constants & Encoding ===
 export {
   encodeString,
   decodeString,
-  STREAM_CHUNK_SIZE,
-  UPLOAD_WINDOW_SIZE,
+  STREAM_MULTIPLEXER_CONFIG,
+  configureStreamMultiplexer,
 } from "./StreamMultiplexer";
 
 // === Streaming Helpers ===
@@ -93,87 +67,10 @@ export {
   waitForStreamResult,
   streamWriteChunks,
 } from "./stream-helpers";
-export type {
-  StreamEventHandlers,
-  WaitForStreamResultOptions,
-  WriteStreamChunksOptions,
-} from "./stream-helpers";
-
-// === Cache Policy ===
-export { CACHE_TTL_MS } from "./cache-policy";
+export type * from "./stream-helpers";
 
 // === Stream Types ===
-export type {
-  Stream,
-  ProgressFrame,
-  ResultFrame,
-  MuxStatus,
-  StreamType,
-  StreamStatus,
-} from "./StreamMultiplexer";
+export type * from "./StreamMultiplexer";
 
 // === Domain Types ===
-export type {
-  LinuxIOSchema,
-  HandlerName,
-  CommandName,
-  CommandArgs,
-  CommandResult,
-  CPUInfoResponse,
-  MemoryInfoResponse,
-  GpuDevice,
-  ApiDisk,
-  MotherboardInfo,
-  HostInfo,
-  CapabilitiesResponse,
-  DistroInfo,
-  ProcessInfo,
-  InterfaceStats,
-  NetworkInterface,
-  DockerImage,
-  DockerNetwork,
-  DockerVolume,
-  ComposeService,
-  ComposeProject,
-  AutoUpdateFrequency,
-  AutoUpdateScope,
-  AutoUpdateRebootPolicy,
-  AutoUpdateOptions,
-  AutoUpdateState,
-  Service,
-  UnitInfo,
-  Timer,
-  Socket,
-  UpgradeItem,
-  UpdateHistoryRow,
-  ApiResource,
-  FileResource,
-  DirectorySizeData,
-  SubfolderData,
-  SubfoldersResponse,
-  SearchResponse,
-  UsersGroupsResponse,
-  IndexerStatusResponse,
-  FileDownloadResult,
-  ArchiveDownloadResult,
-  CompressResult,
-  ExtractResult,
-  AccountUser,
-  AccountGroup,
-  CreateUserRequest,
-  ModifyUserRequest,
-  CreateGroupRequest,
-  ModifyGroupMembersRequest,
-  PhysicalVolume,
-  VolumeGroup,
-  LogicalVolume,
-  NFSMount,
-  VersionResponse,
-  Peer,
-  PeerConfigDownload,
-  QRCodeResponse,
-  DeleteStackResult,
-  ConfigSettings,
-  ConfigSetResult,
-  DirectoryValidationResult,
-} from "./linuxio-types";
+export type * from "./linuxio-types";

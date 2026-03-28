@@ -51,10 +51,84 @@ export interface Stream {
 
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
-// Max scrollback to retain (64KB should cover a full screen + some history)
-const MAX_SCROLLBACK = 64 * 1024;
-// Max buffered bytes while no handler is attached (prevents unbounded memory growth)
-const MAX_DETACHED_BUFFER = 4 * 1024 * 1024;
+export interface StreamMultiplexerConfig {
+  scrollbackBytes: number;
+  detachedBufferBytes: number;
+  uploadChunkSize: number;
+  uploadWindowChunks: number;
+  defaultCallTimeoutMs: number;
+}
+
+function readPositiveInt(
+  rawValue: string | undefined,
+  fallback: number,
+): number {
+  if (!rawValue) return fallback;
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizePositiveInt(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+export const STREAM_MULTIPLEXER_CONFIG: StreamMultiplexerConfig = {
+  scrollbackBytes: readPositiveInt(
+    import.meta.env.VITE_STREAM_SCROLLBACK_BYTES,
+    64 * 1024,
+  ),
+  detachedBufferBytes: readPositiveInt(
+    import.meta.env.VITE_STREAM_DETACHED_BUFFER_BYTES,
+    4 * 1024 * 1024,
+  ),
+  uploadChunkSize: readPositiveInt(
+    import.meta.env.VITE_STREAM_UPLOAD_CHUNK_SIZE,
+    1 * 1024 * 1024,
+  ),
+  uploadWindowChunks: readPositiveInt(
+    import.meta.env.VITE_STREAM_UPLOAD_WINDOW_CHUNKS,
+    4,
+  ),
+  defaultCallTimeoutMs: readPositiveInt(
+    import.meta.env.VITE_STREAM_DEFAULT_CALL_TIMEOUT_MS,
+    30000,
+  ),
+};
+
+export function configureStreamMultiplexer(
+  config: Partial<StreamMultiplexerConfig>,
+): void {
+  if (config.scrollbackBytes !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.scrollbackBytes = normalizePositiveInt(
+      config.scrollbackBytes,
+      STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,
+    );
+  }
+  if (config.detachedBufferBytes !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes = normalizePositiveInt(
+      config.detachedBufferBytes,
+      STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes,
+    );
+  }
+  if (config.uploadChunkSize !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.uploadChunkSize = normalizePositiveInt(
+      config.uploadChunkSize,
+      STREAM_MULTIPLEXER_CONFIG.uploadChunkSize,
+    );
+  }
+  if (config.uploadWindowChunks !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks = normalizePositiveInt(
+      config.uploadWindowChunks,
+      STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks,
+    );
+  }
+  if (config.defaultCallTimeoutMs !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs = normalizePositiveInt(
+      config.defaultCallTimeoutMs,
+      STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs,
+    );
+  }
+}
 
 /**
  * Efficient circular buffer - pre-allocated, no reallocations on write.
@@ -130,14 +204,22 @@ class StreamImpl implements Stream {
   private _status: StreamStatus = "opening";
   private buffer: Uint8Array[] = []; // Buffer for when handler is detached
   private bufferedBytes = 0;
-  private recvBuffer: Uint8Array = new Uint8Array(0); // Buffer for partial StreamFrames
-  private scrollback = new CircularBuffer(MAX_SCROLLBACK); // Efficient circular buffer
+  private recvBuf = new Uint8Array(8192); // Pre-allocated receive buffer
+  private recvStart = 0; // Read offset into recvBuf
+  private recvEnd = 0; // Write offset into recvBuf
+  private readonly detachedBufferBytes: number;
+  private readonly scrollback: CircularBuffer;
 
   constructor(
     public readonly id: number,
     public readonly type: StreamType,
     private mux: StreamMultiplexer,
-  ) {}
+  ) {
+    this.detachedBufferBytes = STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes;
+    this.scrollback = new CircularBuffer(
+      STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,
+    );
+  }
 
   get status(): StreamStatus {
     return this._status;
@@ -158,9 +240,6 @@ class StreamImpl implements Stream {
         const scrollback = this.scrollback.read();
         const overlapBytes = Math.min(this.bufferedBytes, scrollback.length);
         const replayLength = scrollback.length - overlapBytes;
-        console.log(
-          `[Stream ${this.id}] Replaying ${replayLength} bytes of scrollback`,
-        );
         if (replayLength > 0) {
           handler(scrollback.slice(0, replayLength));
         }
@@ -168,9 +247,6 @@ class StreamImpl implements Stream {
 
       // Then flush any buffered data that arrived while detached
       if (this.buffer.length > 0) {
-        console.log(
-          `[Stream ${this.id}] Flushing ${this.buffer.length} buffered items`,
-        );
         for (const data of this.buffer) {
           handler(data);
         }
@@ -194,7 +270,7 @@ class StreamImpl implements Stream {
     // Wrap in StreamFrame for bridge: [opcode:1][streamID:4][length:4][payload]
     const bridgeFrame = new Uint8Array(9 + data.length);
     const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = 0x81; // OpStreamData
+    bridgeFrame[0] = BridgeOpcode.StreamData;
     view.setUint32(1, this.id, false);
     view.setUint32(5, data.length, false);
     bridgeFrame.set(data, 9);
@@ -229,7 +305,7 @@ class StreamImpl implements Stream {
     // Build OpStreamClose frame for bridge: [opcode:1][streamID:4][length:4]
     const closeFrame = new Uint8Array(9);
     const view = new DataView(closeFrame.buffer);
-    closeFrame[0] = 0x82; // OpStreamClose
+    closeFrame[0] = BridgeOpcode.StreamClose;
     view.setUint32(1, this.id, false);
     view.setUint32(5, 0, false); // length = 0
     this.mux.sendFrame(this.id, Flags.FIN, closeFrame);
@@ -254,7 +330,7 @@ class StreamImpl implements Stream {
     // This signals the backend's AbortMonitor to cancel the operation
     const abortFrame = new Uint8Array(9);
     const view = new DataView(abortFrame.buffer);
-    abortFrame[0] = 0x86; // OpStreamAbort
+    abortFrame[0] = BridgeOpcode.StreamAbort;
     view.setUint32(1, this.id, false);
     view.setUint32(5, 0, false); // length = 0
     this.mux.sendFrame(this.id, Flags.DATA, abortFrame);
@@ -271,14 +347,11 @@ class StreamImpl implements Stream {
       this._onData(data);
     } else {
       // Buffer data when no handler attached
-      console.log(
-        `[Stream ${this.id}] Buffering ${data.length} bytes (no handler)`,
-      );
       this.buffer.push(data);
       this.bufferedBytes += data.length;
 
       while (
-        this.bufferedBytes > MAX_DETACHED_BUFFER &&
+        this.bufferedBytes > this.detachedBufferBytes &&
         this.buffer.length > 0
       ) {
         const dropped = this.buffer.shift();
@@ -289,60 +362,86 @@ class StreamImpl implements Stream {
   }
 
   /**
-   * Handle raw bytes from WebSocket, accumulate in recvBuffer,
+   * Ensure recvBuf has room for `needed` additional bytes.
+   * Compacts first, then grows by doubling if still insufficient.
+   */
+  private ensureRecvCapacity(needed: number): void {
+    const used = this.recvEnd - this.recvStart;
+    // Compact: shift valid data to front when >50% wasted
+    if (this.recvStart > this.recvBuf.length >>> 1) {
+      this.recvBuf.copyWithin(0, this.recvStart, this.recvEnd);
+      this.recvStart = 0;
+      this.recvEnd = used;
+    }
+    // Grow if still not enough room
+    if (this.recvEnd + needed > this.recvBuf.length) {
+      let newCap = this.recvBuf.length;
+      while (newCap < used + needed) newCap *= 2;
+      const grown = new Uint8Array(newCap);
+      grown.set(this.recvBuf.subarray(this.recvStart, this.recvEnd));
+      this.recvBuf = grown;
+      this.recvStart = 0;
+      this.recvEnd = used;
+    }
+  }
+
+  /**
+   * Handle raw bytes from WebSocket, accumulate in recvBuf,
    * and parse complete StreamFrames.
    * StreamFrame format: [opcode:1][streamID:4][length:4][payload:N]
    */
   handleRawData(data: Uint8Array): void {
-    // Append to receive buffer
-    const newBuffer = new Uint8Array(this.recvBuffer.length + data.length);
-    newBuffer.set(this.recvBuffer);
-    newBuffer.set(data, this.recvBuffer.length);
-    this.recvBuffer = newBuffer;
+    this.ensureRecvCapacity(data.length);
+    this.recvBuf.set(data, this.recvEnd);
+    this.recvEnd += data.length;
 
     // Parse complete frames from buffer
-    while (this.recvBuffer.length >= 9) {
+    while (this.recvEnd - this.recvStart >= 9) {
       const view = new DataView(
-        this.recvBuffer.buffer,
-        this.recvBuffer.byteOffset,
-        this.recvBuffer.byteLength,
+        this.recvBuf.buffer,
+        this.recvBuf.byteOffset + this.recvStart,
+        this.recvEnd - this.recvStart,
       );
-      const opcode = this.recvBuffer[0];
+      const opcode = this.recvBuf[this.recvStart];
       const payloadLength = view.getUint32(5, false); // Big endian
       const frameLength = 9 + payloadLength;
 
-      if (this.recvBuffer.length < frameLength) {
-        // Incomplete frame, wait for more data
-        break;
+      if (this.recvEnd - this.recvStart < frameLength) {
+        break; // Incomplete frame
       }
 
-      // Extract payload
-      const payload = this.recvBuffer.slice(9, frameLength);
+      // Extract payload (only allocation per frame — unavoidable for handoff)
+      const payloadStart = this.recvStart + 9;
+      const payload = this.recvBuf.slice(
+        payloadStart,
+        payloadStart + payloadLength,
+      );
+
+      // Advance read cursor past this frame
+      this.recvStart += frameLength;
 
       // Route based on opcode
       switch (opcode) {
-        case 0x81: // OpStreamData
+        case BridgeOpcode.StreamData:
           this.handleData(payload);
           break;
-        case 0x82: // OpStreamClose
-          // Bridge closed the stream - trigger close handler
+        case BridgeOpcode.StreamClose:
           this.handleClose();
           this.mux.removeStream(this.id);
           break;
-        case 0x84: // OpStreamProgress
+        case BridgeOpcode.StreamProgress:
           this.handleProgress(payload);
           break;
-        case 0x85: // OpStreamResult
+        case BridgeOpcode.StreamResult:
           this.handleResult(payload);
           break;
-        default:
-          console.warn(
-            `[Stream ${this.id}] Unknown opcode: 0x${opcode.toString(16)}`,
-          );
       }
+    }
 
-      // Remove processed frame from buffer
-      this.recvBuffer = this.recvBuffer.slice(frameLength);
+    // Reset offsets when buffer is fully consumed
+    if (this.recvStart === this.recvEnd) {
+      this.recvStart = 0;
+      this.recvEnd = 0;
     }
   }
 
@@ -581,7 +680,6 @@ export class StreamMultiplexer {
     if (isPersistent) {
       const existing = this.streamsByType.get(type);
       if (existing && existing.status === "open") {
-        console.log(`[StreamMux] Reusing persistent stream "${type}"`);
         return existing;
       }
     }
@@ -601,7 +699,7 @@ export class StreamMultiplexer {
     const payload = initialPayload || new Uint8Array(0);
     const bridgeFrame = new Uint8Array(9 + payload.length);
     const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = 0x80; // OpStreamOpen
+    bridgeFrame[0] = BridgeOpcode.StreamOpen;
     view.setUint32(1, id, false);
     view.setUint32(5, payload.length, false);
     bridgeFrame.set(payload, 9);
@@ -672,17 +770,7 @@ export class StreamMultiplexer {
       }
     }
 
-    if (flags & Flags.FIN) {
-      if (stream) {
-        stream.handleClose();
-        this.streams.delete(streamID);
-        if (this.streamsByType.get(stream.type) === stream) {
-          this.streamsByType.delete(stream.type);
-        }
-      }
-    }
-
-    if (flags & Flags.RST) {
+    if (flags & (Flags.FIN | Flags.RST)) {
       if (stream) {
         stream.handleClose();
         this.streams.delete(streamID);
@@ -730,14 +818,16 @@ export class StreamMultiplexer {
   }
 }
 
-// Utility to encode string to Uint8Array
+// Singleton encoder/decoder — avoids allocation on every call
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 export function encodeString(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
+  return textEncoder.encode(str);
 }
 
-// Utility to decode Uint8Array to string
 export function decodeString(data: Uint8Array): string {
-  return new TextDecoder().decode(data);
+  return textDecoder.decode(data);
 }
 
 // Bridge StreamFrame opcodes (must match backend ipc/stream_relay.go)
@@ -750,12 +840,6 @@ export const BridgeOpcode = {
   StreamResult: 0x85,
   StreamAbort: 0x86,
 } as const;
-
-// File transfer constants (must match backend bridge/handlers/filebrowser/stream.go)
-export const STREAM_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
-
-// Flow control: max bytes in flight before waiting for ACK (progress update)
-export const UPLOAD_WINDOW_SIZE = 4 * 1024 * 1024; // 4MB window (4 chunks max in flight)
 
 // ============================================================================
 // Singleton Management
@@ -775,7 +859,12 @@ export function getStreamMux(): StreamMultiplexer | null {
  * Initialize the singleton StreamMultiplexer.
  * Should be called once after successful authentication.
  */
-export function initStreamMux(): StreamMultiplexer {
+export function initStreamMux(
+  config?: Partial<StreamMultiplexerConfig>,
+): StreamMultiplexer {
+  if (config) {
+    configureStreamMultiplexer(config);
+  }
   if (instance) {
     if (instance.status === "closed") {
       instance.reconnect();

@@ -13,7 +13,7 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const frontendDir = resolve(__dirname, "..");
 const sourceDir = resolve(frontendDir, "src");
-const outputPath = resolve(frontendDir, "src/lib/icons.ts");
+const outputPath = resolve(frontendDir, "src/icons/icons.ts");
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 const ICON_PATTERN = /\b([a-z0-9-]+):([a-z0-9-]+)\b/g;
@@ -271,7 +271,7 @@ export function generateIcons() {
     requestedIcons,
   );
 
-  mkdirSync(resolve(frontendDir, "src/lib"), { recursive: true });
+  mkdirSync(resolve(frontendDir, "src/icons"), { recursive: true });
   writeFileSync(outputPath, output);
 
   console.log(

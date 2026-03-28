@@ -11,6 +11,7 @@ import UnifiedCollapsibleTable, {
 import AppButton from "@/components/ui/AppButton";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
+import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
 
@@ -131,16 +132,9 @@ export const DetailRow: React.FC<{
 
 export function statusDot(activeState: string) {
   return (
-    <span
-      style={{
-        display: "inline-block",
-        width: 10,
-        height: 10,
-        borderRadius: "50%",
-        backgroundColor: getServiceStatusColor(activeState),
-        marginRight: 8,
-        flexShrink: 0,
-      }}
+    <StatusDot
+      color={getServiceStatusColor(activeState)}
+      style={{ marginRight: 8 }}
     />
   );
 }

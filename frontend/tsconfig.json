@@ -31,6 +31,7 @@
       "@/constants/*": ["./src/constants/*"],
       "@/assets/*": ["./src/assets/*"],
       "@/services/*": ["./src/services/*"],
+      "@/icons/*": ["./src/icons/*"],
       // Files
       "@/api": ["./src/api/index"],
       "@/constants": ["./src/theme/constants"],
