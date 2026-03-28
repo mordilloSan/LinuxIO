@@ -47,12 +47,6 @@ interface MountNFSDialogProps {
   onClose: () => void;
   onSuccess: () => void;
 }
-interface UnmountDialogProps {
-  open: boolean;
-  onClose: () => void;
-  mount: NFSMount | null;
-  onSuccess: () => void;
-}
 interface RemoveDialogProps {
   open: boolean;
   onClose: () => void;
@@ -376,88 +370,6 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     </GeneralDialog>
   );
 };
-const UnmountDialog: React.FC<UnmountDialogProps> = ({
-  open,
-  onClose,
-  mount,
-  onSuccess,
-}) => {
-  const queryClient = useQueryClient();
-  const [removeFstab, setRemoveFstab] = useState(false);
-  const { mutate: unmountNFS, isPending: isUnmounting } =
-    linuxio.storage.unmount_nfs.useMutation({
-      onSuccess: (result) => {
-        if (result.warning) {
-          toast.warning(result.warning);
-        } else {
-          toast.success(`Unmounted ${mount?.mountpoint}`);
-        }
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
-        });
-        onSuccess();
-        handleClose();
-      },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to unmount"));
-      },
-    });
-  const handleUnmount = () => {
-    if (!mount) return;
-    unmountNFS([mount.mountpoint, removeFstab ? "true" : "false"]);
-  };
-  const handleClose = () => {
-    setRemoveFstab(false);
-    onClose();
-  };
-  return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <AppDialogTitle>Unmount NFS Share</AppDialogTitle>
-      <AppDialogContent>
-        <AppDialogContentText>
-          Are you sure you want to unmount the NFS share?
-        </AppDialogContentText>
-        {mount && (
-          <div
-            style={{
-              marginTop: 8,
-              marginBottom: 8,
-            }}
-          >
-            <AppTypography variant="body2">
-              <strong>Source:</strong> {mount.source}
-            </AppTypography>
-            <AppTypography variant="body2">
-              <strong>Mountpoint:</strong> {mount.mountpoint}
-            </AppTypography>
-          </div>
-        )}
-        <AppFormControlLabel
-          control={
-            <AppSwitch
-              checked={removeFstab}
-              onChange={(e) => setRemoveFstab(e.target.checked)}
-            />
-          }
-          label="Also remove from /etc/fstab"
-        />
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isUnmounting}>
-          Cancel
-        </AppButton>
-        <AppButton
-          onClick={handleUnmount}
-          variant="contained"
-          color="error"
-          disabled={isUnmounting}
-        >
-          {isUnmounting ? "Unmounting..." : "Unmount"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
 const RemoveDialog: React.FC<RemoveDialogProps> = ({
   open,
   onClose,
@@ -747,7 +659,6 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
-  const [unmountDialogOpen, setUnmountDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<NFSMount | null>(null);
@@ -776,6 +687,19 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       toast.error(getMutationErrorMessage(error, "Failed to mount NFS entry"));
     },
   });
+  const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useMutation({
+    onSuccess: (result, variables) => {
+      if (result.warning) {
+        toast.warning(result.warning);
+      } else {
+        toast.success(`Unmounted ${variables[0]}`);
+      }
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast.error(getMutationErrorMessage(error, "Failed to unmount"));
+    },
+  });
   const handleMountNFS = useCallback(() => {
     setMountDialogOpen(true);
   }, []);
@@ -785,8 +709,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
     }
   }, [onMountCreateHandler, handleMountNFS]);
   const handleUnmount = (mount: NFSMount) => {
-    setSelectedMount(mount);
-    setUnmountDialogOpen(true);
+    unmountEntry([mount.mountpoint, "false"]);
   };
   const handleEdit = (mount: NFSMount) => {
     setSelectedMount(mount);
@@ -1139,13 +1062,6 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       <MountNFSDialog
         open={mountDialogOpen}
         onClose={() => setMountDialogOpen(false)}
-        onSuccess={() => refetch()}
-      />
-
-      <UnmountDialog
-        open={unmountDialogOpen}
-        onClose={() => setUnmountDialogOpen(false)}
-        mount={selectedMount}
         onSuccess={() => refetch()}
       />
 
