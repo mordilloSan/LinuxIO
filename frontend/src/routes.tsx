@@ -17,6 +17,7 @@ import {
   FolderIcon,
   HardDriveIcon,
   HomeIcon,
+  MonitoringIcon,
   NetworkIcon,
   RefreshCcwIcon,
   ServerCogIcon,
@@ -37,6 +38,7 @@ const Updates = lazy(() => import("@/pages/main/updates"));
 const Docker = lazy(() => import("@/pages/main/docker"));
 const Services = lazy(() => import("@/pages/main/services"));
 const Logs = lazy(() => import("@/pages/main/logs"));
+const Monitoring = lazy(() => import("@/pages/main/monitoring"));
 const Network = lazy(() => import("@/pages/main/network"));
 const Hardware = lazy(() => import("@/pages/main/hardware"));
 const Wireguard = lazy(() => import("@/pages/main/wireguard"));
@@ -109,6 +111,16 @@ const coreRoutes: RouteWithSidebar[] = [
       title: "Logs",
       icon: FileTextIcon,
       position: 35,
+    },
+  },
+  {
+    path: "monitoring",
+    element: <Monitoring />,
+    requiredCapabilities: ["dockerAvailable"],
+    sidebar: {
+      title: "Monitoring",
+      icon: MonitoringIcon,
+      position: 36,
     },
   },
   {

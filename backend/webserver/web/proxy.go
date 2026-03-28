@@ -2,19 +2,20 @@ package web
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 
-	"github.com/docker/docker/client"
 	"github.com/mordilloSan/go-logger/logger"
-)
 
-const (
-	proxyNetwork   = "linuxio-docker"
-	proxyPortLabel = "io.linuxio.container.proxy.port"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 )
 
 // ContainerProxyHandler reverse-proxies requests at /proxy/{name}/...
@@ -38,7 +39,9 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target, err := resolveContainerTarget(containerName)
+	proxyPrefix := "/proxy/" + containerName
+	sess := session.SessionFromContext(r.Context())
+	target, err := resolveContainerTarget(r.Context(), sess, containerName)
 	if err != nil {
 		logger.Warnf("[proxy] cannot resolve %q: %v", containerName, err)
 		http.Error(w, fmt.Sprintf("container %q not available: %v", containerName, err), http.StatusBadGateway)
@@ -59,6 +62,9 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
 			req.Host = target.Host
+			req.Header.Set("X-Forwarded-Host", r.Host)
+			req.Header.Set("X-Forwarded-Proto", forwardedProto(r))
+			req.Header.Set("X-Forwarded-Prefix", proxyPrefix)
 		},
 		// -1 enables streaming/flushing for SSE and WebSocket upgrades
 		FlushInterval: -1,
@@ -72,37 +78,90 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r2)
 }
 
-// resolveContainerTarget looks up the container by name, finds its IP on the
-// linuxio-docker bridge, and returns the proxy target URL.
-func resolveContainerTarget(name string) (*url.URL, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func forwardedProto(r *http.Request) string {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return proto
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+type proxyTargetResponse struct {
+	URL string `json:"url"`
+}
+
+func resolveContainerTarget(ctx context.Context, sess *session.Session, name string) (*url.URL, error) {
+	result, err := callBridgeJSON[proxyTargetResponse](ctx, sess, "docker", "resolve_proxy_target", name)
 	if err != nil {
-		return nil, fmt.Errorf("docker client: %w", err)
+		return nil, err
+	}
+	if result.URL == "" {
+		return nil, errors.New("empty proxy target")
+	}
+	return url.Parse(result.URL)
+}
+
+func callBridgeJSON[T any](ctx context.Context, sess *session.Session, handlerType, command string, args ...string) (T, error) {
+	var zero T
+	if sess == nil {
+		return zero, errors.New("missing session")
+	}
+
+	yamuxSession, err := bridge.GetYamuxSession(sess.SessionID)
+	if err != nil {
+		return zero, fmt.Errorf("get bridge session: %w", err)
+	}
+
+	stream, err := yamuxSession.Open(ctx)
+	if err != nil {
+		return zero, fmt.Errorf("open bridge stream: %w", err)
 	}
 	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("[proxy] failed to close docker client: %v", cerr)
+		if cerr := stream.Close(); cerr != nil && !errors.Is(cerr, io.EOF) {
+			logger.Debugf("[proxy] failed to close bridge stream: %v", cerr)
 		}
 	}()
 
-	info, err := cli.ContainerInspect(context.Background(), name)
-	if err != nil {
-		return nil, fmt.Errorf("inspect container: %w", err)
+	openArgs := append([]string{"bridge", handlerType, command}, args...)
+	if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+		Opcode:  ipc.OpStreamOpen,
+		Payload: []byte(strings.Join(openArgs, "\x00")),
+	}); err != nil {
+		return zero, fmt.Errorf("write bridge request: %w", err)
 	}
 
-	port, ok := info.Config.Labels[proxyPortLabel]
-	if !ok || port == "" {
-		return nil, fmt.Errorf("label %s not set", proxyPortLabel)
-	}
+	for {
+		frame, err := ipc.ReadRelayFrame(stream)
+		if err != nil {
+			return zero, fmt.Errorf("read bridge response: %w", err)
+		}
 
-	// Prefer the container's IP on the linuxio-docker bridge
-	ip := ""
-	if nw, found := info.NetworkSettings.Networks[proxyNetwork]; found {
-		ip = nw.IPAddress
-	}
-	if ip == "" {
-		return nil, fmt.Errorf("container not connected to %s network", proxyNetwork)
-	}
+		switch frame.Opcode {
+		case ipc.OpStreamResult:
+			var result ipc.ResultFrame
+			if err := json.Unmarshal(frame.Payload, &result); err != nil {
+				return zero, fmt.Errorf("decode bridge result: %w", err)
+			}
+			if result.Status != "ok" {
+				if result.Error == "" {
+					return zero, errors.New("bridge request failed")
+				}
+				return zero, errors.New(result.Error)
+			}
+			if len(result.Data) == 0 {
+				var empty T
+				return empty, nil
+			}
 
-	return url.Parse(fmt.Sprintf("http://%s:%s", ip, port))
+			var decoded T
+			if err := json.Unmarshal(result.Data, &decoded); err != nil {
+				return zero, fmt.Errorf("decode bridge payload: %w", err)
+			}
+			return decoded, nil
+		case ipc.OpStreamClose:
+			return zero, errors.New("bridge closed without result")
+		}
+	}
 }
