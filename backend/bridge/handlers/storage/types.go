@@ -33,7 +33,8 @@ type LogicalVolume struct {
 	UsedPct    float64 `json:"usedPct"`    // Usage percentage if mounted
 }
 
-// NFSMount represents a mounted NFS share
+// NFSMount represents an NFS mount entry, either currently mounted or only
+// configured in /etc/fstab.
 type NFSMount struct {
 	Source     string   `json:"source"`     // server:/path (full source)
 	Server     string   `json:"server"`     // NFS server hostname/IP
@@ -46,6 +47,7 @@ type NFSMount struct {
 	Free       uint64   `json:"free"`
 	UsedPct    float64  `json:"usedPct"`
 	InFstab    bool     `json:"inFstab"` // Whether this mount is in /etc/fstab
+	Mounted    bool     `json:"mounted"` // Whether this mount is currently active
 }
 
 // LVM command JSON output structures (for parsing pvs/vgs/lvs --reportformat json)

@@ -642,6 +642,7 @@ export interface NFSMount {
   free: number;
   usedPct: number;
   inFstab: boolean;
+  mounted: boolean;
 }
 
 // ============================================================================
