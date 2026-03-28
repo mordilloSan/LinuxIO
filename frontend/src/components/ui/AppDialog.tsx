@@ -85,7 +85,11 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   // ESC key
   const handleDocumentKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || disableEscapeKeyDown || event.defaultPrevented) {
+      if (
+        event.key !== "Escape" ||
+        disableEscapeKeyDown ||
+        event.defaultPrevented
+      ) {
         return;
       }
 
@@ -157,11 +161,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   };
 
   return createPortal(
-    <div
-      ref={rootRef}
-      className="app-dialog-root"
-      role="presentation"
-    >
+    <div ref={rootRef} className="app-dialog-root" role="presentation">
       <div
         className="app-dialog__backdrop"
         style={mergedBackdropStyle}

@@ -14,6 +14,7 @@ import {
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import TabContainer from "@/components/tabbar/TabContainer";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -175,9 +176,7 @@ function nfsOptionsToStrings(options: ClientOptions): string[] {
   const values: string[] = [];
   values.push(options.rw ? "rw" : "ro");
   values.push(options.sync ? "sync" : "async");
-  values.push(
-    options.noSubtreeCheck ? "no_subtree_check" : "subtree_check",
-  );
+  values.push(options.noSubtreeCheck ? "no_subtree_check" : "subtree_check");
   if (options.allSquash) {
     values.push("all_squash");
   } else {
@@ -209,10 +208,7 @@ function nfsOptionsFromStrings(options: string[] = []): ClientOptions {
   };
 }
 
-function parseNFSClients(
-  value: string,
-  options: ClientOptions,
-): NFSClient[] {
+function parseNFSClients(value: string, options: ClientOptions): NFSClient[] {
   return value
     .split(",")
     .map((client) => client.trim())
@@ -1099,55 +1095,47 @@ const SharesPage: React.FC = () => {
     Array.isArray(nfsShares) ? nfsShares : [],
   );
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
+  const sharesActions = (
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        flexWrap: "wrap",
+      }}
+    >
+      <AppTooltip
+        title={
+          viewMode === "table" ? "Switch to card view" : "Switch to table view"
+        }
       >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
+        <AppIconButton
+          size="small"
+          onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
         >
-          <AppTooltip
-            title={
-              viewMode === "table"
-                ? "Switch to card view"
-                : "Switch to table view"
-            }
-          >
-            <AppIconButton
-              size="small"
-              onClick={() =>
-                setViewMode(viewMode === "table" ? "card" : "table")
-              }
-            >
-              {viewMode === "table" ? (
-                <Icon icon="mdi:view-grid" width={20} height={20} />
-              ) : (
-                <Icon icon="mdi:table-row" width={20} height={20} />
-              )}
-            </AppIconButton>
-          </AppTooltip>
-          <AppButton
-            variant="contained"
-            size="small"
-            onClick={() => setCreateDialogOpen(true)}
-            startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
-          >
-            Add Share
-          </AppButton>
-        </div>
-      </div>
+          {viewMode === "table" ? (
+            <Icon icon="mdi:view-grid" width={20} height={20} />
+          ) : (
+            <Icon icon="mdi:table-row" width={20} height={20} />
+          )}
+        </AppIconButton>
+      </AppTooltip>
+      <AppButton
+        variant="contained"
+        size="small"
+        onClick={() => setCreateDialogOpen(true)}
+        startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+      >
+        Add Share
+      </AppButton>
+    </div>
+  );
+
+  const sharesContent = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <AppTypography variant="body2" color="text.secondary">
+        Share folders over SMB and/or NFS from one grouped view.
+      </AppTypography>
 
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
@@ -1253,6 +1241,43 @@ const SharesPage: React.FC = () => {
           emptyMessage="No shares configured. Add a folder share to get started."
         />
       )}
+    </div>
+  );
+
+  const mountsContent = (
+    <FrostedCard style={{ padding: 18 }}>
+      <AppTypography variant="body2" fontWeight={700}>
+        Mounts
+      </AppTypography>
+      <AppTypography
+        variant="body2"
+        color="text.secondary"
+        style={{ marginTop: 6 }}
+      >
+        Mount management will land here next.
+      </AppTypography>
+    </FrostedCard>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <TabContainer
+        defaultTab="shares"
+        urlParam="sharesTab"
+        tabs={[
+          {
+            value: "shares",
+            label: "Shares",
+            component: sharesContent,
+            rightContent: sharesActions,
+          },
+          {
+            value: "mounts",
+            label: "Mounts",
+            component: mountsContent,
+          },
+        ]}
+      />
 
       <CreateFolderShareDialog
         open={createDialogOpen}
