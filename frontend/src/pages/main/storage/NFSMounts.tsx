@@ -31,7 +31,6 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
-import AppSearchField from "@/components/ui/AppSearchField";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
@@ -476,7 +475,7 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
               : `Unmounted ${mount.mountpoint}`,
           );
         } else {
-          toast.success(`Removed ${mount?.mountpoint} from /etc/fstab`);
+          toast.success(`Removed saved entry for ${mount?.mountpoint}`);
         }
         if (result.warning) {
           toast.warning(result.warning);
@@ -505,8 +504,10 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
           {mount?.mounted
             ? mount.inFstab
               ? "This will unmount the NFS entry and remove it from /etc/fstab."
-              : "This will unmount the NFS entry. It is not stored in /etc/fstab."
-            : "This will remove the saved NFS entry from /etc/fstab."}
+              : "This will unmount the NFS entry and remove its saved LinuxIO entry."
+            : mount?.inFstab
+              ? "This will remove the saved NFS entry from /etc/fstab."
+              : "This will remove the saved LinuxIO entry for this NFS mount."}
         </AppDialogContentText>
         {mount && (
           <div
@@ -1065,7 +1066,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       }
                     />
                     <AppTypography variant="caption" color="text.secondary">
-                      {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+                      {formatFileSize(mount.used)} /{" "}
+                      {formatFileSize(mount.size)}
                     </AppTypography>
                   </div>
                 ) : (
@@ -1120,8 +1122,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
               {mount.mounted ? (
                 <AppTypography variant="subtitle2" gutterBottom>
                   <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
-                  {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}% used,{" "}
-                  {formatFileSize(mount.free)} free)
+                  {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}%
+                  used, {formatFileSize(mount.free)} free)
                 </AppTypography>
               ) : (
                 <AppTypography variant="subtitle2" gutterBottom>
