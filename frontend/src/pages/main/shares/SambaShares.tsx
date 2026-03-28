@@ -584,9 +584,9 @@ const SambaShares: React.FC<SambaSharesProps> = ({
       refetchInterval: 10000,
     });
 
-  const clientsByShare = (sambaClients as SambaConnectedClient[]).reduce<
-    Record<string, SambaConnectedClient[]>
-  >((acc, client) => {
+  const clientsByShare = (
+    (sambaClients ?? []) as SambaConnectedClient[]
+  ).reduce<Record<string, SambaConnectedClient[]>>((acc, client) => {
     (acc[client.share] ??= []).push(client);
     return acc;
   }, {});

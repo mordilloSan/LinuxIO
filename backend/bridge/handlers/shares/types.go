@@ -19,10 +19,13 @@ type SambaShare struct {
 	Properties map[string]string `json:"properties"` // All key=value properties
 }
 
-// NFSConnectedClient represents a client currently connected to an NFS export
+// NFSConnectedClient represents a client currently connected via NFS
 type NFSConnectedClient struct {
-	IP         string `json:"ip"`         // Client IP address
-	ExportPath string `json:"exportPath"` // Mounted export path
+	IP                   string `json:"ip"`                   // Client IP address
+	Name                 string `json:"name,omitempty"`       // Client-reported NFSv4 name when available
+	Status               string `json:"status,omitempty"`     // Kernel client status or socket state
+	SecondsFromLastRenew int    `json:"secondsFromLastRenew"` // NFSv4 lease age in seconds when available
+	MinorVersion         int    `json:"minorVersion"`         // NFS minor version when available
 }
 
 // SambaConnectedClient represents a client currently connected to a Samba share

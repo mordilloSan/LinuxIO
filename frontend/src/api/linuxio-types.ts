@@ -598,7 +598,10 @@ export interface SambaShare {
 
 export interface NFSConnectedClient {
   ip: string;
-  exportPath: string;
+  name?: string;
+  status?: string;
+  secondsFromLastRenew: number;
+  minorVersion: number;
 }
 
 export interface SambaConnectedClient {
