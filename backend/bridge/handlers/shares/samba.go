@@ -99,10 +99,14 @@ func CreateSambaShare(name string, properties map[string]string) error {
 	return reloadSamba()
 }
 
-// UpdateSambaShare replaces a share section in smb.conf and reloads samba
-func UpdateSambaShare(name string, properties map[string]string) error {
-	if !validShareName.MatchString(name) {
-		return fmt.Errorf("invalid share name: %s", name)
+// UpdateSambaShare replaces a share section in smb.conf and reloads samba.
+// oldName identifies the existing section; newName is the section name to write.
+func UpdateSambaShare(oldName, newName string, properties map[string]string) error {
+	if !validShareName.MatchString(newName) {
+		return fmt.Errorf("invalid share name: %s", newName)
+	}
+	if reservedSections[strings.ToLower(newName)] {
+		return fmt.Errorf("cannot use reserved section name: %s", newName)
 	}
 	path, ok := properties["path"]
 	if !ok || path == "" {
@@ -112,21 +116,38 @@ func UpdateSambaShare(name string, properties map[string]string) error {
 		return fmt.Errorf("invalid share path: %s", path)
 	}
 
+	if !strings.EqualFold(oldName, newName) {
+		sections, err := parseSmbConf()
+		if err != nil {
+			return err
+		}
+		for existing := range sections {
+			if strings.EqualFold(existing, newName) {
+				return fmt.Errorf("share already exists: %s", existing)
+			}
+		}
+	}
+
 	content, err := os.ReadFile(smbConfFile)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", smbConfFile, err)
 	}
 
-	newContent, found := replaceSmbSection(string(content), name, properties)
+	newContent, found := replaceSmbSection(
+		string(content),
+		oldName,
+		newName,
+		properties,
+	)
 	if !found {
-		return fmt.Errorf("share not found: %s", name)
+		return fmt.Errorf("share not found: %s", oldName)
 	}
 
 	if err := os.WriteFile(smbConfFile, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
 
-	logger.Infof("Updated Samba share: %s", name)
+	logger.Infof("Updated Samba share: %s -> %s", oldName, newName)
 	return reloadSamba()
 }
 
@@ -218,7 +239,7 @@ func formatSambaSection(name string, properties map[string]string) string {
 // replaceSmbSection replaces a named section in smb.conf content with new properties.
 // Lines belonging to the old section (between its header and the next [section]) are removed
 // and the new definition is written in place.
-func replaceSmbSection(content, name string, properties map[string]string) (string, bool) {
+func replaceSmbSection(content, oldName, newName string, properties map[string]string) (string, bool) {
 	lines := strings.Split(content, "\n")
 	var result []string
 	found := false
@@ -231,11 +252,11 @@ func replaceSmbSection(content, name string, properties map[string]string) (stri
 			if skipping {
 				skipping = false
 			}
-			if strings.EqualFold(matches[1], name) {
+			if strings.EqualFold(matches[1], oldName) {
 				found = true
 				skipping = true
 				// Write the replacement section header + properties
-				result = append(result, fmt.Sprintf("[%s]", name))
+				result = append(result, fmt.Sprintf("[%s]", newName))
 				if path, ok := properties["path"]; ok {
 					result = append(result, fmt.Sprintf("   path = %s", path))
 				}

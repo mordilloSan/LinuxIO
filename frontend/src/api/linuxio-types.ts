@@ -1032,7 +1032,13 @@ export interface LinuxIOSchema {
       result: { success: boolean; name: string };
     };
     update_samba_share: {
-      args: [name: string, properties: Record<string, string>];
+      args:
+        | [name: string, properties: Record<string, string>]
+        | [
+            oldName: string,
+            newName: string,
+            properties: Record<string, string>,
+          ];
       result: { success: boolean; name: string };
     };
     delete_samba_share: {

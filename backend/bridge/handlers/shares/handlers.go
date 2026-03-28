@@ -133,18 +133,24 @@ func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 	if len(args) < 2 {
 		return ipc.ErrInvalidArgs
 	}
-	name := args[0]
+	oldName := args[0]
+	newName := oldName
+	propertiesArgIndex := 1
+	if len(args) >= 3 {
+		newName = args[1]
+		propertiesArgIndex = 2
+	}
 	var properties map[string]string
-	if err := json.Unmarshal([]byte(args[1]), &properties); err != nil {
+	if err := json.Unmarshal([]byte(args[propertiesArgIndex]), &properties); err != nil {
 		return fmt.Errorf("invalid properties JSON: %w", err)
 	}
 
-	logger.Infof("Updating Samba share: %s", name)
-	if err := UpdateSambaShare(name, properties); err != nil {
-		logger.Errorf("Failed to update Samba share %s: %v", name, err)
+	logger.Infof("Updating Samba share: %s -> %s", oldName, newName)
+	if err := UpdateSambaShare(oldName, newName, properties); err != nil {
+		logger.Errorf("Failed to update Samba share %s: %v", oldName, err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true, "name": name})
+	return emit.Result(map[string]any{"success": true, "name": newName})
 }
 
 func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events) error {

@@ -2,8 +2,8 @@ import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { DeleteNFSShareDialog, EditNFSShareDialog } from "./NFSShares";
-import { DeleteSambaShareDialog, EditSambaShareDialog } from "./SambaShares";
+import { DeleteNFSShareDialog } from "./NFSShares";
+import { DeleteSambaShareDialog } from "./SambaShares";
 
 import {
   linuxio,
@@ -62,6 +62,10 @@ interface CreateFolderShareDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+interface EditFolderShareDialogProps extends CreateFolderShareDialogProps {
+  group: ShareGroup | null;
 }
 
 const defaultNFSOptions: ClientOptions = {
@@ -192,6 +196,19 @@ function nfsOptionsSummary(options: ClientOptions): string {
   return nfsOptionsToStrings(options).join(", ");
 }
 
+function nfsOptionsFromStrings(options: string[] = []): ClientOptions {
+  const set = new Set(options);
+  return {
+    rw: !set.has("ro"),
+    sync: !set.has("async"),
+    noSubtreeCheck: !set.has("subtree_check"),
+    noRootSquash: set.has("no_root_squash"),
+    allSquash: set.has("all_squash"),
+    insecure: set.has("insecure"),
+    crossmnt: set.has("crossmnt"),
+  };
+}
+
 function parseNFSClients(
   value: string,
   options: ClientOptions,
@@ -204,6 +221,27 @@ function parseNFSClients(
       host,
       options: nfsOptionsToStrings(options),
     }));
+}
+
+function buildFolderSambaProperties(
+  path: string,
+  comment: string,
+  sambaPublic: boolean,
+  baseProperties?: Record<string, string>,
+): Record<string, string> {
+  const properties: Record<string, string> = { ...(baseProperties ?? {}) };
+  properties.path = path;
+  properties.browseable ??= "yes";
+  properties["read only"] ??= "no";
+  properties["guest ok"] = sambaPublic ? "yes" : "no";
+
+  if (comment.trim()) {
+    properties.comment = comment.trim();
+  } else {
+    delete properties.comment;
+  }
+
+  return properties;
 }
 
 function renderProtocolSummary(group: ShareGroup): React.ReactNode {
@@ -592,14 +630,275 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   );
 };
 
+const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
+  open,
+  onClose,
+  onSuccess,
+  group,
+}) => {
+  const [sambaEnabled, setSambaEnabled] = useState(Boolean(group?.samba));
+  const [nfsEnabled, setNFSEnabled] = useState(Boolean(group?.nfs));
+  const [sambaName, setSambaName] = useState(
+    group?.samba?.name ?? inferShareName(group?.path ?? ""),
+  );
+  const [comment, setComment] = useState(
+    group?.samba?.properties["comment"] ?? group?.comment ?? "",
+  );
+  const [sambaPublic, setSambaPublic] = useState(
+    group?.samba?.properties["guest ok"] === "yes",
+  );
+  const [nfsClients, setNFSClients] = useState(
+    group?.nfs?.clients.map((client) => client.host).join(", ") || "*",
+  );
+  const [nfsOptions, setNFSOptions] = useState<ClientOptions>(
+    group?.nfs?.clients[0]
+      ? nfsOptionsFromStrings(group.nfs.clients[0].options ?? [])
+      : { ...defaultNFSOptions },
+  );
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const sambaCreate = linuxio.shares.create_samba_share.useMutation();
+  const sambaUpdate = linuxio.shares.update_samba_share.useMutation();
+  const sambaDelete = linuxio.shares.delete_samba_share.useMutation();
+  const nfsCreate = linuxio.shares.create_nfs_share.useMutation();
+  const nfsUpdate = linuxio.shares.update_nfs_share.useMutation();
+  const nfsDelete = linuxio.shares.delete_nfs_share.useMutation();
+
+  const isPending =
+    sambaCreate.isPending ||
+    sambaUpdate.isPending ||
+    sambaDelete.isPending ||
+    nfsCreate.isPending ||
+    nfsUpdate.isPending ||
+    nfsDelete.isPending;
+
+  if (!group) {
+    return null;
+  }
+
+  const handleSave = async () => {
+    const resolvedName = sambaName.trim() || inferShareName(group.path);
+    const parsedNFSClients = parseNFSClients(nfsClients, nfsOptions);
+
+    if (!sambaEnabled && !nfsEnabled) {
+      setValidationError("Enable SMB and/or NFS for this folder share");
+      return;
+    }
+    if (sambaEnabled && !resolvedName) {
+      setValidationError("Share name is required when SMB is enabled");
+      return;
+    }
+    if (nfsEnabled && parsedNFSClients.length === 0) {
+      setValidationError("At least one NFS client is required");
+      return;
+    }
+
+    setValidationError(null);
+
+    let changedAny = false;
+
+    try {
+      if (sambaEnabled) {
+        const sambaProperties = buildFolderSambaProperties(
+          group.path,
+          comment,
+          sambaPublic,
+          group.samba?.properties,
+        );
+
+        if (group.samba) {
+          await sambaUpdate.mutateAsync([
+            group.samba.name,
+            resolvedName,
+            sambaProperties,
+          ]);
+        } else {
+          await sambaCreate.mutateAsync([resolvedName, sambaProperties]);
+        }
+        changedAny = true;
+      } else if (group.samba) {
+        await sambaDelete.mutateAsync([group.samba.name]);
+        changedAny = true;
+      }
+
+      if (nfsEnabled) {
+        if (group.nfs) {
+          await nfsUpdate.mutateAsync([group.path, parsedNFSClients]);
+        } else {
+          await nfsCreate.mutateAsync([group.path, parsedNFSClients]);
+        }
+        changedAny = true;
+      } else if (group.nfs) {
+        await nfsDelete.mutateAsync([group.path]);
+        changedAny = true;
+      }
+
+      toast.success(`Folder share updated for ${group.path}`);
+      onSuccess();
+      onClose();
+    } catch (error) {
+      const message = getMutationErrorMessage(
+        error as Error,
+        "Failed to update folder share",
+      );
+
+      if (changedAny) {
+        toast.error(`${message}. Some changes may already have been applied.`);
+        onSuccess();
+        onClose();
+        return;
+      }
+
+      setValidationError(message);
+    }
+  };
+
+  return (
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <AppDialogTitle>Edit Folder Share</AppDialogTitle>
+      <AppDialogContent>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            marginTop: 8,
+          }}
+        >
+          <AppTextField
+            label="Folder Path"
+            value={group.path}
+            size="small"
+            fullWidth
+            shrinkLabel
+            disabled
+          />
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              padding: 10,
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.03)",
+            }}
+          >
+            <AppFormControlLabel
+              control={
+                <AppCheckbox
+                  checked={sambaEnabled}
+                  onChange={(event) => setSambaEnabled(event.target.checked)}
+                />
+              }
+              label="Enable SMB"
+            />
+            {sambaEnabled ? (
+              <>
+                <AppTextField
+                  label="Share Name"
+                  value={sambaName}
+                  onChange={(event) => setSambaName(event.target.value)}
+                  placeholder={inferShareName(group.path)}
+                  size="small"
+                  className="app-text-field--compact-copy"
+                  fullWidth
+                />
+                <AppTextField
+                  label="Comment"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  placeholder="Optional description"
+                  size="small"
+                  className="app-text-field--compact-copy"
+                  fullWidth
+                />
+                <AppFormControlLabel
+                  control={
+                    <AppCheckbox
+                      checked={sambaPublic}
+                      onChange={(event) => setSambaPublic(event.target.checked)}
+                    />
+                  }
+                  label="Public SMB access"
+                />
+              </>
+            ) : null}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              padding: 10,
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.03)",
+            }}
+          >
+            <AppFormControlLabel
+              control={
+                <AppCheckbox
+                  checked={nfsEnabled}
+                  onChange={(event) => setNFSEnabled(event.target.checked)}
+                />
+              }
+              label="Enable NFS"
+            />
+            {nfsEnabled ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "flex-start",
+                }}
+              >
+                <AppTextField
+                  label="Allowed NFS Clients"
+                  value={nfsClients}
+                  onChange={(event) => setNFSClients(event.target.value)}
+                  placeholder="* or 192.168.1.0/24"
+                  helperText="Use * for public access, or enter host/IP/CIDR values separated by commas."
+                  size="small"
+                  fullWidth
+                  style={{ flex: "2 1 260px" }}
+                />
+                <NFSOptionsDropdown
+                  options={nfsOptions}
+                  onChange={setNFSOptions}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          {validationError ? (
+            <AppAlert severity="error">{validationError}</AppAlert>
+          ) : null}
+        </div>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton onClick={onClose} disabled={isPending}>
+          Cancel
+        </AppButton>
+        <AppButton
+          onClick={handleSave}
+          variant="contained"
+          disabled={isPending}
+        >
+          {isPending ? "Saving..." : "Save Share"}
+        </AppButton>
+      </AppDialogActions>
+    </GeneralDialog>
+  );
+};
+
 const FolderShareCardActions: React.FC<{
   group: ShareGroup;
-  onEditSamba: (share: SambaShare) => void;
+  onEditShare: (group: ShareGroup) => void;
   onDeleteSamba: (share: SambaShare) => void;
-  onEditNFS: (share: NFSExport) => void;
   onDeleteNFS: (share: NFSExport) => void;
-}> = ({ group, onEditSamba, onDeleteSamba, onEditNFS, onDeleteNFS }) => {
-  const [editAnchor, setEditAnchor] = useState<HTMLButtonElement | null>(null);
+}> = ({ group, onEditShare, onDeleteSamba, onDeleteNFS }) => {
   const [removeAnchor, setRemoveAnchor] = useState<HTMLButtonElement | null>(
     null,
   );
@@ -610,7 +909,7 @@ const FolderShareCardActions: React.FC<{
         <AppIconButton
           size="small"
           color="primary"
-          onClick={(event) => setEditAnchor(event.currentTarget)}
+          onClick={() => onEditShare(group)}
         >
           <Icon icon="mdi:pencil-outline" width={18} />
         </AppIconButton>
@@ -624,36 +923,6 @@ const FolderShareCardActions: React.FC<{
           <Icon icon="mdi:trash-can-outline" width={18} />
         </AppIconButton>
       </AppTooltip>
-
-      <AppMenu
-        open={Boolean(editAnchor)}
-        onClose={() => setEditAnchor(null)}
-        anchorEl={editAnchor}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-        minWidth={150}
-      >
-        {group.samba ? (
-          <AppMenuItem
-            onClick={() => {
-              setEditAnchor(null);
-              onEditSamba(group.samba!);
-            }}
-          >
-            Edit SMB
-          </AppMenuItem>
-        ) : null}
-        {group.nfs ? (
-          <AppMenuItem
-            onClick={() => {
-              setEditAnchor(null);
-              onEditNFS(group.nfs!);
-            }}
-          >
-            Edit NFS
-          </AppMenuItem>
-        ) : null}
-      </AppMenu>
 
       <AppMenu
         open={Boolean(removeAnchor)}
@@ -690,9 +959,8 @@ const FolderShareCardActions: React.FC<{
 
 function renderExpandedContent(
   group: ShareGroup,
-  setEditingSamba: (share: SambaShare | null) => void,
+  setEditingShare: (share: ShareGroup | null) => void,
   setDeletingSamba: (share: SambaShare | null) => void,
-  setEditingNFS: (share: NFSExport | null) => void,
   setDeletingNFS: (share: NFSExport | null) => void,
 ): React.ReactNode {
   return (
@@ -708,6 +976,15 @@ function renderExpandedContent(
           <strong>Comment:</strong> {group.comment || "-"}
         </AppTypography>
         <div style={{ marginTop: 10 }}>{renderProtocolSummary(group)}</div>
+        <div style={{ marginTop: 12 }}>
+          <AppButton
+            size="small"
+            variant="outlined"
+            onClick={() => setEditingShare(group)}
+          >
+            Edit Share
+          </AppButton>
+        </div>
       </div>
 
       {group.samba ? (
@@ -725,23 +1002,14 @@ function renderExpandedContent(
               />
             ))}
           </div>
-          <div style={{ marginTop: 12 }}>
-            <AppButton
-              size="small"
-              variant="outlined"
-              onClick={() => setEditingSamba(group.samba)}
-            >
-              Edit SMB
-            </AppButton>
-            <AppButton
-              size="small"
-              color="error"
-              style={{ marginLeft: 6 }}
-              onClick={() => setDeletingSamba(group.samba)}
-            >
-              Remove SMB
-            </AppButton>
-          </div>
+          <AppButton
+            size="small"
+            color="error"
+            style={{ marginTop: 12 }}
+            onClick={() => setDeletingSamba(group.samba)}
+          >
+            Remove SMB
+          </AppButton>
         </div>
       ) : null}
 
@@ -786,23 +1054,14 @@ function renderExpandedContent(
               No NFS access rules configured
             </AppTypography>
           )}
-          <div style={{ marginTop: 12 }}>
-            <AppButton
-              size="small"
-              variant="outlined"
-              onClick={() => setEditingNFS(group.nfs)}
-            >
-              Edit NFS
-            </AppButton>
-            <AppButton
-              size="small"
-              color="error"
-              style={{ marginLeft: 6 }}
-              onClick={() => setDeletingNFS(group.nfs)}
-            >
-              Remove NFS
-            </AppButton>
-          </div>
+          <AppButton
+            size="small"
+            color="error"
+            style={{ marginTop: 12 }}
+            onClick={() => setDeletingNFS(group.nfs)}
+          >
+            Remove NFS
+          </AppButton>
         </div>
       ) : null}
     </div>
@@ -812,8 +1071,7 @@ function renderExpandedContent(
 const SharesPage: React.FC = () => {
   const [viewMode, setViewMode] = useViewMode("shares", "table");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingNFS, setEditingNFS] = useState<NFSExport | null>(null);
-  const [editingSamba, setEditingSamba] = useState<SambaShare | null>(null);
+  const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
 
@@ -911,9 +1169,8 @@ const SharesPage: React.FC = () => {
                     </AppTypography>
                     <FolderShareCardActions
                       group={group}
-                      onEditSamba={(share) => setEditingSamba(share)}
+                      onEditShare={(shareGroup) => setEditingShare(shareGroup)}
                       onDeleteSamba={(share) => setDeletingSamba(share)}
-                      onEditNFS={(share) => setEditingNFS(share)}
                       onDeleteNFS={(share) => setDeletingNFS(share)}
                     />
                   </div>
@@ -988,9 +1245,8 @@ const SharesPage: React.FC = () => {
           renderExpandedContent={(group) =>
             renderExpandedContent(
               group,
-              setEditingSamba,
+              setEditingShare,
               setDeletingSamba,
-              setEditingNFS,
               setDeletingNFS,
             )
           }
@@ -1006,17 +1262,15 @@ const SharesPage: React.FC = () => {
           refetchNFS();
         }}
       />
-      <EditSambaShareDialog
-        open={editingSamba !== null}
-        onClose={() => setEditingSamba(null)}
-        share={editingSamba}
-        onSuccess={() => refetchSamba()}
-      />
-      <EditNFSShareDialog
-        open={editingNFS !== null}
-        onClose={() => setEditingNFS(null)}
-        share={editingNFS}
-        onSuccess={() => refetchNFS()}
+      <EditFolderShareDialog
+        key={editingShare?.id ?? "no-share"}
+        open={editingShare !== null}
+        onClose={() => setEditingShare(null)}
+        group={editingShare}
+        onSuccess={() => {
+          refetchSamba();
+          refetchNFS();
+        }}
       />
       <DeleteSambaShareDialog
         open={deletingSamba !== null}
