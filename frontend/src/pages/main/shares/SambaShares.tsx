@@ -1,5 +1,6 @@
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type SambaShare } from "@/api";
@@ -18,12 +19,12 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
-import AppSwitch from "@/components/ui/AppSwitch";
+import AppPopover from "@/components/ui/AppPopover";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import DirectoryTree from "@/components/ui/DirectoryTree";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface SambaSharesProps {
@@ -39,22 +40,199 @@ const displayProps = [
   "writable",
 ] as const;
 
+// ============================================================================
+// Samba access options model
+// ============================================================================
+
+interface AccessOptions {
+  browseable: boolean;
+  readOnly: boolean;
+  guestOk: boolean;
+}
+
+const defaultAccessOpts: AccessOptions = {
+  browseable: true,
+  readOnly: false,
+  guestOk: false,
+};
+
+const accessOptionLabels: { key: keyof AccessOptions; label: string }[] = [
+  { key: "browseable", label: "Browseable" },
+  { key: "readOnly", label: "Read Only" },
+  { key: "guestOk", label: "Guest Access" },
+];
+
+function accessOptsSummary(o: AccessOptions): string {
+  const parts: string[] = [];
+  parts.push(o.browseable ? "browseable" : "not browseable");
+  parts.push(o.readOnly ? "read only" : "writable");
+  if (o.guestOk) parts.push("guest ok");
+  return parts.join(", ");
+}
+
 function buildProperties(
   path: string,
   comment: string,
-  browseable: boolean,
-  readOnly: boolean,
-  guestOk: boolean,
+  opts: AccessOptions,
   validUsers: string,
 ): Record<string, string> {
   const props: Record<string, string> = { path };
   if (comment) props["comment"] = comment;
-  props["browseable"] = browseable ? "yes" : "no";
-  props["read only"] = readOnly ? "yes" : "no";
-  props["guest ok"] = guestOk ? "yes" : "no";
+  props["browseable"] = opts.browseable ? "yes" : "no";
+  props["read only"] = opts.readOnly ? "yes" : "no";
+  props["guest ok"] = opts.guestOk ? "yes" : "no";
   if (validUsers.trim()) props["valid users"] = validUsers.trim();
   return props;
 }
+
+function propsToAccessOpts(
+  p: Record<string, string> | undefined,
+): AccessOptions {
+  if (!p) return { ...defaultAccessOpts };
+  return {
+    browseable: p["browseable"] !== "no",
+    readOnly: p["read only"] === "yes",
+    guestOk: p["guest ok"] === "yes",
+  };
+}
+
+// ============================================================================
+// Access options dropdown — same dot-toggle pattern as NFS
+// ============================================================================
+
+const AccessOptionsDropdown: React.FC<{
+  opts: AccessOptions;
+  onChange: (next: AccessOptions) => void;
+}> = ({ opts, onChange }) => {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpen = () => {
+    setAnchorEl(anchorRef.current);
+    setOpen(true);
+  };
+
+  const toggle = (key: keyof AccessOptions) =>
+    onChange({ ...opts, [key]: !opts[key] });
+
+  return (
+    <>
+      <div ref={anchorRef}>
+        <AppTextField
+          label="Access Options"
+          value={accessOptsSummary(opts)}
+          size="small"
+          fullWidth
+          onClick={handleOpen}
+          style={{ cursor: "pointer" }}
+          endAdornment={
+            <Icon
+              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
+              width={18}
+              style={{ opacity: 0.5 }}
+            />
+          }
+        />
+      </div>
+      <AppPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorEl={anchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        matchAnchorWidth
+      >
+        <div style={{ padding: "6px 0" }}>
+          {accessOptionLabels.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(key)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "7px 14px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                color: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  backgroundColor: opts[key] ? "#00E676" : "#9e9e9e",
+                  flexShrink: 0,
+                  transition: "background-color 150ms ease",
+                }}
+              />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </AppPopover>
+    </>
+  );
+};
+
+// ============================================================================
+// Path picker — input that opens a directory tree popover
+// ============================================================================
+
+const PathPicker: React.FC<{
+  value: string;
+  onChange: (path: string) => void;
+  label?: string;
+}> = ({ value, onChange, label = "Directory Path" }) => {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpen = () => {
+    setAnchorEl(anchorRef.current);
+    setOpen(true);
+  };
+
+  return (
+    <>
+      <div ref={anchorRef}>
+        <AppTextField
+          label={label}
+          value={value}
+          size="small"
+          fullWidth
+          onClick={handleOpen}
+          style={{ cursor: "pointer" }}
+          placeholder="Click to select a folder"
+          endAdornment={
+            <Icon
+              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
+              width={18}
+              style={{ opacity: 0.5 }}
+            />
+          }
+        />
+      </div>
+      <AppPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorEl={anchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        matchAnchorWidth
+      >
+        <DirectoryTree selectedPath={value} onSelect={onChange} />
+      </AppPopover>
+    </>
+  );
+};
 
 // ============================================================================
 // Create Samba Share Dialog
@@ -75,9 +253,9 @@ const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [comment, setComment] = useState("");
-  const [browseable, setBrowseable] = useState(true);
-  const [readOnly, setReadOnly] = useState(false);
-  const [guestOk, setGuestOk] = useState(false);
+  const [accessOpts, setAccessOpts] = useState<AccessOptions>({
+    ...defaultAccessOpts,
+  });
   const [validUsers, setValidUsers] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -108,14 +286,7 @@ const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
       return;
     }
     setValidationError(null);
-    const props = buildProperties(
-      path,
-      comment,
-      browseable,
-      readOnly,
-      guestOk,
-      validUsers,
-    );
+    const props = buildProperties(path, comment, accessOpts, validUsers);
     createShare([name.trim(), props]);
   };
 
@@ -123,9 +294,7 @@ const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
     setName("");
     setPath("");
     setComment("");
-    setBrowseable(true);
-    setReadOnly(false);
-    setGuestOk(false);
+    setAccessOpts({ ...defaultAccessOpts });
     setValidUsers("");
     setValidationError(null);
     onClose();
@@ -151,14 +320,7 @@ const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
             fullWidth
             size="small"
           />
-          <AppTextField
-            label="Directory Path"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="e.g., /srv/samba/data"
-            fullWidth
-            size="small"
-          />
+          <PathPicker value={path} onChange={setPath} />
           <AppTextField
             label="Comment"
             value={comment}
@@ -167,36 +329,7 @@ const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
             fullWidth
             size="small"
           />
-          <AppTypography variant="subtitle2" style={{ marginTop: 4 }}>
-            Access Options
-          </AppTypography>
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={browseable}
-                onChange={(e) => setBrowseable(e.target.checked)}
-              />
-            }
-            label="Browseable"
-          />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={readOnly}
-                onChange={(e) => setReadOnly(e.target.checked)}
-              />
-            }
-            label="Read only"
-          />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={guestOk}
-                onChange={(e) => setGuestOk(e.target.checked)}
-              />
-            }
-            label="Allow guest access"
-          />
+          <AccessOptionsDropdown opts={accessOpts} onChange={setAccessOpts} />
           <AppTextField
             label="Valid Users"
             value={validUsers}
@@ -248,11 +381,9 @@ const EditSambaShareDialog: React.FC<EditDialogProps> = ({
   const p = share?.properties;
   const [path, setPath] = useState(() => p?.["path"] || "");
   const [comment, setComment] = useState(() => p?.["comment"] || "");
-  const [browseable, setBrowseable] = useState(
-    () => p?.["browseable"] !== "no",
+  const [accessOpts, setAccessOpts] = useState<AccessOptions>(() =>
+    propsToAccessOpts(p),
   );
-  const [readOnly, setReadOnly] = useState(() => p?.["read only"] === "yes");
-  const [guestOk, setGuestOk] = useState(() => p?.["guest ok"] === "yes");
   const [validUsers, setValidUsers] = useState(() => p?.["valid users"] || "");
 
   const { mutate: updateShare, isPending } =
@@ -274,23 +405,14 @@ const EditSambaShareDialog: React.FC<EditDialogProps> = ({
 
   const handleSave = () => {
     if (!share || !path.trim()) return;
-    const props = buildProperties(
-      path,
-      comment,
-      browseable,
-      readOnly,
-      guestOk,
-      validUsers,
-    );
+    const props = buildProperties(path, comment, accessOpts, validUsers);
     updateShare([share.name, props]);
   };
 
   const handleClose = () => {
     setPath("");
     setComment("");
-    setBrowseable(true);
-    setReadOnly(false);
-    setGuestOk(false);
+    setAccessOpts({ ...defaultAccessOpts });
     setValidUsers("");
     onClose();
   };
@@ -320,14 +442,7 @@ const EditSambaShareDialog: React.FC<EditDialogProps> = ({
             fullWidth
             size="small"
           />
-          <AppTextField
-            label="Directory Path"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="e.g., /srv/samba/data"
-            fullWidth
-            size="small"
-          />
+          <PathPicker value={path} onChange={setPath} />
           <AppTextField
             label="Comment"
             value={comment}
@@ -336,36 +451,7 @@ const EditSambaShareDialog: React.FC<EditDialogProps> = ({
             fullWidth
             size="small"
           />
-          <AppTypography variant="subtitle2" style={{ marginTop: 4 }}>
-            Access Options
-          </AppTypography>
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={browseable}
-                onChange={(e) => setBrowseable(e.target.checked)}
-              />
-            }
-            label="Browseable"
-          />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={readOnly}
-                onChange={(e) => setReadOnly(e.target.checked)}
-              />
-            }
-            label="Read only"
-          />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={guestOk}
-                onChange={(e) => setGuestOk(e.target.checked)}
-              />
-            }
-            label="Allow guest access"
-          />
+          <AccessOptionsDropdown opts={accessOpts} onChange={setAccessOpts} />
           <AppTextField
             label="Valid Users"
             value={validUsers}
