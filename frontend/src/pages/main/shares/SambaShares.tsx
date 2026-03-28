@@ -310,7 +310,7 @@ const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
             display: "flex",
             flexDirection: "column",
             gap: 8,
-            marginTop: 4,
+            marginTop: 8,
           }}
         >
           <AppTextField
@@ -433,7 +433,7 @@ const EditSambaShareDialog: React.FC<EditDialogProps> = ({
             display: "flex",
             flexDirection: "column",
             gap: 8,
-            marginTop: 4,
+            marginTop: 8,
           }}
         >
           <AppTextField

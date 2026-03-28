@@ -368,7 +368,7 @@ const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
             display: "flex",
             flexDirection: "column",
             gap: 8,
-            marginTop: 4,
+            marginTop: 8,
           }}
         >
           <PathPicker value={path} onChange={setPath} />
@@ -493,7 +493,7 @@ const EditNFSShareDialog: React.FC<EditDialogProps> = ({
             display: "flex",
             flexDirection: "column",
             gap: 8,
-            marginTop: 4,
+            marginTop: 8,
           }}
         >
           <AppTextField
