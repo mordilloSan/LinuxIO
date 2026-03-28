@@ -118,7 +118,7 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 func generateWatchtowerCompose(containerNames []string) string {
 	return fmt.Sprintf(`services:
   watchtower:
-    image: ghcr.io/nicholas-fedor/watchtower:1.14.2
+    image: ghcr.io/nicholas-fedor/watchtower:1.15.0
     container_name: watchtower
     hostname: watchtower
     restart: unless-stopped
