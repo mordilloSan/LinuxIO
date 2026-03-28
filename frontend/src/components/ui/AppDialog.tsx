@@ -6,6 +6,7 @@ import "./app-dialog.css";
 /* ── Dialog ─────────────────────────────────── */
 
 export type AppDialogCloseEvent =
+  | KeyboardEvent
   | React.KeyboardEvent<HTMLDivElement>
   | React.MouseEvent<HTMLDivElement>;
 
@@ -52,6 +53,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   backdropStyle,
   slotProps,
 }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const prevOpen = useRef(open);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
@@ -81,15 +83,41 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   }, [open, slotProps]);
 
   // ESC key
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Escape" && !disableEscapeKeyDown) {
-        e.stopPropagation();
-        onClose?.(e, "escapeKeyDown");
+  const handleDocumentKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || disableEscapeKeyDown || event.defaultPrevented) {
+        return;
       }
+
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+
+      const openDialogs = Array.from(
+        document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
+      );
+      if (openDialogs[openDialogs.length - 1] !== root) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      onClose?.(event, "escapeKeyDown");
     },
-    [onClose, disableEscapeKeyDown],
+    [disableEscapeKeyDown, onClose],
   );
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+    };
+  }, [handleDocumentKeyDown, open]);
 
   // auto-focus
   useEffect(() => {
@@ -130,9 +158,9 @@ export const AppDialog: React.FC<AppDialogProps> = ({
 
   return createPortal(
     <div
+      ref={rootRef}
       className="app-dialog-root"
       role="presentation"
-      onKeyDown={handleKeyDown}
     >
       <div
         className="app-dialog__backdrop"
