@@ -29,7 +29,8 @@ func ListNFSShares() ([]NFSExport, error) {
 
 	activeExports := getActiveExports()
 	for i, export := range exports {
-		if activeExports[export.Path] {
+		normalized := strings.TrimRight(export.Path, "/")
+		if activeExports[normalized] || activeExports[export.Path] {
 			exports[i].Active = true
 		}
 	}
@@ -212,11 +213,12 @@ func parseExportLine(line string) (NFSExport, error) {
 func getActiveExports() map[string]bool {
 	active := make(map[string]bool)
 
-	output, err := exec.Command("exportfs", "-v").Output()
+	output, err := exec.Command("exportfs", "-v").CombinedOutput()
 	if err != nil {
-		logger.Debugf("exportfs -v unavailable (NFS server may not be installed): %v", err)
+		logger.Debugf("exportfs -v failed: %v, output: %s", err, strings.TrimSpace(string(output)))
 		return active
 	}
+	logger.Debugf("exportfs -v output: %s", strings.TrimSpace(string(output)))
 
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
 	for scanner.Scan() {
@@ -226,7 +228,8 @@ func getActiveExports() map[string]bool {
 		}
 		fields := strings.Fields(line)
 		if len(fields) >= 1 {
-			active[fields[0]] = true
+			p := strings.TrimRight(fields[0], "/")
+			active[p] = true
 		}
 	}
 
@@ -244,6 +247,44 @@ func formatExportLine(path string, clients []NFSClient) string {
 		}
 	}
 	return fmt.Sprintf("%s\t%s", path, strings.Join(parts, " "))
+}
+
+// GetNFSClients returns currently connected NFS clients via showmount -a
+func GetNFSClients() ([]NFSConnectedClient, error) {
+	output, err := exec.Command("showmount", "-a", "--no-headers").CombinedOutput()
+	if err != nil {
+		logger.Debugf("showmount -a failed: %v, output: %s", err, strings.TrimSpace(string(output)))
+		return []NFSConnectedClient{}, nil
+	}
+
+	var clients []NFSConnectedClient
+	seen := make(map[string]bool)
+
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		// Format: ip:/export/path
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		ip := strings.TrimSpace(parts[0])
+		exportPath := strings.TrimSpace(parts[1])
+		key := ip + ":" + exportPath
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		clients = append(clients, NFSConnectedClient{
+			IP:         ip,
+			ExportPath: exportPath,
+		})
+	}
+
+	return clients, nil
 }
 
 // applyNFSExports runs exportfs -ra to apply changes

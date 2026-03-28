@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio, type SambaShare } from "@/api";
+import { linuxio, type SambaConnectedClient, type SambaShare } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -579,6 +579,18 @@ const SambaShares: React.FC<SambaSharesProps> = ({
     refetchInterval: 10000,
   });
 
+  const { data: sambaClients = [] } =
+    linuxio.shares.list_samba_clients.useQuery({
+      refetchInterval: 10000,
+    });
+
+  const clientsByShare = (sambaClients as SambaConnectedClient[]).reduce<
+    Record<string, SambaConnectedClient[]>
+  >((acc, client) => {
+    (acc[client.share] ??= []).push(client);
+    return acc;
+  }, {});
+
   const handleCreate = useCallback(() => {
     setCreateOpen(true);
   }, []);
@@ -612,6 +624,13 @@ const SambaShares: React.FC<SambaSharesProps> = ({
       field: "access",
       headerName: "Access",
       align: "left",
+      className: "app-table-hide-below-sm",
+    },
+    {
+      field: "connected",
+      headerName: "Connected",
+      align: "center",
+      width: "100px",
       className: "app-table-hide-below-sm",
     },
     { field: "actions", headerName: "", align: "right", width: "160px" },
@@ -727,6 +746,23 @@ const SambaShares: React.FC<SambaSharesProps> = ({
                   )}
                 </div>
               </AppTableCell>
+              <AppTableCell
+                className="app-table-hide-below-sm"
+                style={{ textAlign: "center" }}
+              >
+                {(clientsByShare[share.name] ?? []).length > 0 ? (
+                  <Chip
+                    label={`${(clientsByShare[share.name] ?? []).length}`}
+                    size="small"
+                    variant="soft"
+                    color="success"
+                  />
+                ) : (
+                  <AppTypography variant="body2" color="text.secondary">
+                    0
+                  </AppTypography>
+                )}
+              </AppTableCell>
               <AppTableCell>
                 <div style={{ display: "flex", gap: 4 }}>
                   <AppButton
@@ -753,36 +789,70 @@ const SambaShares: React.FC<SambaSharesProps> = ({
               </AppTableCell>
             </>
           )}
-          renderExpandedContent={(share) => (
-            <div>
-              {share.properties["comment"] && (
-                <AppTypography variant="subtitle2" gutterBottom>
-                  <strong>Comment:</strong> {share.properties["comment"]}
-                </AppTypography>
-              )}
-              <AppTypography variant="subtitle2" gutterBottom>
-                <strong>All Properties:</strong>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                }}
-              >
-                {Object.entries(share.properties)
-                  .filter(([key]) => key !== "path")
-                  .map(([key, value]) => (
-                    <Chip
-                      key={key}
-                      label={`${key} = ${value}`}
-                      size="small"
-                      variant="soft"
-                    />
-                  ))}
+          renderExpandedContent={(share) => {
+            const connected = clientsByShare[share.name] ?? [];
+            return (
+              <div style={{ display: "flex", gap: 24 }}>
+                <div style={{ flex: 1 }}>
+                  {share.properties["comment"] && (
+                    <AppTypography variant="subtitle2" gutterBottom>
+                      <strong>Comment:</strong>{" "}
+                      {share.properties["comment"]}
+                    </AppTypography>
+                  )}
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <strong>All Properties:</strong>
+                  </AppTypography>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 4,
+                    }}
+                  >
+                    {Object.entries(share.properties)
+                      .filter(([key]) => key !== "path")
+                      .map(([key, value]) => (
+                        <Chip
+                          key={key}
+                          label={`${key} = ${value}`}
+                          size="small"
+                          variant="soft"
+                        />
+                      ))}
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <strong>Connected Clients:</strong>
+                  </AppTypography>
+                  {connected.length > 0 ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 4,
+                      }}
+                    >
+                      {connected.map((c, i) => (
+                        <Chip
+                          key={i}
+                          label={`${c.username}@${c.ip}`}
+                          size="small"
+                          variant="soft"
+                          color="success"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <AppTypography variant="body2" color="text.secondary">
+                      No clients connected
+                    </AppTypography>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          }}
           emptyMessage="No Samba shares found. Click 'Add Share' to create one."
         />
       )}

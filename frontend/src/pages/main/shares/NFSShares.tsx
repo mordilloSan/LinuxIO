@@ -3,7 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio, type NFSExport, type NFSClient } from "@/api";
+import {
+  linuxio,
+  type NFSConnectedClient,
+  type NFSExport,
+  type NFSClient,
+} from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -647,6 +652,19 @@ const NFSShares: React.FC<NFSSharesProps> = ({
     refetchInterval: 10000,
   });
 
+  const { data: nfsClients = [] } =
+    linuxio.shares.list_nfs_clients.useQuery({
+      refetchInterval: 10000,
+    });
+
+  const clientsByPath = (nfsClients as NFSConnectedClient[]).reduce<
+    Record<string, NFSConnectedClient[]>
+  >((acc, client) => {
+    const normalized = client.exportPath.replace(/\/$/, "");
+    (acc[normalized] ??= []).push(client);
+    return acc;
+  }, {});
+
   const handleCreate = useCallback(() => {
     setCreateOpen(true);
   }, []);
@@ -676,6 +694,13 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   const columns: UnifiedTableColumn[] = [
     { field: "path", headerName: "Export Path", align: "left" },
     { field: "clients", headerName: "Clients", align: "left" },
+    {
+      field: "connected",
+      headerName: "Connected",
+      align: "center",
+      width: "100px",
+      className: "app-table-hide-below-sm",
+    },
     {
       field: "status",
       headerName: "Status",
@@ -790,6 +815,24 @@ const NFSShares: React.FC<NFSSharesProps> = ({
                   ))}
                 </div>
               </AppTableCell>
+              <AppTableCell
+                className="app-table-hide-below-sm"
+                style={{ textAlign: "center" }}
+              >
+                {(clientsByPath[share.path.replace(/\/$/, "")] ?? [])
+                  .length > 0 ? (
+                  <Chip
+                    label={`${(clientsByPath[share.path.replace(/\/$/, "")] ?? []).length}`}
+                    size="small"
+                    variant="soft"
+                    color="success"
+                  />
+                ) : (
+                  <AppTypography variant="body2" color="text.secondary">
+                    0
+                  </AppTypography>
+                )}
+              </AppTableCell>
               <AppTableCell style={{ textAlign: "center" }}>
                 <Chip
                   label={share.active ? "Active" : "Inactive"}
@@ -824,38 +867,77 @@ const NFSShares: React.FC<NFSSharesProps> = ({
               </AppTableCell>
             </>
           )}
-          renderExpandedContent={(share) => (
-            <div>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <strong>Client Access Rules:</strong>
-              </AppTypography>
-              {share.clients.map((client, i) => (
-                <div key={i} style={{ marginBottom: 4 }}>
-                  <AppTypography variant="body2">
-                    <strong>{client.host}</strong>
+          renderExpandedContent={(share) => {
+            const normalized = share.path.replace(/\/$/, "");
+            const connected = clientsByPath[normalized] ?? [];
+            return (
+              <div style={{ display: "flex", gap: 24 }}>
+                <div style={{ flex: 1 }}>
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <strong>Client Access Rules:</strong>
                   </AppTypography>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginTop: 2,
-                    }}
-                  >
-                    {client.options?.length > 0 ? (
-                      client.options.map((opt, j) => (
-                        <Chip key={j} label={opt} size="small" variant="soft" />
-                      ))
-                    ) : (
-                      <AppTypography variant="body2" color="text.secondary">
-                        (default options)
+                  {share.clients.map((client, i) => (
+                    <div key={i} style={{ marginBottom: 4 }}>
+                      <AppTypography variant="body2">
+                        <strong>{client.host}</strong>
                       </AppTypography>
-                    )}
-                  </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 3,
+                          marginTop: 2,
+                        }}
+                      >
+                        {client.options?.length > 0 ? (
+                          client.options.map((opt, j) => (
+                            <Chip
+                              key={j}
+                              label={opt}
+                              size="small"
+                              variant="soft"
+                            />
+                          ))
+                        ) : (
+                          <AppTypography variant="body2" color="text.secondary">
+                            (default options)
+                          </AppTypography>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+                <div style={{ flex: 1 }}>
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <strong>Connected Clients:</strong>
+                  </AppTypography>
+                  {connected.length > 0 ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 4,
+                      }}
+                    >
+                      {connected.map((c, i) => (
+                        <Chip
+                          key={i}
+                          label={c.ip}
+                          size="small"
+                          variant="soft"
+                          color="success"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <AppTypography variant="body2" color="text.secondary">
+                      No clients connected
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+            );
+          }}
           emptyMessage="No NFS exports found. Click 'Add Export' to create one."
         />
       )}

@@ -596,6 +596,17 @@ export interface SambaShare {
   properties: Record<string, string>;
 }
 
+export interface NFSConnectedClient {
+  ip: string;
+  exportPath: string;
+}
+
+export interface SambaConnectedClient {
+  username: string;
+  ip: string;
+  share: string;
+}
+
 // ============================================================================
 // Storage Types (LVM & NFS)
 // ============================================================================
@@ -1025,6 +1036,7 @@ export interface LinuxIOSchema {
       args: [path: string];
       result: { success: boolean };
     };
+    list_nfs_clients: { args: []; result: NFSConnectedClient[] };
     // Samba shares
     list_samba_shares: { args: []; result: SambaShare[] };
     create_samba_share: {
@@ -1039,6 +1051,7 @@ export interface LinuxIOSchema {
       args: [name: string];
       result: { success: boolean };
     };
+    list_samba_clients: { args: []; result: SambaConnectedClient[] };
   };
 
   storage: {
