@@ -67,11 +67,6 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "enable_caddy", handler: loggedDockerUserCall("enable_caddy requested", username, EnableCaddy)},
 		{command: "disable_caddy", handler: loggedDockerUserCall("disable_caddy requested", username, DisableCaddy)},
 		{command: "reload_caddy", handler: loggedDockerUserCall("reload_caddy requested", username, ReloadCaddy)},
-		{command: "resolve_proxy_target", handler: dockerOneArgCall(nil, ResolveProxyTarget)},
-		{command: "get_monitoring_status", handler: dockerNoArgCall(GetMonitoringStackStatus)},
-		{command: "enable_monitoring", handler: loggedDockerNoArgCall("enable_monitoring requested", EnableMonitoringStack)},
-		{command: "disable_monitoring", handler: loggedDockerNoArgCall("disable_monitoring requested", DisableMonitoringStack)},
-		{command: "reload_monitoring", handler: loggedDockerNoArgCall("reload_monitoring requested", ReloadMonitoringStack)},
 		{command: "connect_to_proxy", handler: dockerOneArgCall(logConnectToProxy, ConnectToProxy)},
 		{command: "system_prune", handler: systemPruneHandler()},
 	})

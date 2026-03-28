@@ -264,20 +264,6 @@ export interface DockerVolume {
   Scope?: string;
 }
 
-export interface MonitoringServiceStatus {
-  name: string;
-  state: string;
-  status: string;
-  running: boolean;
-}
-
-export interface MonitoringStackStatus {
-  enabled: boolean;
-  running: boolean;
-  url: string;
-  services: MonitoringServiceStatus[];
-}
-
 export interface DockerSystemInfo {
   // System
   name: string;
@@ -859,10 +845,6 @@ export interface LinuxIOSchema {
     enable_caddy: { args: []; result: { message: string } };
     disable_caddy: { args: []; result: { message: string } };
     reload_caddy: { args: []; result: { message: string } };
-    get_monitoring_status: { args: []; result: MonitoringStackStatus };
-    enable_monitoring: { args: []; result: { message: string; url?: string } };
-    disable_monitoring: { args: []; result: { message: string } };
-    reload_monitoring: { args: []; result: { message: string; url?: string } };
     connect_to_proxy: {
       args: [containerId: string];
       result: { message: string };

@@ -28,14 +28,6 @@ export const NetworkIcon = () => (
   </svg>
 );
 
-export const MonitoringIcon = () => (
-  <svg {...s}>
-    <path d="M3 3v18h18" />
-    <path d="m7 14 3-3 3 2 4-5" />
-    <path d="M17 8h3v3" />
-  </svg>
-);
-
 export const RefreshCcwIcon = () => (
   <svg {...s}>
     <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
