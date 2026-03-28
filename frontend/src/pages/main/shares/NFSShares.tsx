@@ -1,5 +1,6 @@
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type NFSExport, type NFSClient } from "@/api";
@@ -18,13 +19,13 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppSwitch from "@/components/ui/AppSwitch";
+import AppPopover from "@/components/ui/AppPopover";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import DirectoryTree from "@/components/ui/DirectoryTree";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NFSSharesProps {
@@ -61,6 +62,16 @@ const defaultOpts: ClientOptions = {
   crossmnt: false,
 };
 
+const optionLabels: { key: keyof ClientOptions; label: string }[] = [
+  { key: "rw", label: "Read / Write" },
+  { key: "sync", label: "Sync" },
+  { key: "noSubtreeCheck", label: "No Subtree Check" },
+  { key: "noRootSquash", label: "No Root Squash" },
+  { key: "allSquash", label: "All Squash" },
+  { key: "insecure", label: "Insecure" },
+  { key: "crossmnt", label: "Crossmnt" },
+];
+
 function optsToStrings(o: ClientOptions): string[] {
   const out: string[] = [];
   out.push(o.rw ? "rw" : "ro");
@@ -74,6 +85,10 @@ function optsToStrings(o: ClientOptions): string[] {
   if (o.insecure) out.push("insecure");
   if (o.crossmnt) out.push("crossmnt");
   return out;
+}
+
+function optsSummary(o: ClientOptions): string {
+  return optsToStrings(o).join(", ");
 }
 
 function stringsToOpts(options: string[]): ClientOptions {
@@ -105,89 +120,175 @@ function nfsClientsToRows(clients: NFSClient[]): ClientRow[] {
 }
 
 // ============================================================================
-// Shared per-client option switches
+// Options dropdown — read-only input that opens a popover with dot toggles
 // ============================================================================
 
-const ClientOptionsPanel: React.FC<{
+const OptionsDropdown: React.FC<{
   opts: ClientOptions;
   onChange: (next: ClientOptions) => void;
 }> = ({ opts, onChange }) => {
-  const set = (key: keyof ClientOptions, val: boolean) =>
-    onChange({ ...opts, [key]: val });
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpen = () => {
+    setAnchorEl(anchorRef.current);
+    setOpen(true);
+  };
+
+  const toggle = (key: keyof ClientOptions) =>
+    onChange({ ...opts, [key]: !opts[key] });
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 4,
-        paddingLeft: 4,
-      }}
-    >
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.rw}
-            onChange={(e) => set("rw", e.target.checked)}
-          />
-        }
-        label="Read/Write"
-      />
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.sync}
-            onChange={(e) => set("sync", e.target.checked)}
-          />
-        }
-        label="Sync"
-      />
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.noSubtreeCheck}
-            onChange={(e) => set("noSubtreeCheck", e.target.checked)}
-          />
-        }
-        label="No Subtree Check"
-      />
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.noRootSquash}
-            onChange={(e) => set("noRootSquash", e.target.checked)}
-          />
-        }
-        label="No Root Squash"
-      />
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.allSquash}
-            onChange={(e) => set("allSquash", e.target.checked)}
-          />
-        }
-        label="All Squash"
-      />
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.insecure}
-            onChange={(e) => set("insecure", e.target.checked)}
-          />
-        }
-        label="Insecure"
-      />
-      <AppFormControlLabel
-        control={
-          <AppSwitch
-            checked={opts.crossmnt}
-            onChange={(e) => set("crossmnt", e.target.checked)}
-          />
-        }
-        label="Crossmnt"
-      />
-    </div>
+    <>
+      <div ref={anchorRef} style={{ flex: 1 }}>
+        <AppTextField
+          label="Options"
+          value={optsSummary(opts)}
+          size="small"
+          fullWidth
+          onClick={handleOpen}
+          style={{ cursor: "pointer" }}
+          endAdornment={
+            <Icon
+              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
+              width={18}
+              style={{ opacity: 0.5 }}
+            />
+          }
+        />
+      </div>
+      <AppPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorEl={anchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        matchAnchorWidth
+      >
+        <div style={{ padding: "6px 0" }}>
+          {optionLabels.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(key)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "7px 14px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                color: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  backgroundColor: opts[key] ? "#00E676" : "#9e9e9e",
+                  flexShrink: 0,
+                  transition: "background-color 150ms ease",
+                }}
+              />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </AppPopover>
+    </>
+  );
+};
+
+// ============================================================================
+// Client row — host input + options dropdown + remove button
+// ============================================================================
+
+const ClientRowEditor: React.FC<{
+  client: ClientRow;
+  index: number;
+  canRemove: boolean;
+  onChange: (index: number, next: ClientRow) => void;
+  onRemove: (index: number) => void;
+}> = ({ client, index, canRemove, onChange, onRemove }) => (
+  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+    <AppTextField
+      label="Host"
+      value={client.host}
+      onChange={(e) => onChange(index, { ...client, host: e.target.value })}
+      placeholder="e.g., 192.168.1.0/24 or *"
+      size="small"
+      style={{ flex: 1 }}
+    />
+    <OptionsDropdown
+      opts={client.opts}
+      onChange={(next) => onChange(index, { ...client, opts: next })}
+    />
+    {canRemove && (
+      <AppIconButton size="small" onClick={() => onRemove(index)}>
+        &times;
+      </AppIconButton>
+    )}
+  </div>
+);
+
+// ============================================================================
+// Path picker — input that opens a directory tree popover
+// ============================================================================
+
+const PathPicker: React.FC<{
+  value: string;
+  onChange: (path: string) => void;
+}> = ({ value, onChange }) => {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpen = () => {
+    setAnchorEl(anchorRef.current);
+    setOpen(true);
+  };
+
+  const handleSelect = (path: string) => {
+    onChange(path);
+  };
+
+  return (
+    <>
+      <div ref={anchorRef}>
+        <AppTextField
+          label="Export Path"
+          value={value}
+          size="small"
+          fullWidth
+          onClick={handleOpen}
+          style={{ cursor: "pointer" }}
+          placeholder="Click to select a folder"
+          endAdornment={
+            <Icon
+              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
+              width={18}
+              style={{ opacity: 0.5 }}
+            />
+          }
+        />
+      </div>
+      <AppPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorEl={anchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        matchAnchorWidth
+      >
+        <DirectoryTree selectedPath={value} onSelect={handleSelect} />
+      </AppPopover>
+    </>
   );
 };
 
@@ -251,6 +352,12 @@ const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
     onClose();
   };
 
+  const handleClientChange = (i: number, next: ClientRow) =>
+    setClients((prev) => prev.map((c, idx) => (idx === i ? next : c)));
+
+  const handleClientRemove = (i: number) =>
+    setClients((prev) => prev.filter((_, idx) => idx !== i));
+
   return (
     <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <AppDialogTitle>Create NFS Export</AppDialogTitle>
@@ -263,63 +370,19 @@ const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
             marginTop: 4,
           }}
         >
-          <AppTextField
-            label="Export Path"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="e.g., /srv/nfs/data"
-            fullWidth
-            size="small"
-          />
+          <PathPicker value={path} onChange={setPath} />
           <AppTypography variant="subtitle2" style={{ marginTop: 4 }}>
             Client Access Rules
           </AppTypography>
           {clients.map((client, i) => (
-            <FrostedCard key={i} style={{ padding: 8 }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  marginBottom: 4,
-                }}
-              >
-                <AppTextField
-                  label="Host"
-                  value={client.host}
-                  onChange={(e) =>
-                    setClients((prev) =>
-                      prev.map((c, idx) =>
-                        idx === i ? { ...c, host: e.target.value } : c,
-                      ),
-                    )
-                  }
-                  placeholder="e.g., 192.168.1.0/24 or *"
-                  size="small"
-                  style={{ flex: 1 }}
-                />
-                {clients.length > 1 && (
-                  <AppIconButton
-                    size="small"
-                    onClick={() =>
-                      setClients((prev) => prev.filter((_, idx) => idx !== i))
-                    }
-                  >
-                    &times;
-                  </AppIconButton>
-                )}
-              </div>
-              <ClientOptionsPanel
-                opts={client.opts}
-                onChange={(next) =>
-                  setClients((prev) =>
-                    prev.map((c, idx) =>
-                      idx === i ? { ...c, opts: next } : c,
-                    ),
-                  )
-                }
-              />
-            </FrostedCard>
+            <ClientRowEditor
+              key={i}
+              client={client}
+              index={i}
+              canRemove={clients.length > 1}
+              onChange={handleClientChange}
+              onRemove={handleClientRemove}
+            />
           ))}
           <AppButton
             size="small"
@@ -408,6 +471,12 @@ const EditNFSShareDialog: React.FC<EditDialogProps> = ({
     onClose();
   };
 
+  const handleClientChange = (i: number, next: ClientRow) =>
+    setClients((prev) => prev.map((c, idx) => (idx === i ? next : c)));
+
+  const handleClientRemove = (i: number) =>
+    setClients((prev) => prev.filter((_, idx) => idx !== i));
+
   return (
     <GeneralDialog
       key={share?.path}
@@ -437,51 +506,14 @@ const EditNFSShareDialog: React.FC<EditDialogProps> = ({
             Client Access Rules
           </AppTypography>
           {clients.map((client, i) => (
-            <FrostedCard key={i} style={{ padding: 8 }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  marginBottom: 4,
-                }}
-              >
-                <AppTextField
-                  label="Host"
-                  value={client.host}
-                  onChange={(e) =>
-                    setClients((prev) =>
-                      prev.map((c, idx) =>
-                        idx === i ? { ...c, host: e.target.value } : c,
-                      ),
-                    )
-                  }
-                  placeholder="e.g., 192.168.1.0/24 or *"
-                  size="small"
-                  style={{ flex: 1 }}
-                />
-                {clients.length > 1 && (
-                  <AppIconButton
-                    size="small"
-                    onClick={() =>
-                      setClients((prev) => prev.filter((_, idx) => idx !== i))
-                    }
-                  >
-                    &times;
-                  </AppIconButton>
-                )}
-              </div>
-              <ClientOptionsPanel
-                opts={client.opts}
-                onChange={(next) =>
-                  setClients((prev) =>
-                    prev.map((c, idx) =>
-                      idx === i ? { ...c, opts: next } : c,
-                    ),
-                  )
-                }
-              />
-            </FrostedCard>
+            <ClientRowEditor
+              key={i}
+              client={client}
+              index={i}
+              canRemove={clients.length > 1}
+              onChange={handleClientChange}
+              onRemove={handleClientRemove}
+            />
           ))}
           <AppButton
             size="small"
