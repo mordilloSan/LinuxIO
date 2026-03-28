@@ -657,7 +657,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const [search, setSearch] = useState("");
+  const [search] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);

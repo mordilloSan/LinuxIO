@@ -2,9 +2,9 @@ import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import NFSMounts from "../storage/NFSMounts";
 import { DeleteNFSShareDialog } from "./NFSShares";
 import { DeleteSambaShareDialog } from "./SambaShares";
+import NFSMounts from "../storage/NFSMounts";
 
 import {
   linuxio,
@@ -1247,9 +1247,7 @@ const SharesPage: React.FC = () => {
 
   const mountsContent = (
     <NFSMounts
-      onMountCreateHandler={(handler) =>
-        setMountNFSHandler(() => handler)
-      }
+      onMountCreateHandler={(handler) => setMountNFSHandler(() => handler)}
       viewMode={nfsView}
     />
   );

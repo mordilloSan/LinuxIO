@@ -167,7 +167,7 @@ func saveManagedNFSMountEntries(entries map[string]managedNFSMountEntry) error {
 	data = append(data, '\n')
 
 	dir := filepath.Dir(managedNFSMountsPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err = os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
@@ -532,7 +532,7 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 				logger.Errorf("Failed to update stored NFS config for %s: %v", mountpoint, updateErr)
 				return nil, fmt.Errorf("failed to update stored NFS config: %w", updateErr)
 			}
-			if err := removeManagedNFSMount(mountpoint); err != nil {
+			if err = removeManagedNFSMount(mountpoint); err != nil {
 				logger.Warnf("Failed to clean up temporary NFS mount metadata for %s: %v", mountpoint, err)
 			}
 			result["warning"] = "mount is not currently active; saved configuration was updated only"
@@ -540,12 +540,12 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 		}
 
 		if inFstab && isNFSFSType(entry.fstype) {
-			if err := removeFromFstab(mountpoint); err != nil {
+			if err = removeFromFstab(mountpoint); err != nil {
 				logger.Errorf("Failed to remove stored NFS config for %s: %v", mountpoint, err)
 				return nil, fmt.Errorf("failed to remove stored NFS config: %w", err)
 			}
 		}
-		if err := upsertManagedNFSMount(source, mountpoint, fstype, options); err != nil {
+		if err = upsertManagedNFSMount(source, mountpoint, fstype, options); err != nil {
 			logger.Errorf("Failed to update LinuxIO NFS registry for %s: %v", mountpoint, err)
 			return nil, fmt.Errorf("failed to update LinuxIO NFS registry: %w", err)
 		}
@@ -664,11 +664,11 @@ func UnmountNFS(mountpoint string, removeFstab bool) (map[string]any, error) {
 
 	if currentMount == nil {
 		if removeFstab && isConfiguredNFS {
-			if err := removeFromFstab(mountpoint); err != nil {
+			if err = removeFromFstab(mountpoint); err != nil {
 				logger.Warnf("Failed to remove %s from fstab: %v", mountpoint, err)
 				return nil, fmt.Errorf("failed to remove stored mount: %w", err)
 			}
-			if err := removeManagedNFSMount(mountpoint); err != nil {
+			if err = removeManagedNFSMount(mountpoint); err != nil {
 				logger.Warnf("Failed to remove LinuxIO metadata for %s: %v", mountpoint, err)
 			}
 			logger.Infof("Removed inactive NFS entry %s from fstab", mountpoint)
@@ -676,7 +676,7 @@ func UnmountNFS(mountpoint string, removeFstab bool) (map[string]any, error) {
 			return result, nil
 		}
 		if removeFstab && inManagedRegistry {
-			if err := removeManagedNFSMount(mountpoint); err != nil {
+			if err = removeManagedNFSMount(mountpoint); err != nil {
 				logger.Warnf("Failed to remove LinuxIO metadata for %s: %v", mountpoint, err)
 				return nil, fmt.Errorf("failed to remove saved mount: %w", err)
 			}
