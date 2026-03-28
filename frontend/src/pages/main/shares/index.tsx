@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import NFSMounts from "../storage/NFSMounts";
 import { DeleteNFSShareDialog } from "./NFSShares";
 import { DeleteSambaShareDialog } from "./SambaShares";
 
@@ -1070,6 +1071,10 @@ const SharesPage: React.FC = () => {
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
+  const [mountNFSHandler, setMountNFSHandler] = useState<(() => void) | null>(
+    null,
+  );
+  const [nfsView, setNfsView] = useViewMode("shares.mounts", "table");
 
   const {
     data: nfsShares = [],
@@ -1133,10 +1138,6 @@ const SharesPage: React.FC = () => {
 
   const sharesContent = (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <AppTypography variant="body2" color="text.secondary">
-        Share folders over SMB and/or NFS from one grouped view.
-      </AppTypography>
-
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
           <AppGrid container spacing={2}>
@@ -1245,18 +1246,12 @@ const SharesPage: React.FC = () => {
   );
 
   const mountsContent = (
-    <FrostedCard style={{ padding: 18 }}>
-      <AppTypography variant="body2" fontWeight={700}>
-        Mounts
-      </AppTypography>
-      <AppTypography
-        variant="body2"
-        color="text.secondary"
-        style={{ marginTop: 6 }}
-      >
-        Mount management will land here next.
-      </AppTypography>
-    </FrostedCard>
+    <NFSMounts
+      onMountCreateHandler={(handler) =>
+        setMountNFSHandler(() => handler)
+      }
+      viewMode={nfsView}
+    />
   );
 
   return (
@@ -1275,6 +1270,40 @@ const SharesPage: React.FC = () => {
             value: "mounts",
             label: "Mounts",
             component: mountsContent,
+            rightContent: (
+              <>
+                <AppTooltip
+                  title={
+                    nfsView === "table"
+                      ? "Switch to card view"
+                      : "Switch to table view"
+                  }
+                >
+                  <AppIconButton
+                    size="small"
+                    onClick={() =>
+                      setNfsView(nfsView === "table" ? "card" : "table")
+                    }
+                  >
+                    {nfsView === "table" ? (
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                    ) : (
+                      <Icon icon="mdi:table-row" width={20} height={20} />
+                    )}
+                  </AppIconButton>
+                </AppTooltip>
+                {mountNFSHandler && (
+                  <AppButton
+                    variant="contained"
+                    size="small"
+                    onClick={mountNFSHandler}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                  >
+                    Mount NFS
+                  </AppButton>
+                )}
+              </>
+            ),
           },
         ]}
       />

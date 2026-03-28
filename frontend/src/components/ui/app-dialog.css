@@ -113,7 +113,7 @@
 
 /* reduce top padding when preceded by title */
 .app-dialog-title + .app-dialog-content {
-  padding-top: 0;
+  padding-top: 8px;
 }
 
 .app-dialog-content-text {
