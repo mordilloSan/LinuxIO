@@ -3,12 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import {
-  linuxio,
-  type NFSConnectedClient,
-  type NFSExport,
-  type NFSClient,
-} from "@/api";
+import { linuxio, type NFSExport, type NFSClient } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -122,13 +117,6 @@ function nfsClientsToRows(clients: NFSClient[]): ClientRow[] {
     host: c.host,
     opts: stringsToOpts(c.options ?? []),
   }));
-}
-
-function formatConnectedClientLabel(client: NFSConnectedClient): string {
-  if (client.name?.trim()) {
-    return `${client.name} (${client.ip})`;
-  }
-  return client.ip;
 }
 
 // ============================================================================
@@ -315,7 +303,7 @@ interface CreateDialogProps {
   onSuccess: () => void;
 }
 
-const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
+export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
   open,
   onClose,
   onSuccess,
@@ -442,7 +430,7 @@ interface EditDialogProps {
   onSuccess: () => void;
 }
 
-const EditNFSShareDialog: React.FC<EditDialogProps> = ({
+export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
   open,
   onClose,
   share,
@@ -570,7 +558,7 @@ interface DeleteDialogProps {
   onSuccess: () => void;
 }
 
-const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
+export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
   open,
   onClose,
   share,
@@ -659,12 +647,6 @@ const NFSShares: React.FC<NFSSharesProps> = ({
     refetchInterval: 10000,
   });
 
-  const { data: nfsClients = [] } = linuxio.shares.list_nfs_clients.useQuery({
-    refetchInterval: 10000,
-  });
-
-  const connectedClients = (nfsClients ?? []) as NFSConnectedClient[];
-
   const handleCreate = useCallback(() => {
     setCreateOpen(true);
   }, []);
@@ -705,44 +687,6 @@ const NFSShares: React.FC<NFSSharesProps> = ({
 
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <AppAlert severity="info">
-          {connectedClients.length > 0
-            ? `Server-level NFS clients: ${connectedClients.length}. This is derived from the kernel NFS server client table and live NFS sessions, so it is not attributed to individual exports.`
-            : "No server-level NFS clients are currently reported."}
-        </AppAlert>
-        {connectedClients.length > 0 ? (
-          <>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 4,
-                marginTop: 8,
-              }}
-            >
-              {connectedClients.map((client, index) => (
-                <Chip
-                  key={`${client.ip}-${index}`}
-                  label={formatConnectedClientLabel(client)}
-                  size="small"
-                  variant="soft"
-                  color="success"
-                />
-              ))}
-            </div>
-            <AppTypography
-              variant="caption"
-              color="text.secondary"
-              style={{ display: "block", marginTop: 6 }}
-            >
-              NFSv4 clients may remain listed briefly after an unmount until
-              their lease expires or they stop renewing.
-            </AppTypography>
-          </>
-        ) : null}
-      </div>
-
       {viewMode === "card" ? (
         sharesList.length > 0 ? (
           <AppGrid container spacing={2}>

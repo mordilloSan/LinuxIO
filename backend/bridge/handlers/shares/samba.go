@@ -2,7 +2,6 @@ package shares
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -293,53 +292,6 @@ func removeSmbSection(content, name string) (string, bool) {
 	}
 
 	return strings.Join(result, "\n"), found
-}
-
-// GetSambaClients returns currently connected Samba clients via smbstatus -j
-func GetSambaClients() ([]SambaConnectedClient, error) {
-	output, err := exec.Command("smbstatus", "-j").CombinedOutput()
-	if err != nil {
-		logger.Debugf("smbstatus -j failed: %v, output: %s", err, strings.TrimSpace(string(output)))
-		return []SambaConnectedClient{}, nil
-	}
-
-	var status struct {
-		Sessions map[string]struct {
-			Username   string `json:"username"`
-			RemoteHost string `json:"remote_machine"`
-		} `json:"sessions"`
-		Shares map[string]struct {
-			User    string `json:"user"`
-			Machine string `json:"machine"`
-			Service string `json:"service"`
-		} `json:"tcon"`
-	}
-
-	if err := json.Unmarshal(output, &status); err != nil {
-		logger.Debugf("smbstatus JSON parse failed: %v", err)
-		return []SambaConnectedClient{}, nil
-	}
-
-	var clients []SambaConnectedClient
-	seen := make(map[string]bool)
-
-	for _, share := range status.Shares {
-		if share.Service == "" || reservedSections[strings.ToLower(share.Service)] {
-			continue
-		}
-		key := share.User + "@" + share.Machine + ":" + share.Service
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		clients = append(clients, SambaConnectedClient{
-			Username: share.User,
-			IP:       share.Machine,
-			Share:    share.Service,
-		})
-	}
-
-	return clients, nil
 }
 
 // reloadSamba reloads the Samba configuration using the first method that works.

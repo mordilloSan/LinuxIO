@@ -22,13 +22,11 @@ func RegisterHandlers() {
 		{command: "create_nfs_share", handler: handleCreateNFSShare},
 		{command: "update_nfs_share", handler: handleUpdateNFSShare},
 		{command: "delete_nfs_share", handler: handleDeleteNFSShare},
-		{command: "list_nfs_clients", handler: handleListNFSClients},
 		// Samba shares (via /etc/samba/smb.conf)
 		{command: "list_samba_shares", handler: handleListSambaShares},
 		{command: "create_samba_share", handler: handleCreateSambaShare},
 		{command: "update_samba_share", handler: handleUpdateSambaShare},
 		{command: "delete_samba_share", handler: handleDeleteSambaShare},
-		{command: "list_samba_clients", handler: handleListSambaClients},
 	})
 }
 
@@ -160,24 +158,4 @@ func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true})
-}
-
-// --- Connected clients handlers ---
-
-func handleListNFSClients(ctx context.Context, args []string, emit ipc.Events) error {
-	clients, err := GetNFSClients()
-	if err != nil {
-		logger.Errorf("Failed to list NFS clients: %v", err)
-		return err
-	}
-	return emit.Result(clients)
-}
-
-func handleListSambaClients(ctx context.Context, args []string, emit ipc.Events) error {
-	clients, err := GetSambaClients()
-	if err != nil {
-		logger.Errorf("Failed to list Samba clients: %v", err)
-		return err
-	}
-	return emit.Result(clients)
 }

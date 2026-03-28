@@ -42,7 +42,7 @@ addCollection({
   },
 });
 
-// mdi - 107 icons
+// mdi - 109 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -288,6 +288,9 @@ addCollection({
     pencil: {
       body: '<path fill="currentColor" d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83l3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75z"/>',
     },
+    "pencil-outline": {
+      body: '<path fill="currentColor" d="m14.06 9l.94.94L5.92 19H5v-.92zm3.6-6c-.25 0-.51.1-.7.29l-1.83 1.83l3.75 3.75l1.83-1.83c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29m-3.6 3.19L3 17.25V21h3.75L17.81 9.94z"/>',
+    },
     play: {
       body: '<path fill="currentColor" d="M8 5.14v14l11-7z"/>',
     },
@@ -341,6 +344,9 @@ addCollection({
     },
     thermometer: {
       body: '<path fill="currentColor" d="M15 13V5a3 3 0 0 0-6 0v8a5 5 0 1 0 6 0m-3-9a1 1 0 0 1 1 1v3h-2V5a1 1 0 0 1 1-1"/>',
+    },
+    "trash-can-outline": {
+      body: '<path fill="currentColor" d="M9 3v1H4v2h1v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6h1V4h-5V3zM7 6h10v13H7zm2 2v9h2V8zm4 0v9h2V8z"/>',
     },
     tune: {
       body: '<path fill="currentColor" d="M3 17v2h6v-2zM3 5v2h10V5zm10 16v-2h8v-2h-8v-2h-2v6zM7 9v2H3v2h4v2h2V9zm14 4v-2H11v2zm-6-4h2V7h4V5h-4V3h-2z"/>',
