@@ -305,7 +305,7 @@ func GetSambaClients() ([]SambaConnectedClient, error) {
 
 	var status struct {
 		Sessions map[string]struct {
-			Username    string `json:"username"`
+			Username   string `json:"username"`
 			RemoteHost string `json:"remote_machine"`
 		} `json:"sessions"`
 		Shares map[string]struct {

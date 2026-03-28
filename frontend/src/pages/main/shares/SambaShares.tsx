@@ -796,8 +796,7 @@ const SambaShares: React.FC<SambaSharesProps> = ({
                 <div style={{ flex: 1 }}>
                   {share.properties["comment"] && (
                     <AppTypography variant="subtitle2" gutterBottom>
-                      <strong>Comment:</strong>{" "}
-                      {share.properties["comment"]}
+                      <strong>Comment:</strong> {share.properties["comment"]}
                     </AppTypography>
                   )}
                   <AppTypography variant="subtitle2" gutterBottom>

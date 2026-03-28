@@ -652,10 +652,9 @@ const NFSShares: React.FC<NFSSharesProps> = ({
     refetchInterval: 10000,
   });
 
-  const { data: nfsClients = [] } =
-    linuxio.shares.list_nfs_clients.useQuery({
-      refetchInterval: 10000,
-    });
+  const { data: nfsClients = [] } = linuxio.shares.list_nfs_clients.useQuery({
+    refetchInterval: 10000,
+  });
 
   const clientsByPath = (nfsClients as NFSConnectedClient[]).reduce<
     Record<string, NFSConnectedClient[]>
@@ -819,8 +818,8 @@ const NFSShares: React.FC<NFSSharesProps> = ({
                 className="app-table-hide-below-sm"
                 style={{ textAlign: "center" }}
               >
-                {(clientsByPath[share.path.replace(/\/$/, "")] ?? [])
-                  .length > 0 ? (
+                {(clientsByPath[share.path.replace(/\/$/, "")] ?? []).length >
+                0 ? (
                   <Chip
                     label={`${(clientsByPath[share.path.replace(/\/$/, "")] ?? []).length}`}
                     size="small"

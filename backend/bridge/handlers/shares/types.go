@@ -21,7 +21,7 @@ type SambaShare struct {
 
 // NFSConnectedClient represents a client currently connected to an NFS export
 type NFSConnectedClient struct {
-	IP        string `json:"ip"`        // Client IP address
+	IP         string `json:"ip"`         // Client IP address
 	ExportPath string `json:"exportPath"` // Mounted export path
 }
 
