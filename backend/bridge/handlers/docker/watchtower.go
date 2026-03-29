@@ -116,7 +116,12 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 // generateWatchtowerCompose returns a docker-compose YAML string for Watchtower
 // configured to watch the given container names.
 func generateWatchtowerCompose(containerNames []string) string {
-	return fmt.Sprintf(`services:
+	return fmt.Sprintf(`name: linuxio-watchtower
+
+x-linuxio-stack:
+  icon: "di:watchtower"
+
+services:
   linuxio-watchtower:
     image: ghcr.io/nicholas-fedor/watchtower:1.15.0
     container_name: linuxio-watchtower
@@ -132,6 +137,8 @@ func generateWatchtowerCompose(containerNames []string) string {
       WATCHTOWER_CONTAINER_NAMES: "%s"
     networks:
       - linuxio-docker
+    labels:
+      - "io.linuxio.container.icon=di:watchtower"
 
 networks:
   linuxio-docker:
