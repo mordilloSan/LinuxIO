@@ -112,40 +112,18 @@ fi
 
 # Install configuration files
 echo -e "${YELLOW} Installing configuration files...${NC}"
-mkdir -p /etc/linuxio
-
-if [[ -f "$REPO_ROOT/packaging/etc/linuxio/disallowed-users" ]]; then
-    install -m 0644 "$REPO_ROOT/packaging/etc/linuxio/disallowed-users" /etc/linuxio/
-    echo "  • Installed /etc/linuxio/disallowed-users"
-else
-    echo -e "${YELLOW}    Warning: disallowed-users file not found${NC}"
-fi
-
-# Install any other config files in packaging/etc/linuxio/
 if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
-    for file in "$REPO_ROOT/packaging/etc/linuxio"/*; do
-        if [[ -f "$file" && "$(basename "$file")" != "disallowed-users" ]]; then
-            install -m 0644 "$file" /etc/linuxio/
-            echo "  • Installed /etc/linuxio/$(basename "$file")"
-        fi
-    done
+    while IFS= read -r file; do
+        rel_path="${file#$REPO_ROOT/packaging/etc/linuxio/}"
+        dest_path="/etc/linuxio/$rel_path"
+        install -D -m 0644 "$file" "$dest_path"
+        echo "  • Installed $dest_path"
+    done < <(find "$REPO_ROOT/packaging/etc/linuxio" -type f | sort)
+else
+    echo -e "${YELLOW}    Warning: packaging/etc/linuxio directory not found${NC}"
 fi
 
 echo -e "${GREEN}✓ Configuration files installed${NC}"
-
-echo -e "${YELLOW} Installing monitoring stack files...${NC}"
-MONITORING_DIR="/etc/linuxio/docker/linuxio-monitoring"
-mkdir -p "$MONITORING_DIR"
-
-for file in docker-compose.yml prometheus.yml; do
-    if [[ ! -f "$MONITORING_DIR/$file" ]]; then
-        install -m 0644 "$REPO_ROOT/packaging/etc/linuxio/docker/linuxio-monitoring/$file" "$MONITORING_DIR/$file"
-        echo "  • Installed $MONITORING_DIR/$file"
-    else
-        echo "  • Kept existing $MONITORING_DIR/$file"
-    fi
-done
-echo -e "${GREEN}✓ Monitoring stack files installed${NC}"
 
 # Install PAM configuration
 echo -e "${YELLOW} Installing PAM configuration...${NC}"
