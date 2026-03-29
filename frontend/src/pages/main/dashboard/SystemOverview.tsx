@@ -25,14 +25,6 @@ const SystemOverview: React.FC = () => {
     refetchInterval: 30000,
   });
 
-  const { data: cpuInfo } = linuxio.system.get_cpu_info.useQuery({
-    refetchInterval: 5000,
-  });
-
-  const peakTemp = cpuInfo?.temperature
-    ? Math.max(...Object.values(cpuInfo.temperature))
-    : null;
-
   const stats = (
     <div
       style={{
@@ -46,24 +38,22 @@ const SystemOverview: React.FC = () => {
         {
           label: "Hostname",
           value: hostInfo?.hostname ?? "---",
-          tag: hostInfo?.os ?? "",
         },
         {
           label: "Platform",
-          value: hostInfo?.platform ?? "---",
-          tag: hostInfo?.platformVersion ?? "",
+          value: hostInfo
+            ? `${hostInfo.platform} ${hostInfo.platformVersion}`.trim()
+            : "---",
         },
         {
           label: "Kernel",
           value: hostInfo?.kernelVersion ?? "---",
-          tag: hostInfo?.kernelArch ?? "",
         },
         {
           label: "Uptime",
           value: uptime != null ? formatUptime(uptime) : "---",
-          tag: peakTemp != null ? `Peak: ${peakTemp.toFixed(1)}\u00B0C` : "",
         },
-      ].map(({ label, value, tag }, index, rows) => (
+      ].map(({ label, value }, index, rows) => (
         <div
           key={label}
           style={{
@@ -94,15 +84,6 @@ const SystemOverview: React.FC = () => {
           <AppTypography variant="body2" fontWeight={500} noWrap>
             {value}
           </AppTypography>
-          {tag && (
-            <AppTypography
-              variant="caption"
-              color="text.secondary"
-              style={{ marginLeft: "auto", flexShrink: 0 }}
-            >
-              {tag}
-            </AppTypography>
-          )}
         </div>
       ))}
     </div>
