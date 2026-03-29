@@ -21,6 +21,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
 interface ComposeService {
   name: string;
   image: string;
@@ -229,7 +230,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 gap: isSmallUp ? theme.spacing(0.5) : 0,
               }}
             >
-              {project.name === "linuxio-watchtower" ? (
+              {isLinuxIOManagedComposeProject(project.name) ? (
                 <AppTooltip title="View compose file" arrow>
                   <Chip
                     label="Managed by LinuxIO"

@@ -11,6 +11,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
+import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
 
 const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
@@ -48,7 +49,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
   ).length;
   const totalServices = Object.keys(project.services).length;
 
-  const isWatchtower = project.name === "linuxio-watchtower";
+  const isLinuxIOManaged = isLinuxIOManagedComposeProject(project.name);
   const isRunning =
     project.status === "running" || project.status === "partial";
 
@@ -118,7 +119,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
           marginTop: "auto",
         }}
       >
-        {isWatchtower ? (
+        {isLinuxIOManaged ? (
           <AppTooltip title="View compose file">
             <Chip
               label="Managed by LinuxIO"
