@@ -18,7 +18,6 @@ export interface AppDialogProps {
   ) => void;
   maxWidth?: "xs" | "sm" | "md" | "lg" | "xl" | false;
   fullWidth?: boolean;
-  fullScreen?: boolean;
   /** When true, pressing Escape will not close the dialog */
   disableEscapeKeyDown?: boolean;
   children?: React.ReactNode;
@@ -43,7 +42,6 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   onClose,
   maxWidth = "sm",
   fullWidth = false,
-  fullScreen = false,
   disableEscapeKeyDown = false,
   children,
   className,
@@ -139,9 +137,8 @@ export const AppDialog: React.FC<AppDialogProps> = ({
 
   if (!open) return null;
 
-  const sizeClass = maxWidth && !fullScreen ? `app-dialog--${maxWidth}` : "";
-  const widthClass = fullWidth && !fullScreen ? "app-dialog--fullwidth" : "";
-  const screenClass = fullScreen ? "app-dialog--fullscreen" : "";
+  const sizeClass = maxWidth ? `app-dialog--${maxWidth}` : "";
+  const widthClass = fullWidth ? "app-dialog--fullwidth" : "";
 
   const mergedPaperStyle = {
     ...paperStyle,
@@ -170,7 +167,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       />
       <div
         ref={dialogRef}
-        className={`app-dialog ${sizeClass} ${widthClass} ${screenClass} ${className || ""}`.trim()}
+        className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
         style={style}
         role="dialog"
         aria-modal="true"
