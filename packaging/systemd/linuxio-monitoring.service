@@ -1,0 +1,26 @@
+[Unit]
+Description=LinuxIO Monitoring Stack
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+ConditionPathExists=/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/etc/linuxio/docker/linuxio-monitoring
+ExecCondition=/bin/sh -c 'command -v docker >/dev/null 2>&1'
+ExecStartPre=/usr/bin/env docker info
+ExecStartPre=-/usr/bin/env docker network create linuxio-docker
+ExecStart=/usr/bin/env docker compose --ansi never --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml up -d --remove-orphans
+ExecStop=/usr/bin/env docker compose --ansi never --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml down --remove-orphans
+Restart=on-failure
+RestartSec=15s
+TimeoutStartSec=120
+TimeoutStopSec=120
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=linuxio.target

@@ -15,6 +15,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
+const (
+	monitoringUnitName    = "linuxio-monitoring.service"
+	monitoringComposePath = "/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"
+)
+
+var execCommand = exec.Command
+
 func main() {
 	if len(os.Args) < 2 {
 		showHelp()
@@ -35,6 +42,8 @@ func main() {
 		runSystemctl("stop", "linuxio.target")
 	case "restart":
 		runSystemctl("restart", "linuxio.target")
+	case "monitoring":
+		runMonitoring(args)
 	case "verbose":
 		runVerbose(args)
 	case "version":
@@ -54,14 +63,20 @@ func showHelp() {
 Usage: linuxio <command> [options]
 
 Commands:
-  status     Show status of all LinuxIO services
-  logs       Tail logs [webserver|bridge|auth] [lines] (default: all, 100)
-  start      Start LinuxIO services
-  stop       Stop LinuxIO services
-  restart    Restart LinuxIO services
-  verbose    Manage verbose logging [enable|disable|status]
-  version    Show version information
-  help       Show this help message`)
+  status      Show status of all LinuxIO services
+  logs        Tail logs [webserver|bridge|auth|monitoring] [lines] (default: all, 100)
+  start       Start LinuxIO services
+  stop        Stop LinuxIO services
+  restart     Restart LinuxIO services
+  monitoring  Manage monitoring stack [start|stop|restart|enable|disable|status]
+  verbose     Manage verbose logging [enable|disable|status]
+  version     Show version information
+  help        Show this help message
+
+Examples:
+  linuxio status
+  linuxio monitoring status
+  linuxio logs monitoring 200`)
 }
 
 func showVersion() {
@@ -70,7 +85,7 @@ func showVersion() {
 	fmt.Printf("  LinuxIO CLI %s\n", config.Version)
 
 	// Check linuxio-webserver
-	out, err := exec.Command("linuxio-webserver", "version").CombinedOutput()
+	out, err := execCommand("linuxio-webserver", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -79,7 +94,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-bridge
-	out, err = exec.Command("linuxio-bridge", "version").CombinedOutput()
+	out, err = execCommand("linuxio-bridge", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -88,7 +103,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-auth
-	out, err = exec.Command("linuxio-auth", "version").CombinedOutput()
+	out, err = execCommand("linuxio-auth", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -98,7 +113,7 @@ func showVersion() {
 }
 
 func runStatus() {
-	cmd := exec.Command("systemctl", "list-units", "linuxio*", "--no-pager", "--all")
+	cmd := execCommand("systemctl", "list-units", "linuxio*", "--no-pager", "--all")
 	out, err := cmd.Output()
 	if err != nil {
 		os.Exit(1)
@@ -148,7 +163,7 @@ func runLogs(args []string) {
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
-	cmd := exec.Command("journalctl", journalctlArgs...)
+	cmd := execCommand("journalctl", journalctlArgs...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -183,6 +198,8 @@ func parseLogsArgs(args []string) (string, int) {
 			mode = "bridge"
 		case "auth":
 			mode = "auth"
+		case "monitoring":
+			mode = "monitoring"
 		}
 	}
 	return mode, lines
@@ -197,6 +214,7 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-auth.socket",
 		"_SYSTEMD_UNIT=linuxio-auth@.service",
 		"_SYSTEMD_UNIT=linuxio-issue.service",
+		"_SYSTEMD_UNIT=" + monitoringUnitName,
 	}
 	includeAuthTag := true
 
@@ -215,6 +233,9 @@ func journalTermsForMode(mode string) []string {
 			"_SYSTEMD_UNIT=linuxio-auth.socket",
 			"_SYSTEMD_UNIT=linuxio-auth@.service",
 		}
+	case "monitoring":
+		journalTerms = []string{"_SYSTEMD_UNIT=" + monitoringUnitName}
+		includeAuthTag = false
 	}
 
 	if includeAuthTag {
@@ -316,7 +337,7 @@ func journalPriorityLevel(entry journalEntry) string {
 }
 
 func runSystemctl(action, target string) {
-	cmd := exec.Command("systemctl", action, target)
+	cmd := execCommand("systemctl", action, target)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -326,7 +347,70 @@ func runSystemctl(action, target string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Successfully %sed %s\n", action, target)
+	fmt.Printf("Successfully %s %s\n", pastTense(action), target)
+}
+
+func pastTense(action string) string {
+	switch action {
+	case "start":
+		return "started"
+	case "stop":
+		return "stopped"
+	case "restart":
+		return "restarted"
+	case "enable":
+		return "enabled"
+	case "disable":
+		return "disabled"
+	default:
+		return action + "ed"
+	}
+}
+
+func runMonitoring(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: linuxio monitoring [start|stop|restart|enable|disable|status]")
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "start", "stop", "restart", "enable", "disable":
+		runSystemctl(args[0], monitoringUnitName)
+	case "status":
+		showMonitoringStatus()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown monitoring action: %s\n", args[0])
+		fmt.Fprintln(os.Stderr, "Usage: linuxio monitoring [start|stop|restart|enable|disable|status]")
+		os.Exit(1)
+	}
+}
+
+func showMonitoringStatus() {
+	fmt.Printf("\033[1mLinuxIO Monitoring Stack\033[0m\n")
+	fmt.Printf("  Unit:        %s\n", monitoringUnitName)
+	fmt.Printf("  Active:      %s\n", systemctlState("is-active", monitoringUnitName))
+	fmt.Printf("  Enabled:     %s\n", systemctlState("is-enabled", monitoringUnitName))
+
+	switch _, err := os.Stat(monitoringComposePath); {
+	case err == nil:
+		fmt.Printf("  Compose:     %s\n", monitoringComposePath)
+	case os.IsNotExist(err):
+		fmt.Printf("  Compose:     missing (%s)\n", monitoringComposePath)
+	default:
+		fmt.Printf("  Compose:     error: %v\n", err)
+	}
+}
+
+func systemctlState(args ...string) string {
+	out, err := execCommand("systemctl", args...).CombinedOutput()
+	state := strings.TrimSpace(string(out))
+	if state != "" {
+		return state
+	}
+	if err != nil {
+		return "unknown"
+	}
+	return "unknown"
 }
 
 const verboseDropinPath = "/etc/systemd/system/linuxio-webserver.service.d/verbose.conf"
@@ -383,7 +467,7 @@ func enableVerbose() {
 
 	// Reload systemd daemon
 	fmt.Println("Reloading systemd daemon...")
-	cmd := exec.Command("systemctl", "daemon-reload")
+	cmd := execCommand("systemctl", "daemon-reload")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
@@ -391,7 +475,7 @@ func enableVerbose() {
 
 	// Restart LinuxIO services
 	fmt.Println("Restarting linuxio.target...")
-	cmd = exec.Command("systemctl", "restart", "linuxio.target")
+	cmd = execCommand("systemctl", "restart", "linuxio.target")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
@@ -419,7 +503,7 @@ func disableVerbose() {
 
 	// Reload systemd daemon
 	fmt.Println("Reloading systemd daemon...")
-	cmd := exec.Command("systemctl", "daemon-reload")
+	cmd := execCommand("systemctl", "daemon-reload")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
@@ -427,7 +511,7 @@ func disableVerbose() {
 
 	// Restart LinuxIO services
 	fmt.Println("Restarting linuxio.target...")
-	cmd = exec.Command("systemctl", "restart", "linuxio.target")
+	cmd = execCommand("systemctl", "restart", "linuxio.target")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
