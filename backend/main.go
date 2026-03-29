@@ -446,7 +446,7 @@ func showMonitoringContainers() {
 
 	fmt.Printf("\n    \033[4m%-28s  %-12s  %s\033[0m\n", "CONTAINER", "STATE", "HEALTH")
 	for _, c := range containers {
-		dot := "○"
+		var dot string
 		switch {
 		case c.State == "running" && (c.Health == "healthy" || c.Health == ""):
 			dot = "\033[32m●\033[0m"
