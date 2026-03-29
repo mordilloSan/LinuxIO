@@ -399,6 +399,68 @@ func showMonitoringStatus() {
 	default:
 		fmt.Printf("  Compose:     error: %v\n", err)
 	}
+
+	showMonitoringContainers()
+}
+
+type composeContainer struct {
+	Name   string `json:"Name"`
+	State  string `json:"State"`
+	Health string `json:"Health"`
+}
+
+func showMonitoringContainers() {
+	out, err := execCommand("docker", "compose",
+		"--project-name", "linuxio-monitoring",
+		"--file", monitoringComposePath,
+		"ps", "--format", "json", "--all",
+	).CombinedOutput()
+	if err != nil {
+		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
+		return
+	}
+
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" || trimmed == "[]" {
+		fmt.Printf("\n  Containers:  none running\n")
+		return
+	}
+
+	var containers []composeContainer
+	for line := range strings.Lines(trimmed) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var c composeContainer
+		if err := json.Unmarshal([]byte(line), &c); err != nil {
+			continue
+		}
+		containers = append(containers, c)
+	}
+
+	if len(containers) == 0 {
+		fmt.Printf("\n  Containers:  none running\n")
+		return
+	}
+
+	fmt.Printf("\n    \033[4m%-28s  %-12s  %s\033[0m\n", "CONTAINER", "STATE", "HEALTH")
+	for _, c := range containers {
+		dot := "○"
+		switch {
+		case c.State == "running" && (c.Health == "healthy" || c.Health == ""):
+			dot = "\033[32m●\033[0m"
+		case c.State == "running":
+			dot = "\033[33m●\033[0m"
+		default:
+			dot = "\033[31m●\033[0m"
+		}
+		health := c.Health
+		if health == "" {
+			health = "-"
+		}
+		fmt.Printf("  %s %-28s  %-12s  %s\n", dot, c.Name, c.State, health)
+	}
 }
 
 func systemctlState(args ...string) string {

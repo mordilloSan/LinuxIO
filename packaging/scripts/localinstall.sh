@@ -116,11 +116,26 @@ if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
     while IFS= read -r file; do
         rel_path="${file#$REPO_ROOT/packaging/etc/linuxio/}"
         dest_path="/etc/linuxio/$rel_path"
-        install -D -m 0644 "$file" "$dest_path"
+        install -D -o root -g root -m 0644 "$file" "$dest_path"
         echo "  • Installed $dest_path"
     done < <(find "$REPO_ROOT/packaging/etc/linuxio" -type f | sort)
 else
     echo -e "${YELLOW}    Warning: packaging/etc/linuxio directory not found${NC}"
+fi
+
+if [[ -d /etc/linuxio/docker/linuxio-monitoring ]]; then
+    chown root:root /etc/linuxio/docker/linuxio-monitoring
+    chmod 0755 /etc/linuxio/docker/linuxio-monitoring
+
+    for file in /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml /etc/linuxio/docker/linuxio-monitoring/prometheus.yml; do
+        if [[ -f "$file" ]]; then
+            chown root:root "$file"
+            chmod 0644 "$file"
+            echo "  • Enforced root:root 0644 on $file"
+        fi
+    done
+
+    echo "  • Enforced root:root 0755 on /etc/linuxio/docker/linuxio-monitoring"
 fi
 
 echo -e "${GREEN}✓ Configuration files installed${NC}"

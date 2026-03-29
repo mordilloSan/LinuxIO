@@ -9,18 +9,37 @@ ConditionPathExists=/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+User=root
+Group=root
 WorkingDirectory=/etc/linuxio/docker/linuxio-monitoring
-ExecCondition=/bin/sh -c 'command -v docker >/dev/null 2>&1'
-ExecStartPre=/usr/bin/env docker info
-ExecStartPre=-/usr/bin/env docker network create linuxio-docker
-ExecStart=/usr/bin/env docker compose --ansi never --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml up -d --remove-orphans
-ExecStop=/usr/bin/env docker compose --ansi never --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml down --remove-orphans
+RuntimeDirectory=linuxio-monitoring
+RuntimeDirectoryMode=0700
+Environment=HOME=/run/linuxio-monitoring
+Environment=DOCKER_CONFIG=/run/linuxio-monitoring/docker
+UMask=0022
+SyslogIdentifier=linuxio-monitoring
+ExecCondition=/bin/sh -ec 'if command -v docker >/dev/null 2>&1; then echo "[monitoring] docker available: $$(docker --version 2>/dev/null)"; exit 0; fi; echo "[monitoring] docker not found, skipping monitoring stack"; exit 1'
+ExecStartPre=/bin/sh -ec 'mkdir -p "$$DOCKER_CONFIG"; if docker compose ls >/dev/null 2>&1; then echo "[monitoring] docker compose available"; else echo "[monitoring] docker compose failed"; exit 1; fi'
+ExecStartPre=/bin/sh -ec 'socket=""; for candidate in /run/docker.sock /var/run/docker.sock; do if [ -S "$$candidate" ]; then socket="$$candidate"; break; fi; done; if [ -z "$$socket" ]; then echo "[monitoring] docker socket not found"; exit 1; fi; socket_meta=$$(stat -c "owner=%%U:%%G mode=%%a path=%%n" "$$socket"); echo "[monitoring] docker socket ready: $$socket_meta"'
+ExecStartPre=/bin/sh -ec '[ -d /etc/linuxio/docker/linuxio-monitoring ] || { echo "[monitoring] missing config directory: /etc/linuxio/docker/linuxio-monitoring"; exit 1; }; [ -f /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml ] || { echo "[monitoring] missing config file: /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"; exit 1; }; [ -f /etc/linuxio/docker/linuxio-monitoring/prometheus.yml ] || { echo "[monitoring] missing config file: /etc/linuxio/docker/linuxio-monitoring/prometheus.yml"; exit 1; }; [ "$$(stat -c "%%U:%%G" /etc/linuxio/docker/linuxio-monitoring)" = "root:root" ] || { echo "[monitoring] monitoring directory must be owned by root:root"; exit 1; }; [ "$$(stat -c "%%a" /etc/linuxio/docker/linuxio-monitoring)" = "755" ] || { echo "[monitoring] monitoring directory must have mode 755"; exit 1; }; [ "$$(stat -c "%%U:%%G" /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml)" = "root:root" ] || { echo "[monitoring] docker-compose.yml must be owned by root:root"; exit 1; }; [ "$$(stat -c "%%a" /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml)" = "644" ] || { echo "[monitoring] docker-compose.yml must have mode 644"; exit 1; }; [ "$$(stat -c "%%U:%%G" /etc/linuxio/docker/linuxio-monitoring/prometheus.yml)" = "root:root" ] || { echo "[monitoring] prometheus.yml must be owned by root:root"; exit 1; }; [ "$$(stat -c "%%a" /etc/linuxio/docker/linuxio-monitoring/prometheus.yml)" = "644" ] || { echo "[monitoring] prometheus.yml must have mode 644"; exit 1; }; echo "[monitoring] config permissions verified: dir root:root 755, files root:root 644"'
+ExecStartPre=/bin/sh -ec 'docker info >/dev/null 2>&1; echo "[monitoring] docker daemon reachable"'
+ExecStartPre=/bin/sh -ec 'if docker network inspect linuxio-docker >/dev/null 2>&1; then echo "[monitoring] docker network linuxio-docker already exists"; else echo "[monitoring] docker network linuxio-docker missing, creating"; docker network create linuxio-docker >/dev/null; echo "[monitoring] docker network linuxio-docker created"; fi'
+ExecStart=/bin/sh -ec 'echo "[monitoring] starting monitoring compose stack"; output=$$(docker compose --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml up -d --remove-orphans 2>&1); status=$$?; if [ $$status -ne 0 ]; then printf "%s\n" "$$output"; exit $$status; fi; echo "[monitoring] monitoring stack running"; health_status() { container="$$1"; docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" "$$container" 2>/dev/null || echo missing; }; echo "[monitoring] health: cadvisor=$$(health_status linuxio-cadvisor) node-exporter=$$(health_status linuxio-node-exporter) prometheus=$$(health_status linuxio-prometheus)"'
+ExecStop=/bin/sh -ec 'echo "[monitoring] stopping monitoring compose stack"; output=$$(docker compose --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml down --remove-orphans 2>&1); status=$$?; if [ $$status -ne 0 ]; then printf "%s\n" "$$output"; exit $$status; fi; echo "[monitoring] monitoring compose stack stopped"'
 Restart=on-failure
 RestartSec=15s
 TimeoutStartSec=120
 TimeoutStopSec=120
 StandardOutput=journal
 StandardError=journal
+
+# Docker socket access is already the real privilege boundary here.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/etc/linuxio/docker/linuxio-monitoring
+ReadWritePaths=/run/docker.sock /var/run/docker.sock /run/linuxio-monitoring
 
 [Install]
 WantedBy=linuxio.target

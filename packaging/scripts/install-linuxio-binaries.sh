@@ -247,18 +247,18 @@ install_config_files() {
     for file in "${monitoring_files[@]}"; do
         local dest="${monitoring_dir}/${file}"
         if [[ -f "$dest" ]]; then
-            log_ok "${dest} already exists (not overwriting)"
-            continue
-        fi
-
-        log_info "Downloading monitoring stack file ${file}..."
-        if ! curl -fsSL "${RAW_BASE}/etc/linuxio/docker/linuxio-monitoring/${file}" -o "$dest"; then
-            log_error "Failed to download monitoring stack file ${file}"
-            return 1
+            log_ok "${dest} already exists (not overwriting contents)"
+        else
+            log_info "Downloading monitoring stack file ${file}..."
+            if ! curl -fsSL "${RAW_BASE}/etc/linuxio/docker/linuxio-monitoring/${file}" -o "$dest"; then
+                log_error "Failed to download monitoring stack file ${file}"
+                return 1
+            fi
+            log_ok "Created ${dest}"
         fi
         chown root:root "$dest"
         chmod 0644 "$dest"
-        log_ok "Created ${dest}"
+        log_ok "Enforced root:root 0644 on ${dest}"
     done
 
     return 0
