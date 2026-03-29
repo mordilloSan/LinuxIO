@@ -15,12 +15,12 @@ import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
-import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import {
   AppDialogTitle,
   AppDialogContent,
   AppDialogActions,
 } from "@/components/ui/AppDialog";
+import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
