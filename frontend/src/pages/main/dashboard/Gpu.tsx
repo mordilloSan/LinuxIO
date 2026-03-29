@@ -6,7 +6,12 @@ import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
+import {
+  formatGpuPercent,
+  getGpuType,
+  getGpuVendorLabel,
+  hasGpuValue,
+} from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {
   const theme = useAppTheme();
@@ -56,7 +61,7 @@ const GpuInfo: React.FC = () => {
                 {gpu.model || `GPU ${idx + 1}`}
               </AppTypography>
               <AppTypography variant="caption" color="text.secondary" noWrap>
-                {gpu.vendor} • {getGpuType(gpu)}
+                {getGpuVendorLabel(gpu)} • {getGpuType(gpu)}
               </AppTypography>
             </div>
             <div
