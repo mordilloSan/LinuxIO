@@ -29,7 +29,7 @@
   background-color: transparent;
   color: inherit;
   font-family: inherit;
-  font-size: inherit;
+  font-size: var(--app-select-input-font-size, inherit);
   line-height: 1.4375em;
   padding: 16.5px 36px 16.5px 14px;
   outline: none;
@@ -63,7 +63,7 @@
 /* ── Size: small ────────────────────────────────── */
 
 .app-select--small .app-select__input {
-  font-size: 0.875rem;
+  font-size: var(--app-select-input-font-size, 0.875rem);
   padding: 8.5px 36px 8.5px 14px;
 }
 
@@ -195,7 +195,7 @@
   display: block;
   padding: 6px 16px;
   font-family: inherit;
-  font-size: inherit;
+  font-size: var(--app-select-option-font-size, inherit);
   color: var(--color-text);
   cursor: pointer;
   white-space: nowrap;

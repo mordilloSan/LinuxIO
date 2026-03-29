@@ -15,10 +15,12 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
+import {
+  CPUHistoryCard,
+  GPUHistoryCard,
+  MemoryHistoryCard,
+} from "@/pages/main/hardware/HardwareHistoryCards";
 import "@/theme/section.css";
-import GpuInfo from "@/pages/main/dashboard/Gpu";
-import MemoryUsage from "@/pages/main/dashboard/Memory";
-import Processor from "@/pages/main/dashboard/Processor";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -329,10 +331,6 @@ const pciColumns: UnifiedTableColumn[] = [
 
 // ─── main component ──────────────────────────────────────────────────────────
 
-const MemoProcessor = React.memo(Processor);
-const MemoMemory = React.memo(MemoryUsage);
-const MemoGpuInfo = React.memo(GpuInfo);
-
 const HardwarePage: React.FC = () => {
   const theme = useAppTheme();
 
@@ -594,9 +592,9 @@ const HardwarePage: React.FC = () => {
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
           {[
-            { id: "cpu", component: MemoProcessor },
-            { id: "memory", component: MemoMemory },
-            { id: "gpu", component: MemoGpuInfo },
+            { id: "cpu", component: CPUHistoryCard },
+            { id: "memory", component: MemoryHistoryCard },
+            { id: "gpu", component: GPUHistoryCard },
           ].map(({ id, component: CardComponent }) => (
             <AppGrid key={id} size={{ xs: 12, lg: 4 }}>
               <ErrorBoundary>
