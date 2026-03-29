@@ -117,10 +117,10 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 // configured to watch the given container names.
 func generateWatchtowerCompose(containerNames []string) string {
 	return fmt.Sprintf(`services:
-  watchtower:
+  linuxio-watchtower:
     image: ghcr.io/nicholas-fedor/watchtower:1.15.0
-    container_name: watchtower
-    hostname: watchtower
+    container_name: linuxio-watchtower
+    hostname: linuxio-watchtower
     restart: unless-stopped
     mem_limit: 32m
     volumes:
