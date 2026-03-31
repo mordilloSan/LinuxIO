@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import "./app-tooltip.css";

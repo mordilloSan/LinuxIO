@@ -533,22 +533,6 @@ func monitoringContainerHealth(status string) string {
 	}
 }
 
-func monitoringComposeArgs() []string {
-	args := []string{"compose", "--project-name", monitoringProjectName}
-	for _, composeFile := range monitoringComposeFiles() {
-		args = append(args, "--file", composeFile)
-	}
-	return args
-}
-
-func monitoringComposeFiles() []string {
-	files := []string{monitoringComposePath}
-	if _, err := os.Stat(monitoringGeneratedComposePath); err == nil {
-		files = append(files, monitoringGeneratedComposePath)
-	}
-	return files
-}
-
 func systemctlState(args ...string) string {
 	out, err := execCommand("systemctl", args...).CombinedOutput()
 	state := strings.TrimSpace(string(out))

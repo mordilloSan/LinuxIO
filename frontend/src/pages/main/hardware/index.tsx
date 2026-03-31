@@ -43,17 +43,6 @@ interface SensorGroup {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const formatUptime = (seconds: number): string => {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  return parts.join(" ") || "0m";
-};
-
 const getTempColor = (
   value: number,
   palette: { success: string; warning: string; error: string },
@@ -336,15 +325,7 @@ const pciColumns: UnifiedTableColumn[] = [
 // ─── main component ──────────────────────────────────────────────────────────
 
 const HardwarePage: React.FC = () => {
-  const theme = useAppTheme();
-
   // ── data ──
-  const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
-    refetchInterval: 60000,
-  });
-  const { data: uptime } = linuxio.system.get_uptime.useQuery({
-    refetchInterval: 10000,
-  });
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
     refetchInterval: 5000,
   }) as { data: SensorGroup[] | undefined };

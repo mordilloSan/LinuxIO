@@ -292,9 +292,6 @@ func detectPrometheusBaseURL(ctx context.Context) (string, error) {
 			}
 		}
 	}
-	if ipAddress == "" && containerJSON.NetworkSettings != nil {
-		ipAddress = containerJSON.NetworkSettings.IPAddress
-	}
 	if ipAddress == "" {
 		return "", fmt.Errorf("prometheus container has no reachable IP address")
 	}

@@ -46,9 +46,7 @@ const normalizeGpuVendorId = (vendorId?: string | null): string =>
 const matchesAny = (value: string, patterns: string[]): boolean =>
   patterns.some((pattern) => value.includes(pattern));
 
-export const getGpuVendorLabel = (
-  gpu?: Partial<GpuDevice> | null,
-): string => {
+export const getGpuVendorLabel = (gpu?: Partial<GpuDevice> | null): string => {
   if (!gpu) {
     return "—";
   }
@@ -64,7 +62,8 @@ export const getGpuVendorLabel = (
     return "AMD";
   }
 
-  const driverText = `${gpu.driver_module ?? ""} ${gpu.driver ?? ""}`.toLowerCase();
+  const driverText =
+    `${gpu.driver_module ?? ""} ${gpu.driver ?? ""}`.toLowerCase();
   if (matchesAny(driverText, ["i915", "xe"])) {
     return "Intel";
   }

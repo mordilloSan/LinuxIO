@@ -6,19 +6,17 @@ export function useDismissibleLayer<T extends HTMLElement>(
 ) {
   const layerRef = useRef<T>(null);
 
-  const handlePointerDown = useEffectEvent(
-    (event: MouseEvent | TouchEvent) => {
-      const target = event.target;
+  const handlePointerDown = useEffectEvent((event: MouseEvent | TouchEvent) => {
+    const target = event.target;
 
-      if (!(target instanceof Node)) {
-        return;
-      }
+    if (!(target instanceof Node)) {
+      return;
+    }
 
-      if (!layerRef.current?.contains(target)) {
-        onClose();
-      }
-    },
-  );
+    if (!layerRef.current?.contains(target)) {
+      onClose();
+    }
+  });
 
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.key === "Escape") {

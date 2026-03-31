@@ -280,7 +280,10 @@ const HistoryChart: React.FC<{
     }
 
     return plotPoints.map(({ x, point }) => {
-      const stackedValue = Math.min(clampPercent(stackedPercent ?? 0), point.value);
+      const stackedValue = Math.min(
+        clampPercent(stackedPercent ?? 0),
+        point.value,
+      );
       const baseValue = clampPercent(point.value - stackedValue);
 
       return {
@@ -338,20 +341,12 @@ const HistoryChart: React.FC<{
     return `${upperLine} ${lowerLine} Z`;
   };
 
-  const linePath = useMemo(() => buildLinePath(plotPoints), [plotPoints]);
-  const baseLinePath = useMemo(
-    () => buildLinePath(basePlotPoints),
-    [basePlotPoints],
-  );
-  const areaPath = useMemo(
-    () => buildAreaPath(basePlotPoints),
-    [basePlotPoints],
-  );
-  const stackedAreaPath = useMemo(
-    () =>
-      hasStackedSegment ? buildBandPath(basePlotPoints, plotPoints) : "",
-    [basePlotPoints, hasStackedSegment, plotPoints],
-  );
+  const linePath = buildLinePath(plotPoints);
+  const baseLinePath = buildLinePath(basePlotPoints);
+  const areaPath = buildAreaPath(basePlotPoints);
+  const stackedAreaPath = hasStackedSegment
+    ? buildBandPath(basePlotPoints, plotPoints)
+    : "";
   const activeStackedPercent = hasStackedSegment
     ? Math.min(clampPercent(stackedPercent ?? 0), activePoint?.point.value ?? 0)
     : 0;
@@ -848,8 +843,7 @@ export const BIOSInfoCard: React.FC = () => {
       rows={[
         {
           label: "Vendor",
-          value:
-            motherboardInfo?.bios?.vendor || systemInfo?.biosVendor || "—",
+          value: motherboardInfo?.bios?.vendor || systemInfo?.biosVendor || "—",
           noWrap: false,
         },
         {
@@ -895,11 +889,7 @@ const getGpuDriverSummary = (gpu: GpuDevice | undefined): string => {
   }
 
   return (
-    gpu.driver_version ||
-    gpu.driver_module ||
-    gpu.driver ||
-    gpu.drm_card ||
-    "—"
+    gpu.driver_version || gpu.driver_module || gpu.driver || gpu.drm_card || "—"
   );
 };
 
