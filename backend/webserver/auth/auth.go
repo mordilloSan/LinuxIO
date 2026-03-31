@@ -13,10 +13,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
+const maxConcurrentLogins = 8
+
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
 	SM      *session.Manager
 	Verbose bool
+	authSem chan struct{}
 }
 
 type LoginRequest struct {
@@ -37,6 +40,14 @@ func writeLoginError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
+	select {
+	case h.authSem <- struct{}{}:
+		defer func() { <-h.authSem }()
+	default:
+		writeLoginError(w, http.StatusServiceUnavailable, "too_many_requests", "too many login attempts, try again shortly")
+		return
+	}
+
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")

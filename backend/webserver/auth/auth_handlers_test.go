@@ -70,7 +70,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	// Manager + handlers
 	cfg := session.DefaultConfig
 	sm := session.NewManager(session.New(), cfg)
-	h := &Handlers{SM: sm, Verbose: true}
+	h := &Handlers{SM: sm, Verbose: true, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
 	// Act
@@ -119,7 +119,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	}
 	cfg := session.DefaultConfig
 	sm := session.NewManager(session.New(), cfg)
-	h := &Handlers{SM: sm}
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "bad"})
@@ -155,7 +155,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	}
 	cfg := session.DefaultConfig
 	sm := session.NewManager(session.New(), cfg)
-	h := &Handlers{SM: sm}
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "expired"})
@@ -175,11 +175,60 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	}
 }
 
+func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
+	oldStart := startBridge
+	defer func() { startBridge = oldStart }()
+
+	// Bridge blocks forever — holds the semaphore slot
+	block := make(chan struct{})
+	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+		<-block
+		return nil, fmt.Errorf("cancelled")
+	}
+	defer close(block)
+
+	cfg := session.DefaultConfig
+	sm := session.NewManager(session.New(), cfg)
+	// Semaphore of 1 so one in-flight login saturates it
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, 1)}
+	r := newRouterForTests(h)
+
+	// First login: blocks in startBridge, holding the semaphore
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		doJSON(r, "POST", "/auth/login", LoginRequest{Username: "a", Password: "p"})
+	}()
+	<-started
+
+	// Give the goroutine a moment to enter Login and acquire the semaphore
+	// (the test is deterministic because sem=1 and startBridge blocks)
+	for i := 0; i < 100; i++ {
+		if len(h.authSem) == 1 {
+			break
+		}
+		// busy-wait briefly for the goroutine to grab the slot
+	}
+
+	// Second login: should be rejected immediately
+	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "b", Password: "p"})
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got := resp["code"]; got != "too_many_requests" {
+		t.Fatalf("unexpected code: %v", got)
+	}
+}
+
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
 	cfg := session.DefaultConfig
 	sm := session.NewManager(session.New(), cfg)
-	h := &Handlers{SM: sm}
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
 	// Stub seams for login:

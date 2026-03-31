@@ -17,6 +17,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, verbose bool) {
 	h := &Handlers{
 		SM:      sm,
 		Verbose: verbose,
+		authSem: make(chan struct{}, maxConcurrentLogins),
 	}
 
 	// public
