@@ -16,10 +16,36 @@ import {
   AuthProviderProps,
   AUTH_ACTIONS,
   AuthUser,
+  LoginErrorCode,
+  LoginErrorResponse,
   LoginResponse,
 } from "@/types/auth";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
+
+const loginErrorMessage = (
+  code?: LoginErrorCode,
+  fallback?: string,
+): string => {
+  switch (code) {
+    case "invalid_request":
+      return "The sign-in request was invalid. Refresh the page and try again.";
+    case "session_creation_failed":
+      return "LinuxIO could not prepare your session. Please try again.";
+    case "authentication_failed":
+      return "Incorrect username or password.";
+    case "password_expired":
+      return "Your password has expired. Change it in SSH or on the system console, then try again.";
+    case "access_denied":
+      return "This account is not allowed to sign in from the web interface.";
+    case "bridge_error":
+      return "LinuxIO authenticated you, but could not start the session bridge. Please try again.";
+    case "internal_error":
+      return "LinuxIO could not complete sign-in. Please try again.";
+    default:
+      return fallback || "Login failed";
+  }
+};
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -237,8 +263,8 @@ function AuthProvider({ children }: AuthProviderProps) {
       body: JSON.stringify({ username, password }),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Login failed");
+      const err = (await res.json().catch(() => ({}))) as LoginErrorResponse;
+      throw new Error(loginErrorMessage(err.code, err.error));
     }
     const data: LoginResponse = await res.json();
 

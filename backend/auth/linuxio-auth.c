@@ -242,9 +242,9 @@ struct pam_appdata {
   const char *password;
 };
 
-static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
+static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, const void *appdata_ptr)
 {
-  struct pam_appdata *appdata = (struct pam_appdata *)appdata_ptr;
+  const struct pam_appdata *appdata = (const struct pam_appdata *)appdata_ptr;
   if (n <= 0 || n > 32)
     return PAM_CONV_ERR;
   struct pam_response *r = calloc((size_t)n, sizeof(*r));
@@ -805,8 +805,8 @@ static int check_peer_creds(int fd)
 // ============================================================================
 
 // Send binary response to client
-// Format: [magic:4][status:1][mode:1][reserved:2][len:2][error]
-static void send_response(int fd, uint8_t status, uint8_t mode, const char *error)
+// Format: [magic:4][status:1][mode:1][result:1][reserved:1][len:2][error]
+static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_code, const char *error)
 {
   uint8_t header[PROTO_AUTH_RESP_HEADER_SIZE];
 
@@ -820,8 +820,8 @@ static void send_response(int fd, uint8_t status, uint8_t mode, const char *erro
   header[4] = status;
   header[5] = mode;
 
-  // Reserved
-  header[6] = 0;
+  // Structured result code + reserved
+  header[6] = result_code;
   header[7] = 0;
 
   if (write_all(fd, header, PROTO_AUTH_RESP_HEADER_SIZE) != 0)
@@ -831,6 +831,39 @@ static void send_response(int fd, uint8_t status, uint8_t mode, const char *erro
   if (status == PROTO_STATUS_ERROR && error)
   {
     (void)write_lenstr(fd, error);
+  }
+}
+
+static void send_error_response(int fd, uint8_t result_code, const char *error)
+{
+  send_response(fd, PROTO_STATUS_ERROR, 0, result_code, error);
+}
+
+static void send_ok_response(int fd, uint8_t mode)
+{
+  send_response(fd, PROTO_STATUS_OK, mode, PROTO_RESULT_OK, NULL);
+}
+
+static uint8_t classify_pam_result(int rc)
+{
+  switch (rc)
+  {
+  case PAM_SUCCESS:
+    return PROTO_RESULT_OK;
+  case PAM_AUTH_ERR:
+  case PAM_USER_UNKNOWN:
+  case PAM_MAXTRIES:
+  case PAM_CRED_ERR:
+  case PAM_AUTHTOK_ERR:
+    return PROTO_RESULT_AUTH_FAILED;
+  case PAM_NEW_AUTHTOK_REQD:
+    return PROTO_RESULT_PASSWORD_EXPIRED;
+  case PAM_PERM_DENIED:
+  case PAM_ACCT_EXPIRED:
+  case PAM_CRED_INSUFFICIENT:
+    return PROTO_RESULT_ACCESS_DENIED;
+  default:
+    return PROTO_RESULT_INTERNAL_ERROR;
   }
 }
 
@@ -991,6 +1024,7 @@ static pid_t spawn_bridge_process(
   // Save validated copies
   char safe_lang[128] = "C.UTF-8";  // Default to UTF-8 instead of plain C
   char safe_term[128] = "xterm-256color";
+  char safe_journal_stream[128] = "";
 
   if (preserve_lang && valid_locale(preserve_lang))
   {
@@ -1012,6 +1046,19 @@ static pid_t spawn_bridge_process(
       safe_snprintf(safe_term, sizeof(safe_term), "%s", preserve_term);
   }
 
+  if (preserve_journal_stream && *preserve_journal_stream)
+  {
+    int valid = 1;
+    for (const char *p = preserve_journal_stream; *p && valid; p++)
+    {
+      char c = *p;
+      if (!((c >= '0' && c <= '9') || c == ':'))
+        valid = 0;
+    }
+    if (valid && strlen(preserve_journal_stream) < sizeof(safe_journal_stream))
+      safe_snprintf(safe_journal_stream, sizeof(safe_journal_stream), "%s", preserve_journal_stream);
+  }
+
   clearenv();
   setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
   setenv("LANG", safe_lang, 1);
@@ -1019,8 +1066,8 @@ static pid_t spawn_bridge_process(
   setenv("TERM", safe_term, 1);
 
   // Restore JOURNAL_STREAM if present - needed for proper syslog priority logging
-  if (preserve_journal_stream && *preserve_journal_stream)
-    setenv("JOURNAL_STREAM", preserve_journal_stream, 1);
+  if (safe_journal_stream[0] != '\0')
+    setenv("JOURNAL_STREAM", safe_journal_stream, 1);
 
   if (want_privileged)
   {
@@ -1126,7 +1173,7 @@ static int handle_client(int input_fd, int output_fd)
   uint8_t header[PROTO_AUTH_REQ_HEADER_SIZE];
   if (read_all(input_fd, header, PROTO_AUTH_REQ_HEADER_SIZE) != 0)
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to read request header");
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "failed to read request header");
     return 1;
   }
 
@@ -1134,7 +1181,7 @@ static int handle_client(int input_fd, int output_fd)
   if (header[0] != PROTO_MAGIC_0 || header[1] != PROTO_MAGIC_1 ||
       header[2] != PROTO_MAGIC_2 || header[3] != PROTO_VERSION)
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "invalid request magic");
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "invalid request magic");
     return 1;
   }
 
@@ -1151,7 +1198,7 @@ static int handle_client(int input_fd, int output_fd)
       read_lenstr(input_fd, password, sizeof(password)) != 0 ||
       read_lenstr(input_fd, session_id, sizeof(session_id)) != 0)
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to read request fields");
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "failed to read request fields");
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1159,7 +1206,7 @@ static int handle_client(int input_fd, int output_fd)
   // Validate required fields
   if (!user[0] || !session_id[0])
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "missing required fields");
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "missing required fields");
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1167,19 +1214,21 @@ static int handle_client(int input_fd, int output_fd)
   // Validate session_id (defense against path injection)
   if (!valid_session_id(session_id))
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "invalid session_id format");
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "invalid session_id format");
     secure_bzero(password, sizeof(password));
     return 1;
   }
 
   // PAM authentication
   struct pam_appdata appdata = {.password = password};
-  struct pam_conv conv = {pam_conv_func, &appdata};
+  struct pam_conv conv = {
+      (int (*)(int, const struct pam_message **, struct pam_response **, void *))pam_conv_func,
+      &appdata};
   pam_handle_t *pamh = NULL;
   int rc = pam_start("linuxio", user, &conv, &pamh);
   if (rc != PAM_SUCCESS)
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, pam_strerror(NULL, rc));
+    send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, pam_strerror(NULL, rc));
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1193,8 +1242,8 @@ static int handle_client(int input_fd, int output_fd)
   if (rc == PAM_NEW_AUTHTOK_REQD)
   {
     journal_infof("password expired for user '%s'", user);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0,
-                  "Password has expired. Please change it via SSH or console.");
+    send_error_response(output_fd, PROTO_RESULT_PASSWORD_EXPIRED,
+                        "Password has expired. Please change it via SSH or console.");
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
     return 1;
@@ -1206,7 +1255,7 @@ static int handle_client(int input_fd, int output_fd)
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, err);
+    send_error_response(output_fd, classify_pam_result(rc), err);
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
     return 1;
@@ -1216,7 +1265,7 @@ static int handle_client(int input_fd, int output_fd)
   struct passwd *pw = getpwnam(user);
   if (!pw)
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "user lookup failed");
+    send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, "user lookup failed");
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1238,7 +1287,7 @@ static int handle_client(int input_fd, int output_fd)
   int bridge_fd = -1;
   if (open_and_validate_bridge("/usr/local/bin/linuxio-bridge", 0, &bridge_fd) != 0)
   {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "bridge validation failed");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge validation failed");
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1250,7 +1299,7 @@ static int handle_client(int input_fd, int output_fd)
   if (pipe(bootstrap_pipe) != 0)
   {
     journal_errorf("failed to create bootstrap pipe: %m");
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to prepare bootstrap");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare bootstrap");
     close(bridge_fd);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1264,7 +1313,7 @@ static int handle_client(int input_fd, int output_fd)
     close(bootstrap_pipe[0]);
     close(bootstrap_pipe[1]);
     close(bridge_fd);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, err);
+    send_error_response(output_fd, classify_pam_result(rc), err);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1281,7 +1330,7 @@ static int handle_client(int input_fd, int output_fd)
     close(bootstrap_pipe[0]);
     close(bootstrap_pipe[1]);
     close(bridge_fd);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to prepare exec check");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare exec check");
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1294,7 +1343,7 @@ static int handle_client(int input_fd, int output_fd)
     close(bootstrap_pipe[0]);
     close(bootstrap_pipe[1]);
     close(bridge_fd);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to prepare exec check");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare exec check");
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1325,7 +1374,7 @@ static int handle_client(int input_fd, int output_fd)
     close(bootstrap_pipe[1]);
     close(exec_status_pipe[0]);
     close(bridge_fd);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to spawn bridge");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to spawn bridge");
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1348,7 +1397,7 @@ static int handle_client(int input_fd, int output_fd)
     journal_errorf("failed to write bootstrap to pipe");
     close(exec_status_pipe[0]);
     close(bridge_fd);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "bootstrap communication failed");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bootstrap communication failed");
     kill(child, SIGTERM);
     (void)waitpid(child, NULL, 0);
     pam_close_session(pamh, 0);
@@ -1387,7 +1436,7 @@ static int handle_client(int input_fd, int output_fd)
     while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
     {
     }
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "bridge start timeout");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge start timeout");
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1402,7 +1451,7 @@ static int handle_client(int input_fd, int output_fd)
     while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
     {
     }
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "bridge exec status failed");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec status failed");
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1421,7 +1470,7 @@ static int handle_client(int input_fd, int output_fd)
   {
     // Child wrote error byte - exec failed
     journal_errorf("bridge exec failed (status byte: %d)", exec_status_byte);
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "bridge exec failed");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec failed");
     // Child already exited, but wait to reap
     (void)waitpid(child, NULL, 0);
     pam_close_session(pamh, 0);
@@ -1434,7 +1483,7 @@ static int handle_client(int input_fd, int output_fd)
 
   // Now we know bridge exec'd successfully - send OK response
   // Bridge inherits the connection via FD 3, server continues Yamux on same connection
-  send_response(output_fd, PROTO_STATUS_OK, mode, NULL);
+  send_ok_response(output_fd, mode);
 
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
   // The parent's copy will be closed when we exit, which is fine

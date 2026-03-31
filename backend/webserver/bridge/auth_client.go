@@ -28,6 +28,23 @@ type AuthResult struct {
 	Privileged bool
 }
 
+// AuthError carries a structured auth result from the auth daemon.
+type AuthError struct {
+	Code    ipc.AuthResultCode
+	Message string
+}
+
+func (e *AuthError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
+func (e *AuthError) IsUnauthorized() bool {
+	return e != nil && e.Code.IsUnauthorized()
+}
+
 // Authenticate sends an auth request to the auth daemon.
 // On success, returns the connection which is now connected to the forked bridge
 // process (the auth daemon passed our FD to the bridge via dup2).
@@ -67,9 +84,12 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 		conn.Close()
 		errMsg := resp.Error
 		if errMsg == "" {
-			errMsg = "authentication failed"
+			errMsg = resp.ResultCode.DefaultMessage()
 		}
-		return nil, fmt.Errorf("auth daemon error: %s", errMsg)
+		return nil, &AuthError{
+			Code:    resp.ResultCode,
+			Message: errMsg,
+		}
 	}
 
 	privileged := resp.IsPrivileged()

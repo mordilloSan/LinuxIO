@@ -1,5 +1,5 @@
 // Auth request/response protocol for LinuxIO auth communication.
-// Keep in sync with packaging/linuxio_protocol.h
+// Keep in sync with backend/auth/linuxio_protocol.h
 package ipc
 
 import (
@@ -17,6 +17,8 @@ const (
 	MaxError     = 256
 )
 
+type AuthResultCode uint8
+
 // Auth request/response protocol constants
 const (
 	AuthReqHeaderSize  = 8
@@ -28,6 +30,15 @@ const (
 	// Status values
 	StatusOK    = 0
 	StatusError = 1
+
+	// Structured result codes
+	ResultOK              AuthResultCode = 0
+	ResultAuthFailed      AuthResultCode = 1
+	ResultPasswordExpired AuthResultCode = 2
+	ResultAccessDenied    AuthResultCode = 3
+	ResultBadRequest      AuthResultCode = 4
+	ResultInternalError   AuthResultCode = 5
+	ResultBridgeError     AuthResultCode = 6
 
 	// Mode values
 	ModeUnprivileged = 0
@@ -44,9 +55,10 @@ type AuthRequest struct {
 
 // AuthResponse is the binary response from the auth daemon (Auth -> Server)
 type AuthResponse struct {
-	Status uint8
-	Mode   uint8
-	Error  string
+	Status     uint8
+	Mode       uint8
+	ResultCode AuthResultCode
+	Error      string
 }
 
 // WriteAuthRequest writes a binary auth request to the writer.
@@ -99,8 +111,9 @@ func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
 	}
 
 	resp := &AuthResponse{
-		Status: header[4],
-		Mode:   header[5],
+		Status:     header[4],
+		Mode:       header[5],
+		ResultCode: AuthResultCode(header[6]),
 	}
 
 	// Read error message if status is error
@@ -156,4 +169,55 @@ func (r *AuthResponse) IsPrivileged() bool {
 // IsOK returns true if the response status is OK
 func (r *AuthResponse) IsOK() bool {
 	return r.Status == StatusOK
+}
+
+func (c AuthResultCode) IsUnauthorized() bool {
+	switch c {
+	case ResultAuthFailed, ResultPasswordExpired, ResultAccessDenied:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c AuthResultCode) DefaultMessage() string {
+	switch c {
+	case ResultOK:
+		return ""
+	case ResultAuthFailed:
+		return "authentication failed"
+	case ResultPasswordExpired:
+		return "password expired"
+	case ResultAccessDenied:
+		return "access denied"
+	case ResultBadRequest:
+		return "invalid auth request"
+	case ResultInternalError:
+		return "internal auth error"
+	case ResultBridgeError:
+		return "failed to start bridge"
+	default:
+		return "authentication failed"
+	}
+}
+
+func (c AuthResultCode) APIName() string {
+	switch c {
+	case ResultOK:
+		return "ok"
+	case ResultAuthFailed:
+		return "authentication_failed"
+	case ResultPasswordExpired:
+		return "password_expired"
+	case ResultAccessDenied:
+		return "access_denied"
+	case ResultBadRequest:
+		return "invalid_request"
+	case ResultInternalError:
+		return "internal_error"
+	case ResultBridgeError:
+		return "bridge_error"
+	default:
+		return "login_failed"
+	}
 }

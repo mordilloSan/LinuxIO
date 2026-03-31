@@ -2,12 +2,14 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
@@ -22,17 +24,29 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type loginErrorResponse struct {
+	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
+}
+
+func writeLoginError(w http.ResponseWriter, status int, code, message string) {
+	web.WriteJSON(w, status, loginErrorResponse{
+		Error: message,
+		Code:  code,
+	})
+}
+
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		web.WriteError(w, http.StatusBadRequest, "invalid request")
+		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 
 	// Create session without deciding privilege; helper will decide.
 	sess, err := h.createUserSession(req)
 	if err != nil {
-		web.WriteError(w, http.StatusInternalServerError, "session creation failed")
+		writeLoginError(w, http.StatusInternalServerError, "session_creation_failed", "session creation failed")
 		return
 	}
 
@@ -42,19 +56,25 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			logger.Warnf("[auth.login] failed to cleanup session after bridge error: %v", delErr)
 		}
 
-		// Classify auth failures to 401; others 500.
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "authentication failure") ||
-			strings.Contains(msg, "authentication failed") ||
-			strings.Contains(msg, "invalid credentials") ||
-			strings.Contains(msg, "pam_") || strings.Contains(msg, "pam ") {
+		var authErr *bridge.AuthError
+		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
 			logger.Warnf("[auth.login] authentication failed for user %s: %v", req.Username, err)
-			web.WriteError(w, http.StatusUnauthorized, "authentication failed")
-			return
+			switch authErr.Code {
+			case ipc.ResultPasswordExpired, ipc.ResultAccessDenied:
+				msg := authErr.Message
+				if msg == "" {
+					msg = authErr.Code.DefaultMessage()
+				}
+				writeLoginError(w, http.StatusForbidden, authErr.Code.APIName(), msg)
+				return
+			default:
+				writeLoginError(w, http.StatusUnauthorized, authErr.Code.APIName(), "authentication failed")
+				return
+			}
 		}
 
 		logger.Errorf("[auth.login] failed to start bridge: %v", err)
-		web.WriteError(w, http.StatusInternalServerError, "failed to start bridge")
+		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
 		return
 	}
 

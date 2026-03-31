@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 )
 
 // --- helpers ---------------------------------------------------------------
@@ -116,7 +118,10 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
 	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
-		return false, fmt.Errorf("authentication failed: bad credentials")
+		return false, &bridge.AuthError{
+			Code:    ipc.ResultAuthFailed,
+			Message: "authentication failed",
+		}
 	}
 	cfg := session.DefaultConfig
 	sm := session.NewManager(session.New(), cfg)
@@ -127,6 +132,13 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401, got %d: %s", w.Code, w.Body.String())
 	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got := resp["code"]; got != "authentication_failed" {
+		t.Fatalf("unexpected error code: %v", got)
+	}
 	// No cookie set
 	if ck := w.Result().Cookies(); len(ck) > 0 {
 		for _, c := range ck {
@@ -134,6 +146,41 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 				t.Fatalf("session cookie should not be set on auth failure, got %v", c)
 			}
 		}
+	}
+}
+
+func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
+	oldStart, oldLookup := startBridge, lookupUser
+	defer func() { startBridge, lookupUser = oldStart, oldLookup }()
+
+	lookupUser = func(username string) (session.User, error) {
+		return session.User{Username: username, UID: 1000, GID: 1000}, nil
+	}
+	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
+		return false, &bridge.AuthError{
+			Code:    ipc.ResultPasswordExpired,
+			Message: "Password has expired. Please change it via SSH or console.",
+		}
+	}
+	cfg := session.DefaultConfig
+	sm := session.NewManager(session.New(), cfg)
+	h := &Handlers{SM: sm}
+	r := newRouterForTests(h)
+
+	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "expired"})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got := resp["code"]; got != "password_expired" {
+		t.Fatalf("unexpected error code: %v", got)
+	}
+	if got := resp["error"]; got != "Password has expired. Please change it via SSH or console." {
+		t.Fatalf("unexpected error message: %v", got)
 	}
 }
 
