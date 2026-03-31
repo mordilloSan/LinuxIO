@@ -43,19 +43,14 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session without deciding privilege; helper will decide.
-	sess, err := h.createUserSession(req)
+	sessionID, err := h.SM.NewSessionID()
 	if err != nil {
 		writeLoginError(w, http.StatusInternalServerError, "session_creation_failed", "session creation failed")
 		return
 	}
 
-	privileged, err := startBridge(sess, req.Password, h.Verbose)
+	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, h.Verbose)
 	if err != nil {
-		if delErr := h.SM.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
-			logger.Warnf("[auth.login] failed to cleanup session after bridge error: %v", delErr)
-		}
-
 		var authErr *bridge.AuthError
 		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
 			logger.Warnf("[auth.login] authentication failed for user %s: %v", req.Username, err)
@@ -78,20 +73,15 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist actual mode (informational)
-	if setErr := h.SM.SetPrivileged(sess.SessionID, privileged); setErr != nil {
-		logger.Warnf("[auth.login] failed to persist privilege mode: %v", setErr)
-	}
-
 	h.SM.WriteCookie(w, sess.SessionID)
 
 	response := map[string]any{
 		"success":    true,
-		"privileged": privileged,
+		"privileged": sess.Privileged,
 	}
 
 	// Only check for updates if user is privileged
-	if privileged {
+	if sess.Privileged {
 		if updateInfo := CheckForUpdate(); updateInfo != nil {
 			response["update"] = updateInfo
 		}
@@ -125,21 +115,4 @@ func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
 	}
 
 	web.WriteJSON(w, http.StatusOK, versions)
-}
-
-// ---- internals ----
-
-func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error) {
-	u, err := lookupUser(req.Username)
-	if err != nil {
-		return nil, err
-	}
-
-	// Always create as non-privileged; helper decides real mode.
-	sess, err := h.SM.CreateSession(u, false)
-	if err != nil {
-		logger.Errorf("Failed to create session: %v", err)
-		return nil, err
-	}
-	return sess, nil
 }

@@ -25,6 +25,7 @@ const (
 // AuthResult contains the result of a successful authentication
 type AuthResult struct {
 	Conn       net.Conn // Connection to bridge (same socket, now connected to forked bridge)
+	User       session.User
 	Privileged bool
 }
 
@@ -94,7 +95,7 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 
 	privileged := resp.IsPrivileged()
 	logger.InfoKV("auth daemon: bridge spawned",
-		"user", req.User,
+		"user", resp.User.Username,
 		"privileged", privileged)
 
 	// Clear deadlines for Yamux use
@@ -105,16 +106,17 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 
 	return &AuthResult{
 		Conn:       conn,
+		User:       resp.User,
 		Privileged: privileged,
 	}, nil
 }
 
-// BuildRequest creates a Request from a session and additional auth parameters
-func BuildRequest(sess *session.Session, password string, verbose bool) *ipc.AuthRequest {
+// BuildRequest creates a Request from auth parameters.
+func BuildRequest(username, sessionID, password string, verbose bool) *ipc.AuthRequest {
 	return &ipc.AuthRequest{
-		User:      sess.User.Username,
+		User:      username,
 		Password:  password,
-		SessionID: sess.SessionID,
+		SessionID: sessionID,
 		Verbose:   verbose,
 	}
 }

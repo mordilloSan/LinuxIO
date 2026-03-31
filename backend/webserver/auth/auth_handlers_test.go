@@ -59,16 +59,13 @@ func extractCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *htt
 
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	// Arrange seams
-	oldStart, oldLookup := startBridge, lookupUser
+	oldStart := startBridge
 	defer func() {
-		startBridge, lookupUser = oldStart, oldLookup
+		startBridge = oldStart
 	}()
 
-	lookupUser = func(username string) (session.User, error) {
-		return session.User{Username: username, UID: 1000, GID: 1000}, nil
-	}
-	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
-		return true, nil // privileged
+	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 	}
 	// Manager + handlers
 	cfg := session.DefaultConfig
@@ -111,14 +108,11 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 }
 
 func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
-	oldStart, oldLookup := startBridge, lookupUser
-	defer func() { startBridge, lookupUser = oldStart, oldLookup }()
+	oldStart := startBridge
+	defer func() { startBridge = oldStart }()
 
-	lookupUser = func(username string) (session.User, error) {
-		return session.User{Username: username, UID: 1000, GID: 1000}, nil
-	}
-	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
-		return false, &bridge.AuthError{
+	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+		return nil, &bridge.AuthError{
 			Code:    ipc.ResultAuthFailed,
 			Message: "authentication failed",
 		}
@@ -150,14 +144,11 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 }
 
 func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
-	oldStart, oldLookup := startBridge, lookupUser
-	defer func() { startBridge, lookupUser = oldStart, oldLookup }()
+	oldStart := startBridge
+	defer func() { startBridge = oldStart }()
 
-	lookupUser = func(username string) (session.User, error) {
-		return session.User{Username: username, UID: 1000, GID: 1000}, nil
-	}
-	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
-		return false, &bridge.AuthError{
+	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+		return nil, &bridge.AuthError{
 			Code:    ipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
 		}
@@ -192,14 +183,11 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	r := newRouterForTests(h)
 
 	// Stub seams for login:
-	oldStart, oldLookup := startBridge, lookupUser
-	defer func() { startBridge, lookupUser = oldStart, oldLookup }()
+	oldStart := startBridge
+	defer func() { startBridge = oldStart }()
 
-	lookupUser = func(username string) (session.User, error) {
-		return session.User{Username: username, UID: 1000, GID: 1000}, nil
-	}
-	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
-		return false, nil
+	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})

@@ -18,7 +18,7 @@
 #define PROTO_MAGIC_0            'L'
 #define PROTO_MAGIC_1            'I'
 #define PROTO_MAGIC_2            'O'
-#define PROTO_VERSION            1
+#define PROTO_VERSION            2
 
 /* ==========================================================================
  * Auth Request Protocol (Server -> Auth via Unix socket)
@@ -42,7 +42,8 @@
  *
  * Format:
  *   [magic:4][status:1][mode:1][result:1][reserved:1]  (8 bytes fixed header)
- *   [len:2][error]      (only if status == error)
+ *   [uid:4][gid:4][len:2][username]    (only if status == ok)
+ *   [len:2][error]                     (only if status == error)
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */

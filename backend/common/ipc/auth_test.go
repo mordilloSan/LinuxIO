@@ -5,6 +5,46 @@ import (
 	"testing"
 )
 
+func TestReadAuthResponse_DecodesSuccessUser(t *testing.T) {
+	var buf bytes.Buffer
+	buf.Write([]byte{
+		ProtoMagic0,
+		ProtoMagic1,
+		ProtoMagic2,
+		ProtoVersion,
+		StatusOK,
+		ModePrivileged,
+		byte(ResultOK),
+		0,
+	})
+	buf.Write([]byte{0, 0, 3, 232}) // uid 1000
+	buf.Write([]byte{0, 0, 3, 233}) // gid 1001
+	if err := writeLenStr(&buf, "miguel"); err != nil {
+		t.Fatalf("writeLenStr: %v", err)
+	}
+
+	resp, err := ReadAuthResponse(&buf)
+	if err != nil {
+		t.Fatalf("ReadAuthResponse: %v", err)
+	}
+
+	if !resp.IsOK() {
+		t.Fatalf("status = %d, want %d", resp.Status, StatusOK)
+	}
+	if !resp.IsPrivileged() {
+		t.Fatal("expected privileged mode")
+	}
+	if resp.User.Username != "miguel" {
+		t.Fatalf("username = %q, want %q", resp.User.Username, "miguel")
+	}
+	if resp.User.UID != 1000 {
+		t.Fatalf("uid = %d, want %d", resp.User.UID, 1000)
+	}
+	if resp.User.GID != 1001 {
+		t.Fatalf("gid = %d, want %d", resp.User.GID, 1001)
+	}
+}
+
 func TestReadAuthResponse_DecodesStructuredResultCode(t *testing.T) {
 	var buf bytes.Buffer
 	buf.Write([]byte{
@@ -34,6 +74,9 @@ func TestReadAuthResponse_DecodesStructuredResultCode(t *testing.T) {
 	}
 	if resp.Error != "password expired" {
 		t.Fatalf("error = %q, want %q", resp.Error, "password expired")
+	}
+	if resp.User.Username != "" {
+		t.Fatalf("username = %q, want empty", resp.User.Username)
 	}
 }
 

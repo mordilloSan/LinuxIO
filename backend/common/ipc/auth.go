@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Max lengths for fields (used for validation)
@@ -58,6 +60,7 @@ type AuthResponse struct {
 	Status     uint8
 	Mode       uint8
 	ResultCode AuthResultCode
+	User       session.User
 	Error      string
 }
 
@@ -104,16 +107,38 @@ func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
 		return nil, fmt.Errorf("read header: %w", err)
 	}
 
-	// Validate magic
-	if header[0] != ProtoMagic0 || header[1] != ProtoMagic1 ||
-		header[2] != ProtoMagic2 || header[3] != ProtoVersion {
+	// Validate magic + version
+	if header[0] != ProtoMagic0 || header[1] != ProtoMagic1 || header[2] != ProtoMagic2 {
 		return nil, errors.New("invalid response magic")
+	}
+	if header[3] != ProtoVersion {
+		return nil, fmt.Errorf("unsupported auth protocol version: %d", header[3])
 	}
 
 	resp := &AuthResponse{
 		Status:     header[4],
 		Mode:       header[5],
 		ResultCode: AuthResultCode(header[6]),
+	}
+
+	if resp.Status == StatusOK {
+		uid, err := readU32(r)
+		if err != nil {
+			return nil, fmt.Errorf("read uid: %w", err)
+		}
+		gid, err := readU32(r)
+		if err != nil {
+			return nil, fmt.Errorf("read gid: %w", err)
+		}
+		username, err := readLenStr(r)
+		if err != nil {
+			return nil, fmt.Errorf("read username: %w", err)
+		}
+		resp.User = session.User{
+			Username: username,
+			UID:      uid,
+			GID:      gid,
+		}
 	}
 
 	// Read error message if status is error
@@ -126,6 +151,14 @@ func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
 	}
 
 	return resp, nil
+}
+
+func readU32(r io.Reader) (uint32, error) {
+	var buf [4]byte
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint32(buf[:]), nil
 }
 
 // readLenStr reads a length-prefixed string (2-byte length + data).

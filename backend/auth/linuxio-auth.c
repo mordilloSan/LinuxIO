@@ -804,9 +804,13 @@ static int check_peer_creds(int fd)
 // Single-shot mode - socket-activated worker
 // ============================================================================
 
-// Send binary response to client
-// Format: [magic:4][status:1][mode:1][result:1][reserved:1][len:2][error]
-static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_code, const char *error)
+// Send binary response to client.
+// Success format:
+//   [magic:4][status:1][mode:1][result:1][reserved:1][uid:4][gid:4][len:2][username]
+// Error format:
+//   [magic:4][status:1][mode:1][result:1][reserved:1][len:2][error]
+static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_code,
+                          const char *error, const char *username, uid_t uid, gid_t gid)
 {
   uint8_t header[PROTO_AUTH_RESP_HEADER_SIZE];
 
@@ -827,6 +831,17 @@ static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_c
   if (write_all(fd, header, PROTO_AUTH_RESP_HEADER_SIZE) != 0)
     return;
 
+  if (status == PROTO_STATUS_OK)
+  {
+    uint8_t ids[8];
+    write_u32_be(ids, (uint32_t)uid);
+    write_u32_be(ids + 4, (uint32_t)gid);
+    if (write_all(fd, ids, sizeof(ids)) != 0)
+      return;
+    (void)write_lenstr(fd, username);
+    return;
+  }
+
   // Write error string if present
   if (status == PROTO_STATUS_ERROR && error)
   {
@@ -836,12 +851,12 @@ static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_c
 
 static void send_error_response(int fd, uint8_t result_code, const char *error)
 {
-  send_response(fd, PROTO_STATUS_ERROR, 0, result_code, error);
+  send_response(fd, PROTO_STATUS_ERROR, 0, result_code, error, NULL, 0, 0);
 }
 
-static void send_ok_response(int fd, uint8_t mode)
+static void send_ok_response(int fd, uint8_t mode, const char *username, uid_t uid, gid_t gid)
 {
-  send_response(fd, PROTO_STATUS_OK, mode, PROTO_RESULT_OK, NULL);
+  send_response(fd, PROTO_STATUS_OK, mode, PROTO_RESULT_OK, NULL, username, uid, gid);
 }
 
 static uint8_t classify_pam_result(int rc)
@@ -1483,7 +1498,7 @@ static int handle_client(int input_fd, int output_fd)
 
   // Now we know bridge exec'd successfully - send OK response
   // Bridge inherits the connection via FD 3, server continues Yamux on same connection
-  send_ok_response(output_fd, mode);
+  send_ok_response(output_fd, mode, pw->pw_name, pw->pw_uid, pw->pw_gid);
 
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
   // The parent's copy will be closed when we exit, which is fine
