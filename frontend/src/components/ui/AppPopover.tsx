@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -158,96 +159,99 @@ const AppPopover: React.FC<AppPopoverProps> = ({
     setPosition({ top: nextTop, left: nextLeft });
   }, [anchorEl, anchorOrigin, anchorPosition, open, transformOrigin]);
 
+  const handleReposition = useEffectEvent(() => {
+    updatePosition();
+  });
+
+  const handleDismissPointer = useEffectEvent(
+    (event: MouseEvent | TouchEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (internalPaperRef.current?.contains(target)) {
+        return;
+      }
+
+      if (anchorEl?.contains(target)) {
+        return;
+      }
+
+      onClose?.();
+    },
+  );
+
+  const handleDismissContextMenu = useEffectEvent((event: MouseEvent) => {
+    const target = event.target;
+
+    if (!(target instanceof Node)) {
+      return;
+    }
+
+    if (internalPaperRef.current?.contains(target)) {
+      return;
+    }
+
+    if (anchorEl?.contains(target)) {
+      return;
+    }
+
+    if ((target as HTMLElement).closest?.("[data-allow-context-menu='true']")) {
+      return;
+    }
+
+    onClose?.();
+  });
+
+  const handleDismissKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      onClose?.();
+    }
+  });
+
   useLayoutEffect(() => {
     if (!open) {
       return undefined;
     }
 
-    updatePosition();
-    const rafId = window.requestAnimationFrame(updatePosition);
+    handleReposition();
+    const rafId = window.requestAnimationFrame(handleReposition);
     return () => window.cancelAnimationFrame(rafId);
-  }, [open, updatePosition]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
       return undefined;
     }
 
-    const handleWindowChange = () => updatePosition();
-    window.addEventListener("resize", handleWindowChange);
-    window.addEventListener("scroll", handleWindowChange, true);
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
 
     return () => {
-      window.removeEventListener("resize", handleWindowChange);
-      window.removeEventListener("scroll", handleWindowChange, true);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
     };
-  }, [open, updatePosition]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
       return undefined;
     }
 
-    const handlePointer = (event: MouseEvent | TouchEvent) => {
-      const target = event.target;
-
-      if (!(target instanceof Node)) {
-        return;
-      }
-
-      if (internalPaperRef.current?.contains(target)) {
-        return;
-      }
-
-      if (anchorEl?.contains(target)) {
-        return;
-      }
-
-      onClose?.();
-    };
-
-    const handleContextMenu = (event: MouseEvent) => {
-      const target = event.target;
-
-      if (!(target instanceof Node)) {
-        return;
-      }
-
-      if (internalPaperRef.current?.contains(target)) {
-        return;
-      }
-
-      if (anchorEl?.contains(target)) {
-        return;
-      }
-
-      if (
-        (target as HTMLElement).closest?.("[data-allow-context-menu='true']")
-      ) {
-        return;
-      }
-
-      onClose?.();
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose?.();
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("touchstart", handlePointer);
-    document.addEventListener("contextmenu", handleContextMenu);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleDismissPointer);
+    document.addEventListener("touchstart", handleDismissPointer);
+    document.addEventListener("contextmenu", handleDismissContextMenu);
+    document.addEventListener("keydown", handleDismissKeyDown);
 
     return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("touchstart", handlePointer);
-      document.removeEventListener("contextmenu", handleContextMenu);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleDismissPointer);
+      document.removeEventListener("touchstart", handleDismissPointer);
+      document.removeEventListener("contextmenu", handleDismissContextMenu);
+      document.removeEventListener("keydown", handleDismissKeyDown);
     };
-  }, [anchorEl, onClose, open]);
+  }, [open]);
 
   if (!open) {
     return null;

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 export function useDismissibleLayer<T extends HTMLElement>(
   open: boolean,
@@ -6,12 +6,8 @@ export function useDismissibleLayer<T extends HTMLElement>(
 ) {
   const layerRef = useRef<T>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+  const handlePointerDown = useEffectEvent(
+    (event: MouseEvent | TouchEvent) => {
       const target = event.target;
 
       if (!(target instanceof Node)) {
@@ -21,13 +17,19 @@ export function useDismissibleLayer<T extends HTMLElement>(
       if (!layerRef.current?.contains(target)) {
         onClose();
       }
-    };
+    },
+  );
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
+  const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      onClose();
+    }
+  });
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
 
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("touchstart", handlePointerDown);
@@ -38,7 +40,7 @@ export function useDismissibleLayer<T extends HTMLElement>(
       document.removeEventListener("touchstart", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return layerRef;
 }

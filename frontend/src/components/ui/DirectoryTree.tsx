@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useEffectEvent, useRef } from "react";
 
 import { linuxio } from "@/api";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -141,28 +141,31 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
   }, []);
 
   // Keyboard: press a letter to jump to the first visible folder starting with it
+  const handleTreeKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+
+    const letter = e.key.toLowerCase();
+    const el = containerRef.current;
+    if (!el) return;
+
+    const nodes = el.querySelectorAll<HTMLElement>("[data-tree-name]");
+    for (const node of nodes) {
+      if (node.dataset.treeName?.startsWith(letter)) {
+        const path = node.dataset.treePath;
+        if (path) onSelect(path);
+        node.scrollIntoView({ block: "nearest" });
+        break;
+      }
+    }
+  });
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
-
-      const letter = e.key.toLowerCase();
-      const nodes = el.querySelectorAll<HTMLElement>("[data-tree-name]");
-      for (const node of nodes) {
-        if (node.dataset.treeName?.startsWith(letter)) {
-          const path = node.dataset.treePath;
-          if (path) onSelect(path);
-          node.scrollIntoView({ block: "nearest" });
-          break;
-        }
-      }
-    };
-
-    el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [onSelect]);
+    el.addEventListener("keydown", handleTreeKeyDown);
+    return () => el.removeEventListener("keydown", handleTreeKeyDown);
+  }, []);
 
   return (
     <div ref={containerRef} className="directory-tree" role="tree" tabIndex={0}>

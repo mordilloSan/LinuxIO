@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import type { UnitListItem } from "./UnitViews";
 
@@ -61,22 +61,22 @@ function UnitListTab<T extends UnitListItem>({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [returnToTable, setReturnToTable] = useState(false);
 
+  const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    setExpanded(null);
+    if (returnToTable) {
+      setViewMode("table");
+      setReturnToTable(false);
+    }
+  });
+
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-
-      setExpanded(null);
-      if (returnToTable) {
-        setViewMode("table");
-        setReturnToTable(false);
-      }
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [returnToTable, setViewMode]);
+    window.addEventListener("keydown", handleEscapeKey);
+    return () => window.removeEventListener("keydown", handleEscapeKey);
+  }, []);
 
   const filtered = useMemo(() => {
     const searchText = search.trim().toLowerCase();

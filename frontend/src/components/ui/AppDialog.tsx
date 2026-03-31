@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import "./app-dialog.css";
@@ -81,34 +81,31 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   }, [open, slotProps]);
 
   // ESC key
-  const handleDocumentKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (
-        event.key !== "Escape" ||
-        disableEscapeKeyDown ||
-        event.defaultPrevented
-      ) {
-        return;
-      }
+  const handleDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.key !== "Escape" ||
+      disableEscapeKeyDown ||
+      event.defaultPrevented
+    ) {
+      return;
+    }
 
-      const root = rootRef.current;
-      if (!root) {
-        return;
-      }
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
 
-      const openDialogs = Array.from(
-        document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
-      );
-      if (openDialogs[openDialogs.length - 1] !== root) {
-        return;
-      }
+    const openDialogs = Array.from(
+      document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
+    );
+    if (openDialogs[openDialogs.length - 1] !== root) {
+      return;
+    }
 
-      event.preventDefault();
-      event.stopPropagation();
-      onClose?.(event, "escapeKeyDown");
-    },
-    [disableEscapeKeyDown, onClose],
-  );
+    event.preventDefault();
+    event.stopPropagation();
+    onClose?.(event, "escapeKeyDown");
+  });
 
   useEffect(() => {
     if (!open) {
@@ -119,7 +116,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
     return () => {
       document.removeEventListener("keydown", handleDocumentKeyDown);
     };
-  }, [handleDocumentKeyDown, open]);
+  }, [open]);
 
   // auto-focus
   useEffect(() => {

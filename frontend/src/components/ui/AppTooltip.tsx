@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import "./app-tooltip.css";
@@ -125,20 +125,21 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
     [],
   );
 
+  const handleReposition = useEffectEvent(() => {
+    updatePosition();
+  });
+
   useEffect(() => {
     if (!visible) return undefined;
 
-    const handleScroll = () => updatePosition();
-    const handleResize = () => updatePosition();
-
-    window.addEventListener("scroll", handleScroll, true);
-    window.addEventListener("resize", handleResize);
+    window.addEventListener("scroll", handleReposition, true);
+    window.addEventListener("resize", handleReposition);
 
     return () => {
-      window.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("scroll", handleReposition, true);
+      window.removeEventListener("resize", handleReposition);
     };
-  }, [updatePosition, visible]);
+  }, [visible]);
 
   if (!title) return <>{children}</>;
 
