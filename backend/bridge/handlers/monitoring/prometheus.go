@@ -26,6 +26,7 @@ const (
 const (
 	cpuUsageQuery    = `100 * (1 - avg(rate(node_cpu_seconds_total{job="node",mode="idle"}[1m])))`
 	memoryUsageQuery = `100 * (1 - avg(node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}))`
+	gpuUsageQuery    = `100 * (gpu_utilization_ratio{job="gpu-scraper"} or max by (card, pci_slot, vendor) (gpu_intel_engine_utilization_ratio{job="gpu-scraper"}))`
 )
 
 type rangeDefinition struct {
@@ -105,11 +106,7 @@ func GetMemorySeries(ctx context.Context, rangeKey string) SeriesResponse {
 }
 
 func GetGPUSeries(ctx context.Context, rangeKey string) SeriesResponse {
-	def, ok := lookupRange(rangeKey)
-	if !ok {
-		return unavailableSeries(rangeKey, 0, "unsupported monitoring range")
-	}
-	return unavailableSeries(def.Key, int(def.Step/time.Second), "historical GPU metrics are not configured in the monitoring stack")
+	return fetchSeries(ctx, rangeKey, gpuUsageQuery)
 }
 
 func fetchSeries(ctx context.Context, rangeKey, query string) SeriesResponse {

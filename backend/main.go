@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +17,10 @@ import (
 )
 
 const (
-	monitoringUnitName    = "linuxio-monitoring.service"
-	monitoringComposePath = "/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"
+	monitoringUnitName             = "linuxio-monitoring.service"
+	monitoringProjectName          = "linuxio-monitoring"
+	monitoringComposePath          = "/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"
+	monitoringGeneratedComposePath = "/run/linuxio-monitoring/docker-compose.generated.yml"
 )
 
 var execCommand = exec.Command
@@ -399,6 +402,12 @@ func showMonitoringStatus() {
 	default:
 		fmt.Printf("  Compose:     error: %v\n", err)
 	}
+	switch _, err := os.Stat(monitoringGeneratedComposePath); {
+	case err == nil:
+		fmt.Printf("  Override:    %s\n", monitoringGeneratedComposePath)
+	case os.IsPermission(err):
+		fmt.Printf("  Override:    %s (restricted)\n", monitoringGeneratedComposePath)
+	}
 
 	showMonitoringContainers()
 }
@@ -409,11 +418,19 @@ type composeContainer struct {
 	Health string `json:"Health"`
 }
 
+type dockerPSContainer struct {
+	Names  string `json:"Names"`
+	State  string `json:"State"`
+	Status string `json:"Status"`
+}
+
 func showMonitoringContainers() {
-	out, err := execCommand("docker", "compose",
-		"--project-name", "linuxio-monitoring",
-		"--file", monitoringComposePath,
-		"ps", "--format", "json", "--all",
+	out, err := execCommand(
+		"docker",
+		"ps",
+		"--all",
+		"--filter", "label=com.docker.compose.project="+monitoringProjectName,
+		"--format", "{{json .}}",
 	).CombinedOutput()
 	if err != nil {
 		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
@@ -421,7 +438,7 @@ func showMonitoringContainers() {
 	}
 
 	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" || trimmed == "[]" {
+	if trimmed == "" {
 		fmt.Printf("\n  Containers:  none running\n")
 		return
 	}
@@ -432,17 +449,25 @@ func showMonitoringContainers() {
 		if line == "" {
 			continue
 		}
-		var c composeContainer
+		var c dockerPSContainer
 		if err := json.Unmarshal([]byte(line), &c); err != nil {
 			continue
 		}
-		containers = append(containers, c)
+		containers = append(containers, composeContainer{
+			Name:   c.Names,
+			State:  monitoringContainerState(c.State, c.Status),
+			Health: monitoringContainerHealth(c.Status),
+		})
 	}
 
 	if len(containers) == 0 {
 		fmt.Printf("\n  Containers:  none running\n")
 		return
 	}
+
+	sort.Slice(containers, func(i, j int) bool {
+		return containers[i].Name < containers[j].Name
+	})
 
 	fmt.Printf("\n    \033[4m%-28s  %-12s  %s\033[0m\n", "CONTAINER", "STATE", "HEALTH")
 	for _, c := range containers {
@@ -461,6 +486,67 @@ func showMonitoringContainers() {
 		}
 		fmt.Printf("  %s %-28s  %-12s  %s\n", dot, c.Name, c.State, health)
 	}
+}
+
+func monitoringContainerState(state, status string) string {
+	state = strings.TrimSpace(strings.ToLower(state))
+	if state != "" {
+		return state
+	}
+
+	status = strings.TrimSpace(strings.ToLower(status))
+	switch {
+	case strings.HasPrefix(status, "up "):
+		return "running"
+	case strings.HasPrefix(status, "exited"):
+		return "exited"
+	case strings.HasPrefix(status, "created"):
+		return "created"
+	case strings.HasPrefix(status, "restarting"):
+		return "restarting"
+	case strings.HasPrefix(status, "removing"):
+		return "removing"
+	case strings.HasPrefix(status, "paused"):
+		return "paused"
+	case strings.HasPrefix(status, "dead"):
+		return "dead"
+	default:
+		return "-"
+	}
+}
+
+func monitoringContainerHealth(status string) string {
+	status = strings.TrimSpace(strings.ToLower(status))
+	start := strings.LastIndex(status, "(")
+	end := strings.LastIndex(status, ")")
+	if start == -1 || end <= start {
+		return "-"
+	}
+
+	health := strings.TrimSpace(status[start+1 : end])
+	health = strings.TrimPrefix(health, "health: ")
+	switch health {
+	case "healthy", "unhealthy", "starting":
+		return health
+	default:
+		return "-"
+	}
+}
+
+func monitoringComposeArgs() []string {
+	args := []string{"compose", "--project-name", monitoringProjectName}
+	for _, composeFile := range monitoringComposeFiles() {
+		args = append(args, "--file", composeFile)
+	}
+	return args
+}
+
+func monitoringComposeFiles() []string {
+	files := []string{monitoringComposePath}
+	if _, err := os.Stat(monitoringGeneratedComposePath); err == nil {
+		files = append(files, monitoringGeneratedComposePath)
+	}
+	return files
 }
 
 func systemctlState(args ...string) string {

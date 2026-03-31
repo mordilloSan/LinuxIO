@@ -16,3 +16,9 @@ scrape_configs:
     static_configs:
       - targets:
           - node-exporter:9100
+
+  - job_name: gpu-scraper
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - gpu-scraper:10043
