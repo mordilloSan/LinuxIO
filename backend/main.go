@@ -17,6 +17,10 @@ import (
 )
 
 const (
+	linuxioTargetName              = "linuxio.target"
+	linuxioWebserverServiceName    = "linuxio-webserver.service"
+	linuxioAuthSocketName          = "linuxio-auth.socket"
+	linuxioBridgeSocketUserService = "linuxio-bridge-socket-user.service"
 	monitoringUnitName             = "linuxio-monitoring.service"
 	monitoringProjectName          = "linuxio-monitoring"
 	monitoringComposePath          = "/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"
@@ -40,11 +44,11 @@ func main() {
 	case "logs":
 		runLogs(args)
 	case "start":
-		runSystemctl("start", "linuxio.target")
+		runSystemctl("start", linuxioTargetName)
 	case "stop":
-		runSystemctl("stop", "linuxio.target")
+		runSystemctl("stop", linuxioTargetName)
 	case "restart":
-		runSystemctl("restart", "linuxio.target")
+		runRestart(args)
 	case "monitoring":
 		runMonitoring(args)
 	case "verbose":
@@ -70,7 +74,7 @@ Commands:
   logs        Tail logs [webserver|bridge|auth|monitoring] [lines] (default: all, 100)
   start       Start LinuxIO services
   stop        Stop LinuxIO services
-  restart     Restart LinuxIO services
+  restart     Restart LinuxIO control plane [--full]
   monitoring  Manage monitoring stack [start|stop|restart|enable|disable|status]
   verbose     Manage verbose logging [enable|disable|status]
   version     Show version information
@@ -78,6 +82,8 @@ Commands:
 
 Examples:
   linuxio status
+  linuxio restart
+  linuxio restart --full
   linuxio monitoring status
   linuxio logs monitoring 200`)
 }
@@ -340,17 +346,29 @@ func journalPriorityLevel(entry journalEntry) string {
 }
 
 func runSystemctl(action, target string) {
-	cmd := execCommand("systemctl", action, target)
+	runSystemctlTargets(action, []string{target}, target)
+}
+
+func runSystemctlTargets(action string, targets []string, successLabel string) {
+	if len(targets) == 0 {
+		fmt.Fprintf(os.Stderr, "No targets provided for systemctl %s\n", action)
+		os.Exit(1)
+	}
+
+	cmd := execCommand("systemctl", append([]string{action}, targets...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to %s %s: %v\n", action, target, err)
+		fmt.Fprintf(os.Stderr, "Failed to %s %s: %v\n", action, strings.Join(targets, " "), err)
 		fmt.Fprintln(os.Stderr, "This command requires sudo")
 		os.Exit(1)
 	}
 
-	fmt.Printf("Successfully %s %s\n", pastTense(action), target)
+	if successLabel == "" {
+		successLabel = strings.Join(targets, " ")
+	}
+	fmt.Printf("Successfully %s %s\n", pastTense(action), successLabel)
 }
 
 func pastTense(action string) string {
@@ -368,6 +386,36 @@ func pastTense(action string) string {
 	default:
 		return action + "ed"
 	}
+}
+
+func runRestart(args []string) {
+	targets, successLabel, err := restartTargets(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintln(os.Stderr, "Usage: linuxio restart [--full]")
+		os.Exit(1)
+	}
+
+	runSystemctlTargets("restart", targets, successLabel)
+}
+
+func restartTargets(args []string) ([]string, string, error) {
+	if len(args) == 0 {
+		return []string{
+			linuxioBridgeSocketUserService,
+			linuxioAuthSocketName,
+			linuxioWebserverServiceName,
+		}, "LinuxIO control plane", nil
+	}
+
+	if len(args) == 1 {
+		switch args[0] {
+		case "--full", "full":
+			return []string{linuxioTargetName}, linuxioTargetName, nil
+		}
+	}
+
+	return nil, "", fmt.Errorf("unknown restart option: %s", strings.Join(args, " "))
 }
 
 func runMonitoring(args []string) {

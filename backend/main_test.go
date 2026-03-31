@@ -2,6 +2,55 @@ package main
 
 import "testing"
 
+func TestRestartTargetsDefaultsToControlPlane(t *testing.T) {
+	t.Parallel()
+
+	targets, label, err := restartTargets(nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	wantTargets := []string{
+		linuxioBridgeSocketUserService,
+		linuxioAuthSocketName,
+		linuxioWebserverServiceName,
+	}
+	if len(targets) != len(wantTargets) {
+		t.Fatalf("expected %d targets, got %d", len(wantTargets), len(targets))
+	}
+	for i, want := range wantTargets {
+		if targets[i] != want {
+			t.Fatalf("expected target %d to be %q, got %q", i, want, targets[i])
+		}
+	}
+	if label != "LinuxIO control plane" {
+		t.Fatalf("expected control plane label, got %q", label)
+	}
+}
+
+func TestRestartTargetsSupportsFullRestart(t *testing.T) {
+	t.Parallel()
+
+	targets, label, err := restartTargets([]string{"--full"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(targets) != 1 || targets[0] != linuxioTargetName {
+		t.Fatalf("expected full restart target %q, got %v", linuxioTargetName, targets)
+	}
+	if label != linuxioTargetName {
+		t.Fatalf("expected full restart label %q, got %q", linuxioTargetName, label)
+	}
+}
+
+func TestRestartTargetsRejectsUnknownOption(t *testing.T) {
+	t.Parallel()
+
+	if _, _, err := restartTargets([]string{"--monitoring"}); err == nil {
+		t.Fatal("expected an error for an unknown restart option")
+	}
+}
+
 func TestMonitoringContainerStateUsesExplicitState(t *testing.T) {
 	t.Parallel()
 
