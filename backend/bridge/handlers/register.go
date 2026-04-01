@@ -30,7 +30,7 @@ func GetStreamHandler(streamType string) (func(*session.Session, net.Conn, []str
 	return h, ok
 }
 
-func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
+func RegisterAllHandlers(sess *session.Session) {
 	// Register the universal bridge stream handler
 	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
 	streamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
@@ -42,9 +42,9 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	monitoring.RegisterHandlers()
 	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
-	filebrowser.RegisterHandlers(sess)
+	filebrowser.RegisterHandlers()
 	config.RegisterHandlers(sess)
-	control.RegisterHandlers(shutdownChan)
+	control.RegisterHandlers()
 	dbus.RegisterHandlers()
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()

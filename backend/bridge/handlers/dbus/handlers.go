@@ -20,7 +20,6 @@ func RegisterHandlers() {
 	registerDBusHandlers([]dbusRegistration{
 		{command: "reboot", handler: dbusNoArgActionHandler("reboot requested", func() error { return CallLogin1Action("Reboot") })},
 		{command: "power_off", handler: dbusNoArgActionHandler("power_off requested", func() error { return CallLogin1Action("PowerOff") })},
-		{command: "get_updates", handler: dbusNoArgResultHandler(GetUpdatesWithDetails)},
 		{command: "get_updates_basic", handler: dbusNoArgResultHandler(GetUpdatesBasic)},
 		{command: "get_update_detail", handler: dbusOneArgResultHandler(GetSingleUpdateDetail)},
 		{command: "install_package", handler: installPackageHandler()},

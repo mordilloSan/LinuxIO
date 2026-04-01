@@ -138,7 +138,7 @@ func main() {
 	docker.EnsureLinuxIONetwork()
 
 	ShutdownChan := make(chan string, 1)
-	handlers.RegisterAllHandlers(ShutdownChan, sess)
+	handlers.RegisterAllHandlers(sess)
 
 	// Handle Ctrl-C / kill properly → request shutdown once
 	sigc := make(chan os.Signal, 2)
@@ -163,9 +163,7 @@ func main() {
 
 	// Handle the single client connection (no accept loop needed)
 	connDone := make(chan struct{})
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		handleMainRequest(clientConn, closeClientConn)
 		// Connection closed - trigger shutdown
 		select {
@@ -173,7 +171,7 @@ func main() {
 		default: // already shutting down
 		}
 		close(connDone)
-	}()
+	})
 
 	cleanupDone := make(chan struct{}, 1)
 	go func() {

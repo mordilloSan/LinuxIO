@@ -57,14 +57,6 @@ type VersionInfo struct {
 	Error           string `json:"error,omitempty"`
 }
 
-type UpdateResult struct {
-	Success        bool   `json:"success"`
-	Message        string `json:"message"`
-	CurrentVersion string `json:"current_version"`
-	NewVersion     string `json:"new_version,omitempty"`
-	Error          string `json:"error,omitempty"`
-}
-
 func getVersionInfo() (VersionInfo, error) {
 	currentVersion := getInstalledVersion()
 	info := VersionInfo{
@@ -89,63 +81,6 @@ func getVersionInfo() (VersionInfo, error) {
 		}
 	}
 	return info, nil
-}
-
-func performUpdate(targetVersion string) (UpdateResult, error) {
-	currentVersion := getInstalledVersion()
-
-	if targetVersion == "" {
-		logger.Debugf("fetching latest version")
-		latest, err := fetchLatestVersion()
-		if err != nil {
-			return UpdateResult{
-				Success:        false,
-				CurrentVersion: currentVersion,
-				Error:          fmt.Sprintf("failed to fetch latest version: %v", err),
-			}, nil
-		}
-		targetVersion = latest
-	}
-
-	if currentVersion == targetVersion {
-		return UpdateResult{
-			Success:        true,
-			CurrentVersion: currentVersion,
-			Message:        fmt.Sprintf("already on version %s", targetVersion),
-		}, nil
-	}
-
-	logger.Infof("starting update: %s -> %s", currentVersion, targetVersion)
-
-	logger.Infof("running installation script for version %s", targetVersion)
-	if err := runInstallScript(targetVersion, nil); err != nil {
-		return UpdateResult{
-			Success:        false,
-			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("installation script failed: %v", err),
-		}, nil
-	}
-
-	logger.Debugf("reloading systemd daemon")
-	if err := systemdapi.DaemonReload(); err != nil {
-		logger.Warnf("daemon-reload failed: %v (continuing anyway)", err)
-	}
-
-	logger.Infof("restarting service with new version %s", targetVersion)
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		if err := restartService(); err != nil {
-			logger.Errorf("failed to restart service: %v", err)
-		}
-	}()
-
-	logger.Infof("binaries updated, service restart initiated")
-	return UpdateResult{
-		Success:        true,
-		CurrentVersion: currentVersion,
-		NewVersion:     targetVersion,
-		Message:        fmt.Sprintf("successfully updated from %s to %s - service restarting", currentVersion, targetVersion),
-	}, nil
 }
 
 // runInstallScript downloads the installer and runs it in a transient unit

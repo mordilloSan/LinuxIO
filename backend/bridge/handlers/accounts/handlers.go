@@ -18,7 +18,6 @@ type accountRegistration struct {
 func RegisterHandlers() {
 	registerAccountHandlers([]accountRegistration{
 		{command: "list_users", handler: handleListUsers},
-		{command: "get_user", handler: handleGetUser},
 		{command: "create_user", handler: handleCreateUser},
 		{command: "delete_user", handler: handleDeleteUser},
 		{command: "modify_user", handler: handleModifyUser},
@@ -26,7 +25,6 @@ func RegisterHandlers() {
 		{command: "lock_user", handler: handleLockUser},
 		{command: "unlock_user", handler: handleUnlockUser},
 		{command: "list_groups", handler: handleListGroups},
-		{command: "get_group", handler: handleGetGroup},
 		{command: "create_group", handler: handleCreateGroup},
 		{command: "delete_group", handler: handleDeleteGroup},
 		{command: "modify_group_members", handler: handleModifyGroupMembers},
@@ -42,13 +40,6 @@ func registerAccountHandlers(registrations []accountRegistration) {
 
 func handleListUsers(ctx context.Context, args []string, emit ipc.Events) error {
 	return emitAccountCall(emit, ListUsers)
-}
-
-func handleGetUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
-		return err
-	}
-	return emitAccountArgCall(emit, args[0], GetUser)
 }
 
 func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error {
@@ -121,13 +112,6 @@ func handleUnlockUser(ctx context.Context, args []string, emit ipc.Events) error
 
 func handleListGroups(ctx context.Context, args []string, emit ipc.Events) error {
 	return emitAccountCall(emit, ListGroups)
-}
-
-func handleGetGroup(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
-		return err
-	}
-	return emitAccountArgCall(emit, args[0], GetGroup)
 }
 
 func handleCreateGroup(ctx context.Context, args []string, emit ipc.Events) error {
