@@ -15,7 +15,7 @@ scrape_configs:
     scrape_interval: 5s
     static_configs:
       - targets:
-          - node-exporter:9100
+          - host.docker.internal:9100
 
   - job_name: gpu-scraper
     scrape_interval: 5s

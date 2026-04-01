@@ -70,6 +70,7 @@ services:
     restart: unless-stopped
     mem_limit: 64m
     pid: host
+    network_mode: host
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -81,8 +82,6 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
-    networks:
-      - linuxio-docker
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9100/metrics"]
       interval: 30s

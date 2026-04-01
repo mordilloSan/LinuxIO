@@ -12,6 +12,15 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 
+const formatLoadAverage = (loadAverage?: {
+  load1: number;
+  load5: number;
+  load15: number;
+}): string =>
+  loadAverage
+    ? `${loadAverage.load1.toFixed(2)} / ${loadAverage.load5.toFixed(2)} / ${loadAverage.load15.toFixed(2)}`
+    : "N/A";
+
 const Processor: React.FC = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
@@ -31,6 +40,7 @@ const Processor: React.FC = () => {
     ? CPUInfo.perCoreUsage.reduce((sum, cpu) => sum + cpu, 0) /
       CPUInfo.perCoreUsage.length
     : 0;
+  const peakCpuUsage = Math.max(...(CPUInfo?.perCoreUsage || [0]));
 
   const temperatures = CPUInfo?.temperature ?? {};
   const temperatureKeys = Object.keys(temperatures);
@@ -85,12 +95,16 @@ const Processor: React.FC = () => {
         {[
           { label: "CPU", value: CPUInfo?.modelName },
           {
-            label: "Cores",
-            value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined,
+            label: "Usage",
+            value: `${averageCpuUsage.toFixed(0)}% avg / ${peakCpuUsage.toFixed(0)}% peak`,
           },
           {
-            label: "Max Usage",
-            value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%`,
+            label: "Load",
+            value: formatLoadAverage(CPUInfo?.loadAverage),
+          },
+          {
+            label: "Cores",
+            value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined,
           },
         ].map(({ label, value }, index, rows) => (
           <div

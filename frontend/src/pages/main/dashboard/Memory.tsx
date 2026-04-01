@@ -25,6 +25,14 @@ const MemoryUsage = () => {
         calculatePercentage(memoryData.system.active, memoryData.system.total),
       )
     : 0;
+  const swapUsed = Math.max(
+    (memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0),
+    0,
+  );
+  const swapUsagePercentage =
+    (memoryData?.system?.swapTotal ?? 0) > 0
+      ? calculatePercentage(swapUsed, memoryData?.system?.swapTotal ?? 0)
+      : "0.00";
 
   const data = {
     title: "Memory Usage",
@@ -56,20 +64,20 @@ const MemoryUsage = () => {
       >
         {[
           {
-            label: "Total",
-            value: formatFileSize(memoryData?.system?.total ?? 0, 2),
+            label: "Usage",
+            value: `${formatFileSize(memoryData?.system?.active ?? 0, 2)} / ${formatFileSize(memoryData?.system?.total ?? 0, 2)} (${ramUsagePercentage.toFixed(0)}%)`,
           },
           {
-            label: "Used",
-            value: formatFileSize(memoryData?.system?.active ?? 0, 2),
+            label: "Swap",
+            value: `${formatFileSize(swapUsed, 2)} / ${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)} (${Number(swapUsagePercentage).toFixed(0)}%)`,
           },
           {
             label: "Docker",
             value: formatFileSize(memoryData?.docker?.used ?? 0, 2),
           },
           {
-            label: "Swap",
-            value: `${formatFileSize((memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0), 2)}/${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
+            label: "ZFS ARC",
+            value: formatFileSize(memoryData?.zfs?.arc ?? 0, 2),
           },
         ].map(({ label, value }, index, rows) => (
           <div

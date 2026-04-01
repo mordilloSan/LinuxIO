@@ -195,6 +195,23 @@ export interface InterfaceStats {
   speed: string;
 }
 
+export interface DiskThroughputDevice {
+  name: string;
+  readBytesPerSec: number;
+  writeBytesPerSec: number;
+  readOpsPerSec: number;
+  writeOpsPerSec: number;
+}
+
+export interface DiskThroughputResponse {
+  readBytesPerSec: number;
+  writeBytesPerSec: number;
+  readOpsPerSec: number;
+  writeOpsPerSec: number;
+  intervalSeconds: number;
+  devices: DiskThroughputDevice[];
+}
+
 /** Full network interface info (from dbus GetNetworkInfo) */
 export interface NetworkInterface {
   name: string;
@@ -233,6 +250,15 @@ export interface MonitoringSeriesResponse {
   range: MonitoringRange | string;
   stepSeconds: number;
   points: MonitoringSeriesPoint[];
+  reason?: string;
+}
+
+export interface NetworkMonitoringSeriesResponse {
+  available: boolean;
+  range: MonitoringRange | string;
+  stepSeconds: number;
+  rxPoints: MonitoringSeriesPoint[];
+  txPoints: MonitoringSeriesPoint[];
   reason?: string;
 }
 
@@ -741,6 +767,7 @@ export interface LinuxIOSchema {
     get_gpu_info: { args: []; result: GpuDevice[] };
     get_updates_fast: { args: []; result: Update[] };
     get_network_info: { args: []; result: InterfaceStats[] };
+    get_disk_throughput: { args: []; result: DiskThroughputResponse };
     get_system_info: { args: []; result: SystemInfo };
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
@@ -758,6 +785,10 @@ export interface LinuxIOSchema {
     get_gpu_series: {
       args: [range: MonitoringRange];
       result: MonitoringSeriesResponse;
+    };
+    get_network_series: {
+      args: [range: MonitoringRange, iface: string];
+      result: NetworkMonitoringSeriesResponse;
     };
   };
 

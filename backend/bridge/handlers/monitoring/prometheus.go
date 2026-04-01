@@ -24,9 +24,13 @@ const (
 )
 
 const (
-	cpuUsageQuery    = `100 * (1 - avg(rate(node_cpu_seconds_total{job="node",mode="idle"}[1m])))`
-	memoryUsageQuery = `100 * (1 - avg(node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}))`
-	gpuUsageQuery    = `100 * (gpu_utilization_ratio{job="gpu-scraper"} or max by (card, pci_slot, vendor) (gpu_intel_engine_utilization_ratio{job="gpu-scraper"}))`
+	cpuUsageQuery          = `100 * (1 - avg(rate(node_cpu_seconds_total{job="node",mode="idle"}[1m])))`
+	memoryUsageQuery       = `100 * (1 - avg(node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}))`
+	gpuUsageQuery          = `100 * (gpu_utilization_ratio{job="gpu-scraper"} or max by (card, pci_slot, vendor) (gpu_intel_engine_utilization_ratio{job="gpu-scraper"}))`
+	networkReceiveMetric   = "node_network_receive_bytes_total"
+	networkTransmitMetric  = "node_network_transmit_bytes_total"
+	networkRateWindow      = "15s"
+	networkRateUnitDivisor = 1024
 )
 
 type rangeDefinition struct {
@@ -45,6 +49,15 @@ type SeriesResponse struct {
 	Range       string        `json:"range"`
 	StepSeconds int           `json:"stepSeconds"`
 	Points      []SeriesPoint `json:"points"`
+	Reason      string        `json:"reason,omitempty"`
+}
+
+type NetworkSeriesResponse struct {
+	Available   bool          `json:"available"`
+	Range       string        `json:"range"`
+	StepSeconds int           `json:"stepSeconds"`
+	RXPoints    []SeriesPoint `json:"rxPoints"`
+	TXPoints    []SeriesPoint `json:"txPoints"`
 	Reason      string        `json:"reason,omitempty"`
 }
 
@@ -109,6 +122,61 @@ func GetGPUSeries(ctx context.Context, rangeKey string) SeriesResponse {
 	return fetchSeries(ctx, rangeKey, gpuUsageQuery)
 }
 
+func GetNetworkSeries(ctx context.Context, rangeKey, device string) NetworkSeriesResponse {
+	def, ok := lookupRange(rangeKey)
+	if !ok {
+		return unavailableNetworkSeries(rangeKey, 0, "unsupported monitoring range")
+	}
+	if device == "" {
+		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), "network interface is required")
+	}
+
+	baseURL, err := resolvePrometheusBaseURL(ctx)
+	if err != nil {
+		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
+	}
+
+	rxResponse, err := queryPrometheusRange(
+		ctx,
+		baseURL,
+		def,
+		buildNetworkRateQuery(networkReceiveMetric, device),
+	)
+	if err != nil {
+		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
+	}
+
+	txResponse, err := queryPrometheusRange(
+		ctx,
+		baseURL,
+		def,
+		buildNetworkRateQuery(networkTransmitMetric, device),
+	)
+	if err != nil {
+		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
+	}
+
+	rxPoints, txPoints := alignSeriesPoints(
+		normalizePrometheusPoints(rxResponse.Data.Result),
+		normalizePrometheusPoints(txResponse.Data.Result),
+	)
+	if len(rxPoints) == 0 && len(txPoints) == 0 {
+		return unavailableNetworkSeries(
+			def.Key,
+			int(def.Step/time.Second),
+			"waiting for Prometheus network samples for this interface",
+		)
+	}
+
+	return NetworkSeriesResponse{
+		Available:   true,
+		Range:       def.Key,
+		StepSeconds: int(def.Step / time.Second),
+		RXPoints:    rxPoints,
+		TXPoints:    txPoints,
+	}
+}
+
 func fetchSeries(ctx context.Context, rangeKey, query string) SeriesResponse {
 	def, ok := lookupRange(rangeKey)
 	if !ok {
@@ -157,6 +225,30 @@ func unavailableSeries(rangeKey string, stepSeconds int, reason string) SeriesRe
 		Points:      []SeriesPoint{},
 		Reason:      reason,
 	}
+}
+
+func unavailableNetworkSeries(rangeKey string, stepSeconds int, reason string) NetworkSeriesResponse {
+	if rangeKey == "" {
+		rangeKey = defaultRangeKey
+	}
+	return NetworkSeriesResponse{
+		Available:   false,
+		Range:       rangeKey,
+		StepSeconds: stepSeconds,
+		RXPoints:    []SeriesPoint{},
+		TXPoints:    []SeriesPoint{},
+		Reason:      reason,
+	}
+}
+
+func buildNetworkRateQuery(metric, device string) string {
+	return fmt.Sprintf(
+		`clamp_min(rate(%s{job="node",device=%q}[%s]), 0) / %d`,
+		metric,
+		device,
+		networkRateWindow,
+		networkRateUnitDivisor,
+	)
 }
 
 func queryPrometheusRange(
@@ -254,6 +346,55 @@ func normalizePrometheusPoints(items []prometheusMatrixItem) []SeriesPoint {
 	}
 
 	return points
+}
+
+func alignSeriesPoints(rxPoints, txPoints []SeriesPoint) ([]SeriesPoint, []SeriesPoint) {
+	if len(rxPoints) == 0 && len(txPoints) == 0 {
+		return nil, nil
+	}
+
+	rxByTS := make(map[int64]float64, len(rxPoints))
+	for _, point := range rxPoints {
+		rxByTS[point.TS] = point.Value
+	}
+
+	txByTS := make(map[int64]float64, len(txPoints))
+	for _, point := range txPoints {
+		txByTS[point.TS] = point.Value
+	}
+
+	timestamps := make([]int64, 0, len(rxByTS)+len(txByTS))
+	seen := make(map[int64]struct{}, len(rxByTS)+len(txByTS))
+	for ts := range rxByTS {
+		if _, ok := seen[ts]; ok {
+			continue
+		}
+		seen[ts] = struct{}{}
+		timestamps = append(timestamps, ts)
+	}
+	for ts := range txByTS {
+		if _, ok := seen[ts]; ok {
+			continue
+		}
+		seen[ts] = struct{}{}
+		timestamps = append(timestamps, ts)
+	}
+	slices.Sort(timestamps)
+
+	alignedRX := make([]SeriesPoint, 0, len(timestamps))
+	alignedTX := make([]SeriesPoint, 0, len(timestamps))
+	for _, ts := range timestamps {
+		alignedRX = append(alignedRX, SeriesPoint{
+			TS:    ts,
+			Value: rxByTS[ts],
+		})
+		alignedTX = append(alignedTX, SeriesPoint{
+			TS:    ts,
+			Value: txByTS[ts],
+		})
+	}
+
+	return alignedRX, alignedTX
 }
 
 func detectPrometheusBaseURL(ctx context.Context) (string, error) {
