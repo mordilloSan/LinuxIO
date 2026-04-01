@@ -20,17 +20,24 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// JsonHandlers are functions that return JSON-serializable data.
-var JsonHandlers = map[string]map[string]func([]string) (any, error){}
+// jsonHandlers are functions that return JSON-serializable data.
+// Populated during RegisterAllHandlers; read-only after that.
+var jsonHandlers = map[string]map[string]func([]string) (any, error){}
 
-// StreamHandlers is the registry for yamux stream handlers.
-// Used for the bridge protocol and other streamed handlers.
-var StreamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
+// streamHandlers is the registry for yamux stream handlers.
+// Populated during RegisterAllHandlers; read-only after that.
+var streamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
+
+// GetStreamHandler returns the handler for the given stream type.
+func GetStreamHandler(streamType string) (func(*session.Session, net.Conn, []string) error, bool) {
+	h, ok := streamHandlers[streamType]
+	return h, ok
+}
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	// Register the universal bridge stream handler
 	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
-	StreamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
+	streamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
 		return generic.HandleBridgeStream(s, conn, args)
 	}
 
@@ -49,10 +56,10 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	shares.RegisterHandlers()
 
 	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
-	generic.RegisterStreamHandlers(StreamHandlers, JsonHandlers)
-	terminal.RegisterStreamHandlers(StreamHandlers)
-	filebrowser.RegisterStreamHandlers(StreamHandlers)
-	dbus.RegisterStreamHandlers(StreamHandlers)
-	docker.RegisterStreamHandlers(StreamHandlers)
-	logs.RegisterStreamHandlers(StreamHandlers)
+	generic.RegisterStreamHandlers(streamHandlers, jsonHandlers)
+	terminal.RegisterStreamHandlers(streamHandlers)
+	filebrowser.RegisterStreamHandlers(streamHandlers)
+	dbus.RegisterStreamHandlers(streamHandlers)
+	docker.RegisterStreamHandlers(streamHandlers)
+	logs.RegisterStreamHandlers(streamHandlers)
 }

@@ -1,15 +1,14 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
-	"strings"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,13 +29,18 @@ import (
 func readBootstrap() *ipc.Bootstrap {
 	b, err := ipc.ReadBootstrap(os.Stdin)
 	if err != nil {
-		// Write to stderr because logger is not yet iniated(systemd captures to journal)
+		// Write to stderr because logger is not yet initiated (systemd captures to journal)
 		fmt.Fprintf(os.Stderr, "bridge bootstrap error: failed to read: %v\n", err)
 		os.Exit(1)
 	}
 
 	if b.SessionID == "" {
-		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required session_id)\n")
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required session_id\n")
+		os.Exit(1)
+	}
+
+	if b.Username == "" {
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required username\n")
 		os.Exit(1)
 	}
 
@@ -45,13 +49,16 @@ func readBootstrap() *ipc.Bootstrap {
 
 // Bootstrap config and session - initialized in main() after CLI checks
 var bootCfg *ipc.Bootstrap
-var Sess *session.Session
+var sess *session.Session
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
 var bridgeClosing = make(chan struct{})
 
 // Track in-flight requests to allow bounded wait on shutdown.
 var wg sync.WaitGroup
+
+// Atomic counter for stream IDs (used for log tracing).
+var streamCounter atomic.Uint64
 
 func main() {
 	// Handle CLI arguments first
@@ -69,14 +76,15 @@ func main() {
 	}
 
 	// If stdin is a terminal, user ran this directly - show version and exit
-	if fileInfo, _ := os.Stdin.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
+	fileInfo, err := os.Stdin.Stat()
+	if err != nil || (fileInfo.Mode()&os.ModeCharDevice) != 0 {
 		fmt.Println("(to be spawned by auth daemon, not for direct use)")
 		return
 	}
 
 	// Read bootstrap from stdin (auth daemon pipes this)
 	bootCfg = readBootstrap()
-	Sess = &session.Session{
+	sess = &session.Session{
 		SessionID:  bootCfg.SessionID,
 		Privileged: bootCfg.Privileged,
 		User: session.User{
@@ -102,7 +110,7 @@ func main() {
 	})
 
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
-		os.Geteuid(), Sess.User.UID, Sess.User.GID)
+		os.Geteuid(), sess.User.UID, sess.User.GID)
 
 	syscall.Umask(0o077)
 	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())
@@ -123,14 +131,14 @@ func main() {
 	logger.Infof("[bridge] connected via inherited FD %d", clientConnFD)
 
 	// Ensure per-user config exists and is valid
-	config.EnsureConfigReady(Sess.User.Username)
+	config.EnsureConfigReady(sess.User.Username)
 	logger.Debugf("[bridge] config ready")
 
 	// Ensure the shared linuxio-docker network exists (fails silently if Docker unavailable)
 	docker.EnsureLinuxIONetwork()
 
 	ShutdownChan := make(chan string, 1)
-	handlers.RegisterAllHandlers(ShutdownChan, Sess)
+	handlers.RegisterAllHandlers(ShutdownChan, sess)
 
 	// Handle Ctrl-C / kill properly → request shutdown once
 	sigc := make(chan os.Signal, 2)
@@ -143,10 +151,22 @@ func main() {
 		}
 	}()
 
+	// Guard clientConn.Close() so it is safe to call from multiple goroutines.
+	var closeOnce sync.Once
+	closeClientConn := func() {
+		closeOnce.Do(func() {
+			if err := clientConn.Close(); err != nil {
+				logger.DebugKV("client conn close", "error", err)
+			}
+		})
+	}
+
 	// Handle the single client connection (no accept loop needed)
 	connDone := make(chan struct{})
+	wg.Add(1)
 	go func() {
-		handleMainRequest(clientConn)
+		defer wg.Done()
+		handleMainRequest(clientConn, closeClientConn)
 		// Connection closed - trigger shutdown
 		select {
 		case ShutdownChan <- "client disconnected":
@@ -166,9 +186,7 @@ func main() {
 		close(bridgeClosing)
 
 		// Close the client connection to unblock any reads
-		if err := clientConn.Close(); err != nil {
-			logger.DebugKV("client conn close", "error", err)
-		}
+		closeClientConn()
 
 		// Bounded wait for in-flight requests; do not block forever
 		waitCh := make(chan struct{})
@@ -185,7 +203,7 @@ func main() {
 		}
 
 		logger.Debugf("Shutdown initiated: %s (user=%s, session=%s)",
-			reason, Sess.User.Username, Sess.SessionID)
+			reason, sess.User.Username, sess.SessionID)
 
 		cleanupDone <- struct{}{}
 	}()
@@ -200,19 +218,8 @@ func printBridgeVersion() {
 }
 
 // handleMainRequest sets up a yamux session for the client connection.
-func handleMainRequest(conn net.Conn) {
-	wg.Add(1)
-	defer wg.Done()
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			if strings.Contains(cerr.Error(), "use of closed") {
-				logger.DebugKV("bridge conn already closed", "session_id", Sess.SessionID)
-			} else {
-				logger.WarnKV("bridge conn close failed", "session_id", Sess.SessionID, "error", cerr)
-			}
-		}
-	}()
-
+func handleMainRequest(conn net.Conn, closeConn func()) {
+	defer closeConn()
 	handleYamuxSession(conn)
 }
 
@@ -221,12 +228,12 @@ func handleMainRequest(conn net.Conn) {
 func handleYamuxSession(conn net.Conn) {
 	ymuxSession, err := ipc.NewYamuxServer(conn)
 	if err != nil {
-		logger.ErrorKV("failed to create yamux session", "session_id", Sess.SessionID, "error", err)
+		logger.ErrorKV("failed to create yamux session", "session_id", sess.SessionID, "error", err)
 		return
 	}
 	defer ymuxSession.Close()
 
-	logger.InfoKV("yamux session started", "session_id", Sess.SessionID)
+	logger.InfoKV("yamux session started", "session_id", sess.SessionID)
 
 	// Track active streams for graceful shutdown
 	var streamWg sync.WaitGroup
@@ -237,51 +244,35 @@ func handleYamuxSession(conn net.Conn) {
 	// the capabilities logs rather than during early bridge startup.
 	var watchtowerOnce sync.Once
 
-	// Accept streams until session closes or bridge shuts down
+	// Accept streams until session closes or bridge shuts down.
+	// The loop exits when ymuxSession.Accept() returns an error
+	// (e.g., the session is closed by the shutdown goroutine).
 	for {
-		select {
-		case <-bridgeClosing:
-			logger.DebugKV("yamux session closing due to bridge shutdown", "session_id", Sess.SessionID)
-			goto waitForStreams
-		default:
-		}
-
 		stream, err := ymuxSession.Accept()
 		if err != nil {
 			if ymuxSession.IsClosed() {
-				logger.DebugKV("yamux session closed", "session_id", Sess.SessionID)
+				logger.DebugKV("yamux session closed", "session_id", sess.SessionID)
 			} else {
-				logger.WarnKV("yamux accept error", "session_id", Sess.SessionID, "error", err)
+				logger.WarnKV("yamux accept error", "session_id", sess.SessionID, "error", err)
 			}
 			break
 		}
 
-		watchtowerOnce.Do(func() { go docker.SyncWatchtowerStack(Sess.User.Username) })
+		watchtowerOnce.Do(func() { go docker.SyncWatchtowerStack(sess.User.Username) })
 
-		var idBytes [16]byte
-		n, err := rand.Read(idBytes[:])
-		if err != nil {
-			logger.WarnKV("failed to generate stream id", "session_id", Sess.SessionID, "error", err)
-			continue
-		}
-		if n != len(idBytes) {
-			logger.WarnKV("short random read for stream id", "session_id", Sess.SessionID, "read", n)
-			continue
-		}
-		streamID := hex.EncodeToString(idBytes[:])
+		streamID := strconv.FormatUint(streamCounter.Add(1), 10)
 		s := stream
 		sid := streamID
 		streamWg.Go(func() {
 			defer s.Close()
 
-			handleYamuxStream(Sess, s, sid)
+			handleYamuxStream(sess, s, sid)
 		})
 	}
 
-waitForStreams:
 	// Wait for all streams to complete
 	streamWg.Wait()
-	logger.InfoKV("yamux session ended", "session_id", Sess.SessionID)
+	logger.InfoKV("yamux session ended", "session_id", sess.SessionID)
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
@@ -304,7 +295,7 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 	logger.DebugKV("stream opened", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "args", args)
 
 	// Look up registered stream handler
-	handler, found := handlers.StreamHandlers[streamType]
+	handler, found := handlers.GetStreamHandler(streamType)
 	if !found {
 		logger.WarnKV("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
 		// Send close frame

@@ -203,7 +203,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 
 	// Give the goroutine a moment to enter Login and acquire the semaphore
 	// (the test is deterministic because sem=1 and startBridge blocks)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if len(h.authSem) == 1 {
 			break
 		}
