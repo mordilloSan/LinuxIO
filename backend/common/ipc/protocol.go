@@ -40,6 +40,7 @@ const (
 // maxRelayPayloadSize is the maximum allowed payload for a single relay frame.
 // Matches the cap enforced by ReadRelayFrame (16 MiB).
 const maxRelayPayloadSize = 16 * 1024 * 1024
+const relayFrameHeaderSize = 9
 
 // StreamFrame represents a framed message for the relay protocol.
 // Format: [opcode:1][streamID:4][length:4][payload:N]
@@ -52,27 +53,27 @@ type StreamFrame struct {
 // checkPayloadSize validates that a payload length is within supported bounds.
 // It enforces both the protocol-level maximum payload size and guards against
 // integer overflow when computing the total frame size (header + payload).
-func checkPayloadSize(payload []byte) error {
+func checkPayloadSize(payload []byte) (int, error) {
 	payloadLen := len(payload)
 	if payloadLen > maxRelayPayloadSize {
-		return fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
+		return 0, fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
 	}
-	// Guard against overflow when adding the 9-byte header.
-	if payloadLen > math.MaxInt-9 {
-		return fmt.Errorf("write frame: payload size causes integer overflow")
+	// Guard against overflow when adding the frame header.
+	if payloadLen > math.MaxInt-relayFrameHeaderSize {
+		return 0, fmt.Errorf("write frame: payload size causes integer overflow")
 	}
-	return nil
+	return payloadLen, nil
 }
 
 // WriteRelayFrame writes a StreamFrame to the writer in a single write call.
 // This avoids interleaving frame headers and payloads when multiple goroutines
 // share the same writer.
 func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
-	if err := checkPayloadSize(f.Payload); err != nil {
+	payloadLen, err := checkPayloadSize(f.Payload)
+	if err != nil {
 		return err
 	}
-	payloadLen := len(f.Payload)
-	frame := make([]byte, 9+payloadLen)
+	frame := make([]byte, relayFrameHeaderSize+payloadLen)
 	frame[0] = f.Opcode
 	binary.BigEndian.PutUint32(frame[1:5], f.StreamID)
 	binary.BigEndian.PutUint32(frame[5:9], uint32(payloadLen))
@@ -157,7 +158,7 @@ func WriteProgress(w io.Writer, streamID uint32, data any) error {
 	if err != nil {
 		return fmt.Errorf("marshal progress: %w", err)
 	}
-	if err := checkPayloadSize(payload); err != nil {
+	if _, err := checkPayloadSize(payload); err != nil {
 		return fmt.Errorf("progress payload invalid: %w", err)
 	}
 	return WriteRelayFrame(w, &StreamFrame{
@@ -173,7 +174,7 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
 	}
-	if err := checkPayloadSize(payload); err != nil {
+	if _, err := checkPayloadSize(payload); err != nil {
 		return fmt.Errorf("result payload invalid: %w", err)
 	}
 	return WriteRelayFrame(w, &StreamFrame{
