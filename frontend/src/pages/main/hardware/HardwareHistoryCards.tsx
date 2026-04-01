@@ -1704,12 +1704,6 @@ export const GPUHistoryCard: React.FC<{
   );
 };
 
-const isSelectableNetworkInterface = (iface: InterfaceStats) =>
-  !iface.name.startsWith("veth") &&
-  !iface.name.startsWith("docker") &&
-  !iface.name.startsWith("br") &&
-  iface.name !== "lo";
-
 export const NetworkHistoryCard: React.FC<{
   range?: MonitoringRange;
   onRangeChange?: (v: MonitoringRange) => void;
@@ -1723,33 +1717,12 @@ export const NetworkHistoryCard: React.FC<{
 }) => {
   const theme = useAppTheme();
   const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const [selectedInterfaceName, setSelectedInterfaceName] = useState("");
   const range = rangeProp ?? rangeInternal;
   const setRange = onRangeChangeProp ?? setRangeInternal;
 
-  const { data: rawInterfaces = [] } = linuxio.system.get_network_info.useQuery(
-    {
-      refetchInterval: 5_000,
-    },
-  );
-
-  const interfaces = useMemo(
-    () => rawInterfaces.filter(isSelectableNetworkInterface),
-    [rawInterfaces],
-  );
-
-  const selectedInterface = useMemo(
-    () =>
-      interfaces.find((iface) => iface.name === selectedInterfaceName) ??
-      interfaces[0],
-    [interfaces, selectedInterfaceName],
-  );
-
-  const selectedValue = selectedInterface?.name ?? "";
   const { data: series, isPending } =
     linuxio.monitoring.get_network_series.useQuery({
-      args: [range, selectedValue],
-      enabled: selectedValue.length > 0,
+      args: [range, ""],
       refetchInterval: 5_000,
     });
 
@@ -1760,40 +1733,12 @@ export const NetworkHistoryCard: React.FC<{
       accentColor={theme.chart.rx}
       range={range}
       onRangeChange={setRange}
-      controls={
-        interfaces.length > 1 ? (
-          <AppSelect
-            size="small"
-            variant="standard"
-            disableUnderline
-            value={selectedValue}
-            onChange={(event) => setSelectedInterfaceName(event.target.value)}
-            style={{
-              ["--app-select-input-font-size" as string]: "0.72rem",
-              width: 140,
-              color: theme.palette.text.secondary,
-              fontSize: "0.78rem",
-              lineHeight: theme.typography.body2.lineHeight,
-            }}
-          >
-            {interfaces.map((iface) => (
-              <option key={iface.name} value={iface.name}>
-                {iface.name}
-              </option>
-            ))}
-          </AppSelect>
-        ) : undefined
-      }
       chart={
         <NetworkHistoryChart
           range={range}
           series={series}
           loading={isPending}
-          emptyMessage={
-            selectedValue
-              ? "Historical network data is not available on this interface yet."
-              : "No network interfaces available."
-          }
+          emptyMessage="Historical network data is not available yet."
           hoverRatio={hoverRatio}
           onHoverChange={onHoverChange}
         />

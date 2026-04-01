@@ -127,31 +127,26 @@ func GetNetworkSeries(ctx context.Context, rangeKey, device string) NetworkSerie
 	if !ok {
 		return unavailableNetworkSeries(rangeKey, 0, "unsupported monitoring range")
 	}
-	if device == "" {
-		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), "network interface is required")
-	}
-
 	baseURL, err := resolvePrometheusBaseURL(ctx)
 	if err != nil {
 		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
 	}
 
-	rxResponse, err := queryPrometheusRange(
-		ctx,
-		baseURL,
-		def,
-		buildNetworkRateQuery(networkReceiveMetric, device),
-	)
+	var rxQuery, txQuery string
+	if device == "" {
+		rxQuery = buildNetworkTotalQuery(networkReceiveMetric)
+		txQuery = buildNetworkTotalQuery(networkTransmitMetric)
+	} else {
+		rxQuery = buildNetworkRateQuery(networkReceiveMetric, device)
+		txQuery = buildNetworkRateQuery(networkTransmitMetric, device)
+	}
+
+	rxResponse, err := queryPrometheusRange(ctx, baseURL, def, rxQuery)
 	if err != nil {
 		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
 	}
 
-	txResponse, err := queryPrometheusRange(
-		ctx,
-		baseURL,
-		def,
-		buildNetworkRateQuery(networkTransmitMetric, device),
-	)
+	txResponse, err := queryPrometheusRange(ctx, baseURL, def, txQuery)
 	if err != nil {
 		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
 	}
@@ -246,6 +241,15 @@ func buildNetworkRateQuery(metric, device string) string {
 		`clamp_min(rate(%s{job="node",device=%q}[%s]), 0) / %d`,
 		metric,
 		device,
+		networkRateWindow,
+		networkRateUnitDivisor,
+	)
+}
+
+func buildNetworkTotalQuery(metric string) string {
+	return fmt.Sprintf(
+		`sum(clamp_min(rate(%s{job="node",device!~"veth.*|docker.*|br.*|lo"}[%s]), 0)) / %d`,
+		metric,
 		networkRateWindow,
 		networkRateUnitDivisor,
 	)
