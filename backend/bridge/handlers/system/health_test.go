@@ -2,7 +2,6 @@ package system
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -45,28 +44,22 @@ wtmp begins Tue Mar  1 10:00:00 2026
 	require.True(t, unclean)
 }
 
-func TestParseRecentSuccessfulLoginTimes(t *testing.T) {
-	current, previous := parseRecentSuccessfulLoginTimes(`miguelma web console  ::ffff:172.18.0. 2026-04-01T19:23:21+01:00   still logged in
-miguelma web console  ::ffff:172.18.0. 2026-04-01T19:14:05+01:00 - 2026-04-01T19:23:20+01:00  (00:09)
-wtmp begins 2025-01-03T12:23:07+00:00
+func TestCountPamFailedLoginAttemptsBeforeCurrentSession(t *testing.T) {
+	count := countPamFailedLoginAttemptsBeforeCurrentSession("miguelmariz", `1775067814.674371 ubuntuserver linuxio-auth[47426]: pam_unix(linuxio:auth): authentication failure; logname= uid=0 euid=0 tty= ruser= rhost=web  user=miguelmariz
+1775067819.609136 ubuntuserver linuxio-auth[47553]: pam_unix(linuxio:session): session opened for user miguelmariz(uid=1000) by miguelmariz(uid=0)
+1775073909.483616 ubuntuserver linuxio-auth[194517]: pam_unix(linuxio:auth): authentication failure; logname= uid=0 euid=0 tty= ruser= rhost=web  user=miguelmariz
+1775073912.696423 ubuntuserver linuxio-auth[194610]: pam_unix(linuxio:session): session opened for user miguelmariz(uid=1000) by miguelmariz(uid=0)
 `)
 
-	require.True(t, current.Equal(time.Date(2026, 4, 1, 19, 23, 21, 0, time.FixedZone("", 3600))))
-	require.NotNil(t, previous)
-	require.True(t, previous.Equal(time.Date(2026, 4, 1, 19, 14, 5, 0, time.FixedZone("", 3600))))
+	require.Equal(t, 1, count)
 }
 
-func TestCountFailedLoginAttemptsBetween(t *testing.T) {
-	previous := time.Date(2026, 4, 1, 19, 14, 5, 0, time.FixedZone("", 3600))
-	current := time.Date(2026, 4, 1, 19, 23, 21, 0, time.FixedZone("", 3600))
+func TestCountPamFailedLoginAttemptsIgnoresOtherUsers(t *testing.T) {
+	count := countPamFailedLoginAttemptsBeforeCurrentSession("miguelmariz", `1775073909.483616 ubuntuserver linuxio-auth[194517]: pam_unix(linuxio:auth): authentication failure; logname= uid=0 euid=0 tty= ruser= rhost=web  user=alice
+1775073912.696423 ubuntuserver linuxio-auth[194610]: pam_unix(linuxio:session): session opened for user miguelmariz(uid=1000) by miguelmariz(uid=0)
+`)
 
-	count := countFailedLoginAttemptsBetween(`miguelma ssh:notty    ::ffff:172.18.0. 2026-04-01T19:22:10+01:00 - 2026-04-01T19:22:10+01:00  (00:00)
-miguelma ssh:notty    ::ffff:172.18.0. 2026-04-01T19:20:45+01:00 - 2026-04-01T19:20:45+01:00  (00:00)
-miguelma ssh:notty    ::ffff:172.18.0. 2026-04-01T19:10:00+01:00 - 2026-04-01T19:10:00+01:00  (00:00)
-btmp begins 2025-01-03T12:23:07+00:00
-`, &previous, current)
-
-	require.Equal(t, 2, count)
+	require.Zero(t, count)
 }
 
 func TestFetchFailedLoginAttemptsRequiresPrivilege(t *testing.T) {

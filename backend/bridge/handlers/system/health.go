@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,7 +30,10 @@ var healthRunCommand = func(ctx context.Context, name string, args ...string) ([
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
-var isoLoginTimestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})`)
+var (
+	isoLoginTimestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})`)
+	shortUnixLinePattern     = regexp.MustCompile(`^(\d+\.\d+)\s+\S+\s+\S+\[\d+\]:\s+(.*)$`)
+)
 
 func FetchSystemHealthSummary(username string, privileged bool) (*SystemHealthSummary, error) {
 	summary := &SystemHealthSummary{
@@ -89,38 +93,15 @@ func FetchFailedLoginAttempts(username string, privileged bool) (int, error) {
 		return 0, nil
 	}
 
-	currentLogin, previousLogin, err := FetchRecentSuccessfulLoginTimes(username)
-	if err != nil || currentLogin.IsZero() {
-		return 0, err
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	output, err := healthRunCommand(ctx, "lastb", "--time-format", "iso", "-w", "-n", "100", username)
+	output, err := healthRunCommand(ctx, "journalctl", "SYSLOG_IDENTIFIER=linuxio-auth", "-o", "short-unix", "--no-pager", "-n", "400")
 	if err != nil {
 		return 0, nil
 	}
 
-	return countFailedLoginAttemptsBetween(string(output), previousLogin, currentLogin), nil
-}
-
-func FetchRecentSuccessfulLoginTimes(username string) (time.Time, *time.Time, error) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return time.Time{}, nil, nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	output, err := healthRunCommand(ctx, "last", "--time-format", "iso", "-w", "-n", "20", username)
-	if err != nil {
-		return time.Time{}, nil, err
-	}
-
-	current, previous := parseRecentSuccessfulLoginTimes(string(output))
-	return current, previous, nil
+	return countPamFailedLoginAttemptsBeforeCurrentSession(username, string(output)), nil
 }
 
 func DetectUncleanShutdown() (bool, error) {
@@ -167,38 +148,6 @@ func parseLastlogOutput(username, output string) *SystemLastLogin {
 	return nil
 }
 
-func parseRecentSuccessfulLoginTimes(output string) (time.Time, *time.Time) {
-	logins := extractISOLoginTimes(output)
-	if len(logins) == 0 {
-		return time.Time{}, nil
-	}
-	if len(logins) == 1 {
-		return logins[0], nil
-	}
-
-	previous := logins[1]
-	return logins[0], &previous
-}
-
-func countFailedLoginAttemptsBetween(output string, previous *time.Time, current time.Time) int {
-	if current.IsZero() {
-		return 0
-	}
-
-	count := 0
-	for _, attempt := range extractISOLoginTimes(output) {
-		if !attempt.Before(current) {
-			continue
-		}
-		if previous != nil && !attempt.After(*previous) {
-			continue
-		}
-		count++
-	}
-
-	return count
-}
-
 func extractISOLoginTimes(output string) []time.Time {
 	lines := strings.Split(output, "\n")
 	times := make([]time.Time, 0, len(lines))
@@ -224,6 +173,90 @@ func extractISOLoginTimes(output string) []time.Time {
 	}
 
 	return times
+}
+
+type pamAuthEvent struct {
+	time    time.Time
+	success bool
+	failure bool
+}
+
+func countPamFailedLoginAttemptsBeforeCurrentSession(username, output string) int {
+	events := parsePamAuthEvents(username, output)
+	if len(events) == 0 {
+		return 0
+	}
+
+	successTimes := make([]time.Time, 0, 2)
+	for _, event := range events {
+		if event.success {
+			successTimes = append(successTimes, event.time)
+		}
+	}
+	if len(successTimes) == 0 {
+		return 0
+	}
+
+	current := successTimes[len(successTimes)-1]
+	var previous *time.Time
+	if len(successTimes) >= 2 {
+		prev := successTimes[len(successTimes)-2]
+		previous = &prev
+	}
+
+	count := 0
+	for _, event := range events {
+		if !event.failure || !event.time.Before(current) {
+			continue
+		}
+		if previous != nil && !event.time.After(*previous) {
+			continue
+		}
+		count++
+	}
+
+	return count
+}
+
+func parsePamAuthEvents(username, output string) []pamAuthEvent {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil
+	}
+
+	lines := strings.Split(output, "\n")
+	events := make([]pamAuthEvent, 0, len(lines))
+	successMarker := "pam_unix(linuxio:session): session opened for user " + username + "("
+	failureMarker := "pam_unix(linuxio:auth): authentication failure"
+	failureUserMarker := "user=" + username
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		match := shortUnixLinePattern.FindStringSubmatch(line)
+		if len(match) != 3 {
+			continue
+		}
+
+		seconds, err := strconv.ParseFloat(match[1], 64)
+		if err != nil {
+			continue
+		}
+		timestamp := time.Unix(int64(seconds), int64((seconds-float64(int64(seconds)))*float64(time.Second)))
+		message := match[2]
+
+		switch {
+		case strings.Contains(message, successMarker):
+			events = append(events, pamAuthEvent{time: timestamp, success: true})
+		case strings.Contains(message, failureMarker) && strings.Contains(message, failureUserMarker):
+			events = append(events, pamAuthEvent{time: timestamp, failure: true})
+		}
+	}
+
+	return events
 }
 
 func parseUncleanShutdownOutput(output string) bool {
