@@ -131,6 +131,13 @@ func runInstallScript(version string, relay io.Writer) error {
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
+	writablePaths := []string{
+		config.BinDir,
+		"/etc",
+		"/usr/lib/tmpfiles.d",
+		"/usr/share/linuxio",
+		"/var/lib/linuxIO",
+	}
 	args := []string{
 		"--unit=" + unit,
 		"--property=Description=LinuxIO updater",
@@ -144,7 +151,7 @@ func runInstallScript(version string, relay io.Writer) error {
 		"--setenv=LC_ALL=C.UTF-8",
 		"-p", "Type=exec",
 		"-p", "ProtectSystem=full",
-		"-p", "ReadWritePaths=" + config.BinDir,
+		"-p", "ReadWritePaths=" + strings.Join(writablePaths, " "),
 		"-p", "PrivateTmp=false",
 		"-p", "NoNewPrivileges=no",
 		"/bin/bash", "-s", "--",
