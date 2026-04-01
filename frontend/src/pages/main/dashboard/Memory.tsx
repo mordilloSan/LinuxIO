@@ -29,10 +29,6 @@ const MemoryUsage = () => {
     (memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0),
     0,
   );
-  const swapUsagePercentage =
-    (memoryData?.system?.swapTotal ?? 0) > 0
-      ? calculatePercentage(swapUsed, memoryData?.system?.swapTotal ?? 0)
-      : "0.00";
 
   const data = {
     title: "Memory Usage",

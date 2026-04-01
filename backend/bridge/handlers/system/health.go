@@ -31,8 +31,7 @@ var healthRunCommand = func(ctx context.Context, name string, args ...string) ([
 }
 
 var (
-	isoLoginTimestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})`)
-	shortUnixLinePattern     = regexp.MustCompile(`^(\d+\.\d+)\s+\S+\s+\S+\[\d+\]:\s+(.*)$`)
+	shortUnixLinePattern = regexp.MustCompile(`^(\d+\.\d+)\s+\S+\s+\S+\[\d+\]:\s+(.*)$`)
 )
 
 func FetchSystemHealthSummary(username string, privileged bool) (*SystemHealthSummary, error) {
@@ -146,33 +145,6 @@ func parseLastlogOutput(username, output string) *SystemLastLogin {
 	}
 
 	return nil
-}
-
-func extractISOLoginTimes(output string) []time.Time {
-	lines := strings.Split(output, "\n")
-	times := make([]time.Time, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" ||
-			strings.HasPrefix(line, "wtmp begins") ||
-			strings.HasPrefix(line, "btmp begins") {
-			continue
-		}
-
-		match := isoLoginTimestampPattern.FindString(line)
-		if match == "" {
-			continue
-		}
-
-		parsed, err := time.Parse(time.RFC3339, match)
-		if err != nil {
-			continue
-		}
-
-		times = append(times, parsed)
-	}
-
-	return times
 }
 
 type pamAuthEvent struct {
