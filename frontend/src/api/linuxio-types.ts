@@ -262,6 +262,15 @@ export interface NetworkMonitoringSeriesResponse {
   reason?: string;
 }
 
+export interface DiskIOMonitoringSeriesResponse {
+  available: boolean;
+  range: MonitoringRange | string;
+  stepSeconds: number;
+  readPoints: MonitoringSeriesPoint[];
+  writePoints: MonitoringSeriesPoint[];
+  reason?: string;
+}
+
 // ============================================================================
 // Docker Types
 // ============================================================================
@@ -789,6 +798,10 @@ export interface LinuxIOSchema {
     get_network_series: {
       args: [range: MonitoringRange, iface: string];
       result: NetworkMonitoringSeriesResponse;
+    };
+    get_disk_io_series: {
+      args: [range: MonitoringRange, device: string];
+      result: DiskIOMonitoringSeriesResponse;
     };
   };
 

@@ -20,6 +20,7 @@ import {
   BIOSInfoCard,
   CPUDetailsCard,
   CPUHistoryCard,
+  DiskIOHistoryCard,
   GPUInfoCard,
   GPUHistoryCard,
   MemoryHistoryCard,
@@ -456,7 +457,7 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 4 }}>
             <ErrorBoundary>
               <CPUHistoryCard
                 range={historyRange}
@@ -466,7 +467,7 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 4 }}>
             <ErrorBoundary>
               <MemoryHistoryCard
                 range={historyRange}
@@ -476,7 +477,7 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 4 }}>
             <ErrorBoundary>
               <GPUHistoryCard
                 range={historyRange}
@@ -486,7 +487,17 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 4 }}>
+            <ErrorBoundary>
+              <DiskIOHistoryCard
+                range={historyRange}
+                onRangeChange={setHistoryRange}
+                hoverRatio={historyHoverRatio}
+                onHoverChange={setHistoryHoverRatio}
+              />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 4 }}>
             <ErrorBoundary>
               <NetworkHistoryCard
                 range={historyRange}
