@@ -17,6 +17,7 @@ func RegisterHandlers() {
 		{command: "get_cpu_series", handler: handleGetCPUSeries},
 		{command: "get_memory_series", handler: handleGetMemorySeries},
 		{command: "get_gpu_series", handler: handleGetGPUSeries},
+		{command: "get_network_series", handler: handleGetNetworkSeries},
 	})
 }
 
@@ -38,9 +39,20 @@ func handleGetGPUSeries(ctx context.Context, args []string, emit ipc.Events) err
 	return emit.Result(GetGPUSeries(ctx, firstArg(args)))
 }
 
+func handleGetNetworkSeries(ctx context.Context, args []string, emit ipc.Events) error {
+	return emit.Result(GetNetworkSeries(ctx, firstArg(args), secondArg(args)))
+}
+
 func firstArg(args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
 	return args[0]
+}
+
+func secondArg(args []string) string {
+	if len(args) < 2 {
+		return ""
+	}
+	return args[1]
 }

@@ -1,7 +1,8 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
+import type { MonitoringRange } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -22,6 +23,7 @@ import {
   GPUInfoCard,
   GPUHistoryCard,
   MemoryHistoryCard,
+  NetworkHistoryCard,
   MotherboardInfoCard,
 } from "@/pages/main/hardware/HardwareHistoryCards";
 import "@/theme/section.css";
@@ -336,6 +338,12 @@ const HardwarePage: React.FC = () => {
     staleTime: 300000,
   });
 
+  // ── shared history range + hover ──
+  const [historyRange, setHistoryRange] = useState<MonitoringRange>("1m");
+  const [historyHoverRatio, setHistoryHoverRatio] = useState<number | null>(
+    null,
+  );
+
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
   const sections = { ...defaultHwSections, ...(hwSections ?? {}) };
@@ -448,17 +456,46 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
-          {[
-            { id: "cpu", component: CPUHistoryCard },
-            { id: "memory", component: MemoryHistoryCard },
-            { id: "gpu", component: GPUHistoryCard },
-          ].map(({ id, component: CardComponent }) => (
-            <AppGrid key={id} size={{ xs: 12, lg: 4 }}>
-              <ErrorBoundary>
-                <CardComponent />
-              </ErrorBoundary>
-            </AppGrid>
-          ))}
+          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+            <ErrorBoundary>
+              <CPUHistoryCard
+                range={historyRange}
+                onRangeChange={setHistoryRange}
+                hoverRatio={historyHoverRatio}
+                onHoverChange={setHistoryHoverRatio}
+              />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+            <ErrorBoundary>
+              <MemoryHistoryCard
+                range={historyRange}
+                onRangeChange={setHistoryRange}
+                hoverRatio={historyHoverRatio}
+                onHoverChange={setHistoryHoverRatio}
+              />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+            <ErrorBoundary>
+              <GPUHistoryCard
+                range={historyRange}
+                onRangeChange={setHistoryRange}
+                hoverRatio={historyHoverRatio}
+                onHoverChange={setHistoryHoverRatio}
+              />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+            <ErrorBoundary>
+              <NetworkHistoryCard
+                range={historyRange}
+                onRangeChange={setHistoryRange}
+                hoverRatio={historyHoverRatio}
+                onHoverChange={setHistoryHoverRatio}
+              />
+            </ErrorBoundary>
+          </AppGrid>
         </AppGrid>
       </AppCollapse>
 

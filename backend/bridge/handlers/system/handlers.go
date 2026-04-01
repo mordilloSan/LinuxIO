@@ -16,6 +16,9 @@ func RegisterHandlers() {
 	onceSampler.Do(func() {
 		go runSimpleNetInfoSampler()
 	})
+	onceDiskSampler.Do(func() {
+		go runDiskThroughputSampler()
+	})
 
 	registerCapabilitiesHandlers()
 	registerSystemHandlers([]systemRegistration{
@@ -31,6 +34,7 @@ func RegisterHandlers() {
 		{command: "get_gpu_info", handler: handleGetGPUInfo},
 		{command: "get_updates_fast", handler: handleGetUpdatesFast},
 		{command: "get_network_info", handler: handleGetNetworkInfo},
+		{command: "get_disk_throughput", handler: handleGetDiskThroughput},
 		{command: "get_system_info", handler: handleGetSystemInfo},
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
@@ -93,6 +97,10 @@ func handleGetUpdatesFast(ctx context.Context, args []string, emit ipc.Events) e
 
 func handleGetNetworkInfo(ctx context.Context, args []string, emit ipc.Events) error {
 	return emitSystemCall(emit, FetchNetworks)
+}
+
+func handleGetDiskThroughput(ctx context.Context, args []string, emit ipc.Events) error {
+	return emitSystemCall(emit, FetchDiskThroughput)
 }
 
 func handleGetSystemInfo(ctx context.Context, args []string, emit ipc.Events) error {
