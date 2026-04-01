@@ -1,228 +1,205 @@
-# Handler Privilege Checking Pattern
+# Privilege Pattern
 
 ## Overview
 
-LinuxIO uses a decorator pattern for enforcing privilege requirements on bridge handlers. This provides:
-- **Fine-grained control**: Per-handler privilege enforcement
-- **Clear audit trail**: Easy to identify privileged operations with `grep RequirePrivileged`
-- **No boilerplate**: Single-line wrapper instead of repeated if-checks
-- **Type safety**: Compile-time verification
+LinuxIO has two separate privilege concepts:
 
-## Implementation
+1. Frontend access policy
+2. Backend authorization
 
-### 1. Privilege Middleware
+They are related, but they are not the same thing.
 
-Location: `backend/common/middleware/privilege.go`
+Frontend checks control what the UI shows. Backend checks control what an authenticated session is actually allowed to execute through the bridge. The backend check is the security boundary.
+
+## Frontend Access Policy
+
+Frontend privilege state is exposed through:
+
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/hooks/useCapabilities.ts`
+- `frontend/src/routes.tsx`
+
+Examples:
+
+- `requiresPrivileged: true` on a route hides or blocks that page in the app
+- `useAccessContext()` exposes the current client-side `privileged` flag
+
+This is useful for UX, but it is not authorization. A hidden page does not prevent an authenticated client from calling a bridge command directly.
+
+## Backend Authorization
+
+Backend privilege enforcement is based on the bridge session created by the auth daemon:
+
+1. The auth daemon validates PAM credentials
+2. The auth daemon checks whether the user can successfully run `sudo -v`
+3. The bridge is spawned either privileged or unprivileged
+4. The session carries an immutable `sess.Privileged` flag
+
+That flag is the source of truth for privileged operations.
+
+## Current Backend Helpers
+
+The privilege helper lives here:
+
+- `backend/bridge/privilege/privilege.go`
+
+It provides:
 
 ```go
-// RequirePrivileged - wraps a single handler to enforce privilege checking
-func RequirePrivileged(sess *session.Session, handler func([]string) (any, error)) func([]string) (any, error)
+func RequirePrivileged(
+    sess *session.Session,
+    handler func([]string) (any, error),
+) func([]string) (any, error)
 
-// RequirePrivilegedAll - wraps all handlers in a map to enforce privilege checking
-func RequirePrivilegedAll(sess *session.Session, handlers map[string]func([]string) (any, error)) map[string]func([]string) (any, error)
+func RequirePrivilegedAll(
+    sess *session.Session,
+    handlers map[string]func([]string) (any, error),
+) map[string]func([]string) (any, error)
 ```
 
-Use these two functions for two patterns:
-- **Fine-grained**: Use `RequirePrivileged` to wrap individual handlers in handler package (for mixed public/privileged)
-- **Package-wide**: Use `RequirePrivilegedAll` in register.go to wrap entire handler map (for all-privileged packages)
+These helpers are valid when handler registration already has direct access to `sess *session.Session`.
 
-### 2. Handler Registration Patterns
+## Current IPC Handler Model
 
-#### Pattern A: Package-Wide Privilege (Recommended for all-privileged packages)
+The active bridge handler system is the `ipc.RegisterFunc(...)` model, not the older `JsonHandlers[...]` map style.
 
-**When to use:** ALL handlers in the package require privilege (e.g., WireGuard, Docker)
+Session context is injected centrally in:
 
-**Step 1**: Keep handler package unchanged (no session parameter needed):
+- `backend/bridge/handlers/generic/bridge.go`
+
+That means there are now two valid backend enforcement patterns.
+
+## Pattern A: Registration-Time Enforcement
+
+Use this when the package registration function already receives `sess *session.Session`.
+
+This is the cleanest option for package-wide privilege rules.
+
+Example shape:
 
 ```go
-// wireguard/handlers.go
-package wireguard
+func RegisterHandlers(sess *session.Session) {
+    guarded := privilege.RequirePrivileged(sess, func(args []string) (any, error) {
+        return DangerousOperation(args)
+    })
 
-func WireguardHandlers() map[string]func([]string) (any, error) {
-    return map[string]func([]string) (any, error){
-        "list_interfaces":  ListInterfaces,
-        "add_interface":    AddInterface,
-        "remove_interface": RemoveInterface,
-        // ...
+    ipc.RegisterFunc("example", "dangerous", func(ctx context.Context, args []string, emit ipc.Events) error {
+        result, err := guarded(args)
+        if err != nil {
+            return err
+        }
+        return emit.Result(result)
+    })
+}
+```
+
+Use this when:
+
+- the whole package is privileged
+- the package already takes `sess`
+- you want the protection to be obvious at registration time
+
+## Pattern B: Context-Based Enforcement
+
+Use this when handlers are registered through `ipc.RegisterFunc(...)` and the package does not receive `sess *session.Session` during registration.
+
+In that case, the handler must read the session from `ctx` and check `sess.Privileged` at execution time.
+
+Example shape:
+
+```go
+func handleDangerous(ctx context.Context, args []string, emit ipc.Events) error {
+    sess, ok := generic.SessionFromContext(ctx)
+    if !ok || !sess.Privileged {
+        return fmt.Errorf("operation requires administrator privileges")
     }
-}
-```
 
-**Step 2**: Wrap all handlers in `register.go` using `RequirePrivilegedAll`:
-
-```go
-// register.go
-import "github.com/mordilloSan/LinuxIO/backend/common/middleware"
-
-func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
-    // WireGuard handlers - all operations require administrator privileges
-    JsonHandlers["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
-}
-```
-
-**Pros:**
--  Handler package remains simple - no session dependency
--  Clear intent: entire package is privileged
--  Single point of enforcement in register.go
--  No import of middleware in handler package
-
-#### Pattern B: Fine-Grained Privilege (Recommended for mixed packages)
-
-**When to use:** Some handlers are public, some require privilege inside the same package.
-
-**Step 1**: Add `sess *session.Session` parameter to handler constructor:
-
-```go
-// mixed/handlers.go
-import (
-    "github.com/mordilloSan/LinuxIO/backend/common/middleware"
-    "github.com/mordilloSan/LinuxIO/backend/common/session"
-)
-
-func MixedHandlers(sess *session.Session, handlerRegistry ...) map[string]func([]string) (any, error) {
-    deleteHandler := func(args []string) (any, error) {
-        // ... handler logic
+    result, err := DangerousOperation(args)
+    if err != nil {
+        return err
     }
-
-    return map[string]func([]string) (any, error){
-        // Public - no privilege required
-        "GetOverview": GetOverview,
-
-        // Privileged - wrapped individually
-        "DeleteThing": middleware.RequirePrivileged(sess, deleteHandler),
-        "ResetThing":  middleware.RequirePrivileged(sess, resetHandler),
-    }
+    return emit.Result(result)
 }
 ```
 
-**Step 2**: Update handler registration in `register.go`:
+Use this when:
 
-```go
-func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
-    JsonHandlers["mixed"] = mixed.MixedHandlers(sess, JsonHandlers)
-}
-```
+- only a few handlers in a package need privilege
+- the package currently has `RegisterHandlers()` with no session parameter
+- refactoring registration to thread `sess` through the package is not worth it yet
 
-**Pros:**
--  Explicit per-handler control
--  Clear distinction between public and privileged operations
--  Flexible for packages with mixed access requirements
+## Choosing A vs B
 
-## Example: WireGuard (Package-Wide Pattern)
+Prefer Pattern A when the package already accepts `sess` or when an entire package is privileged.
 
-**Handler package** (simple, no privilege logic):
-```go
-// wireguard/handlers.go
-package wireguard
+Prefer Pattern B when:
 
-func WireguardHandlers() map[string]func([]string) (any, error) {
-    return map[string]func([]string) (any, error){
-        "list_interfaces":  ListInterfaces,
-        "add_interface":    AddInterface,
-        "remove_interface": RemoveInterface,
-        "up_interface":     UpInterface,
-        "down_interface":   DownInterface,
-    }
-}
-```
+- the package is mixed public and privileged
+- the current registration signature is `RegisterHandlers()`
+- you need a small, local authorization check without refactoring the whole package
 
-**Registration** (privilege enforcement):
-```go
-// register.go
-JsonHandlers["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
-```
+## Important Rule
 
-Result: **All WireGuard operations require administrator privileges**
+Do not treat frontend checks as security.
 
-## Security Model
+This is not sufficient by itself:
 
-### Authentication Flow
+- `requiresPrivileged: true`
+- `useAccessContext().privileged`
+- client-side session state in `AuthContext`
+- `useSessionChecker`
 
-1. **Login**: User provides credentials
-2. **PAM Auth**: System verifies password
-3. **Sudo Check**: Auth daemon runs `sudo -v` with password
-4. **Bootstrap**: Bridge spawned with `Privileged` flag in binary protocol
-5. **Session**: Bridge has immutable `sess.Privileged` from bootstrap
-6. **Handler Check**: Middleware verifies privilege before execution
+Those are UI and session-state conveniences. They do not protect bridge commands.
 
-### Attack Surface
+## Current Reality in This Repo
 
--  **Cannot bypass**: Client never controls `sess.Privileged`
--  **Cannot forge**: Bootstrap comes from root auth daemon via stdin pipe
--  **Cannot replay**: Session ID is UUID, tied to bridge process lifecycle
--  **Auditable**: `grep RequirePrivileged` shows all protected operations
+As of now:
 
-### Privilege Determination
+- `frontend/src/routes.tsx` marks WireGuard as `requiresPrivileged`
+- `frontend/src/hooks/useCapabilities.ts` enforces that policy in the UI
+- `backend/bridge/privilege/privilege.go` exists
+- `backend/bridge/handlers/wireguard/handlers.go` currently registers raw handlers directly with `ipc.RegisterFunc(...)`
 
-A session is privileged if:
-1. User authenticated via PAM successfully
-2. User has sudo rights in `/etc/sudoers`
-3. Password works with `sudo -v` command
-4. Auth daemon (running as root) confirmed this
+So WireGuard currently has frontend privilege gating, but this document should not assume that all WireGuard bridge commands are already backend-protected by the helper.
 
-## Current Handlers with Privilege Checking
+If a handler must be privileged, the backend must check `sess.Privileged` explicitly through one of the two patterns above.
 
-| Handler Package | Pattern | Public Handlers | Privileged Handlers |
-|----------------|---------|-----------------|-------------------|
-| **wireguard**  | Package-Wide | *none* | **All** (list_interfaces, add_interface, remove_interface, list_peers, add_peer, remove_peer, peer_qrcode, peer_config_download, get_keys, up_interface, down_interface) |
+## Recommended Usage
 
-## Adding Privilege Checks to Existing Handlers
+For new work:
 
-- [ ] **docker**: All operations (use package-wide loop pattern in register.go)
-- [ ] **filebrowser**: Write operations (use fine-grained pattern - read is public, write is privileged)
-- [ ] **control**: Shutdown/reboot operations (likely all privileged, use package-wide loop)
-- [ ] **system**: Package management operations (use fine-grained - info is public, install/remove is privileged)
+- Always add frontend gating when the feature is privileged
+- Always add backend authorization for the actual bridge command
 
-**Pattern Selection Guide:**
-- Use **Package-Wide** (loop in register.go) if: All handlers need privilege (docker, wireguard, control)
-- Use **Fine-Grained** (wrap in handler package) if: Mix of public and privileged handlers (filebrowser, system)
+For package-wide privileged modules:
+
+- pass `sess` into registration and use registration-time enforcement
+
+For mixed modules like `system`:
+
+- keep public reads public
+- gate sensitive operations in the backend at the individual handler level
+- use context-based enforcement if the package does not currently accept `sess`
+
+## Audit Guidance
+
+To audit real privileged operations, do not rely on route metadata alone.
+
+Check:
+
+- calls to `RequirePrivileged(...)`
+- calls to `RequirePrivilegedAll(...)`
+- handler code that reads the bridge session from `ctx`
+- direct checks against `sess.Privileged`
 
 ## Testing
 
-To verify privilege enforcement:
+To verify a privileged handler:
 
-1. **Login as non-privileged user** (no sudo access)
-2. **Attempt privileged operation** via UI or API
-3. **Expected result**: "operation requires administrator privileges" error
+1. Sign in as a user without sudo access
+2. Call the bridge command directly
+3. Expect `operation requires administrator privileges`
+4. Sign in as a privileged user
+5. Verify the same command succeeds
 
-Example test:
-```bash
-# As non-sudo user, try to add a WireGuard interface
-curl -X POST https://localhost:8443/api/bridge \
-  -H "Cookie: session_id=<session_id>" \
-  -d '{"type":"wireguard","command":"add_interface","args":["wg-test"]}'
-
-# Expected: {"error": "operation requires administrator privileges"}
-```
-
-## Migration Checklist
-
-### For Package-Wide Privilege (Recommended for all-privileged packages):
-
-- [ ] **Handler package**: Keep unchanged (no modifications needed)
-- [ ] **register.go**: Import `middleware` package
-- [ ] **register.go**: Use `middleware.RequirePrivilegedAll(sess, package.PackageHandlers())`
-- [ ] Test with non-privileged user
-- [ ] Update this document
-
-Example pattern:
-```go
-JsonHandlers["package"] = middleware.RequirePrivilegedAll(sess, package.PackageHandlers())
-```
-
-### For Fine-Grained Privilege (For mixed public/privileged packages):
-
-- [ ] **Handler package**: Import `middleware` and `session` packages
-- [ ] **Handler package**: Add `sess *session.Session` parameter to constructor
-- [ ] **Handler package**: Identify read-only vs write operations
-- [ ] **Handler package**: Wrap privileged handlers with `middleware.RequirePrivileged(sess, handler)`
-- [ ] **register.go**: Pass `sess` to handler constructor
-- [ ] Test with non-privileged user
-- [ ] Update this document
-
-## Notes
-
-- **No import cycles**: Middleware is in `common/middleware`, accessible by all handler packages
-- **Minimal changes**: Only handler constructor signature changes
-- **Backward compatible**: Can add privilege checks incrementally
-- **Clear separation**: Public vs privileged operations clearly visible in code
+The direct bridge/API call matters because it proves the backend check exists independently of the UI.
