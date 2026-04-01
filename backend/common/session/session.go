@@ -137,6 +137,12 @@ func NewManager(store Store, cfg SessionConfig) *Manager {
 func (m *Manager) Close() {
 	if m.gcStop != nil {
 		close(m.gcStop)
+		m.gcStop = nil
+	}
+	if closer, ok := m.st.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			logger.Warnf("Failed to close session store: %v", err)
+		}
 	}
 	logger.Infof("Session manager stopped")
 }

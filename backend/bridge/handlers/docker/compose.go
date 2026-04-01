@@ -58,11 +58,7 @@ func ListComposeProjects(username string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
@@ -520,7 +516,7 @@ func resolveComposeRestartTargetFromProject(projectName string, composeProject *
 		logger.WarnKV("failed to get Docker client for path translation", "project", projectName, "error", err.Error())
 		return resolveComposeRestartWithoutClient(projectName, composeProject)
 	}
-	defer cli.Close()
+	defer releaseClient(cli)
 
 	if len(composeProject.ConfigFiles) > 0 {
 		return resolveComposeRestartFromConfigFiles(cli, projectName, composeProject)

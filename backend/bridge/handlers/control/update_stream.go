@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
@@ -165,11 +166,40 @@ func writeStatusFile(runID, status string, exitCode *int, startedAt, finishedAt 
 	}
 
 	// Ensure parent directory exists
-	if err := os.MkdirAll("/run/linuxio", 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(updateStatusPath), 0o755); err != nil {
 		return err
 	}
 
-	return os.WriteFile(updateStatusPath, append(data, '\n'), 0o644)
+	return writeFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
+}
+
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func writeUpdateError(stream net.Conn, message string, code int) error {

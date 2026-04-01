@@ -2,9 +2,11 @@ package ipc
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"testing"
+	"time"
 )
 
 type countingWriter struct {
@@ -63,5 +65,25 @@ func TestWriteRelayFrameShortWrite(t *testing.T) {
 	})
 	if !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("WriteRelayFrame() error = %v, want %v", err, io.ErrShortWrite)
+	}
+}
+
+func TestAbortContextCleanupCancelsContext(t *testing.T) {
+	reader, writer := io.Pipe()
+	ctx, cancelFn, cleanup := AbortContext(context.Background(), reader)
+
+	if cancelFn() {
+		t.Fatalf("cancelFn() = true before abort, want false")
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error = %v", err)
+	}
+
+	cleanup()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatalf("cleanup did not cancel context")
 	}
 }

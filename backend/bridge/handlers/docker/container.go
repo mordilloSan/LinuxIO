@@ -29,17 +29,38 @@ type ContainerWithMetrics struct {
 	ProxyPort string   `json:"proxyPort,omitempty"`
 }
 
+type containerStats struct {
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage  uint64   `json:"total_usage"`
+			PercpuUsage []uint64 `json:"percpu_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+	} `json:"cpu_stats"`
+	MemoryStats struct {
+		Usage uint64            `json:"usage"`
+		Limit uint64            `json:"limit"`
+		Stats map[string]uint64 `json:"stats"`
+	} `json:"memory_stats"`
+	Networks map[string]struct {
+		RxBytes uint64 `json:"rx_bytes"`
+		TxBytes uint64 `json:"tx_bytes"`
+	} `json:"networks"`
+	BlkioStats struct {
+		IoServiceBytesRecursive []struct {
+			Op    string `json:"op"`
+			Value uint64 `json:"value"`
+		} `json:"io_service_bytes_recursive"`
+	} `json:"blkio_stats"`
+}
+
 // List all containers with metrics.
 func ListContainers(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
@@ -53,7 +74,7 @@ func ListContainers(ctx context.Context) (any, error) {
 			return nil, err
 		}
 		metrics := collectContainerMetrics(ctx, cli, ctr.ID)
-		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctx, ctr)
+		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
 
 		enriched = append(enriched, ContainerWithMetrics{
 			Summary:   ctr,
@@ -79,30 +100,7 @@ func collectContainerMetrics(ctx context.Context, cli *client.Client, containerI
 		}
 	}()
 
-	var stats struct {
-		CPUStats struct {
-			CPUUsage struct {
-				TotalUsage  uint64   `json:"total_usage"`
-				PercpuUsage []uint64 `json:"percpu_usage"`
-			} `json:"cpu_usage"`
-			SystemCPUUsage uint64 `json:"system_cpu_usage"`
-		} `json:"cpu_stats"`
-		MemoryStats struct {
-			Usage uint64            `json:"usage"`
-			Limit uint64            `json:"limit"`
-			Stats map[string]uint64 `json:"stats"`
-		} `json:"memory_stats"`
-		Networks map[string]struct {
-			RxBytes uint64 `json:"rx_bytes"`
-			TxBytes uint64 `json:"tx_bytes"`
-		} `json:"networks"`
-		BlkioStats struct {
-			IoServiceBytesRecursive []struct {
-				Op    string `json:"op"`
-				Value uint64 `json:"value"`
-			} `json:"io_service_bytes_recursive"`
-		} `json:"blkio_stats"`
-	}
+	var stats containerStats
 
 	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
 		return metrics
@@ -113,30 +111,7 @@ func collectContainerMetrics(ctx context.Context, cli *client.Client, containerI
 	return metrics
 }
 
-func populateContainerCPUMetrics(metrics *Metrics, stats struct {
-	CPUStats struct {
-		CPUUsage struct {
-			TotalUsage  uint64   `json:"total_usage"`
-			PercpuUsage []uint64 `json:"percpu_usage"`
-		} `json:"cpu_usage"`
-		SystemCPUUsage uint64 `json:"system_cpu_usage"`
-	} `json:"cpu_stats"`
-	MemoryStats struct {
-		Usage uint64            `json:"usage"`
-		Limit uint64            `json:"limit"`
-		Stats map[string]uint64 `json:"stats"`
-	} `json:"memory_stats"`
-	Networks map[string]struct {
-		RxBytes uint64 `json:"rx_bytes"`
-		TxBytes uint64 `json:"tx_bytes"`
-	} `json:"networks"`
-	BlkioStats struct {
-		IoServiceBytesRecursive []struct {
-			Op    string `json:"op"`
-			Value uint64 `json:"value"`
-		} `json:"io_service_bytes_recursive"`
-	} `json:"blkio_stats"`
-}) {
+func populateContainerCPUMetrics(metrics *Metrics, stats containerStats) {
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(stats.CPUStats.SystemCPUUsage)
 	if systemDelta > 0 && len(stats.CPUStats.CPUUsage.PercpuUsage) > 0 {
@@ -144,30 +119,7 @@ func populateContainerCPUMetrics(metrics *Metrics, stats struct {
 	}
 }
 
-func populateContainerMemoryMetrics(metrics *Metrics, stats struct {
-	CPUStats struct {
-		CPUUsage struct {
-			TotalUsage  uint64   `json:"total_usage"`
-			PercpuUsage []uint64 `json:"percpu_usage"`
-		} `json:"cpu_usage"`
-		SystemCPUUsage uint64 `json:"system_cpu_usage"`
-	} `json:"cpu_stats"`
-	MemoryStats struct {
-		Usage uint64            `json:"usage"`
-		Limit uint64            `json:"limit"`
-		Stats map[string]uint64 `json:"stats"`
-	} `json:"memory_stats"`
-	Networks map[string]struct {
-		RxBytes uint64 `json:"rx_bytes"`
-		TxBytes uint64 `json:"tx_bytes"`
-	} `json:"networks"`
-	BlkioStats struct {
-		IoServiceBytesRecursive []struct {
-			Op    string `json:"op"`
-			Value uint64 `json:"value"`
-		} `json:"io_service_bytes_recursive"`
-	} `json:"blkio_stats"`
-}) {
+func populateContainerMemoryMetrics(metrics *Metrics, stats containerStats) {
 	memUsage := stats.MemoryStats.Usage
 	if inactiveFile, ok := stats.MemoryStats.Stats["inactive_file"]; ok && inactiveFile < memUsage {
 		memUsage -= inactiveFile
@@ -176,30 +128,7 @@ func populateContainerMemoryMetrics(metrics *Metrics, stats struct {
 	metrics.MemLimit = stats.MemoryStats.Limit
 }
 
-func populateContainerIOMetrics(metrics *Metrics, stats struct {
-	CPUStats struct {
-		CPUUsage struct {
-			TotalUsage  uint64   `json:"total_usage"`
-			PercpuUsage []uint64 `json:"percpu_usage"`
-		} `json:"cpu_usage"`
-		SystemCPUUsage uint64 `json:"system_cpu_usage"`
-	} `json:"cpu_stats"`
-	MemoryStats struct {
-		Usage uint64            `json:"usage"`
-		Limit uint64            `json:"limit"`
-		Stats map[string]uint64 `json:"stats"`
-	} `json:"memory_stats"`
-	Networks map[string]struct {
-		RxBytes uint64 `json:"rx_bytes"`
-		TxBytes uint64 `json:"tx_bytes"`
-	} `json:"networks"`
-	BlkioStats struct {
-		IoServiceBytesRecursive []struct {
-			Op    string `json:"op"`
-			Value uint64 `json:"value"`
-		} `json:"io_service_bytes_recursive"`
-	} `json:"blkio_stats"`
-}) {
+func populateContainerIOMetrics(metrics *Metrics, stats containerStats) {
 	for _, netStats := range stats.Networks {
 		metrics.NetInput += netStats.RxBytes
 		metrics.NetOutput += netStats.TxBytes
@@ -214,12 +143,12 @@ func populateContainerIOMetrics(metrics *Metrics, stats struct {
 	}
 }
 
-func resolveContainerPresentation(ctx context.Context, ctr container.Summary) (string, string, string) {
+func resolveContainerPresentation(ctr container.Summary) (string, string, string) {
 	containerIcon := ctr.Labels["io.linuxio.container.icon"]
 	containerURL := ctr.Labels["io.linuxio.container.url"]
 	proxyPort := ctr.Labels[ProxyPortLabel]
 	iconName := containerIconName(ctr)
-	resolvedURL := resolveContainerURL(ctx, ctr, containerURL, proxyPort, iconName)
+	resolvedURL := resolveContainerURL(containerURL, proxyPort, iconName)
 	return ResolveIconIdentifier(containerIcon, iconName), resolvedURL, proxyPort
 }
 
@@ -240,12 +169,9 @@ func containerIconName(ctr container.Summary) string {
 	return containerName
 }
 
-func resolveContainerURL(ctx context.Context, ctr container.Summary, containerURL, proxyPort, iconName string) string {
+func resolveContainerURL(containerURL, proxyPort, iconName string) string {
 	if containerURL != "" || proxyPort == "" || iconName == "" {
 		return containerURL
-	}
-	if ctr.State == "running" {
-		connectToProxyNetwork(ctx, ctr.ID)
 	}
 	return "/proxy/" + iconName + "/"
 }
@@ -256,11 +182,7 @@ func StartContainer(ctx context.Context, id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to start container: %w", err)
@@ -275,11 +197,7 @@ func StopContainer(ctx context.Context, id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if err := cli.ContainerStop(ctx, id, container.StopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to stop container: %w", err)
@@ -294,11 +212,7 @@ func RemoveContainer(ctx context.Context, id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if err := cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil {
 		return nil, fmt.Errorf("failed to remove container: %w", err)
@@ -313,11 +227,7 @@ func RestartContainer(ctx context.Context, id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if err := cli.ContainerRestart(ctx, id, container.StopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to restart container: %w", err)
@@ -332,11 +242,7 @@ func StartAllStopped(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
@@ -370,11 +276,7 @@ func StopAllRunning(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {

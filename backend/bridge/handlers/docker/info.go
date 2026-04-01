@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	dockertypes "github.com/docker/docker/api/types"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // DockerSystemInfo holds the flattened Docker daemon system and version info.
@@ -66,11 +65,7 @@ func GetDockerInfo() (*DockerSystemInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	ctx := context.Background()
 

@@ -3,14 +3,36 @@ package docker
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/docker/docker/client"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
-// Helper to get a docker client
+var (
+	dockerClientMu sync.Mutex
+	dockerClient   *client.Client
+)
+
+// getClient returns a shared Docker client for the process lifetime.
 func getClient() (*client.Client, error) {
-	return client.NewClientWithOpts(client.FromEnv)
+	dockerClientMu.Lock()
+	defer dockerClientMu.Unlock()
+
+	if dockerClient != nil {
+		return dockerClient, nil
+	}
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, err
+	}
+	dockerClient = cli
+	return dockerClient, nil
+}
+
+// releaseClient is a no-op because Docker handlers share a process-wide client.
+func releaseClient(*client.Client) {
 }
 
 // dockerAvailable verifies that Docker client initialization and daemon ping both work.
@@ -19,11 +41,7 @@ func dockerAvailable() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if _, err := cli.Ping(context.Background()); err != nil {
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)

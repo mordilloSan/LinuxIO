@@ -78,11 +78,7 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 		logger.Debugf("docker client unavailable, using container names as fallback: %v", err)
 		return autoUpdateContainers
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	running, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
 	if err != nil {

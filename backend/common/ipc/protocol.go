@@ -335,6 +335,7 @@ func AbortContext(parent context.Context, stream io.Reader) (ctx context.Context
 	}
 
 	cleanup = func() {
+		cancel()
 		select {
 		case <-done:
 		case <-time.After(100 * time.Millisecond):

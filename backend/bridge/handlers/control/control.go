@@ -6,12 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +20,14 @@ import (
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/versioncmp"
+)
+
+const (
+	maxGitHubReleaseBodyBytes int64 = 1 << 20
+	maxHTTPErrorBodyBytes     int64 = 8 << 10
+	maxChecksumBodyBytes      int64 = 64 << 10
+	maxInstallScriptBodyBytes int64 = 4 << 20
 )
 
 // buildScriptURLs constructs URLs to download install script and checksum from a specific release
@@ -77,7 +85,7 @@ func getVersionInfo() (VersionInfo, error) {
 			info.UpdateAvailable = true
 		} else {
 			// For release versions, compare semantically
-			info.UpdateAvailable = isNewerVersion(latestVersion, currentVersion)
+			info.UpdateAvailable = versioncmp.IsNewer(latestVersion, currentVersion)
 		}
 	}
 	return info, nil
@@ -234,77 +242,22 @@ func fetchLatestVersion() (string, error) {
 		return "", fmt.Errorf("github API returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBodyLimited(resp.Body, maxGitHubReleaseBodyBytes)
 	if err != nil {
 		return "", err
 	}
 
-	tagStart := strings.Index(string(body), `"tag_name":"`)
-	if tagStart == -1 {
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+
+	if err := json.Unmarshal(body, &release); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+	if release.TagName == "" {
 		return "", fmt.Errorf("tag_name not found in response")
 	}
-	tagStart += len(`"tag_name":"`)
-	tagEnd := strings.Index(string(body)[tagStart:], `"`)
-	if tagEnd == -1 {
-		return "", fmt.Errorf("malformed tag_name in response")
-	}
-	return string(body)[tagStart : tagStart+tagEnd], nil
-}
-
-func restartService() error {
-	logger.Infof("restarting linuxio service")
-	var lastErr error
-	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
-		if err := systemdapi.RestartUnit(unit); err == nil {
-			logger.Infof("service restarted successfully via %s", unit)
-			return nil
-		} else {
-			lastErr = err
-			logger.Debugf("restart via %s failed: %v", unit, err)
-		}
-	}
-	return fmt.Errorf("restart failed: %w", lastErr)
-}
-
-// isNewerVersion returns true if latest is semantically newer than current.
-// Expects versions like "v1.2.3" or "1.2.3".
-func isNewerVersion(latest, current string) bool {
-	if latest == "" || current == "" {
-		return false
-	}
-
-	// Strip leading 'v' if present
-	latest = strings.TrimPrefix(latest, "v")
-	current = strings.TrimPrefix(current, "v")
-
-	latestParts := strings.Split(latest, ".")
-	currentParts := strings.Split(current, ".")
-
-	// Compare each numeric part
-	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
-		latestNum, err1 := strconv.Atoi(latestParts[i])
-		currentNum, err2 := strconv.Atoi(currentParts[i])
-		if err1 != nil || err2 != nil {
-			// If either part is not a valid number, compare as strings
-			if latestParts[i] > currentParts[i] {
-				return true
-			}
-			if latestParts[i] < currentParts[i] {
-				return false
-			}
-			continue
-		}
-
-		if latestNum > currentNum {
-			return true
-		}
-		if latestNum < currentNum {
-			return false
-		}
-	}
-
-	// If all compared parts are equal, longer version is newer (e.g., 1.2.3 > 1.2)
-	return len(latestParts) > len(currentParts)
+	return release.TagName, nil
 }
 
 // downloadChecksum fetches the SHA256 checksum file from GitHub
@@ -322,11 +275,10 @@ func downloadChecksum(ctx context.Context, client *http.Client, url string) (str
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("http %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	checksumBytes, err := io.ReadAll(resp.Body)
+	checksumBytes, err := readBodyLimited(resp.Body, maxChecksumBodyBytes)
 	if err != nil {
 		return "", fmt.Errorf("read body: %w", err)
 	}
@@ -355,11 +307,10 @@ func downloadScript(ctx context.Context, client *http.Client, url string) ([]byt
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	scriptBytes, err := io.ReadAll(resp.Body)
+	scriptBytes, err := readBodyLimited(resp.Body, maxInstallScriptBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -371,4 +322,38 @@ func downloadScript(ctx context.Context, client *http.Client, url string) ([]byt
 func computeSHA256(data []byte) string {
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
+}
+
+func readBodyLimited(r io.Reader, max int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > max {
+		return nil, fmt.Errorf("response body exceeds %d bytes", max)
+	}
+	return body, nil
+}
+
+func readErrorBody(r io.Reader) string {
+	body, err := readBodyLimited(r, maxHTTPErrorBodyBytes)
+	if err != nil {
+		return err.Error()
+	}
+	return string(body)
+}
+
+func restartService() error {
+	logger.Infof("restarting linuxio service")
+	var lastErr error
+	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
+		if err := systemdapi.RestartUnit(unit); err == nil {
+			logger.Infof("service restarted successfully via %s", unit)
+			return nil
+		} else {
+			lastErr = err
+			logger.Debugf("restart via %s failed: %v", unit, err)
+		}
+	}
+	return fmt.Errorf("restart failed: %w", lastErr)
 }

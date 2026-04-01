@@ -21,11 +21,7 @@ func EnsureLinuxIONetwork() {
 		logger.Debugf("cannot ensure %s network: %v", linuxIONetworkName, err)
 		return
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	ctx := context.Background()
 
@@ -65,11 +61,7 @@ func connectToProxyNetwork(ctx context.Context, containerID string) {
 		logger.Debugf("ConnectToProxyNetwork: client error: %v", err)
 		return
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("ConnectToProxyNetwork: failed to close client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	err = cli.NetworkConnect(ctx, linuxIONetworkName, containerID, nil)
 	if err != nil {
@@ -91,11 +83,7 @@ func ListDockerNetworks() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	networks, err := cli.NetworkList(context.Background(), network.ListOptions{})
 	if err != nil {
@@ -155,11 +143,7 @@ func DeleteDockerNetwork(name string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if err := cli.NetworkRemove(context.Background(), name); err != nil {
 		return nil, fmt.Errorf("failed to remove network: %w", err)
@@ -174,11 +158,7 @@ func CreateDockerNetwork(name string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	network, err := cli.NetworkCreate(context.Background(), name, network.CreateOptions{})
 	if err != nil {

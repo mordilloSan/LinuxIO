@@ -138,7 +138,7 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 }
 
 // ============================================================================
-// Comunication with the bridge
+// Communication with the bridge
 // ============================================================================
 
 // GetYamuxSession returns an existing yamux session for the given session ID.
