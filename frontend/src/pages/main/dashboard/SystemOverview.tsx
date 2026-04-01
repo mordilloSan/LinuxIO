@@ -14,6 +14,11 @@ function formatUptime(seconds: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+interface OverviewRow {
+  label: string;
+  value: string;
+}
+
 const SystemOverview: React.FC = () => {
   const theme = useAppTheme();
 
@@ -25,6 +30,27 @@ const SystemOverview: React.FC = () => {
     refetchInterval: 30000,
   });
 
+  const rows: OverviewRow[] = [
+    {
+      label: "Hostname",
+      value: hostInfo?.hostname ?? "---",
+    },
+    {
+      label: "Platform",
+      value: hostInfo
+        ? `${hostInfo.platform} ${hostInfo.platformVersion}`.trim()
+        : "---",
+    },
+    {
+      label: "Kernel",
+      value: hostInfo?.kernelVersion ?? "---",
+    },
+    {
+      label: "Uptime",
+      value: uptime != null ? formatUptime(uptime) : "---",
+    },
+  ];
+
   const stats = (
     <div
       style={{
@@ -34,26 +60,7 @@ const SystemOverview: React.FC = () => {
         width: "fit-content",
       }}
     >
-      {[
-        {
-          label: "Hostname",
-          value: hostInfo?.hostname ?? "---",
-        },
-        {
-          label: "Platform",
-          value: hostInfo
-            ? `${hostInfo.platform} ${hostInfo.platformVersion}`.trim()
-            : "---",
-        },
-        {
-          label: "Kernel",
-          value: hostInfo?.kernelVersion ?? "---",
-        },
-        {
-          label: "Uptime",
-          value: uptime != null ? formatUptime(uptime) : "---",
-        },
-      ].map(({ label, value }, index, rows) => (
+      {rows.map(({ label, value }, index, items) => (
         <div
           key={label}
           style={{
@@ -63,7 +70,7 @@ const SystemOverview: React.FC = () => {
             paddingTop: theme.spacing(0.5),
             paddingBottom: theme.spacing(0.5),
             borderBottom:
-              index === rows.length - 1
+              index === items.length - 1
                 ? "none"
                 : "1px solid var(--app-palette-divider)",
             gap: theme.spacing(1),

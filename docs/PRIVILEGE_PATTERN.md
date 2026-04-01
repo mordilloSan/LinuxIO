@@ -46,15 +46,10 @@ The privilege helper lives here:
 It provides:
 
 ```go
-func RequirePrivileged(
+func RequirePrivilegedIPC(
     sess *session.Session,
-    handler func([]string) (any, error),
-) func([]string) (any, error)
-
-func RequirePrivilegedAll(
-    sess *session.Session,
-    handlers map[string]func([]string) (any, error),
-) map[string]func([]string) (any, error)
+    handler ipc.HandlerFunc,
+) ipc.HandlerFunc
 ```
 
 These helpers are valid when handler registration already has direct access to `sess *session.Session`.
@@ -63,33 +58,21 @@ These helpers are valid when handler registration already has direct access to `
 
 The active bridge handler system is the `ipc.RegisterFunc(...)` model, not the older `JsonHandlers[...]` map style.
 
-Session context is injected centrally in:
-
-- `backend/bridge/handlers/generic/bridge.go`
-
-That means there are now two valid backend enforcement patterns.
-
 ## Pattern A: Registration-Time Enforcement
 
 Use this when the package registration function already receives `sess *session.Session`.
 
-This is the cleanest option for package-wide privilege rules.
+This is the cleanest option for package-wide privilege rules, and it is the preferred pattern in the current codebase.
 
 Example shape:
 
 ```go
 func RegisterHandlers(sess *session.Session) {
-    guarded := privilege.RequirePrivileged(sess, func(args []string) (any, error) {
-        return DangerousOperation(args)
-    })
-
-    ipc.RegisterFunc("example", "dangerous", func(ctx context.Context, args []string, emit ipc.Events) error {
-        result, err := guarded(args)
-        if err != nil {
-            return err
-        }
-        return emit.Result(result)
-    })
+    ipc.RegisterFunc(
+        "example",
+        "dangerous",
+        privilege.RequirePrivilegedIPC(sess, handleDangerous),
+    )
 }
 ```
 
@@ -99,44 +82,7 @@ Use this when:
 - the package already takes `sess`
 - you want the protection to be obvious at registration time
 
-## Pattern B: Context-Based Enforcement
-
-Use this when handlers are registered through `ipc.RegisterFunc(...)` and the package does not receive `sess *session.Session` during registration.
-
-In that case, the handler must read the session from `ctx` and check `sess.Privileged` at execution time.
-
-Example shape:
-
-```go
-func handleDangerous(ctx context.Context, args []string, emit ipc.Events) error {
-    sess, ok := generic.SessionFromContext(ctx)
-    if !ok || !sess.Privileged {
-        return fmt.Errorf("operation requires administrator privileges")
-    }
-
-    result, err := DangerousOperation(args)
-    if err != nil {
-        return err
-    }
-    return emit.Result(result)
-}
-```
-
-Use this when:
-
-- only a few handlers in a package need privilege
-- the package currently has `RegisterHandlers()` with no session parameter
-- refactoring registration to thread `sess` through the package is not worth it yet
-
-## Choosing A vs B
-
-Prefer Pattern A when the package already accepts `sess` or when an entire package is privileged.
-
-Prefer Pattern B when:
-
-- the package is mixed public and privileged
-- the current registration signature is `RegisterHandlers()`
-- you need a small, local authorization check without refactoring the whole package
+If a package does not currently receive `sess`, the preferred fix is to thread `sess` into that package's `RegisterHandlers(...)` function rather than rely on a frontend route guard.
 
 ## Important Rule
 
@@ -162,7 +108,7 @@ As of now:
 
 So WireGuard currently has frontend privilege gating, but this document should not assume that all WireGuard bridge commands are already backend-protected by the helper.
 
-If a handler must be privileged, the backend must check `sess.Privileged` explicitly through one of the two patterns above.
+If a handler must be privileged, the backend must check `sess.Privileged` explicitly through registration-time enforcement.
 
 ## Recommended Usage
 
@@ -179,7 +125,7 @@ For mixed modules like `system`:
 
 - keep public reads public
 - gate sensitive operations in the backend at the individual handler level
-- use context-based enforcement if the package does not currently accept `sess`
+- thread `sess` into registration and wrap only the sensitive handlers
 
 ## Audit Guidance
 
@@ -187,9 +133,7 @@ To audit real privileged operations, do not rely on route metadata alone.
 
 Check:
 
-- calls to `RequirePrivileged(...)`
-- calls to `RequirePrivilegedAll(...)`
-- handler code that reads the bridge session from `ctx`
+- calls to `RequirePrivilegedIPC(...)`
 - direct checks against `sess.Privileged`
 
 ## Testing

@@ -38,7 +38,7 @@ func RegisterAllHandlers(sess *session.Session) {
 	}
 
 	// Register all handlers using the handler.Register() system
-	system.RegisterHandlers()
+	system.RegisterHandlers(sess)
 	monitoring.RegisterHandlers()
 	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)

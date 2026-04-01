@@ -145,6 +145,23 @@ export interface SystemInfo {
   cpuSummary: string;
 }
 
+export interface SystemLastLogin {
+  username: string;
+  terminal?: string;
+  source?: string;
+  time: string;
+}
+
+export interface SystemHealthSummary {
+  failedServicesCount: number;
+  failedServices?: string[];
+  failedLoginAttempts: number;
+  updatesAvailable: number;
+  upToDate: boolean;
+  uncleanShutdown: boolean;
+  lastLogin?: SystemLastLogin | null;
+}
+
 export interface PCIDevice {
   class: string;
   model: string;
@@ -780,6 +797,7 @@ export interface LinuxIOSchema {
     get_system_info: { args: []; result: SystemInfo };
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
+    get_health_summary: { args: []; result: SystemHealthSummary };
   };
 
   monitoring: {

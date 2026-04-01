@@ -8,63 +8,127 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
-interface Update {
-  package_id: string;
-  summary: string;
-  version: string;
-  issued: string;
-  changelog: string;
-  cve: string[];
-  restart: number;
-  state: number;
+interface HealthItem {
+  icon: string;
+  color: string;
+  text: string;
+  to?: string;
+  detail?: string;
 }
 
-interface SystemUpdatesResponse {
-  updates: Update[];
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 const SystemHealth = () => {
   const theme = useAppTheme();
 
   const {
-    data: updatesRaw,
+    data: health,
     isPending: loadingHealth,
     isFetching: fetchingHealth,
-  } = linuxio.system.get_updates_fast.useQuery({ refetchInterval: 50000 });
+  } = linuxio.system.get_health_summary.useQuery({ refetchInterval: 50000 });
 
-  const systemHealth: SystemUpdatesResponse | undefined = updatesRaw
-    ? Array.isArray(updatesRaw)
-      ? { updates: updatesRaw }
-      : updatesRaw
-    : undefined;
-
-  const { data: servicesRaw } = linuxio.system.get_processes.useQuery({
+  const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
     refetchInterval: 50000,
   });
 
-  const { data: distroInfo } = linuxio.system.get_host_info.useQuery({
-    refetchInterval: 50000,
-  });
+  const items: HealthItem[] = [];
 
-  const services = Array.isArray(servicesRaw) ? servicesRaw : [];
-  const units = services.length;
-  const running = services.filter((svc) => svc.running === true).length;
+  if (health?.failedServicesCount) {
+    items.push({
+      icon: "mdi:alert-circle",
+      color: theme.palette.error.main,
+      text: `${pluralize(health.failedServicesCount, "service has", "services have")} failed`,
+      to: "/services",
+      detail: health.failedServices?.slice(0, 2).join(", "),
+    });
+  }
 
-  const updates = systemHealth?.updates ?? [];
-  const totalPackages = updates.length;
-  const distro = distroInfo?.platform || "Unknown";
+  if (health?.failedLoginAttempts) {
+    items.push({
+      icon: "mdi:account-alert-outline",
+      color: theme.palette.warning.main,
+      text: `${pluralize(health.failedLoginAttempts, "failed login attempt", "failed login attempts")} before this session`,
+      to: "/logs",
+    });
+  }
+
+  if (health?.upToDate === false) {
+    items.push({
+      icon: "mdi:package-up",
+      color: theme.palette.warning.main,
+      text: `${pluralize(health.updatesAvailable, "update", "updates")} available`,
+      to: "/updates",
+    });
+  } else {
+    items.push({
+      icon: "mdi:check-circle",
+      color: theme.palette.success.main,
+      text: "System is up to date",
+      to: "/updates",
+    });
+  }
+
+  if (health?.uncleanShutdown) {
+    items.push({
+      icon: "mdi:alert-outline",
+      color: theme.palette.warning.main,
+      text: "Unclean shutdown",
+      to: "/logs",
+    });
+  }
+
+  if (health?.lastLogin?.time) {
+    const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const timeParts = health.lastLogin.time.split(" ");
+    let displaySource = health.lastLogin.source;
+    let timeStr = health.lastLogin.time;
+    if (timeParts.length > 0 && !daysOfWeek.includes(timeParts[0])) {
+      displaySource = timeParts[0];
+      timeStr = timeParts.slice(1).join(" ");
+    }
+    const timeMatch = timeStr.match(
+      /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\w+)\s+(\d+)\s+(\d{2}):(\d{2}):\d{2}/,
+    );
+    const displayTime = timeMatch
+      ? `${timeMatch[1]} ${timeMatch[2]}, ${timeMatch[3]}:${timeMatch[4]} ${parseInt(timeMatch[3]) >= 12 ? "PM" : "AM"}`
+      : timeStr;
+    const terminal =
+      health.lastLogin.terminal === "web"
+        ? "web console"
+        : health.lastLogin.terminal;
+    const detailParts = [displaySource, terminal].filter(Boolean);
+    items.push({
+      icon: "mdi:account-clock-outline",
+      color: theme.palette.text.secondary,
+      text: `Last successful login: ${displayTime}`,
+      detail:
+        detailParts.length > 0 ? `from ${detailParts.join(" on ")}` : undefined,
+    });
+  }
 
   let statusColor = theme.palette.success.dark;
   let iconName = "mdi:shield-check-outline";
   let iconLink = "/updates";
-  if (totalPackages > 0) {
+
+  if (health?.failedServicesCount) {
+    statusColor = theme.palette.error.main;
+    iconName = "mdi:shield-alert-outline";
+    iconLink = "/services";
+  } else if (health?.failedLoginAttempts) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";
+    iconLink = "/logs";
+  } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
+    statusColor = theme.palette.warning.main;
+    iconName = "mdi:shield-alert-outline";
+    iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
   }
 
   const stats2 = (
     <div>
-      {!systemHealth && (loadingHealth || fetchingHealth) ? (
+      {!health && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
         <RouterLink
@@ -77,79 +141,83 @@ const SystemHealth = () => {
     </div>
   );
 
-  const stats = (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignSelf: "flex-start",
-        width: "fit-content",
-      }}
-    >
-      {[
-        { label: "Distro", value: <>{distro}</> },
-        {
-          label: "Updates",
-          value: (
-            <RouterLink to="/updates" style={{ color: "inherit" }}>
-              {!systemHealth && (loadingHealth || fetchingHealth)
-                ? "Loading..."
-                : totalPackages > 0
-                  ? `${totalPackages} available`
-                  : "None available"}
+  const stats =
+    !health && (loadingHealth || fetchingHealth) ? (
+      <ComponentLoader />
+    ) : (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignSelf: "flex-start",
+          width: "100%",
+          gap: theme.spacing(1.25),
+        }}
+      >
+        {items.map((item) => {
+          const content = (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(1),
+              }}
+            >
+              <Icon
+                icon={item.icon}
+                width={18}
+                height={18}
+                color={item.color}
+                style={{ flexShrink: 0 }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <AppTypography
+                  variant="body2"
+                  fontWeight={500}
+                  style={{
+                    color:
+                      item.color === theme.palette.text.secondary
+                        ? undefined
+                        : item.color,
+                  }}
+                >
+                  {item.text}
+                </AppTypography>
+                {item.detail ? (
+                  <AppTypography
+                    variant="caption"
+                    color="text.secondary"
+                    style={{ display: "block", marginTop: 1 }}
+                  >
+                    {item.detail}
+                  </AppTypography>
+                ) : null}
+              </div>
+            </div>
+          );
+
+          return item.to ? (
+            <RouterLink
+              key={item.text}
+              to={item.to}
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              {content}
             </RouterLink>
-          ),
-        },
-        {
-          label: "Services",
-          value: (
-            <RouterLink to="/services" style={{ color: "inherit" }}>
-              {`${running}/${units} running`}
-            </RouterLink>
-          ),
-        },
-      ].map(({ label, value }, index, rows) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "flex-start",
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
-            borderBottom:
-              index === rows.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppTypography
-            variant="caption"
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
-              flexShrink: 0,
-            }}
-          >
-            {label}
-          </AppTypography>
-          <AppTypography variant="body2" fontWeight={500} noWrap>
-            {value}
-          </AppTypography>
-        </div>
-      ))}
-    </div>
-  );
+          ) : (
+            <div key={item.text}>{content}</div>
+          );
+        })}
+      </div>
+    );
 
   return (
     <DashboardCard
       title="System Health"
       stats={stats}
       stats2={stats2}
-      avatarIcon={`simple-icons:${distroInfo?.platform || "linux"}`}
+      avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
+      contentLayout="auto"
     />
   );
 };
