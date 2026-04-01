@@ -30,8 +30,7 @@ func ListUsers() ([]User, error) {
 	defer file.Close()
 
 	lockedUsers := getLockedUsers()
-	userGroups := getUserGroups()
-	gidToGroup := getGIDToGroupName()
+	userGroups, gidToGroup := parseGroupFile()
 	lastLogins := getLastLogins()
 
 	scanner := bufio.NewScanner(file)
@@ -381,13 +380,15 @@ func getLockedUsers() map[string]bool {
 	return locked
 }
 
-// getUserGroups returns a map of usernames to their secondary groups
-func getUserGroups() map[string][]string {
+// parseGroupFile reads /etc/group once and returns both the username→groups
+// map (secondary memberships) and the GID→name map.
+func parseGroupFile() (map[string][]string, map[int]string) {
 	userGroups := make(map[string][]string)
+	gidToGroup := make(map[int]string)
 
 	file, err := os.Open("/etc/group")
 	if err != nil {
-		return userGroups
+		return userGroups, gidToGroup
 	}
 	defer file.Close()
 
@@ -400,13 +401,12 @@ func getUserGroups() map[string][]string {
 		}
 
 		groupName := parts[0]
-		members := parts[3]
 
-		if members == "" {
-			continue
+		if gid, err := strconv.Atoi(parts[2]); err == nil {
+			gidToGroup[gid] = groupName
 		}
 
-		for member := range strings.SplitSeq(members, ",") {
+		for member := range strings.SplitSeq(parts[3], ",") {
 			member = strings.TrimSpace(member)
 			if member != "" {
 				userGroups[member] = append(userGroups[member], groupName)
@@ -414,36 +414,7 @@ func getUserGroups() map[string][]string {
 		}
 	}
 
-	return userGroups
-}
-
-// getGIDToGroupName returns a map of GID to group name
-func getGIDToGroupName() map[int]string {
-	gidToGroup := make(map[int]string)
-
-	file, err := os.Open("/etc/group")
-	if err != nil {
-		return gidToGroup
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, ":")
-		if len(parts) < 3 {
-			continue
-		}
-
-		gid, err := strconv.Atoi(parts[2])
-		if err != nil {
-			continue
-		}
-
-		gidToGroup[gid] = parts[0]
-	}
-
-	return gidToGroup
+	return userGroups, gidToGroup
 }
 
 // getLastLogins returns a map of usernames to their last login time
