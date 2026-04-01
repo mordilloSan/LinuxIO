@@ -766,23 +766,47 @@ const HistoryCardShell: React.FC<{
       <div
         style={{
           display: "flex",
+          alignItems: "center",
           justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 12,
-          marginBottom: 12,
+          gap: 6,
+          marginBottom: 8,
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon
+              icon={avatarIcon}
+              width={28}
+              height={28}
+              color={accentColor}
+            />
+          </div>
+          <AppTypography
+            variant="subtitle1"
+            fontWeight={700}
+            style={{ lineHeight: 1.2 }}
+          >
+            {title}
+          </AppTypography>
+        </div>
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
+            gap: 6,
+            flexShrink: 0,
           }}
         >
-          <AppTypography variant="h5" fontWeight={700}>
-            {title}
-          </AppTypography>
           <RangeDropdown
             value={range}
             onChange={onRangeChange}
@@ -790,7 +814,6 @@ const HistoryCardShell: React.FC<{
           />
           {controls}
         </div>
-        <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
       </div>
 
       <div
@@ -1761,44 +1784,68 @@ const DiskIOHistoryChart: React.FC<{
 
 const InfoCardShell: React.FC<{
   title: string;
+  subtitle: string;
   avatarIcon: string;
   accentColor: string;
   rows: SummaryRow[];
   actions?: React.ReactNode;
-}> = ({ title, avatarIcon, accentColor, rows, actions }) => (
+}> = ({ title, subtitle, avatarIcon, accentColor, rows, actions }) => (
   <FrostedCard
     style={{
-      minHeight: cardHeight - 24,
       display: "flex",
       flexDirection: "column",
-      padding: 16,
+      padding: 8,
     }}
     hoverLift
   >
     <div
       style={{
         display: "flex",
-        justifyContent: "space-between",
         alignItems: "center",
-        gap: 12,
-        marginBottom: 12,
+        justifyContent: "space-between",
+        gap: 6,
+        marginBottom: 6,
       }}
     >
-      <AppTypography variant="h5" fontWeight={700}>
-        {title}
-      </AppTypography>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginLeft: "auto",
-          minWidth: 0,
-        }}
-      >
-        {actions}
-        <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+      <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+        </div>
+        <div>
+          <AppTypography
+            variant="subtitle1"
+            fontWeight={700}
+            style={{ lineHeight: 1 }}
+          >
+            {title}
+          </AppTypography>
+          <AppTypography variant="caption" color="text.secondary">
+            {subtitle}
+          </AppTypography>
+        </div>
       </div>
+      {actions && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
+          {actions}
+        </div>
+      )}
     </div>
 
     <div
@@ -1844,6 +1891,7 @@ export const MotherboardInfoCard: React.FC = () => {
   return (
     <InfoCardShell
       title="Motherboard"
+      subtitle="Board & system details"
       avatarIcon="bi:motherboard"
       accentColor={theme.palette.primary.main}
       rows={[
@@ -1887,6 +1935,7 @@ export const CPUDetailsCard: React.FC = () => {
   return (
     <InfoCardShell
       title="CPU"
+      subtitle="Processor specifications"
       avatarIcon="ph:cpu"
       accentColor={theme.palette.primary.main}
       rows={[
@@ -1929,6 +1978,7 @@ export const BIOSInfoCard: React.FC = () => {
   return (
     <InfoCardShell
       title="BIOS"
+      subtitle="Firmware information"
       avatarIcon="mdi:chip"
       accentColor={theme.palette.warning.main}
       rows={[
@@ -2004,6 +2054,7 @@ export const GPUInfoCard: React.FC = () => {
   return (
     <InfoCardShell
       title="GPU"
+      subtitle="Graphics card details"
       avatarIcon="bi:gpu-card"
       accentColor={theme.palette.primary.main}
       actions={
