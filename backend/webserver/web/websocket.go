@@ -171,7 +171,7 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 			// tearing down the TCP connection.  Without this, conn.Close()
 			// can race the close frame and the browser sees code 1006
 			// (abnormal closure) instead of 1008 (policy violation).
-			conn.SetReadDeadline(time.Now().Add(time.Second))
+			_ = conn.SetReadDeadline(time.Now().Add(time.Second))
 			for {
 				if _, _, readErr := conn.NextReader(); readErr != nil {
 					break
