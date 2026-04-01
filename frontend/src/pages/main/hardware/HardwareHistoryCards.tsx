@@ -4,7 +4,6 @@ import React, { useMemo, useRef, useState } from "react";
 import type {
   GpuDevice,
   MonitoringRange,
-  MonitoringSeriesPoint,
   MonitoringSeriesResponse,
 } from "@/api";
 import { linuxio } from "@/api";
@@ -14,11 +13,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
-import { formatFileSize } from "@/utils/formaters";
 import {
   formatGpuBytes,
-  formatGpuPercent,
-  getGpuType,
   getGpuVendorLabel,
 } from "@/utils/gpu";
 
@@ -57,18 +53,6 @@ const formatPercent = (value?: number | null): string =>
     ? `${Math.round(value)}%`
     : "—";
 
-const getLatestPoint = (
-  series: MonitoringSeriesResponse | undefined,
-): MonitoringSeriesPoint | undefined => series?.points.at(-1);
-
-const getPeakPointValue = (
-  series: MonitoringSeriesResponse | undefined,
-): number | undefined => {
-  if (!series?.available || series.points.length === 0) {
-    return undefined;
-  }
-  return series.points.reduce((peak, point) => Math.max(peak, point.value), 0);
-};
 
 const formatChartTimestamp = (
   timestamp: number | undefined,
@@ -213,6 +197,8 @@ const HistoryChart: React.FC<{
   stackedPercent?: number;
   stackedColor?: string;
   stackedLabel?: string;
+  hoverRatio?: number | null;
+  onHoverChange?: (ratio: number | null) => void;
 }> = ({
   color,
   label,
@@ -223,10 +209,14 @@ const HistoryChart: React.FC<{
   stackedPercent,
   stackedColor,
   stackedLabel,
+  hoverRatio: externalHoverRatio,
+  onHoverChange,
 }) => {
   const theme = useAppTheme();
   const chartRef = useRef<HTMLDivElement>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [internalHoverRatio, setInternalHoverRatio] = useState<number | null>(null);
+  const effectiveHoverRatio = externalHoverRatio !== undefined ? externalHoverRatio : internalHoverRatio;
+  const [mousePos, setMousePos] = useState<{ x: number; y: number; containerWidth: number } | null>(null);
 
   const points = useMemo(
     () => (series?.available ? series.points : []),
@@ -237,7 +227,7 @@ const HistoryChart: React.FC<{
   const viewWidth = 220;
   const viewHeight = 120;
   const paddingTop = 8;
-  const paddingRight = 28;
+  const paddingRight = 0;
   const paddingBottom = 16;
   const paddingLeft = 4;
   const innerWidth = viewWidth - paddingLeft - paddingRight;
@@ -294,13 +284,16 @@ const HistoryChart: React.FC<{
     });
   }, [hasStackedSegment, innerHeight, plotPoints, stackedPercent]);
 
+  const hoverIndex =
+    effectiveHoverRatio != null && plotPoints.length > 0
+      ? Math.max(0, Math.min(plotPoints.length - 1, Math.round(effectiveHoverRatio * (plotPoints.length - 1))))
+      : null;
+
   const hoveredPoint =
-    hoverIndex != null && hoverIndex >= 0 ? plotPoints[hoverIndex] : undefined;
+    hoverIndex != null ? plotPoints[hoverIndex] : undefined;
   const activePoint = hoveredPoint ?? plotPoints.at(-1);
   const activeBasePoint =
-    hoverIndex != null && hoverIndex >= 0
-      ? basePlotPoints[hoverIndex]
-      : basePlotPoints.at(-1);
+    hoverIndex != null ? basePlotPoints[hoverIndex] : undefined;
 
   const buildLinePath = (chartPoints: typeof plotPoints): string => {
     if (chartPoints.length === 0) {
@@ -351,20 +344,23 @@ const HistoryChart: React.FC<{
     ? Math.min(clampPercent(stackedPercent ?? 0), activePoint?.point.value ?? 0)
     : 0;
 
-  const handlePointerMove = (clientX: number) => {
+  const handlePointerMove = (clientX: number, clientY: number) => {
     if (!chartRef.current || plotPoints.length === 0) {
       return;
     }
     const rect = chartRef.current.getBoundingClientRect();
-    const ratio = (clientX - rect.left) / rect.width;
-    const nextIndex = Math.round(
-      (clampPercent(ratio * 100) / 100) * (plotPoints.length - 1),
-    );
-    setHoverIndex(Math.max(0, Math.min(plotPoints.length - 1, nextIndex)));
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    setInternalHoverRatio(ratio);
+    setMousePos({ x, y, containerWidth: rect.width });
+    onHoverChange?.(ratio);
   };
 
   const handleMouseLeave = () => {
-    setHoverIndex(null);
+    setInternalHoverRatio(null);
+    setMousePos(null);
+    onHoverChange?.(null);
   };
 
   if (loading && points.length === 0) {
@@ -414,8 +410,8 @@ const HistoryChart: React.FC<{
     >
       <div
         ref={chartRef}
-        style={{ width: "100%", minWidth: 0 }}
-        onMouseMove={(event) => handlePointerMove(event.clientX)}
+        style={{ width: "100%", minWidth: 0, position: "relative" }}
+        onMouseMove={(event) => handlePointerMove(event.clientX, event.clientY)}
         onMouseLeave={handleMouseLeave}
       >
         <svg
@@ -426,25 +422,15 @@ const HistoryChart: React.FC<{
           {[0, 25, 50, 75, 100].map((tick) => {
             const y = paddingTop + ((100 - tick) / 100) * innerHeight;
             return (
-              <g key={tick}>
-                <line
-                  x1={paddingLeft}
-                  y1={y}
-                  x2={paddingLeft + innerWidth}
-                  y2={y}
-                  stroke={alpha(theme.chart.neutral, 0.16)}
-                  strokeWidth={1}
-                />
-                <text
-                  x={viewWidth - 2}
-                  y={y + 3}
-                  textAnchor="end"
-                  fontSize="8"
-                  fill={alpha(theme.chart.neutral, 0.75)}
-                >
-                  {tick}%
-                </text>
-              </g>
+              <line
+                key={tick}
+                x1={paddingLeft}
+                y1={y}
+                x2={paddingLeft + innerWidth}
+                y2={y}
+                stroke={alpha(theme.chart.neutral, 0.16)}
+                strokeWidth={1}
+              />
             );
           })}
 
@@ -501,45 +487,136 @@ const HistoryChart: React.FC<{
             <path
               d={linePath}
               fill="none"
-              stroke={color}
+              stroke={hasStackedSegment ? stackedColor! : color}
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
             />
           )}
 
-          {activePoint && (
-            <>
-              <line
-                x1={activePoint.x}
-                y1={paddingTop}
-                x2={activePoint.x}
-                y2={paddingTop + innerHeight}
-                stroke={alpha(color, 0.4)}
-                strokeWidth={1}
-                strokeDasharray="3 3"
-              />
-              <circle
-                cx={activePoint.x}
-                cy={activePoint.y}
-                r={4}
-                fill={theme.palette.background.paper}
-                stroke={color}
-                strokeWidth={2}
-              />
-              {hasStackedSegment && activeBasePoint && (
-                <circle
-                  cx={activeBasePoint.x}
-                  cy={activeBasePoint.y}
-                  r={3}
-                  fill={theme.palette.background.paper}
-                  stroke={stackedColor}
-                  strokeWidth={1.5}
-                />
-              )}
-            </>
-          )}
         </svg>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: 28,
+            height: 120,
+            pointerEvents: "none",
+          }}
+        >
+          {[0, 25, 50, 75, 100].map((tick) => {
+            const top = paddingTop + ((100 - tick) / 100) * innerHeight;
+            return (
+              <div
+                key={tick}
+                style={{
+                  position: "absolute",
+                  top,
+                  right: 2,
+                  transform: "translateY(-50%)",
+                  fontSize: "8px",
+                  lineHeight: 1,
+                  color: alpha(theme.chart.neutral, 0.75),
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {tick}%
+              </div>
+            );
+          })}
+        </div>
+
+        {effectiveHoverRatio != null && hoveredPoint && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                left: `${(hoveredPoint.x / viewWidth) * 100}%`,
+                top: paddingTop,
+                height: innerHeight,
+                width: 1,
+                borderLeft: `1px dashed ${alpha(hasStackedSegment ? stackedColor! : color, 0.4)}`,
+                transform: "translateX(-50%)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: `${(hoveredPoint.x / viewWidth) * 100}%`,
+                top: hoveredPoint.y,
+                transform: "translate(-50%, -50%)",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                backgroundColor: theme.palette.background.paper,
+                border: `2px solid ${hasStackedSegment ? stackedColor! : color}`,
+              }}
+            />
+            {hasStackedSegment && activeBasePoint && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: `${(activeBasePoint.x / viewWidth) * 100}%`,
+                  top: activeBasePoint.y,
+                  transform: "translate(-50%, -50%)",
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  backgroundColor: theme.palette.background.paper,
+                  border: `1.5px solid ${stackedColor}`,
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {mousePos && effectiveHoverRatio != null && hoveredPoint && (
+          <div
+            style={{
+              position: "absolute",
+              ...(mousePos.x > mousePos.containerWidth / 2
+                ? { right: mousePos.containerWidth - mousePos.x + 12 }
+                : { left: mousePos.x + 12 }),
+              top: Math.max(0, mousePos.y - 20),
+              pointerEvents: "none",
+              zIndex: 10,
+              backgroundColor: theme.palette.background.paper,
+              border: `1px solid ${alpha(theme.chart.neutral, 0.2)}`,
+              borderRadius: 6,
+              padding: "4px 8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              whiteSpace: "nowrap",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+            }}
+          >
+            {hasStackedSegment ? (
+              <>
+                <AppTypography variant="caption" fontWeight={600}>
+                  {label}: {formatPercent(hoveredPoint.point.value - activeStackedPercent)}
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
+                  {stackedLabel}: {formatPercent(activeStackedPercent)}
+                </AppTypography>
+              </>
+            ) : (
+              <AppTypography variant="caption" fontWeight={600}>
+                {label}: {formatPercent(hoveredPoint.point.value)}
+              </AppTypography>
+            )}
+          </div>
+        )}
       </div>
 
       <div
@@ -550,29 +627,11 @@ const HistoryChart: React.FC<{
           gap: 8,
         }}
       >
-        <div
-          style={{
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
-          }}
-        >
-          <AppTypography variant="body2" fontWeight={700}>
-            {label}:{" "}
-            {formatPercent(activePoint?.point.value ?? latestPoint?.value)}
-          </AppTypography>
-          {hasStackedSegment && (
-            <AppTypography variant="caption" color="text.secondary">
-              {stackedLabel}: {formatPercent(activeStackedPercent)}
-            </AppTypography>
-          )}
-        </div>
+        <AppTypography variant="caption" fontWeight={700}>
+          {label}: {formatPercent(latestPoint?.value)}
+        </AppTypography>
         <AppTypography variant="caption" color="text.secondary" noWrap>
-          {formatChartTimestamp(
-            activePoint?.point.ts ?? latestPoint?.ts,
-            range,
-          )}
+          {formatChartTimestamp(latestPoint?.ts, range)}
         </AppTypography>
       </div>
     </div>
@@ -585,7 +644,6 @@ const HistoryCardShell: React.FC<{
   accentColor: string;
   range: MonitoringRange;
   onRangeChange: (value: MonitoringRange) => void;
-  rows: SummaryRow[];
   chart: React.ReactNode;
 }> = ({
   title,
@@ -593,7 +651,6 @@ const HistoryCardShell: React.FC<{
   accentColor,
   range,
   onRangeChange,
-  rows,
   chart,
 }) => {
   return (
@@ -604,7 +661,6 @@ const HistoryCardShell: React.FC<{
         flexDirection: "column",
         padding: 16,
       }}
-      hoverLift
     >
       <div
         style={{
@@ -645,17 +701,7 @@ const HistoryCardShell: React.FC<{
       >
         <div
           style={{
-            flex: "0.85 1 160px",
-            minWidth: 0,
-            display: "flex",
-            alignItems: "stretch",
-          }}
-        >
-          <SummaryRowsList rows={rows} />
-        </div>
-        <div
-          style={{
-            flex: "1.75 1 280px",
+            flex: 1,
             minWidth: 0,
             display: "flex",
             alignItems: "stretch",
@@ -973,27 +1019,20 @@ export const GPUInfoCard: React.FC = () => {
   );
 };
 
-export const CPUHistoryCard: React.FC = () => {
+export const CPUHistoryCard: React.FC<{
+  range?: MonitoringRange;
+  onRangeChange?: (v: MonitoringRange) => void;
+  hoverRatio?: number | null;
+  onHoverChange?: (ratio: number | null) => void;
+}> = ({ range: rangeProp, onRangeChange: onRangeChangeProp, hoverRatio, onHoverChange }) => {
   const theme = useAppTheme();
-  const [range, setRange] = useState<MonitoringRange>("1m");
-  const { data: cpuInfo } = linuxio.system.get_cpu_info.useQuery({
-    refetchInterval: 5_000,
-  });
+  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
+  const range = rangeProp ?? rangeInternal;
+  const setRange = onRangeChangeProp ?? setRangeInternal;
   const { data: series, isPending } =
     linuxio.monitoring.get_cpu_series.useQuery(range, {
       refetchInterval: 5_000,
     });
-
-  const averageCpuUsage = cpuInfo?.perCoreUsage?.length
-    ? cpuInfo.perCoreUsage.reduce((sum, cpu) => sum + cpu, 0) /
-      cpuInfo.perCoreUsage.length
-    : 0;
-  const latestUsage = getLatestPoint(series)?.value ?? averageCpuUsage;
-  const peakUsage =
-    getPeakPointValue(series) ??
-    (cpuInfo?.perCoreUsage?.length
-      ? Math.max(...cpuInfo.perCoreUsage)
-      : undefined);
 
   return (
     <HistoryCardShell
@@ -1002,15 +1041,6 @@ export const CPUHistoryCard: React.FC = () => {
       accentColor={theme.palette.primary.main}
       range={range}
       onRangeChange={setRange}
-      rows={[
-        { label: "CPU", value: cpuInfo?.modelName ?? "—" },
-        {
-          label: "Cores",
-          value: cpuInfo ? `${cpuInfo.cores} Threads` : "—",
-        },
-        { label: "Latest", value: formatPercent(latestUsage) },
-        { label: "Peak", value: formatPercent(peakUsage) },
-      ]}
       chart={
         <HistoryChart
           color={theme.palette.primary.main}
@@ -1019,15 +1049,24 @@ export const CPUHistoryCard: React.FC = () => {
           series={series}
           loading={isPending}
           emptyMessage="CPU history is not available yet."
+          hoverRatio={hoverRatio}
+          onHoverChange={onHoverChange}
         />
       }
     />
   );
 };
 
-export const MemoryHistoryCard: React.FC = () => {
+export const MemoryHistoryCard: React.FC<{
+  range?: MonitoringRange;
+  onRangeChange?: (v: MonitoringRange) => void;
+  hoverRatio?: number | null;
+  onHoverChange?: (ratio: number | null) => void;
+}> = ({ range: rangeProp, onRangeChange: onRangeChangeProp, hoverRatio, onHoverChange }) => {
   const theme = useAppTheme();
-  const [range, setRange] = useState<MonitoringRange>("1m");
+  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
+  const range = rangeProp ?? rangeInternal;
+  const setRange = onRangeChangeProp ?? setRangeInternal;
   const { data: memoryData } = linuxio.system.get_memory_info.useQuery({
     refetchInterval: 5_000,
   });
@@ -1036,8 +1075,6 @@ export const MemoryHistoryCard: React.FC = () => {
       refetchInterval: 5_000,
     });
 
-  const swapUsed =
-    (memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0);
   const dockerPercent =
     memoryData?.system?.total && memoryData.system.total > 0
       ? ((memoryData?.docker?.used ?? 0) / memoryData.system.total) * 100
@@ -1050,24 +1087,6 @@ export const MemoryHistoryCard: React.FC = () => {
       accentColor={theme.palette.warning.main}
       range={range}
       onRangeChange={setRange}
-      rows={[
-        {
-          label: "Total",
-          value: formatFileSize(memoryData?.system?.total ?? 0, 2),
-        },
-        {
-          label: "Used",
-          value: formatFileSize(memoryData?.system?.active ?? 0, 2),
-        },
-        {
-          label: "Docker",
-          value: formatFileSize(memoryData?.docker?.used ?? 0, 2),
-        },
-        {
-          label: "Swap",
-          value: `${formatFileSize(swapUsed, 2)}/${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
-        },
-      ]}
       chart={
         <HistoryChart
           color={theme.palette.warning.main}
@@ -1079,49 +1098,29 @@ export const MemoryHistoryCard: React.FC = () => {
           stackedPercent={dockerPercent}
           stackedColor={theme.palette.info.main}
           stackedLabel="Docker"
+          hoverRatio={hoverRatio}
+          onHoverChange={onHoverChange}
         />
       }
     />
   );
 };
 
-const gpuSummaryRows = (
-  gpu: GpuDevice | undefined,
-  gpuCount: number,
-): SummaryRow[] => {
-  if (!gpu) {
-    return [
-      { label: "Status", value: "No GPU detected" },
-      { label: "History", value: "Unavailable" },
-    ];
-  }
 
-  return [
-    { label: "GPU", value: gpu.model || "—" },
-    { label: "Type", value: `${getGpuVendorLabel(gpu)} • ${getGpuType(gpu)}` },
-    {
-      label: "Devices",
-      value: gpuCount > 1 ? `${gpuCount} GPUs` : "1 GPU",
-    },
-    {
-      label: "Load",
-      value: formatGpuPercent(gpu.utilization_percent),
-    },
-  ];
-};
-
-export const GPUHistoryCard: React.FC = () => {
+export const GPUHistoryCard: React.FC<{
+  range?: MonitoringRange;
+  onRangeChange?: (v: MonitoringRange) => void;
+  hoverRatio?: number | null;
+  onHoverChange?: (ratio: number | null) => void;
+}> = ({ range: rangeProp, onRangeChange: onRangeChangeProp, hoverRatio, onHoverChange }) => {
   const theme = useAppTheme();
-  const [range, setRange] = useState<MonitoringRange>("1m");
-  const { data: gpus } = linuxio.system.get_gpu_info.useQuery({
-    refetchInterval: 5_000,
-  });
+  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
+  const range = rangeProp ?? rangeInternal;
+  const setRange = onRangeChangeProp ?? setRangeInternal;
   const { data: series, isPending } =
     linuxio.monitoring.get_gpu_series.useQuery(range, {
       refetchInterval: 5_000,
     });
-
-  const primaryGpu = gpus?.[0];
 
   return (
     <HistoryCardShell
@@ -1130,7 +1129,6 @@ export const GPUHistoryCard: React.FC = () => {
       accentColor={theme.palette.primary.main}
       range={range}
       onRangeChange={setRange}
-      rows={gpuSummaryRows(primaryGpu, gpus?.length ?? 0)}
       chart={
         <HistoryChart
           color={theme.palette.primary.main}
@@ -1139,6 +1137,8 @@ export const GPUHistoryCard: React.FC = () => {
           series={series}
           loading={isPending}
           emptyMessage="Historical GPU data is not available on this host yet."
+          hoverRatio={hoverRatio}
+          onHoverChange={onHoverChange}
         />
       }
     />
