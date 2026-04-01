@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"time"
 )
 
@@ -36,6 +37,10 @@ const (
 	OpStreamAbort    byte = 0x86 // Abort operation: client requests cancellation
 )
 
+// maxRelayPayloadSize is the maximum allowed payload for a single relay frame.
+// Matches the cap enforced by ReadRelayFrame (16 MiB).
+const maxRelayPayloadSize = 16 * 1024 * 1024
+
 // StreamFrame represents a framed message for the relay protocol.
 // Format: [opcode:1][streamID:4][length:4][payload:N]
 type StreamFrame struct {
@@ -48,10 +53,17 @@ type StreamFrame struct {
 // This avoids interleaving frame headers and payloads when multiple goroutines
 // share the same writer.
 func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
-	frame := make([]byte, 9+len(f.Payload))
+	payloadLen := len(f.Payload)
+	if payloadLen > maxRelayPayloadSize {
+		return fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
+	}
+	if payloadLen > math.MaxInt-9 {
+		return fmt.Errorf("write frame: payload size causes integer overflow")
+	}
+	frame := make([]byte, 9+payloadLen)
 	frame[0] = f.Opcode
 	binary.BigEndian.PutUint32(frame[1:5], f.StreamID)
-	binary.BigEndian.PutUint32(frame[5:9], uint32(len(f.Payload)))
+	binary.BigEndian.PutUint32(frame[5:9], uint32(payloadLen))
 	copy(frame[9:], f.Payload)
 
 	n, err := w.Write(frame)
