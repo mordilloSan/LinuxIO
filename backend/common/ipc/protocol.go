@@ -49,17 +49,29 @@ type StreamFrame struct {
 	Payload  []byte
 }
 
+// checkPayloadSize validates that a payload length is within supported bounds.
+// It enforces both the protocol-level maximum payload size and guards against
+// integer overflow when computing the total frame size (header + payload).
+func checkPayloadSize(payload []byte) error {
+	payloadLen := len(payload)
+	if payloadLen > maxRelayPayloadSize {
+		return fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
+	}
+	// Guard against overflow when adding the 9-byte header.
+	if payloadLen > math.MaxInt-9 {
+		return fmt.Errorf("write frame: payload size causes integer overflow")
+	}
+	return nil
+}
+
 // WriteRelayFrame writes a StreamFrame to the writer in a single write call.
 // This avoids interleaving frame headers and payloads when multiple goroutines
 // share the same writer.
 func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
+	if err := checkPayloadSize(f.Payload); err != nil {
+		return err
+	}
 	payloadLen := len(f.Payload)
-	if payloadLen > maxRelayPayloadSize {
-		return fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
-	}
-	if payloadLen > math.MaxInt-9 {
-		return fmt.Errorf("write frame: payload size causes integer overflow")
-	}
 	frame := make([]byte, 9+payloadLen)
 	frame[0] = f.Opcode
 	binary.BigEndian.PutUint32(frame[1:5], f.StreamID)
@@ -145,6 +157,9 @@ func WriteProgress(w io.Writer, streamID uint32, data any) error {
 	if err != nil {
 		return fmt.Errorf("marshal progress: %w", err)
 	}
+	if err := checkPayloadSize(payload); err != nil {
+		return fmt.Errorf("progress payload invalid: %w", err)
+	}
 	return WriteRelayFrame(w, &StreamFrame{
 		Opcode:   OpStreamProgress,
 		StreamID: streamID,
@@ -157,6 +172,9 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 	payload, err := json.Marshal(r)
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
+	}
+	if err := checkPayloadSize(payload); err != nil {
+		return fmt.Errorf("result payload invalid: %w", err)
 	}
 	return WriteRelayFrame(w, &StreamFrame{
 		Opcode:   OpStreamResult,

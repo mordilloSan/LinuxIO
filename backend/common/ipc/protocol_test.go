@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,6 +66,45 @@ func TestWriteRelayFrameShortWrite(t *testing.T) {
 	})
 	if !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("WriteRelayFrame() error = %v, want %v", err, io.ErrShortWrite)
+	}
+}
+
+func TestWriteRelayFrameRejectsOversizePayload(t *testing.T) {
+	err := WriteRelayFrame(io.Discard, &StreamFrame{
+		Opcode:   OpStreamData,
+		StreamID: 1,
+		Payload:  bytes.Repeat([]byte("x"), maxRelayPayloadSize+1),
+	})
+	if err == nil {
+		t.Fatal("WriteRelayFrame() error = nil, want oversize payload error")
+	}
+	if !strings.Contains(err.Error(), "payload too large") {
+		t.Fatalf("WriteRelayFrame() error = %v, want payload too large", err)
+	}
+}
+
+func TestWriteProgressRejectsOversizePayload(t *testing.T) {
+	err := WriteProgress(io.Discard, 1, map[string]string{
+		"data": strings.Repeat("x", maxRelayPayloadSize),
+	})
+	if err == nil {
+		t.Fatal("WriteProgress() error = nil, want oversize payload error")
+	}
+	if !strings.Contains(err.Error(), "progress payload invalid") {
+		t.Fatalf("WriteProgress() error = %v, want progress payload invalid", err)
+	}
+}
+
+func TestWriteResultFrameRejectsOversizePayload(t *testing.T) {
+	err := WriteResultFrame(io.Discard, 1, &ResultFrame{
+		Status: "error",
+		Error:  strings.Repeat("x", maxRelayPayloadSize),
+	})
+	if err == nil {
+		t.Fatal("WriteResultFrame() error = nil, want oversize payload error")
+	}
+	if !strings.Contains(err.Error(), "result payload invalid") {
+		t.Fatalf("WriteResultFrame() error = %v, want result payload invalid", err)
 	}
 }
 
