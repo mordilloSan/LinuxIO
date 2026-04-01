@@ -183,8 +183,3 @@ func emitAccountCall[T any](emit ipc.Events, fn func() (T, error)) error {
 	result, err := fn()
 	return emitAccountResult(emit, result, err)
 }
-
-func emitAccountArgCall[A any, T any](emit ipc.Events, arg A, fn func(A) (T, error)) error {
-	result, err := fn(arg)
-	return emitAccountResult(emit, result, err)
-}

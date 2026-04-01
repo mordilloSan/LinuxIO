@@ -44,20 +44,22 @@ type StreamFrame struct {
 	Payload  []byte
 }
 
-// WriteRelayFrame writes a StreamFrame to the writer.
+// WriteRelayFrame writes a StreamFrame to the writer in a single write call.
+// This avoids interleaving frame headers and payloads when multiple goroutines
+// share the same writer.
 func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
-	header := make([]byte, 9)
-	header[0] = f.Opcode
-	binary.BigEndian.PutUint32(header[1:5], f.StreamID)
-	binary.BigEndian.PutUint32(header[5:9], uint32(len(f.Payload)))
+	frame := make([]byte, 9+len(f.Payload))
+	frame[0] = f.Opcode
+	binary.BigEndian.PutUint32(frame[1:5], f.StreamID)
+	binary.BigEndian.PutUint32(frame[5:9], uint32(len(f.Payload)))
+	copy(frame[9:], f.Payload)
 
-	if _, err := w.Write(header); err != nil {
-		return fmt.Errorf("write header: %w", err)
+	n, err := w.Write(frame)
+	if err != nil {
+		return fmt.Errorf("write frame: %w", err)
 	}
-	if len(f.Payload) > 0 {
-		if _, err := w.Write(f.Payload); err != nil {
-			return fmt.Errorf("write payload: %w", err)
-		}
+	if n != len(frame) {
+		return fmt.Errorf("write frame: %w", io.ErrShortWrite)
 	}
 	return nil
 }

@@ -29,8 +29,8 @@ type ContainerWithMetrics struct {
 	ProxyPort string   `json:"proxyPort,omitempty"`
 }
 
-// List all containers with metrics
-func ListContainers() (any, error) {
+// List all containers with metrics.
+func ListContainers(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -41,7 +41,7 @@ func ListContainers() (any, error) {
 		}
 	}()
 
-	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
@@ -49,8 +49,11 @@ func ListContainers() (any, error) {
 	var enriched []ContainerWithMetrics
 
 	for _, ctr := range containers {
-		metrics := collectContainerMetrics(cli, ctr.ID)
-		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		metrics := collectContainerMetrics(ctx, cli, ctr.ID)
+		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctx, ctr)
 
 		enriched = append(enriched, ContainerWithMetrics{
 			Summary:   ctr,
@@ -64,9 +67,9 @@ func ListContainers() (any, error) {
 	return enriched, nil
 }
 
-func collectContainerMetrics(cli *client.Client, containerID string) *Metrics {
+func collectContainerMetrics(ctx context.Context, cli *client.Client, containerID string) *Metrics {
 	metrics := &Metrics{}
-	statsResp, err := cli.ContainerStatsOneShot(context.Background(), containerID)
+	statsResp, err := cli.ContainerStatsOneShot(ctx, containerID)
 	if err != nil {
 		return metrics
 	}
@@ -211,12 +214,12 @@ func populateContainerIOMetrics(metrics *Metrics, stats struct {
 	}
 }
 
-func resolveContainerPresentation(ctr container.Summary) (string, string, string) {
+func resolveContainerPresentation(ctx context.Context, ctr container.Summary) (string, string, string) {
 	containerIcon := ctr.Labels["io.linuxio.container.icon"]
 	containerURL := ctr.Labels["io.linuxio.container.url"]
 	proxyPort := ctr.Labels[ProxyPortLabel]
 	iconName := containerIconName(ctr)
-	resolvedURL := resolveContainerURL(ctr, containerURL, proxyPort, iconName)
+	resolvedURL := resolveContainerURL(ctx, ctr, containerURL, proxyPort, iconName)
 	return ResolveIconIdentifier(containerIcon, iconName), resolvedURL, proxyPort
 }
 
@@ -237,18 +240,18 @@ func containerIconName(ctr container.Summary) string {
 	return containerName
 }
 
-func resolveContainerURL(ctr container.Summary, containerURL, proxyPort, iconName string) string {
+func resolveContainerURL(ctx context.Context, ctr container.Summary, containerURL, proxyPort, iconName string) string {
 	if containerURL != "" || proxyPort == "" || iconName == "" {
 		return containerURL
 	}
 	if ctr.State == "running" {
-		ConnectToProxyNetwork(ctr.ID)
+		connectToProxyNetwork(ctx, ctr.ID)
 	}
 	return "/proxy/" + iconName + "/"
 }
 
 // Start a container by ID
-func StartContainer(id string) (any, error) {
+func StartContainer(ctx context.Context, id string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -259,7 +262,7 @@ func StartContainer(id string) (any, error) {
 		}
 	}()
 
-	if err := cli.ContainerStart(context.Background(), id, container.StartOptions{}); err != nil {
+	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
@@ -267,7 +270,7 @@ func StartContainer(id string) (any, error) {
 }
 
 // Stop a container by ID
-func StopContainer(id string) (any, error) {
+func StopContainer(ctx context.Context, id string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -278,7 +281,7 @@ func StopContainer(id string) (any, error) {
 		}
 	}()
 
-	if err := cli.ContainerStop(context.Background(), id, container.StopOptions{}); err != nil {
+	if err := cli.ContainerStop(ctx, id, container.StopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to stop container: %w", err)
 	}
 
@@ -286,7 +289,7 @@ func StopContainer(id string) (any, error) {
 }
 
 // Remove a container by ID
-func RemoveContainer(id string) (any, error) {
+func RemoveContainer(ctx context.Context, id string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -297,7 +300,7 @@ func RemoveContainer(id string) (any, error) {
 		}
 	}()
 
-	if err := cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true}); err != nil {
+	if err := cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil {
 		return nil, fmt.Errorf("failed to remove container: %w", err)
 	}
 
@@ -305,7 +308,7 @@ func RemoveContainer(id string) (any, error) {
 }
 
 // Restart a container by ID
-func RestartContainer(id string) (any, error) {
+func RestartContainer(ctx context.Context, id string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -316,7 +319,7 @@ func RestartContainer(id string) (any, error) {
 		}
 	}()
 
-	if err := cli.ContainerRestart(context.Background(), id, container.StopOptions{}); err != nil {
+	if err := cli.ContainerRestart(ctx, id, container.StopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to restart container: %w", err)
 	}
 
@@ -324,7 +327,7 @@ func RestartContainer(id string) (any, error) {
 }
 
 // StartAllStopped starts all exited/dead containers and returns counts.
-func StartAllStopped() (any, error) {
+func StartAllStopped(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -335,7 +338,6 @@ func StartAllStopped() (any, error) {
 		}
 	}()
 
-	ctx := context.Background()
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
@@ -343,8 +345,14 @@ func StartAllStopped() (any, error) {
 
 	started, failed := 0, 0
 	for _, c := range containers {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if c.State == "exited" || c.State == "dead" {
 			if err := cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
 				logger.Warnf("failed to start container %s: %v", c.ID[:12], err)
 				failed++
 			} else {
@@ -357,7 +365,7 @@ func StartAllStopped() (any, error) {
 }
 
 // StopAllRunning stops all running containers and returns counts.
-func StopAllRunning() (any, error) {
+func StopAllRunning(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -368,7 +376,6 @@ func StopAllRunning() (any, error) {
 		}
 	}()
 
-	ctx := context.Background()
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
@@ -376,8 +383,14 @@ func StopAllRunning() (any, error) {
 
 	stopped, failed := 0, 0
 	for _, c := range containers {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if c.State == "running" {
 			if err := cli.ContainerStop(ctx, c.ID, container.StopOptions{}); err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
 				logger.Warnf("failed to stop container %s: %v", c.ID[:12], err)
 				failed++
 			} else {

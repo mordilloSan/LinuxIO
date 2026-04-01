@@ -27,11 +27,11 @@ func RegisterHandlers(sess *session.Session) {
 	}
 
 	registerDockerHandlers([]dockerRegistration{
-		{command: "list_containers", handler: dockerNoArgCall(ListContainers)},
-		{command: "start_container", handler: dockerOneArgCall(logStartContainer, StartContainer)},
-		{command: "stop_container", handler: dockerOneArgCall(logStopContainer, StopContainer)},
-		{command: "remove_container", handler: dockerOneArgCall(logRemoveContainer, RemoveContainer)},
-		{command: "restart_container", handler: dockerOneArgCall(logRestartContainer, RestartContainer)},
+		{command: "list_containers", handler: dockerNoArgCallWithContext(ListContainers)},
+		{command: "start_container", handler: dockerOneArgCallWithContext(logStartContainer, StartContainer)},
+		{command: "stop_container", handler: dockerOneArgCallWithContext(logStopContainer, StopContainer)},
+		{command: "remove_container", handler: dockerOneArgCallWithContext(logRemoveContainer, RemoveContainer)},
+		{command: "restart_container", handler: dockerOneArgCallWithContext(logRestartContainer, RestartContainer)},
 		{command: "list_images", handler: dockerNoArgCall(ListImages)},
 		{command: "delete_image", handler: dockerOneArgCall(logDeleteImage, DeleteImage)},
 		{command: "list_networks", handler: dockerNoArgCall(ListDockerNetworks)},
@@ -59,8 +59,8 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_icon", handler: getIconHandler()},
 		{command: "get_icon_info", handler: getIconInfoHandler()},
 		{command: "clear_icon_cache", handler: clearIconCacheHandler()},
-		{command: "start_all_stopped", handler: loggedDockerNoArgCall("start_all_stopped requested", StartAllStopped)},
-		{command: "stop_all_running", handler: loggedDockerNoArgCall("stop_all_running requested", StopAllRunning)},
+		{command: "start_all_stopped", handler: loggedDockerNoArgCallWithContext("start_all_stopped requested", StartAllStopped)},
+		{command: "stop_all_running", handler: loggedDockerNoArgCallWithContext("stop_all_running requested", StopAllRunning)},
 		{command: "list_auto_update_containers", handler: listAutoUpdateContainersHandler(username)},
 		{command: "set_auto_update", handler: setAutoUpdateHandler(username)},
 		{command: "get_caddy_status", handler: dockerUserCall(username, GetCaddyStatus)},
@@ -85,10 +85,17 @@ func dockerNoArgCall[T any](fn func() (T, error)) ipc.HandlerFunc {
 	}
 }
 
-func loggedDockerNoArgCall[T any](message string, fn func() (T, error)) ipc.HandlerFunc {
+func dockerNoArgCallWithContext[T any](fn func(context.Context) (T, error)) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := fn(ctx)
+		return emitDockerResult(emit, result, err)
+	}
+}
+
+func loggedDockerNoArgCallWithContext[T any](message string, fn func(context.Context) (T, error)) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		logger.Infof("%s", message)
-		result, err := fn()
+		result, err := fn(ctx)
 		return emitDockerResult(emit, result, err)
 	}
 }
@@ -102,6 +109,19 @@ func dockerOneArgCall[T any](logFn func(string), fn func(string) (T, error)) ipc
 			logFn(args[0])
 		}
 		result, err := fn(args[0])
+		return emitDockerResult(emit, result, err)
+	}
+}
+
+func dockerOneArgCallWithContext[T any](logFn func(string), fn func(context.Context, string) (T, error)) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		if logFn != nil {
+			logFn(args[0])
+		}
+		result, err := fn(ctx, args[0])
 		return emitDockerResult(emit, result, err)
 	}
 }
