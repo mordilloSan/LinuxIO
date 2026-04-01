@@ -9,8 +9,8 @@ LinuxIO automatically displays icons for Docker containers and compose stacks.
 | Plain name | `nginx` | Dashboard Icons → Simple Icons → Docker |
 | Dashboard Icons | `di:plex` | [homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons) |
 | Simple Icons | `si:react` | [simpleicons.org](https://simpleicons.org) |
-| URL | `https://example.com/icon.svg` | Any HTTP(S) URL |
-| Local file | `my-icon.svg` | `/run/linuxio/icons/user/` |
+| URL | `https://example.com/icon.svg` | Any HTTP(S) URL — `.svg`, `.png`, `.webp` supported |
+| Local file | `my-icon.svg` | `/run/linuxio/icons/user/` — `.svg`, `.png`, `.webp` supported |
 
 ## Default Behavior
 
@@ -20,10 +20,10 @@ When no icon is specified, LinuxIO automatically derives one using this fallback
 Service/Container Name → Dashboard Icons → Simple Icons → Docker whale
 ```
 
-2. If no image, use **service name** (compose) or **container name** (standalone)
-3. Search [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons/tree/main/svg) (3,500+ self-hosted app icons)
-4. Search [Simple Icons](https://simpleicons.org) (3,000+ brand icons)
-5. Fallback to Docker whale icon
+1. If no icon label, use **service name** (compose) or **container name** (standalone)
+2. Search [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons/tree/main/svg) (3,500+ self-hosted app icons)
+3. Search [Simple Icons](https://simpleicons.org) (3,000+ brand icons)
+4. Fallback to Docker whale icon
 
 **Most containers will automatically get the correct icon without any configuration.**
 

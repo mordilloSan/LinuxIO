@@ -16,17 +16,17 @@ The LinuxIO frontend API provides a clean, type-safe interface for communicating
 │                             │                                    │
 │  ┌──────────────────────────▼─────────────────────────────────┐ │
 │  │                  linuxio-core.ts                           │ │
-│  │  Core API: call(), spawn(), openStream()                   │ │
+│  │  Core API: call() — Promise-based bridge communication     │ │
 │  └──────────────────────────┬─────────────────────────────────┘ │
 │                             │                                    │
 │  ┌──────────────────────────▼─────────────────────────────────┐ │
 │  │                  linuxio.ts                                │ │
-│  │  Utilities: useStreamMux(), payload helpers                │ │
+│  │  Stream openers + hooks (useStreamMux, useIsUpdating)      │ │
 │  └──────────────────────────┬─────────────────────────────────┘ │
 │                             │                                    │
 │  ┌──────────────────────────▼─────────────────────────────────┐ │
 │  │                  StreamMultiplexer.ts                      │ │
-│  │  WebSocket + yamux multiplexing                            │ │
+│  │  WebSocket + yamux multiplexing (singleton)                │ │
 │  └──────────────────────────┬─────────────────────────────────┘ │
 │                             │                                    │
 └─────────────────────────────┼────────────────────────────────────┘
@@ -45,8 +45,10 @@ The LinuxIO frontend API provides a clean, type-safe interface for communicating
 | Module | Purpose | Import |
 |--------|---------|--------|
 | `react-query.ts` | Type-safe API + React Query hooks | Prefer `@/api` |
-| `linuxio-core.ts` | Framework-agnostic core API | Prefer `@/api` |
-| `linuxio.ts` | Shared utilities and payload helpers | Prefer `@/api` |
+| `linuxio-core.ts` | Framework-agnostic `call()` function | Prefer `@/api` |
+| `linuxio.ts` | Stream openers + hooks | Prefer `@/api` |
+| `stream-helpers.ts` | Stream event binding + utilities | Prefer `@/api` |
+| `StreamMultiplexer.ts` | WebSocket + yamux singleton | Via `@/api` exports |
 
 ---
 
@@ -72,7 +74,7 @@ When the backend adds/changes a handler/command, update that schema entry to kee
 Use `linuxio.handler.command.useQuery()` for fetching data:
 
 ```typescript
-// Basic usage - no arguments
+// Basic usage — no arguments
 const { data, isLoading, error } = linuxio.storage.get_drive_info.useQuery();
 
 // With string arguments
@@ -107,15 +109,15 @@ const { data } = linuxio.docker.list_containers.useQuery({
 Use `linuxio.handler.command.useMutation()` for write operations:
 
 ```typescript
-// Basic mutation - no arguments
-const { mutate, isPending } = linuxio.control.shutdown.useMutation();
+// Basic mutation — no arguments
+const { mutate, isPending } = linuxio.control.version.useMutation();
 mutate([]);
 
 // String arguments
 const { mutate } = linuxio.docker.start_container.useMutation();
 mutate([containerId]);
 
-// Complex arguments (objects, arrays)
+// Complex arguments (objects, arrays — JSON-serialized automatically)
 const { mutate } = linuxio.dbus.set_auto_updates.useMutation();
 mutate([
   {
@@ -168,80 +170,72 @@ const version = await linuxio.control.version.call();
 
 ---
 
-## Core API (`@/api`)
+## Streaming API
 
-For non-React code or when you need direct control.
+For persistent or binary streams (terminals, file transfers, logs), use the typed stream openers exported from `@/api`. These are named functions that open a specific stream type and return a `Stream | null`.
 
 ```typescript
-import { call, spawn, openStream } from "@/api";
+import {
+  openTerminalStream,
+  openContainerStream,
+  openFileUploadStream,
+  openFileDownloadStream,
+  openDockerLogsStream,
+  // ... etc
+} from "@/api";
 ```
 
-For built-in handlers, prefer the type-safe imperative helper:
+### Stream Openers Reference
+
+| Function | Args | Stream Type | Description |
+|----------|------|-------------|-------------|
+| `openTerminalStream(cols, rows)` | `number, number` | `terminal` | PTY shell session |
+| `openContainerStream(id, shell, cols, rows)` | `string, string, number, number` | `container` | Docker exec session |
+| `openDockerLogsStream(id, tail?)` | `string, string?` | `docker-logs` | Live container logs |
+| `openDockerComposeStream(action, project, path?)` | `string, string, string?` | `docker-compose` | Compose up/down/stop/restart |
+| `openDockerIndexerStream()` | — | `docker-indexer` | Run indexer |
+| `openDockerIndexerAttachStream()` | — | `docker-indexer-attach` | Attach to running indexer |
+| `openPackageUpdateStream(packages)` | `string[]` | `pkg-update` | Install/update packages |
+| `openAppUpdateStream(runId, version?)` | `string, string?` | `app-update` | LinuxIO self-update |
+| `openServiceLogsStream(name, lines?)` | `string, string?` | `service-logs` | Systemd service logs |
+| `openGeneralLogsStream(lines?, period?, priority?, id?)` | `string?, ...` | `general-logs` | Journal logs |
+| `openFileUploadStream(path, size, override?)` | `string, number, boolean?` | `fb-upload` | Upload a file |
+| `openFileDownloadStream(paths)` | `string[]` | `fb-download` or `fb-archive` | Download file(s) |
+| `openFileCompressStream(paths, dest, format)` | `string[], string, string` | `fb-compress` | Create archive |
+| `openFileExtractStream(archive, dest?)` | `string, string?` | `fb-extract` | Extract archive |
+| `openFileIndexerStream(path?)` | `string?` | `fb-reindex` | Reindex filesystem |
+| `openFileIndexerAttachStream()` | — | `fb-indexer-attach` | Attach to running reindex |
+| `openFileCopyStream(src, dst)` | `string, string` | `fb-copy` | Copy with progress |
+| `openFileMoveStream(src, dst)` | `string, string` | `fb-move` | Move with progress |
+| `openSmartTestStream(device, testType)` | `string, string` | `smart-test` | S.M.A.R.T. test |
+
+### Stream Interface
+
+All openers return `Stream | null` (`null` if the mux is not open):
 
 ```typescript
-import { linuxio } from "@/api";
-
-await linuxio.storage.get_drive_info.call();
+interface Stream {
+  readonly id: number;
+  readonly type: StreamType;
+  readonly status: StreamStatus;      // "opening" | "open" | "closing" | "closed"
+  write(data: Uint8Array): void;      // Send OpStreamData
+  resize(cols: number, rows: number): void; // Send OpStreamResize (terminal)
+  close(): void;                      // Send FIN (OpStreamClose)
+  abort(): void;                      // Send RST — immediate abort
+  onData:     ((data: Uint8Array) => void) | null;
+  onProgress: ((progress: ProgressFrame) => void) | null;
+  onResult:   ((result: ResultFrame) => void) | null;
+  onClose:    (() => void) | null;
+}
 ```
 
-### `spawn(handler, command, args?, options?)`
-
-Streaming operation with progress and data callbacks. Returns a `SpawnedProcess` that is also a Promise.
+### Usage Example (Terminal)
 
 ```typescript
-// Download with progress
-const result = await spawn("filebrowser", "download", ["/path/to/file"])
-  .onStream((chunk) => {
-    // Handle binary data chunks
-    writeToFile(chunk);
-  })
-  .progress((p) => {
-    // Update progress bar
-    setProgress(p.pct);
-    console.log(`${p.current}/${p.total} bytes`);
-  });
+import { openTerminalStream, encodeString, decodeString } from "@/api";
 
-// Package installation with timeout
-await spawn("dbus", "install_package", [packageId], {
-  timeout: 300000,  // 5 minutes (default: 300000)
-  onProgress: (p) => setProgress(p.pct),
-});
-
-// With early cancellation
-const operation = spawn("filebrowser", "compress", [paths, output, "zip"])
-  .progress((p) => setProgress(p.pct));
-
-// Later...
-operation.close();  // Cancel the operation
-```
-
-**SpawnOptions:**
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `timeout` | `number` | `300000` | Timeout in milliseconds (5 minutes) |
-| `onData` | `(chunk: Uint8Array) => void` | - | Binary data callback |
-| `onProgress` | `(progress: ProgressFrame) => void` | - | Progress callback |
-
-**SpawnedProcess Methods:**
-| Method | Description |
-|--------|-------------|
-| `.onStream(callback)` | Register handler for binary data chunks |
-| `.progress(callback)` | Register handler for progress updates |
-| `.input(data)` | Send data to the process (for bidirectional streams) |
-| `.close()` | Abort the operation early |
-| `.then()/.catch()/.finally()` | Promise methods for completion |
-
-**Throws:**
-- `LinuxIOError("Operation timeout", "timeout")` - Operation timed out
-- `LinuxIOError("Connection closed before operation completed", "connection_closed")` - Connection dropped
-
-### `openStream(handler, command, args?, streamType?)`
-
-Opens a bidirectional stream for terminal, docker exec, or custom protocols.
-
-```typescript
-// Terminal session with persistence (reusable stream)
-const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
+const stream = openTerminalStream(120, 32);
+if (!stream) return; // mux not ready
 
 stream.onData = (data) => {
   terminal.write(decodeString(data));
@@ -254,122 +248,91 @@ stream.onClose = () => {
 // Send user input
 stream.write(encodeString("ls -la\n"));
 
-// Close when done
-stream.close();
+// Resize
+stream.resize(160, 48);
 
-// One-off streams use the default "bridge" stream type
-const stream = openStream("terminal", "bash", ["120", "32"]);
+// Close
+stream.close();
 ```
 
-**Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `handler` | `string` | - | Handler name (e.g., "terminal", "docker") |
-| `command` | `string` | - | Command name (e.g., "bash", handler-specific command) |
-| `args` | `string[]` | `[]` | Command arguments |
-| `streamType` | `string` | `"bridge"` | Stream type for persistence ("terminal", "container", or "bridge") |
+### Usage Example (File Upload with Progress)
 
-**Stream Properties:**
-| Property | Type | Description |
-|----------|------|-------------|
-| `onData` | `(data: Uint8Array) => void` | Binary data callback |
-| `onProgress` | `(progress: ProgressFrame) => void` | Progress update callback |
-| `onResult` | `(result: ResultFrame) => void` | Completion callback |
-| `onClose` | `() => void` | Stream closed callback |
+```typescript
+import { openFileUploadStream, streamWriteChunks, waitForStreamResult } from "@/api";
 
-**Stream Methods:**
-| Method | Description |
-|--------|-------------|
-| `write(data: Uint8Array)` | Send binary data |
-| `close()` | Close the stream |
+async function uploadFile(path: string, fileData: Uint8Array) {
+  const stream = openFileUploadStream(path, fileData.length);
+  if (!stream) throw new Error("Not connected");
+
+  const resultPromise = waitForStreamResult(stream, {
+    onProgress: (p) => setProgress(p.pct),
+  });
+
+  await streamWriteChunks(stream, fileData);
+  return resultPromise;
+}
+```
 
 ---
 
 ## Utilities (`@/api`)
 
-Shared utilities for stream management and payload building.
-
 ### `useStreamMux()`
 
-React hook for accessing the stream multiplexer status. Now supports late initialization (polls for mux if not available at mount).
+React hook for accessing the stream multiplexer status. Polls for the mux if not available at mount (handles late initialization).
 
 ```typescript
 import { useStreamMux } from "@/api";
 
-const { status, isOpen, openStream, getStream } = useStreamMux();
+const { status, isOpen, getStream } = useStreamMux();
 
-// Check connection status
 if (!isOpen) {
   return <ConnectionLost />;
 }
 
-// Open a raw stream (advanced usage)
-const stream = openStream("bridge", payload);
+// Get an existing persistent stream (e.g., terminal)
+const termStream = getStream("terminal");
 ```
 
 **Returns:**
 | Property | Type | Description |
 |----------|------|-------------|
-| `status` | `MuxStatus` | Current status: "connecting", "open", "closed", "error" |
+| `status` | `MuxStatus` | `"connecting"` \| `"open"` \| `"closed"` \| `"error"` |
 | `isOpen` | `boolean` | True if connected and ready |
-| `openStream` | `function` | Open a new stream |
-| `getStream` | `function` | Get existing stream by type |
+| `getStream` | `(type: StreamType) => Stream \| null` | Get existing stream by type |
+
+### `useIsUpdating()`
+
+Returns `true` while a system update is in progress. Use this to pause API queries:
+
+```typescript
+import { useIsUpdating } from "@/api";
+
+const isUpdating = useIsUpdating();
+// Queries are automatically disabled while updating
+```
 
 ### Mux Lifecycle Functions
-
-All available from `@/api`:
 
 ```typescript
 import {
   initStreamMux,
   closeStreamMux,
   waitForStreamMux,
-  getStreamMux
+  getStreamMux,
 } from "@/api";
+
 // Initialize connection (called by AuthContext on login)
 initStreamMux();
 
 // Wait for connection to be ready
-await waitForStreamMux();
+await waitForStreamMux(timeoutMs);
 
 // Close connection (called on logout)
 closeStreamMux();
 
-// Get mux instance (advanced usage)
+// Get mux instance directly (advanced usage)
 const mux = getStreamMux();
-```
-
-### Payload Helpers
-
-Pre-built payload constructors for common operations:
-
-```typescript
-import {
-  terminalPayload,
-  containerPayload,
-  uploadPayload,
-  downloadPayload,
-  compressPayload,
-  extractPayload,
-} from "@/api";
-
-// Terminal session
-const payload = terminalPayload(120, 32);
-
-// Docker container exec
-const payload = containerPayload(containerId, "bash", 120, 32);
-
-// File upload
-const payload = uploadPayload("/destination/path", fileSize);
-
-// File download (supports multiple files)
-const payload = downloadPayload(["/file1", "/file2"]);
-
-// Archive compression
-const payload = compressPayload(["/files/..."], "/output.zip", "zip");
-
-// Archive extraction
-const payload = extractPayload("/archive.zip", "/destination/");
 ```
 
 ### String Encoding
@@ -377,11 +340,73 @@ const payload = extractPayload("/archive.zip", "/destination/");
 ```typescript
 import { encodeString, decodeString } from "@/api";
 
-// Convert string to Uint8Array (UTF-8)
-const bytes = encodeString("Hello, World!");
+const bytes = encodeString("Hello, World!"); // → Uint8Array (UTF-8)
+const text  = decodeString(bytes);           // → "Hello, World!"
+```
 
-// Convert Uint8Array back to string
-const text = decodeString(bytes);
+---
+
+## Stream Helpers (`stream-helpers.ts`)
+
+Utilities for attaching handlers to streams and managing completion:
+
+### `bindStreamHandlers(stream, handlers)`
+
+Attach event handlers to a stream and return a cleanup function:
+
+```typescript
+import { bindStreamHandlers } from "@/api";
+
+const unbind = bindStreamHandlers(stream, {
+  onData:     (data) => writeChunk(data),
+  onProgress: (p) => setProgress(p.pct),
+  onResult:   (r) => console.log("done", r),
+  onClose:    () => cleanup(),
+});
+
+// Later
+unbind(); // detach all handlers
+```
+
+### `waitForStreamResult(stream, options?)`
+
+Await a stream operation that completes with an `onResult` frame:
+
+```typescript
+import { waitForStreamResult } from "@/api";
+
+const result = await waitForStreamResult(stream, {
+  onProgress: (p) => setProgress(p.pct),
+  onData:     (chunk) => buffer.push(chunk),
+  signal:     abortController.signal,
+  closeMessage: "Upload failed: connection lost",
+});
+```
+
+**Options:**
+| Option | Type | Description |
+|--------|------|-------------|
+| `signal` | `AbortSignal` | Cancel the wait (sends abort/close to stream) |
+| `closeOnAbort` | `"abort" \| "close" \| "none"` | What to send on abort (default: `"abort"`) |
+| `onData` | `(data: Uint8Array) => void` | Binary data callback |
+| `onProgress` | `(progress: ProgressFrame) => void` | Progress callback |
+| `onClose` | `() => void` | Close callback |
+| `closeMessage` | `string` | Error message if stream closes before result |
+| `mapResult` | `(data, frame) => T` | Transform the result payload |
+
+### `streamWriteChunks(stream, data, options?)`
+
+Write binary data to a stream in chunks (with optional pacing):
+
+```typescript
+import { streamWriteChunks } from "@/api";
+
+await streamWriteChunks(stream, fileData, {
+  chunkSize: 64 * 1024, // 64 KB chunks (default)
+  yieldMs: 0,           // ms to yield between chunks (default: 0)
+  closeAtEnd: true,     // send FIN when done (default: true)
+  signal: abortSignal,
+});
 ```
 
 ---
@@ -406,18 +431,19 @@ try {
 | Code | Description |
 |------|-------------|
 | `"not_initialized"` | StreamMux not ready (not logged in) |
-| `"timeout"` | Request/operation timed out |
+| `"timeout"` | Request timed out (default: 30 seconds) |
 | `"connection_closed"` | Connection dropped before completion |
+| `"stream_unavailable"` | Stream could not be opened |
 | `500` | Server error |
 | `403` | Permission denied |
 
-**New in v0.6:** Promises now properly reject if the connection closes before receiving a result, preventing hanging promises.
+**Default call timeout:** 30 000 ms (30 seconds). Configurable via `VITE_STREAM_DEFAULT_CALL_TIMEOUT_MS` env var or `configureStreamMultiplexer({ defaultCallTimeoutMs: ... })`.
 
 ---
 
 ## Protocol Format
 
-All requests use the bridge protocol with null-separated arguments:
+All JSON request/response calls use the bridge protocol with null-separated arguments:
 
 ```
 bridge\0<handler>\0<command>\0<arg1>\0<arg2>...
@@ -431,28 +457,32 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 
 | Handler | Description | Example Commands |
 |---------|-------------|------------------|
-| `system` | System information | `get_cpu_info`, `get_memory_info`, `get_host_info` |
-| `storage` | Storage management | `get_drive_info`, `list_vgs`, `list_nfs_mounts` |
-| `docker` | Docker management | `list_containers`, `start_container`, `get_container_logs` |
-| `filebrowser` | File operations | `resource_get`, `subfolders`, `upload`, `download`, `compress` |
-| `dbus` | D-Bus services | `list_services`, `get_updates`, `install_package`, `set_auto_updates` |
+| `system` | System information | `get_cpu_info`, `get_memory_info`, `get_host_info`, `get_health_summary` |
+| `monitoring` | Time-series metrics | `get_cpu_series`, `get_memory_series`, `get_network_series` |
+| `storage` | Storage management | `get_drive_info`, `list_pvs`, `list_vgs`, `list_nfs_mounts` |
+| `docker` | Docker management | `list_containers`, `start_container`, `list_compose_projects`, `get_icon` |
+| `filebrowser` | File operations | `resource_get`, `subfolders`, `search`, `chmod` |
+| `dbus` | D-Bus / systemd | `list_services`, `get_updates_basic`, `get_network_info`, `reboot` |
 | `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer`, `remove_peer` |
+| `accounts` | User/group management | `list_users`, `create_user`, `list_groups`, `change_password` |
+| `shares` | NFS/Samba shares | `list_nfs_shares`, `create_nfs_share`, `list_samba_shares` |
 | `config` | User configuration | `get`, `set` |
-| `control` | System control | `version`, `shutdown`, `update` |
+| `control` | App control | `version` |
+| `terminal` | Terminal utilities | `list_shells` |
+| `logs` | Log streaming | (stream-only, see stream openers) |
 
 ---
 
 ## Best Practices
 
-1. **Use type-safe API** (`linuxio.handler.command.useQuery()`) for built-in handlers
-2. **Use explicit args** when passing objects: `useQuery({ args: ["str", obj] })`
+1. **Use type-safe API** (`linuxio.handler.command.useQuery()`) for all JSON calls
+2. **Use typed stream openers** (`openTerminalStream`, etc.) for streaming operations
 3. **Handle errors** with try/catch or React Query's error states
-4. **Set appropriate timeouts** for long-running operations
-5. **Use `spawn` with progress** for file transfers and package operations
-6. **Invalidate queries** after mutations to refresh cached data
+4. **Set appropriate timeouts** for long-running operations via `CallOptions.timeout`
+5. **Invalidate queries** after mutations to refresh cached data
 
 ```typescript
-// Good: Type-safe with proper invalidation
+// Good: type-safe with proper invalidation
 const { mutate } = linuxio.docker.remove_container.useMutation({
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ["linuxio", "docker"] });

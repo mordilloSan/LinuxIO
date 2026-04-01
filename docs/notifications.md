@@ -3,7 +3,7 @@
 > **Status: Planned** - This document describes a server-side notification system that is not yet implemented. The current navbar "notifications" dropdown shows recent toast history only (client-side).
 
 ## Overview
-LinuxIO notifications are server-side, per-user events delivered in real time over the existing stream mux. The system supports read/unread state, retention, severity levels, and source tags. Clients render the latest items in the navbar dropdown and a full list page; toasts are emitted based on user preferences.
+This document describes a planned server-side notification system. When implemented, notifications will be per-user events delivered in real time over the existing stream mux. The system will support read/unread state, retention, severity levels, and source tags. Clients will render the latest items in the navbar dropdown and a full list page; toasts will be emitted based on user preferences.
 
 ## Goals
 - Persist notifications per user (no loss on reload).

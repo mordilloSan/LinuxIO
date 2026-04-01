@@ -6,7 +6,7 @@
 
 ```
 Bridge's job:
-  1. Accept yamux streams from server
+  1. Accept yamux streams from webserver (via inherited FD)
   2. Parse StreamFrame opcode + payload
   3. Route to appropriate handler based on stream type
   4. Handler sends response frames
@@ -20,36 +20,66 @@ Bridge's job:
 │                         Bridge                                │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │           Yamux Session Listener                     │    │
-│  │  - Accept yamux sessions from server                │    │
-│  │  - One session per authenticated user               │    │
+│  │           Yamux Session (server-side)                │    │
+│  │  - Accepts yamux streams from webserver             │    │
+│  │  - One session per authenticated login              │    │
 │  └────────────────────┬────────────────────────────────┘    │
 │                       │                                       │
 │  ┌────────────────────┴────────────────────────────────┐    │
-│  │           Stream Acceptor                            │    │
-│  │  - Accept new streams from session                  │    │
-│  │  - Read initial StreamFrame (OpStreamOpen)          │    │
-│  │  - Parse stream type from payload                   │    │
+│  │           Stream Router                              │    │
+│  │  - Reads initial OpStreamOpen frame                 │    │
+│  │  - Dispatches on stream type:                       │    │
+│  │    • "bridge"             → BridgeHandler (JSON)    │    │
+│  │    • "terminal"           → TerminalHandler         │    │
+│  │    • "container"          → ContainerHandler        │    │
+│  │    • "docker-logs"        → DockerLogsHandler       │    │
+│  │    • "fb-upload"          → FileUploadHandler       │    │
+│  │    • ... (see full list below)                      │    │
 │  └────────────────────┬────────────────────────────────┘    │
 │                       │                                       │
-│  ┌────────────────────┴────────────────────────────────┐    │
-│  │           Router                                     │    │
-│  │  - Route to handler based on stream type:           │    │
-│  │    • "terminal"    → TerminalHandler                │    │
-│  │    • "container"   → ContainerHandler               │    │
-│  │    • "json"        → JSONHandler                    │    │
-│  │    • "fb-upload"   → FileUploadHandler              │    │
-│  │    • "fb-download" → FileDownloadHandler            │    │
-│  └────────────────────┬────────────────────────────────┘    │
-│                       │                                       │
-│          ┌────────────┴────────────┐                        │
-│          ▼            ▼            ▼                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
-│  │ Terminal │  │   JSON   │  │   File   │  ... handlers   │
-│  │ Handler  │  │ Handler  │  │ Handler  │                 │
-│  └──────────┘  └──────────┘  └──────────┘                 │
+│       ┌───────────────┼───────────────┐                     │
+│       ▼               ▼               ▼                     │
+│  ┌─────────┐   ┌──────────┐   ┌──────────┐                │
+│  │  Bridge │   │ Terminal │   │   File   │  ... handlers  │
+│  │ Handler │   │ Handler  │   │ Handler  │                │
+│  │ (JSON)  │   │          │   │          │                │
+│  └────┬────┘   └──────────┘   └──────────┘                │
+│       │                                                      │
+│  ┌────▼────────────────────────────────────────────────┐   │
+│  │  IPC Handler Registry  (ipc.Register / RegisterFunc) │   │
+│  │  "system" → get_cpu_info, get_memory_info, ...       │   │
+│  │  "docker" → list_containers, start_container, ...    │   │
+│  │  "dbus"   → list_services, reboot, ...              │   │
+│  │  ...                                                  │   │
+│  └───────────────────────────────────────────────────────┘   │
 │                                                               │
 └───────────────────────────────────────────────────────────────┘
+```
+
+## Two-Tier Handler System
+
+The bridge uses two separate registration systems:
+
+### 1. IPC (JSON) Handlers — `ipc.RegisterFunc`
+
+Used for all request/response calls (the majority of the API). Registered per `(handlerType, command)` pair. All go through the `"bridge"` stream type.
+
+```go
+ipc.RegisterFunc("system", "get_cpu_info", func(ctx context.Context, args []string, emit ipc.Events) error {
+    info := getCPUInfo()
+    return emit.Result(info)
+})
+```
+
+The `"bridge"` stream handler (`generic.HandleBridgeStream`) parses the args `["handlerType", "command", arg1, arg2, ...]` and dispatches to the registered IPC handler.
+
+### 2. Stream Handlers — `streamHandlers` map
+
+Used for persistent or binary streams (terminal, file I/O, logs). Registered directly into a `map[string]func(*session.Session, net.Conn, []string) error` keyed by stream type.
+
+```go
+streamHandlers["terminal"] = HandleTerminalStream
+streamHandlers["fb-upload"] = HandleUploadStream
 ```
 
 ## StreamFrame Protocol
@@ -67,540 +97,338 @@ Bridge's job:
 
 ```go
 const (
-    OpStreamOpen     = 0x80  // Open stream: payload = "type\0arg1\0arg2..."
-    OpStreamData     = 0x81  // Raw data: payload = bytes
-    OpStreamClose    = 0x82  // Close stream: payload = empty
-    OpStreamResize   = 0x83  // Terminal resize: payload = [cols:2][rows:2]
-    OpStreamProgress = 0x84  // Progress update: payload = JSON
-    OpStreamResult   = 0x85  // Final result: payload = JSON
+    OpStreamOpen     byte = 0x80 // Open stream: payload = "type\0arg1\0arg2..."
+    OpStreamData     byte = 0x81 // Binary data: payload = raw bytes
+    OpStreamClose    byte = 0x82 // Close stream: payload = empty
+    OpStreamResize   byte = 0x83 // Terminal resize: payload = [cols:2][rows:2]
+    OpStreamProgress byte = 0x84 // Progress update: payload = JSON
+    OpStreamResult   byte = 0x85 // Final result: payload = JSON ResultFrame
+    OpStreamAbort    byte = 0x86 // Abort operation: client requests cancellation
 )
 ```
 
-### Reading Frames
+Maximum payload size: **16 MiB** (enforced by `ReadRelayFrame`).
+
+### Reading / Writing Frames
 
 ```go
-func ReadRelayFrame(stream *yamux.Stream) (*StreamFrame, error) {
-    // Read header (9 bytes)
-    header := make([]byte, 9)
-    _, err := io.ReadFull(stream, header)
-    if err != nil {
-        return nil, err
-    }
+// Read a frame from any io.Reader (yamux stream, net.Conn, etc.)
+func ReadRelayFrame(r io.Reader) (*StreamFrame, error)
 
-    // Parse header
-    opcode := header[0]
-    streamID := binary.BigEndian.Uint32(header[1:5])
-    length := binary.BigEndian.Uint32(header[5:9])
-
-    // Read payload
-    payload := make([]byte, length)
-    if length > 0 {
-        _, err = io.ReadFull(stream, payload)
-        if err != nil {
-            return nil, err
-        }
-    }
-
-    return &StreamFrame{
-        Opcode:   opcode,
-        StreamID: streamID,
-        Payload:  payload,
-    }, nil
-}
+// Write a frame to any io.Writer
+func WriteRelayFrame(w io.Writer, f *StreamFrame) error
 ```
 
-### Writing Frames
+Convenience helpers:
 
 ```go
-func WriteRelayFrame(stream *yamux.Stream, frame *StreamFrame) error {
-    buf := make([]byte, 9+len(frame.Payload))
-
-    buf[0] = frame.Opcode
-    binary.BigEndian.PutUint32(buf[1:5], frame.StreamID)
-    binary.BigEndian.PutUint32(buf[5:9], uint32(len(frame.Payload)))
-    copy(buf[9:], frame.Payload)
-
-    _, err := stream.Write(buf)
-    return err
-}
+ipc.WriteResultOK(w, streamID, data)         // Sends OpStreamResult {status:"ok", data:...}
+ipc.WriteResultError(w, streamID, msg, code) // Sends OpStreamResult {status:"error", ...}
+ipc.WriteProgress(w, streamID, progress)     // Sends OpStreamProgress
+ipc.WriteStreamClose(w, streamID)            // Sends OpStreamClose
 ```
 
 ## Handler Interface
 
-### Standard Handler Pattern
+### IPC Handler
 
 ```go
-type StreamHandler func(stream *yamux.Stream, args []string, userID string) error
-
-// Register handlers
-handlers := map[string]StreamHandler{
-    "terminal":    HandleTerminalStream,
-    "container":   HandleContainerStream,
-    "json":        HandleJSONStream,
-    "fb-upload":   HandleFileUpload,
-    "fb-download": HandleFileDownload,
-    "fb-compress": HandleFileCompress,
-    "fb-extract":  HandleFileExtract,
+// Handler is the interface all JSON/IPC handlers must implement.
+type Handler interface {
+    Execute(ctx context.Context, args []string, emit Events) error
 }
 
-// Main stream acceptor
-func acceptStreams(session *yamux.Session, userID string) {
-    for {
-        stream, err := session.AcceptStream()
-        if err != nil {
-            return // Session closed
-        }
+// HandlerFunc is a function adapter.
+type HandlerFunc func(ctx context.Context, args []string, emit Events) error
 
-        go handleStream(stream, userID)
-    }
-}
-
-func handleStream(stream *yamux.Stream, userID string) {
-    defer stream.Close()
-
-    // Read initial frame (OpStreamOpen)
-    frame, err := ReadRelayFrame(stream)
-    if err != nil || frame.Opcode != OpStreamOpen {
-        return
-    }
-
-    // Parse payload: "type\0arg1\0arg2\0..."
-    parts := bytes.Split(frame.Payload, []byte{0})
-    streamType := string(parts[0])
-    args := make([]string, len(parts)-1)
-    for i, part := range parts[1:] {
-        args[i] = string(part)
-    }
-
-    // Route to handler
-    handler, exists := handlers[streamType]
-    if !exists {
-        WriteRelayFrame(stream, &StreamFrame{
-            Opcode:  OpStreamResult,
-            Payload: []byte(`{"status":"error","error":"unknown stream type"}`),
-        })
-        return
-    }
-
-    // Execute handler
-    handler(stream, args, userID)
+// BidirectionalHandler extends Handler for streams that also receive client data.
+type BidirectionalHandler interface {
+    Handler
+    ExecuteWithInput(ctx context.Context, args []string, emit Events, input <-chan []byte) error
 }
 ```
+
+### Events Interface
+
+```go
+type Events interface {
+    Data(chunk []byte) error      // OpStreamData  — raw binary chunk
+    Progress(progress any) error  // OpStreamProgress — JSON-serialized progress
+    Result(result any) error      // OpStreamResult {status:"ok", data:...}
+    Error(err error, code int) error // OpStreamResult {status:"error", ...}
+    Close(reason string) error    // OpStreamClose — explicit early termination
+}
+```
+
+The framework closes the stream automatically when `Execute()` returns. Handlers only need to call `Close()` if they want to abort early.
+
+### Stream Handler Signature
+
+Raw stream handlers (terminal, filebrowser, logs, etc.) use a different signature:
+
+```go
+func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string) error
+```
+
+- `sess` carries `SessionID`, `Privileged`, and `User` (username, UID, GID).
+- `stream` is the raw yamux `net.Conn` — reads and writes StreamFrames directly.
+- `args` are the null-separated arguments from the OpStreamOpen payload.
 
 ## Handler Examples
 
-### Persistent Stream (Terminal)
+### IPC Handler (Request/Response)
 
 ```go
-func HandleTerminalStream(stream *yamux.Stream, args []string, userID string) error {
-    // args[0] = cols, args[1] = rows
-    cols, _ := strconv.Atoi(args[0])
-    rows, _ := strconv.Atoi(args[1])
+// In system/handlers.go
 
-    // Spawn PTY
-    cmd := exec.Command("/bin/bash")
-    pty, err := pty.StartWithSize(cmd, &pty.Winsize{
-        Rows: uint16(rows),
-        Cols: uint16(cols),
+func RegisterHandlers(sess *session.Session) {
+    ipc.RegisterFunc("system", "get_cpu_info",
+        func(ctx context.Context, args []string, emit ipc.Events) error {
+            info, err := fetchCPUInfo()
+            if err != nil {
+                return err // framework sends error result automatically
+            }
+            return emit.Result(info)
+        })
+
+    // Privileged handler — wrapped at registration time
+    ipc.RegisterFunc("system", "dangerous_op",
+        privilege.RequirePrivilegedIPC(sess, func(ctx context.Context, args []string, emit ipc.Events) error {
+            return doSomethingPrivileged()
+        }))
+}
+```
+
+### IPC Handler with Progress
+
+```go
+ipc.RegisterFunc("dbus", "install_package",
+    func(ctx context.Context, args []string, emit ipc.Events) error {
+        if len(args) < 1 {
+            return ipc.ErrInvalidArgs
+        }
+        packageID := args[0]
+
+        for step := range installSteps(packageID) {
+            emit.Progress(map[string]any{
+                "type":    "status",
+                "message": step.Description,
+                "pct":     step.Percent,
+            })
+        }
+        return emit.Result(nil)
     })
+```
+
+### Raw Stream Handler (Terminal)
+
+```go
+// In terminal/stream.go
+
+func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
+    // args[0] = cols, args[1] = rows
+    cols, rows := 120, 32
+    if len(args) >= 2 {
+        cols, _ = strconv.Atoi(args[0])
+        rows, _ = strconv.Atoi(args[1])
+    }
+
+    cmd := exec.Command("/bin/bash")
+    ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
     if err != nil {
         return err
     }
-    defer pty.Close()
+    defer ptyFile.Close()
 
-    // Bidirectional relay
-    done := make(chan error, 2)
-
-    // PTY → Stream
+    // PTY → stream
     go func() {
         buf := make([]byte, 32*1024)
         for {
-            n, err := pty.Read(buf)
-            if err != nil {
-                done <- err
-                return
+            n, err := ptyFile.Read(buf)
+            if n > 0 {
+                ipc.WriteRelayFrame(stream, &ipc.StreamFrame{Opcode: ipc.OpStreamData, Payload: buf[:n]})
             }
-
-            // Send as OpStreamData
-            WriteRelayFrame(stream, &StreamFrame{
-                Opcode:  OpStreamData,
-                Payload: buf[:n],
-            })
-        }
-    }()
-
-    // Stream → PTY
-    go func() {
-        for {
-            frame, err := ReadRelayFrame(stream)
             if err != nil {
-                done <- err
-                return
-            }
-
-            switch frame.Opcode {
-            case OpStreamData:
-                pty.Write(frame.Payload)
-            case OpStreamResize:
-                rows := binary.BigEndian.Uint16(frame.Payload[0:2])
-                cols := binary.BigEndian.Uint16(frame.Payload[2:4])
-                pty.Setsize(&pty.Winsize{Rows: rows, Cols: cols})
-            case OpStreamClose:
-                done <- io.EOF
                 return
             }
         }
     }()
 
-    // Wait for either direction to close
-    <-done
-    return nil
-}
-```
-
-### Request/Response Stream (JSON)
-
-```go
-func HandleJSONStream(stream *yamux.Stream, args []string, userID string) error {
-    // args[0] = handler type (e.g., "system")
-    // args[1] = command (e.g., "get_cpu_info")
-    // args[2...] = additional arguments
-
-    handlerType := args[0]
-    command := args[1]
-    cmdArgs := args[2:]
-
-    // Route to appropriate handler
-    var result interface{}
-    var err error
-
-    switch handlerType {
-    case "system":
-        result, err = handleSystemCommand(command, cmdArgs)
-    case "docker":
-        result, err = handleDockerCommand(command, cmdArgs)
-    case "dbus":
-        result, err = handleDBusCommand(command, cmdArgs)
-    // ... more handlers
-    default:
-        err = fmt.Errorf("unknown handler type: %s", handlerType)
-    }
-
-    // Send result
-    var payload []byte
-    if err != nil {
-        payload, _ = json.Marshal(map[string]interface{}{
-            "status": "error",
-            "error":  err.Error(),
-            "code":   500,
-        })
-    } else {
-        payload, _ = json.Marshal(map[string]interface{}{
-            "status": "ok",
-            "data":   result,
-        })
-    }
-
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode:  OpStreamResult,
-        Payload: payload,
-    })
-
-    // Close stream (request/response done)
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode: OpStreamClose,
-    })
-
-    return nil
-}
-
-func handleSystemCommand(command string, args []string) (interface{}, error) {
-    switch command {
-    case "get_cpu_info":
-        return GetCPUInfo()
-    case "get_memory_info":
-        return GetMemoryInfo()
-    case "reboot":
-        return nil, Reboot()
-    default:
-        return nil, fmt.Errorf("unknown command: %s", command)
-    }
-}
-```
-
-### Progress Stream (File Upload)
-
-```go
-func HandleFileUpload(stream *yamux.Stream, args []string, userID string) error {
-    // args[0] = destination path
-    // args[1] = file size
-
-    path := args[0]
-    totalSize, _ := strconv.ParseInt(args[1], 10, 64)
-
-    // Create file
-    file, err := os.Create(path)
-    if err != nil {
-        sendError(stream, err)
-        return err
-    }
-    defer file.Close()
-
-    var written int64
-    lastProgress := int64(0)
-    progressInterval := int64(512 * 1024) // Report every 512KB
-
-    // Read data frames
+    // stream → PTY (reads OpStreamData / OpStreamClose / OpStreamResize / OpStreamAbort)
     for {
-        frame, err := ReadRelayFrame(stream)
+        frame, err := ipc.ReadRelayFrame(stream)
         if err != nil {
-            return err
+            return nil
         }
-
         switch frame.Opcode {
-        case OpStreamData:
-            // Write chunk to file
-            n, err := file.Write(frame.Payload)
-            if err != nil {
-                sendError(stream, err)
-                return err
-            }
-
-            written += int64(n)
-
-            // Send progress update
-            if written-lastProgress >= progressInterval || written == totalSize {
-                progress := map[string]interface{}{
-                    "bytes": written,
-                    "total": totalSize,
-                    "pct":   float64(written) / float64(totalSize) * 100,
-                }
-                payload, _ := json.Marshal(progress)
-
-                WriteRelayFrame(stream, &StreamFrame{
-                    Opcode:  OpStreamProgress,
-                    Payload: payload,
-                })
-
-                lastProgress = written
-            }
-
-            // Done?
-            if written >= totalSize {
-                sendSuccess(stream, nil)
-                return nil
-            }
-
-        case OpStreamClose:
-            // Client cancelled
+        case ipc.OpStreamData:
+            ptyFile.Write(frame.Payload)
+        case ipc.OpStreamResize:
+            cols := binary.BigEndian.Uint16(frame.Payload[0:2])
+            rows := binary.BigEndian.Uint16(frame.Payload[2:4])
+            pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols})
+        case ipc.OpStreamClose, ipc.OpStreamAbort:
             return nil
         }
     }
 }
+```
 
-func sendSuccess(stream *yamux.Stream, data interface{}) {
-    payload, _ := json.Marshal(map[string]interface{}{
-        "status": "ok",
-        "data":   data,
-    })
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode:  OpStreamResult,
-        Payload: payload,
-    })
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode: OpStreamClose,
-    })
-}
+### Stream Handler with Abort Support
 
-func sendError(stream *yamux.Stream, err error) {
-    payload, _ := json.Marshal(map[string]interface{}{
-        "status": "error",
-        "error":  err.Error(),
-    })
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode:  OpStreamResult,
-        Payload: payload,
-    })
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode: OpStreamClose,
-    })
+For long-running operations, use `ipc.AbortContext` to get a context that is cancelled on `OpStreamAbort`:
+
+```go
+func handleCompress(stream net.Conn, args []string) error {
+    ctx, cancelFn, cleanup := ipc.AbortContext(context.Background(), stream)
+    defer cleanup()
+
+    // Pass cancelFn to OperationCallbacks
+    callbacks := &ipc.OperationCallbacks{
+        Cancel: cancelFn,
+        Progress: func(bytes int64) {
+            ipc.WriteProgress(stream, 0, FileProgress{Bytes: bytes, Total: total})
+        },
+    }
+
+    return compressFiles(ctx, paths, dest, callbacks)
 }
 ```
 
-## Modular Handler Design
+## Registration
 
-### Handler Registration
+### RegisterAllHandlers
 
 ```go
-type HandlerRegistry struct {
-    handlers map[string]StreamHandler
-    mu       sync.RWMutex
+// backend/bridge/handlers/register.go
+
+func RegisterAllHandlers(sess *session.Session) {
+    // "bridge" is the universal JSON dispatcher
+    streamHandlers["bridge"] = generic.HandleBridgeStream
+
+    // Register IPC handlers (JSON request/response)
+    system.RegisterHandlers(sess)
+    monitoring.RegisterHandlers()
+    accounts.RegisterHandlers()
+    docker.RegisterHandlers(sess)
+    filebrowser.RegisterHandlers()
+    config.RegisterHandlers(sess)
+    control.RegisterHandlers()
+    dbus.RegisterHandlers()
+    terminal.RegisterHandlers(sess)
+    wireguard.RegisterHandlers()
+    storage.RegisterHandlers()
+    shares.RegisterHandlers()
+
+    // Register raw stream handlers
+    control.RegisterStreamHandlers(streamHandlers)   // app-update
+    terminal.RegisterStreamHandlers(streamHandlers)  // terminal, container
+    filebrowser.RegisterStreamHandlers(streamHandlers) // fb-*
+    dbus.RegisterStreamHandlers(streamHandlers)      // pkg-update
+    docker.RegisterStreamHandlers(streamHandlers)    // docker-logs, docker-compose, docker-indexer*
+    logs.RegisterStreamHandlers(streamHandlers)      // service-logs, general-logs
 }
-
-func (r *HandlerRegistry) Register(streamType string, handler StreamHandler) {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    r.handlers[streamType] = handler
-}
-
-func (r *HandlerRegistry) Get(streamType string) (StreamHandler, bool) {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
-    h, exists := r.handlers[streamType]
-    return h, exists
-}
-
-// In main.go
-registry := &HandlerRegistry{handlers: make(map[string]StreamHandler)}
-
-// Register handlers
-terminal.Register(registry)   // registers "terminal", "container"
-filebrowser.Register(registry) // registers "fb-*"
-api.Register(registry)         // registers "json"
 ```
 
 ### Handler Package Structure
 
 ```
 backend/bridge/handlers/
-├── terminal/
-│   ├── stream.go        // HandleTerminalStream, HandleContainerStream
-│   └── register.go      // Register function
-├── filebrowser/
-│   ├── stream.go        // HandleFileUpload, HandleFileDownload, etc.
-│   └── register.go      // Register function
-├── api/
-│   ├── stream.go        // HandleJSONStream (routes to sub-handlers)
-│   ├── system.go        // System commands
-│   ├── docker.go        // Docker commands
-│   ├── dbus.go          // DBus commands
-│   └── register.go      // Register function
-└── registry.go          // HandlerRegistry type
-```
-
-### Example Package (terminal/register.go)
-
-```go
-package terminal
-
-func Register(registry *HandlerRegistry) {
-    registry.Register("terminal", HandleTerminalStream)
-    registry.Register("container", HandleContainerStream)
-}
-
-func HandleTerminalStream(stream *yamux.Stream, args []string, userID string) error {
-    // Implementation...
-}
-
-func HandleContainerStream(stream *yamux.Stream, args []string, userID string) error {
-    // Implementation...
-}
+├── register.go               // RegisterAllHandlers, GetStreamHandler, streamHandlers map
+├── generic/                  // HandleBridgeStream — JSON IPC dispatcher
+├── system/                   // system.* IPC handlers
+├── monitoring/               // monitoring.* IPC handlers
+├── accounts/                 // accounts.* IPC handlers
+├── docker/                   // docker.* IPC + docker-logs/docker-compose/docker-indexer streams
+├── dbus/                     // dbus.* IPC + pkg-update stream
+├── terminal/                 // terminal.* IPC + terminal/container streams
+├── filebrowser/              // filebrowser.* IPC + fb-* streams
+├── config/                   // config.* IPC handlers
+├── control/                  // control.* IPC + app-update stream
+├── wireguard/                // wireguard.* IPC handlers
+├── storage/                  // storage.* IPC handlers
+├── shares/                   // shares.* IPC handlers
+├── logs/                     // service-logs, general-logs stream handlers
+└── indexer/                  // indexer client (used by filebrowser and docker)
 ```
 
 ## Stream Types Reference
 
-### Persistent Streams (Long-lived)
+### Universal JSON Stream
+
+| Type | Args | Frames Sent | Description |
+|------|------|-------------|-------------|
+| `bridge` | `[handlerType, command, ...args]` | OpStreamResult | Dispatches to IPC handler registry |
+
+### Terminal Streams (Persistent)
 
 | Type | Args | Frames Sent | Closes When |
 |------|------|-------------|-------------|
 | `terminal` | `[cols, rows]` | OpStreamData (PTY output) | Client closes or PTY exits |
 | `container` | `[containerID, shell, cols, rows]` | OpStreamData (exec output) | Client closes or exec exits |
 
-### Request/Response Streams (Ephemeral)
+### Docker Streams
 
 | Type | Args | Frames Sent | Closes When |
 |------|------|-------------|-------------|
-| `json` | `[handler, command, ...args]` | OpStreamResult | After result sent |
+| `docker-logs` | `[containerID, tail]` | OpStreamData (log lines) | Container removed or client closes |
+| `docker-compose` | `[action, projectName, composePath?]` | OpStreamData (output) | Operation completes |
+| `docker-indexer` | none | OpStreamProgress, OpStreamResult | Indexing complete |
+| `docker-indexer-attach` | none | OpStreamProgress, OpStreamResult | Attach to running indexer |
 
-### Progress Streams (Ephemeral with progress)
+### File Browser Streams
 
 | Type | Args | Frames Sent | Closes When |
 |------|------|-------------|-------------|
-| `fb-upload` | `[path, size]` | OpStreamProgress, OpStreamResult | Upload complete or error |
+| `fb-upload` | `[path, size, override?]` | OpStreamProgress, OpStreamResult | Upload complete |
 | `fb-download` | `[path]` | OpStreamData, OpStreamProgress, OpStreamResult | Download complete |
-| `fb-compress` | `[paths..., dest, format]` | OpStreamProgress, OpStreamResult | Archive created |
-| `fb-extract` | `[archive, dest]` | OpStreamProgress, OpStreamResult | Extraction complete |
+| `fb-archive` | `[format, ...paths]` | OpStreamData, OpStreamProgress, OpStreamResult | Archive streamed |
+| `fb-compress` | `[format, dest, ...paths]` | OpStreamProgress, OpStreamResult | Archive created |
+| `fb-extract` | `[archive, dest?]` | OpStreamProgress, OpStreamResult | Extraction complete |
+| `fb-reindex` | `[path?]` | OpStreamProgress, OpStreamResult | Reindex complete |
+| `fb-indexer-attach` | none | OpStreamProgress, OpStreamResult | Attach to running reindex |
+| `fb-copy` | `[source, destination]` | OpStreamProgress, OpStreamResult | Copy complete |
+| `fb-move` | `[source, destination]` | OpStreamProgress, OpStreamResult | Move complete |
+
+### System / Log Streams
+
+| Type | Args | Frames Sent | Closes When |
+|------|------|-------------|-------------|
+| `pkg-update` | `[...packageIDs]` | OpStreamProgress, OpStreamResult | Update complete |
+| `app-update` | `[runId, version?]` | OpStreamData, OpStreamResult | Update script exits |
+| `service-logs` | `[serviceName, lines]` | OpStreamData | Client closes |
+| `general-logs` | `[lines, timePeriod, priority, identifier]` | OpStreamData | Client closes |
 
 ## Error Handling
 
-### Send Error to Client
+```go
+// Send error result and close
+ipc.WriteResultErrorAndClose(stream, streamID, "not found", 404)
+
+// Send success result and close
+ipc.WriteResultOKAndClose(stream, streamID, data)
+
+// Inside ipc.RegisterFunc — just return an error
+ipc.RegisterFunc("system", "some_cmd", func(ctx context.Context, args []string, emit ipc.Events) error {
+    return fmt.Errorf("something went wrong") // framework wraps this as error result
+})
+```
+
+## Privilege Enforcement
+
+Use `privilege.RequirePrivilegedIPC` at registration time:
 
 ```go
-func sendError(stream *yamux.Stream, message string, code int) {
-    payload, _ := json.Marshal(map[string]interface{}{
-        "status": "error",
-        "error":  message,
-        "code":   code,
-    })
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode:  OpStreamResult,
-        Payload: payload,
-    })
-    WriteRelayFrame(stream, &StreamFrame{
-        Opcode: OpStreamClose,
-    })
+func RegisterHandlers(sess *session.Session) {
+    ipc.RegisterFunc("wireguard", "add_interface",
+        privilege.RequirePrivilegedIPC(sess, handleAddInterface))
 }
 ```
 
-### Handle Client Disconnect
-
-```go
-func HandleLongRunningTask(stream *yamux.Stream, args []string, userID string) error {
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-
-    // Monitor stream for close
-    go func() {
-        for {
-            frame, err := ReadRelayFrame(stream)
-            if err != nil || frame.Opcode == OpStreamClose {
-                cancel() // Cancel context when client closes
-                return
-            }
-        }
-    }()
-
-    // Do work with cancellable context
-    return doWork(ctx, stream)
-}
-```
-
-## Performance
-
-### Optimize for Large Data
-
-```go
-// Reuse buffers
-var bufferPool = sync.Pool{
-    New: func() interface{} {
-        return make([]byte, 32*1024)
-    },
-}
-
-func streamFile(stream *yamux.Stream, path string) error {
-    file, _ := os.Open(path)
-    defer file.Close()
-
-    buf := bufferPool.Get().([]byte)
-    defer bufferPool.Put(buf)
-
-    for {
-        n, err := file.Read(buf)
-        if n > 0 {
-            WriteRelayFrame(stream, &StreamFrame{
-                Opcode:  OpStreamData,
-                Payload: buf[:n],
-            })
-        }
-        if err == io.EOF {
-            break
-        }
-    }
-    return nil
-}
-```
+`sess.Privileged` is set by the auth daemon (based on `sudo -v`) and is immutable for the session lifetime.
 
 ## See Also
 
-- [Frontend API](./frontendAPI.md) - Client-side implementation
+- [Frontend API](./frontend-api.md) - Client-side implementation
 - [Server Yamux Protocol](./server-yamux-protocol.md) - Server relay implementation
+- [Privilege Pattern](./PRIVILEGE_PATTERN.md) - Authorization pattern
