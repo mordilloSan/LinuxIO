@@ -480,9 +480,10 @@ const HistoryChart: React.FC<{
         gap: 8,
       }}
     >
+      <div style={{ display: "flex" }}>
       <div
         ref={chartRef}
-        style={{ width: "100%", minWidth: 0, position: "relative" }}
+        style={{ flex: 1, minWidth: 0, position: "relative" }}
         onMouseMove={(event) => handlePointerMove(event.clientX, event.clientY)}
         onMouseLeave={handleMouseLeave}
       >
@@ -550,7 +551,7 @@ const HistoryChart: React.FC<{
               d={baseLinePath}
               fill="none"
               stroke={alpha(color, 0.45)}
-              strokeWidth={1.5}
+              strokeWidth={1}
               strokeLinejoin="round"
               strokeLinecap="round"
             />
@@ -560,43 +561,12 @@ const HistoryChart: React.FC<{
               d={linePath}
               fill="none"
               stroke={hasStackedSegment ? stackedColor! : color}
-              strokeWidth={2}
+              strokeWidth={1.5}
               strokeLinejoin="round"
               strokeLinecap="round"
             />
           )}
         </svg>
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            width: 28,
-            height: 120,
-            pointerEvents: "none",
-          }}
-        >
-          {[0, 25, 50, 75, 100].map((tick) => {
-            const top = paddingTop + ((100 - tick) / 100) * innerHeight;
-            return (
-              <div
-                key={tick}
-                style={{
-                  position: "absolute",
-                  top,
-                  right: 2,
-                  transform: "translateY(-50%)",
-                  fontSize: "8px",
-                  lineHeight: 1,
-                  color: alpha(theme.chart.neutral, 0.75),
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {tick}%
-              </div>
-            );
-          })}
-        </div>
 
         {effectiveHoverRatio != null && hoveredPoint && (
           <div
@@ -691,6 +661,37 @@ const HistoryChart: React.FC<{
             )}
           </div>
         )}
+      </div>
+      <div
+        style={{
+          width: 28,
+          height: 120,
+          position: "relative",
+          flexShrink: 0,
+          pointerEvents: "none",
+        }}
+      >
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const top = paddingTop + ((100 - tick) / 100) * innerHeight;
+          return (
+            <div
+              key={tick}
+              style={{
+                position: "absolute",
+                top,
+                right: 2,
+                transform: "translateY(-50%)",
+                fontSize: "8px",
+                lineHeight: 1,
+                color: alpha(theme.chart.neutral, 0.75),
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tick}%
+            </div>
+          );
+        })}
+      </div>
       </div>
 
       <div
@@ -1009,9 +1010,10 @@ const NetworkHistoryChart: React.FC<{
         gap: 8,
       }}
     >
+      <div style={{ display: "flex" }}>
       <div
         ref={chartRef}
-        style={{ width: "100%", minWidth: 0, position: "relative" }}
+        style={{ flex: 1, minWidth: 0, position: "relative" }}
         onMouseMove={(event) => handlePointerMove(event.clientX, event.clientY)}
         onMouseLeave={handleMouseLeave}
       >
@@ -1077,7 +1079,7 @@ const NetworkHistoryChart: React.FC<{
               d={rxLinePath}
               fill="none"
               stroke={theme.chart.rx}
-              strokeWidth={2}
+              strokeWidth={1.5}
               strokeLinejoin="round"
               strokeLinecap="round"
             />
@@ -1087,44 +1089,12 @@ const NetworkHistoryChart: React.FC<{
               d={txLinePath}
               fill="none"
               stroke={theme.chart.tx}
-              strokeWidth={2}
+              strokeWidth={1.5}
               strokeLinejoin="round"
               strokeLinecap="round"
             />
           )}
         </svg>
-
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            width: 52,
-            height: 120,
-            pointerEvents: "none",
-          }}
-        >
-          {[0, 0.25, 0.5, 0.75, 1].map((tickRatio) => {
-            const top = paddingTop + (1 - tickRatio) * innerHeight;
-            return (
-              <div
-                key={tickRatio}
-                style={{
-                  position: "absolute",
-                  top,
-                  right: 2,
-                  transform: "translateY(-50%)",
-                  fontSize: "8px",
-                  lineHeight: 1,
-                  color: alpha(theme.chart.neutral, 0.75),
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {formatNetworkRate(tickRatio * yAxisMax)}
-              </div>
-            );
-          })}
-        </div>
 
         {effectiveHoverRatio != null && activePoint && (
           <div
@@ -1218,6 +1188,37 @@ const NetworkHistoryChart: React.FC<{
             </AppTypography>
           </div>
         )}
+      </div>
+      <div
+        style={{
+          width: 52,
+          height: 120,
+          position: "relative",
+          flexShrink: 0,
+          pointerEvents: "none",
+        }}
+      >
+        {[0, 0.25, 0.5, 0.75, 1].map((tickRatio) => {
+          const top = paddingTop + (1 - tickRatio) * innerHeight;
+          return (
+            <div
+              key={tickRatio}
+              style={{
+                position: "absolute",
+                top,
+                right: 2,
+                transform: "translateY(-50%)",
+                fontSize: "8px",
+                lineHeight: 1,
+                color: alpha(theme.chart.neutral, 0.75),
+                whiteSpace: "nowrap",
+              }}
+            >
+              {formatNetworkRate(tickRatio * yAxisMax)}
+            </div>
+          );
+        })}
+      </div>
       </div>
 
       <div
@@ -1730,7 +1731,7 @@ export const NetworkHistoryCard: React.FC<{
     <HistoryCardShell
       title="Network"
       avatarIcon="mdi:ethernet"
-      accentColor={theme.chart.rx}
+      accentColor={theme.palette.primary.main}
       range={range}
       onRangeChange={setRange}
       chart={
