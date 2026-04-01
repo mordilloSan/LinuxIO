@@ -24,6 +24,7 @@ import MotherBoardInfo from "./MotherBoard";
 import Network from "./Network";
 import Processor from "./Processor";
 import SystemHealth from "./System";
+import SystemOverview from "./SystemOverview";
 
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
@@ -37,6 +38,7 @@ import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
+const MemoSystemOverview = React.memo(SystemOverview);
 const MemoSystemHealth = React.memo(SystemHealth);
 const MemoProcessor = React.memo(Processor);
 const MemoMemory = React.memo(Memory);
@@ -48,6 +50,7 @@ const MemoDriveInfo = React.memo(DriveInfo);
 const MemoDockerInfo = React.memo(DockerInfo);
 
 const allCards = [
+  { id: "overview", label: "System Overview", component: MemoSystemOverview },
   { id: "system", label: "System Health", component: MemoSystemHealth },
   { id: "cpu", label: "Processor", component: MemoProcessor },
   { id: "memory", label: "Memory", component: MemoMemory },

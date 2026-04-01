@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import "./app-dialog.css";
@@ -18,7 +18,6 @@ export interface AppDialogProps {
   ) => void;
   maxWidth?: "xs" | "sm" | "md" | "lg" | "xl" | false;
   fullWidth?: boolean;
-  fullScreen?: boolean;
   /** When true, pressing Escape will not close the dialog */
   disableEscapeKeyDown?: boolean;
   children?: React.ReactNode;
@@ -43,7 +42,6 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   onClose,
   maxWidth = "sm",
   fullWidth = false,
-  fullScreen = false,
   disableEscapeKeyDown = false,
   children,
   className,
@@ -83,34 +81,31 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   }, [open, slotProps]);
 
   // ESC key
-  const handleDocumentKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (
-        event.key !== "Escape" ||
-        disableEscapeKeyDown ||
-        event.defaultPrevented
-      ) {
-        return;
-      }
+  const handleDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.key !== "Escape" ||
+      disableEscapeKeyDown ||
+      event.defaultPrevented
+    ) {
+      return;
+    }
 
-      const root = rootRef.current;
-      if (!root) {
-        return;
-      }
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
 
-      const openDialogs = Array.from(
-        document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
-      );
-      if (openDialogs[openDialogs.length - 1] !== root) {
-        return;
-      }
+    const openDialogs = Array.from(
+      document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
+    );
+    if (openDialogs[openDialogs.length - 1] !== root) {
+      return;
+    }
 
-      event.preventDefault();
-      event.stopPropagation();
-      onClose?.(event, "escapeKeyDown");
-    },
-    [disableEscapeKeyDown, onClose],
-  );
+    event.preventDefault();
+    event.stopPropagation();
+    onClose?.(event, "escapeKeyDown");
+  });
 
   useEffect(() => {
     if (!open) {
@@ -121,7 +116,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
     return () => {
       document.removeEventListener("keydown", handleDocumentKeyDown);
     };
-  }, [handleDocumentKeyDown, open]);
+  }, [open]);
 
   // auto-focus
   useEffect(() => {
@@ -139,9 +134,8 @@ export const AppDialog: React.FC<AppDialogProps> = ({
 
   if (!open) return null;
 
-  const sizeClass = maxWidth && !fullScreen ? `app-dialog--${maxWidth}` : "";
-  const widthClass = fullWidth && !fullScreen ? "app-dialog--fullwidth" : "";
-  const screenClass = fullScreen ? "app-dialog--fullscreen" : "";
+  const sizeClass = maxWidth ? `app-dialog--${maxWidth}` : "";
+  const widthClass = fullWidth ? "app-dialog--fullwidth" : "";
 
   const mergedPaperStyle = {
     ...paperStyle,
@@ -170,7 +164,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       />
       <div
         ref={dialogRef}
-        className={`app-dialog ${sizeClass} ${widthClass} ${screenClass} ${className || ""}`.trim()}
+        className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
         style={style}
         role="dialog"
         aria-modal="true"

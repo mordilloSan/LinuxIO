@@ -12,15 +12,9 @@ import {
   bindStreamHandlers,
   decodeString,
   getStreamMux,
-  openExecStream,
+  openAppUpdateStream,
   type Stream,
 } from "@/api";
-
-// In dev mode, use local test script; in production, use GitHub hosted script
-const INSTALL_SCRIPT_URL = import.meta.env.DEV
-  ? "http://localhost:9999/dev-test-update.sh"
-  : "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh";
-const UPDATE_STATUS_FILE = "/run/linuxio/update-status.json";
 
 const UPDATE_TIMEOUT_MS = 20 * 60 * 1000;
 const POLL_START_DELAY_MS = 2000;
@@ -206,40 +200,6 @@ const useUpdateController = (): UpdateContextValue => {
     }
   }, []);
 
-  const buildUpdateCommand = useCallback(
-    (runId: string, version?: string | null) => {
-      const updateCmd = version
-        ? `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- ${version}`
-        : `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`;
-
-      const unitScript = [
-        "set +e",
-        `run_id="${runId}"`,
-        "started=$(date +%s)",
-        "mkdir -p /run/linuxio",
-        `printf "{\\"id\\":\\"%s\\",\\"status\\":\\"running\\",\\"started_at\\":%s}\\\\n" "$run_id" "$started" > ${UPDATE_STATUS_FILE}`,
-        updateCmd,
-        "code=$?",
-        "finished=$(date +%s)",
-        "status=ok",
-        "if [ $code -ne 0 ]; then status=error; fi",
-        `printf "{\\"id\\":\\"%s\\",\\"status\\":\\"%s\\",\\"exit_code\\":%s,\\"started_at\\":%s,\\"finished_at\\":%s}\\\\n" "$run_id" "$status" "$code" "$started" "$finished" > ${UPDATE_STATUS_FILE}`,
-        "exit $code",
-      ].join("; ");
-
-      const unitCmd = `bash -c '${unitScript}'`;
-      const commandParts = [
-        `rm -f ${UPDATE_STATUS_FILE}`,
-        `systemd-run --no-block --unit=linuxio-update -p StandardOutput=journal -p StandardError=journal ${unitCmd}`,
-        "sleep 0.5",
-        "journalctl -f -u linuxio-update --lines=0 --no-pager -o cat",
-      ];
-
-      return commandParts.join(" && ");
-    },
-    [],
-  );
-
   const beginVerification = useCallback(() => {
     const runId = updateRunIdRef.current;
     if (!runId) {
@@ -412,8 +372,7 @@ const useUpdateController = (): UpdateContextValue => {
       // Disable all API requests during update
       mux.setUpdating(true);
 
-      const cmd = buildUpdateCommand(runId, target);
-      const stream = openExecStream("bash", ["-c", cmd]);
+      const stream = openAppUpdateStream(runId, target ?? undefined);
       if (!stream) {
         failUpdate("Failed to open update stream");
         return;
@@ -427,60 +386,12 @@ const useUpdateController = (): UpdateContextValue => {
         }
       }, UPDATE_TIMEOUT_MS);
 
-      // Poll update status to detect completion and close stream
-      // The journalctl -f stream never closes on its own, so we monitor the status file
-      const pollStatusAndCloseStream = async () => {
-        if (updateRunIdRef.current !== runId) {
-          return;
-        }
-        const status = await fetchUpdateStatus();
-        if (status && (status.status === "ok" || status.status === "error")) {
-          // Update completed, close the stream and trigger verification
-          if (streamRef.current) {
-            const currentStream = streamRef.current;
-            streamRef.current = null;
-
-            // Detach stream handlers to prevent double-calling handleStreamFinished
-            detachStreamHandlers();
-            currentStream.close();
-
-            // Stop polling - clear all timers before starting verification
-            clearTimers();
-
-            // Manually trigger the finish handler to start verification
-            const fallbackError =
-              status.status === "error" ? "Update failed" : undefined;
-            handleStreamFinished(fallbackError);
-          }
-        }
-      };
-
-      // Start polling after a delay (give update time to start)
-      trackTimeout(() => {
-        const intervalId = trackInterval(() => {
-          void pollStatusAndCloseStream();
-        }, POLL_INTERVAL_MS);
-        // Clean up interval on timeout
-        trackTimeout(() => clearInterval(intervalId), UPDATE_TIMEOUT_MS);
-      }, POLL_START_DELAY_MS);
-
       unbindStreamHandlersRef.current = bindStreamHandlers(stream, {
         onData: (data: Uint8Array) => {
           const text = decodeString(data);
           const lines = text
             .split("\n")
-            .map((line) => {
-              const trimmed = line.trim();
-              // Filter out systemd journal metadata lines
-              if (!trimmed) return null;
-              if (trimmed.startsWith("Running as unit:")) return null;
-              // Truncate the verbose "Started linuxio-update.service - ..." line
-              if (trimmed.startsWith("Started linuxio-update.service - ")) {
-                return "Started linuxio-update.service";
-              }
-              return line;
-            })
-            .filter((line): line is string => line !== null);
+            .filter((line) => line.trim().length > 0);
           if (lines.length === 0) return;
           markUpdateStarted();
 
@@ -536,15 +447,12 @@ const useUpdateController = (): UpdateContextValue => {
       });
     },
     [
-      buildUpdateCommand,
       clearTimers,
       detachStreamHandlers,
       failUpdate,
-      fetchUpdateStatus,
       handleStreamFinished,
       markUpdateStarted,
       phase,
-      trackInterval,
       trackTimeout,
     ],
   );

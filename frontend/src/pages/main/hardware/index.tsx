@@ -15,10 +15,16 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
+import {
+  BIOSInfoCard,
+  CPUDetailsCard,
+  CPUHistoryCard,
+  GPUInfoCard,
+  GPUHistoryCard,
+  MemoryHistoryCard,
+  MotherboardInfoCard,
+} from "@/pages/main/hardware/HardwareHistoryCards";
 import "@/theme/section.css";
-import GpuInfo from "@/pages/main/dashboard/Gpu";
-import MemoryUsage from "@/pages/main/dashboard/Memory";
-import Processor from "@/pages/main/dashboard/Processor";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -36,17 +42,6 @@ interface SensorGroup {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-const formatUptime = (seconds: number): string => {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  return parts.join(" ") || "0m";
-};
 
 const getTempColor = (
   value: number,
@@ -329,26 +324,11 @@ const pciColumns: UnifiedTableColumn[] = [
 
 // ─── main component ──────────────────────────────────────────────────────────
 
-const MemoProcessor = React.memo(Processor);
-const MemoMemory = React.memo(MemoryUsage);
-const MemoGpuInfo = React.memo(GpuInfo);
-
 const HardwarePage: React.FC = () => {
-  const theme = useAppTheme();
-
   // ── data ──
-  const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
-    refetchInterval: 60000,
-  });
-  const { data: uptime } = linuxio.system.get_uptime.useQuery({
-    refetchInterval: 10000,
-  });
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
     refetchInterval: 5000,
   }) as { data: SensorGroup[] | undefined };
-  const { data: systemInfo } = linuxio.system.get_system_info.useQuery({
-    staleTime: 300000,
-  });
   const { data: pciDevices } = linuxio.system.get_pci_devices.useQuery({
     staleTime: 300000,
   });
@@ -399,111 +379,6 @@ const HardwarePage: React.FC = () => {
 
   return (
     <div>
-      {/* ── System Overview ─────────────────────────────────────────────── */}
-      <SectionHeader
-        title="System Overview"
-        expanded={sections.overview}
-        onClick={() => toggleSection("overview")}
-      />
-      <AppCollapse in={sections.overview}>
-        <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
-          {(
-            [
-              {
-                label: "Hostname",
-                value: hostInfo?.hostname ?? "—",
-                detail: hostInfo?.os ?? "",
-                icon: "mdi:server",
-              },
-              {
-                label: "Platform",
-                value: hostInfo?.platform ?? "—",
-                detail: hostInfo?.platformVersion ?? "",
-                icon: "mdi:linux",
-              },
-              {
-                label: "Kernel",
-                value: hostInfo?.kernelVersion ?? "—",
-                detail: hostInfo?.kernelArch ?? "",
-                icon: "mdi:cog",
-              },
-              {
-                label: "Uptime",
-                value: uptime != null ? formatUptime(uptime) : "—",
-                detail:
-                  sensorSummary.maxTemp != null
-                    ? `Peak: ${sensorSummary.maxTemp}°C`
-                    : `${sensorSummary.adapters} sensor adapters`,
-                icon: "mdi:clock-outline",
-              },
-            ] as {
-              label: string;
-              value: string;
-              detail: string;
-              icon: string;
-            }[]
-          ).map(({ label, value, detail, icon }) => (
-            <AppGrid key={label} size={{ xs: 6, md: 3 }}>
-              <FrostedCard
-                style={{
-                  paddingInline: 10,
-                  paddingBlock: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginBottom: 4,
-                  }}
-                >
-                  <Icon
-                    icon={icon}
-                    width={18}
-                    height={18}
-                    color={theme.palette.primary.main}
-                  />
-                  <AppTypography
-                    variant="overline"
-                    color="text.secondary"
-                    style={{ lineHeight: 1.6 }}
-                  >
-                    {label}
-                  </AppTypography>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    justifyContent: "space-between",
-                    marginTop: 1,
-                  }}
-                >
-                  <AppTypography
-                    variant="h6"
-                    fontWeight={700}
-                    noWrap
-                    style={{ lineHeight: 1.2 }}
-                    fontSize="0.95rem"
-                  >
-                    {value}
-                  </AppTypography>
-                  <AppTypography
-                    variant="caption"
-                    color="text.secondary"
-                    noWrap
-                    align="right"
-                  >
-                    {detail}
-                  </AppTypography>
-                </div>
-              </FrostedCard>
-            </AppGrid>
-          ))}
-        </AppGrid>
-      </AppCollapse>
-
       {/* ── System Information ──────────────────────────────────────────── */}
       <SectionHeader
         title="System Information"
@@ -511,37 +386,17 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("systemInfo")}
       />
       <AppCollapse in={sections.systemInfo}>
-        <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
-          {(
-            [
-              { label: "Type", value: systemInfo?.chassisType },
-              { label: "Name", value: systemInfo?.productName },
-              { label: "Version", value: systemInfo?.productVersion },
-              { label: "Vendor", value: systemInfo?.productVendor },
-              { label: "BIOS", value: systemInfo?.biosVendor },
-              { label: "BIOS Version", value: systemInfo?.biosVersion },
-              { label: "BIOS Date", value: systemInfo?.biosDate },
-              { label: "CPU", value: systemInfo?.cpuSummary },
-            ] as { label: string; value: string | undefined }[]
-          ).map(({ label, value }) => (
-            <AppGrid key={label} size={{ xs: 6, md: 3 }}>
-              <FrostedCard style={{ paddingInline: 10, paddingBlock: 8 }}>
-                <AppTypography
-                  variant="overline"
-                  color="text.secondary"
-                  style={{ lineHeight: 1.6 }}
-                >
-                  {label}
-                </AppTypography>
-                <AppTypography
-                  variant="body2"
-                  fontWeight={600}
-                  noWrap
-                  style={{ lineHeight: 1.3 }}
-                >
-                  {value || "—"}
-                </AppTypography>
-              </FrostedCard>
+        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
+          {[
+            { id: "motherboard", component: MotherboardInfoCard },
+            { id: "cpu-details", component: CPUDetailsCard },
+            { id: "bios", component: BIOSInfoCard },
+            { id: "gpu-details", component: GPUInfoCard },
+          ].map(({ id, component: CardComponent }) => (
+            <AppGrid key={id} size={{ xs: 12, md: 6, xl: 3 }}>
+              <ErrorBoundary>
+                <CardComponent />
+              </ErrorBoundary>
             </AppGrid>
           ))}
         </AppGrid>
@@ -594,9 +449,9 @@ const HardwarePage: React.FC = () => {
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
           {[
-            { id: "cpu", component: MemoProcessor },
-            { id: "memory", component: MemoMemory },
-            { id: "gpu", component: MemoGpuInfo },
+            { id: "cpu", component: CPUHistoryCard },
+            { id: "memory", component: MemoryHistoryCard },
+            { id: "gpu", component: GPUHistoryCard },
           ].map(({ id, component: CardComponent }) => (
             <AppGrid key={id} size={{ xs: 12, lg: 4 }}>
               <ErrorBoundary>

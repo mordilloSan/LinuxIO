@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"time"
 )
 
@@ -36,6 +37,11 @@ const (
 	OpStreamAbort    byte = 0x86 // Abort operation: client requests cancellation
 )
 
+// maxRelayPayloadSize is the maximum allowed payload for a single relay frame.
+// Matches the cap enforced by ReadRelayFrame (16 MiB).
+const maxRelayPayloadSize = 16 * 1024 * 1024
+const relayFrameHeaderSize = 9
+
 // StreamFrame represents a framed message for the relay protocol.
 // Format: [opcode:1][streamID:4][length:4][payload:N]
 type StreamFrame struct {
@@ -44,20 +50,41 @@ type StreamFrame struct {
 	Payload  []byte
 }
 
-// WriteRelayFrame writes a StreamFrame to the writer.
-func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
-	header := make([]byte, 9)
-	header[0] = f.Opcode
-	binary.BigEndian.PutUint32(header[1:5], f.StreamID)
-	binary.BigEndian.PutUint32(header[5:9], uint32(len(f.Payload)))
-
-	if _, err := w.Write(header); err != nil {
-		return fmt.Errorf("write header: %w", err)
+// checkPayloadSize validates that a payload length is within supported bounds.
+// It enforces both the protocol-level maximum payload size and guards against
+// integer overflow when computing the total frame size (header + payload).
+func checkPayloadSize(payload []byte) (int, error) {
+	payloadLen := len(payload)
+	if payloadLen > maxRelayPayloadSize {
+		return 0, fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
 	}
-	if len(f.Payload) > 0 {
-		if _, err := w.Write(f.Payload); err != nil {
-			return fmt.Errorf("write payload: %w", err)
-		}
+	// Guard against overflow when adding the frame header.
+	if payloadLen > math.MaxInt-relayFrameHeaderSize {
+		return 0, fmt.Errorf("write frame: payload size causes integer overflow")
+	}
+	return payloadLen, nil
+}
+
+// WriteRelayFrame writes a StreamFrame to the writer in a single write call.
+// This avoids interleaving frame headers and payloads when multiple goroutines
+// share the same writer.
+func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
+	payloadLen, err := checkPayloadSize(f.Payload)
+	if err != nil {
+		return err
+	}
+	frame := make([]byte, relayFrameHeaderSize+payloadLen)
+	frame[0] = f.Opcode
+	binary.BigEndian.PutUint32(frame[1:5], f.StreamID)
+	binary.BigEndian.PutUint32(frame[5:9], uint32(payloadLen))
+	copy(frame[9:], f.Payload)
+
+	n, err := w.Write(frame)
+	if err != nil {
+		return fmt.Errorf("write frame: %w", err)
+	}
+	if n != len(frame) {
+		return fmt.Errorf("write frame: %w", io.ErrShortWrite)
 	}
 	return nil
 }
@@ -131,6 +158,9 @@ func WriteProgress(w io.Writer, streamID uint32, data any) error {
 	if err != nil {
 		return fmt.Errorf("marshal progress: %w", err)
 	}
+	if _, err := checkPayloadSize(payload); err != nil {
+		return fmt.Errorf("progress payload invalid: %w", err)
+	}
 	return WriteRelayFrame(w, &StreamFrame{
 		Opcode:   OpStreamProgress,
 		StreamID: streamID,
@@ -143,6 +173,9 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 	payload, err := json.Marshal(r)
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
+	}
+	if _, err := checkPayloadSize(payload); err != nil {
+		return fmt.Errorf("result payload invalid: %w", err)
 	}
 	return WriteRelayFrame(w, &StreamFrame{
 		Opcode:   OpStreamResult,
@@ -333,6 +366,7 @@ func AbortContext(parent context.Context, stream io.Reader) (ctx context.Context
 	}
 
 	cleanup = func() {
+		cancel()
 		select {
 		case <-done:
 		case <-time.After(100 * time.Millisecond):

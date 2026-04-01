@@ -3,7 +3,6 @@ package filebrowser
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,7 +13,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type filebrowserRegistration struct {
@@ -40,7 +38,7 @@ type uploadPreserveState struct {
 }
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
-func RegisterHandlers(sess *session.Session) {
+func RegisterHandlers() {
 	registerFilebrowserHandlers([]filebrowserRegistration{
 		{command: "resource_get", handler: emitFilebrowserArgsResult(resourceGet)},
 		{command: "resource_stat", handler: emitFilebrowserArgsResult(resourceStat)},
@@ -53,11 +51,6 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "search", handler: emitFilebrowserArgsResult(searchFiles)},
 		{command: "chmod", handler: emitFilebrowserLoggedArgsResult("chmod requested", resourceChmod)},
 		{command: "users_groups", handler: handleUsersGroups},
-		{command: "file_update_from_temp", handler: emitFilebrowserLoggedArgsResult("file_update_from_temp requested", fileUpdateFromTemp)},
-		{command: "download", handler: downloadHandler(sess)},
-		{command: "archive", handler: handleArchiveDownloadNotMigrated},
-		{command: "compress", handler: handleCompressNotMigrated},
-		{command: "extract", handler: handleExtractNotMigrated},
 	})
 
 	// Upload - bidirectional handler (receives data from client)
@@ -108,112 +101,6 @@ func handleUsersGroups(ctx context.Context, args []string, emit ipc.Events) erro
 	return emit.Result(result)
 }
 
-func downloadHandler(sess *session.Session) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) < 1 {
-			return ipc.ErrInvalidArgs
-		}
-		return streamFileDownload(ctx, args[0], emit, chunkSizeFromSess(sess))
-	}
-}
-
-func streamFileDownload(ctx context.Context, path string, emit ipc.Events, chunkSize int) error {
-	realPath := filepath.Clean(path)
-	root, file, totalSize, err := openDownloadTarget(realPath)
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	defer file.Close()
-
-	if progressErr := emit.Progress(FileProgress{Total: totalSize, Phase: "starting"}); progressErr != nil {
-		return fmt.Errorf("write progress: %w", progressErr)
-	}
-
-	bytesRead, err := relayDownloadChunks(ctx, file, emit, chunkSize, totalSize)
-	if err != nil {
-		return err
-	}
-
-	logger.Infof("Download complete: path=%s size=%d", path, bytesRead)
-	return emit.Result(map[string]any{
-		"path":     path,
-		"size":     totalSize,
-		"fileName": filepath.Base(realPath),
-	})
-}
-
-func openDownloadTarget(realPath string) (*fsroot.FSRoot, io.ReadCloser, int64, error) {
-	root, err := fsroot.Open()
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to access filesystem: %w", err)
-	}
-	realRel := fsroot.ToRel(realPath)
-
-	stat, err := root.Root.Stat(realRel)
-	if err != nil {
-		root.Close()
-		return nil, nil, 0, fmt.Errorf("file not found: %w", err)
-	}
-	if stat.IsDir() {
-		root.Close()
-		return nil, nil, 0, fmt.Errorf("path is a directory, use archive instead")
-	}
-
-	file, err := root.Root.Open(realRel)
-	if err != nil {
-		root.Close()
-		return nil, nil, 0, fmt.Errorf("cannot open file: %w", err)
-	}
-	return root, file, stat.Size(), nil
-}
-
-func relayDownloadChunks(
-	ctx context.Context,
-	file io.Reader,
-	emit ipc.Events,
-	chunkSize int,
-	totalSize int64,
-) (int64, error) {
-	buf := make([]byte, chunkSize)
-	var bytesRead int64
-	var lastProgress int64
-
-	for {
-		n, readErr := file.Read(buf)
-		if n > 0 {
-			if err := emit.Data(buf[:n]); err != nil {
-				return bytesRead, fmt.Errorf("write data chunk: %w", err)
-			}
-			bytesRead += int64(n)
-			if shouldReportDownloadProgress(bytesRead, lastProgress, totalSize) {
-				if err := emit.Progress(FileProgress{
-					Bytes: bytesRead,
-					Total: totalSize,
-					Pct:   percentComplete(bytesRead, totalSize),
-				}); err != nil {
-					return bytesRead, fmt.Errorf("write progress: %w", err)
-				}
-				lastProgress = bytesRead
-			}
-		}
-
-		if readErr == io.EOF {
-			return bytesRead, nil
-		}
-		if readErr != nil {
-			return bytesRead, fmt.Errorf("read file: %w", readErr)
-		}
-		if err := checkFilebrowserContext(ctx); err != nil {
-			return bytesRead, err
-		}
-	}
-}
-
-func shouldReportDownloadProgress(bytesRead, lastProgress, totalSize int64) bool {
-	return bytesRead-lastProgress >= progressIntervalDownload || bytesRead == totalSize
-}
-
 func percentComplete(current, total int64) int {
 	if total <= 0 {
 		return 0
@@ -228,18 +115,6 @@ func checkFilebrowserContext(ctx context.Context) error {
 	default:
 		return nil
 	}
-}
-
-func handleArchiveDownloadNotMigrated(ctx context.Context, args []string, emit ipc.Events) error {
-	return fmt.Errorf("archive download not yet migrated")
-}
-
-func handleCompressNotMigrated(ctx context.Context, args []string, emit ipc.Events) error {
-	return fmt.Errorf("compress not yet migrated")
-}
-
-func handleExtractNotMigrated(ctx context.Context, args []string, emit ipc.Events) error {
-	return fmt.Errorf("extract not yet migrated")
 }
 
 // uploadHandler implements BidirectionalHandler for file uploads

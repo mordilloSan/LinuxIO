@@ -57,11 +57,7 @@ func HandleDockerLogsStream(_ *session.Session, stream net.Conn, args []string) 
 		writeDockerLogsClose(stream)
 		return err
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	// Create a context that we can cancel when the stream closes
 	ctx, cancel := context.WithCancel(context.Background())

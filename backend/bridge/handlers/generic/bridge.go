@@ -19,7 +19,6 @@ type contextKey string
 const sessionContextKey contextKey = "session"
 
 // HandleBridgeStream is the universal entry point for all bridge streams.
-// It replaces both HandleJSONStream and individual stream handlers.
 //
 // Protocol: "bridge\0handlerType\0command\0arg1\0arg2..."
 // Example: "bridge\0storage\0get_drive_info"

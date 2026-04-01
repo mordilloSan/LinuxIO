@@ -234,14 +234,13 @@ export function openDockerIndexerAttachStream(): Stream | null {
   );
 }
 
-export function openExecStream(
-  program: string,
-  args: string[] = [],
+export function openAppUpdateStream(
+  runId: string,
+  version?: string,
 ): Stream | null {
-  return openMuxStream(
-    "exec",
-    encodeString(["exec", program, ...args].join("\0")),
-  );
+  const parts = ["app-update", runId];
+  if (version) parts.push(version);
+  return openMuxStream("app-update", encodeString(parts.join("\0")));
 }
 
 export function openPackageUpdateStream(packages: string[]): Stream | null {

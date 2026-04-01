@@ -13,6 +13,7 @@ SocketMode=0660
 DirectoryMode=0755
 RemoveOnStop=yes
 Accept=yes
+MaxConnections=16
 
 [Install]
 WantedBy=linuxio.target

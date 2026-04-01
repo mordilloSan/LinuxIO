@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mordilloSan/go-logger/logger"
-
 	"github.com/docker/docker/api/types/image"
 )
 
@@ -16,11 +14,7 @@ func ListImages() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	images, err := cli.ImageList(context.Background(), image.ListOptions{All: true})
 	if err != nil {
@@ -41,11 +35,7 @@ func DeleteImage(imageID string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	_, err = cli.ImageRemove(context.Background(), imageID, image.RemoveOptions{Force: false, PruneChildren: true})
 	if err != nil {

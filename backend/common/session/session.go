@@ -137,6 +137,12 @@ func NewManager(store Store, cfg SessionConfig) *Manager {
 func (m *Manager) Close() {
 	if m.gcStop != nil {
 		close(m.gcStop)
+		m.gcStop = nil
+	}
+	if closer, ok := m.st.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			logger.Warnf("Failed to close session store: %v", err)
+		}
 	}
 	logger.Infof("Session manager stopped")
 }
@@ -205,6 +211,21 @@ func randID(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func (m *Manager) newSessionTiming(now time.Time) Timing {
+	abs := now.Add(m.cfg.AbsoluteTimeout)
+	idle := now.Add(m.cfg.IdleTimeout)
+	if idle.After(abs) {
+		idle = abs
+	}
+	return Timing{
+		CreatedAt:     now,
+		LastAccess:    now,
+		LastRefresh:   now,
+		IdleUntil:     idle,
+		AbsoluteUntil: abs,
+	}
+}
+
 func expiredIdle(s *Session, now time.Time) bool     { return now.After(s.Timing.IdleUntil) }
 func expiredAbsolute(s *Session, now time.Time) bool { return now.After(s.Timing.AbsoluteUntil) }
 
@@ -256,29 +277,35 @@ func (m *Manager) refreshLoadedSession(s *Session, now time.Time) error {
 // Public API
 // -----------------------------------------------------------------------------
 
+func (m *Manager) NewSessionID() (string, error) {
+	return randID(16)
+}
+
 func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
-	id, err := randID(16)
+	id, err := m.NewSessionID()
 	if err != nil {
 		return nil, fmt.Errorf("rand id: %w", err)
 	}
-	now := time.Now()
-	abs := now.Add(m.cfg.AbsoluteTimeout)
-	idle := now.Add(m.cfg.IdleTimeout)
-	if idle.After(abs) {
-		idle = abs
+	return m.CreateSessionWithID(id, user, privileged)
+}
+
+func (m *Manager) CreateSessionWithID(id string, user User, privileged bool) (*Session, error) {
+	if id == "" {
+		return nil, fmt.Errorf("session id required")
 	}
+	if _, ok, err := m.st.Find(id); err != nil {
+		return nil, err
+	} else if ok {
+		return nil, fmt.Errorf("session id already exists")
+	}
+
+	now := time.Now()
 
 	sess := &Session{
 		SessionID:  id,
 		User:       user,
 		Privileged: privileged,
-		Timing: Timing{
-			CreatedAt:     now,
-			LastAccess:    now,
-			LastRefresh:   now,
-			IdleUntil:     idle,
-			AbsoluteUntil: abs,
-		},
+		Timing:     m.newSessionTiming(now),
 	}
 
 	// Enforce single-session-per-user

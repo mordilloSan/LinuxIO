@@ -11,6 +11,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
@@ -19,27 +20,31 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// JsonHandlers are functions that return JSON-serializable data.
-var JsonHandlers = map[string]map[string]func([]string) (any, error){}
+// streamHandlers is the registry for yamux stream handlers.
+// Populated during RegisterAllHandlers; read-only after that.
+var streamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
 
-// StreamHandlers is the registry for yamux stream handlers.
-// Used for the bridge protocol and other streamed handlers.
-var StreamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
+// GetStreamHandler returns the handler for the given stream type.
+func GetStreamHandler(streamType string) (func(*session.Session, net.Conn, []string) error, bool) {
+	h, ok := streamHandlers[streamType]
+	return h, ok
+}
 
-func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
+func RegisterAllHandlers(sess *session.Session) {
 	// Register the universal bridge stream handler
 	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
-	StreamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
+	streamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
 		return generic.HandleBridgeStream(s, conn, args)
 	}
 
 	// Register all handlers using the handler.Register() system
 	system.RegisterHandlers()
+	monitoring.RegisterHandlers()
 	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
-	filebrowser.RegisterHandlers(sess)
+	filebrowser.RegisterHandlers()
 	config.RegisterHandlers(sess)
-	control.RegisterHandlers(shutdownChan)
+	control.RegisterHandlers()
 	dbus.RegisterHandlers()
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()
@@ -47,10 +52,10 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	shares.RegisterHandlers()
 
 	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
-	generic.RegisterStreamHandlers(StreamHandlers, JsonHandlers)
-	terminal.RegisterStreamHandlers(StreamHandlers)
-	filebrowser.RegisterStreamHandlers(StreamHandlers)
-	dbus.RegisterStreamHandlers(StreamHandlers)
-	docker.RegisterStreamHandlers(StreamHandlers)
-	logs.RegisterStreamHandlers(StreamHandlers)
+	control.RegisterStreamHandlers(streamHandlers)
+	terminal.RegisterStreamHandlers(streamHandlers)
+	filebrowser.RegisterStreamHandlers(streamHandlers)
+	dbus.RegisterStreamHandlers(streamHandlers)
+	docker.RegisterStreamHandlers(streamHandlers)
+	logs.RegisterStreamHandlers(streamHandlers)
 }

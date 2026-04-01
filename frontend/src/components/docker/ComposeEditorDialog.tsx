@@ -11,7 +11,6 @@ import ComposeValidationFeedback, {
   ValidationResult,
 } from "./ComposeValidationFeedback";
 
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -21,6 +20,7 @@ import {
   AppDialogContent,
   AppDialogActions,
 } from "@/components/ui/AppDialog";
+import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -188,18 +188,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   };
   return (
     <>
-      <GeneralDialog
+      <AppFullscreenDialog
         open={open}
         onClose={handleClose}
-        maxWidth="lg"
-        fullWidth
-        fullScreen
-        paperStyle={{
+        contentStyle={{
           backgroundColor: theme.palette.background.default,
-          margin: 0,
-          borderRadius: 0,
-          border: "none",
-          boxShadow: "none",
         }}
       >
         <AppDialogTitle
@@ -327,7 +320,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             </>
           )}
         </AppDialogActions>
-      </GeneralDialog>
+      </AppFullscreenDialog>
 
       <UnsavedChangesDialog
         open={showUnsavedDialog}

@@ -21,11 +21,7 @@ func EnsureLinuxIONetwork() {
 		logger.Debugf("cannot ensure %s network: %v", linuxIONetworkName, err)
 		return
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	ctx := context.Background()
 
@@ -59,26 +55,26 @@ func EnsureLinuxIONetwork() {
 	logger.Infof("created %s bridge network", linuxIONetworkName)
 }
 
-// ConnectToProxyNetwork attaches a container to the linuxio-docker bridge so the
-// built-in path proxy can reach it. The call is idempotent — Docker returns a
-// "already exists" error which is silently ignored.
-func ConnectToProxyNetwork(containerID string) {
+func connectToProxyNetwork(ctx context.Context, containerID string) {
 	cli, err := getClient()
 	if err != nil {
 		logger.Debugf("ConnectToProxyNetwork: client error: %v", err)
 		return
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("ConnectToProxyNetwork: failed to close client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
-	err = cli.NetworkConnect(context.Background(), linuxIONetworkName, containerID, nil)
+	err = cli.NetworkConnect(ctx, linuxIONetworkName, containerID, nil)
 	if err != nil {
 		// "already connected" is expected and harmless
 		logger.Debugf("ConnectToProxyNetwork %s: %v", containerID[:12], err)
 	}
+}
+
+// ConnectToProxyNetwork attaches a container to the linuxio-docker bridge so the
+// built-in path proxy can reach it. The call is idempotent — Docker returns a
+// "already exists" error which is silently ignored.
+func ConnectToProxyNetwork(containerID string) {
+	connectToProxyNetwork(context.Background(), containerID)
 }
 
 // List all networks
@@ -87,11 +83,7 @@ func ListDockerNetworks() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	networks, err := cli.NetworkList(context.Background(), network.ListOptions{})
 	if err != nil {
@@ -151,11 +143,7 @@ func DeleteDockerNetwork(name string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	if err := cli.NetworkRemove(context.Background(), name); err != nil {
 		return nil, fmt.Errorf("failed to remove network: %w", err)
@@ -170,11 +158,7 @@ func CreateDockerNetwork(name string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	network, err := cli.NetworkCreate(context.Background(), name, network.CreateOptions{})
 	if err != nil {

@@ -18,7 +18,7 @@
 #define PROTO_MAGIC_0            'L'
 #define PROTO_MAGIC_1            'I'
 #define PROTO_MAGIC_2            'O'
-#define PROTO_VERSION            1
+#define PROTO_VERSION            2
 
 /* ==========================================================================
  * Auth Request Protocol (Server -> Auth via Unix socket)
@@ -41,8 +41,9 @@
  * Auth Response Protocol (Auth -> Server via Unix socket)
  *
  * Format:
- *   [magic:4][status:1][mode:1][reserved:2]  (8 bytes fixed header)
- *   [len:2][error]      (only if status == error)
+ *   [magic:4][status:1][mode:1][result:1][reserved:1]  (8 bytes fixed header)
+ *   [uid:4][gid:4][len:2][username]    (only if status == ok)
+ *   [len:2][error]                     (only if status == error)
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
@@ -52,6 +53,15 @@
 /* Status byte values */
 #define PROTO_STATUS_OK              0
 #define PROTO_STATUS_ERROR           1
+
+/* Structured result codes */
+#define PROTO_RESULT_OK              0
+#define PROTO_RESULT_AUTH_FAILED     1
+#define PROTO_RESULT_PASSWORD_EXPIRED 2
+#define PROTO_RESULT_ACCESS_DENIED   3
+#define PROTO_RESULT_BAD_REQUEST     4
+#define PROTO_RESULT_INTERNAL_ERROR  5
+#define PROTO_RESULT_BRIDGE_ERROR    6
 
 /* Mode byte values */
 #define PROTO_MODE_UNPRIVILEGED      0

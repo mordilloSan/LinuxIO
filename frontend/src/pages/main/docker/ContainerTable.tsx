@@ -30,6 +30,7 @@ import { getContainerStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
+import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -193,26 +194,25 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
     [container.Mounts],
   );
 
-  const isWatchtower =
-    container.Labels?.["com.docker.compose.project"] === "linuxio-watchtower";
+  const isManagedContainer = isLinuxIOManagedContainer(container.Labels);
 
   // ---- auto-update ----
   const { data: autoUpdateContainers = [] } =
     linuxio.docker.list_auto_update_containers.useQuery({
-      enabled: !isWatchtower,
+      enabled: !isManagedContainer,
     });
   const autoUpdate = autoUpdateContainers.includes(name);
   const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
-  const autoUpdateChecked = isWatchtower ? true : autoUpdate;
-  const autoUpdateDisabled = autoUpdateLoading || isWatchtower;
-  const autoUpdateTooltip = isWatchtower
+  const autoUpdateChecked = isManagedContainer ? true : autoUpdate;
+  const autoUpdateDisabled = autoUpdateLoading || isManagedContainer;
+  const autoUpdateTooltip = isManagedContainer
     ? "Auto Update: Managed by LinuxIO"
     : autoUpdate
       ? "Auto Update: On"
       : "Auto Update: Off";
 
   const handleAutoUpdateToggle = async (enabled: boolean) => {
-    if (isWatchtower) return;
+    if (isManagedContainer) return;
     setAutoUpdateLoading(true);
     try {
       await linuxio.docker.set_auto_update.call(
@@ -499,7 +499,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               gap: 2,
             }}
           >
-            {isWatchtower ? (
+            {isManagedContainer ? (
               <AppTooltip title="View Logs">
                 <Chip
                   label="Managed by LinuxIO"
@@ -567,7 +567,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 </AppTooltip>
               </>
             )}
-            {!isWatchtower && (
+            {!isManagedContainer && (
               <AppTooltip title="Terminal">
                 <span>
                   <ActionButton

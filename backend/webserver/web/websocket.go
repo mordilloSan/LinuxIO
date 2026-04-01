@@ -167,6 +167,16 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 			if writeErr := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); writeErr != nil {
 				logger.Debugf("failed to send no-session close: %v", writeErr)
 			}
+			// Wait briefly for the client to receive the close frame before
+			// tearing down the TCP connection.  Without this, conn.Close()
+			// can race the close frame and the browser sees code 1006
+			// (abnormal closure) instead of 1008 (policy violation).
+			_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+			for {
+				if _, _, readErr := conn.NextReader(); readErr != nil {
+					break
+				}
+			}
 			conn.Close()
 			return
 		}

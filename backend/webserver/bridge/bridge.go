@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"sync"
 
@@ -57,35 +58,65 @@ func validateBridgeHash(bridgePath string) error {
 
 const bridgeBinaryPath = config.BinDir + "/linuxio-bridge"
 
-// StartBridge launches linuxio-bridge via the auth daemon.
-// On success, creates a yamux session for the bridge connection and stores it.
-// Returns (privilegedMode, error). privilegedMode reflects the daemon's decision.
-func StartBridge(sess *session.Session, password string, verbose bool) (bool, error) {
+// StartBridge launches linuxio-bridge via the auth daemon, persists the
+// authenticated session, and stores the resulting yamux transport.
+func StartBridge(sm *session.Manager, sessionID, username, password string, verbose bool) (*session.Session, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
-		return false, fmt.Errorf("bridge security validation failed: %w", err)
+		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 	logger.Debugf("Auth daemon available, using socket-based auth")
-	req := BuildRequest(sess, password, verbose)
+	req := BuildRequest(username, sessionID, password, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
-		return false, fmt.Errorf("auth daemon failed: %w", err)
+		return nil, fmt.Errorf("auth daemon failed: %w", err)
 	}
 
-	// Create yamux client session from the connection
-	// (auth daemon forked bridge and passed our FD to it via dup2)
-	yamuxSession, err := ipc.NewYamuxClient(result.Conn)
+	sess, err := sm.CreateSessionWithID(sessionID, result.User, result.Privileged)
 	if err != nil {
 		result.Conn.Close()
-		return false, fmt.Errorf("failed to create yamux session: %w", err)
+		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	// Store the session keyed by session ID
+	if err := attachBridgeSession(sess, result.Conn); err != nil {
+		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
+			logger.WarnKV("failed to cleanup session after bridge setup failure",
+				"session_id", sess.SessionID,
+				"error", delErr)
+		}
+		return nil, err
+	}
+
+	logger.InfoKV("bridge launch via daemon acknowledged",
+		"user", sess.User.Username,
+		"privileged", result.Privileged,
+		"session_id", sess.SessionID)
+
+	return sess, nil
+}
+
+func attachBridgeSession(sess *session.Session, conn net.Conn) error {
+	// Create yamux client session from the connection
+	// (auth daemon forked bridge and passed our FD to it via dup2)
+	yamuxSession, err := ipc.NewYamuxClient(conn)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to create yamux session: %w", err)
+	}
+
+	var old *ipc.YamuxSession
 	yamuxSessions.Lock()
-	// Clean up old session if exists
-	if old, exists := yamuxSessions.sessions[sess.SessionID]; exists {
+	if existing, exists := yamuxSessions.sessions[sess.SessionID]; exists {
+		delete(yamuxSessions.sessions, sess.SessionID)
+		old = existing
+	}
+	yamuxSessions.Unlock()
+
+	if old != nil {
 		old.Close()
 	}
+
+	yamuxSessions.Lock()
 	yamuxSession.SetOnClose(func() {
 		yamuxSessions.Lock()
 		delete(yamuxSessions.sessions, sess.SessionID)
@@ -103,16 +134,11 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, er
 	yamuxSessions.sessions[sess.SessionID] = yamuxSession
 	yamuxSessions.Unlock()
 
-	logger.InfoKV("bridge launch via daemon acknowledged",
-		"user", sess.User.Username,
-		"privileged", result.Privileged,
-		"session_id", sess.SessionID)
-
-	return result.Privileged, nil
+	return nil
 }
 
 // ============================================================================
-// Comunication with the bridge
+// Communication with the bridge
 // ============================================================================
 
 // GetYamuxSession returns an existing yamux session for the given session ID.

@@ -82,6 +82,30 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 	}
 }
 
+func TestManager_NewSessionIDAndCreateSessionWithID(t *testing.T) {
+	m := newTestManager(t)
+	defer m.Close()
+
+	id, err := m.NewSessionID()
+	if err != nil {
+		t.Fatalf("NewSessionID: %v", err)
+	}
+	if id == "" {
+		t.Fatal("NewSessionID returned empty id")
+	}
+
+	s, err := m.CreateSessionWithID(id, User{Username: "erin", UID: 1004, GID: 1004}, true)
+	if err != nil {
+		t.Fatalf("CreateSessionWithID: %v", err)
+	}
+	if s.SessionID != id {
+		t.Fatalf("session id = %q, want %q", s.SessionID, id)
+	}
+	if !s.Privileged {
+		t.Fatal("expected privileged session")
+	}
+}
+
 func TestManager_WriteAndValidateCookie(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()

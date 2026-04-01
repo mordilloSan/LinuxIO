@@ -213,6 +213,29 @@ export interface NetworkInterface {
   ipv4_method?: "auto" | "manual" | "disabled" | "unknown";
 }
 
+export type MonitoringRange =
+  | "1m"
+  | "5m"
+  | "15m"
+  | "60m"
+  | "6h"
+  | "24h"
+  | "7d"
+  | "30d";
+
+export interface MonitoringSeriesPoint {
+  ts: number;
+  value: number;
+}
+
+export interface MonitoringSeriesResponse {
+  available: boolean;
+  range: MonitoringRange | string;
+  stepSeconds: number;
+  points: MonitoringSeriesPoint[];
+  reason?: string;
+}
+
 // ============================================================================
 // Docker Types
 // ============================================================================
@@ -501,28 +524,6 @@ export interface IndexerStatusResponse {
   warning?: string;
 }
 
-export interface FileDownloadResult {
-  path: string;
-  size: number;
-  fileName: string;
-}
-
-export interface ArchiveDownloadResult {
-  archiveName: string;
-  size: number;
-  format: string;
-}
-
-export interface CompressResult {
-  path: string;
-  size: number;
-  format: string;
-}
-
-export interface ExtractResult {
-  destination: string;
-}
-
 // ============================================================================
 // Accounts Types
 // ============================================================================
@@ -745,6 +746,21 @@ export interface LinuxIOSchema {
     get_memory_modules: { args: []; result: MemoryModule[] };
   };
 
+  monitoring: {
+    get_cpu_series: {
+      args: [range: MonitoringRange];
+      result: MonitoringSeriesResponse;
+    };
+    get_memory_series: {
+      args: [range: MonitoringRange];
+      result: MonitoringSeriesResponse;
+    };
+    get_gpu_series: {
+      args: [range: MonitoringRange];
+      result: MonitoringSeriesResponse;
+    };
+  };
+
   docker: {
     get_docker_info: { args: []; result: DockerSystemInfo };
     list_containers: { args: []; result: ContainerInfo[] };
@@ -854,7 +870,6 @@ export interface LinuxIOSchema {
   dbus: {
     reboot: { args: []; result: void };
     power_off: { args: []; result: void };
-    get_updates: { args: []; result: Update[] };
     get_updates_basic: { args: []; result: Update[] };
     get_update_detail: { args: [packageId: string]; result: Update };
     install_package: { args: [packageId: string]; result: void };
@@ -872,10 +887,6 @@ export interface LinuxIOSchema {
     get_unit_info: { args: [unitName: string]; result: UnitInfo };
     list_timers: { args: []; result: Timer[] };
     list_sockets: { args: []; result: Socket[] };
-    get_service_logs: {
-      args: [serviceName: string, lines: string];
-      result: string[];
-    };
     start_service: { args: [serviceName: string]; result: void };
     stop_service: { args: [serviceName: string]; result: void };
     restart_service: { args: [serviceName: string]; result: void };
@@ -926,23 +937,6 @@ export interface LinuxIOSchema {
       result: void;
     };
     users_groups: { args: []; result: UsersGroupsResponse };
-    file_update_from_temp: {
-      args: [tempPath: string, targetPath: string];
-      result: void;
-    };
-    download: { args: [path: string]; result: FileDownloadResult };
-    archive: {
-      args: [format: string, ...paths: string[]];
-      result: ArchiveDownloadResult;
-    };
-    compress: {
-      args: [format: string, destination: string, ...paths: string[]];
-      result: CompressResult;
-    };
-    extract: {
-      args: [archivePath: string, destination?: string];
-      result: ExtractResult;
-    };
   };
 
   config: {
@@ -952,8 +946,6 @@ export interface LinuxIOSchema {
 
   control: {
     version: { args: []; result: VersionResponse };
-    update: { args: []; result: void };
-    shutdown: { args: []; result: void };
   };
 
   wireguard: {
@@ -974,7 +966,6 @@ export interface LinuxIOSchema {
       args: [interfaceName: string, publicKey: string];
       result: PeerConfigDownload;
     };
-    get_keys: { args: []; result: { publicKey: string; privateKey: string } };
     up_interface: { args: [name: string]; result: void };
     down_interface: { args: [name: string]; result: void };
     enable_interface: { args: [name: string]; result: void };
@@ -991,7 +982,6 @@ export interface LinuxIOSchema {
   accounts: {
     // User management
     list_users: { args: []; result: AccountUser[] };
-    get_user: { args: [username: string]; result: AccountUser };
     create_user: { args: [request: string]; result: void };
     delete_user: { args: [username: string]; result: void };
     modify_user: { args: [request: string]; result: void };
@@ -1003,7 +993,6 @@ export interface LinuxIOSchema {
     unlock_user: { args: [username: string]; result: void };
     // Group management
     list_groups: { args: []; result: AccountGroup[] };
-    get_group: { args: [groupName: string]; result: AccountGroup };
     create_group: { args: [request: string]; result: void };
     delete_group: { args: [groupName: string]; result: void };
     modify_group_members: { args: [request: string]; result: void };

@@ -145,7 +145,7 @@ func deployCaddyContainer() error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = cli.Close() }()
+	defer releaseClient(cli)
 
 	ctx := context.Background()
 
@@ -214,7 +214,7 @@ func removeCaddyContainer() error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = cli.Close() }()
+	defer releaseClient(cli)
 
 	return cli.ContainerRemove(context.Background(), caddyContainerName, container.RemoveOptions{Force: true})
 }
@@ -224,7 +224,7 @@ func isCaddyRunning() bool {
 	if err != nil {
 		return false
 	}
-	defer func() { _ = cli.Close() }()
+	defer releaseClient(cli)
 
 	list, err := cli.ContainerList(context.Background(), container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("name", caddyContainerName)),
@@ -246,7 +246,7 @@ func buildRoutes(proxyCfg config.DockerProxy) ([]CaddyRoute, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = cli.Close() }()
+	defer releaseClient(cli)
 
 	list, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
 	if err != nil {

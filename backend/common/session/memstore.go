@@ -14,8 +14,11 @@ type item struct {
 
 // MemStore represents the session store.
 type MemStore struct {
-	items map[string]item
-	mu    sync.RWMutex
+	items       map[string]item
+	mu          sync.RWMutex
+	cleanupStop chan struct{}
+	cleanupDone chan struct{}
+	closeOnce   sync.Once
 }
 
 // New returns a new MemStore instance, with a background cleanup goroutine that
@@ -34,6 +37,8 @@ func NewWithCleanupInterval(cleanupInterval time.Duration) *MemStore {
 	}
 
 	if cleanupInterval > 0 {
+		m.cleanupStop = make(chan struct{})
+		m.cleanupDone = make(chan struct{})
 		go m.startCleanup(cleanupInterval)
 	}
 
@@ -102,10 +107,27 @@ func (m *MemStore) All() (map[string][]byte, error) {
 func (m *MemStore) startCleanup(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	defer close(m.cleanupDone)
 	for {
-		<-ticker.C
-		m.deleteExpired()
+		select {
+		case <-ticker.C:
+			m.deleteExpired()
+		case <-m.cleanupStop:
+			return
+		}
 	}
+}
+
+// Close stops the background cleanup goroutine if one was started.
+func (m *MemStore) Close() error {
+	m.closeOnce.Do(func() {
+		if m.cleanupStop == nil {
+			return
+		}
+		close(m.cleanupStop)
+		<-m.cleanupDone
+	})
+	return nil
 }
 
 func (m *MemStore) deleteExpired() {

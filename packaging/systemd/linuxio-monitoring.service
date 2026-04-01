@@ -1,0 +1,48 @@
+[Unit]
+Description=LinuxIO Monitoring Stack
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+ConditionPathExists=/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+Group=root
+WorkingDirectory=/etc/linuxio/docker/linuxio-monitoring
+RuntimeDirectory=linuxio-monitoring
+RuntimeDirectoryMode=0700
+Environment=HOME=/run/linuxio-monitoring
+Environment=DOCKER_CONFIG=/run/linuxio-monitoring/docker
+Environment=MONITORING_COMPOSE_OVERRIDE=/run/linuxio-monitoring/docker-compose.generated.yml
+Environment=GPU_SCRAPER_IMAGE=ghcr.io/mordillosan/gpu-scraper:latest
+UMask=0022
+SyslogIdentifier=linuxio-monitoring
+ExecCondition=/bin/sh -ec 'if command -v docker >/dev/null 2>&1; then echo "[monitoring] docker available: $$(docker --version 2>/dev/null)"; exit 0; fi; echo "[monitoring] docker not found, skipping monitoring stack"; exit 1'
+ExecStartPre=/bin/sh -ec 'mkdir -p "$$DOCKER_CONFIG"; if docker compose ls >/dev/null 2>&1; then echo "[monitoring] docker compose available"; else echo "[monitoring] docker compose failed"; exit 1; fi'
+ExecStartPre=/bin/sh -ec 'socket=""; for candidate in /run/docker.sock /var/run/docker.sock; do if [ -S "$$candidate" ]; then socket="$$candidate"; break; fi; done; if [ -z "$$socket" ]; then echo "[monitoring] docker socket not found"; exit 1; fi; socket_meta=$$(stat -c "owner=%%U:%%G mode=%%a path=%%n" "$$socket"); echo "[monitoring] docker socket ready: $$socket_meta"'
+ExecStartPre=/bin/sh -ec '[ -d /etc/linuxio/docker/linuxio-monitoring ] || { echo "[monitoring] missing config directory: /etc/linuxio/docker/linuxio-monitoring"; exit 1; }; [ -f /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml ] || { echo "[monitoring] missing config file: /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"; exit 1; }; [ -f /etc/linuxio/docker/linuxio-monitoring/prometheus.yml ] || { echo "[monitoring] missing config file: /etc/linuxio/docker/linuxio-monitoring/prometheus.yml"; exit 1; }; [ "$$(stat -c "%%U:%%G" /etc/linuxio/docker/linuxio-monitoring)" = "root:root" ] || { echo "[monitoring] monitoring directory must be owned by root:root"; exit 1; }; [ "$$(stat -c "%%a" /etc/linuxio/docker/linuxio-monitoring)" = "755" ] || { echo "[monitoring] monitoring directory must have mode 755"; exit 1; }; [ "$$(stat -c "%%U:%%G" /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml)" = "root:root" ] || { echo "[monitoring] docker-compose.yml must be owned by root:root"; exit 1; }; [ "$$(stat -c "%%a" /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml)" = "644" ] || { echo "[monitoring] docker-compose.yml must have mode 644"; exit 1; }; [ "$$(stat -c "%%U:%%G" /etc/linuxio/docker/linuxio-monitoring/prometheus.yml)" = "root:root" ] || { echo "[monitoring] prometheus.yml must be owned by root:root"; exit 1; }; [ "$$(stat -c "%%a" /etc/linuxio/docker/linuxio-monitoring/prometheus.yml)" = "644" ] || { echo "[monitoring] prometheus.yml must have mode 644"; exit 1; }; echo "[monitoring] config permissions verified: dir root:root 755, files root:root 644"'
+ExecStartPre=/bin/sh -ec 'docker info >/dev/null 2>&1; echo "[monitoring] docker daemon reachable"'
+ExecStartPre=/bin/sh -ec 'if docker network inspect linuxio-docker >/dev/null 2>&1; then echo "[monitoring] docker network linuxio-docker already exists"; else echo "[monitoring] docker network linuxio-docker missing, creating"; docker network create linuxio-docker >/dev/null; echo "[monitoring] docker network linuxio-docker created"; fi'
+ExecStartPre=/bin/sh -ec 'generated="$$MONITORING_COMPOSE_OVERRIDE"; has_gpu=0; has_intel=0; has_amd=0; has_nvidia=0; has_nvidia_runtime=0; if [ -d /dev/dri ]; then for card_dir in /sys/class/drm/card*; do [ -e "$$card_dir" ] || continue; card_name=$$(basename "$$card_dir"); case "$$card_name" in card) continue ;; card*[!0-9]*) continue ;; card[0-9]*) ;; *) continue ;; esac; vendor_file="$$card_dir/device/vendor"; [ -r "$$vendor_file" ] || continue; vendor_id=$$(tr "[:upper:]" "[:lower:]" < "$$vendor_file"); case "$$vendor_id" in 0x8086) has_gpu=1; has_intel=1 ;; 0x1002|0x1022) has_gpu=1; has_amd=1 ;; 0x10de) has_gpu=1; has_nvidia=1 ;; esac; done; fi; if [ $$has_nvidia -eq 1 ]; then case "$$(docker info --format "{{json .Runtimes}}" 2>/dev/null || true)" in *\"nvidia\"*) has_nvidia_runtime=1 ;; esac; fi; if [ $$has_gpu -eq 1 ] && [ -d /dev/dri ]; then { printf "%%s\n" "services:" "  gpu-scraper:" "    image: $$GPU_SCRAPER_IMAGE" "    container_name: linuxio-gpu-scraper" "    hostname: gpu-scraper" "    restart: unless-stopped" "    mem_limit: 128m" "    volumes:" "      - /sys:/sys:ro" "      - /dev/dri:/dev/dri" "    healthcheck:" "      test:" "        - CMD" "        - /usr/local/bin/python" "        - -c" "        - import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5).read(1)" "        - http://127.0.0.1:10043/metrics" "      interval: 30s" "      timeout: 10s" "      retries: 3" "      start_period: 15s" "    networks:" "      - linuxio-docker" "    labels:" "      - io.linuxio.container.icon=bi:gpu-card"; if [ $$has_intel -eq 1 ]; then printf "%%s\n" "    cap_add:" "      - PERFMON"; fi; if [ $$has_nvidia -eq 1 ] && [ $$has_nvidia_runtime -eq 1 ]; then printf "%%s\n" "    deploy:" "      resources:" "        reservations:" "          devices:" "            - driver: nvidia" "              count: all" "              capabilities: [gpu]"; elif [ $$has_nvidia -eq 1 ]; then echo "[monitoring] NVIDIA GPU detected but docker nvidia runtime was not found; starting gpu-scraper without NVIDIA device injection"; fi; } > "$$generated"; echo "[monitoring] gpu-scraper enabled: intel=$$has_intel amd=$$has_amd nvidia=$$has_nvidia nvidia_runtime=$$has_nvidia_runtime"; else printf "%%s\n" "services: {}" > "$$generated"; echo "[monitoring] gpu-scraper disabled: no supported DRM GPU detected"; fi'
+ExecStart=/bin/sh -ec 'generated="$$MONITORING_COMPOSE_OVERRIDE"; [ -f "$$generated" ] || printf "%%s\n" "services: {}" > "$$generated"; echo "[monitoring] starting monitoring compose stack"; if ! output=$$(docker compose --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml --file "$$generated" up -d --remove-orphans 2>&1); then printf "%%s\n" "$$output"; exit 1; fi; echo "[monitoring] monitoring stack running"; health_status() { container="$$1"; docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" "$$container" 2>/dev/null || echo missing; }; echo "[monitoring] health: cadvisor=$$(health_status linuxio-cadvisor) node-exporter=$$(health_status linuxio-node-exporter) gpu-scraper=$$(health_status linuxio-gpu-scraper) prometheus=$$(health_status linuxio-prometheus)"'
+ExecStop=/bin/sh -ec 'generated="$$MONITORING_COMPOSE_OVERRIDE"; [ -f "$$generated" ] || printf "%%s\n" "services: {}" > "$$generated"; echo "[monitoring] stopping monitoring compose stack"; if ! output=$$(docker compose --project-name linuxio-monitoring --file /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml --file "$$generated" down --remove-orphans 2>&1); then printf "%%s\n" "$$output"; exit 1; fi; echo "[monitoring] monitoring compose stack stopped"'
+Restart=on-failure
+RestartSec=15s
+TimeoutStartSec=120
+TimeoutStopSec=120
+StandardOutput=journal
+StandardError=journal
+
+# Docker socket access is already the real privilege boundary here.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/etc/linuxio/docker/linuxio-monitoring
+ReadWritePaths=/run/docker.sock /var/run/docker.sock /run/linuxio-monitoring
+
+[Install]
+WantedBy=linuxio.target

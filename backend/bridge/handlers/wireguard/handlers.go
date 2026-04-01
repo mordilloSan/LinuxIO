@@ -78,14 +78,6 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	ipc.RegisterFunc("wireguard", "get_keys", func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := GetKeys(args)
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	})
-
 	ipc.RegisterFunc("wireguard", "up_interface", func(ctx context.Context, args []string, emit ipc.Events) error {
 		logger.Infof("up_interface requested")
 		result, err := UpInterface(args)

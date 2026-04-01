@@ -22,8 +22,8 @@ const (
 	urlCacheDir            = "/run/linuxio/icons/url-cache"
 	userIconsDir           = "/run/linuxio/icons/user"
 
-	// Dashboard Icons CDN (homarr-labs)
-	dashboardIconsCDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@main/svg"
+	// Dashboard Icons repository (homarr-labs). Some icons are SVG, others PNG.
+	dashboardIconsRawBase = "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main"
 	// Simple Icons CDN - for brand icons via si: prefix
 	simpleIconsCDN = "https://cdn.simpleicons.org"
 
@@ -117,7 +117,7 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 
 	switch iconType {
 	case IconTypeDashboardIcon:
-		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+".svg")
+		return getDashboardCachedIcon(identifier)
 	case IconTypeSimpleIcon:
 		cachePath = filepath.Join(simpleIconsCacheDir, identifier+".svg")
 	case IconTypeURL:
@@ -128,8 +128,7 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	case IconTypeFile:
 		cachePath = filepath.Join(userIconsDir, identifier)
 	case IconTypeDerived:
-		// Try dashboard-icons cache first
-		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+".svg")
+		return getDashboardCachedIcon(identifier)
 	default:
 		return "", false
 	}
@@ -148,27 +147,61 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	return cachePath, true
 }
 
+func getDashboardCachedIcon(identifier string) (string, bool) {
+	for _, ext := range []string{".svg", ".png", ".webp"} {
+		cachePath := filepath.Join(dashboardIconsCacheDir, identifier+ext)
+		info, err := os.Stat(cachePath)
+		if err != nil {
+			continue
+		}
+		if time.Since(info.ModTime()) > iconCacheDuration {
+			continue
+		}
+		return cachePath, true
+	}
+	return "", false
+}
+
 // fetchDashboardIcon downloads an icon from Dashboard Icons CDN (homarr-labs)
 func fetchDashboardIcon(name string) ([]byte, error) {
-	url := fmt.Sprintf("%s/%s.svg", dashboardIconsCDN, name)
-	logger.DebugKV("fetching dashboard icon", "name", name, "url", url)
-
-	resp, err := httpClient.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch icon: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("icon not found: status %d", resp.StatusCode)
+	var errs []error
+	candidates := []string{
+		fmt.Sprintf("%s/svg/%s.svg", dashboardIconsRawBase, name),
+		fmt.Sprintf("%s/png/%s.png", dashboardIconsRawBase, name),
 	}
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read icon data: %w", err)
+	for _, url := range candidates {
+		logger.DebugKV("fetching dashboard icon", "name", name, "url", url)
+
+		resp, err := httpClient.Get(url)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to fetch %s: %w", url, err))
+			continue
+		}
+
+		data, readErr := func() ([]byte, error) {
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("%s returned status %d", url, resp.StatusCode)
+			}
+
+			data, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read %s: %w", url, err)
+			}
+
+			return data, nil
+		}()
+		if readErr != nil {
+			errs = append(errs, readErr)
+			continue
+		}
+
+		return data, nil
 	}
 
-	return data, nil
+	return nil, errors.Join(errs...)
 }
 
 // fetchSimpleIcon downloads an icon from Simple Icons CDN
@@ -224,7 +257,7 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 
 	switch iconType {
 	case IconTypeDashboardIcon:
-		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+".svg")
+		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+detectIconExtension(data))
 	case IconTypeSimpleIcon:
 		cachePath = filepath.Join(simpleIconsCacheDir, identifier+".svg")
 	case IconTypeURL:
@@ -232,7 +265,7 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 		hashStr := fmt.Sprintf("%x", hash[:8])
 		cachePath = filepath.Join(urlCacheDir, hashStr+".svg")
 	case IconTypeDerived:
-		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+".svg")
+		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+detectIconExtension(data))
 	default:
 		return fmt.Errorf("cannot cache icon of type %s", iconType)
 	}
@@ -249,6 +282,22 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 
 	logger.DebugKV("cached icon", "type", iconType, "identifier", identifier, "path", cachePath)
 	return nil
+}
+
+func detectIconExtension(data []byte) string {
+	snippet := string(data[:min(512, len(data))])
+	if strings.Contains(snippet, "<svg") {
+		return ".svg"
+	}
+
+	switch http.DetectContentType(data) {
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ".svg"
+	}
 }
 
 // GetIcon retrieves an icon by identifier, fetching and caching if necessary

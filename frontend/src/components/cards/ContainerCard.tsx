@@ -24,6 +24,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
+import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -204,18 +205,17 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   };
 
   // ---- auto-update ----
-  const isWatchtowerContainer =
-    container.Labels?.["com.docker.compose.project"] === "linuxio-watchtower";
+  const isManagedContainer = isLinuxIOManagedContainer(container.Labels);
 
   const { data: autoUpdateContainers = [] } =
     linuxio.docker.list_auto_update_containers.useQuery({
-      enabled: !isWatchtowerContainer,
+      enabled: !isManagedContainer,
     });
   const autoUpdate = autoUpdateContainers.includes(name);
   const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
-  const autoUpdateChecked = isWatchtowerContainer ? true : autoUpdate;
-  const autoUpdateDisabled = autoUpdateLoading || isWatchtowerContainer;
-  const autoUpdateTooltip = isWatchtowerContainer
+  const autoUpdateChecked = isManagedContainer ? true : autoUpdate;
+  const autoUpdateDisabled = autoUpdateLoading || isManagedContainer;
+  const autoUpdateTooltip = isManagedContainer
     ? "Auto Update: Managed by LinuxIO"
     : autoUpdate
       ? "Auto Update: On"
@@ -223,7 +223,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   const handleAutoUpdateToggle = useCallback(
     async (enabled: boolean) => {
-      if (isWatchtowerContainer) return;
+      if (isManagedContainer) return;
       setAutoUpdateLoading(true);
       try {
         await linuxio.docker.set_auto_update.call(
@@ -241,7 +241,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         setAutoUpdateLoading(false);
       }
     },
-    [isWatchtowerContainer, name, queryClient],
+    [isManagedContainer, name, queryClient],
   );
 
   // ---- metrics ----
@@ -327,8 +327,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             {name}
           </AppTypography>
           <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-            {container.Labels?.["com.docker.compose.project"] ===
-            "linuxio-watchtower" ? (
+            {isManagedContainer ? (
               <AppTooltip title="View Logs" arrow>
                 <Chip
                   label="Managed by LinuxIO"
@@ -392,8 +391,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 </AppTooltip>
               </>
             )}
-            {container.Labels?.["com.docker.compose.project"] !==
-              "linuxio-watchtower" && (
+            {!isManagedContainer && (
               <AppTooltip title="Open Terminal" arrow>
                 <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
@@ -469,7 +467,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       >
         <AppTypography
           variant="caption"
-          color={isWatchtowerContainer ? "text.disabled" : "text.secondary"}
+          color={isManagedContainer ? "text.disabled" : "text.secondary"}
         >
           Auto Update
         </AppTypography>

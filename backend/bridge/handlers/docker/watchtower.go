@@ -78,11 +78,7 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 		logger.Debugf("docker client unavailable, using container names as fallback: %v", err)
 		return autoUpdateContainers
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	running, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
 	if err != nil {
@@ -116,11 +112,16 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 // generateWatchtowerCompose returns a docker-compose YAML string for Watchtower
 // configured to watch the given container names.
 func generateWatchtowerCompose(containerNames []string) string {
-	return fmt.Sprintf(`services:
-  watchtower:
-    image: ghcr.io/nicholas-fedor/watchtower:1.14.2
-    container_name: watchtower
-    hostname: watchtower
+	return fmt.Sprintf(`name: linuxio-watchtower
+
+x-linuxio-stack:
+  icon: "di:watchtower"
+
+services:
+  linuxio-watchtower:
+    image: ghcr.io/nicholas-fedor/watchtower:1.15.0
+    container_name: linuxio-watchtower
+    hostname: linuxio-watchtower
     restart: unless-stopped
     mem_limit: 32m
     volumes:
@@ -132,6 +133,8 @@ func generateWatchtowerCompose(containerNames []string) string {
       WATCHTOWER_CONTAINER_NAMES: "%s"
     networks:
       - linuxio-docker
+    labels:
+      - "io.linuxio.container.icon=di:watchtower"
 
 networks:
   linuxio-docker:

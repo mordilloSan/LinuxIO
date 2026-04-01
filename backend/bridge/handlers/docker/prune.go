@@ -8,7 +8,6 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/versions"
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // PruneOptions controls which Docker resources are pruned.
@@ -43,11 +42,7 @@ func SystemPrune(opts PruneOptions) (*PruneResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
+	defer releaseClient(cli)
 
 	ctx := context.Background()
 	result := &PruneResult{}

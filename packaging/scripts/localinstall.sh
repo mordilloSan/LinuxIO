@@ -87,7 +87,7 @@ echo -e "${YELLOW} Installing systemd service files...${NC}"
 for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
             linuxio-auth.socket linuxio-auth@.service \
             linuxio-bridge-socket-user.service \
-            linuxio-issue.service; do
+            linuxio-issue.service linuxio-monitoring.service; do
     if [[ -f "$REPO_ROOT/packaging/systemd/$file" ]]; then
         install -m 0644 "$REPO_ROOT/packaging/systemd/$file" /etc/systemd/system/
         echo "  • Installed $file"
@@ -112,23 +112,30 @@ fi
 
 # Install configuration files
 echo -e "${YELLOW} Installing configuration files...${NC}"
-mkdir -p /etc/linuxio
-
-if [[ -f "$REPO_ROOT/packaging/etc/linuxio/disallowed-users" ]]; then
-    install -m 0644 "$REPO_ROOT/packaging/etc/linuxio/disallowed-users" /etc/linuxio/
-    echo "  • Installed /etc/linuxio/disallowed-users"
+if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
+    while IFS= read -r file; do
+        rel_path="${file#$REPO_ROOT/packaging/etc/linuxio/}"
+        dest_path="/etc/linuxio/$rel_path"
+        install -D -o root -g root -m 0644 "$file" "$dest_path"
+        echo "  • Installed $dest_path"
+    done < <(find "$REPO_ROOT/packaging/etc/linuxio" -type f | sort)
 else
-    echo -e "${YELLOW}    Warning: disallowed-users file not found${NC}"
+    echo -e "${YELLOW}    Warning: packaging/etc/linuxio directory not found${NC}"
 fi
 
-# Install any other config files in packaging/etc/linuxio/
-if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
-    for file in "$REPO_ROOT/packaging/etc/linuxio"/*; do
-        if [[ -f "$file" && "$(basename "$file")" != "disallowed-users" ]]; then
-            install -m 0644 "$file" /etc/linuxio/
-            echo "  • Installed /etc/linuxio/$(basename "$file")"
+if [[ -d /etc/linuxio/docker/linuxio-monitoring ]]; then
+    chown root:root /etc/linuxio/docker/linuxio-monitoring
+    chmod 0755 /etc/linuxio/docker/linuxio-monitoring
+
+    for file in /etc/linuxio/docker/linuxio-monitoring/docker-compose.yml /etc/linuxio/docker/linuxio-monitoring/prometheus.yml; do
+        if [[ -f "$file" ]]; then
+            chown root:root "$file"
+            chmod 0644 "$file"
+            echo "  • Enforced root:root 0644 on $file"
         fi
     done
+
+    echo "  • Enforced root:root 0755 on /etc/linuxio/docker/linuxio-monitoring"
 fi
 
 echo -e "${GREEN}✓ Configuration files installed${NC}"
@@ -186,6 +193,7 @@ echo -e "${GREEN}✓ Systemd reloaded${NC}"
 
 echo -e "${YELLOW} Enabling services...${NC}"
 systemctl enable linuxio.target
+systemctl enable linuxio-monitoring.service
 echo -e "${GREEN}✓ Services enabled${NC}"
 
 echo -e "${YELLOW} Restarting LinuxIO...${NC}"
@@ -211,6 +219,7 @@ echo "Installed components:"
 echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 echo "  • Configuration:   /etc/linuxio/"
+echo "  • Monitoring:      /etc/linuxio/docker/linuxio-monitoring/"
 echo "  • PAM config:      /etc/pam.d/linuxio"
 echo "  • Issue updater:   /usr/share/linuxio/issue/"
 echo ""

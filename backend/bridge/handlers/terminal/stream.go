@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	dockertypes "github.com/docker/docker/api/types"
@@ -297,7 +298,7 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 	go streamContainerExecOutput(attachResp.Reader, stream, done)
 	go streamContainerExecInput(ctx, cli, execResp.ID, attachResp.Conn, stream, done)
 
-	return waitForContainerTerminalEnd(cancel, stream, done)
+	return waitForContainerTerminalEnd(cancel, attachResp.Close, stream, done)
 }
 
 func parseContainerTerminalArgs(args []string) (string, string, int, int, error) {
@@ -419,10 +420,20 @@ func parseResizePayload(payload []byte) (int, int, bool) {
 	return int(binary.BigEndian.Uint16(payload[0:2])), int(binary.BigEndian.Uint16(payload[2:4])), true
 }
 
-func waitForContainerTerminalEnd(cancel context.CancelFunc, stream net.Conn, done <-chan error) error {
+func waitForContainerTerminalEnd(cancel context.CancelFunc, closeAttach func(), stream net.Conn, done <-chan error) error {
 	err := <-done
 	cancel()
+	if closeAttach != nil {
+		closeAttach()
+	}
 	writeContainerTerminalClose(stream)
+	select {
+	case secondErr := <-done:
+		if secondErr != nil && !errors.Is(secondErr, io.EOF) && !errors.Is(secondErr, net.ErrClosed) {
+			logger.Debugf("[ContainerTerminal] session ended with secondary error: %v", secondErr)
+		}
+	case <-time.After(100 * time.Millisecond):
+	}
 	if err != nil && !errors.Is(err, io.EOF) {
 		logger.Debugf("[ContainerTerminal] session ended with error: %v", err)
 	}

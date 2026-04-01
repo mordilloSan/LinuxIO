@@ -56,3 +56,25 @@ func TestMemStore_AllFiltersExpired(t *testing.T) {
 		t.Fatalf("All should include live entries")
 	}
 }
+
+func TestMemStore_CloseStopsCleanup(t *testing.T) {
+	st := NewWithCleanupInterval(time.Hour)
+	done := st.cleanupDone
+	if done == nil {
+		t.Fatalf("cleanup goroutine was not started")
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatalf("cleanup goroutine did not stop")
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("second Close error: %v", err)
+	}
+}

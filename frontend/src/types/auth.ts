@@ -123,6 +123,21 @@ export interface LoginResponse {
   docker_available?: boolean;
   indexer_available?: boolean;
 }
+
+export type LoginErrorCode =
+  | "invalid_request"
+  | "session_creation_failed"
+  | "authentication_failed"
+  | "password_expired"
+  | "access_denied"
+  | "bridge_error"
+  | "internal_error"
+  | "login_failed";
+
+export interface LoginErrorResponse {
+  error?: string;
+  code?: LoginErrorCode;
+}
 /**
  * Props accepted by the `<AuthProvider>` component.
  */

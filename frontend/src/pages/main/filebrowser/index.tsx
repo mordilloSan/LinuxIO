@@ -47,6 +47,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -961,22 +962,18 @@ const FileBrowser: React.FC = () => {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <FileBrowserHeader
-          viewMode={viewMode}
-          showHiddenFiles={showHiddenFiles}
-          showQuickSave={showQuickSave}
-          onSwitchView={handleSwitchView}
-          onToggleHiddenFiles={handleToggleHiddenFiles}
-          onSaveFile={handleSaveFile}
-          onCloseEditor={handleCloseEditor}
-          isSaving={isSavingFile}
-          viewIcon={viewIcon}
-          editingFileName={editingFileResource?.name}
-          editingFilePath={editingPath || undefined}
-          isDirty={isEditorDirty}
-          searchQuery={searchQuery}
-          onSearchChange={handleSearchChange}
-        />
+        {!editingPath && (
+          <FileBrowserHeader
+            viewMode={viewMode}
+            showHiddenFiles={showHiddenFiles}
+            onSwitchView={handleSwitchView}
+            onToggleHiddenFiles={handleToggleHiddenFiles}
+            isSaving={isSavingFile}
+            viewIcon={viewIcon}
+            searchQuery={searchQuery}
+            onSearchChange={handleSearchChange}
+          />
+        )}
 
         {/* Indexer unavailable warning */}
         {!indexerEnabled && !editingPath && (
@@ -1081,26 +1078,6 @@ const FileBrowser: React.FC = () => {
                 />
               )}
 
-            {editingPath && isEditingFileLoading && <ComponentLoader />}
-
-            {!isPending &&
-              !errorMessage &&
-              editingPath &&
-              !isEditingFileLoading &&
-              editingFileResource && (
-                <Suspense fallback={<ComponentLoader />}>
-                  <FileEditor
-                    ref={editorRef}
-                    filePath={editingPath}
-                    fileName={editingFileResource.name}
-                    initialContent={editingFileResource.content || ""}
-                    onSave={handleSaveFile}
-                    isSaving={isSavingFile}
-                    onDirtyChange={setIsEditorDirty}
-                  />
-                </Suspense>
-              )}
-
             {!editingPath &&
               !isPending &&
               !errorMessage &&
@@ -1139,6 +1116,78 @@ const FileBrowser: React.FC = () => {
           </div>
         )}
       </div>
+
+      <AppFullscreenDialog
+        open={Boolean(editingPath)}
+        onClose={handleCloseEditor}
+        contentStyle={{ backgroundColor: theme.palette.background.default }}
+      >
+        <FileBrowserHeader
+          viewMode={viewMode}
+          showHiddenFiles={showHiddenFiles}
+          showQuickSave={showQuickSave}
+          onSwitchView={handleSwitchView}
+          onToggleHiddenFiles={handleToggleHiddenFiles}
+          onSaveFile={handleSaveFile}
+          onCloseEditor={handleCloseEditor}
+          isSaving={isSavingFile}
+          viewIcon={viewIcon}
+          editingFileName={editingFileResource?.name}
+          editingFilePath={editingPath || undefined}
+          isDirty={isEditorDirty}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+        />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          {editingPath && isEditingFileLoading && (
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ComponentLoader />
+            </div>
+          )}
+
+          {editingPath && !isEditingFileLoading && editingFileResource && (
+            <Suspense
+              fallback={
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <ComponentLoader />
+                </div>
+              }
+            >
+              <FileEditor
+                ref={editorRef}
+                filePath={editingPath}
+                fileName={editingFileResource.name}
+                initialContent={editingFileResource.content || ""}
+                onSave={handleSaveFile}
+                isSaving={isSavingFile}
+                onDirtyChange={setIsEditorDirty}
+              />
+            </Suspense>
+          )}
+        </div>
+      </AppFullscreenDialog>
 
       <ContextMenu
         anchorPosition={contextMenuPosition}
