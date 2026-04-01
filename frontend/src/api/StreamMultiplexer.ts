@@ -489,6 +489,17 @@ export class StreamMultiplexer {
   private reconnectAttempts = 0;
   private shouldReconnect = true;
 
+  // Rapid-close detection: when the server upgrades the WebSocket but
+  // immediately closes it (e.g. expired session), the 1008 close frame
+  // can be lost and the browser reports code 1006 instead.  Track
+  // consecutive "opened then closed within a short window" cycles so we
+  // can escalate to an auth error instead of looping forever.
+  private rapidCloseCount = 0;
+  private connectionOpenedAt = 0;
+  private stableConnectionTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly RAPID_CLOSE_THRESHOLD_MS = 5000;
+  private static readonly MAX_RAPID_CLOSES = 3;
+
   private readonly handleVisibilityChange = () => {
     if (document.visibilityState !== "visible") {
       return;
@@ -534,27 +545,68 @@ export class StreamMultiplexer {
       this.clearReconnectTimer();
       this.reconnectAttempts = 0;
       this.shouldReconnect = true;
+      this.connectionOpenedAt = Date.now();
       this._status = "open";
       this.notifyStatusChange("open");
+
+      // Only reset rapid-close counter once the connection proves stable.
+      // If the server is rejecting us (session expired), the connection
+      // opens then closes within milliseconds — we must not reset here.
+      this.stableConnectionTimer = setTimeout(() => {
+        this.rapidCloseCount = 0;
+        this.stableConnectionTimer = null;
+      }, StreamMultiplexer.RAPID_CLOSE_THRESHOLD_MS);
     };
 
     this.ws.onclose = (event: CloseEvent) => {
       this.ws = null;
+
+      if (this.stableConnectionTimer) {
+        clearTimeout(this.stableConnectionTimer);
+        this.stableConnectionTimer = null;
+      }
+
+      // Detect rapid open→close: the connection opened but was closed
+      // almost immediately.  This happens when the server upgrades the
+      // WebSocket then sends a close frame (e.g. 1008 for expired
+      // session), but the browser may report code 1006 instead if the
+      // TCP connection is torn down before the close frame arrives.
+      const wasRapidClose =
+        this.connectionOpenedAt > 0 &&
+        Date.now() - this.connectionOpenedAt <
+          StreamMultiplexer.RAPID_CLOSE_THRESHOLD_MS;
+      this.connectionOpenedAt = 0;
+
+      if (wasRapidClose) {
+        this.rapidCloseCount++;
+      }
+
       console.log(
-        `[StreamMultiplexer] WebSocket closed: code=${event.code}, reason="${event.reason}"`,
+        `[StreamMultiplexer] WebSocket closed: code=${event.code}, reason="${event.reason}"` +
+          (wasRapidClose
+            ? ` (rapid close ${this.rapidCloseCount}/${StreamMultiplexer.MAX_RAPID_CLOSES})`
+            : ""),
       );
 
-      // Close code 1008 = Policy Violation (session expired)
-      // This means the backend terminated the session - user must re-authenticate
-      if (event.code === 1008) {
+      // Close code 1008 = Policy Violation (session expired), OR the
+      // server keeps rejecting us (rapid close threshold exceeded).
+      // In both cases the user must re-authenticate.
+      if (
+        event.code === 1008 ||
+        this.rapidCloseCount >= StreamMultiplexer.MAX_RAPID_CLOSES
+      ) {
         this.shouldReconnect = false;
         this.clearReconnectTimer();
+        this.rapidCloseCount = 0;
         this._status = "error";
         this.notifyStatusChange("error");
         this.closeAllStreams();
       } else {
         // Network error or normal closure - mark as closed
         // Frontend can decide whether to show reconnect UI
+        if (!wasRapidClose) {
+          this.rapidCloseCount = 0;
+        }
         this._status = "closed";
         this.notifyStatusChange("closed");
         this.closeAllStreams();
@@ -800,6 +852,10 @@ export class StreamMultiplexer {
   close(): void {
     this.shouldReconnect = false;
     this.clearReconnectTimer();
+    if (this.stableConnectionTimer) {
+      clearTimeout(this.stableConnectionTimer);
+      this.stableConnectionTimer = null;
+    }
     if (typeof document !== "undefined") {
       document.removeEventListener(
         "visibilitychange",
