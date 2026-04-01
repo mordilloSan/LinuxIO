@@ -33,7 +33,7 @@ func buildScriptURLs(version string) (scriptURL, checksumURL string) {
 // --- small helper for clean log lines (no ANSI) ---
 var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
 
-func logStream(r io.Reader, prefix string, isInfo bool) {
+func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer) {
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		line := ansiRE.ReplaceAllString(sc.Text(), "")
@@ -41,6 +41,10 @@ func logStream(r io.Reader, prefix string, isInfo bool) {
 			logger.Infof("%s%s", prefix, line)
 		} else {
 			logger.Errorf("%s%s", prefix, line)
+		}
+		if relay != nil {
+			// Best-effort relay; don't fail the update on write errors
+			_, _ = io.WriteString(relay, line+"\n")
 		}
 	}
 }
@@ -114,7 +118,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	logger.Infof("starting update: %s -> %s", currentVersion, targetVersion)
 
 	logger.Infof("running installation script for version %s", targetVersion)
-	if err := runInstallScript(targetVersion); err != nil {
+	if err := runInstallScript(targetVersion, nil); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
@@ -146,7 +150,8 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 
 // runInstallScript downloads the installer and runs it in a transient unit
 // with stdout/stderr piped back to this process (so logs appear in-order).
-func runInstallScript(version string) error {
+// If relay is non-nil, output lines are also written to it.
+func runInstallScript(version string, relay io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -222,10 +227,10 @@ func runInstallScript(version string) error {
 	// Stream logs in real-time with WaitGroup to ensure completion
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		logStream(stdout, "", true)
+		logStream(stdout, "", true, relay)
 	})
 	wg.Go(func() {
-		logStream(stderr, "", false)
+		logStream(stderr, "", false, relay)
 	})
 
 	// Wait for command to complete

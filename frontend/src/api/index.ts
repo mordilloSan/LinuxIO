@@ -32,7 +32,7 @@ export {
   openDockerComposeStream,
   openDockerIndexerStream,
   openDockerIndexerAttachStream,
-  openExecStream,
+  openAppUpdateStream,
   openPackageUpdateStream,
   openSmartTestStream,
   openFileUploadStream,

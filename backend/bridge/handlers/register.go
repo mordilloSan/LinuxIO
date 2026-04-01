@@ -20,10 +20,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// jsonHandlers are functions that return JSON-serializable data.
-// Populated during RegisterAllHandlers; read-only after that.
-var jsonHandlers = map[string]map[string]func([]string) (any, error){}
-
 // streamHandlers is the registry for yamux stream handlers.
 // Populated during RegisterAllHandlers; read-only after that.
 var streamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
@@ -56,7 +52,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	shares.RegisterHandlers()
 
 	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
-	generic.RegisterStreamHandlers(streamHandlers, jsonHandlers)
+	control.RegisterStreamHandlers(streamHandlers)
 	terminal.RegisterStreamHandlers(streamHandlers)
 	filebrowser.RegisterStreamHandlers(streamHandlers)
 	dbus.RegisterStreamHandlers(streamHandlers)
