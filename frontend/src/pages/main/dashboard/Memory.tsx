@@ -65,11 +65,11 @@ const MemoryUsage = () => {
         {[
           {
             label: "Usage",
-            value: `${formatFileSize(memoryData?.system?.active ?? 0, 2)} / ${formatFileSize(memoryData?.system?.total ?? 0, 2)} (${ramUsagePercentage.toFixed(0)}%)`,
+            value: `${formatFileSize(memoryData?.system?.active ?? 0, 2)} / ${formatFileSize(memoryData?.system?.total ?? 0, 2)}`,
           },
           {
             label: "Swap",
-            value: `${formatFileSize(swapUsed, 2)} / ${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)} (${Number(swapUsagePercentage).toFixed(0)}%)`,
+            value: `${formatFileSize(swapUsed, 2)} / ${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
           },
           {
             label: "Docker",
