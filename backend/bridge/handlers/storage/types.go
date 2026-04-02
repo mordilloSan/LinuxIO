@@ -33,6 +33,17 @@ type LogicalVolume struct {
 	UsedPct    float64 `json:"usedPct"`    // Usage percentage if mounted
 }
 
+// LogicalVolumeCreateResult reports a successful LV creation.
+type LogicalVolumeCreateResult struct {
+	Success bool   `json:"success"`
+	Path    string `json:"path"`
+}
+
+// LogicalVolumeMutationResult reports a successful LV delete or resize.
+type LogicalVolumeMutationResult struct {
+	Success bool `json:"success"`
+}
+
 // NFSMount represents an NFS mount entry, either currently mounted or only
 // configured in /etc/fstab.
 type NFSMount struct {
@@ -48,6 +59,22 @@ type NFSMount struct {
 	UsedPct    float64  `json:"usedPct"`
 	InFstab    bool     `json:"inFstab"` // Whether this mount is in /etc/fstab
 	Mounted    bool     `json:"mounted"` // Whether this mount is currently active
+}
+
+// DriveInfo represents a disk returned from lsblk plus best-effort SMART/NVMe
+// enrichment while preserving the existing JSON payload shape.
+type DriveInfo struct {
+	Name       string             `json:"name"`
+	Model      string             `json:"model"`
+	Serial     string             `json:"serial"`
+	Size       string             `json:"size"`
+	Type       string             `json:"type"`
+	Vendor     string             `json:"vendor"`
+	RO         bool               `json:"ro"`
+	Smart      map[string]any     `json:"smart,omitempty"`
+	SmartError string             `json:"smartError,omitempty"`
+	Power      *InferredPowerData `json:"power,omitempty"`
+	PowerError string             `json:"powerError,omitempty"`
 }
 
 // LVM command JSON output structures (for parsing pvs/vgs/lvs --reportformat json)

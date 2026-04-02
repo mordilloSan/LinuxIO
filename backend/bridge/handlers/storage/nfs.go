@@ -2,7 +2,9 @@ package storage
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +13,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/go-logger/logger"
 	"github.com/shirou/gopsutil/v4/disk"
@@ -20,6 +23,12 @@ import (
 var (
 	validNFSServer = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 	validPath      = regexp.MustCompile(`^/[a-zA-Z0-9/_.-]*$`)
+)
+
+const (
+	nfsExportCommandTimeout  = 10 * time.Second
+	nfsMountCommandTimeout   = 30 * time.Second
+	nfsUnmountCommandTimeout = 15 * time.Second
 )
 
 var managedNFSMountsPath = "/var/lib/linuxio/nfs-mounts.json"
@@ -239,7 +248,7 @@ func mountFromManagedEntry(entry managedNFSMountEntry) NFSMount {
 }
 
 // ListNFSExports queries an NFS server for available exports using showmount -e
-func ListNFSExports(server string) ([]string, error) {
+func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 	// Validate server input
 	if !validNFSServer.MatchString(server) {
 		logger.Warnf("Invalid server hostname: %s", server)
@@ -248,11 +257,10 @@ func ListNFSExports(server string) ([]string, error) {
 
 	// Run showmount -e to list exports
 	logger.Debugf("Querying exports from server: %s", server)
-	cmd := exec.Command("showmount", "-e", server, "--no-headers")
-	output, err := cmd.Output()
+	output, err := runNFSOutput(ctx, nfsExportCommandTimeout, "showmount", "-e", server, "--no-headers")
 	if err != nil {
 		logger.Errorf("Failed to query exports from %s: %v", server, err)
-		return nil, fmt.Errorf("failed to query NFS exports: %v", err)
+		return nil, fmt.Errorf("failed to query NFS exports: %w", err)
 	}
 
 	var exports []string
@@ -387,7 +395,7 @@ func ListNFSMounts() ([]NFSMount, error) {
 }
 
 // MountNFS mounts an NFS share
-func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) (map[string]any, error) {
+func MountNFS(ctx context.Context, server, exportPath, mountpoint, optionsJSON string, persist bool) (map[string]any, error) {
 	// Validate inputs
 	if !validNFSServer.MatchString(server) {
 		logger.Warnf("Invalid server hostname: %s", server)
@@ -427,11 +435,11 @@ func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) 
 	args = append(args, source, mountpoint)
 
 	logger.Infof("Mounting source=%s target=%s options=%v", source, mountpoint, args)
-	cmd := exec.Command("mount", args...)
-	out, err := cmd.CombinedOutput()
+	out, err := runNFSCombinedOutput(ctx, nfsMountCommandTimeout, "mount", args...)
 	if err != nil {
-		logger.Errorf("Mount failed for %s: %s", source, strings.TrimSpace(string(out)))
-		return nil, fmt.Errorf("mount failed: %s", strings.TrimSpace(string(out)))
+		message := commandFailureMessage(out, err)
+		logger.Errorf("Mount failed for %s: %s", source, message)
+		return nil, fmt.Errorf("mount failed: %s", message)
 	}
 
 	logger.Infof("Successfully mounted %s at %s", source, mountpoint)
@@ -464,7 +472,7 @@ func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) 
 }
 
 // RemountNFS remounts an NFS share with new options
-func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any, error) {
+func RemountNFS(ctx context.Context, mountpoint, newOptions string, updateFstab bool) (map[string]any, error) {
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
 		logger.Warnf("Invalid mountpoint: %s", mountpoint)
@@ -564,11 +572,11 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 
 	// Unmount first
 	logger.Infof("Remount step 1/2: unmounting %s", mountpoint)
-	unmountCmd := exec.Command("umount", mountpoint)
-	out, err := unmountCmd.CombinedOutput()
+	out, err := runNFSCombinedOutput(ctx, nfsUnmountCommandTimeout, "umount", mountpoint)
 	if err != nil {
-		logger.Errorf("Unmount failed for %s: %s", mountpoint, strings.TrimSpace(string(out)))
-		return nil, fmt.Errorf("unmount failed: %s", strings.TrimSpace(string(out)))
+		message := commandFailureMessage(out, err)
+		logger.Errorf("Unmount failed for %s: %s", mountpoint, message)
+		return nil, fmt.Errorf("unmount failed: %s", message)
 	}
 
 	// Remount with new options
@@ -579,11 +587,11 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 	args = append(args, source, mountpoint)
 
 	logger.Infof("Remount step 2/2: mounting source=%s target=%s options=%v", source, mountpoint, args)
-	mountCmd := exec.Command("mount", args...)
-	out, err = mountCmd.CombinedOutput()
+	out, err = runNFSCombinedOutput(ctx, nfsMountCommandTimeout, "mount", args...)
 	if err != nil {
-		logger.Errorf("Remount failed for %s: %s", mountpoint, strings.TrimSpace(string(out)))
-		return nil, fmt.Errorf("remount failed: %s", strings.TrimSpace(string(out)))
+		message := commandFailureMessage(out, err)
+		logger.Errorf("Remount failed for %s: %s", mountpoint, message)
+		return nil, fmt.Errorf("remount failed: %s", message)
 	}
 
 	logger.Infof("Successfully remounted %s with new options", mountpoint)
@@ -629,7 +637,7 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 }
 
 // UnmountNFS unmounts an NFS share
-func UnmountNFS(mountpoint string, removeFstab bool) (map[string]any, error) {
+func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (map[string]any, error) {
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
 		logger.Warnf("Invalid mountpoint: %s", mountpoint)
@@ -712,11 +720,11 @@ func UnmountNFS(mountpoint string, removeFstab bool) (map[string]any, error) {
 	}
 
 	logger.Infof("Unmounting %s", mountpoint)
-	cmd := exec.Command("umount", mountpoint)
-	out, err := cmd.CombinedOutput()
+	out, err := runNFSCombinedOutput(ctx, nfsUnmountCommandTimeout, "umount", mountpoint)
 	if err != nil {
-		logger.Errorf("Unmount failed for %s: %s", mountpoint, strings.TrimSpace(string(out)))
-		return nil, fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
+		message := commandFailureMessage(out, err)
+		logger.Errorf("Unmount failed for %s: %s", mountpoint, message)
+		return nil, fmt.Errorf("umount failed: %s", message)
 	}
 
 	logger.Infof("Successfully unmounted %s", mountpoint)
@@ -748,6 +756,55 @@ func UnmountNFS(mountpoint string, removeFstab bool) (map[string]any, error) {
 	}
 
 	return result, nil
+}
+
+func runNFSOutput(parent context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := withNFSCommandTimeout(parent, timeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, name, args...).Output()
+	if err != nil {
+		return nil, wrapNFSCommandError(ctx, timeout, name, err)
+	}
+
+	return output, nil
+}
+
+func runNFSCombinedOutput(parent context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := withNFSCommandTimeout(parent, timeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	if err != nil {
+		return output, wrapNFSCommandError(ctx, timeout, name, err)
+	}
+
+	return output, nil
+}
+
+func withNFSCommandTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, timeout)
+}
+
+func wrapNFSCommandError(ctx context.Context, timeout time.Duration, name string, err error) error {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return fmt.Errorf("%s timed out after %s", name, timeout)
+	case errors.Is(ctx.Err(), context.Canceled):
+		return fmt.Errorf("%s canceled", name)
+	default:
+		return err
+	}
+}
+
+func commandFailureMessage(output []byte, err error) string {
+	if trimmed := strings.TrimSpace(string(output)); trimmed != "" {
+		return trimmed
+	}
+	return err.Error()
 }
 
 // parseOptions converts []string from gopsutil to []string

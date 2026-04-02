@@ -319,21 +319,21 @@ func removeSmbSection(content, name string) (string, bool) {
 // Tries smbcontrol first, then falls back to systemctl with common service names.
 func reloadSamba() error {
 	// smbcontrol is the most portable method
-	if out, err := exec.Command("smbcontrol", "all", "reload-config").CombinedOutput(); err == nil {
+	out, err := exec.Command("smbcontrol", "all", "reload-config").CombinedOutput()
+	if err == nil {
 		logger.Infof("Samba configuration reloaded via smbcontrol")
 		return nil
-	} else {
-		logger.Debugf("smbcontrol failed: %s", strings.TrimSpace(string(out)))
 	}
+	logger.Debugf("smbcontrol failed: %s", strings.TrimSpace(string(out)))
 
 	// Fall back to systemctl with distro-specific service names
 	for _, service := range []string{"smbd", "smb", "samba"} {
-		if out, err := exec.Command("systemctl", "reload", service).CombinedOutput(); err == nil {
+		out, err := exec.Command("systemctl", "reload", service).CombinedOutput()
+		if err == nil {
 			logger.Infof("Samba reloaded via systemctl reload %s", service)
 			return nil
-		} else {
-			logger.Debugf("systemctl reload %s failed: %s", service, strings.TrimSpace(string(out)))
 		}
+		logger.Debugf("systemctl reload %s failed: %s", service, strings.TrimSpace(string(out)))
 	}
 
 	return fmt.Errorf("failed to reload Samba: no working reload method found (is Samba installed?)")

@@ -343,11 +343,25 @@ func ListShells() ([]string, error) {
 
 // setPassword sets a user's password using chpasswd
 func setPassword(username, password string) error {
+	if err := validateChpasswdInput(username, password); err != nil {
+		return err
+	}
+
 	cmd := exec.Command("chpasswd")
-	cmd.Stdin = strings.NewReader(fmt.Sprintf("%s:%s", username, password))
+	cmd.Stdin = strings.NewReader(fmt.Sprintf("%s:%s\n", username, password))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("chpasswd failed: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func validateChpasswdInput(username, password string) error {
+	if strings.ContainsAny(username, ":\r\n") {
+		return fmt.Errorf("username contains unsupported chpasswd separator characters")
+	}
+	if strings.ContainsAny(password, ":\r\n") {
+		return fmt.Errorf("password contains unsupported chpasswd separator characters")
 	}
 	return nil
 }
@@ -429,39 +443,45 @@ func getLastLogins() map[string]string {
 	}
 
 	lines := strings.Split(string(output), "\n")
-	for i, line := range lines {
-		// Skip header line
-		if i == 0 {
-			continue
-		}
+	latestColumn := -1
+	if len(lines) > 0 {
+		latestColumn = strings.Index(lines[0], "Latest")
+	}
 
-		// Parse the lastlog output
-		// Format: Username         Port     From             Latest
-		fields := strings.Fields(line)
-		if len(fields) < 1 {
-			continue
-		}
-
-		username := fields[0]
-
-		// Check if "Never logged in" appears in the line
-		if strings.Contains(line, "**Never logged in**") {
-			lastLogins[username] = "Never"
-			continue
-		}
-
-		// Extract the date portion (last 4-5 fields typically)
-		// Format varies but usually: "Mon Dec 27 10:42:00 +0000 2025"
-		if len(fields) >= 4 {
-			// Find where the date starts (after "From" field or directly after port)
-			dateStart := 3
-			if len(fields) > 4 {
-				dateStart = max(len(fields)-5, 3)
-			}
-			dateStr := strings.Join(fields[dateStart:], " ")
-			lastLogins[username] = dateStr
+	for _, line := range lines[1:] {
+		username, lastLogin, ok := parseLastlogEntry(line, latestColumn)
+		if ok {
+			lastLogins[username] = lastLogin
 		}
 	}
 
 	return lastLogins
+}
+
+func parseLastlogEntry(line string, latestColumn int) (username, lastLogin string, ok bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "Username") {
+		return "", "", false
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return "", "", false
+	}
+	username = fields[0]
+
+	if strings.Contains(line, "**Never logged in**") {
+		return username, "Never", true
+	}
+
+	if latestColumn <= 0 || len(line) < latestColumn {
+		return "", "", false
+	}
+
+	lastLogin = strings.TrimSpace(line[latestColumn:])
+	if lastLogin == "" {
+		return "", "", false
+	}
+
+	return username, lastLogin, true
 }

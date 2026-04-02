@@ -28,9 +28,9 @@ type BlockDevice struct {
 }
 
 type PowerStateInfo struct {
-	State       int
-	MaxPowerW   float64
-	Description string
+	State       int     `json:"state"`
+	MaxPowerW   float64 `json:"maxPowerW"`
+	Description string  `json:"description"`
 }
 
 type InferredPowerData struct {
@@ -46,7 +46,7 @@ var (
 	nvmeStateRe       = regexp.MustCompile(`Power State:\s+(\d+)`)
 )
 
-func FetchDriveInfo() ([]map[string]any, error) {
+func FetchDriveInfo() ([]DriveInfo, error) {
 	out, err := exec.Command("lsblk", "-d", "-O", "-J").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute lsblk: %w", err)
@@ -57,35 +57,35 @@ func FetchDriveInfo() ([]map[string]any, error) {
 		return nil, fmt.Errorf("failed to parse lsblk output: %w", err)
 	}
 
-	var drives []map[string]any
+	drives := make([]DriveInfo, 0, len(parsed.BlockDevices))
 	for _, dev := range parsed.BlockDevices {
 		if dev.Type != "disk" {
 			continue
 		}
 
-		drive := map[string]any{
-			"name":   dev.Name,
-			"model":  strings.TrimSpace(dev.Model),
-			"serial": strings.TrimSpace(dev.Serial),
-			"size":   dev.Size,
-			"type":   dev.Tran, // transport (sata, nvme, usb, etc)
-			"vendor": strings.TrimSpace(dev.Vendor),
-			"ro":     dev.RO,
+		drive := DriveInfo{
+			Name:   dev.Name,
+			Model:  strings.TrimSpace(dev.Model),
+			Serial: strings.TrimSpace(dev.Serial),
+			Size:   dev.Size,
+			Type:   dev.Tran, // transport (sata, nvme, usb, etc)
+			Vendor: strings.TrimSpace(dev.Vendor),
+			RO:     dev.RO,
 		}
 
 		// SMART info (best-effort)
 		if smart, err := FetchSmartInfo(dev.Name); err != nil {
-			drive["smartError"] = err.Error()
+			drive.SmartError = err.Error()
 		} else {
-			drive["smart"] = smart
+			drive.Smart = smart
 
 			// Try to extract vendor from SMART data if lsblk didn't provide it
-			if drive["vendor"] == "" {
+			if drive.Vendor == "" {
 				if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
 					// Extract first word from model name as vendor
 					parts := strings.Fields(modelName)
 					if len(parts) > 0 {
-						drive["vendor"] = parts[0]
+						drive.Vendor = parts[0]
 					}
 				}
 			}
@@ -94,21 +94,9 @@ func FetchDriveInfo() ([]map[string]any, error) {
 		// NVMe power info if it's an NVMe device
 		if isNVMeDevice(dev) {
 			if power, err := GetNVMePowerState(dev.Name); err != nil {
-				drive["powerError"] = err.Error()
+				drive.PowerError = err.Error()
 			} else {
-				var states []map[string]any
-				for _, s := range power.States {
-					states = append(states, map[string]any{
-						"state":       s.State,
-						"maxPowerW":   s.MaxPowerW,
-						"description": s.Description,
-					})
-				}
-				drive["power"] = map[string]any{
-					"currentState": power.CurrentState,
-					"estimatedW":   power.EstimatedW,
-					"states":       states,
-				}
+				drive.Power = power
 			}
 		}
 
