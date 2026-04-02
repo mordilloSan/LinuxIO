@@ -32,6 +32,8 @@ const (
 	monitoringGeneratedComposePath = "/run/linuxio-monitoring/docker-compose.generated.yml"
 )
 
+var versionExecCommand = exec.Command
+
 func main() {
 	if len(os.Args) < 2 {
 		showHelp()
@@ -57,7 +59,7 @@ func main() {
 	case "verbose":
 		runVerbose(args)
 	case "version":
-		showVersion()
+		showVersion(args)
 	case "help", "-h", "--help":
 		showHelp()
 	default:
@@ -80,7 +82,7 @@ Commands:
   restart     Restart LinuxIO control plane [--full]
   monitoring  Manage monitoring stack [start|stop|restart|enable|disable|status]
   verbose     Manage verbose logging [enable|disable|status]
-  version     Show version information
+  version     Show version information [--self]
   help        Show this help message
 
 Examples:
@@ -88,16 +90,26 @@ Examples:
   linuxio restart
   linuxio restart --full
   linuxio monitoring status
-  linuxio logs monitoring 200`)
+  linuxio logs monitoring 200
+  linuxio version --self`)
 }
 
-func showVersion() {
+func cliVersionLine() string {
+	return fmt.Sprintf("LinuxIO CLI %s", config.Version)
+}
+
+func showVersion(args []string) {
+	if len(args) == 1 && args[0] == "--self" {
+		fmt.Println(cliVersionLine())
+		return
+	}
+
 	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
 	fmt.Println("\nInstalled components:")
-	fmt.Printf("  LinuxIO CLI %s\n", config.Version)
+	fmt.Printf("  %s\n", cliVersionLine())
 
 	// Check linuxio-webserver
-	out, err := exec.Command("linuxio-webserver", "version").CombinedOutput()
+	out, err := versionExecCommand("linuxio-webserver", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -106,7 +118,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-bridge
-	out, err = exec.Command("linuxio-bridge", "version").CombinedOutput()
+	out, err = versionExecCommand("linuxio-bridge", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -115,7 +127,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-auth
-	out, err = exec.Command("linuxio-auth", "version").CombinedOutput()
+	out, err = versionExecCommand("linuxio-auth", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
