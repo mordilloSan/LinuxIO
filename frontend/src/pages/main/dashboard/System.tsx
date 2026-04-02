@@ -15,6 +15,7 @@ interface HealthItem {
   to?: string;
   state?: Record<string, unknown>;
   detail?: string;
+  spaceBefore?: boolean;
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -75,6 +76,7 @@ const SystemHealth = () => {
       color: theme.palette.warning.main,
       text: `${pluralize(health.updatesAvailable, "update", "updates")} available`,
       to: "/updates",
+      spaceBefore: true,
     });
   } else {
     items.push({
@@ -82,6 +84,7 @@ const SystemHealth = () => {
       color: theme.palette.success.main,
       text: "System is up to date",
       to: "/updates",
+      spaceBefore: true,
     });
   }
 
@@ -116,7 +119,9 @@ const SystemHealth = () => {
     const detailParts = [displaySource, terminal].filter(Boolean);
     items.push({
       icon: "mdi:account-clock-outline",
-      color: theme.palette.text.secondary,
+      color: health.failedLoginAttempts
+        ? theme.palette.warning.main
+        : theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
       detail:
         detailParts.length > 0 ? `from ${detailParts.join(" on ")}` : undefined,
@@ -165,8 +170,7 @@ const SystemHealth = () => {
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
-          width: "100%",
-          gap: theme.spacing(1.25),
+          width: "fit-content",
         }}
       >
         {items.map((item) => {
@@ -211,17 +215,21 @@ const SystemHealth = () => {
             </div>
           );
 
+          const spacing = item.spaceBefore
+            ? { marginTop: theme.spacing(1) }
+            : undefined;
+
           return item.to ? (
             <RouterLink
               key={item.text}
               to={item.to}
               state={item.state}
-              style={{ color: "inherit", textDecoration: "none" }}
+              style={{ color: "inherit", textDecoration: "none", ...spacing }}
             >
               {content}
             </RouterLink>
           ) : (
-            <div key={item.text}>{content}</div>
+            <div key={item.text} style={spacing}>{content}</div>
           );
         })}
       </div>
@@ -233,7 +241,7 @@ const SystemHealth = () => {
       stats={stats}
       stats2={stats2}
       avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
-      contentLayout="auto"
+      contentLayout={[1.5, 1]}
     />
   );
 };

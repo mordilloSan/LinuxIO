@@ -14,10 +14,10 @@ type SystemHealthSummary struct {
 	FailedServices       []string         `json:"failedServices,omitempty"`
 	RunningServicesCount int              `json:"runningServicesCount"`
 	FailedLoginAttempts  int              `json:"failedLoginAttempts"`
-	UpdatesAvailable    int              `json:"updatesAvailable"`
-	UpToDate            bool             `json:"upToDate"`
-	UncleanShutdown     bool             `json:"uncleanShutdown"`
-	LastLogin           *SystemLastLogin `json:"lastLogin,omitempty"`
+	UpdatesAvailable     int              `json:"updatesAvailable"`
+	UpToDate             bool             `json:"upToDate"`
+	UncleanShutdown      bool             `json:"uncleanShutdown"`
+	LastLogin            *SystemLastLogin `json:"lastLogin,omitempty"`
 }
 
 type SystemLastLogin struct {

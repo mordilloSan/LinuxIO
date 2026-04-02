@@ -60,7 +60,9 @@ function UnitListTab<T extends UnitListItem>({
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(initialSelected ?? null);
+  const [expanded, setExpanded] = useState<string | null>(
+    initialSelected ?? null,
+  );
   const [returnToTable, setReturnToTable] = useState(false);
 
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
