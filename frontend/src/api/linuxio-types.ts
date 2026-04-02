@@ -799,6 +799,8 @@ export interface LinuxIOSchema {
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
     get_health_summary: { args: []; result: SystemHealthSummary };
+    get_server_time: { args: []; result: string };
+    get_timezones: { args: []; result: string[] };
   };
 
   monitoring: {
@@ -968,6 +970,14 @@ export interface LinuxIOSchema {
     set_mtu: { args: [iface: string, mtu: string]; result: void };
     enable_connection: { args: [iface: string]; result: void };
     disable_connection: { args: [iface: string]; result: void };
+    set_hostname: { args: [hostname: string]; result: void };
+    get_ntp_status: { args: []; result: boolean };
+    set_ntp: { args: [enabled: string]; result: void };
+    set_server_time: { args: [isoTime: string]; result: void };
+    get_timezone: { args: []; result: string };
+    set_timezone: { args: [timezone: string]; result: void };
+    get_ntp_servers: { args: []; result: string[] };
+    set_ntp_servers: { args: string[]; result: void };
   };
 
   filebrowser: {

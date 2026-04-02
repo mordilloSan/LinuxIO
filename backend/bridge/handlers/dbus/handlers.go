@@ -46,6 +46,14 @@ func RegisterHandlers() {
 		{command: "set_mtu", handler: setMTUHandler()},
 		{command: "enable_connection", handler: connectionActionHandler("enable_connection requested: connection=%s", EnableConnection)},
 		{command: "disable_connection", handler: connectionActionHandler("disable_connection requested: connection=%s", DisableConnection)},
+		{command: "set_hostname", handler: serviceActionHandler("set_hostname requested: hostname=%s", SetHostname)},
+		{command: "get_ntp_status", handler: dbusNoArgResultHandler(GetNTPStatus)},
+		{command: "set_ntp", handler: setNTPHandler()},
+		{command: "set_server_time", handler: serviceActionHandler("set_server_time requested: time=%s", SetServerTime)},
+		{command: "get_timezone", handler: dbusNoArgResultHandler(GetTimezone)},
+		{command: "set_timezone", handler: serviceActionHandler("set_timezone requested: tz=%s", SetTimezone)},
+		{command: "get_ntp_servers", handler: dbusNoArgResultHandler(GetNTPServers)},
+		{command: "set_ntp_servers", handler: setNTPServersHandler()},
 	})
 }
 
@@ -210,6 +218,30 @@ func connectionActionHandler(logPattern string, fn func(string) error) ipc.Handl
 		}
 		logger.Infof(logPattern, args[0])
 		if err := fn(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	}
+}
+
+func setNTPServersHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("set_ntp_servers requested: servers=%v", args)
+		if err := SetNTPServers(args); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	}
+}
+
+func setNTPHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) != 1 {
+			return ipc.ErrInvalidArgs
+		}
+		enabled := args[0] == "true"
+		logger.Infof("set_ntp requested: enabled=%v", enabled)
+		if err := SetNTP(enabled); err != nil {
 			return err
 		}
 		return emit.Result(nil)

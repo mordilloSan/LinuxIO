@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -42,6 +43,8 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
 		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
+		{command: "get_server_time", handler: handleGetServerTime},
+		{command: "get_timezones", handler: handleGetTimezones},
 	})
 }
 
@@ -121,6 +124,14 @@ func handleGetPCIDevices(ctx context.Context, args []string, emit ipc.Events) er
 
 func handleGetMemoryModules(ctx context.Context, args []string, emit ipc.Events) error {
 	return emitSystemCall(emit, FetchMemoryModules)
+}
+
+func handleGetServerTime(ctx context.Context, args []string, emit ipc.Events) error {
+	return emit.Result(time.Now().Format(time.RFC3339))
+}
+
+func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) error {
+	return emitSystemCall(emit, GetTimezones)
 }
 
 func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {

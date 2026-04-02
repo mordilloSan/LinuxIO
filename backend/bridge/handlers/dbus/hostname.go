@@ -6,6 +6,24 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 )
 
+func SetHostname(hostname string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.ConnectSystemBus()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if cerr := conn.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+		}()
+		obj := conn.Object("org.freedesktop.hostname1", "/org/freedesktop/hostname1")
+		return obj.Call("org.freedesktop.hostname1.SetStaticHostname", 0, hostname, false).Err
+	})
+}
+
 func GetHostname() (result string, err error) {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()

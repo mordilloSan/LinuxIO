@@ -157,10 +157,7 @@ const SystemHealth = () => {
       {!health && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
-        <div
-          onClick={() => navigate(iconLink)}
-          style={{ cursor: "pointer" }}
-        >
+        <div onClick={() => navigate(iconLink)} style={{ cursor: "pointer" }}>
           <Icon icon={iconName} width={100} height={100} color={statusColor} />
         </div>
       )}
@@ -234,7 +231,9 @@ const SystemHealth = () => {
               {content}
             </div>
           ) : (
-            <div key={item.text} style={spacing}>{content}</div>
+            <div key={item.text} style={spacing}>
+              {content}
+            </div>
           );
         })}
       </div>
