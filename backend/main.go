@@ -27,8 +27,6 @@ const (
 	monitoringGeneratedComposePath = "/run/linuxio-monitoring/docker-compose.generated.yml"
 )
 
-var execCommand = exec.Command
-
 func main() {
 	if len(os.Args) < 2 {
 		showHelp()
@@ -94,7 +92,7 @@ func showVersion() {
 	fmt.Printf("  LinuxIO CLI %s\n", config.Version)
 
 	// Check linuxio-webserver
-	out, err := execCommand("linuxio-webserver", "version").CombinedOutput()
+	out, err := exec.Command("linuxio-webserver", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -103,7 +101,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-bridge
-	out, err = execCommand("linuxio-bridge", "version").CombinedOutput()
+	out, err = exec.Command("linuxio-bridge", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -112,7 +110,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-auth
-	out, err = execCommand("linuxio-auth", "version").CombinedOutput()
+	out, err = exec.Command("linuxio-auth", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -122,7 +120,7 @@ func showVersion() {
 }
 
 func runStatus() {
-	cmd := execCommand("systemctl", "list-units", "linuxio*", "--no-pager", "--all")
+	cmd := exec.Command("systemctl", "list-units", "linuxio*", "--no-pager", "--all")
 	out, err := cmd.Output()
 	if err != nil {
 		os.Exit(1)
@@ -172,7 +170,7 @@ func runLogs(args []string) {
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
-	cmd := execCommand("journalctl", journalctlArgs...)
+	cmd := exec.Command("journalctl", journalctlArgs...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -355,7 +353,7 @@ func runSystemctlTargets(action string, targets []string, successLabel string) {
 		os.Exit(1)
 	}
 
-	cmd := execCommand("systemctl", append([]string{action}, targets...)...)
+	cmd := exec.Command("systemctl", append([]string{action}, targets...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -473,7 +471,7 @@ type dockerPSContainer struct {
 }
 
 func showMonitoringContainers() {
-	out, err := execCommand(
+	out, err := exec.Command(
 		"docker",
 		"ps",
 		"--all",
@@ -582,7 +580,7 @@ func monitoringContainerHealth(status string) string {
 }
 
 func systemctlState(args ...string) string {
-	out, err := execCommand("systemctl", args...).CombinedOutput()
+	out, err := exec.Command("systemctl", args...).CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if state != "" {
 		return state
@@ -647,7 +645,7 @@ func enableVerbose() {
 
 	// Reload systemd daemon
 	fmt.Println("Reloading systemd daemon...")
-	cmd := execCommand("systemctl", "daemon-reload")
+	cmd := exec.Command("systemctl", "daemon-reload")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
@@ -655,7 +653,7 @@ func enableVerbose() {
 
 	// Restart LinuxIO services
 	fmt.Println("Restarting linuxio.target...")
-	cmd = execCommand("systemctl", "restart", "linuxio.target")
+	cmd = exec.Command("systemctl", "restart", "linuxio.target")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
@@ -683,7 +681,7 @@ func disableVerbose() {
 
 	// Reload systemd daemon
 	fmt.Println("Reloading systemd daemon...")
-	cmd := execCommand("systemctl", "daemon-reload")
+	cmd := exec.Command("systemctl", "daemon-reload")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
@@ -691,7 +689,7 @@ func disableVerbose() {
 
 	// Restart LinuxIO services
 	fmt.Println("Restarting linuxio.target...")
-	cmd = execCommand("systemctl", "restart", "linuxio.target")
+	cmd = exec.Command("systemctl", "restart", "linuxio.target")
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)

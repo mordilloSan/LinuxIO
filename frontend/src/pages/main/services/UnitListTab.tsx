@@ -39,6 +39,7 @@ interface UnitListTabProps<T extends UnitListItem> {
   renderTableView: (props: UnitTableViewRenderProps<T>) => React.ReactNode;
   renderCardsView: (props: UnitCardsViewRenderProps<T>) => React.ReactNode;
   renderDetailPanel: (item: T, onClose: () => void) => React.ReactNode;
+  initialSelected?: string;
 }
 
 function UnitListTab<T extends UnitListItem>({
@@ -55,10 +56,11 @@ function UnitListTab<T extends UnitListItem>({
   renderTableView,
   renderCardsView,
   renderDetailPanel,
+  initialSelected,
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(initialSelected ?? null);
   const [returnToTable, setReturnToTable] = useState(false);
 
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {

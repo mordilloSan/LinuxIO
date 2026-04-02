@@ -13,6 +13,7 @@ interface HealthItem {
   color: string;
   text: string;
   to?: string;
+  state?: Record<string, unknown>;
   detail?: string;
 }
 
@@ -35,12 +36,26 @@ const SystemHealth = () => {
 
   const items: HealthItem[] = [];
 
+  if (health !== undefined) {
+    items.push({
+      icon: "mdi:cog-sync-outline",
+      color: health.failedServicesCount
+        ? theme.palette.text.secondary
+        : theme.palette.success.main,
+      text: `${pluralize(health.runningServicesCount, "service", "services")} running`,
+      to: "/services",
+    });
+  }
+
   if (health?.failedServicesCount) {
     items.push({
       icon: "mdi:alert-circle",
       color: theme.palette.error.main,
       text: `${pluralize(health.failedServicesCount, "service has", "services have")} failed`,
       to: "/services",
+      state: health.failedServices?.[0]
+        ? { selectedUnit: health.failedServices[0] }
+        : undefined,
       detail: health.failedServices?.slice(0, 2).join(", "),
     });
   }
@@ -200,6 +215,7 @@ const SystemHealth = () => {
             <RouterLink
               key={item.text}
               to={item.to}
+              state={item.state}
               style={{ color: "inherit", textDecoration: "none" }}
             >
               {content}

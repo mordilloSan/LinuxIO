@@ -155,6 +155,7 @@ export interface SystemLastLogin {
 export interface SystemHealthSummary {
   failedServicesCount: number;
   failedServices?: string[];
+  runningServicesCount: number;
   failedLoginAttempts: number;
   updatesAvailable: number;
   upToDate: boolean;

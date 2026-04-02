@@ -10,9 +10,10 @@ import (
 )
 
 type SystemHealthSummary struct {
-	FailedServicesCount int              `json:"failedServicesCount"`
-	FailedServices      []string         `json:"failedServices,omitempty"`
-	FailedLoginAttempts int              `json:"failedLoginAttempts"`
+	FailedServicesCount  int              `json:"failedServicesCount"`
+	FailedServices       []string         `json:"failedServices,omitempty"`
+	RunningServicesCount int              `json:"runningServicesCount"`
+	FailedLoginAttempts  int              `json:"failedLoginAttempts"`
 	UpdatesAvailable    int              `json:"updatesAvailable"`
 	UpToDate            bool             `json:"upToDate"`
 	UncleanShutdown     bool             `json:"uncleanShutdown"`
@@ -41,11 +42,13 @@ func FetchSystemHealthSummary(username string, privileged bool) (*SystemHealthSu
 
 	if services, err := FetchServices(); err == nil {
 		for _, service := range services {
-			if !service.Failed {
-				continue
+			if service.Failed {
+				summary.FailedServicesCount++
+				summary.FailedServices = append(summary.FailedServices, service.Name)
 			}
-			summary.FailedServicesCount++
-			summary.FailedServices = append(summary.FailedServices, service.Name)
+			if service.SubState == "running" {
+				summary.RunningServicesCount++
+			}
 		}
 	}
 
