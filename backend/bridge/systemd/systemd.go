@@ -151,3 +151,70 @@ func DaemonReload() error {
 		return nil
 	})
 }
+
+func GetActiveState(name string) (string, error) {
+	if err := requireUnitName(name); err != nil {
+		return "", err
+	}
+	conn, err := godbus.ConnectSystemBus()
+	if err != nil {
+		return "", fmt.Errorf("connect system bus: %w", err)
+	}
+	defer conn.Close()
+
+	manager := conn.Object(systemdBusName, systemdObjectPath)
+	var path godbus.ObjectPath
+	if err := manager.Call(systemdMgrIface+".GetUnit", 0, name).Store(&path); err != nil {
+		// Unit not loaded → treat as inactive
+		return "inactive", nil
+	}
+	unit := conn.Object(systemdBusName, path)
+	prop, err := unit.GetProperty("org.freedesktop.systemd1.Unit.ActiveState")
+	if err != nil {
+		return "unknown", nil
+	}
+	s, ok := prop.Value().(string)
+	if !ok {
+		return "unknown", nil
+	}
+	return s, nil
+}
+
+type UnitStatus struct {
+	Name        string
+	Description string
+	LoadState   string
+	ActiveState string
+	SubState    string
+}
+
+func ListUnitsWithPrefix(prefix string) ([]UnitStatus, error) {
+	var units []UnitStatus
+	if err := withManager(func(manager godbus.BusObject) error {
+		var result [][]any
+		if err := manager.Call(systemdMgrIface+".ListUnits", 0).Store(&result); err != nil {
+			return fmt.Errorf("list units: %w", err)
+		}
+		for _, u := range result {
+			name, ok := u[0].(string)
+			if !ok || !strings.HasPrefix(name, prefix) {
+				continue
+			}
+			description, _ := u[1].(string)
+			loadState, _ := u[2].(string)
+			activeState, _ := u[3].(string)
+			subState, _ := u[4].(string)
+			units = append(units, UnitStatus{
+				Name:        name,
+				Description: description,
+				LoadState:   loadState,
+				ActiveState: activeState,
+				SubState:    subState,
+			})
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return units, nil
+}
