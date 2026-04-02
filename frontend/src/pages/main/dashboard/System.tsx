@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import React from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -16,6 +16,7 @@ interface HealthItem {
   state?: Record<string, unknown>;
   detail?: string;
   spaceBefore?: boolean;
+  iconStyle?: React.CSSProperties;
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -24,6 +25,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 
 const SystemHealth = () => {
   const theme = useAppTheme();
+  const navigate = useNavigate();
 
   const {
     data: health,
@@ -77,6 +79,7 @@ const SystemHealth = () => {
       text: `${pluralize(health.updatesAvailable, "update", "updates")} available`,
       to: "/updates",
       spaceBefore: true,
+      iconStyle: { transform: "translateY(2px)" },
     });
   } else {
     items.push({
@@ -85,6 +88,7 @@ const SystemHealth = () => {
       text: "System is up to date",
       to: "/updates",
       spaceBefore: true,
+      iconStyle: { transform: "translateY(2px)" },
     });
   }
 
@@ -125,6 +129,8 @@ const SystemHealth = () => {
       text: `Last login: ${displayTime}`,
       detail:
         detailParts.length > 0 ? `from ${detailParts.join(" on ")}` : undefined,
+      spaceBefore: true,
+      iconStyle: { transform: "translateY(-6px)" },
     });
   }
 
@@ -151,12 +157,12 @@ const SystemHealth = () => {
       {!health && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
-        <RouterLink
-          to={iconLink}
-          style={{ color: "inherit", textDecoration: "none" }}
+        <div
+          onClick={() => navigate(iconLink)}
+          style={{ cursor: "pointer" }}
         >
           <Icon icon={iconName} width={100} height={100} color={statusColor} />
-        </RouterLink>
+        </div>
       )}
     </div>
   );
@@ -187,7 +193,7 @@ const SystemHealth = () => {
                 width={18}
                 height={18}
                 color={item.color}
-                style={{ flexShrink: 0 }}
+                style={{ flexShrink: 0, ...item.iconStyle }}
               />
               <div style={{ minWidth: 0 }}>
                 <AppTypography
@@ -206,7 +212,7 @@ const SystemHealth = () => {
                   <AppTypography
                     variant="caption"
                     color="text.secondary"
-                    style={{ display: "block", marginTop: 1 }}
+                    style={{ display: "block", marginTop: -2 }}
                   >
                     {item.detail}
                   </AppTypography>
@@ -220,14 +226,13 @@ const SystemHealth = () => {
             : undefined;
 
           return item.to ? (
-            <RouterLink
+            <div
               key={item.text}
-              to={item.to}
-              state={item.state}
-              style={{ color: "inherit", textDecoration: "none", ...spacing }}
+              onClick={() => navigate(item.to!, { state: item.state })}
+              style={{ cursor: "pointer", ...spacing }}
             >
               {content}
-            </RouterLink>
+            </div>
           ) : (
             <div key={item.text} style={spacing}>{content}</div>
           );
