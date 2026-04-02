@@ -83,12 +83,6 @@
     "@tanstack/eslint-plugin-query": {
       "eslint": ">=9",
       "typescript": "^6.0.2"
-    },
-    "@typescript-eslint/eslint-plugin": {
-      "typescript": "^6.0.2"
-    },
-    "@typescript-eslint/parser": {
-      "typescript": "^6.0.2"
     }
   }
 }

@@ -164,7 +164,7 @@ func GetActiveState(name string) (string, error) {
 
 	manager := conn.Object(systemdBusName, systemdObjectPath)
 	var path godbus.ObjectPath
-	if err := manager.Call(systemdMgrIface+".GetUnit", 0, name).Store(&path); err != nil {
+	if unitLoadErr := manager.Call(systemdMgrIface+".GetUnit", 0, name).Store(&path); unitLoadErr != nil {
 		// Unit not loaded → treat as inactive
 		return "inactive", nil
 	}
