@@ -51,6 +51,7 @@ interface ComposeListProps {
   onEdit?: (projectName: string, configPath: string) => void;
   onPreview?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
+  isPending?: boolean;
   viewMode?: "table" | "card";
 }
 const ComposeList: React.FC<ComposeListProps> = ({
@@ -62,6 +63,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onEdit,
   onPreview,
   isLoading = false,
+  isPending = false,
   viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
@@ -478,15 +480,33 @@ const ComposeList: React.FC<ComposeListProps> = ({
           whiteSpace: "nowrap",
         }}
       >
-        {filtered.length} shown
+        {isPending ? "Loading..." : `${filtered.length} shown`}
       </AppTypography>
     </div>
   );
   if (viewMode === "card") {
+    const skeletonCount = 8;
+
     return (
       <div>
         {searchBar}
-        {filtered.length === 0 ? (
+        {isPending ? (
+          <AppGrid container spacing={2}>
+            {Array.from({ length: skeletonCount }, (_, index) => (
+              <AppGrid
+                key={`compose-stack-skeleton-${index}`}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 2,
+                }}
+              >
+                <ComposeStackCard isPending />
+              </AppGrid>
+            ))}
+          </AppGrid>
+        ) : filtered.length === 0 ? (
           <div
             style={{
               textAlign: "center",
