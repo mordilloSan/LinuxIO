@@ -8,8 +8,10 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import SkeletonText from "@/components/ui/SkeletonText";
 import { getComposeStatusColor } from "@/constants/statusColors";
 import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
 
@@ -17,27 +19,55 @@ const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
 };
 
-interface ComposeStackCardProps {
-  project: ComposeProject;
-  onStart: (projectName: string) => void;
-  onStop: (projectName: string) => void;
-  onRestart: (projectName: string) => void;
-  onDelete: (project: ComposeProject) => void;
-  onEdit?: (projectName: string, configPath: string) => void;
-  onPreview?: (projectName: string, configPath: string) => void;
-  isLoading?: boolean;
-}
+type ComposeStackCardProps =
+  | { isPending: true }
+  | {
+      isPending?: false;
+      project: ComposeProject;
+      onStart: (projectName: string) => void;
+      onStop: (projectName: string) => void;
+      onRestart: (projectName: string) => void;
+      onDelete: (project: ComposeProject) => void;
+      onEdit?: (projectName: string, configPath: string) => void;
+      onPreview?: (projectName: string, configPath: string) => void;
+      isLoading?: boolean;
+    };
 
-const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
-  project,
-  onStart,
-  onStop,
-  onRestart,
-  onDelete,
-  onEdit,
-  onPreview,
-  isLoading = false,
-}) => {
+const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
+  if (props.isPending) {
+    return (
+      <FrostedCard
+        hoverLift
+        style={{
+          padding: 8,
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          position: "relative",
+        }}
+      >
+        <div style={{ position: "absolute", top: 12, right: 12 }}>
+          <AppSkeleton variant="text" width={56} height={22} style={{ borderRadius: 11 }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 32 }}>
+          <AppSkeleton variant="circular" width={36} height={36} />
+          <SkeletonText variant="subtitle1" width="10ch" />
+        </div>
+        <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+          <SkeletonText variant="body2" width="11ch" />
+        </div>
+        <AppDivider style={{ marginBlock: 12 }} />
+        <div style={{ display: "flex", gap: 2 }}>
+          <AppSkeleton variant="circular" width={28} height={28} />
+          <AppSkeleton variant="circular" width={28} height={28} />
+          <AppSkeleton variant="circular" width={28} height={28} />
+          <AppSkeleton variant="circular" width={28} height={28} />
+        </div>
+      </FrostedCard>
+    );
+  }
+
+  const { project, onStart, onStop, onRestart, onDelete, onEdit, onPreview, isLoading = false } = props;
   const statusColor = getStatusColor(project.status);
 
   const totalContainers = Object.values(project.services).reduce(
