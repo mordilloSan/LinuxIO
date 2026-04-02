@@ -156,9 +156,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         marginLeft: 0,
         marginBottom: 2,
         color: theme.palette.text.secondary,
-        fontSize: "0.75rem",
         lineHeight: theme.typography.body2.lineHeight,
-      }}
+        "--app-select-input-font-size": "0.75rem",
+      } as React.CSSProperties}
     >
       {!selectedOption && <option value="" disabled hidden></option>}
       {selectOptions.map((option, index) => (
