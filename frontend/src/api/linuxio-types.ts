@@ -145,6 +145,24 @@ export interface SystemInfo {
   cpuSummary: string;
 }
 
+export interface SystemLastLogin {
+  username: string;
+  terminal?: string;
+  source?: string;
+  time: string;
+}
+
+export interface SystemHealthSummary {
+  failedServicesCount: number;
+  failedServices?: string[];
+  runningServicesCount: number;
+  failedLoginAttempts: number;
+  updatesAvailable: number;
+  upToDate: boolean;
+  uncleanShutdown: boolean;
+  lastLogin?: SystemLastLogin | null;
+}
+
 export interface PCIDevice {
   class: string;
   model: string;
@@ -259,6 +277,15 @@ export interface NetworkMonitoringSeriesResponse {
   stepSeconds: number;
   rxPoints: MonitoringSeriesPoint[];
   txPoints: MonitoringSeriesPoint[];
+  reason?: string;
+}
+
+export interface DiskIOMonitoringSeriesResponse {
+  available: boolean;
+  range: MonitoringRange | string;
+  stepSeconds: number;
+  readPoints: MonitoringSeriesPoint[];
+  writePoints: MonitoringSeriesPoint[];
   reason?: string;
 }
 
@@ -771,6 +798,9 @@ export interface LinuxIOSchema {
     get_system_info: { args: []; result: SystemInfo };
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
+    get_health_summary: { args: []; result: SystemHealthSummary };
+    get_server_time: { args: []; result: string };
+    get_timezones: { args: []; result: string[] };
   };
 
   monitoring: {
@@ -789,6 +819,10 @@ export interface LinuxIOSchema {
     get_network_series: {
       args: [range: MonitoringRange, iface: string];
       result: NetworkMonitoringSeriesResponse;
+    };
+    get_disk_io_series: {
+      args: [range: MonitoringRange, device: string];
+      result: DiskIOMonitoringSeriesResponse;
     };
   };
 
@@ -936,6 +970,14 @@ export interface LinuxIOSchema {
     set_mtu: { args: [iface: string, mtu: string]; result: void };
     enable_connection: { args: [iface: string]; result: void };
     disable_connection: { args: [iface: string]; result: void };
+    set_hostname: { args: [hostname: string]; result: void };
+    get_ntp_status: { args: []; result: boolean };
+    set_ntp: { args: [enabled: string]; result: void };
+    set_server_time: { args: [isoTime: string]; result: void };
+    get_timezone: { args: []; result: string };
+    set_timezone: { args: [timezone: string]; result: void };
+    get_ntp_servers: { args: []; result: string[] };
+    set_ntp_servers: { args: string[]; result: void };
   };
 
   filebrowser: {

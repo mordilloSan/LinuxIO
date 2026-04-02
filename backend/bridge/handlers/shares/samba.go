@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
@@ -23,9 +24,13 @@ var reservedSections = map[string]bool{
 }
 
 var (
-	sectionRegex   = regexp.MustCompile(`^\[([^\]]+)\]$`)
-	keyValueRegex  = regexp.MustCompile(`^\s*([^=]+?)\s*=\s*(.*)$`)
-	validShareName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$`)
+	sectionRegex     = regexp.MustCompile(`^\[([^\]]+)\]$`)
+	keyValueRegex    = regexp.MustCompile(`^\s*([^=]+?)\s*=\s*(.*)$`)
+	validShareName   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$`)
+	smbcontrolReload = func() ([]byte, error) {
+		return exec.Command("smbcontrol", "all", "reload-config").CombinedOutput()
+	}
+	systemdReloadUnit = systemd.ReloadUnit
 )
 
 // ListSambaShares reads smb.conf and returns all user-defined shares
@@ -316,24 +321,24 @@ func removeSmbSection(content, name string) (string, bool) {
 }
 
 // reloadSamba reloads the Samba configuration using the first method that works.
-// Tries smbcontrol first, then falls back to systemctl with common service names.
+// Tries smbcontrol first, then falls back to systemd D-Bus reloads with common service names.
 func reloadSamba() error {
 	// smbcontrol is the most portable method
-	if out, err := exec.Command("smbcontrol", "all", "reload-config").CombinedOutput(); err == nil {
+	out, err := smbcontrolReload()
+	if err == nil {
 		logger.Infof("Samba configuration reloaded via smbcontrol")
 		return nil
-	} else {
-		logger.Debugf("smbcontrol failed: %s", strings.TrimSpace(string(out)))
 	}
+	logger.Debugf("smbcontrol failed: %s", strings.TrimSpace(string(out)))
 
-	// Fall back to systemctl with distro-specific service names
-	for _, service := range []string{"smbd", "smb", "samba"} {
-		if out, err := exec.Command("systemctl", "reload", service).CombinedOutput(); err == nil {
-			logger.Infof("Samba reloaded via systemctl reload %s", service)
+	// Fall back to distro-specific unit names through the shared systemd D-Bus helper.
+	for _, service := range []string{"smbd.service", "smb.service", "samba.service"} {
+		err := systemdReloadUnit(service)
+		if err == nil {
+			logger.Infof("Samba reloaded via systemd D-Bus reload %s", service)
 			return nil
-		} else {
-			logger.Debugf("systemctl reload %s failed: %s", service, strings.TrimSpace(string(out)))
 		}
+		logger.Debugf("systemd D-Bus reload %s failed: %v", service, err)
 	}
 
 	return fmt.Errorf("failed to reload Samba: no working reload method found (is Samba installed?)")

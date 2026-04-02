@@ -171,7 +171,7 @@ const NetworkInterfaceList = () => {
                 size={
                   expanded === iface.name
                     ? { xs: 12, md: 4, lg: 3 }
-                    : { xs: 12, sm: 6, md: 4, lg: 3 }
+                    : { xs: 12, sm: 6, md: 4, lg: 2 }
                 }
                 component={motion.div}
                 layout

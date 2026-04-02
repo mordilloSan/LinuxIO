@@ -2,17 +2,21 @@ package system
 
 import (
 	"context"
+	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type systemRegistration struct {
-	command string
-	handler ipc.HandlerFunc
+	command    string
+	handler    ipc.HandlerFunc
+	privileged bool
 }
 
 // RegisterHandlers registers all system handlers with the global registry
-func RegisterHandlers() {
+func RegisterHandlers(sess *session.Session) {
 	onceSampler.Do(func() {
 		go runSimpleNetInfoSampler()
 	})
@@ -21,7 +25,7 @@ func RegisterHandlers() {
 	})
 
 	registerCapabilitiesHandlers()
-	registerSystemHandlers([]systemRegistration{
+	registerSystemHandlers(sess, []systemRegistration{
 		{command: "get_cpu_info", handler: handleGetCPUInfo},
 		{command: "get_sensor_info", handler: handleGetSensorInfo},
 		{command: "get_motherboard_info", handler: handleGetMotherboardInfo},
@@ -38,12 +42,19 @@ func RegisterHandlers() {
 		{command: "get_system_info", handler: handleGetSystemInfo},
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
+		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
+		{command: "get_server_time", handler: handleGetServerTime},
+		{command: "get_timezones", handler: handleGetTimezones},
 	})
 }
 
-func registerSystemHandlers(registrations []systemRegistration) {
+func registerSystemHandlers(sess *session.Session, registrations []systemRegistration) {
 	for _, registration := range registrations {
-		ipc.RegisterFunc("system", registration.command, registration.handler)
+		handler := registration.handler
+		if registration.privileged {
+			handler = privilege.RequirePrivilegedIPC(sess, handler)
+		}
+		ipc.RegisterFunc("system", registration.command, handler)
 	}
 }
 
@@ -113,6 +124,21 @@ func handleGetPCIDevices(ctx context.Context, args []string, emit ipc.Events) er
 
 func handleGetMemoryModules(ctx context.Context, args []string, emit ipc.Events) error {
 	return emitSystemCall(emit, FetchMemoryModules)
+}
+
+func handleGetServerTime(ctx context.Context, args []string, emit ipc.Events) error {
+	return emit.Result(time.Now().Format(time.RFC3339))
+}
+
+func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) error {
+	return emitSystemCall(emit, GetTimezones)
+}
+
+func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged)
+		return emitSystemResult(emit, result, err)
+	}
 }
 
 func parseIncludeAllArg(args []string) bool {

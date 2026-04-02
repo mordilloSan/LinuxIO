@@ -20,6 +20,7 @@ import {
   BIOSInfoCard,
   CPUDetailsCard,
   CPUHistoryCard,
+  DiskIOHistoryCard,
   GPUInfoCard,
   GPUHistoryCard,
   MemoryHistoryCard,
@@ -34,7 +35,8 @@ import { alpha } from "@/utils/color";
 
 interface SensorReading {
   label: string;
-  value: number;
+  value: number | boolean;
+  kind: "number" | "boolean";
   unit: string;
 }
 
@@ -42,6 +44,16 @@ interface SensorGroup {
   adapter: string;
   readings: SensorReading[];
 }
+
+type NumericSensorReading = SensorReading & {
+  kind: "number";
+  value: number;
+};
+
+type BooleanSensorReading = SensorReading & {
+  kind: "boolean";
+  value: boolean;
+};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -54,6 +66,84 @@ const getTempColor = (
   return palette.error;
 };
 
+const isNumericSensorReading = (
+  reading: SensorReading,
+): reading is NumericSensorReading =>
+  reading.kind === "number" && typeof reading.value === "number";
+
+const isBooleanSensorReading = (
+  reading: SensorReading,
+): reading is BooleanSensorReading =>
+  reading.kind === "boolean" && typeof reading.value === "boolean";
+
+const isTemperatureReading = (
+  reading: SensorReading,
+): reading is NumericSensorReading => {
+  if (!isNumericSensorReading(reading)) return false;
+  const unit = reading.unit.toLowerCase();
+  return unit === "c" || unit === "°c";
+};
+
+const isFanReading = (
+  reading: SensorReading,
+): reading is NumericSensorReading =>
+  isNumericSensorReading(reading) && reading.unit.toLowerCase() === "rpm";
+
+const isVoltageReading = (
+  reading: SensorReading,
+): reading is NumericSensorReading =>
+  isNumericSensorReading(reading) && reading.unit.toLowerCase() === "v";
+
+const formatNumericSensorValue = (value: number, unit: string): string => {
+  const normalizedUnit = unit.toLowerCase();
+  if (normalizedUnit === "rpm")
+    return value > 0 ? `${Math.round(value)} RPM` : "Off";
+
+  let digits = 2;
+  if (normalizedUnit === "c" || normalizedUnit === "°c") digits = 1;
+  if (normalizedUnit === "%") digits = 1;
+  if (Number.isInteger(value)) digits = 0;
+
+  const formatted = value.toFixed(digits);
+  return unit ? `${formatted} ${unit}` : formatted;
+};
+
+const formatSensorValue = (reading: SensorReading): string => {
+  if (isBooleanSensorReading(reading)) return reading.value ? "True" : "False";
+  if (isNumericSensorReading(reading))
+    return formatNumericSensorValue(reading.value, reading.unit);
+  return String(reading.value);
+};
+
+const getSensorLabelMeta = (label: string) => {
+  const match = label.match(/^(.*)\(([^()]*)\)\s*$/);
+  if (!match) {
+    return { baseLabel: label, suffix: null as string | null, context: "" };
+  }
+
+  const baseLabel = match[1].trimEnd();
+  const parts = match[2]
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const suffix =
+    parts.length > 0 ? parts[parts.length - 1].toLowerCase() : null;
+  const context = parts.slice(0, -1).join(" / ");
+  return { baseLabel, suffix, context };
+};
+
+const isPrimarySensorReading = (reading: SensorReading): boolean => {
+  const { suffix } = getSensorLabelMeta(reading.label);
+  return suffix === null || suffix === "input";
+};
+
+const getSensorDisplayLabel = (reading: SensorReading): string => {
+  const { baseLabel, suffix, context } = getSensorLabelMeta(reading.label);
+  if (suffix !== "input") return reading.label;
+  if (!context) return baseLabel;
+  return `${baseLabel} (${context})`;
+};
+
 const unitChipColor = (
   unit: string,
 ): "success" | "warning" | "info" | "default" => {
@@ -62,6 +152,17 @@ const unitChipColor = (
   if (u === "rpm") return "info";
   if (u === "v") return "success";
   return "default";
+};
+
+const sensorChipColor = (
+  reading: SensorReading,
+): "success" | "warning" | "info" | "default" | "error" => {
+  if (isBooleanSensorReading(reading)) {
+    if (reading.label.toLowerCase().includes("alarm"))
+      return reading.value ? "error" : "success";
+    return reading.value ? "warning" : "default";
+  }
+  return unitChipColor(reading.unit);
 };
 
 const SectionHeader: React.FC<{
@@ -110,15 +211,14 @@ const SectionHeader: React.FC<{
 
 const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
   const theme = useAppTheme();
-  const temps = group.readings.filter((r) => {
-    const u = r.unit.toLowerCase();
-    return u === "c" || u === "°c";
-  });
-  const fans = group.readings.filter((r) => r.unit.toLowerCase() === "rpm");
-  const voltages = group.readings.filter((r) => r.unit.toLowerCase() === "v");
-  const other = group.readings.filter((r) => {
-    const u = r.unit.toLowerCase();
-    return u !== "c" && u !== "°c" && u !== "rpm" && u !== "v";
+  const visibleReadings = group.readings.filter(isPrimarySensorReading);
+  const temps = visibleReadings.filter(isTemperatureReading);
+  const fans = visibleReadings.filter(isFanReading);
+  const voltages = visibleReadings.filter(isVoltageReading);
+  const other = visibleReadings.filter((r) => {
+    if (!isNumericSensorReading(r)) return true;
+    const unit = r.unit.toLowerCase();
+    return unit !== "c" && unit !== "°c" && unit !== "rpm" && unit !== "v";
   });
 
   return (
@@ -159,8 +259,8 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
             {group.adapter}
           </AppTypography>
           <AppTypography variant="caption" color="text.secondary">
-            {group.readings.length} reading
-            {group.readings.length !== 1 ? "s" : ""}
+            {visibleReadings.length} reading
+            {visibleReadings.length !== 1 ? "s" : ""}
           </AppTypography>
         </div>
       </div>
@@ -178,15 +278,15 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
           {temps.map((r, i) => (
             <MetricBar
               key={`temp-${i}`}
-              label={r.label}
+              label={getSensorDisplayLabel(r)}
               percent={Math.min((r.value / 105) * 100, 100)}
               color={getTempColor(r.value, {
                 success: theme.palette.success.main,
                 warning: theme.palette.warning.main,
                 error: theme.palette.error.main,
               })}
-              tooltip={`${r.label}: ${r.value}°C`}
-              rightLabel={`${r.value}°C`}
+              tooltip={`${getSensorDisplayLabel(r)}: ${formatNumericSensorValue(r.value, r.unit)}`}
+              rightLabel={formatNumericSensorValue(r.value, r.unit)}
             />
           ))}
         </div>
@@ -221,13 +321,15 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
                       : alpha(theme.palette.text.secondary, 0.4)
                   }
                 />
-                <AppTypography variant="caption">{r.label}</AppTypography>
+                <AppTypography variant="caption">
+                  {getSensorDisplayLabel(r)}
+                </AppTypography>
               </div>
               <AppTypography
                 variant="caption"
                 style={{ fontVariantNumeric: "tabular-nums" }}
               >
-                {r.value > 0 ? `${r.value} RPM` : "Off"}
+                {formatNumericSensorValue(r.value, r.unit)}
               </AppTypography>
             </div>
           ))}
@@ -255,13 +357,15 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
                   height={14}
                   color={theme.palette.success.main}
                 />
-                <AppTypography variant="caption">{r.label}</AppTypography>
+                <AppTypography variant="caption">
+                  {getSensorDisplayLabel(r)}
+                </AppTypography>
               </div>
               <AppTypography
                 variant="caption"
                 style={{ fontVariantNumeric: "tabular-nums" }}
               >
-                {r.value.toFixed(2)} V
+                {formatNumericSensorValue(r.value, r.unit)}
               </AppTypography>
             </div>
           ))}
@@ -281,11 +385,13 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
               paddingInline: 2,
             }}
           >
-            <AppTypography variant="caption">{r.label}</AppTypography>
+            <AppTypography variant="caption">
+              {getSensorDisplayLabel(r)}
+            </AppTypography>
             <Chip
               size="small"
-              label={`${r.value} ${r.unit}`}
-              color={unitChipColor(r.unit)}
+              label={formatSensorValue(r)}
+              color={sensorChipColor(r)}
               variant="soft"
               style={{ height: 20, fontSize: "0.65rem" }}
             />
@@ -338,6 +444,17 @@ const HardwarePage: React.FC = () => {
     staleTime: 300000,
   });
 
+  const visibleSensorGroups = useMemo(
+    () =>
+      (sensorGroups ?? [])
+        .map((group) => ({
+          ...group,
+          readings: group.readings.filter(isPrimarySensorReading),
+        }))
+        .filter((group) => group.readings.length > 0),
+    [sensorGroups],
+  );
+
   // ── shared history range + hover ──
   const [historyRange, setHistoryRange] = useState<MonitoringRange>("1m");
   const [historyHoverRatio, setHistoryHoverRatio] = useState<number | null>(
@@ -367,23 +484,25 @@ const HardwarePage: React.FC = () => {
 
   // ── sensor summary ──
   const sensorSummary = useMemo(() => {
-    if (!sensorGroups)
+    if (visibleSensorGroups.length === 0)
       return { adapters: 0, readings: 0, maxTemp: null as number | null };
-    const readings = sensorGroups.reduce((s, g) => s + g.readings.length, 0);
+    const readings = visibleSensorGroups.reduce(
+      (sum, group) => sum + group.readings.length,
+      0,
+    );
     let maxTemp: number | null = null;
-    for (const g of sensorGroups) {
+    for (const g of visibleSensorGroups) {
       for (const r of g.readings) {
-        const u = r.unit.toLowerCase();
         if (
-          (u === "c" || u === "°c") &&
+          isTemperatureReading(r) &&
           (maxTemp === null || r.value > maxTemp)
         ) {
           maxTemp = r.value;
         }
       }
     }
-    return { adapters: sensorGroups.length, readings, maxTemp };
-  }, [sensorGroups]);
+    return { adapters: visibleSensorGroups.length, readings, maxTemp };
+  }, [visibleSensorGroups]);
 
   return (
     <div>
@@ -456,7 +575,7 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
             <ErrorBoundary>
               <CPUHistoryCard
                 range={historyRange}
@@ -466,7 +585,7 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
             <ErrorBoundary>
               <MemoryHistoryCard
                 range={historyRange}
@@ -476,7 +595,7 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
             <ErrorBoundary>
               <GPUHistoryCard
                 range={historyRange}
@@ -486,7 +605,17 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+            <ErrorBoundary>
+              <DiskIOHistoryCard
+                range={historyRange}
+                onRangeChange={setHistoryRange}
+                hoverRatio={historyHoverRatio}
+                onHoverChange={setHistoryHoverRatio}
+              />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
               <NetworkHistoryCard
                 range={historyRange}
@@ -506,7 +635,7 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("sensors")}
       />
       <AppCollapse in={sections.sensors}>
-        {!sensorGroups || sensorGroups.length === 0 ? (
+        {visibleSensorGroups.length === 0 ? (
           <FrostedCard style={{ padding: 16, textAlign: "center" }}>
             <AppTypography variant="body2" color="text.secondary">
               No sensor data available. Ensure <code>lm-sensors</code> is
@@ -560,7 +689,7 @@ const HardwarePage: React.FC = () => {
 
             {/* Sensor group cards */}
             <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
-              {sensorGroups.map((group, idx) => (
+              {visibleSensorGroups.map((group, idx) => (
                 <AppGrid
                   key={`${group.adapter}-${idx}`}
                   size={{ xs: 12, sm: 6, lg: 4 }}

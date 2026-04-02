@@ -96,7 +96,7 @@ const Processor: React.FC = () => {
           { label: "CPU", value: CPUInfo?.modelName },
           {
             label: "Usage",
-            value: `${averageCpuUsage.toFixed(0)}% avg / ${peakCpuUsage.toFixed(0)}% peak`,
+            value: `${averageCpuUsage.toFixed(0)}% (${peakCpuUsage.toFixed(0)}% peak)`,
           },
           {
             label: "Load",

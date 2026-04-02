@@ -27,6 +27,10 @@ const (
 	cpuUsageQuery          = `100 * (1 - avg(rate(node_cpu_seconds_total{job="node",mode="idle"}[1m])))`
 	memoryUsageQuery       = `100 * (1 - avg(node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}))`
 	gpuUsageQuery          = `100 * (gpu_utilization_ratio{job="gpu-scraper"} or max by (card, pci_slot, vendor) (gpu_intel_engine_utilization_ratio{job="gpu-scraper"}))`
+	diskReadMetric         = "node_disk_read_bytes_total"
+	diskWriteMetric        = "node_disk_written_bytes_total"
+	diskDeviceMatcher      = `sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+`
+	diskRateWindow         = "15s"
 	networkReceiveMetric   = "node_network_receive_bytes_total"
 	networkTransmitMetric  = "node_network_transmit_bytes_total"
 	networkRateWindow      = "15s"
@@ -58,6 +62,15 @@ type NetworkSeriesResponse struct {
 	StepSeconds int           `json:"stepSeconds"`
 	RXPoints    []SeriesPoint `json:"rxPoints"`
 	TXPoints    []SeriesPoint `json:"txPoints"`
+	Reason      string        `json:"reason,omitempty"`
+}
+
+type DiskIOSeriesResponse struct {
+	Available   bool          `json:"available"`
+	Range       string        `json:"range"`
+	StepSeconds int           `json:"stepSeconds"`
+	ReadPoints  []SeriesPoint `json:"readPoints"`
+	WritePoints []SeriesPoint `json:"writePoints"`
 	Reason      string        `json:"reason,omitempty"`
 }
 
@@ -127,31 +140,26 @@ func GetNetworkSeries(ctx context.Context, rangeKey, device string) NetworkSerie
 	if !ok {
 		return unavailableNetworkSeries(rangeKey, 0, "unsupported monitoring range")
 	}
-	if device == "" {
-		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), "network interface is required")
-	}
-
 	baseURL, err := resolvePrometheusBaseURL(ctx)
 	if err != nil {
 		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
 	}
 
-	rxResponse, err := queryPrometheusRange(
-		ctx,
-		baseURL,
-		def,
-		buildNetworkRateQuery(networkReceiveMetric, device),
-	)
+	var rxQuery, txQuery string
+	if device == "" {
+		rxQuery = buildNetworkTotalQuery(networkReceiveMetric)
+		txQuery = buildNetworkTotalQuery(networkTransmitMetric)
+	} else {
+		rxQuery = buildNetworkRateQuery(networkReceiveMetric, device)
+		txQuery = buildNetworkRateQuery(networkTransmitMetric, device)
+	}
+
+	rxResponse, err := queryPrometheusRange(ctx, baseURL, def, rxQuery)
 	if err != nil {
 		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
 	}
 
-	txResponse, err := queryPrometheusRange(
-		ctx,
-		baseURL,
-		def,
-		buildNetworkRateQuery(networkTransmitMetric, device),
-	)
+	txResponse, err := queryPrometheusRange(ctx, baseURL, def, txQuery)
 	if err != nil {
 		return unavailableNetworkSeries(def.Key, int(def.Step/time.Second), err.Error())
 	}
@@ -174,6 +182,57 @@ func GetNetworkSeries(ctx context.Context, rangeKey, device string) NetworkSerie
 		StepSeconds: int(def.Step / time.Second),
 		RXPoints:    rxPoints,
 		TXPoints:    txPoints,
+	}
+}
+
+func GetDiskIOSeries(ctx context.Context, rangeKey, device string) DiskIOSeriesResponse {
+	def, ok := lookupRange(rangeKey)
+	if !ok {
+		return unavailableDiskIOSeries(rangeKey, 0, "unsupported monitoring range")
+	}
+
+	baseURL, err := resolvePrometheusBaseURL(ctx)
+	if err != nil {
+		return unavailableDiskIOSeries(def.Key, int(def.Step/time.Second), err.Error())
+	}
+
+	var readQuery, writeQuery string
+	if device == "" {
+		readQuery = buildDiskTotalQuery(diskReadMetric)
+		writeQuery = buildDiskTotalQuery(diskWriteMetric)
+	} else {
+		readQuery = buildDiskRateQuery(diskReadMetric, device)
+		writeQuery = buildDiskRateQuery(diskWriteMetric, device)
+	}
+
+	readResponse, err := queryPrometheusRange(ctx, baseURL, def, readQuery)
+	if err != nil {
+		return unavailableDiskIOSeries(def.Key, int(def.Step/time.Second), err.Error())
+	}
+
+	writeResponse, err := queryPrometheusRange(ctx, baseURL, def, writeQuery)
+	if err != nil {
+		return unavailableDiskIOSeries(def.Key, int(def.Step/time.Second), err.Error())
+	}
+
+	readPoints, writePoints := alignSeriesPoints(
+		normalizePrometheusPoints(readResponse.Data.Result),
+		normalizePrometheusPoints(writeResponse.Data.Result),
+	)
+	if len(readPoints) == 0 && len(writePoints) == 0 {
+		return unavailableDiskIOSeries(
+			def.Key,
+			int(def.Step/time.Second),
+			"waiting for Prometheus disk I/O samples",
+		)
+	}
+
+	return DiskIOSeriesResponse{
+		Available:   true,
+		Range:       def.Key,
+		StepSeconds: int(def.Step / time.Second),
+		ReadPoints:  readPoints,
+		WritePoints: writePoints,
 	}
 }
 
@@ -241,11 +300,52 @@ func unavailableNetworkSeries(rangeKey string, stepSeconds int, reason string) N
 	}
 }
 
+func unavailableDiskIOSeries(rangeKey string, stepSeconds int, reason string) DiskIOSeriesResponse {
+	if rangeKey == "" {
+		rangeKey = defaultRangeKey
+	}
+	return DiskIOSeriesResponse{
+		Available:   false,
+		Range:       rangeKey,
+		StepSeconds: stepSeconds,
+		ReadPoints:  []SeriesPoint{},
+		WritePoints: []SeriesPoint{},
+		Reason:      reason,
+	}
+}
+
+func buildDiskRateQuery(metric, device string) string {
+	return fmt.Sprintf(
+		`clamp_min(rate(%s{job="node",device=%q}[%s]), 0)`,
+		metric,
+		device,
+		diskRateWindow,
+	)
+}
+
+func buildDiskTotalQuery(metric string) string {
+	return fmt.Sprintf(
+		`sum(clamp_min(rate(%s{job="node",device=~%q}[%s]), 0))`,
+		metric,
+		diskDeviceMatcher,
+		diskRateWindow,
+	)
+}
+
 func buildNetworkRateQuery(metric, device string) string {
 	return fmt.Sprintf(
 		`clamp_min(rate(%s{job="node",device=%q}[%s]), 0) / %d`,
 		metric,
 		device,
+		networkRateWindow,
+		networkRateUnitDivisor,
+	)
+}
+
+func buildNetworkTotalQuery(metric string) string {
+	return fmt.Sprintf(
+		`sum(clamp_min(rate(%s{job="node",device!~"veth.*|docker.*|br.*|lo"}[%s]), 0)) / %d`,
+		metric,
 		networkRateWindow,
 		networkRateUnitDivisor,
 	)

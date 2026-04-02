@@ -1,12 +1,15 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/go-logger/logger"
@@ -18,6 +21,12 @@ import (
 const GitHubAPI = "https://api.github.com/repos/%s/%s/releases/latest"
 
 const maxGitHubReleaseBodyBytes int64 = 1 << 20
+
+var componentVersionCommandTimeout = time.Second
+
+var runComponentVersionCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).Output()
+}
 
 type UpdateInfo struct {
 	Available      bool   `json:"available"`
@@ -114,37 +123,79 @@ func readBodyLimited(r io.Reader, max int64) ([]byte, error) {
 	return body, nil
 }
 
-// getComponentVersions runs 'linuxio version' command and parses the output.
-// Returns a map of component names to versions, or nil if the command fails.
-func getComponentVersions() map[string]string {
-	linuxioCLI := config.BinDir + "/linuxio"
-	cmd := exec.Command(linuxioCLI, "version")
-	output, err := cmd.Output()
-	if err != nil {
-		logger.Debugf("failed to run '%s version': %v", linuxioCLI, err)
-		return nil
+type componentVersionProbe struct {
+	component string
+	binary    string
+	args      []string
+}
+
+func getComponentVersions(parent context.Context) map[string]string {
+	if parent == nil {
+		parent = context.Background()
 	}
 
-	components := make(map[string]string)
-	lines := strings.SplitSeq(string(output), "\n")
+	components := make(map[string]string, 4)
+	if config.Version != "" {
+		components["LinuxIO Web Server"] = config.Version
+	}
 
-	for line := range lines {
-		line = strings.TrimSpace(line)
-		// Look for lines like: "  LinuxIO Web Server dev-v0.6.9"
-		if strings.HasPrefix(line, "LinuxIO ") {
-			parts := strings.Fields(line)
-			if len(parts) >= 3 {
-				// Join all parts except the last one for the component name
-				componentName := strings.Join(parts[:len(parts)-1], " ")
-				version := parts[len(parts)-1]
-				components[componentName] = version
+	probes := []componentVersionProbe{
+		{component: "LinuxIO Bridge", binary: "linuxio-bridge", args: []string{"version"}},
+		{component: "LinuxIO Auth", binary: "linuxio-auth", args: []string{"version"}},
+		{component: "LinuxIO CLI", binary: "linuxio", args: []string{"version", "--self"}},
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, probe := range probes {
+		wg.Go(func() {
+			ctx, cancel := context.WithTimeout(parent, componentVersionCommandTimeout)
+			defer cancel()
+
+			binaryPath := filepath.Join(config.BinDir, probe.binary)
+			output, err := runComponentVersionCommand(ctx, binaryPath, probe.args...)
+			if err != nil {
+				logger.Debugf("failed to run '%s %s': %v", binaryPath, strings.Join(probe.args, " "), err)
+				return
 			}
-		}
+
+			version, ok := parseComponentVersionOutput(probe.component, output)
+			if !ok {
+				logger.Debugf("failed to parse version output for %s: %q", probe.component, strings.TrimSpace(string(output)))
+				return
+			}
+
+			mu.Lock()
+			components[probe.component] = version
+			mu.Unlock()
+		})
 	}
 
-	if len(components) == 0 {
-		return nil
-	}
-
+	wg.Wait()
 	return components
+}
+
+func parseComponentVersionOutput(component string, output []byte) (string, bool) {
+	for line := range strings.SplitSeq(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, component+" ") {
+			return "", false
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return "", false
+		}
+
+		version := fields[len(fields)-1]
+		if version == "" {
+			return "", false
+		}
+		return version, true
+	}
+	return "", false
 }

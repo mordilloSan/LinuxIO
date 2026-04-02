@@ -1142,7 +1142,7 @@ const SharesPage: React.FC = () => {
         shareGroups.length > 0 ? (
           <AppGrid container spacing={2}>
             {shareGroups.map((group) => (
-              <AppGrid key={group.id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <AppGrid key={group.id} size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
                 <FrostedCard style={{ padding: 10 }}>
                   <div
                     style={{

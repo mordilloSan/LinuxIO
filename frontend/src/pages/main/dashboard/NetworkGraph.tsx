@@ -10,22 +10,6 @@ interface NetworkGraphProps {
   tx: number;
 }
 
-const formatNetworkRate = (value: number): string => {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0.0 kB/s";
-  }
-
-  if (value >= 1024 * 1024) {
-    return `${(value / (1024 * 1024)).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)} GB/s`;
-  }
-
-  if (value >= 1024) {
-    return `${(value / 1024).toFixed(value >= 10 * 1024 ? 0 : 1)} MB/s`;
-  }
-
-  return `${value.toFixed(value >= 100 ? 0 : 1)} kB/s`;
-};
-
 const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,7 +54,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         return data
           .map(
             (d, i) =>
-              `<span style="color:${colors[i]}">${labels[i]}: ${formatNetworkRate(d.value)}</span>`,
+              `<span style="color:${colors[i]}">${labels[i]}: ${d.value.toFixed(2)} kB/s</span>`,
           )
           .join("<br/>");
       },
@@ -132,10 +116,10 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         }}
       >
         <div style={{ color: rxColor, fontWeight: 600 }}>
-          Rx: {formatNetworkRate(rx)}
+          Rx: {rx.toFixed(2)} kB/s
         </div>
         <div style={{ color: txColor, fontWeight: 600 }}>
-          Tx: {formatNetworkRate(tx)}
+          Tx: {tx.toFixed(2)} kB/s
         </div>
       </div>
     </div>

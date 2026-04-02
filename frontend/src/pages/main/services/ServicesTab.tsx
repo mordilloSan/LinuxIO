@@ -30,7 +30,11 @@ function useServicesQuery(viewMode: TableCardViewMode) {
   });
 }
 
-const ServicesTab: React.FC = () => {
+interface ServicesTabProps {
+  initialSelected?: string;
+}
+
+const ServicesTab: React.FC<ServicesTabProps> = ({ initialSelected }) => {
   const [viewMode, setViewMode] = useViewMode("services.list", "table");
   const { data, isPending, isError, error } = useServicesQuery(viewMode);
 
@@ -46,6 +50,7 @@ const ServicesTab: React.FC = () => {
       errorMessage="Failed to load services"
       compareItems={compareServicesByName}
       matchesSearch={matchesServiceSearch}
+      initialSelected={initialSelected}
       renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
         <ServiceTableView
           services={items}

@@ -12,7 +12,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/jaypipes/ghw v0.23.0
+	github.com/jaypipes/ghw v0.24.0
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mordilloSan/go-logger v1.0.4
 	github.com/shirou/gopsutil/v4 v4.26.3

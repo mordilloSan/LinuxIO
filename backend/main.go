@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
@@ -27,7 +32,7 @@ const (
 	monitoringGeneratedComposePath = "/run/linuxio-monitoring/docker-compose.generated.yml"
 )
 
-var execCommand = exec.Command
+var versionExecCommand = exec.Command
 
 func main() {
 	if len(os.Args) < 2 {
@@ -54,7 +59,7 @@ func main() {
 	case "verbose":
 		runVerbose(args)
 	case "version":
-		showVersion()
+		showVersion(args)
 	case "help", "-h", "--help":
 		showHelp()
 	default:
@@ -77,7 +82,7 @@ Commands:
   restart     Restart LinuxIO control plane [--full]
   monitoring  Manage monitoring stack [start|stop|restart|enable|disable|status]
   verbose     Manage verbose logging [enable|disable|status]
-  version     Show version information
+  version     Show version information [--self]
   help        Show this help message
 
 Examples:
@@ -85,16 +90,26 @@ Examples:
   linuxio restart
   linuxio restart --full
   linuxio monitoring status
-  linuxio logs monitoring 200`)
+  linuxio logs monitoring 200
+  linuxio version --self`)
 }
 
-func showVersion() {
+func cliVersionLine() string {
+	return fmt.Sprintf("LinuxIO CLI %s", config.Version)
+}
+
+func showVersion(args []string) {
+	if len(args) == 1 && args[0] == "--self" {
+		fmt.Println(cliVersionLine())
+		return
+	}
+
 	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
 	fmt.Println("\nInstalled components:")
-	fmt.Printf("  LinuxIO CLI %s\n", config.Version)
+	fmt.Printf("  %s\n", cliVersionLine())
 
 	// Check linuxio-webserver
-	out, err := execCommand("linuxio-webserver", "version").CombinedOutput()
+	out, err := versionExecCommand("linuxio-webserver", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -103,7 +118,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-bridge
-	out, err = execCommand("linuxio-bridge", "version").CombinedOutput()
+	out, err = versionExecCommand("linuxio-bridge", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -112,7 +127,7 @@ func showVersion() {
 	}
 
 	// Check linuxio-auth
-	out, err = execCommand("linuxio-auth", "version").CombinedOutput()
+	out, err = versionExecCommand("linuxio-auth", "version").CombinedOutput()
 	if err == nil {
 		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		fmt.Printf("  %s\n", line)
@@ -122,57 +137,50 @@ func showVersion() {
 }
 
 func runStatus() {
-	cmd := execCommand("systemctl", "list-units", "linuxio*", "--no-pager", "--all")
-	out, err := cmd.Output()
+	units, err := systemd.ListUnitsWithPrefix("linuxio")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to query systemd: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Filter out legend and footer, keep header and unit lines
-	var filtered []string
-	for line := range strings.Lines(string(out)) {
-		line = strings.TrimRight(line, "\n")
-		if line == "" || strings.HasPrefix(line, "Legend:") || strings.HasPrefix(line, "To show all") {
-			break
+	sort.Slice(units, func(i, j int) bool { return units[i].Name < units[j].Name })
+
+	const header = "  UNIT                                      LOAD    ACTIVE   SUB      DESCRIPTION"
+	maxWidth := len(header)
+	type row struct {
+		dot  string
+		text string
+	}
+	rows := make([]row, 0, len(units))
+	for _, u := range units {
+		var dot string
+		switch u.ActiveState {
+		case "active":
+			dot = "\033[32m●\033[0m"
+		case "failed":
+			dot = "\033[31m●\033[0m"
+		default:
+			dot = "○"
 		}
-		filtered = append(filtered, line)
+		text := fmt.Sprintf("%-44s %-8s %-8s %-8s %s", u.Name, u.LoadState, u.ActiveState, u.SubState, u.Description)
+		if len(text)+2 > maxWidth {
+			maxWidth = len(text) + 2
+		}
+		rows = append(rows, row{dot: dot, text: text})
 	}
 
-	// Find max width for header underline
-	maxWidth := 0
-	for _, line := range filtered {
-		if len(line) > maxWidth {
-			maxWidth = len(line)
-		}
+	fmt.Printf("  \033[4m%s\033[0m\n", header+strings.Repeat(" ", maxWidth-len(header)))
+	for _, r := range rows {
+		fmt.Printf("%s %s\n", r.dot, r.text)
 	}
-
-	// Print with header underlined to full width, add status dots
-	for i, line := range filtered {
-		if i == 0 {
-			padded := line + strings.Repeat(" ", maxWidth-len(line))
-			fmt.Printf("  \033[4m%s\033[0m\n", padded)
-		} else {
-			// Add colored status dot based on ACTIVE column
-			dot := "○" // default: white circle
-			if strings.Contains(line, " active ") {
-				dot = "\033[32m●\033[0m" // green
-			} else if strings.Contains(line, " failed ") {
-				dot = "\033[31m●\033[0m" // red
-			}
-			fmt.Printf("%s %s\n", dot, strings.TrimLeft(line, " "))
-		}
-	}
-
-	// Print summary (unit count excludes header)
-	unitCount := len(filtered) - 1
-	fmt.Printf("\n\033[1m%d loaded units listed.\033[0m\n", unitCount)
+	fmt.Printf("\n\033[1m%d loaded units listed.\033[0m\n", len(units))
 }
 
 func runLogs(args []string) {
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
-	cmd := execCommand("journalctl", journalctlArgs...)
+	cmd := exec.Command("journalctl", journalctlArgs...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -355,14 +363,27 @@ func runSystemctlTargets(action string, targets []string, successLabel string) {
 		os.Exit(1)
 	}
 
-	cmd := execCommand("systemctl", append([]string{action}, targets...)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to %s %s: %v\n", action, strings.Join(targets, " "), err)
-		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		os.Exit(1)
+	for _, target := range targets {
+		var err error
+		switch action {
+		case "start":
+			err = systemd.StartUnit(target)
+		case "stop":
+			err = systemd.StopUnit(target)
+		case "restart":
+			err = systemd.RestartUnit(target)
+		case "enable":
+			err = systemd.EnableUnit(target)
+		case "disable":
+			err = systemd.DisableUnit(target)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown action: %s\n", action)
+			os.Exit(1)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to %s %s: %v\n", action, target, err)
+			os.Exit(1)
+		}
 	}
 
 	if successLabel == "" {
@@ -466,46 +487,26 @@ type composeContainer struct {
 	Health string `json:"Health"`
 }
 
-type dockerPSContainer struct {
-	Names  string `json:"Names"`
-	State  string `json:"State"`
-	Status string `json:"Status"`
-}
-
 func showMonitoringContainers() {
-	out, err := execCommand(
-		"docker",
-		"ps",
-		"--all",
-		"--filter", "label=com.docker.compose.project="+monitoringProjectName,
-		"--format", "{{json .}}",
-	).CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
 		return
 	}
+	defer cli.Close()
 
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" {
-		fmt.Printf("\n  Containers:  none running\n")
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", "com.docker.compose.project="+monitoringProjectName),
+		),
+	})
+	if err != nil {
+		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
 		return
-	}
-
-	var containers []composeContainer
-	for line := range strings.Lines(trimmed) {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var c dockerPSContainer
-		if err := json.Unmarshal([]byte(line), &c); err != nil {
-			continue
-		}
-		containers = append(containers, composeContainer{
-			Name:   c.Names,
-			State:  monitoringContainerState(c.State, c.Status),
-			Health: monitoringContainerHealth(c.Status),
-		})
 	}
 
 	if len(containers) == 0 {
@@ -513,12 +514,26 @@ func showMonitoringContainers() {
 		return
 	}
 
-	sort.Slice(containers, func(i, j int) bool {
-		return containers[i].Name < containers[j].Name
+	composeContainers := make([]composeContainer, 0, len(containers))
+	for _, ctr := range containers {
+		composeContainers = append(composeContainers, composeContainer{
+			Name:   monitoringContainerName(ctr.Names),
+			State:  monitoringContainerState(ctr.State, ctr.Status),
+			Health: monitoringContainerHealth(ctr.Status),
+		})
+	}
+
+	if len(composeContainers) == 0 {
+		fmt.Printf("\n  Containers:  none running\n")
+		return
+	}
+
+	sort.Slice(composeContainers, func(i, j int) bool {
+		return composeContainers[i].Name < composeContainers[j].Name
 	})
 
 	fmt.Printf("\n    \033[4m%-28s  %-12s  %s\033[0m\n", "CONTAINER", "STATE", "HEALTH")
-	for _, c := range containers {
+	for _, c := range composeContainers {
 		var dot string
 		switch {
 		case c.State == "running" && (c.Health == "healthy" || c.Health == ""):
@@ -534,6 +549,16 @@ func showMonitoringContainers() {
 		}
 		fmt.Printf("  %s %-28s  %-12s  %s\n", dot, c.Name, c.State, health)
 	}
+}
+
+func monitoringContainerName(names []string) string {
+	for _, name := range names {
+		name = strings.TrimPrefix(strings.TrimSpace(name), "/")
+		if name != "" {
+			return name
+		}
+	}
+	return "-"
 }
 
 func monitoringContainerState(state, status string) string {
@@ -581,16 +606,23 @@ func monitoringContainerHealth(status string) string {
 	}
 }
 
-func systemctlState(args ...string) string {
-	out, err := execCommand("systemctl", args...).CombinedOutput()
-	state := strings.TrimSpace(string(out))
-	if state != "" {
+func systemctlState(subcommand, name string) string {
+	switch subcommand {
+	case "is-active":
+		state, err := systemd.GetActiveState(name)
+		if err != nil {
+			return "unknown"
+		}
 		return state
-	}
-	if err != nil {
+	case "is-enabled":
+		state, err := systemd.GetUnitFileState(name)
+		if err != nil {
+			return "unknown"
+		}
+		return state
+	default:
 		return "unknown"
 	}
-	return "unknown"
 }
 
 const verboseDropinPath = "/etc/systemd/system/linuxio-webserver.service.d/verbose.conf"
@@ -645,18 +677,14 @@ func enableVerbose() {
 
 	fmt.Println("✓ Verbose mode enabled")
 
-	// Reload systemd daemon
 	fmt.Println("Reloading systemd daemon...")
-	cmd := execCommand("systemctl", "daemon-reload")
-	if err := cmd.Run(); err != nil {
+	if err := systemd.DaemonReload(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Restart LinuxIO services
 	fmt.Println("Restarting linuxio.target...")
-	cmd = execCommand("systemctl", "restart", "linuxio.target")
-	if err := cmd.Run(); err != nil {
+	if err := systemd.RestartUnit(linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}
@@ -681,18 +709,14 @@ func disableVerbose() {
 
 	fmt.Println("✓ Verbose mode disabled")
 
-	// Reload systemd daemon
 	fmt.Println("Reloading systemd daemon...")
-	cmd := execCommand("systemctl", "daemon-reload")
-	if err := cmd.Run(); err != nil {
+	if err := systemd.DaemonReload(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Restart LinuxIO services
 	fmt.Println("Restarting linuxio.target...")
-	cmd = execCommand("systemctl", "restart", "linuxio.target")
-	if err := cmd.Run(); err != nil {
+	if err := systemd.RestartUnit(linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}

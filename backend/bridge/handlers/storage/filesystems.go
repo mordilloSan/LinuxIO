@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,7 +44,7 @@ func isProtectedMount(mountpoint string) bool {
 	return false
 }
 
-func UnmountFilesystem(mountpoint string) (map[string]any, error) {
+func UnmountFilesystem(ctx context.Context, mountpoint string) (map[string]any, error) {
 	if !validPath.MatchString(mountpoint) {
 		return nil, fmt.Errorf("invalid mountpoint")
 	}
@@ -58,7 +59,7 @@ func UnmountFilesystem(mountpoint string) (map[string]any, error) {
 	}
 
 	if partition.Fstype == "nfs" || partition.Fstype == "nfs4" {
-		return UnmountNFS(mountpoint, false)
+		return UnmountNFS(ctx, mountpoint, false)
 	}
 
 	cmd := exec.Command("umount", mountpoint)

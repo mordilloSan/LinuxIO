@@ -175,3 +175,72 @@ func TestGetNetworkSeriesQueriesPrometheusAndAlignsPoints(t *testing.T) {
 	require.Equal(t, 0.0, result.RXPoints[2].Value)
 	require.Equal(t, 75.0, result.TXPoints[2].Value)
 }
+
+func TestGetDiskIOSeriesQueriesPrometheusAndAlignsPoints(t *testing.T) {
+	originalResolver := resolvePrometheusBaseURL
+	originalClient := httpClient
+	t.Cleanup(func() {
+		resolvePrometheusBaseURL = originalResolver
+		httpClient = originalClient
+	})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, prometheusQueryPath, r.URL.Path)
+		require.Equal(t, "5s", r.URL.Query().Get("step"))
+		require.NotEmpty(t, r.URL.Query().Get("start"))
+		require.NotEmpty(t, r.URL.Query().Get("end"))
+
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Query().Get("query") {
+		case buildDiskRateQuery(diskReadMetric, "nvme0n1"):
+			fmt.Fprint(w, `{
+				"status":"success",
+				"data":{
+					"resultType":"matrix",
+					"result":[
+						{"metric":{"device":"nvme0n1"},"values":[[1711710000,"4096"],[1711710005,"8192"]]}
+					]
+				}
+			}`)
+		case buildDiskRateQuery(diskWriteMetric, "nvme0n1"):
+			fmt.Fprint(w, `{
+				"status":"success",
+				"data":{
+					"resultType":"matrix",
+					"result":[
+						{"metric":{"device":"nvme0n1"},"values":[[1711710005,"1024"],[1711710010,"2048"]]}
+					]
+				}
+			}`)
+		default:
+			t.Fatalf("unexpected query %q", r.URL.Query().Get("query"))
+		}
+	}))
+	defer srv.Close()
+
+	resolvePrometheusBaseURL = func(context.Context) (string, error) {
+		return srv.URL, nil
+	}
+	httpClient = srv.Client()
+
+	result := GetDiskIOSeries(context.Background(), "1m", "nvme0n1")
+
+	require.True(t, result.Available)
+	require.Equal(t, "1m", result.Range)
+	require.Equal(t, 5, result.StepSeconds)
+	require.Len(t, result.ReadPoints, 3)
+	require.Len(t, result.WritePoints, 3)
+
+	require.Equal(t, int64(1711710000000), result.ReadPoints[0].TS)
+	require.Equal(t, 4096.0, result.ReadPoints[0].Value)
+	require.Equal(t, 0.0, result.WritePoints[0].Value)
+
+	require.Equal(t, int64(1711710005000), result.ReadPoints[1].TS)
+	require.Equal(t, 8192.0, result.ReadPoints[1].Value)
+	require.Equal(t, 1024.0, result.WritePoints[1].Value)
+
+	require.Equal(t, int64(1711710010000), result.ReadPoints[2].TS)
+	require.Equal(t, 0.0, result.ReadPoints[2].Value)
+	require.Equal(t, 2048.0, result.WritePoints[2].Value)
+}

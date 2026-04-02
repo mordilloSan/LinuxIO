@@ -135,7 +135,7 @@ func handleListNFSExports(ctx context.Context, args []string, emit ipc.Events) e
 		return ipc.ErrInvalidArgs
 	}
 	logger.Debugf("Listing NFS exports from server: %s", args[0])
-	exports, err := ListNFSExports(args[0])
+	exports, err := ListNFSExports(ctx, args[0])
 	if err != nil {
 		logger.Errorf("Failed to list NFS exports from %s: %v", args[0], err)
 		return err
@@ -152,7 +152,7 @@ func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
 	persist := len(args) > 4 && (args[4] == "true" || args[4] == "1")
 	options := args[3]
 	logger.Infof("Mounting NFS share: %s:%s -> %s (persist=%v)", args[0], args[1], args[2], persist)
-	result, err := MountNFS(args[0], args[1], args[2], options, persist)
+	result, err := MountNFS(ctx, args[0], args[1], args[2], options, persist)
 	if err != nil {
 		logger.Errorf("Failed to mount NFS %s:%s: %v", args[0], args[1], err)
 		return err
@@ -168,7 +168,7 @@ func handleUnmountNFS(ctx context.Context, args []string, emit ipc.Events) error
 	}
 	removeFstab := len(args) > 1 && (args[1] == "true" || args[1] == "1")
 	logger.Infof("Unmounting NFS: %s (removeFstab=%v)", args[0], removeFstab)
-	result, err := UnmountNFS(args[0], removeFstab)
+	result, err := UnmountNFS(ctx, args[0], removeFstab)
 	if err != nil {
 		logger.Errorf("Failed to unmount NFS %s: %v", args[0], err)
 		return err
@@ -184,7 +184,7 @@ func handleRemountNFS(ctx context.Context, args []string, emit ipc.Events) error
 	}
 	updateFstab := len(args) > 2 && (args[2] == "true" || args[2] == "1")
 	logger.Infof("Remounting NFS: %s with options=%s (updateFstab=%v)", args[0], args[1], updateFstab)
-	result, err := RemountNFS(args[0], args[1], updateFstab)
+	result, err := RemountNFS(ctx, args[0], args[1], updateFstab)
 	if err != nil {
 		logger.Errorf("Failed to remount NFS %s: %v", args[0], err)
 		return err
@@ -199,7 +199,7 @@ func handleUnmountFilesystem(ctx context.Context, args []string, emit ipc.Events
 		return ipc.ErrInvalidArgs
 	}
 	logger.Infof("Unmounting filesystem at %s", args[0])
-	result, err := UnmountFilesystem(args[0])
+	result, err := UnmountFilesystem(ctx, args[0])
 	if err != nil {
 		logger.Errorf("Failed to unmount filesystem %s: %v", args[0], err)
 		return err
