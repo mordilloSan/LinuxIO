@@ -118,7 +118,7 @@ ifeq ($(UNAME_S),Linux)
 endif
 
 # ---- hardening (link-time) -------------------------------------------------
-HARDEN_LDFLAGS := -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie
+HARDEN_LDFLAGS := -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,-z,separate-code -Wl,-z,nodlopen -pie
 # Keep --as-needed to avoid pulling unused libs into a SUID binary:
 HARDEN_LDFLAGS += -Wl,--as-needed
 
@@ -422,8 +422,8 @@ build-backend: $(GO_BUILD_PREREQ)
 		echo "   Bridge SHA256: (not embedded - development mode)"; \
 	fi
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOFLAGS="-buildvcs=false -tags=nomsgpack" \
-	"$(GO_BIN)" build \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
@@ -443,8 +443,8 @@ build-bridge: $(GO_BUILD_PREREQ)
 	@echo "   Module: $(MODULE_PATH)"
 	@echo "   Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOFLAGS="-buildvcs=false -tags=nomsgpack" \
-	"$(GO_BIN)" build \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
@@ -486,8 +486,8 @@ build-cli: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🏗️  Building CLI..."
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
-	"$(GO_BIN)" build \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
