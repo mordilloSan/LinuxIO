@@ -126,7 +126,8 @@ const getSensorLabelMeta = (label: string) => {
     .split("/")
     .map((part) => part.trim())
     .filter(Boolean);
-  const suffix = parts.length > 0 ? parts[parts.length - 1].toLowerCase() : null;
+  const suffix =
+    parts.length > 0 ? parts[parts.length - 1].toLowerCase() : null;
   const context = parts.slice(0, -1).join(" / ");
   return { baseLabel, suffix, context };
 };
