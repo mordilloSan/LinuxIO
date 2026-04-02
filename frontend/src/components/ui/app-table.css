@@ -88,23 +88,35 @@
 @media (max-width: 599.95px) {
   .app-table-hide-below-sm {
     display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
   }
 }
 
 @media (max-width: 899.95px) {
   .app-table-hide-below-md {
     display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
   }
 }
 
 @media (max-width: 1199.95px) {
   .app-table-hide-below-lg {
     display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
   }
 }
 
 @media (max-width: 1535.95px) {
   .app-table-hide-below-xl {
     display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
   }
 }
