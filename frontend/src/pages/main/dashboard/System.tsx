@@ -92,7 +92,7 @@ const SystemHealth = () => {
       /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\w+)\s+(\d+)\s+(\d{2}):(\d{2}):\d{2}/,
     );
     const displayTime = timeMatch
-      ? `${timeMatch[1]} ${timeMatch[2]}, ${timeMatch[3]}:${timeMatch[4]} ${parseInt(timeMatch[3]) >= 12 ? "PM" : "AM"}`
+      ? `${timeMatch[1]} ${timeMatch[2]}, ${timeMatch[3]}:${timeMatch[4]}}`
       : timeStr;
     const terminal =
       health.lastLogin.terminal === "web"
@@ -102,7 +102,7 @@ const SystemHealth = () => {
     items.push({
       icon: "mdi:account-clock-outline",
       color: theme.palette.text.secondary,
-      text: `Last successful login: ${displayTime}`,
+      text: `Last login: ${displayTime}`,
       detail:
         detailParts.length > 0 ? `from ${detailParts.join(" on ")}` : undefined,
     });
