@@ -188,7 +188,10 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
       <AppDialogTitle>Date &amp; Time Settings</AppDialogTitle>
       <AppDialogContent>
         {/* Sentinel captures initial focus so autocomplete dropdowns don't open automatically */}
-        <span tabIndex={-1} style={{ outline: "none", display: "block", height: 0 }} />
+        <span
+          tabIndex={-1}
+          style={{ outline: "none", display: "block", height: 0 }}
+        />
         <div
           style={{
             display: "flex",

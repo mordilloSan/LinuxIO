@@ -72,7 +72,8 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       document.body.style.overflow = "";
       if (open) {
         _openDialogCount--;
-        if (_openDialogCount === 0) document.body.classList.remove("dialog-open");
+        if (_openDialogCount === 0)
+          document.body.classList.remove("dialog-open");
       }
     };
   }, [open]);

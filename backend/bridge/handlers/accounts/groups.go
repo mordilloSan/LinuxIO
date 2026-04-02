@@ -149,6 +149,49 @@ func DeleteGroup(name string) error {
 	return nil
 }
 
+func normalizeGroupMembers(members []string) ([]string, error) {
+	normalized := make([]string, 0, len(members))
+	seen := make(map[string]struct{}, len(members))
+
+	for _, member := range members {
+		member = strings.TrimSpace(member)
+		if member == "" {
+			return nil, fmt.Errorf("group members cannot contain empty usernames")
+		}
+		if _, ok := seen[member]; ok {
+			continue
+		}
+		seen[member] = struct{}{}
+		normalized = append(normalized, member)
+	}
+
+	return normalized, nil
+}
+
+func sameGroupMembers(current, desired []string) bool {
+	currentSet := make(map[string]struct{}, len(current))
+
+	for _, member := range current {
+		member = strings.TrimSpace(member)
+		if member == "" {
+			continue
+		}
+		currentSet[member] = struct{}{}
+	}
+
+	if len(currentSet) != len(desired) {
+		return false
+	}
+
+	for _, member := range desired {
+		if _, ok := currentSet[member]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 // ModifyGroupMembers sets the members of a group
 func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 	if req.GroupName == "" {
@@ -165,44 +208,27 @@ func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 		return err
 	}
 
+	members, err := normalizeGroupMembers(req.Members)
+	if err != nil {
+		return err
+	}
+
 	// Validate all users exist
-	for _, member := range req.Members {
-		if _, err := GetUser(member); err != nil {
+	for _, member := range members {
+		if _, userErr := GetUser(member); userErr != nil {
 			return fmt.Errorf("user not found: %s", member)
 		}
 	}
 
-	// Find users to remove and add
-	currentMembers := make(map[string]bool)
-	for _, m := range group.Members {
-		currentMembers[m] = true
+	if sameGroupMembers(group.Members, members) {
+		logger.Infof("Group members unchanged: %s", req.GroupName)
+		return nil
 	}
 
-	newMembers := make(map[string]bool)
-	for _, m := range req.Members {
-		newMembers[m] = true
-	}
-
-	// Remove users no longer in the group
-	for _, member := range group.Members {
-		if !newMembers[member] {
-			cmd := exec.Command("gpasswd", "-d", member, req.GroupName)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("failed to remove user %s from group: %s", member, strings.TrimSpace(string(output)))
-			}
-		}
-	}
-
-	// Add new users to the group
-	for _, member := range req.Members {
-		if !currentMembers[member] {
-			cmd := exec.Command("gpasswd", "-a", member, req.GroupName)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("failed to add user %s to group: %s", member, strings.TrimSpace(string(output)))
-			}
-		}
+	cmd := exec.Command("gpasswd", "-M", strings.Join(members, ","), req.GroupName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to set group members for %s: %s", req.GroupName, strings.TrimSpace(string(output)))
 	}
 
 	logger.Infof("Modified group members: %s", req.GroupName)
