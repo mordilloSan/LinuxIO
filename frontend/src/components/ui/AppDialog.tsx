@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 import "./app-dialog.css";
 
+let _openDialogCount = 0;
+
 /* ── Dialog ─────────────────────────────────── */
 
 export type AppDialogCloseEvent =
@@ -56,16 +58,22 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   const prevOpen = useRef(open);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
 
-  // scroll lock
+  // scroll lock + background blur class
   useEffect(() => {
     if (open) {
       lastFocusedElement.current = document.activeElement as HTMLElement | null;
       document.body.style.overflow = "hidden";
+      _openDialogCount++;
+      if (_openDialogCount === 1) document.body.classList.add("dialog-open");
     } else if (lastFocusedElement.current) {
       lastFocusedElement.current.focus();
     }
     return () => {
       document.body.style.overflow = "";
+      if (open) {
+        _openDialogCount--;
+        if (_openDialogCount === 0) document.body.classList.remove("dialog-open");
+      }
     };
   }, [open]);
 

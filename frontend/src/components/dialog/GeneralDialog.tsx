@@ -27,7 +27,6 @@ const GeneralDialog: React.FC<GeneralDialogProps> = ({
         ...paperStyle,
       }}
       backdropStyle={{
-        backdropFilter: "blur(4px)",
         backgroundColor: alpha(theme.dialog.backdrop, 0.7),
       }}
     >

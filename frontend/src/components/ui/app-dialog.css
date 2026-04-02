@@ -1,3 +1,13 @@
+/* ── background blur when any dialog is open ── */
+
+#root {
+  transition: filter 225ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+body.dialog-open #root {
+  filter: blur(4px);
+}
+
 /* ── AppDialog ──────────────────────────────── */
 
 .app-dialog-root {
