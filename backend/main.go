@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
@@ -464,46 +468,26 @@ type composeContainer struct {
 	Health string `json:"Health"`
 }
 
-type dockerPSContainer struct {
-	Names  string `json:"Names"`
-	State  string `json:"State"`
-	Status string `json:"Status"`
-}
-
 func showMonitoringContainers() {
-	out, err := exec.Command(
-		"docker",
-		"ps",
-		"--all",
-		"--filter", "label=com.docker.compose.project="+monitoringProjectName,
-		"--format", "{{json .}}",
-	).CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
 		return
 	}
+	defer cli.Close()
 
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" {
-		fmt.Printf("\n  Containers:  none running\n")
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", "com.docker.compose.project="+monitoringProjectName),
+		),
+	})
+	if err != nil {
+		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
 		return
-	}
-
-	var containers []composeContainer
-	for line := range strings.Lines(trimmed) {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var c dockerPSContainer
-		if err := json.Unmarshal([]byte(line), &c); err != nil {
-			continue
-		}
-		containers = append(containers, composeContainer{
-			Name:   c.Names,
-			State:  monitoringContainerState(c.State, c.Status),
-			Health: monitoringContainerHealth(c.Status),
-		})
 	}
 
 	if len(containers) == 0 {
@@ -511,12 +495,26 @@ func showMonitoringContainers() {
 		return
 	}
 
-	sort.Slice(containers, func(i, j int) bool {
-		return containers[i].Name < containers[j].Name
+	composeContainers := make([]composeContainer, 0, len(containers))
+	for _, ctr := range containers {
+		composeContainers = append(composeContainers, composeContainer{
+			Name:   monitoringContainerName(ctr.Names),
+			State:  monitoringContainerState(ctr.State, ctr.Status),
+			Health: monitoringContainerHealth(ctr.Status),
+		})
+	}
+
+	if len(composeContainers) == 0 {
+		fmt.Printf("\n  Containers:  none running\n")
+		return
+	}
+
+	sort.Slice(composeContainers, func(i, j int) bool {
+		return composeContainers[i].Name < composeContainers[j].Name
 	})
 
 	fmt.Printf("\n    \033[4m%-28s  %-12s  %s\033[0m\n", "CONTAINER", "STATE", "HEALTH")
-	for _, c := range containers {
+	for _, c := range composeContainers {
 		var dot string
 		switch {
 		case c.State == "running" && (c.Health == "healthy" || c.Health == ""):
@@ -532,6 +530,16 @@ func showMonitoringContainers() {
 		}
 		fmt.Printf("  %s %-28s  %-12s  %s\n", dot, c.Name, c.State, health)
 	}
+}
+
+func monitoringContainerName(names []string) string {
+	for _, name := range names {
+		name = strings.TrimPrefix(strings.TrimSpace(name), "/")
+		if name != "" {
+			return name
+		}
+	}
+	return "-"
 }
 
 func monitoringContainerState(state, status string) string {
