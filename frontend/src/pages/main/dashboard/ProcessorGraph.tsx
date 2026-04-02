@@ -50,7 +50,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
         return data
           .map(
             (d) =>
-              `<span style="color:${color}">CPU: ${d.value.toFixed(1)}%</span>`,
+              `<span style="color:${color}; font-size: 13px; line-height: 1.3;">CPU: ${d.value.toFixed(1)}%</span>`,
           )
           .join("");
       },
