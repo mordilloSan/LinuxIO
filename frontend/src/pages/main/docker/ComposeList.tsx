@@ -96,6 +96,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
       headerName: "Containers",
       width: "100px",
       align: "center",
+      className: "app-table-hide-below-sm",
     },
     {
       field: "config",
@@ -174,7 +175,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
               </AppTypography>
             </div>
           </AppTableCell>
-          <AppTableCell align="center">
+          <AppTableCell
+            align="center"
+            className="app-table-hide-below-sm"
+          >
             {getTotalContainers(project)}
           </AppTableCell>
           <AppTableCell className="app-table-hide-below-sm">
@@ -452,7 +456,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: theme.spacing(2),
+        flexWrap: "nowrap",
+        gap: isSmallUp ? theme.spacing(2) : theme.spacing(1),
         marginBottom: theme.spacing(2),
       }}
     >
@@ -460,9 +465,21 @@ const ComposeList: React.FC<ComposeListProps> = ({
         placeholder="Search stacks…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{ width: 320 }}
+        style={{
+          flex: isSmallUp ? "0 0 320px" : "1 1 auto",
+          minWidth: 0,
+          width: isSmallUp ? 320 : undefined,
+        }}
       />
-      <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
+      <AppTypography
+        fontWeight={700}
+        style={{
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {filtered.length} shown
+      </AppTypography>
     </div>
   );
   if (viewMode === "card") {
