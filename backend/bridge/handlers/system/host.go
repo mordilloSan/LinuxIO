@@ -1,8 +1,11 @@
 package system
 
 import (
-	"os/exec"
+	"io/fs"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/shirou/gopsutil/v4/host"
 )
@@ -16,16 +19,21 @@ func FetchUptimeSeconds() (uint64, error) {
 }
 
 func GetTimezones() ([]string, error) {
-	out, err := exec.Command("timedatectl", "list-timezones", "--no-pager").Output()
+	const root = "/usr/share/zoneinfo"
+	var zones []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		name := strings.TrimPrefix(path, root+"/")
+		if _, zErr := time.LoadLocation(name); zErr == nil {
+			zones = append(zones, name)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-		if l = strings.TrimSpace(l); l != "" {
-			result = append(result, l)
-		}
-	}
-	return result, nil
+	sort.Strings(zones)
+	return zones, nil
 }
