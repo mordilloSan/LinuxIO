@@ -2,7 +2,7 @@ import React from "react";
 
 import { FileItem, ViewMode } from "../../types/filebrowser";
 
-import FileCard from "@/components/filebrowser/FileCard";
+import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
 import { SubfolderData } from "@/hooks/useFileSubfolders";
 
