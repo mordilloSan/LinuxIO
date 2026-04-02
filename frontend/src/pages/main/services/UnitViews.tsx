@@ -302,8 +302,11 @@ export const UnitCardActions: React.FC<{
     linuxio.dbus.mask_service.useMutation();
   const { mutate: unmaskService, isPending: isUnmasking } =
     linuxio.dbus.unmask_service.useMutation();
+  const { mutate: resetFailedService, isPending: isResettingFailed } =
+    linuxio.dbus.reset_failed_service.useMutation();
 
   const isActive = activeState === "active";
+  const isFailed = activeState === "failed";
   const liveUnitFileState = String(info?.UnitFileState ?? unitFileState ?? "");
   const isEnabled =
     liveUnitFileState === "enabled" || liveUnitFileState === "enabled-runtime";
@@ -316,7 +319,8 @@ export const UnitCardActions: React.FC<{
     isEnabling ||
     isDisabling ||
     isMasking ||
-    isUnmasking;
+    isUnmasking ||
+    isResettingFailed;
 
   return (
     <div
@@ -431,6 +435,20 @@ export const UnitCardActions: React.FC<{
             disabled={anyPending}
           >
             Mask
+          </AppButton>
+        </AppTooltip>
+      )}
+      {isFailed && (
+        <AppTooltip title="Clear the failed state so the unit can be started again">
+          <AppButton
+            size="small"
+            variant="outlined"
+            color="warning"
+            startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
+            onClick={() => resetFailedService([unitName])}
+            disabled={anyPending}
+          >
+            Reset Failed
           </AppButton>
         </AppTooltip>
       )}
