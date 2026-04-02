@@ -574,7 +574,7 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
             <ErrorBoundary>
               <CPUHistoryCard
                 range={historyRange}
@@ -584,7 +584,7 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
             <ErrorBoundary>
               <MemoryHistoryCard
                 range={historyRange}
@@ -594,7 +594,7 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
             <ErrorBoundary>
               <GPUHistoryCard
                 range={historyRange}

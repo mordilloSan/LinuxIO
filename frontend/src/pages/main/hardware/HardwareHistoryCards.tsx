@@ -760,7 +760,7 @@ const HistoryCardShell: React.FC<{
         minHeight: cardHeight,
         display: "flex",
         flexDirection: "column",
-        padding: 16,
+        padding: 6,
       }}
     >
       <div
@@ -777,7 +777,6 @@ const HistoryCardShell: React.FC<{
             style={{
               width: 40,
               height: 40,
-              borderRadius: 8,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
