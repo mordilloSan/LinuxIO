@@ -1,6 +1,7 @@
 import React from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 
 export interface CardIconHeaderProps {
   icon: React.ReactNode;
@@ -8,8 +9,6 @@ export interface CardIconHeaderProps {
   subtitle?: React.ReactNode;
   /** Content rendered on the right side (chips, buttons, dropdowns…). */
   right?: React.ReactNode;
-  /** Gap between icon box and text. Default 6. */
-  gap?: number;
   style?: React.CSSProperties;
 }
 
@@ -18,7 +17,6 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
   title,
   subtitle,
   right,
-  gap = 6,
   style,
 }) => (
   <div
@@ -29,7 +27,9 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
       ...style,
     }}
   >
-    <div style={{ display: "flex", alignItems: "center", gap, minWidth: 0 }}>
+    <div
+      style={{ display: "flex", alignItems: "center", gap: GAP_SM, minWidth: 0 }}
+    >
       <div
         style={{
           width: 40,

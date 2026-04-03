@@ -1,8 +1,10 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 
 export interface LVMMetricCardProps {
   title: string;
@@ -19,51 +21,22 @@ const LVMMetricCard: React.FC<LVMMetricCardProps> = ({
   icon,
   color,
 }) => (
-  <FrostedCard style={{ padding: 14, minWidth: 0 }}>
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        gap: 12,
-      }}
+  <FrostedCard style={{ padding: GAP_SM, minWidth: 0 }}>
+    <CardIconHeader
+      icon={<Icon icon={icon} width={22} height={22} color={color} />}
+      title={title}
+      style={{ marginBottom: GAP_SM }}
+    />
+    <AppTypography
+      variant="subtitle1"
+      fontWeight={800}
+      style={{ marginBottom: 4 }}
     >
-      <div style={{ minWidth: 0 }}>
-        <AppTypography
-          variant="caption"
-          color="text.secondary"
-          style={{ textTransform: "uppercase", letterSpacing: "0.08em" }}
-        >
-          {title}
-        </AppTypography>
-        <AppTypography
-          variant="subtitle1"
-          fontWeight={800}
-          style={{ marginTop: 4, marginBottom: 4 }}
-        >
-          {value}
-        </AppTypography>
-        <AppTypography variant="body2" color="text.secondary">
-          {subtitle}
-        </AppTypography>
-      </div>
-      <div
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 14,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color,
-          background: `color-mix(in srgb, ${color} 16%, transparent)`,
-          border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
-          flexShrink: 0,
-        }}
-      >
-        <Icon icon={icon} width={22} height={22} />
-      </div>
-    </div>
+      {value}
+    </AppTypography>
+    <AppTypography variant="body2" color="text.secondary">
+      {subtitle}
+    </AppTypography>
   </FrostedCard>
 );
 

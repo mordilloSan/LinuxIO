@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -669,14 +670,14 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
       <div
         style={{
           display: "grid",
-          gap: 12,
+          gap: GAP_SM,
         }}
       >
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
+            gap: GAP_SM,
           }}
         >
           <LVMMetricCard

@@ -101,7 +101,7 @@ const HardwareCard: React.FC<{
       icon={<Icon icon={avatarIcon} width={28} height={28} color={accentColor} />}
       title={title}
       subtitle={subtitle}
-      gap={3}
+
       right={
         actions ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
