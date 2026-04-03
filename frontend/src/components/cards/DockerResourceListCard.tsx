@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppDivider from "@/components/ui/AppDivider";
@@ -43,33 +44,7 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
         paddingBottom: 6,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 8,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
-        <div>
-          <AppTypography
-            variant="subtitle1"
-            fontWeight={700}
-            style={{ lineHeight: 1.2 }}
-          >
-            {title}
-          </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
-            {subtitle}
-          </AppTypography>
-        </div>
-      </div>
+      <CardIconHeader icon={icon} title={title} subtitle={subtitle} />
       <AppButton size="small" onClick={onViewAll} style={{ flexShrink: 0 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           View All

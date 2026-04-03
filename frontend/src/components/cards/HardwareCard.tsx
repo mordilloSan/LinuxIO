@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -105,33 +106,12 @@ const HardwareCard: React.FC<{
         marginBottom: 6,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 8,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
-        </div>
-        <div>
-          <AppTypography
-            variant="subtitle1"
-            fontWeight={700}
-            style={{ lineHeight: 1 }}
-          >
-            {title}
-          </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
-            {subtitle}
-          </AppTypography>
-        </div>
-      </div>
+      <CardIconHeader
+        icon={<Icon icon={avatarIcon} width={28} height={28} color={accentColor} />}
+        title={title}
+        subtitle={subtitle}
+        gap={3}
+      />
       {actions && (
         <div
           style={{

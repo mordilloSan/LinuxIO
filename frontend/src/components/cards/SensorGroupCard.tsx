@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
@@ -160,47 +161,19 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
 
   return (
     <FrostedCard style={{ padding: 10, height: "100%" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: 8,
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
+      <CardIconHeader
+        icon={
           <Icon
             icon="mdi:chip"
             width={24}
             height={24}
             color={theme.palette.primary.main}
           />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <AppTypography
-            variant="subtitle2"
-            fontWeight={700}
-            style={{ lineHeight: 1.2 }}
-            noWrap
-          >
-            {group.adapter}
-          </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
-            {visibleReadings.length} reading
-            {visibleReadings.length !== 1 ? "s" : ""}
-          </AppTypography>
-        </div>
-      </div>
+        }
+        title={group.adapter}
+        subtitle={`${visibleReadings.length} reading${visibleReadings.length !== 1 ? "s" : ""}`}
+        style={{ marginBottom: 8 }}
+      />
 
       {temps.length > 0 && (
         <div
