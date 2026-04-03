@@ -12,7 +12,7 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import AppCircularProgress from "../ui/AppCircularProgress";
 
 import { linuxio } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";

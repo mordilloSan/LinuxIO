@@ -1,7 +1,7 @@
 import React from "react";
 
 import { type SambaShare } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";

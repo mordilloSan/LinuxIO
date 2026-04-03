@@ -3,7 +3,7 @@ import React from "react";
 
 import type { ComposeProject } from "../../pages/main/docker/ComposeList";
 
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";

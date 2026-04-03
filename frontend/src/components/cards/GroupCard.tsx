@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { type AccountGroup } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";

@@ -1,6 +1,6 @@
 import React from "react";
 
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";

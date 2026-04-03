@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { type Peer } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";

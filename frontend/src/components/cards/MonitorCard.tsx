@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import type { MonitoringRange } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";

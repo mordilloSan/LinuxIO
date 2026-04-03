@@ -1,6 +1,6 @@
 import React from "react";
 
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface FolderShareCardProps {

@@ -32,7 +32,7 @@ import {
   type ApiDisk,
   type NFSMount,
 } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppButton from "@/components/ui/AppButton";

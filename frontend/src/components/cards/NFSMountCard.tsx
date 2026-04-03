@@ -1,7 +1,7 @@
 import React from "react";
 
 import { type NFSMount } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";

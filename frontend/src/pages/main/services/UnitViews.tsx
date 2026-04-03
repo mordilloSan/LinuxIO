@@ -4,7 +4,7 @@ import React from "react";
 
 import { linuxio } from "@/api";
 import type { UnitInfo } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";

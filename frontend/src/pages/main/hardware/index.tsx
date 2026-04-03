@@ -3,7 +3,7 @@ import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import type { MonitoringRange } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import MetricBar from "@/components/gauge/MetricBar";
 import UnifiedCollapsibleTable, {

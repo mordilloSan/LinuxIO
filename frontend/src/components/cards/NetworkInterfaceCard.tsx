@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { type NetworkInterface } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import NetworkInterfaceEditor from "@/pages/main/network/NetworkInterfaceEditor";

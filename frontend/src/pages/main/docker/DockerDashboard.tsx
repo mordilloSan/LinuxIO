@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import "@/theme/section.css";
 import "./docker-dashboard.css";
 import { linuxio } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppButton from "@/components/ui/AppButton";

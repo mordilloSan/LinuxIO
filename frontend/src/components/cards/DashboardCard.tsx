@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
-import FrostedCard from "./RootCard";
+import FrostedCard from "./FrostedCard";
 
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
