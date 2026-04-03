@@ -22,7 +22,6 @@ interface InterfaceDetailsProps {
   };
 }
 
-
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);

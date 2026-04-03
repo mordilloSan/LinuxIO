@@ -73,7 +73,11 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
           value={mount.usedPct}
           style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
           color={
-            mount.usedPct > 90 ? "error" : mount.usedPct > 70 ? "warning" : "primary"
+            mount.usedPct > 90
+              ? "error"
+              : mount.usedPct > 70
+                ? "warning"
+                : "primary"
           }
         />
         <AppTypography variant="caption" color="text.secondary">
@@ -96,7 +100,12 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
       <Chip label={statusLabel} size="small" variant="soft" />
       <Chip label={persistenceLabel} size="small" variant="soft" />
       {mount.options?.slice(0, 2).map((opt, i) => (
-        <Chip key={`${mount.mountpoint}-${i}`} label={opt} size="small" variant="soft" />
+        <Chip
+          key={`${mount.mountpoint}-${i}`}
+          label={opt}
+          size="small"
+          variant="soft"
+        />
       ))}
     </div>
   </FrostedCard>

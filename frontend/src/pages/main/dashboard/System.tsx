@@ -167,12 +167,20 @@ const SystemHealth = () => {
 
   const statsSkeleton = (
     <div
-      style={{ display: "flex", flexDirection: "column", gap: theme.spacing(1) }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.spacing(1),
+      }}
     >
       {(["12ch", "16ch", "18ch"] as const).map((w) => (
         <div
           key={w}
-          style={{ display: "flex", alignItems: "center", gap: theme.spacing(1) }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(1),
+          }}
         >
           <AppSkeleton variant="circular" width={18} height={18} />
           <SkeletonText variant="body2" width={w} />

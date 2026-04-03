@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import NetworkInterfaceEditor from "@/pages/main/network/NetworkInterfaceEditor";
 import { type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import NetworkInterfaceEditor from "@/pages/main/network/NetworkInterfaceEditor";
 import { useAppTheme } from "@/theme";
 
 const getStatusTooltip = (state: number) => {
@@ -104,8 +104,7 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
             {iface.name}
           </AppTypography>
           <AppTypography variant="body2" color="text.secondary" noWrap>
-            IPv4:{" "}
-            {Array.isArray(iface.ipv4) ? iface.ipv4.join(", ") : "N/A"}
+            IPv4: {Array.isArray(iface.ipv4) ? iface.ipv4.join(", ") : "N/A"}
           </AppTypography>
           <AppTypography variant="body2" color="text.secondary" noWrap>
             MAC: {iface.mac}
@@ -116,7 +115,8 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
               : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
           </AppTypography>
           <AppTypography variant="body2" color="text.secondary" noWrap>
-            RX/s: {formatBps(iface.rx_speed)} | TX/s: {formatBps(iface.tx_speed)}
+            RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
+            {formatBps(iface.tx_speed)}
           </AppTypography>
         </div>
       </div>

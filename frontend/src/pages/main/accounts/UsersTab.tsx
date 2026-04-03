@@ -265,7 +265,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
                   selected={effectiveSelected.has(user.username)}
                   isLocking={isLocking}
                   isUnlocking={isUnlocking}
-                  onSelect={(checked) => handleSelectOne(user.username, checked)}
+                  onSelect={(checked) =>
+                    handleSelectOne(user.username, checked)
+                  }
                   onEdit={() => handleEditUser(user)}
                   onChangePassword={() => handleChangePassword(user)}
                   onToggleLock={() => handleToggleLock(user)}

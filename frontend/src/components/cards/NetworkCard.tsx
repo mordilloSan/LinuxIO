@@ -13,7 +13,11 @@ export interface NetworkCardProps {
   onSelect: (checked: boolean) => void;
 }
 
-const NetworkCard: React.FC<NetworkCardProps> = ({ network, selected, onSelect }) => (
+const NetworkCard: React.FC<NetworkCardProps> = ({
+  network,
+  selected,
+  onSelect,
+}) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div
@@ -25,7 +29,9 @@ const NetworkCard: React.FC<NetworkCardProps> = ({ network, selected, onSelect }
         marginBottom: 8,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+      >
         <AppCheckbox
           size="small"
           checked={selected}
@@ -47,9 +53,21 @@ const NetworkCard: React.FC<NetworkCardProps> = ({ network, selected, onSelect }
     {/* Network flags */}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
-      <Chip label={`Internal: ${network.Internal ? "Yes" : "No"}`} size="small" variant="soft" />
-      <Chip label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`} size="small" variant="soft" />
-      <Chip label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`} size="small" variant="soft" />
+      <Chip
+        label={`Internal: ${network.Internal ? "Yes" : "No"}`}
+        size="small"
+        variant="soft"
+      />
+      <Chip
+        label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
+        size="small"
+        variant="soft"
+      />
+      <Chip
+        label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
+        size="small"
+        variant="soft"
+      />
     </div>
 
     {/* ID */}

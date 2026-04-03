@@ -6,7 +6,12 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 
-const displayProps = ["browseable", "read only", "guest ok", "writable"] as const;
+const displayProps = [
+  "browseable",
+  "read only",
+  "guest ok",
+  "writable",
+] as const;
 
 export interface SambaShareCardProps {
   share: SambaShare;
@@ -14,7 +19,11 @@ export interface SambaShareCardProps {
   onRemove: () => void;
 }
 
-const SambaShareCard: React.FC<SambaShareCardProps> = ({ share, onEdit, onRemove }) => (
+const SambaShareCard: React.FC<SambaShareCardProps> = ({
+  share,
+  onEdit,
+  onRemove,
+}) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Name */}
     <AppTypography variant="body2" fontWeight={700} style={{ marginBottom: 2 }}>

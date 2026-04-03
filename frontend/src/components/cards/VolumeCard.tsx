@@ -13,7 +13,11 @@ export interface VolumeCardProps {
   onSelect: (checked: boolean) => void;
 }
 
-const VolumeCard: React.FC<VolumeCardProps> = ({ volume, selected, onSelect }) => (
+const VolumeCard: React.FC<VolumeCardProps> = ({
+  volume,
+  selected,
+  onSelect,
+}) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div
@@ -25,7 +29,9 @@ const VolumeCard: React.FC<VolumeCardProps> = ({ volume, selected, onSelect }) =
         marginBottom: 8,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+      >
         <AppCheckbox
           size="small"
           checked={selected}
@@ -35,7 +41,12 @@ const VolumeCard: React.FC<VolumeCardProps> = ({ volume, selected, onSelect }) =
           {volume.Name}
         </AppTypography>
       </div>
-      <Chip label={volume.Driver} size="small" variant="soft" style={{ fontSize: "0.75rem" }} />
+      <Chip
+        label={volume.Driver}
+        size="small"
+        variant="soft"
+        style={{ fontSize: "0.75rem" }}
+      />
     </div>
 
     {/* Mountpoint */}
@@ -53,7 +64,11 @@ const VolumeCard: React.FC<VolumeCardProps> = ({ volume, selected, onSelect }) =
 
     {/* Meta chips */}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      <Chip label={`Scope: ${volume.Scope || "local"}`} size="small" variant="soft" />
+      <Chip
+        label={`Scope: ${volume.Scope || "local"}`}
+        size="small"
+        variant="soft"
+      />
       {volume.CreatedAt && (
         <Chip
           label={new Date(volume.CreatedAt).toLocaleDateString()}

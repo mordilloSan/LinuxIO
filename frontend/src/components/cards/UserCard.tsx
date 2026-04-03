@@ -114,7 +114,12 @@ const UserCard: React.FC<UserCardProps> = ({
         style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 4 }}
       >
         {isCurrentUser && (
-          <Chip label="Your account" size="small" color="primary" variant="soft" />
+          <Chip
+            label="Your account"
+            size="small"
+            color="primary"
+            variant="soft"
+          />
         )}
         {user.isLocked && (
           <Chip label="Locked" size="small" color="warning" variant="soft" />
@@ -129,7 +134,8 @@ const UserCard: React.FC<UserCardProps> = ({
         UID: {user.uid}
       </AppTypography>
       <AppTypography variant="body2" style={responsiveTextStyles}>
-        Last active: {formatLastLogin(user.lastLogin, user.username, currentUsername)}
+        Last active:{" "}
+        {formatLastLogin(user.lastLogin, user.username, currentUsername)}
       </AppTypography>
       <AppTypography variant="body2" style={responsiveTextStyles}>
         Shell: {user.shell}
@@ -142,9 +148,7 @@ const UserCard: React.FC<UserCardProps> = ({
       </AppTypography>
 
       {/* Groups */}
-      <div
-        style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 2 }}
-      >
+      <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 2 }}>
         {getAllGroups(user).map((group, idx) => (
           <Chip
             key={`${user.username}-${group}`}

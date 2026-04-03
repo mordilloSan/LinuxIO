@@ -57,9 +57,7 @@ const GroupCard: React.FC<GroupCardProps> = ({
 
     {/* Badges */}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 4 }}>
-      {group.isSystem && (
-        <Chip label="System" size="small" variant="soft" />
-      )}
+      {group.isSystem && <Chip label="System" size="small" variant="soft" />}
       <Chip label={`GID: ${group.gid}`} size="small" variant="soft" />
     </div>
 

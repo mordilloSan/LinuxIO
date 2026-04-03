@@ -1,6 +1,5 @@
 import React from "react";
 
-import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import {
   DetailRow,
   UnitCardActions,
@@ -11,6 +10,7 @@ import {
 
 import type { Service } from "@/api";
 import { linuxio } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
 interface ServiceCardsViewProps {

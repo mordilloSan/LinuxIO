@@ -152,13 +152,15 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
       disableUnderline
       value={selectedOption}
       onChange={handleSelectionChange}
-      style={{
-        marginLeft: 0,
-        marginBottom: 2,
-        color: theme.palette.text.secondary,
-        lineHeight: theme.typography.body2.lineHeight,
-        "--app-select-input-font-size": "0.75rem",
-      } as React.CSSProperties}
+      style={
+        {
+          marginLeft: 0,
+          marginBottom: 2,
+          color: theme.palette.text.secondary,
+          lineHeight: theme.typography.body2.lineHeight,
+          "--app-select-input-font-size": "0.75rem",
+        } as React.CSSProperties
+      }
     >
       {!selectedOption && <option value="" disabled hidden></option>}
       {selectOptions.map((option, index) => (

@@ -47,9 +47,21 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
         }}
       >
         <div style={{ position: "absolute", top: 12, right: 12 }}>
-          <AppSkeleton variant="text" width={56} height={22} style={{ borderRadius: 11 }} />
+          <AppSkeleton
+            variant="text"
+            width={56}
+            height={22}
+            style={{ borderRadius: 11 }}
+          />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 32 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            paddingRight: 32,
+          }}
+        >
           <AppSkeleton variant="circular" width={36} height={36} />
           <SkeletonText variant="subtitle1" width="10ch" />
         </div>
@@ -67,7 +79,16 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
     );
   }
 
-  const { project, onStart, onStop, onRestart, onDelete, onEdit, onPreview, isLoading = false } = props;
+  const {
+    project,
+    onStart,
+    onStop,
+    onRestart,
+    onDelete,
+    onEdit,
+    onPreview,
+    isLoading = false,
+  } = props;
   const statusColor = getStatusColor(project.status);
 
   const totalContainers = Object.values(project.services).reduce(

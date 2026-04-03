@@ -12,10 +12,16 @@ export interface NFSShareCardProps {
   onRemove: () => void;
 }
 
-const NFSShareCard: React.FC<NFSShareCardProps> = ({ share, onEdit, onRemove }) => (
+const NFSShareCard: React.FC<NFSShareCardProps> = ({
+  share,
+  onEdit,
+  onRemove,
+}) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Path + active indicator */}
-    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+    <div
+      style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}
+    >
       <span
         style={{
           width: 8,

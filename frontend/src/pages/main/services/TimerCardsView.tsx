@@ -1,6 +1,5 @@
 import React from "react";
 
-import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import {
   DetailRow,
   UnitCardActions,
@@ -11,6 +10,7 @@ import {
 
 import type { Timer } from "@/api";
 import { linuxio } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 
 interface TimerCardsViewProps {
   timers: Timer[];

@@ -96,7 +96,9 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
           onClick={onToggleChangelog}
         />
         <Chip
-          label={isCurrentPackage ? <AppCircularProgress size={16} /> : "Update"}
+          label={
+            isCurrentPackage ? <AppCircularProgress size={16} /> : "Update"
+          }
           size="small"
           variant="outlined"
           disabled={isUpdating}

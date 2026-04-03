@@ -8,11 +8,10 @@ import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppGrid from "@/components/ui/AppGrid";
-import { useAppTheme } from "@/theme";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 export type { NetworkInterface };
-
 
 const NetworkInterfaceList = () => {
   const [searchParams, setSearchParams] = useSearchParams();

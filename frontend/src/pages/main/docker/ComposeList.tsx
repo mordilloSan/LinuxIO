@@ -177,10 +177,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               </AppTypography>
             </div>
           </AppTableCell>
-          <AppTableCell
-            align="center"
-            className="app-table-hide-below-sm"
-          >
+          <AppTableCell align="center" className="app-table-hide-below-sm">
             {getTotalContainers(project)}
           </AppTableCell>
           <AppTableCell className="app-table-hide-below-sm">
