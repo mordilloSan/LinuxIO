@@ -1,6 +1,6 @@
 import React from "react";
 
-import "./frosted-card.css";
+import "./FrostedCard.css";
 
 import { cardBorderRadius } from "@/constants";
 import { useAppTheme } from "@/theme";

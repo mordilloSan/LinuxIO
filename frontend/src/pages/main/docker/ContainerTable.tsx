@@ -7,7 +7,7 @@ import React, { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import ActionButton from "./ActionButton";
-import "@/components/cards/frosted-card.css";
+import "@/components/cards/FrostedCard.css";
 
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";

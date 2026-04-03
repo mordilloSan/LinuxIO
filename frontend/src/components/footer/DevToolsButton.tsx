@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import "@/components/cards/frosted-card.css";
+import "@/components/cards/FrostedCard.css";
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
 import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
