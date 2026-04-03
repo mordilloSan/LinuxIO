@@ -960,6 +960,7 @@ export interface LinuxIOSchema {
     disable_service: { args: [serviceName: string]; result: void };
     mask_service: { args: [serviceName: string]; result: void };
     unmask_service: { args: [serviceName: string]; result: void };
+    reset_failed_service: { args: [serviceName: string]; result: void };
     get_network_info: { args: []; result: NetworkInterface[] };
     set_ipv4_manual: {
       args: [iface: string, address: string, gateway: string, dns: string];

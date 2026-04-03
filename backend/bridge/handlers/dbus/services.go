@@ -122,3 +122,10 @@ func UnmaskService(name string) error {
 	defer systemDBusMu.Unlock()
 	return systemdapi.UnmaskUnit(name)
 }
+
+// Reset the failed state of a service
+func ResetFailedService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+	return systemdapi.ResetFailedUnit(name)
+}

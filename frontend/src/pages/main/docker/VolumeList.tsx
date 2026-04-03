@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -272,81 +272,11 @@ const VolumeList: React.FC<VolumeListProps> = ({
                   lg: 3,
                 }}
               >
-                <FrostedCard
-                  style={{
-                    padding: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: theme.spacing(1),
-                      marginBottom: theme.spacing(1),
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: theme.spacing(1),
-                      }}
-                    >
-                      <AppCheckbox
-                        size="small"
-                        checked={effectiveSelected.has(volume.Name)}
-                        onChange={(e) =>
-                          handleSelectOne(volume.Name, e.target.checked)
-                        }
-                      />
-                      <AppTypography variant="body2" fontWeight={700} noWrap>
-                        {volume.Name}
-                      </AppTypography>
-                    </div>
-                    <Chip
-                      label={volume.Driver}
-                      size="small"
-                      variant="soft"
-                      style={{
-                        fontSize: "0.75rem",
-                      }}
-                    />
-                  </div>
-
-                  <AppTypography
-                    variant="body2"
-                    style={{
-                      marginBottom: 4,
-                      fontFamily: "monospace",
-                      fontSize: "0.8rem",
-                      ...longTextStyles,
-                    }}
-                  >
-                    {volume.Mountpoint || "-"}
-                  </AppTypography>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: theme.spacing(0.75),
-                    }}
-                  >
-                    <Chip
-                      label={`Scope: ${volume.Scope || "local"}`}
-                      size="small"
-                      variant="soft"
-                    />
-                    {volume.CreatedAt && (
-                      <Chip
-                        label={new Date(volume.CreatedAt).toLocaleDateString()}
-                        size="small"
-                        variant="soft"
-                      />
-                    )}
-                  </div>
-                </FrostedCard>
+                <VolumeCard
+                  volume={volume}
+                  selected={effectiveSelected.has(volume.Name)}
+                  onSelect={(checked) => handleSelectOne(volume.Name, checked)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

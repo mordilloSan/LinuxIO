@@ -1,12 +1,45 @@
-@keyframes page-loader-slide {
-  0% {
-    transform: translateX(-150px);
-  }
-  100% {
-    transform: translateX(300px);
-  }
+/* ── PageLoader ───────────────────────────────────────── */
+/*
+ * position: absolute instead of fixed — intentional.
+ * Without a positioned ancestor (guards, pre-layout) it resolves to the
+ * initial containing block (viewport), acting like fixed.
+ * Inside Main.tsx's `position: relative` content div it is scoped to
+ * that area only, so sidebar/navbar stay visible.
+ */
+/* Background — scoped to its container (content area in Main, viewport in guards) */
+.page-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 1300;
+  background: var(--app-palette-background-default, #1b2635);
 }
 
-.page-loader-bar {
-  animation: page-loader-slide 1s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+/* Dots — always at true viewport center regardless of container offset */
+.page-loader__dots {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1301;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Dots — transform+opacity only (compositor-only, zero paint cost) ── */
+.page-loader__dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--app-palette-primary-main, #3b82f6);
+  animation: pl-pulse 1.2s ease-in-out infinite;
+}
+
+.page-loader__dot:nth-child(2) { animation-delay: 160ms; }
+.page-loader__dot:nth-child(3) { animation-delay: 320ms; }
+
+@keyframes pl-pulse {
+  0%, 100% { transform: scale(0.5); opacity: 0.3; }
+  50%       { transform: scale(1);   opacity: 1;   }
 }

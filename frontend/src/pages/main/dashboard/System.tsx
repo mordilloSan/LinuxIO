@@ -4,8 +4,9 @@ import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
+import SkeletonText from "@/components/ui/SkeletonText";
 import { useAppTheme } from "@/theme";
 
 interface HealthItem {
@@ -155,7 +156,7 @@ const SystemHealth = () => {
   const stats2 = (
     <div>
       {!health && (loadingHealth || fetchingHealth) ? (
-        <ComponentLoader />
+        <AppSkeleton variant="circular" width={100} height={100} />
       ) : (
         <div onClick={() => navigate(iconLink)} style={{ cursor: "pointer" }}>
           <Icon icon={iconName} width={100} height={100} color={statusColor} />
@@ -164,9 +165,33 @@ const SystemHealth = () => {
     </div>
   );
 
+  const statsSkeleton = (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.spacing(1),
+      }}
+    >
+      {(["12ch", "16ch", "18ch"] as const).map((w) => (
+        <div
+          key={w}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(1),
+          }}
+        >
+          <AppSkeleton variant="circular" width={18} height={18} />
+          <SkeletonText variant="body2" width={w} />
+        </div>
+      ))}
+    </div>
+  );
+
   const stats =
     !health && (loadingHealth || fetchingHealth) ? (
-      <ComponentLoader />
+      statsSkeleton
     ) : (
       <div
         style={{

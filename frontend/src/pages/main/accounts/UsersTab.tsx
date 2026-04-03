@@ -9,7 +9,7 @@ import DeleteUserDialog from "./components/DeleteUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
 
 import { linuxio, type AccountUser } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import UserCard from "@/components/cards/UserCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -257,167 +257,21 @@ const UsersTab: React.FC<UsersTabProps> = ({
             {filtered.map((user) => (
               <AppGrid
                 key={user.username}
-                size={{
-                  xs: 12,
-                  sm: 6,
-                  md: 4,
-                  lg: 3,
-                }}
+                size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
               >
-                <FrostedCard
-                  style={{
-                    padding: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 4,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <AppCheckbox
-                        size="small"
-                        checked={effectiveSelected.has(user.username)}
-                        onChange={(e) =>
-                          handleSelectOne(user.username, e.target.checked)
-                        }
-                        disabled={
-                          user.username === "root" ||
-                          user.username === currentUser?.name
-                        }
-                      />
-                      <AppTypography variant="body2" fontWeight={700} noWrap>
-                        {user.username}
-                      </AppTypography>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 2,
-                      }}
-                    >
-                      <AppTooltip title="Edit">
-                        <AppIconButton
-                          size="small"
-                          onClick={() => handleEditUser(user)}
-                          disabled={user.username === "root"}
-                        >
-                          <Icon icon="mdi:pencil" width={20} height={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Change Password">
-                        <AppIconButton
-                          size="small"
-                          onClick={() => handleChangePassword(user)}
-                        >
-                          <Icon
-                            icon="mdi:form-textbox-password"
-                            width={20}
-                            height={20}
-                          />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                        <AppIconButton
-                          size="small"
-                          onClick={() => handleToggleLock(user)}
-                          disabled={
-                            user.username === "root" ||
-                            user.username === currentUser?.name ||
-                            isLocking ||
-                            isUnlocking
-                          }
-                        >
-                          {user.isLocked ? (
-                            <Icon icon="mdi:lock-open" width={20} height={20} />
-                          ) : (
-                            <Icon icon="mdi:lock" width={20} height={20} />
-                          )}
-                        </AppIconButton>
-                      </AppTooltip>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginBottom: 4,
-                    }}
-                  >
-                    {user.username === currentUser?.name && (
-                      <Chip
-                        label="Your account"
-                        size="small"
-                        color="primary"
-                        variant="soft"
-                      />
-                    )}
-                    {user.isLocked && (
-                      <Chip
-                        label="Locked"
-                        size="small"
-                        color="warning"
-                        variant="soft"
-                      />
-                    )}
-                  </div>
-
-                  <AppTypography variant="body2" style={responsiveTextStyles}>
-                    Full name: {user.gecos || "-"}
-                  </AppTypography>
-                  <AppTypography variant="body2" style={responsiveTextStyles}>
-                    UID: {user.uid}
-                  </AppTypography>
-                  <AppTypography variant="body2" style={responsiveTextStyles}>
-                    Last active:{" "}
-                    {formatLastLogin(user.lastLogin, user.username)}
-                  </AppTypography>
-                  <AppTypography variant="body2" style={responsiveTextStyles}>
-                    Shell: {user.shell}
-                  </AppTypography>
-                  <AppTypography
-                    variant="body2"
-                    style={{
-                      fontFamily: "monospace",
-                      ...responsiveTextStyles,
-                    }}
-                  >
-                    Home: {user.homeDir}
-                  </AppTypography>
-
-                  <div
-                    style={{
-                      marginTop: 4,
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 2,
-                    }}
-                  >
-                    {getAllGroups(user).map((group, idx) => (
-                      <Chip
-                        key={`${user.username}-${group}`}
-                        label={idx === 0 ? `${group} (primary)` : group}
-                        size="small"
-                        variant="soft"
-                        style={{
-                          fontSize: "0.7rem",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </FrostedCard>
+                <UserCard
+                  user={user}
+                  currentUsername={currentUser?.name}
+                  selected={effectiveSelected.has(user.username)}
+                  isLocking={isLocking}
+                  isUnlocking={isUnlocking}
+                  onSelect={(checked) =>
+                    handleSelectOne(user.username, checked)
+                  }
+                  onEdit={() => handleEditUser(user)}
+                  onChangePassword={() => handleChangePassword(user)}
+                  onToggleLock={() => handleToggleLock(user)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

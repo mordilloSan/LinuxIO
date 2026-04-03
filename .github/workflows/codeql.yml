@@ -1,0 +1,86 @@
+name: "CodeQL Advanced"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+  schedule:
+    - cron: "33 21 * * 2"
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: c-cpp
+            build-mode: manual
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+
+      - name: Install C build dependencies
+        if: matrix.language == 'c-cpp'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam0g-dev libsystemd-dev pkg-config
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # queries: security-extended,security-and-quality
+
+      - name: Prepare embedded frontend placeholders
+        if: matrix.language == 'go'
+        shell: bash
+        run: |
+          make dev-prep
+
+      - name: Build Go targets
+        if: matrix.language == 'go'
+        shell: bash
+        run: |
+          make build-backend build-bridge build-cli SKIP_ENSURE_GO=1
+
+      - name: Build C auth helper
+        if: matrix.language == 'c-cpp'
+        shell: bash
+        run: |
+          make build-auth
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

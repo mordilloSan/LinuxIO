@@ -127,6 +127,18 @@ func UnmaskUnit(name string) error {
 	})
 }
 
+func ResetFailedUnit(name string) error {
+	if err := requireUnitName(name); err != nil {
+		return err
+	}
+	return withManager(func(manager godbus.BusObject) error {
+		if err := manager.Call(systemdMgrIface+".ResetFailedUnit", 0, name).Err; err != nil {
+			return fmt.Errorf("reset failed unit %s: %w", name, err)
+		}
+		return nil
+	})
+}
+
 func GetUnitFileState(name string) (string, error) {
 	if err := requireUnitName(name); err != nil {
 		return "", err

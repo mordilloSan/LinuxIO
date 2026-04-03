@@ -10,7 +10,7 @@ import React, {
 import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
@@ -789,34 +789,11 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                   lg: 3,
                 }}
               >
-                <FrostedCard
-                  style={{
-                    padding: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <AppTypography
-                      variant="body1"
-                      fontWeight={700}
-                      style={{
-                        fontFamily: "monospace",
-                        flex: 1,
-                        minWidth: 0,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      {mount.mountpoint}
-                    </AppTypography>
+                <NFSMountCard
+                  mount={mount}
+                  statusLabel={getMountStatusLabel(mount)}
+                  persistenceLabel={getPersistenceLabel(mount)}
+                  actions={
                     <MountEntryActions
                       mount={mount}
                       mountingMountpoint={mountingMountpoint}
@@ -825,90 +802,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       onUnmount={handleUnmount}
                       onRemove={handleRemove}
                     />
-                  </div>
-                  <AppTypography
-                    variant="body2"
-                    color="text.secondary"
-                    style={{
-                      marginBottom: 4,
-                      fontFamily: "monospace",
-                      fontSize: "0.8rem",
-                      lineHeight: 1.3,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {mount.source}
-                  </AppTypography>
-
-                  {mount.mounted ? (
-                    <div
-                      style={{
-                        width: "100%",
-                        marginBottom: 4,
-                      }}
-                    >
-                      <AppLinearProgress
-                        variant="determinate"
-                        value={mount.usedPct}
-                        style={{
-                          height: 6,
-                          borderRadius: 3,
-                          marginBottom: 2,
-                        }}
-                        color={
-                          mount.usedPct > 90
-                            ? "error"
-                            : mount.usedPct > 70
-                              ? "warning"
-                              : "primary"
-                        }
-                      />
-                      <AppTypography variant="caption" color="text.secondary">
-                        {formatFileSize(mount.used)} /{" "}
-                        {formatFileSize(mount.size)}
-                      </AppTypography>
-                    </div>
-                  ) : (
-                    <AppTypography
-                      variant="caption"
-                      color="text.secondary"
-                      style={{ display: "block", marginBottom: 4 }}
-                    >
-                      Not currently mounted
-                    </AppTypography>
-                  )}
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Chip label={mount.fsType} size="small" variant="soft" />
-                    <Chip
-                      label={getMountStatusLabel(mount)}
-                      size="small"
-                      variant="soft"
-                    />
-                    <Chip
-                      label={getPersistenceLabel(mount)}
-                      size="small"
-                      variant="soft"
-                    />
-                    {mount.options?.slice(0, 2).map((opt, i) => (
-                      <Chip
-                        key={`${mount.mountpoint}-${i}`}
-                        label={opt}
-                        size="small"
-                        variant="soft"
-                      />
-                    ))}
-                  </div>
-                </FrostedCard>
+                  }
+                />
               </AppGrid>
             ))}
           </AppGrid>

@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
-import ComposeStackCard from "./ComposeStackCard";
+import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
@@ -51,6 +51,7 @@ interface ComposeListProps {
   onEdit?: (projectName: string, configPath: string) => void;
   onPreview?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
+  isPending?: boolean;
   viewMode?: "table" | "card";
 }
 const ComposeList: React.FC<ComposeListProps> = ({
@@ -62,6 +63,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onEdit,
   onPreview,
   isLoading = false,
+  isPending = false,
   viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
@@ -96,6 +98,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
       headerName: "Containers",
       width: "100px",
       align: "center",
+      className: "app-table-hide-below-sm",
     },
     {
       field: "config",
@@ -174,7 +177,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               </AppTypography>
             </div>
           </AppTableCell>
-          <AppTableCell align="center">
+          <AppTableCell align="center" className="app-table-hide-below-sm">
             {getTotalContainers(project)}
           </AppTableCell>
           <AppTableCell className="app-table-hide-below-sm">
@@ -452,7 +455,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: theme.spacing(2),
+        flexWrap: "nowrap",
+        gap: isSmallUp ? theme.spacing(2) : theme.spacing(1),
         marginBottom: theme.spacing(2),
       }}
     >
@@ -460,16 +464,46 @@ const ComposeList: React.FC<ComposeListProps> = ({
         placeholder="Search stacks…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{ width: 320 }}
+        style={{
+          flex: isSmallUp ? "0 0 320px" : "1 1 auto",
+          minWidth: 0,
+          width: isSmallUp ? 320 : undefined,
+        }}
       />
-      <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
+      <AppTypography
+        fontWeight={700}
+        style={{
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {isPending ? "Loading..." : `${filtered.length} shown`}
+      </AppTypography>
     </div>
   );
   if (viewMode === "card") {
+    const skeletonCount = 8;
+
     return (
       <div>
         {searchBar}
-        {filtered.length === 0 ? (
+        {isPending ? (
+          <AppGrid container spacing={2}>
+            {Array.from({ length: skeletonCount }, (_, index) => (
+              <AppGrid
+                key={`compose-stack-skeleton-${index}`}
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                  lg: 2,
+                }}
+              >
+                <ComposeStackCard isPending />
+              </AppGrid>
+            ))}
+          </AppGrid>
+        ) : filtered.length === 0 ? (
           <div
             style={{
               textAlign: "center",

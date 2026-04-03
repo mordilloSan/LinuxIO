@@ -296,6 +296,15 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	  wait; \
 	} && $(MAKE) --no-print-directory test-backend
 
+test-updater: ensure-go
+	@echo "🔎 Running updater systemd dry-run integration test..."
+	@cd "$(BACKEND_DIR)" && \
+	  sudo env \
+	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
+	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
+	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
+	    "$(GO_BIN)" test ./bridge/handlers/control -run TestInstallScriptDryRunWithSystemdSandbox -v
+
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo "🔎 Running ESLint (parallel, auto-fix)..."
@@ -632,6 +641,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
@@ -710,7 +720,7 @@ cloc-breakdown:
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-auth build-cli \
-  dev dev-prep setup test test-backend analyze-auth lint tsc golint lint-only tsc-only golint-only \
+  dev dev-prep setup test test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   cloc cloc-clean cloc-breakdown

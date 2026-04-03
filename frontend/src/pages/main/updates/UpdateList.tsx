@@ -3,15 +3,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import UpdateCard from "@/components/cards/UpdateCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import AppCardContent from "@/components/ui/AppCardContent";
-import Chip from "@/components/ui/AppChip";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { Update } from "@/types/update";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface Props {
@@ -28,7 +23,6 @@ const UpdateList: React.FC<Props> = ({
   currentPackage,
   isLoading,
 }) => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, string>>({});
@@ -109,119 +103,16 @@ const UpdateList: React.FC<Props> = ({
     >
       {updates.map((update, idx) => (
         <AppGrid key={idx} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-          <FrostedCard hoverLift>
-            <AppCardContent>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: theme.spacing(3),
-                }}
-              >
-                <AppTypography
-                  variant="h6"
-                  style={{
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: "90%",
-                  }}
-                >
-                  {update.summary}
-                </AppTypography>
-              </div>
-
-              <AppTypography
-                variant="body2"
-                color="text.secondary"
-                gutterBottom
-                style={{
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  maxWidth: "90%",
-                }}
-              >
-                Package: {update.package_id}
-              </AppTypography>
-
-              <AppTypography
-                variant="body2"
-                color="text.secondary"
-                gutterBottom
-                style={{
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  maxWidth: "90%",
-                }}
-              >
-                Version: {update.version}
-              </AppTypography>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: theme.spacing(1),
-                  marginTop: theme.spacing(1.5),
-                }}
-              >
-                <Chip
-                  label="View Changelog"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => toggleExpanded(idx, update.package_id)}
-                />
-                <Chip
-                  label={
-                    currentPackage === update.package_id ? (
-                      <AppCircularProgress size={16} />
-                    ) : (
-                      "Update"
-                    )
-                  }
-                  size="small"
-                  variant="outlined"
-                  disabled={!!isUpdating}
-                  onClick={async () => {
-                    await onUpdateClick(update.package_id);
-                  }}
-                />
-              </div>
-
-              <AppCollapse
-                in={expandedIdx === idx}
-                timeout="auto"
-                unmountOnExit
-              >
-                <div
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    fontSize: 14,
-                    marginTop: theme.spacing(4),
-                  }}
-                >
-                  {loadingChangelog === update.package_id ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "center",
-                        paddingTop: theme.spacing(2),
-                        paddingBottom: theme.spacing(2),
-                      }}
-                    >
-                      <AppCircularProgress size={20} />
-                    </div>
-                  ) : (
-                    <AppTypography variant="body2" color="text.secondary">
-                      {changelogs[update.package_id] || "Loading..."}
-                    </AppTypography>
-                  )}
-                </div>
-              </AppCollapse>
-            </AppCardContent>
-          </FrostedCard>
+          <UpdateCard
+            update={update}
+            isExpanded={expandedIdx === idx}
+            isUpdating={!!isUpdating}
+            isCurrentPackage={currentPackage === update.package_id}
+            changelog={changelogs[update.package_id]}
+            isLoadingChangelog={loadingChangelog === update.package_id}
+            onToggleChangelog={() => toggleExpanded(idx, update.package_id)}
+            onUpdate={() => onUpdateClick(update.package_id)}
+          />
         </AppGrid>
       ))}
     </AppGrid>

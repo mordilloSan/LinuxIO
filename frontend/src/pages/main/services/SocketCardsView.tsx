@@ -1,6 +1,5 @@
 import React from "react";
 
-import UnitLogsCard from "./UnitLogsCard";
 import {
   DetailRow,
   UnitCardActions,
@@ -10,6 +9,7 @@ import {
 
 import type { Socket } from "@/api";
 import { linuxio } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 
 interface SocketCardsViewProps {
   sockets: Socket[];

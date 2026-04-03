@@ -40,6 +40,7 @@ import {
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -1041,9 +1042,10 @@ const FileBrowser: React.FC = () => {
               minHeight: 0,
               display: "flex",
               flexDirection: "column",
+              position: "relative",
             }}
           >
-            {isPending && <ComponentLoader />}
+            {isPending && <PageLoader />}
 
             {!isPending && errorMessage && (
               <ErrorState
@@ -1161,20 +1163,7 @@ const FileBrowser: React.FC = () => {
           )}
 
           {editingPath && !isEditingFileLoading && editingFileResource && (
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <ComponentLoader />
-                </div>
-              }
-            >
+            <Suspense fallback={<PageLoader />}>
               <FileEditor
                 ref={editorRef}
                 filePath={editingPath}

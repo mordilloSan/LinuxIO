@@ -475,7 +475,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   return (
     <Suspense fallback={<ComponentLoader />}>
       <div>
-        {isPending ? (
+        {isPending && viewMode !== "card" ? (
           <ComponentLoader />
         ) : (
           <ComposeList
@@ -487,6 +487,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             onEdit={handleEditStack}
             onPreview={handlePreviewStack}
             isLoading={isLoading}
+            isPending={isPending}
             viewMode={viewMode}
           />
         )}

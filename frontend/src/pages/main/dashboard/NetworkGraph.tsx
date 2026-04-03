@@ -54,7 +54,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         return data
           .map(
             (d, i) =>
-              `<span style="color:${colors[i]}">${labels[i]}: ${d.value.toFixed(2)} kB/s</span>`,
+              `<span style="color:${colors[i]}; font-size: 13px; line-height: 1.3;">${labels[i]}: ${d.value.toFixed(2)} kB/s</span>`,
           )
           .join("<br/>");
       },

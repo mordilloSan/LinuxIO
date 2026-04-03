@@ -39,6 +39,7 @@ func RegisterHandlers() {
 		{command: "disable_service", handler: serviceActionHandler("disable_service requested: unit=%s", DisableService)},
 		{command: "mask_service", handler: serviceActionHandler("mask_service requested: unit=%s", MaskService)},
 		{command: "unmask_service", handler: serviceActionHandler("unmask_service requested: unit=%s", UnmaskService)},
+		{command: "reset_failed_service", handler: serviceActionHandler("reset_failed_service requested: unit=%s", ResetFailedService)},
 		{command: "get_network_info", handler: dbusNoArgResultHandler(GetNetworkInfo)},
 		{command: "set_ipv4_manual", handler: setIPv4ManualHandler()},
 		{command: "set_ipv4", handler: setIPv4Handler()},

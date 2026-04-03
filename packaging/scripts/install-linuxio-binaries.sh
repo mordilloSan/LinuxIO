@@ -504,15 +504,54 @@ verify_installation() {
     return 0
 }
 
+verify_dry_run_targets() {
+    log_info "Dry run: validating writable install targets..."
+
+    local targets=(
+        "${BIN_DIR}"
+        "${CONFIG_DIR}"
+        "${CONFIG_DIR}/docker/linuxio-monitoring"
+        "${PAM_DIR}"
+        "${SYSTEMD_DIR}"
+        "/usr/lib/tmpfiles.d"
+        "/usr/share/linuxio"
+        "/var/lib/linuxIO"
+    )
+
+    for target in "${targets[@]}"; do
+        if [[ ! -d "$target" ]]; then
+            log_warn "${target} does not exist, skipping"
+            continue
+        fi
+
+        local probe="${target}/.linuxio-dry-run-$$"
+        if : > "$probe"; then
+            rm -f "$probe"
+            log_ok "Writable: ${target}"
+        else
+            log_error "Not writable: ${target}"
+            return 1
+        fi
+    done
+
+    log_ok "Dry run completed successfully"
+    return 0
+}
+
 # ---------- Main ----------
 
 main() {
     local version="${1:-}"
     local skip_binaries=0
+    local dry_run=0
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --dry-run)
+                dry_run=1
+                shift
+                ;;
             --skip-binaries)
                 skip_binaries=1
                 shift
@@ -535,6 +574,14 @@ main() {
     if [[ $EUID -ne 0 ]]; then
         log_error "This script must be run as root"
         exit 1
+    fi
+
+    if [[ $dry_run -eq 1 ]]; then
+        if ! verify_dry_run_targets; then
+            log_error "Dry run failed"
+            exit 1
+        fi
+        exit 0
     fi
 
     log_info "Starting LinuxIO full installation"
@@ -651,6 +698,7 @@ Arguments:
   VERSION           Optional release tag (e.g., v0.3.0). If omitted, installs latest.
 
 Options:
+  --dry-run         Validate writable install targets and exit
   --skip-binaries   Skip downloading and installing binaries (config only)
   -h, --help        Show this help message
 
@@ -667,6 +715,7 @@ Note: LinuxIO uses systemd DynamicUser, no static accounts are created.
 Examples:
   $(basename "$0")                 # Install latest release
   $(basename "$0") v0.3.0          # Install specific version
+  $(basename "$0") --dry-run       # Validate updater write access without installing
   $(basename "$0") --skip-binaries # Only install config/systemd/pam
 
 This script must be run as root.

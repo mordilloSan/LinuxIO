@@ -4,7 +4,9 @@ import React from "react";
 
 import { linuxio } from "@/api";
 import type { UnitInfo } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import UnitCard from "@/components/cards/UnitCard";
+import type { UnitListItem } from "@/components/cards/UnitCard";
+import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -15,21 +17,10 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
 
-export interface UnitListItem {
-  name: string;
-  description?: string;
-  load_state: string;
-  active_state: string;
-  sub_state: string;
-  unit_file_state: string;
-}
-
-export interface UnitInfoRow {
-  label: string;
-  value: React.ReactNode;
-  hidden?: boolean;
-  noBorder?: boolean;
-}
+export type { UnitListItem } from "@/components/cards/UnitCard";
+export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
+export type { UnitInfoRow } from "@/components/cards/UnitInfoPanelCard";
+export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 
 interface UnitTableViewProps<T> {
   data: T[];
@@ -55,80 +46,6 @@ interface UnitCardsViewProps<T extends UnitListItem> {
   renderBottomPanel?: (item: T) => React.ReactNode;
   emptyMessage: string;
 }
-
-interface UnitInfoPanelProps {
-  unitName: string;
-  onClose: () => void;
-  title?: string;
-  renderInfoRows?: (
-    info: UnitInfo | undefined,
-    isPending: boolean,
-  ) => UnitInfoRow[];
-}
-
-const labelStyle: React.CSSProperties = {
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  fontSize: "0.6rem",
-  color: "var(--app-palette-text-secondary)",
-  flexShrink: 0,
-  width: 90,
-  paddingTop: 3,
-};
-
-const baseCardStyle: React.CSSProperties = {
-  padding: 12,
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  cursor: "pointer",
-  transition:
-    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-  borderBottomWidth: 2,
-  borderBottomStyle: "solid",
-};
-
-const cardStyle: React.CSSProperties = {
-  ...baseCardStyle,
-  borderBottomColor:
-    "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
-};
-
-const selectedCardStyle: React.CSSProperties = {
-  ...baseCardStyle,
-  width: "100%",
-  borderBottomColor: "var(--svc-status-color)",
-};
-
-const depFields: Array<{ label: string; key: keyof UnitInfo }> = [
-  { label: "Requires", key: "Requires" },
-  { label: "Wants", key: "Wants" },
-  { label: "Wanted by", key: "WantedBy" },
-  { label: "Triggered by", key: "TriggeredBy" },
-  { label: "Part of", key: "PartOf" },
-  { label: "Conflicts", key: "Conflicts" },
-  { label: "Before", key: "Before" },
-  { label: "After", key: "After" },
-];
-
-export const DetailRow: React.FC<{
-  label: string;
-  children: React.ReactNode;
-  noBorder?: boolean;
-}> = ({ label, children, noBorder }) => (
-  <div
-    className="svc-detail-row"
-    style={{
-      display: "flex",
-      padding: "3px 0",
-      borderTop: noBorder ? undefined : "1px solid var(--app-palette-divider)",
-      alignItems: "flex-start",
-    }}
-  >
-    <span style={labelStyle}>{label}</span>
-    <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
-  </div>
-);
 
 export function statusDot(activeState: string) {
   return (
@@ -302,8 +219,11 @@ export const UnitCardActions: React.FC<{
     linuxio.dbus.mask_service.useMutation();
   const { mutate: unmaskService, isPending: isUnmasking } =
     linuxio.dbus.unmask_service.useMutation();
+  const { mutate: resetFailedService, isPending: isResettingFailed } =
+    linuxio.dbus.reset_failed_service.useMutation();
 
   const isActive = activeState === "active";
+  const isFailed = activeState === "failed";
   const liveUnitFileState = String(info?.UnitFileState ?? unitFileState ?? "");
   const isEnabled =
     liveUnitFileState === "enabled" || liveUnitFileState === "enabled-runtime";
@@ -316,7 +236,8 @@ export const UnitCardActions: React.FC<{
     isEnabling ||
     isDisabling ||
     isMasking ||
-    isUnmasking;
+    isUnmasking ||
+    isResettingFailed;
 
   return (
     <div
@@ -434,148 +355,23 @@ export const UnitCardActions: React.FC<{
           </AppButton>
         </AppTooltip>
       )}
+      {isFailed && (
+        <AppTooltip title="Clear the failed state so the unit can be started again">
+          <AppButton
+            size="small"
+            variant="outlined"
+            color="warning"
+            startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
+            onClick={() => resetFailedService([unitName])}
+            disabled={anyPending}
+          >
+            Reset Failed
+          </AppButton>
+        </AppTooltip>
+      )}
     </div>
   );
 };
-
-function toStringArray(val: unknown): string[] {
-  if (!Array.isArray(val)) return [];
-  return val.filter((v): v is string => typeof v === "string" && v.length > 0);
-}
-
-export function UnitInfoPanel({
-  unitName,
-  onClose,
-  title = "Unit file & dependencies",
-  renderInfoRows,
-}: UnitInfoPanelProps) {
-  const { data: info, isPending } = linuxio.dbus.get_unit_info.useQuery(
-    unitName,
-    {
-      refetchInterval: 2000,
-    },
-  );
-
-  const fragmentPath = String(info?.FragmentPath ?? "");
-  const extraRows = renderInfoRows?.(info, isPending) ?? [];
-
-  return (
-    <FrostedCard
-      style={{
-        padding: 12,
-        height: "100%",
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: "bold",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {title}
-          </div>
-        </div>
-
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 4,
-            borderRadius: 4,
-            color: "var(--app-palette-text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon icon="mdi:close" width={20} height={20} />
-        </button>
-      </div>
-
-      <div style={{ flex: 1 }}>
-        <DetailRow label="Path" noBorder>
-          {isPending ? (
-            <div
-              style={{
-                height: 18,
-                width: "80%",
-                borderRadius: 4,
-                backgroundColor: "var(--app-palette-action-hover)",
-              }}
-            />
-          ) : (
-            <span
-              style={{
-                fontSize: "0.8rem",
-                fontWeight: 500,
-                wordBreak: "break-all",
-              }}
-            >
-              {fragmentPath || "—"}
-            </span>
-          )}
-        </DetailRow>
-
-        {extraRows
-          .filter((row) => !row.hidden)
-          .map((row) => (
-            <DetailRow
-              key={row.label}
-              label={row.label}
-              noBorder={row.noBorder}
-            >
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 500,
-                  wordBreak: "break-word",
-                }}
-              >
-                {row.value}
-              </span>
-            </DetailRow>
-          ))}
-
-        {!isPending &&
-          depFields.map(({ label, key }) => {
-            const items = toStringArray(info?.[key]);
-            if (!items.length) return null;
-            return (
-              <DetailRow key={label} label={label}>
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {items.join(", ")}
-                </span>
-              </DetailRow>
-            );
-          })}
-      </div>
-    </FrostedCard>
-  );
-}
 
 export function UnitTableView<T>({
   data,
@@ -615,101 +411,6 @@ export function UnitTableView<T>({
       renderMainRow={(row, index) => renderMainRow(row, isMobile, index)}
       emptyMessage={emptyMessage}
     />
-  );
-}
-
-function UnitCard<T extends UnitListItem>({
-  item,
-  isSelected,
-  onExpand,
-  renderSummaryRows,
-  renderSelectedRows,
-  renderActions,
-}: {
-  item: T;
-  isSelected: boolean;
-  onExpand: (name: string | null) => void;
-  renderSummaryRows: (item: T) => React.ReactNode;
-  renderSelectedRows?: (item: T) => React.ReactNode;
-  renderActions?: (item: T) => React.ReactNode;
-}) {
-  const statusColor = getServiceStatusColor(item.active_state);
-
-  return (
-    <FrostedCard
-      onClick={() => onExpand(isSelected ? null : item.name)}
-      hoverLift={!isSelected}
-      className="fc-svc-card"
-      style={
-        {
-          "--svc-status-color": statusColor,
-          ...(isSelected ? selectedCardStyle : cardStyle),
-        } as React.CSSProperties
-      }
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: "bold",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {item.name}
-          </div>
-          {item.description && (
-            <div
-              style={{
-                marginTop: 2,
-                fontSize: "0.7rem",
-                color: "var(--app-palette-text-secondary)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-              title={item.description}
-            >
-              {item.description}
-            </div>
-          )}
-        </div>
-        <span
-          style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            backgroundColor: statusColor,
-            flexShrink: 0,
-            marginTop: 4,
-          }}
-        />
-      </div>
-
-      <div
-        style={{ flex: 1, display: "flex", flexDirection: "column" }}
-        className="svc-card-details"
-      >
-        <div style={{ flex: 1 }} className="svc-rows-wrapper">
-          {renderSummaryRows(item)}
-          {isSelected && renderSelectedRows?.(item)}
-        </div>
-        {isSelected && renderActions && (
-          <div onClick={(e) => e.stopPropagation()}>{renderActions(item)}</div>
-        )}
-      </div>
-    </FrostedCard>
   );
 }
 

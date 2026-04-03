@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";

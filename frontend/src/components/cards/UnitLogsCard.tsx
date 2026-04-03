@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";

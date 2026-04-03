@@ -91,6 +91,43 @@ func getVersionInfo() (VersionInfo, error) {
 	return info, nil
 }
 
+func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
+	writablePaths := []string{
+		config.BinDir,
+		"/etc/linuxio",
+		"/etc/pam.d",
+		"/etc/pam.d/linuxio",
+		"/etc/systemd/system",
+		"/etc/motd.d",
+		"/usr/lib/tmpfiles.d",
+		"/usr/share/linuxio",
+		"/var/lib/linuxIO",
+	}
+
+	args := []string{
+		"--unit=" + unit,
+		"--property=Description=LinuxIO updater",
+		"--quiet",
+		"--collect",
+		"--wait",
+		"--pipe",
+		"--setenv=TERM=dumb",
+		"--setenv=NO_COLOR=1",
+		"--setenv=CLICOLOR=0",
+		"--setenv=LC_ALL=C.UTF-8",
+		"-p", "Type=exec",
+		"-p", "ProtectSystem=full",
+		"-p", "ReadWritePaths=" + strings.Join(writablePaths, " "),
+		"-p", "PrivateTmp=false",
+		"-p", "NoNewPrivileges=no",
+		"/bin/bash", "-s", "--",
+	}
+	if len(scriptArgs) > 0 {
+		args = append(args, scriptArgs...)
+	}
+	return args
+}
+
 // runInstallScript downloads the installer and runs it in a transient unit
 // with stdout/stderr piped back to this process (so logs appear in-order).
 // If relay is non-nil, output lines are also written to it.
@@ -131,38 +168,14 @@ func runInstallScript(version string, relay io.Writer) error {
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
-	writablePaths := []string{
-		config.BinDir,
-		"/etc",
-		"/usr/lib/tmpfiles.d",
-		"/usr/share/linuxio",
-		"/var/lib/linuxIO",
-	}
-	args := []string{
-		"--unit=" + unit,
-		"--property=Description=LinuxIO updater",
-		"--quiet",
-		"--collect",
-		"--wait",
-		"--pipe",
-		"--setenv=TERM=dumb",
-		"--setenv=NO_COLOR=1",
-		"--setenv=CLICOLOR=0",
-		"--setenv=LC_ALL=C.UTF-8",
-		"-p", "Type=exec",
-		"-p", "ProtectSystem=full",
-		"-p", "ReadWritePaths=" + strings.Join(writablePaths, " "),
-		"-p", "PrivateTmp=false",
-		"-p", "NoNewPrivileges=no",
-		"/bin/bash", "-s", "--",
-	}
-	if version != "" {
-		args = append(args, version)
-	}
 
 	logger.Infof("systemd-run unit: %s", unit)
 
-	cmd := exec.CommandContext(ctx, "systemd-run", args...)
+	var scriptArgs []string
+	if version != "" {
+		scriptArgs = append(scriptArgs, version)
+	}
+	cmd := exec.CommandContext(ctx, "systemd-run", buildInstallCommandArgs(unit, scriptArgs...)...)
 
 	// Connect streams BEFORE Start
 	stdout, _ := cmd.StdoutPipe()

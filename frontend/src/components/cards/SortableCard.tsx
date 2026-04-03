@@ -6,7 +6,7 @@ import React from "react";
 import { useAppTheme } from "@/theme";
 import { cardBorderRadius } from "@/theme/constants";
 
-import "./frosted-card.css";
+import "./FrostedCard.css";
 
 interface SortableCardProps {
   id: string;
