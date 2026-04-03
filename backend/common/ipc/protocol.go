@@ -51,16 +51,11 @@ type StreamFrame struct {
 }
 
 // checkPayloadSize validates that a payload length is within supported bounds.
-// It enforces both the protocol-level maximum payload size and guards against
-// integer overflow when computing the total frame size (header + payload).
+// It enforces the protocol-level maximum payload size for a single relay frame.
 func checkPayloadSize(payload []byte) (int, error) {
 	payloadLen := len(payload)
 	if payloadLen > maxRelayPayloadSize {
 		return 0, fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
-	}
-	// Guard against overflow when adding the frame header.
-	if payloadLen > math.MaxInt-relayFrameHeaderSize {
-		return 0, fmt.Errorf("write frame: payload size causes integer overflow")
 	}
 	return payloadLen, nil
 }
@@ -73,7 +68,11 @@ func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
 	if err != nil {
 		return err
 	}
-	frame := make([]byte, relayFrameHeaderSize+payloadLen)
+	frameLen := uint64(relayFrameHeaderSize) + uint64(payloadLen)
+	if frameLen > uint64(math.MaxInt) {
+		return fmt.Errorf("write frame: payload size causes integer overflow")
+	}
+	frame := make([]byte, int(frameLen))
 	frame[0] = f.Opcode
 	binary.BigEndian.PutUint32(frame[1:5], f.StreamID)
 	binary.BigEndian.PutUint32(frame[5:9], uint32(payloadLen))
