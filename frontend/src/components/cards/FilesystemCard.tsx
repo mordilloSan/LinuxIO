@@ -2,8 +2,8 @@ import React from "react";
 
 import { type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import Chip from "@/components/ui/AppChip";
 import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -341,8 +341,8 @@ const FilesystemCard: React.FC<FilesystemCardProps> = ({
       }
     />
     <AppTypography variant="body2" color="text.secondary">
-      {formatFileSize(filesystem.used)} / {formatFileSize(filesystem.total)}{" "}
-      ({filesystem.usedPercent.toFixed(1)}%)
+      {formatFileSize(filesystem.used)} / {formatFileSize(filesystem.total)} (
+      {filesystem.usedPercent.toFixed(1)}%)
     </AppTypography>
     {selected && (
       <FilesystemCardDetails

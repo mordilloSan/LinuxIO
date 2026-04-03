@@ -153,11 +153,7 @@ const DriveCard: React.FC<DriveCardProps> = ({
           color="primary"
           variant="soft"
         />
-        <Chip
-          label={transport.toUpperCase()}
-          size="small"
-          variant="soft"
-        />
+        <Chip label={transport.toUpperCase()} size="small" variant="soft" />
         {smart?.smart_status && (
           <Chip
             label={

@@ -396,7 +396,8 @@ const DockerDashboard: React.FC = () => {
                         <MetricBar
                           label="Disk (Docker)"
                           percent={Math.min(
-                            (dockerInfo.disk_used / dockerInfo.disk_total) * 100,
+                            (dockerInfo.disk_used / dockerInfo.disk_total) *
+                              100,
                             100,
                           )}
                           color={theme.palette.primary.main}
@@ -430,9 +431,7 @@ const DockerDashboard: React.FC = () => {
                   <InfoRow label="Server">
                     {dockerInfo.server_version || "—"}
                   </InfoRow>
-                  <InfoRow label="API">
-                    {dockerInfo.api_version || "—"}
-                  </InfoRow>
+                  <InfoRow label="API">{dockerInfo.api_version || "—"}</InfoRow>
                   <InfoRow label="Go">{dockerInfo.go_version || "—"}</InfoRow>
                   <InfoRow label="Git Commit">
                     {dockerInfo.git_commit || "—"}

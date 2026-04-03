@@ -19,12 +19,7 @@ import type {
 } from "./types";
 import { parseSizeToBytes } from "./utils";
 
-import {
-  linuxio,
-  openSmartTestStream,
-  type Stream,
-  type ApiDisk,
-} from "@/api";
+import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -627,9 +622,7 @@ const DiskOverview: React.FC = () => {
                         selected={selectedMountpoint === fs.mountpoint}
                         backingDrive={(() => {
                           const bd = findBackingDrive(fs.device, drives);
-                          return bd
-                            ? { name: bd.name, model: bd.model }
-                            : null;
+                          return bd ? { name: bd.name, model: bd.model } : null;
                         })()}
                         nfsMount={
                           nfsMountByMountpoint.get(fs.mountpoint) ?? null

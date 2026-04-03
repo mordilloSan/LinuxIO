@@ -53,7 +53,10 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
       </AppButton>
     </div>
 
-    <div className={gridClassName} style={{ paddingInline: 8, paddingBlock: 3 }}>
+    <div
+      className={gridClassName}
+      style={{ paddingInline: 8, paddingBlock: 3 }}
+    >
       {columnHeaders.map(({ label, hiddenXs }) => (
         <AppTypography
           key={label}

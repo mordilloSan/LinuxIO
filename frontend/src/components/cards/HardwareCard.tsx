@@ -107,7 +107,9 @@ const HardwareCard: React.FC<{
       }}
     >
       <CardIconHeader
-        icon={<Icon icon={avatarIcon} width={28} height={28} color={accentColor} />}
+        icon={
+          <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+        }
         title={title}
         subtitle={subtitle}
         gap={3}

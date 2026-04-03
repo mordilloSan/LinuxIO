@@ -3,17 +3,17 @@ import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import type { MonitoringRange } from "@/api";
-import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
-import SensorGroupCard from "@/components/cards/SensorGroupCard";
-import SensorSummaryCard, {
-  SensorEmptyCard,
-} from "@/components/cards/SensorSummaryCard";
 import type { SensorGroup } from "@/components/cards/SensorGroupCard";
+import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import {
   isPrimarySensorReading,
   isTemperatureReading,
 } from "@/components/cards/SensorGroupCard";
+import SensorSummaryCard, {
+  SensorEmptyCard,
+} from "@/components/cards/SensorSummaryCard";
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
