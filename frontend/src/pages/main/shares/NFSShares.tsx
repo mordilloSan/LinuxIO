@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type NFSExport, type NFSClient } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import NFSShareCard from "@/components/cards/NFSShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
@@ -692,72 +692,11 @@ const NFSShares: React.FC<NFSSharesProps> = ({
           <AppGrid container spacing={2}>
             {sharesList.map((share) => (
               <AppGrid key={share.path} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        backgroundColor: share.active ? "#00E676" : "#9e9e9e",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <AppTypography
-                      variant="body2"
-                      fontWeight={700}
-                      style={{ fontFamily: "monospace" }}
-                    >
-                      {share.path}
-                    </AppTypography>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {share.clients.map((client, i) => (
-                      <Chip
-                        key={i}
-                        label={
-                          client.options?.length > 0
-                            ? `${client.host}(${client.options.slice(0, 2).join(",")}${client.options.length > 2 ? "..." : ""})`
-                            : client.host
-                        }
-                        size="small"
-                        variant="soft"
-                      />
-                    ))}
-                  </div>
-
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <AppButton
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleEdit(share)}
-                    >
-                      Edit
-                    </AppButton>
-                    <AppButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDelete(share)}
-                    >
-                      Remove
-                    </AppButton>
-                  </div>
-                </FrostedCard>
+                <NFSShareCard
+                  share={share}
+                  onEdit={() => handleEdit(share)}
+                  onRemove={() => handleDelete(share)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

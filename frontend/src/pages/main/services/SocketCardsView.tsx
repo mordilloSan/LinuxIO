@@ -1,6 +1,6 @@
 import React from "react";
 
-import UnitLogsCard from "./UnitLogsCard";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import {
   DetailRow,
   UnitCardActions,

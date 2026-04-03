@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -323,108 +323,11 @@ const ImageList: React.FC<ImageListProps> = ({
                   lg: 3,
                 }}
               >
-                <FrostedCard
-                  style={{
-                    padding: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: theme.spacing(1),
-                      marginBottom: theme.spacing(1),
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: theme.spacing(1),
-                      }}
-                    >
-                      <AppCheckbox
-                        size="small"
-                        checked={effectiveSelected.has(image.id)}
-                        onChange={(e) =>
-                          handleSelectOne(image.id, e.target.checked)
-                        }
-                      />
-                      <AppTypography variant="body2" fontWeight={700} noWrap>
-                        {image.repo}
-                      </AppTypography>
-                    </div>
-                    <Chip
-                      label={image.tag}
-                      size="small"
-                      variant="soft"
-                      style={{
-                        fontSize: "0.75rem",
-                      }}
-                    />
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: theme.spacing(0.5),
-                      marginBottom: theme.spacing(1.5),
-                    }}
-                  >
-                    <AppTypography variant="body2" style={responsiveTextStyles}>
-                      Size: {image.size} MB
-                    </AppTypography>
-                    <AppTypography
-                      variant="body2"
-                      style={{
-                        fontFamily: "monospace",
-                        ...responsiveTextStyles,
-                      }}
-                    >
-                      ID: {image.shortId}
-                    </AppTypography>
-                    <AppTypography
-                      variant="body2"
-                      style={{
-                        fontSize: "0.82rem",
-                        ...responsiveTextStyles,
-                      }}
-                    >
-                      Created: {image.created}
-                    </AppTypography>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: theme.spacing(1),
-                      marginBottom: theme.spacing(1.5),
-                    }}
-                  >
-                    <Chip
-                      label={`Used by ${image.containers}`}
-                      size="small"
-                      variant="soft"
-                      color={image.containers > 0 ? "success" : "default"}
-                    />
-                  </div>
-
-                  <AppTypography variant="caption" color="text.secondary">
-                    Full ID
-                  </AppTypography>
-                  <AppTypography
-                    variant="body2"
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "0.75rem",
-                      marginBottom: 4,
-                      ...longTextStyles,
-                    }}
-                  >
-                    {image.id}
-                  </AppTypography>
-                </FrostedCard>
+                <DockerImageCard
+                  image={image}
+                  selected={effectiveSelected.has(image.id)}
+                  onSelect={(checked) => handleSelectOne(image.id, checked)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

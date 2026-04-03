@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -407,109 +407,11 @@ const NetworkList: React.FC<NetworkListProps> = ({
           <AppGrid container spacing={2}>
             {filtered.map((network) => (
               <AppGrid key={network.Id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: theme.spacing(1),
-                      marginBottom: theme.spacing(1),
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: theme.spacing(1),
-                      }}
-                    >
-                      <AppCheckbox
-                        size="small"
-                        checked={effectiveSelected.has(network.Id)}
-                        onChange={(e) =>
-                          handleSelectOne(network.Id, e.target.checked)
-                        }
-                      />
-                      <AppTypography variant="body2" fontWeight={700} noWrap>
-                        {network.Name}
-                      </AppTypography>
-                    </div>
-                    <Chip
-                      label={network.Driver}
-                      size="small"
-                      color="primary"
-                      variant="soft"
-                      style={{ fontSize: "0.75rem" }}
-                    />
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: theme.spacing(0.75),
-                    }}
-                  >
-                    <Chip
-                      label={`Scope: ${network.Scope}`}
-                      size="small"
-                      variant="soft"
-                    />
-                    <Chip
-                      label={`Internal: ${network.Internal ? "Yes" : "No"}`}
-                      size="small"
-                      variant="soft"
-                    />
-                    <Chip
-                      label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
-                      size="small"
-                      variant="soft"
-                    />
-                    <Chip
-                      label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
-                      size="small"
-                      variant="soft"
-                    />
-                  </div>
-
-                  <AppTypography
-                    variant="body2"
-                    style={{
-                      marginTop: 4,
-                      marginBottom: 4,
-                      fontFamily: "monospace",
-                      fontSize: "0.78rem",
-                      ...longTextStyles,
-                    }}
-                  >
-                    ID: {network.Id}
-                  </AppTypography>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: theme.spacing(0.75),
-                    }}
-                  >
-                    {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
-                      network.IPAM.Config.slice(0, 2).map((ipam, i) => (
-                        <Chip
-                          key={`${network.Id}-ipam-${i}`}
-                          label={ipam.Subnet}
-                          size="small"
-                          variant="outlined"
-                          sx={wrappableChipStyles}
-                        />
-                      ))
-                    ) : (
-                      <AppTypography variant="caption" color="text.secondary">
-                        No IPAM config
-                      </AppTypography>
-                    )}
-                  </div>
-                </FrostedCard>
+                <NetworkCard
+                  network={network}
+                  selected={effectiveSelected.has(network.Id)}
+                  onSelect={(checked) => handleSelectOne(network.Id, checked)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

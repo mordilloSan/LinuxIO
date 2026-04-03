@@ -12,7 +12,7 @@ import {
   type NFSExport,
   type SambaShare,
 } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
@@ -1143,47 +1143,20 @@ const SharesPage: React.FC = () => {
           <AppGrid container spacing={2}>
             {shareGroups.map((group) => (
               <AppGrid key={group.id} size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
-                <FrostedCard style={{ padding: 10 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: 8,
-                      marginBottom: 6,
-                    }}
-                  >
-                    <AppTypography variant="body2" fontWeight={700}>
-                      {group.name}
-                    </AppTypography>
+                <FolderShareCard
+                  name={group.name}
+                  path={group.path}
+                  comment={group.comment}
+                  actions={
                     <FolderShareCardActions
                       group={group}
                       onEditShare={(shareGroup) => setEditingShare(shareGroup)}
                       onDeleteSamba={(share) => setDeletingSamba(share)}
                       onDeleteNFS={(share) => setDeletingNFS(share)}
                     />
-                  </div>
-
-                  <AppTypography
-                    variant="body2"
-                    color="text.secondary"
-                    style={{ marginBottom: 6, fontFamily: "monospace" }}
-                  >
-                    {group.path}
-                  </AppTypography>
-
-                  {group.comment ? (
-                    <AppTypography
-                      variant="caption"
-                      color="text.secondary"
-                      style={{ display: "block", marginBottom: 8 }}
-                    >
-                      {group.comment}
-                    </AppTypography>
-                  ) : null}
-
-                  {renderProtocolSummary(group)}
-                </FrostedCard>
+                  }
+                  protocolSummary={renderProtocolSummary(group)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

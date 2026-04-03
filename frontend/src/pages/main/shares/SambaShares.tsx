@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type SambaShare } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import SambaShareCard from "@/components/cards/SambaShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
@@ -32,13 +32,6 @@ interface SambaSharesProps {
   viewMode?: "table" | "card";
 }
 
-// Common properties displayed as chips on cards
-const displayProps = [
-  "browseable",
-  "read only",
-  "guest ok",
-  "writable",
-] as const;
 
 // ============================================================================
 // Samba access options model
@@ -624,67 +617,11 @@ const SambaShares: React.FC<SambaSharesProps> = ({
           <AppGrid container spacing={2}>
             {sharesList.map((share) => (
               <AppGrid key={share.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
-                  <AppTypography
-                    variant="body2"
-                    fontWeight={700}
-                    style={{ marginBottom: 2 }}
-                  >
-                    {share.name}
-                  </AppTypography>
-                  <AppTypography
-                    variant="body2"
-                    style={{ marginBottom: 4, fontFamily: "monospace" }}
-                  >
-                    {share.properties["path"]}
-                  </AppTypography>
-                  {share.properties["comment"] && (
-                    <AppTypography
-                      variant="caption"
-                      color="text.secondary"
-                      style={{ marginBottom: 4, display: "block" }}
-                    >
-                      {share.properties["comment"]}
-                    </AppTypography>
-                  )}
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {displayProps.map((prop) =>
-                      share.properties[prop] ? (
-                        <Chip
-                          key={prop}
-                          label={`${prop}: ${share.properties[prop]}`}
-                          size="small"
-                          variant="soft"
-                        />
-                      ) : null,
-                    )}
-                  </div>
-
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <AppButton
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleEdit(share)}
-                    >
-                      Edit
-                    </AppButton>
-                    <AppButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDelete(share)}
-                    >
-                      Remove
-                    </AppButton>
-                  </div>
-                </FrostedCard>
+                <SambaShareCard
+                  share={share}
+                  onEdit={() => handleEdit(share)}
+                  onRemove={() => handleDelete(share)}
+                />
               </AppGrid>
             ))}
           </AppGrid>

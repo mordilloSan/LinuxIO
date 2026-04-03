@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import type { ComposeProject } from "./ComposeList";
+import type { ComposeProject } from "../../pages/main/docker/ComposeList";
 
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";

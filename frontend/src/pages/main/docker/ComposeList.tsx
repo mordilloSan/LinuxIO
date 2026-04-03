@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
-import ComposeStackCard from "./ComposeStackCard";
+import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";

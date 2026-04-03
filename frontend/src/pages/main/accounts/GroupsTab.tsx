@@ -6,7 +6,7 @@ import DeleteGroupDialog from "./components/DeleteGroupDialog";
 import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { linuxio, type AccountGroup } from "@/api";
-import FrostedCard from "@/components/cards/RootCard";
+import GroupCard from "@/components/cards/GroupCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -169,88 +169,12 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           <AppGrid container spacing={2}>
             {filtered.map((group) => (
               <AppGrid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard style={{ padding: 8 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 4,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 4 }}
-                    >
-                      <AppCheckbox
-                        size="small"
-                        checked={effectiveSelected.has(group.name)}
-                        onChange={(e) =>
-                          handleSelectOne(group.name, e.target.checked)
-                        }
-                        disabled={group.name === "root"}
-                      />
-                      <AppTypography variant="body2" fontWeight={700} noWrap>
-                        {group.name}
-                      </AppTypography>
-                    </div>
-                    <AppTooltip title="Edit Members">
-                      <AppIconButton
-                        size="small"
-                        onClick={() => handleEditMembers(group)}
-                        disabled={group.name === "root"}
-                      >
-                        <Icon icon="mdi:pencil" width={20} height={20} />
-                      </AppIconButton>
-                    </AppTooltip>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginBottom: 4,
-                    }}
-                  >
-                    {group.isSystem && (
-                      <Chip label="System" size="small" variant="soft" />
-                    )}
-                    <Chip
-                      label={`GID: ${group.gid}`}
-                      size="small"
-                      variant="soft"
-                    />
-                  </div>
-
-                  <AppTypography variant="caption" color="text.secondary">
-                    Members ({group.members.length})
-                  </AppTypography>
-                  <div
-                    style={{
-                      marginTop: 2,
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 2,
-                    }}
-                  >
-                    {group.members.length > 0 ? (
-                      group.members.map((member) => (
-                        <Chip
-                          key={`${group.name}-${member}`}
-                          label={member}
-                          size="small"
-                          variant="soft"
-                          style={{ fontSize: "0.7rem" }}
-                        />
-                      ))
-                    ) : (
-                      <AppTypography variant="body2" color="text.secondary">
-                        (no members)
-                      </AppTypography>
-                    )}
-                  </div>
-                </FrostedCard>
+                <GroupCard
+                  group={group}
+                  selected={effectiveSelected.has(group.name)}
+                  onSelect={(checked) => handleSelectOne(group.name, checked)}
+                  onEditMembers={() => handleEditMembers(group)}
+                />
               </AppGrid>
             ))}
           </AppGrid>
