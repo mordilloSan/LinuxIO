@@ -35,23 +35,20 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
   scrollHeight,
 }) => (
   <FrostedCard>
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: 8,
-        paddingBottom: 6,
-      }}
-    >
-      <CardIconHeader icon={icon} title={title} subtitle={subtitle} />
-      <AppButton size="small" onClick={onViewAll} style={{ flexShrink: 0 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          View All
-          <Icon icon="mdi:chevron-right" width={20} height={20} />
-        </span>
-      </AppButton>
-    </div>
+    <CardIconHeader
+      icon={icon}
+      title={title}
+      subtitle={subtitle}
+      right={
+        <AppButton size="small" onClick={onViewAll} style={{ flexShrink: 0 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            View All
+            <Icon icon="mdi:chevron-right" width={20} height={20} />
+          </span>
+        </AppButton>
+      }
+      style={{ padding: 8, paddingBottom: 6 }}
+    />
 
     <div
       className={gridClassName}

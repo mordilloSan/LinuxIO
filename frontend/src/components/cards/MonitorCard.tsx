@@ -2,9 +2,9 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import type { MonitoringRange } from "@/api";
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTypography from "@/components/ui/AppTypography";
 import { cardHeight } from "@/constants";
 import { useAppTheme } from "@/theme";
 
@@ -76,57 +76,17 @@ const MonitorCard: React.FC<{
         padding: 6,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 6,
-          marginBottom: 8,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Icon
-              icon={avatarIcon}
-              width={28}
-              height={28}
-              color={accentColor}
-            />
+      <CardIconHeader
+        icon={<Icon icon={avatarIcon} width={28} height={28} color={accentColor} />}
+        title={title}
+        right={
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <RangeDropdown value={range} onChange={onRangeChange} color={accentColor} />
+            {controls}
           </div>
-          <AppTypography
-            variant="subtitle1"
-            fontWeight={700}
-            style={{ lineHeight: 1.2 }}
-          >
-            {title}
-          </AppTypography>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flexShrink: 0,
-          }}
-        >
-          <RangeDropdown
-            value={range}
-            onChange={onRangeChange}
-            color={accentColor}
-          />
-          {controls}
-        </div>
-      </div>
+        }
+        style={{ marginBottom: 8 }}
+      />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, flex: 1 }}>
         <div
