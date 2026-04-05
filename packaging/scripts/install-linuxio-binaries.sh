@@ -22,7 +22,7 @@ log_ok()    { printf "✓ %s\n" "$*"; }
 log_error() { printf "✗ %s\n" "$*" >&2; }
 log_warn()  { printf " %s\n" "$*"; }
 
-# Track if services were stopped (to ensure they're restarted on exit)
+# Track if services may need a recovery start on exit
 SERVICES_STOPPED=0
 
 cleanup() {
@@ -287,19 +287,36 @@ install_pam_config() {
 # Global variable to store the selected port
 SELECTED_PORT=8090
 
-stop_existing_services() {
-    # Stop existing linuxio services before starting new version
-    # Called at the END of installation (not the beginning) to ensure:
-    # 1. UI remains connected during download/install and shows full output
-    # 2. Port is freed just before new version starts
-    if systemctl is-active linuxio.target >/dev/null 2>&1 || \
-       systemctl is-active linuxio-webserver.service >/dev/null 2>&1 || \
-       systemctl is-active linuxio-webserver.socket >/dev/null 2>&1; then
-        log_info "Stopping existing LinuxIO services..."
-        SERVICES_STOPPED=1  # Mark that we stopped services (cleanup trap will ensure restart)
-        systemctl stop linuxio.target 2>/dev/null || true
-        log_ok "Existing services stopped"
+linuxio_services_active() {
+    systemctl is-active linuxio.target >/dev/null 2>&1 || \
+        systemctl is-active linuxio-webserver.service >/dev/null 2>&1 || \
+        systemctl is-active linuxio-webserver.socket >/dev/null 2>&1
+}
+
+restart_or_start_services() {
+    SERVICES_STOPPED=1
+
+    if linuxio_services_active; then
+        log_info "Restarting LinuxIO services..."
+        if systemctl restart linuxio.target; then
+            log_ok "LinuxIO services restarted"
+            SERVICES_STOPPED=0
+            return 0
+        fi
+
+        log_warn "Failed to restart LinuxIO services - cleanup will retry"
+        return 1
     fi
+
+    log_info "Starting LinuxIO service..."
+    if systemctl start linuxio.target; then
+        log_ok "LinuxIO service started"
+        SERVICES_STOPPED=0
+        return 0
+    fi
+
+    log_warn "Failed to start LinuxIO service - cleanup will retry"
+    return 1
 }
 
 is_port_in_use() {
@@ -544,6 +561,7 @@ main() {
     local version="${1:-}"
     local skip_binaries=0
     local dry_run=0
+    local defer_restart=0
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -554,6 +572,10 @@ main() {
                 ;;
             --skip-binaries)
                 skip_binaries=1
+                shift
+                ;;
+            --defer-restart)
+                defer_restart=1
                 shift
                 ;;
             -h|--help)
@@ -660,18 +682,10 @@ main() {
     # Without this, the verification results may not be visible before disconnect
     sleep 2
 
-    # Stop existing services if running (this is the only point where we stop)
-    # This ensures all installation output was visible before disconnection
-    stop_existing_services
-
-    # Start the service
-    log_info "Starting LinuxIO service..."
-    if systemctl start linuxio.target; then
-        log_ok "LinuxIO service started"
-        SERVICES_STOPPED=0  # Clear flag - services are running, cleanup doesn't need to restart
+    if [[ $defer_restart -eq 1 ]]; then
+        log_info "Deferring LinuxIO service restart to the caller"
     else
-        log_warn "Failed to start LinuxIO service - cleanup will retry"
-        # Leave SERVICES_STOPPED=1 so cleanup trap will try again
+        restart_or_start_services || true
     fi
 
     log_ok "Installation complete!"
@@ -699,6 +713,7 @@ Arguments:
 
 Options:
   --dry-run         Validate writable install targets and exit
+  --defer-restart   Do not restart services; caller will do it after the script exits
   --skip-binaries   Skip downloading and installing binaries (config only)
   -h, --help        Show this help message
 

@@ -172,6 +172,7 @@ func runInstallScript(version string, relay io.Writer) error {
 	logger.Infof("systemd-run unit: %s", unit)
 
 	var scriptArgs []string
+	scriptArgs = append(scriptArgs, "--defer-restart")
 	if version != "" {
 		scriptArgs = append(scriptArgs, version)
 	}
