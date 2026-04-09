@@ -77,11 +77,24 @@ const MonitorCard: React.FC<{
       }}
     >
       <CardIconHeader
-        icon={<Icon icon={avatarIcon} width={28} height={28} color={accentColor} />}
+        icon={
+          <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+        }
         title={title}
         right={
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            <RangeDropdown value={range} onChange={onRangeChange} color={accentColor} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: 0,
+            }}
+          >
+            <RangeDropdown
+              value={range}
+              onChange={onRangeChange}
+              color={accentColor}
+            />
             {controls}
           </div>
         }

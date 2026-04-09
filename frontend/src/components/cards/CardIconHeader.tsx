@@ -28,7 +28,12 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
     }}
   >
     <div
-      style={{ display: "flex", alignItems: "center", gap: GAP_SM, minWidth: 0 }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: GAP_SM,
+        minWidth: 0,
+      }}
     >
       <div
         style={{

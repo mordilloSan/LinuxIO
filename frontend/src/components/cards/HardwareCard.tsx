@@ -98,13 +98,21 @@ const HardwareCard: React.FC<{
     hoverLift
   >
     <CardIconHeader
-      icon={<Icon icon={avatarIcon} width={28} height={28} color={accentColor} />}
+      icon={
+        <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+      }
       title={title}
       subtitle={subtitle}
-
       right={
         actions ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
             {actions}
           </div>
         ) : undefined

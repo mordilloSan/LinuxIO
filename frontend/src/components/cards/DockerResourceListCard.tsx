@@ -41,7 +41,9 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
       subtitle={subtitle}
       right={
         <AppButton size="small" onClick={onViewAll} style={{ flexShrink: 0 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
             View All
             <Icon icon="mdi:chevron-right" width={20} height={20} />
           </span>
