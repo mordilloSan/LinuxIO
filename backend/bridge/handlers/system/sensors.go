@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -209,8 +210,8 @@ func sensorLeafSegmentLabel(part string) string {
 }
 
 func sensorUnitForPath(path []string) string {
-	for idx := len(path) - 1; idx >= 0; idx-- {
-		prefix := sensorFieldPrefix(path[idx])
+	for _, v := range slices.Backward(path) {
+		prefix := sensorFieldPrefix(v)
 		if unit := sensorUnit(prefix); unit != "" {
 			return unit
 		}
