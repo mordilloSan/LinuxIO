@@ -233,34 +233,6 @@ install_config_files() {
         log_ok "${disallowed_file} already exists (not overwriting)"
     fi
 
-    local monitoring_dir="${CONFIG_DIR}/docker/linuxio-monitoring"
-    log_info "Ensuring monitoring stack directory exists..."
-    mkdir -p "$monitoring_dir"
-    chown root:root "$monitoring_dir"
-    chmod 0755 "$monitoring_dir"
-
-    local monitoring_files=(
-        "docker-compose.yml"
-        "prometheus.yml"
-    )
-
-    for file in "${monitoring_files[@]}"; do
-        local dest="${monitoring_dir}/${file}"
-        if [[ -f "$dest" ]]; then
-            log_ok "${dest} already exists (not overwriting contents)"
-        else
-            log_info "Downloading monitoring stack file ${file}..."
-            if ! curl -fsSL "${RAW_BASE}/etc/linuxio/docker/linuxio-monitoring/${file}" -o "$dest"; then
-                log_error "Failed to download monitoring stack file ${file}"
-                return 1
-            fi
-            log_ok "Created ${dest}"
-        fi
-        chown root:root "$dest"
-        chmod 0644 "$dest"
-        log_ok "Enforced root:root 0644 on ${dest}"
-    done
-
     return 0
 }
 
@@ -372,7 +344,7 @@ install_systemd_files() {
     for file in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
         linuxio-auth.socket linuxio-auth@.service \
         linuxio-bridge-socket-user.service \
-        linuxio-issue.service linuxio-monitoring.service; do
+        linuxio-issue.service; do
         log_info "Downloading ${file}..."
         if ! curl -fsSL "${RAW_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
             log_error "Failed to download ${file}"
@@ -448,12 +420,6 @@ enable_services() {
         log_warn "Failed to enable linuxio.target"
     fi
 
-    if systemctl enable linuxio-monitoring.service >/dev/null 2>&1; then
-        log_ok "Enabled linuxio-monitoring.service"
-    else
-        log_warn "Failed to enable linuxio-monitoring.service"
-    fi
-
     return 0
 }
 
@@ -498,12 +464,6 @@ verify_installation() {
         log_warn "linuxio.target is not enabled"
     fi
 
-    if systemctl is-enabled linuxio-monitoring.service >/dev/null 2>&1; then
-        log_ok "linuxio-monitoring.service is enabled"
-    else
-        log_warn "linuxio-monitoring.service is not enabled"
-    fi
-
     # Check PAM config
     if [[ -f "${PAM_DIR}/linuxio" ]]; then
         log_ok "PAM configuration installed"
@@ -527,7 +487,6 @@ verify_dry_run_targets() {
     local targets=(
         "${BIN_DIR}"
         "${CONFIG_DIR}"
-        "${CONFIG_DIR}/docker/linuxio-monitoring"
         "${PAM_DIR}"
         "${SYSTEMD_DIR}"
         "/usr/lib/tmpfiles.d"
@@ -695,7 +654,6 @@ main() {
     echo "Useful commands:"
     echo "  • Check status:   linuxio status"
     echo "  • View logs:      linuxio logs"
-    echo "  • Monitoring:     linuxio monitoring status"
     echo "  • All commands:   linuxio"
     echo ""
 
@@ -723,7 +681,6 @@ What gets installed:
   • Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users
-  • Monitoring:   /etc/linuxio/docker/linuxio-monitoring/
 
 Note: LinuxIO uses systemd DynamicUser, no static accounts are created.
 
