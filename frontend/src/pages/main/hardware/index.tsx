@@ -30,11 +30,11 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
-  GPUHistoryCard,
   MemoryHistoryCard,
   NetworkHistoryCard,
   MotherboardInfoCard,
 } from "@/pages/main/hardware/HardwareHistoryCards";
+import { useAppTheme } from "@/theme";
 import "@/theme/section.css";
 
 // ─── constants ──────────────────────────────────────────────────────────────
@@ -113,6 +113,8 @@ const SectionHeader: React.FC<{
 // ─── main component ──────────────────────────────────────────────────────────
 
 const HardwarePage: React.FC = () => {
+  const theme = useAppTheme();
+
   // ── data ──
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
     refetchInterval: 5000,
@@ -252,8 +254,43 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("hardware")}
       />
       <AppCollapse in={sections.hardware}>
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: `1px solid ${theme.palette.divider}`,
+            background: theme.palette.background.paper,
+          }}
+        >
+          <AppTypography
+            variant="caption"
+            style={{ color: theme.palette.text.secondary, lineHeight: 1.55 }}
+          >
+            Historical charts use PCP via pmproxy. If these stay empty after
+            install, run{" "}
+            <span
+              style={{
+                fontFamily: "monospace",
+                color: theme.palette.text.primary,
+              }}
+            >
+              sudo linuxio-install-pcp
+            </span>{" "}
+            and then{" "}
+            <span
+              style={{
+                fontFamily: "monospace",
+                color: theme.palette.text.primary,
+              }}
+            >
+              linuxio-monitoring status
+            </span>
+            .
+          </AppTypography>
+        </div>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
               <CPUHistoryCard
                 range={historyRange}
@@ -263,19 +300,9 @@ const HardwarePage: React.FC = () => {
               />
             </ErrorBoundary>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
               <MemoryHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
-            <ErrorBoundary>
-              <GPUHistoryCard
                 range={historyRange}
                 onRangeChange={setHistoryRange}
                 hoverRatio={historyHoverRatio}

@@ -352,49 +352,6 @@ export const MemoryHistoryCard: React.FC<{
   );
 };
 
-export const GPUHistoryCard: React.FC<{
-  range?: MonitoringRange;
-  onRangeChange?: (v: MonitoringRange) => void;
-  hoverRatio?: number | null;
-  onHoverChange?: (ratio: number | null) => void;
-}> = ({
-  range: rangeProp,
-  onRangeChange: onRangeChangeProp,
-  hoverRatio,
-  onHoverChange,
-}) => {
-  const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const range = rangeProp ?? rangeInternal;
-  const setRange = onRangeChangeProp ?? setRangeInternal;
-  const { data: series, isPending } =
-    linuxio.monitoring.get_gpu_series.useQuery(range, {
-      refetchInterval: 5_000,
-    });
-
-  return (
-    <MonitorCard
-      title="GPU"
-      avatarIcon="bi:gpu-card"
-      accentColor={theme.palette.primary.main}
-      range={range}
-      onRangeChange={setRange}
-      chart={
-        <MonitorGraph
-          color={theme.palette.primary.main}
-          label="GPU"
-          range={range}
-          series={series}
-          loading={isPending}
-          emptyMessage="Historical GPU data is not available on this host yet."
-          hoverRatio={hoverRatio}
-          onHoverChange={onHoverChange}
-        />
-      }
-    />
-  );
-};
-
 export const NetworkHistoryCard: React.FC<{
   range?: MonitoringRange;
   onRangeChange?: (v: MonitoringRange) => void;
