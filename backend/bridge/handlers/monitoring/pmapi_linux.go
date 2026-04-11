@@ -59,6 +59,7 @@ const (
 var (
 	pmapiOnce sync.Once
 	pmapiErr  error
+	pmapiMu   sync.Mutex
 
 	_pmNewContext      func(ctxType int32, name string) int32
 	_pmDestroyContext  func(handle int32) int32
@@ -76,6 +77,25 @@ var (
 	_pmGetInDomArchiveAddr uintptr
 	_cFreeAddr             uintptr
 )
+
+// withPMAPI serializes all libpcp calls and pins the calling goroutine to one
+// OS thread for the lifetime of the PMAPI context. PMAPI keeps the current
+// context in thread-local state, and concurrent purego calls into libpcp have
+// proven unstable on real hosts.
+func withPMAPI[T any](fn func() (T, error)) (T, error) {
+	var zero T
+	if err := ensurePMAPI(); err != nil {
+		return zero, err
+	}
+
+	pmapiMu.Lock()
+	defer pmapiMu.Unlock()
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	return fn()
+}
 
 func ensurePMAPI() error {
 	pmapiOnce.Do(func() {
@@ -361,91 +381,82 @@ var errPMAPIEOL = fmt.Errorf("end of PCP archive log")
 // ─── high-level query functions (same signatures as the mockable vars) ──────
 
 func pmapiQuerySamples(_ context.Context, req pcpSamplesRequest) ([]SeriesPoint, error) {
-	if err := ensurePMAPI(); err != nil {
-		return nil, err
-	}
-
-	// Pin this goroutine to an OS thread for the lifetime of the PMAPI context.
-	// PMAPI's "current context" is thread-local state set by pmNewContext —
-	// without pinning, the Go scheduler can move this goroutine to a thread
-	// where a different context is active.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	archivePath, err := getCachedArchivePath()
-	if err != nil {
-		return nil, err
-	}
-
-	handle, err := pmapiNewContext(pmContextArchive, archivePath)
-	if err != nil {
-		return nil, err
-	}
-	defer _pmDestroyContext(handle)
-
-	pmid, err := pmapiLookupPMID(req.Metric)
-	if err != nil {
-		return nil, err
-	}
-
-	desc, err := pmapiLookupDesc(pmid)
-	if err != nil {
-		return nil, err
-	}
-
-	wantInsts, err := buildInstanceFilter(req.Instances, desc)
-	if err != nil {
-		return nil, err
-	}
-
-	// Determine archive time window, clamping to the actual archive span.
-	archiveStart, err := pmapiGetArchiveStart(handle)
-	if err != nil {
-		return nil, err
-	}
-	archiveEnd, err := pmapiGetArchiveEnd(handle)
-	if err != nil {
-		return nil, err
-	}
-
-	clampStart := func(t time.Time) time.Time {
-		if t.Before(archiveStart) {
-			return archiveStart
-		}
-		return t
-	}
-
-	maxSamples := computePCPSampleCount(req.Range, req.ExtraCount)
-
-	if req.NoInterp {
-		// Record-driven (non-interpolated) mode.
-		// pmlogger may log per-instance metrics (network, disk) at intervals
-		// longer than the requested step (e.g. 60s vs 5s). Read further back
-		// to collect enough raw samples for rate calculations.
-		lookback := max(req.Range.Duration, 5*time.Minute)
-		startTime := clampStart(archiveEnd.Add(-lookback))
-
-		if err := pmapiSetMode(pmModeForw, startTime, 0); err != nil {
+	return withPMAPI(func() ([]SeriesPoint, error) {
+		archivePath, err := getCachedArchivePath()
+		if err != nil {
 			return nil, err
 		}
 
-		// pmlogger's default interval for per-instance metrics is ~60s.
-		// Cap the loop at the lookback window divided by the minimum expected
-		// logging interval so we scan the entire requested window.
-		const minLogInterval = 10 * time.Second
-		maxRecords := int(lookback/minLogInterval) + 100
-		return pmapiFetchPoints(pmid, desc, wantInsts, maxRecords)
-	}
+		handle, err := pmapiNewContext(pmContextArchive, archivePath)
+		if err != nil {
+			return nil, err
+		}
+		defer _pmDestroyContext(handle)
 
-	startTime := clampStart(archiveEnd.Add(-req.Range.Duration))
+		pmid, err := pmapiLookupPMID(req.Metric)
+		if err != nil {
+			return nil, err
+		}
 
-	// Interpolated mode.
-	stepMs := int32(req.Range.Step.Milliseconds())
-	if err := pmapiSetMode(pmModeInterp, startTime, stepMs); err != nil {
-		return nil, err
-	}
+		desc, err := pmapiLookupDesc(pmid)
+		if err != nil {
+			return nil, err
+		}
 
-	return pmapiFetchPoints(pmid, desc, wantInsts, maxSamples)
+		wantInsts, err := buildInstanceFilter(req.Instances, desc)
+		if err != nil {
+			return nil, err
+		}
+
+		// Determine archive time window, clamping to the actual archive span.
+		archiveStart, err := pmapiGetArchiveStart(handle)
+		if err != nil {
+			return nil, err
+		}
+		archiveEnd, err := pmapiGetArchiveEnd(handle)
+		if err != nil {
+			return nil, err
+		}
+
+		clampStart := func(t time.Time) time.Time {
+			if t.Before(archiveStart) {
+				return archiveStart
+			}
+			return t
+		}
+
+		maxSamples := computePCPSampleCount(req.Range, req.ExtraCount)
+
+		if req.NoInterp {
+			// Record-driven (non-interpolated) mode.
+			// pmlogger may log per-instance metrics (network, disk) at intervals
+			// longer than the requested step (e.g. 60s vs 5s). Read further back
+			// to collect enough raw samples for rate calculations.
+			lookback := max(req.Range.Duration, 5*time.Minute)
+			startTime := clampStart(archiveEnd.Add(-lookback))
+
+			if err := pmapiSetMode(pmModeForw, startTime, 0); err != nil {
+				return nil, err
+			}
+
+			// pmlogger's default interval for per-instance metrics is ~60s.
+			// Cap the loop at the lookback window divided by the minimum expected
+			// logging interval so we scan the entire requested window.
+			const minLogInterval = 10 * time.Second
+			maxRecords := int(lookback/minLogInterval) + 100
+			return pmapiFetchPoints(pmid, desc, wantInsts, maxRecords)
+		}
+
+		startTime := clampStart(archiveEnd.Add(-req.Range.Duration))
+
+		// Interpolated mode.
+		stepMs := int32(req.Range.Step.Milliseconds())
+		if err := pmapiSetMode(pmModeInterp, startTime, stepMs); err != nil {
+			return nil, err
+		}
+
+		return pmapiFetchPoints(pmid, desc, wantInsts, maxSamples)
+	})
 }
 
 func buildInstanceFilter(instances []string, desc pmapiDesc) (map[int32]bool, error) {
@@ -487,78 +498,68 @@ func pmapiFetchPoints(pmid uint32, desc pmapiDesc, wantInsts map[int32]bool, n i
 }
 
 func pmapiQueryLiveMetric(_ context.Context, metric string) (float64, error) {
-	if err := ensurePMAPI(); err != nil {
-		return 0, err
-	}
+	return withPMAPI(func() (float64, error) {
+		handle, err := pmapiNewContext(pmContextHost, "local:")
+		if err != nil {
+			return 0, err
+		}
+		defer _pmDestroyContext(handle)
 
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+		pmid, err := pmapiLookupPMID(metric)
+		if err != nil {
+			return 0, err
+		}
 
-	handle, err := pmapiNewContext(pmContextHost, "local:")
-	if err != nil {
-		return 0, err
-	}
-	defer _pmDestroyContext(handle)
+		desc, err := pmapiLookupDesc(pmid)
+		if err != nil {
+			return 0, err
+		}
 
-	pmid, err := pmapiLookupPMID(metric)
-	if err != nil {
-		return 0, err
-	}
+		result, err := pmapiFetch(pmid)
+		if err != nil {
+			return 0, err
+		}
+		defer result.free()
 
-	desc, err := pmapiLookupDesc(pmid)
-	if err != nil {
-		return 0, err
-	}
-
-	result, err := pmapiFetch(pmid)
-	if err != nil {
-		return 0, err
-	}
-	defer result.free()
-
-	value, ok := result.extractSum(desc, nil)
-	if !ok {
-		return 0, fmt.Errorf("metric %s returned no values", metric)
-	}
-	return value, nil
+		value, ok := result.extractSum(desc, nil)
+		if !ok {
+			return 0, fmt.Errorf("metric %s returned no values", metric)
+		}
+		return value, nil
+	})
 }
 
 func pmapiQueryInstanceNames(_ context.Context, metric string) ([]string, error) {
-	if err := ensurePMAPI(); err != nil {
-		return nil, err
-	}
+	return withPMAPI(func() ([]string, error) {
+		handle, err := pmapiNewContext(pmContextHost, "local:")
+		if err != nil {
+			return nil, err
+		}
+		defer _pmDestroyContext(handle)
 
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+		pmid, err := pmapiLookupPMID(metric)
+		if err != nil {
+			return nil, err
+		}
 
-	handle, err := pmapiNewContext(pmContextHost, "local:")
-	if err != nil {
-		return nil, err
-	}
-	defer _pmDestroyContext(handle)
+		desc, err := pmapiLookupDesc(pmid)
+		if err != nil {
+			return nil, err
+		}
 
-	pmid, err := pmapiLookupPMID(metric)
-	if err != nil {
-		return nil, err
-	}
+		if desc.indom == pmIndomNull {
+			return nil, nil
+		}
 
-	desc, err := pmapiLookupDesc(pmid)
-	if err != nil {
-		return nil, err
-	}
+		instMap, err := pmapiGetInDomMap(desc.indom, false)
+		if err != nil {
+			return nil, err
+		}
 
-	if desc.indom == pmIndomNull {
-		return nil, nil
-	}
-
-	instMap, err := pmapiGetInDomMap(desc.indom, false)
-	if err != nil {
-		return nil, err
-	}
-
-	names := make([]string, 0, len(instMap))
-	for name := range instMap {
-		names = append(names, name)
-	}
-	return names, nil
+		names := make([]string, 0, len(instMap))
+		for name := range instMap {
+			names = append(names, name)
+		}
+		return names, nil
+	})
 }
