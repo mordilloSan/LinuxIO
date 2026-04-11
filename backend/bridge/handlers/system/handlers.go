@@ -17,10 +17,6 @@ type systemRegistration struct {
 
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers(sess *session.Session) {
-	onceDiskSampler.Do(func() {
-		go runDiskThroughputSampler()
-	})
-
 	registerCapabilitiesHandlers()
 	registerSystemHandlers(sess, []systemRegistration{
 		{command: "get_cpu_info", handler: handleGetCPUInfo},

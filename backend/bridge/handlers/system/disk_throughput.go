@@ -29,40 +29,15 @@ type DiskThroughputResponse struct {
 }
 
 var (
-	diskThroughputSnapshot     = DiskThroughputResponse{Devices: []DiskThroughputDevice{}}
-	diskThroughputSnapshotLock sync.RWMutex
-	onceDiskSampler            sync.Once
+	diskRateStateLock sync.Mutex
+	lastDiskCounters  = map[string]gopsdisk.IOCountersStat{}
+	lastDiskSampleAt  time.Time
 
 	diskCounterSampler  = sampleDiskCounters
 	sysBlockExists      = defaultSysBlockExists
 	sysBlockDeviceExist = defaultSysBlockDeviceExists
+	diskClock           = time.Now
 )
-
-func runDiskThroughputSampler() {
-	previous := diskCounterSampler()
-	previousAt := time.Now()
-
-	diskThroughputSnapshotLock.Lock()
-	diskThroughputSnapshot = buildDiskThroughputResponse(previous, previous, 0)
-	diskThroughputSnapshotLock.Unlock()
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		current := diskCounterSampler()
-		currentAt := time.Now()
-		intervalSeconds := currentAt.Sub(previousAt).Seconds()
-		snapshot := buildDiskThroughputResponse(previous, current, intervalSeconds)
-
-		diskThroughputSnapshotLock.Lock()
-		diskThroughputSnapshot = snapshot
-		diskThroughputSnapshotLock.Unlock()
-
-		previous = current
-		previousAt = currentAt
-	}
-}
 
 func sampleDiskCounters() map[string]gopsdisk.IOCountersStat {
 	stats, err := gopsdisk.IOCounters()
@@ -82,12 +57,21 @@ func sampleDiskCounters() map[string]gopsdisk.IOCountersStat {
 }
 
 func FetchDiskThroughput() (DiskThroughputResponse, error) {
-	diskThroughputSnapshotLock.RLock()
-	defer diskThroughputSnapshotLock.RUnlock()
+	diskRateStateLock.Lock()
+	current := diskCounterSampler()
+	currentAt := diskClock()
+	previous := lastDiskCounters
+	previousAt := lastDiskSampleAt
+	lastDiskCounters = current
+	lastDiskSampleAt = currentAt
+	diskRateStateLock.Unlock()
 
-	response := diskThroughputSnapshot
-	response.Devices = append([]DiskThroughputDevice(nil), diskThroughputSnapshot.Devices...)
-	return response, nil
+	intervalSeconds := 0.0
+	if !previousAt.IsZero() {
+		intervalSeconds = currentAt.Sub(previousAt).Seconds()
+	}
+
+	return buildDiskThroughputResponse(previous, current, intervalSeconds), nil
 }
 
 func buildDiskThroughputResponse(previous, current map[string]gopsdisk.IOCountersStat, intervalSeconds float64) DiskThroughputResponse {
