@@ -395,7 +395,7 @@ func parseChronyInlineManagedServers(path string) ([]string, bool, error) {
 
 func parseChronyServers(data string) []string {
 	var servers []string
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -502,7 +502,7 @@ func chronyManagedTarget(mainPath string) (string, bool) {
 func chronyIncludedManagedPath(data string) (string, bool) {
 	var sourceDirs []string
 	var confDirs []string
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue

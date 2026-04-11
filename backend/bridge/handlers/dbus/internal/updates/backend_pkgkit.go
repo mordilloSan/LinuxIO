@@ -3,6 +3,7 @@ package updates
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -32,12 +33,7 @@ func (*pkgkitBackend) Detect() bool {
 }
 
 func containsDBusName(names []string, target string) bool {
-	for _, name := range names {
-		if name == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(names, target)
 }
 
 // Read returns a minimal state since PackageKit doesn't manage auto-update configuration

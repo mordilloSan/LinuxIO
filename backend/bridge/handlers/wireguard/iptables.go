@@ -340,7 +340,7 @@ func firewalldRules() (map[string]struct{}, error) {
 		return nil, commandOutputError("firewall-cmd", []string{"--direct", "--get-all-rules"}, output, err)
 	}
 	rules := make(map[string]struct{})
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
