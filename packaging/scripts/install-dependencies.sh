@@ -195,6 +195,21 @@ install_docker() {
     Show 0 "Docker installed"
 }
 
+install_indexer() {
+    if command -v indexer &>/dev/null; then
+        Show 0 "Indexer ${GREY}already installed${COLOUR_RESET}"
+        return 0
+    fi
+
+    Show 2 "Installing Indexer..."
+    if ! curl -fsSL https://github.com/mordilloSan/indexer/releases/latest/download/indexer-install.sh 2>/dev/null | bash >/dev/null 2>&1; then
+        Show 3 "Indexer installation failed"
+        return 1
+    fi
+
+    Show 0 "Indexer installed"
+}
+
 install_all_optional() {
     Header "Optional Dependencies"
 
@@ -203,6 +218,7 @@ install_all_optional() {
     install_pcp
     install_nfs
     install_docker
+    install_indexer
 }
 
 # ---------- Optional prompt ----------
@@ -214,6 +230,7 @@ prompt_optional() {
     echo -e "${BULLET} PCP              ${GREY}CPU, memory, network, disk history charts${COLOUR_RESET}"
     echo -e "${BULLET} NFS utilities    ${GREY}mount/browse NFS shares${COLOUR_RESET}"
     echo -e "${BULLET} Docker           ${GREY}container management${COLOUR_RESET}"
+    echo -e "${BULLET} Indexer          ${GREY}file search and directory size indexing${COLOUR_RESET}"
 
     if ask_yes_no "Install all optional dependencies?"; then
         install_all_optional
@@ -284,6 +301,7 @@ Optional (prompted interactively, or use --all):
   - PCP              (CPU, memory, network, disk history charts)
   - NFS utilities    (mount/browse NFS shares)
   - Docker           (container management)
+  - Indexer          (file search and directory size indexing)
 
 This script must be run as root.
 EOF
