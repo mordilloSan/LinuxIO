@@ -23,22 +23,17 @@ type SimpleNetInfo struct {
 }
 
 var (
-	simpleNetStats     = make(map[string]SimpleNetInfo)
-	simpleNetStatsLock sync.RWMutex
-	onceSampler        sync.Once
-)
+	netRateStateLock sync.Mutex
+	lastNetCounters  = map[string]gopsnet.IOCountersStat{}
+	lastNetSampleAt  time.Time
 
-func runSimpleNetInfoSampler() {
-	for {
-		stats1Map := sampleIOCounters()
-		time.Sleep(1 * time.Second)
-		stats2Map := sampleIOCounters()
-
-		simpleNetStatsLock.Lock()
-		simpleNetStats = collectSimpleNetStats(stats1Map, stats2Map)
-		simpleNetStatsLock.Unlock()
+	netCounterSampler  = sampleIOCounters
+	netInterfaceReader = func() ([]gopsnet.InterfaceStat, error) {
+		return gopsnet.Interfaces()
 	}
-}
+	netSpeedReader = readInterfaceSpeed
+	netClock       = time.Now
+)
 
 func sampleIOCounters() map[string]gopsnet.IOCountersStat {
 	stats, _ := gopsnet.IOCounters(true)
@@ -49,25 +44,29 @@ func sampleIOCounters() map[string]gopsnet.IOCountersStat {
 	return result
 }
 
-func collectSimpleNetStats(stats1Map, stats2Map map[string]gopsnet.IOCountersStat) map[string]SimpleNetInfo {
-	ifaces, _ := gopsnet.Interfaces()
-	tmp := make(map[string]SimpleNetInfo, len(ifaces))
+func collectSimpleNetStats(
+	ifaces []gopsnet.InterfaceStat,
+	previousStats,
+	currentStats map[string]gopsnet.IOCountersStat,
+	intervalSeconds float64,
+) []SimpleNetInfo {
+	infos := make([]SimpleNetInfo, 0, len(ifaces))
 	for _, iface := range ifaces {
 		if strings.HasPrefix(iface.Name, "lo") {
 			continue
 		}
 
-		rxKBs, txKBs := computeSimpleNetRates(iface.Name, stats1Map, stats2Map)
-		tmp[iface.Name] = SimpleNetInfo{
+		rxKBs, txKBs := computeSimpleNetRates(iface.Name, previousStats, currentStats, intervalSeconds)
+		infos = append(infos, SimpleNetInfo{
 			Name:  iface.Name,
 			IPv4:  collectInterfaceIPv4s(iface),
 			MAC:   iface.HardwareAddr,
-			Speed: readInterfaceSpeed(iface.Name),
+			Speed: netSpeedReader(iface.Name),
 			TxKBs: txKBs,
 			RxKBs: rxKBs,
-		}
+		})
 	}
-	return tmp
+	return infos
 }
 
 func collectInterfaceIPv4s(iface gopsnet.InterfaceStat) []string {
@@ -94,27 +93,49 @@ func readInterfaceSpeed(name string) string {
 	return speed + " Mbps"
 }
 
-func computeSimpleNetRates(name string, stats1Map, stats2Map map[string]gopsnet.IOCountersStat) (float64, float64) {
-	s1, ok1 := stats1Map[name]
-	s2, ok2 := stats2Map[name]
-	if !ok1 || !ok2 {
+func computeSimpleNetRates(
+	name string,
+	previousStats,
+	currentStats map[string]gopsnet.IOCountersStat,
+	intervalSeconds float64,
+) (float64, float64) {
+	if intervalSeconds <= 0 {
 		return 0, 0
 	}
 
-	rx := max(float64(s2.BytesRecv-s1.BytesRecv)/1024.0, 0)
-	tx := max(float64(s2.BytesSent-s1.BytesSent)/1024.0, 0)
+	previous, okPrevious := previousStats[name]
+	current, okCurrent := currentStats[name]
+	if !okPrevious || !okCurrent {
+		return 0, 0
+	}
+	if current.BytesRecv < previous.BytesRecv || current.BytesSent < previous.BytesSent {
+		return 0, 0
+	}
+
+	rx := float64(current.BytesRecv-previous.BytesRecv) / intervalSeconds / 1024.0
+	tx := float64(current.BytesSent-previous.BytesSent) / intervalSeconds / 1024.0
 	return rx, tx
 }
 
 // Pure fetcher used by the bridge handler map.
 func FetchNetworks() ([]SimpleNetInfo, error) {
-	simpleNetStatsLock.RLock()
-	infos := make([]SimpleNetInfo, 0, len(simpleNetStats))
-	for _, v := range simpleNetStats {
-		infos = append(infos, v)
-	}
-	simpleNetStatsLock.RUnlock()
+	netRateStateLock.Lock()
+	currentStats := netCounterSampler()
+	currentAt := netClock()
+	previousStats := lastNetCounters
+	previousAt := lastNetSampleAt
+	lastNetCounters = currentStats
+	lastNetSampleAt = currentAt
+	netRateStateLock.Unlock()
 
+	ifaces, _ := netInterfaceReader()
+
+	intervalSeconds := 0.0
+	if !previousAt.IsZero() {
+		intervalSeconds = currentAt.Sub(previousAt).Seconds()
+	}
+
+	infos := collectSimpleNetStats(ifaces, previousStats, currentStats, intervalSeconds)
 	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
 	return infos, nil
 }
