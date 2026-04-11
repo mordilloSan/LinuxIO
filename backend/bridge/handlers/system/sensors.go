@@ -51,44 +51,46 @@ func FetchSensorsInfo() []SensorGroup {
 		if !ok {
 			continue
 		}
-
-		group := SensorGroup{Adapter: chipName}
-		featureNames := sortedSensorKeys(chip)
-		for _, featureName := range featureNames {
-			if featureName == "Adapter" {
-				continue
-			}
-
-			leaves := collectSensorLeaves(chip[featureName], nil)
-			if len(leaves) == 0 {
-				continue
-			}
-
-			sort.Slice(leaves, func(i, j int) bool {
-				return compareSensorLeaves(leaves[i], leaves[j])
-			})
-
-			for _, leaf := range leaves {
-				label := featureName
-				if len(leaves) > 1 {
-					label = fmt.Sprintf("%s (%s)", featureName, sensorLeafLabel(leaf.path))
-				}
-
-				group.Readings = append(group.Readings, SensorReading{
-					Label: label,
-					Value: leaf.value,
-					Kind:  leaf.kind,
-					Unit:  leaf.unit,
-					field: leaf.field,
-				})
-			}
-		}
-
-		if len(group.Readings) > 0 {
+		if group := parseSensorChip(chipName, chip); len(group.Readings) > 0 {
 			groups = append(groups, group)
 		}
 	}
 	return groups
+}
+
+func parseSensorChip(chipName string, chip map[string]any) SensorGroup {
+	group := SensorGroup{Adapter: chipName}
+	featureNames := sortedSensorKeys(chip)
+	for _, featureName := range featureNames {
+		if featureName == "Adapter" {
+			continue
+		}
+
+		leaves := collectSensorLeaves(chip[featureName], nil)
+		if len(leaves) == 0 {
+			continue
+		}
+
+		sort.Slice(leaves, func(i, j int) bool {
+			return compareSensorLeaves(leaves[i], leaves[j])
+		})
+
+		for _, leaf := range leaves {
+			label := featureName
+			if len(leaves) > 1 {
+				label = fmt.Sprintf("%s (%s)", featureName, sensorLeafLabel(leaf.path))
+			}
+
+			group.Readings = append(group.Readings, SensorReading{
+				Label: label,
+				Value: leaf.value,
+				Kind:  leaf.kind,
+				Unit:  leaf.unit,
+				field: leaf.field,
+			})
+		}
+	}
+	return group
 }
 
 type sensorLeaf struct {

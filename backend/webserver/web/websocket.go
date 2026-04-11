@@ -245,56 +245,52 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 		// Start ping goroutine to keep connection alive
 		go relay.pingLoop()
 
-		// Read binary messages from WebSocket
-		for {
-			messageType, data, err := conn.ReadMessage()
-			if err != nil {
-				if !isExpectedWSClose(err) {
-					logger.Warnf("read error: %v", err)
-				}
-				break
-			}
-
-			// Reset read deadline on any successful read (data keeps connection alive too)
-			if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-				logger.Debugf("failed to reset read deadline: %v", err)
-				break
-			}
-			refreshSessionActivity(sm, sess.SessionID)
-
-			// Only handle binary messages
-			if messageType != websocket.BinaryMessage {
-				logger.Debugf("ignoring non-binary message type=%d", messageType)
-				continue
-			}
-
-			// Parse frame header: [streamID:4][flags:1][payload:N]
-			if len(data) < 5 {
-				logger.Warnf("frame too short: %d bytes", len(data))
-				continue
-			}
-
-			streamID := binary.BigEndian.Uint32(data[0:4])
-			flags := data[4]
-			payload := data[5:]
-
-			if flags&FlagSYN != 0 {
-				// Open new stream
-				relay.handleSYN(sess, streamID, payload)
-			} else if flags&FlagDATA != 0 {
-				// Write data to stream
-				relay.handleDATA(streamID, payload)
-			} else if flags&FlagFIN != 0 {
-				// Close stream (forward payload first if present)
-				relay.handleFIN(streamID, payload)
-			} else if flags&FlagRST != 0 {
-				// Abort stream
-				relay.handleRST(streamID)
-			}
-		}
-
+		relay.readLoop(sm, sess)
 		logger.Infof("Disconnected: user=%s", sess.User.Username)
 	})
+}
+
+func (r *streamRelay) readLoop(sm *session.Manager, sess *session.Session) {
+	for {
+		messageType, data, err := r.ws.ReadMessage()
+		if err != nil {
+			if !isExpectedWSClose(err) {
+				logger.Warnf("read error: %v", err)
+			}
+			return
+		}
+
+		if err := r.ws.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+			logger.Debugf("failed to reset read deadline: %v", err)
+			return
+		}
+		refreshSessionActivity(sm, sess.SessionID)
+
+		if messageType != websocket.BinaryMessage {
+			logger.Debugf("ignoring non-binary message type=%d", messageType)
+			continue
+		}
+
+		if len(data) < 5 {
+			logger.Warnf("frame too short: %d bytes", len(data))
+			continue
+		}
+
+		streamID := binary.BigEndian.Uint32(data[0:4])
+		flags := data[4]
+		payload := data[5:]
+
+		switch {
+		case flags&FlagSYN != 0:
+			r.handleSYN(sess, streamID, payload)
+		case flags&FlagDATA != 0:
+			r.handleDATA(streamID, payload)
+		case flags&FlagFIN != 0:
+			r.handleFIN(streamID, payload)
+		case flags&FlagRST != 0:
+			r.handleRST(streamID)
+		}
+	}
 }
 
 // handleSYN opens a new yamux stream and starts relaying

@@ -89,42 +89,7 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.Bidirection
 	emit := newEventEmitter(stream)
 	inputChan := make(chan []byte, 16)
 
-	// Start goroutine to read client data
-	go func() {
-		defer close(resizeChan)
-		defer close(inputChan)
-		for {
-			frame, err := ipc.ReadRelayFrame(stream)
-			if err != nil {
-				cancel()
-				return
-			}
-
-			switch frame.Opcode {
-			case ipc.OpStreamData:
-				// Forward client data to handler
-				select {
-				case inputChan <- frame.Payload:
-				case <-ctx.Done():
-					return
-				}
-			case ipc.OpStreamClose, ipc.OpStreamAbort:
-				// Client closed or aborted
-				cancel()
-				return
-			case ipc.OpStreamResize:
-				if len(frame.Payload) < 4 {
-					continue
-				}
-				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
-				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
-				select {
-				case resizeChan <- ipc.ResizeEvent{Cols: cols, Rows: rows}:
-				default:
-				}
-			}
-		}
-	}()
+	go readClientFrames(ctx, cancel, stream, inputChan, resizeChan)
 
 	// Execute handler with input channel
 	if err := h.ExecuteWithInput(ctx, args, emit, inputChan); err != nil {
@@ -141,6 +106,40 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.Bidirection
 		logger.Debugf("[BridgeStream] failed to write stream close frame: %v", err)
 	}
 	return nil
+}
+
+func readClientFrames(ctx context.Context, cancel context.CancelFunc, stream net.Conn, inputChan chan<- []byte, resizeChan chan<- ipc.ResizeEvent) {
+	defer close(resizeChan)
+	defer close(inputChan)
+	for {
+		frame, err := ipc.ReadRelayFrame(stream)
+		if err != nil {
+			cancel()
+			return
+		}
+
+		switch frame.Opcode {
+		case ipc.OpStreamData:
+			select {
+			case inputChan <- frame.Payload:
+			case <-ctx.Done():
+				return
+			}
+		case ipc.OpStreamClose, ipc.OpStreamAbort:
+			cancel()
+			return
+		case ipc.OpStreamResize:
+			if len(frame.Payload) < 4 {
+				continue
+			}
+			cols := binary.BigEndian.Uint16(frame.Payload[0:2])
+			rows := binary.BigEndian.Uint16(frame.Payload[2:4])
+			select {
+			case resizeChan <- ipc.ResizeEvent{Cols: cols, Rows: rows}:
+			default:
+			}
+		}
+	}
 }
 
 // eventEmitter implements ipc.Events

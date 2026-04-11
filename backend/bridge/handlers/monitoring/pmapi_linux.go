@@ -393,19 +393,9 @@ func pmapiQuerySamples(_ context.Context, req pcpSamplesRequest) ([]SeriesPoint,
 		return nil, err
 	}
 
-	// Build instance filter.
-	var wantInsts map[int32]bool
-	if len(req.Instances) > 0 && desc.indom != pmIndomNull {
-		instMap, mapErr := pmapiGetInDomMap(desc.indom, true)
-		if mapErr != nil {
-			return nil, mapErr
-		}
-		wantInsts = make(map[int32]bool, len(req.Instances))
-		for _, name := range req.Instances {
-			if id, ok := instMap[name]; ok {
-				wantInsts[id] = true
-			}
-		}
+	wantInsts, err := buildInstanceFilter(req.Instances, desc)
+	if err != nil {
+		return nil, err
 	}
 
 	// Determine archive time window, clamping to the actual archive span.
@@ -444,24 +434,7 @@ func pmapiQuerySamples(_ context.Context, req pcpSamplesRequest) ([]SeriesPoint,
 		// logging interval so we scan the entire requested window.
 		const minLogInterval = 10 * time.Second
 		maxRecords := int(lookback/minLogInterval) + 100
-		points := make([]SeriesPoint, 0, maxSamples)
-		for range maxRecords {
-			result, fetchErr := pmapiFetch(pmid)
-			if fetchErr != nil {
-				if errors.Is(fetchErr, errPMAPIEOL) {
-					break
-				}
-				return nil, fetchErr
-			}
-			ts := result.timestamp()
-			value, ok := result.extractSum(desc, wantInsts)
-			result.free()
-			if !ok {
-				continue
-			}
-			points = append(points, SeriesPoint{TS: ts.UnixMilli(), Value: value})
-		}
-		return points, nil
+		return pmapiFetchPoints(pmid, desc, wantInsts, maxRecords)
 	}
 
 	startTime := clampStart(archiveEnd.Add(-req.Range.Duration))
@@ -472,8 +445,29 @@ func pmapiQuerySamples(_ context.Context, req pcpSamplesRequest) ([]SeriesPoint,
 		return nil, err
 	}
 
-	points := make([]SeriesPoint, 0, maxSamples)
-	for range maxSamples {
+	return pmapiFetchPoints(pmid, desc, wantInsts, maxSamples)
+}
+
+func buildInstanceFilter(instances []string, desc pmapiDesc) (map[int32]bool, error) {
+	if len(instances) == 0 || desc.indom == pmIndomNull {
+		return nil, nil
+	}
+	instMap, err := pmapiGetInDomMap(desc.indom, true)
+	if err != nil {
+		return nil, err
+	}
+	wantInsts := make(map[int32]bool, len(instances))
+	for _, name := range instances {
+		if id, ok := instMap[name]; ok {
+			wantInsts[id] = true
+		}
+	}
+	return wantInsts, nil
+}
+
+func pmapiFetchPoints(pmid uint32, desc pmapiDesc, wantInsts map[int32]bool, n int) ([]SeriesPoint, error) {
+	points := make([]SeriesPoint, 0, n)
+	for range n {
 		result, fetchErr := pmapiFetch(pmid)
 		if fetchErr != nil {
 			if errors.Is(fetchErr, errPMAPIEOL) {
@@ -489,7 +483,6 @@ func pmapiQuerySamples(_ context.Context, req pcpSamplesRequest) ([]SeriesPoint,
 		}
 		points = append(points, SeriesPoint{TS: ts.UnixMilli(), Value: value})
 	}
-
 	return points, nil
 }
 

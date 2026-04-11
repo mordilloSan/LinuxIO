@@ -180,48 +180,44 @@ func SetNTPServers(servers []string) error {
 	}
 
 	ntpLine := "NTP=" + strings.Join(servers, " ")
-	lines := strings.Split(string(data), "\n")
-	inTimeSection := false
-	found := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "[Time]" {
-			inTimeSection = true
-			continue
-		}
-		if strings.HasPrefix(trimmed, "[") && trimmed != "[Time]" {
-			inTimeSection = false
-			continue
-		}
-		if inTimeSection && (strings.HasPrefix(trimmed, "NTP=") || strings.HasPrefix(trimmed, "#NTP=")) {
-			lines[i] = ntpLine
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		timeSectionIdx := -1
-		for i, line := range lines {
-			if strings.TrimSpace(line) == "[Time]" {
-				timeSectionIdx = i
-				break
-			}
-		}
-		if timeSectionIdx >= 0 {
-			rest := make([]string, len(lines[timeSectionIdx+1:]))
-			copy(rest, lines[timeSectionIdx+1:])
-			lines = append(lines[:timeSectionIdx+1], append([]string{ntpLine}, rest...)...)
-		} else {
-			if len(lines) > 0 && lines[len(lines)-1] != "" {
-				lines = append(lines, "")
-			}
-			lines = append(lines, "[Time]", ntpLine)
-		}
-	}
+	lines := setINISectionKey(strings.Split(string(data), "\n"), "[Time]", "NTP=", ntpLine)
 
 	if err := os.WriteFile(timesyncdConf, []byte(strings.Join(lines, "\n")), 0644); err != nil {
 		return err
 	}
 	return RestartService("systemd-timesyncd.service")
+}
+
+// setINISectionKey replaces or inserts a key line inside the given INI section.
+func setINISectionKey(lines []string, section, keyPrefix, newLine string) []string {
+	inSection := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == section {
+			inSection = true
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			inSection = false
+			continue
+		}
+		if inSection && (strings.HasPrefix(trimmed, keyPrefix) || strings.HasPrefix(trimmed, "#"+keyPrefix)) {
+			lines[i] = newLine
+			return lines
+		}
+	}
+
+	// Key not found — insert into (or create) the section.
+	for i, line := range lines {
+		if strings.TrimSpace(line) == section {
+			rest := make([]string, len(lines[i+1:]))
+			copy(rest, lines[i+1:])
+			return append(lines[:i+1], append([]string{newLine}, rest...)...)
+		}
+	}
+
+	if len(lines) > 0 && lines[len(lines)-1] != "" {
+		lines = append(lines, "")
+	}
+	return append(lines, section, newLine)
 }

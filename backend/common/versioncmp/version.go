@@ -21,34 +21,36 @@ func IsNewer(latest, current string) bool {
 	latestParts := strings.Split(latest, ".")
 	currentParts := strings.Split(current, ".")
 
-	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
-		l, err1 := strconv.Atoi(latestParts[i])
-		c, err2 := strconv.Atoi(currentParts[i])
-		if err1 != nil || err2 != nil {
-			if latestParts[i] > currentParts[i] {
-				return true
-			}
-			if latestParts[i] < currentParts[i] {
-				return false
-			}
-			continue
-		}
-		if l > c {
-			return true
-		}
-		if l < c {
-			return false
-		}
+	cmp := compareVersionParts(latestParts, currentParts)
+	if cmp != 0 {
+		return cmp > 0
 	}
 
-	if len(latestParts) > len(currentParts) {
-		return true
-	}
-	if len(latestParts) < len(currentParts) {
-		return false
-	}
 	if currentIsDev && !latestIsDev {
 		return true
 	}
 	return false
+}
+
+func compareVersionParts(a, b []string) int {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		ai, err1 := strconv.Atoi(a[i])
+		bi, err2 := strconv.Atoi(b[i])
+		if err1 != nil || err2 != nil {
+			if a[i] > b[i] {
+				return 1
+			}
+			if a[i] < b[i] {
+				return -1
+			}
+			continue
+		}
+		if ai > bi {
+			return 1
+		}
+		if ai < bi {
+			return -1
+		}
+	}
+	return len(a) - len(b)
 }

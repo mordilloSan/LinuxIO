@@ -21,7 +21,7 @@ func exportManager(t *testing.T, bus *testdbus.Bus) *testdbus.SystemdManager {
 	return manager
 }
 
-func TestClientMethodsCallExpectedManagerMethods(t *testing.T) {
+func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocognit
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	manager := exportManager(t, bus)

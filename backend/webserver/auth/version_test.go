@@ -65,7 +65,7 @@ func TestParseComponentVersionOutput(t *testing.T) {
 	}
 }
 
-func TestGetComponentVersionsAllSuccess(t *testing.T) {
+func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, nil)
 	defer restore()
 

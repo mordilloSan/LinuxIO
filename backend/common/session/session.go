@@ -308,30 +308,14 @@ func (m *Manager) CreateSessionWithID(id string, user User, privileged bool) (*S
 		Timing:     m.newSessionTiming(now),
 	}
 
-	// Enforce single-session-per-user
 	if m.cfg.SingleSessionPerUser {
-		if mm, singleErr := m.st.All(); singleErr == nil {
-			for tok, data := range mm {
-				os, decodeErr := m.decode(data)
-				if decodeErr != nil {
-					continue
-				}
-				if os.User.Username == user.Username {
-					if deleteErr := m.st.Delete(tok); deleteErr != nil {
-						logger.Warnf("failed deleting existing session for user '%s': %v", user.Username, deleteErr)
-						continue
-					}
-					m.broadcastOnDelete(os, ReasonManual)
-				}
-			}
-		}
+		m.evictUserSessions(user.Username)
 	}
 
 	if err := m.commitSession(sess); err != nil {
 		return nil, err
 	}
 
-	// Set up termination handler so the session can delete itself
 	sess.setTerminateFunc(func(reason DeleteReason) error {
 		return m.DeleteSession(sess.SessionID, reason)
 	})
@@ -521,39 +505,63 @@ func (m *Manager) gcLoop() {
 	for {
 		select {
 		case <-t.C:
-			mm, err := m.st.All()
-			if err != nil {
-				continue
-			}
-			now := time.Now()
-			collected := 0
-			for tok, data := range mm {
-				s, err := m.decode(data)
-				if err != nil {
-					continue
-				}
-				reason := DeleteReason("")
-				switch {
-				case expiredAbsolute(s, now):
-					reason = ReasonGCAbsolute
-				case expiredIdle(s, now):
-					reason = ReasonGCIdle
-				}
-				if reason != "" {
-					if err := m.st.Delete(tok); err != nil {
-						logger.Warnf("failed to delete expired session '%s': %v", tok, err)
-						continue
-					}
-					m.broadcastOnDelete(s, reason)
-					collected++
-				}
-			}
-			if collected > 0 {
-				logger.Infof("Session GC: collected %d idle-expired session(s)", collected)
-			}
+			m.gcCollect()
 		case <-m.gcStop:
 			return
 		}
+	}
+}
+
+func (m *Manager) evictUserSessions(username string) {
+	mm, err := m.st.All()
+	if err != nil {
+		return
+	}
+	for tok, data := range mm {
+		s, decodeErr := m.decode(data)
+		if decodeErr != nil {
+			continue
+		}
+		if s.User.Username == username {
+			if deleteErr := m.st.Delete(tok); deleteErr != nil {
+				logger.Warnf("failed deleting existing session for user '%s': %v", username, deleteErr)
+				continue
+			}
+			m.broadcastOnDelete(s, ReasonManual)
+		}
+	}
+}
+
+func (m *Manager) gcCollect() {
+	mm, err := m.st.All()
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	collected := 0
+	for tok, data := range mm {
+		s, err := m.decode(data)
+		if err != nil {
+			continue
+		}
+		reason := DeleteReason("")
+		switch {
+		case expiredAbsolute(s, now):
+			reason = ReasonGCAbsolute
+		case expiredIdle(s, now):
+			reason = ReasonGCIdle
+		}
+		if reason != "" {
+			if err := m.st.Delete(tok); err != nil {
+				logger.Warnf("failed to delete expired session '%s': %v", tok, err)
+				continue
+			}
+			m.broadcastOnDelete(s, reason)
+			collected++
+		}
+	}
+	if collected > 0 {
+		logger.Infof("Session GC: collected %d idle-expired session(s)", collected)
 	}
 }
 

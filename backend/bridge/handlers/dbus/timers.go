@@ -34,43 +34,7 @@ func ListTimers() ([]TimerStatus, error) {
 			wg.Add(1)
 			go func(i int, entry listedUnit) {
 				defer wg.Done()
-				timer := TimerStatus{
-					Name:          entry.Name,
-					Description:   entry.Description,
-					LoadState:     entry.LoadState,
-					ActiveState:   entry.ActiveState,
-					SubState:      entry.SubState,
-					UnitFileState: entry.UnitFileState,
-				}
-
-				if entry.Path != "" {
-					unit := unitObject(conn, entry.Path)
-					if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
-						timer.UnitFileState = state
-					}
-					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
-						timer.ActiveEnterTimestamp = ts
-					}
-					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
-						timer.InactiveEnterTimestamp = ts
-					}
-					if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecRealtime"); ok && next > 0 {
-						timer.NextElapseUSec = next
-					}
-					if timer.NextElapseUSec == 0 {
-						if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecMonotonic"); ok {
-							timer.NextElapseUSec = next
-						}
-					}
-					if last, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.LastTriggerUSec"); ok {
-						timer.LastTriggerUSec = last
-					}
-					if target, ok := getStringProperty(unit, "org.freedesktop.systemd1.Timer.Unit"); ok {
-						timer.Unit = target
-					}
-				}
-
-				results[i] = timer
+				results[i] = fetchTimerStatus(conn, entry)
 			}(i, entry)
 		}
 
@@ -79,4 +43,44 @@ func ListTimers() ([]TimerStatus, error) {
 		return nil
 	})
 	return timers, err
+}
+
+func fetchTimerStatus(conn *godbus.Conn, entry listedUnit) TimerStatus {
+	timer := TimerStatus{
+		Name:          entry.Name,
+		Description:   entry.Description,
+		LoadState:     entry.LoadState,
+		ActiveState:   entry.ActiveState,
+		SubState:      entry.SubState,
+		UnitFileState: entry.UnitFileState,
+	}
+	if entry.Path == "" {
+		return timer
+	}
+
+	unit := unitObject(conn, entry.Path)
+	if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
+		timer.UnitFileState = state
+	}
+	if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
+		timer.ActiveEnterTimestamp = ts
+	}
+	if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
+		timer.InactiveEnterTimestamp = ts
+	}
+	if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecRealtime"); ok && next > 0 {
+		timer.NextElapseUSec = next
+	}
+	if timer.NextElapseUSec == 0 {
+		if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecMonotonic"); ok {
+			timer.NextElapseUSec = next
+		}
+	}
+	if last, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.LastTriggerUSec"); ok {
+		timer.LastTriggerUSec = last
+	}
+	if target, ok := getStringProperty(unit, "org.freedesktop.systemd1.Timer.Unit"); ok {
+		timer.Unit = target
+	}
+	return timer
 }

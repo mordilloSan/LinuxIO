@@ -118,8 +118,10 @@ linters:
       local-variables-are-used: true
       generated-is-used: true
   enable:
+  - cyclop
+  - gocognit
   - unused
-  - staticcheck  
+  - staticcheck
   exclusions:
     generated: lax
     presets:

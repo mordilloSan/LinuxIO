@@ -338,7 +338,7 @@ func readSystemNameservers() []string {
 		return nil
 	}
 	var servers []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) == 2 && fields[0] == "nameserver" {
 			servers = append(servers, fields[1])
@@ -354,7 +354,7 @@ func readDefaultGateways() map[string]string {
 	}
 
 	gateways := make(map[string]string)
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 3 || fields[1] != "00000000" {
 			continue
@@ -612,7 +612,7 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
@@ -825,7 +825,7 @@ func SetIPv4DHCP(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
@@ -911,7 +911,7 @@ func SetIPv6DHCP(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
@@ -922,7 +922,7 @@ func SetIPv6DHCP(iface string) error {
 
 		settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
 		var settings map[string]map[string]godbus.Variant
-		if err := settingsConn.Call(
+		if err = settingsConn.Call(
 			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
 		).Store(&settings); err != nil {
 			return fmt.Errorf("GetSettings: %w", err)
@@ -988,7 +988,7 @@ func SetIPv6Static(iface, addressCIDR string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
@@ -999,7 +999,7 @@ func SetIPv6Static(iface, addressCIDR string) error {
 
 		settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
 		var settings map[string]map[string]godbus.Variant
-		if err := settingsConn.Call(
+		if err = settingsConn.Call(
 			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
 		).Store(&settings); err != nil {
 			return fmt.Errorf("GetSettings: %w", err)
@@ -1051,7 +1051,7 @@ func DisableConnection(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
@@ -1100,7 +1100,7 @@ func EnableConnection(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
@@ -1190,60 +1190,55 @@ func SetMTU(iface, mtu string) error {
 				logger.Warnf("failed to close D-Bus connection: %v", cerr)
 			}
 		}()
-		if err := ensureNetworkManagerAvailable(conn); err != nil {
+		if err = ensureNetworkManagerAvailable(conn); err != nil {
 			return err
 		}
 
 		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 
-		var devicePaths []godbus.ObjectPath
-		if err := nm.Call("org.freedesktop.NetworkManager.GetDevices", 0).Store(&devicePaths); err != nil {
-			return fmt.Errorf("GetDevices failed: %w", err)
+		devPath, err := findDevicePathByInterface(conn, nm, iface)
+		if err != nil {
+			return err
+		}
+		if devPath == "" {
+			return fmt.Errorf("interface %s not found", iface)
 		}
 
-		for _, devPath := range devicePaths {
-			dev := conn.Object("org.freedesktop.NetworkManager", devPath)
-			var devIface string
-			if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "Interface").Store(&devIface); err != nil {
-				continue
-			}
-			if devIface != iface {
-				continue
-			}
-
-			var activeConn godbus.ObjectPath
-			if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "ActiveConnection").Store(&activeConn); err != nil {
-				return fmt.Errorf("failed to get ActiveConnection: %w", err)
-			}
-
-			ac := conn.Object("org.freedesktop.NetworkManager", activeConn)
-			var connPath godbus.ObjectPath
-			if err := ac.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Connection.Active", "Connection").Store(&connPath); err != nil {
-				return fmt.Errorf("failed to get Connection path: %w", err)
-			}
-
-			settingsConn := conn.Object("org.freedesktop.NetworkManager", connPath)
-			var settings map[string]map[string]godbus.Variant
-			if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0).Store(&settings); err != nil {
-				return fmt.Errorf("failed to get connection settings: %w", err)
-			}
-
-			mtuValue, err := strconv.ParseUint(mtu, 10, 32)
-			if err != nil {
-				return fmt.Errorf("invalid MTU value: %w", err)
-			}
-
-			ethernetSettings := settings["802-3-ethernet"]
-			ethernetSettings["mtu"] = godbus.MakeVariant(uint32(mtuValue))
-			settings["802-3-ethernet"] = ethernetSettings
-
-			if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings).Err; err != nil {
-				return fmt.Errorf("failed to update MTU: %w", err)
-			}
-
-			return reloadConnection(conn, connPath)
-		}
-
-		return fmt.Errorf("interface %s not found", iface)
+		return applyMTU(conn, devPath, mtu)
 	})
+}
+
+func applyMTU(conn *godbus.Conn, devPath godbus.ObjectPath, mtu string) error {
+	dev := conn.Object("org.freedesktop.NetworkManager", devPath)
+	var activeConn godbus.ObjectPath
+	if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "ActiveConnection").Store(&activeConn); err != nil {
+		return fmt.Errorf("failed to get ActiveConnection: %w", err)
+	}
+
+	ac := conn.Object("org.freedesktop.NetworkManager", activeConn)
+	var connPath godbus.ObjectPath
+	if err := ac.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Connection.Active", "Connection").Store(&connPath); err != nil {
+		return fmt.Errorf("failed to get Connection path: %w", err)
+	}
+
+	settingsConn := conn.Object("org.freedesktop.NetworkManager", connPath)
+	var settings map[string]map[string]godbus.Variant
+	if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0).Store(&settings); err != nil {
+		return fmt.Errorf("failed to get connection settings: %w", err)
+	}
+
+	mtuValue, err := strconv.ParseUint(mtu, 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid MTU value: %w", err)
+	}
+
+	ethernetSettings := settings["802-3-ethernet"]
+	ethernetSettings["mtu"] = godbus.MakeVariant(uint32(mtuValue))
+	settings["802-3-ethernet"] = ethernetSettings
+
+	if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings).Err; err != nil {
+		return fmt.Errorf("failed to update MTU: %w", err)
+	}
+
+	return reloadConnection(conn, connPath)
 }
