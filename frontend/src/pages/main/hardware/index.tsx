@@ -211,41 +211,7 @@ const HardwarePage: React.FC = () => {
         </AppGrid>
       </AppCollapse>
 
-      {/* ── Memory Modules ───────────────────────────────────────────────── */}
-      <SectionHeader
-        title="Memory"
-        expanded={sections.memoryModules}
-        onClick={() => toggleSection("memoryModules")}
-      />
-      <AppCollapse in={sections.memoryModules}>
-        <HardwareTableCard>
-          <UnifiedCollapsibleTable
-            data={memoryModules ?? []}
-            columns={memoryColumns}
-            getRowKey={(mod, idx) => `${mod.id}-${idx}`}
-            renderMainRow={(mod) => (
-              <>
-                <AppTableCell>{mod.id || "—"}</AppTableCell>
-                <AppTableCell>{mod.technology}</AppTableCell>
-                <AppTableCell>{mod.type}</AppTableCell>
-                <AppTableCell>{mod.size}</AppTableCell>
-                <AppTableCell>
-                  <Chip
-                    size="small"
-                    label={mod.state}
-                    color={mod.state === "Present" ? "success" : "default"}
-                    variant="soft"
-                    style={{ height: 22, fontSize: "0.75rem" }}
-                  />
-                </AppTableCell>
-                <AppTableCell>{mod.rank}</AppTableCell>
-                <AppTableCell>{mod.speed}</AppTableCell>
-              </>
-            )}
-            emptyMessage="No memory module data available. Ensure dmidecode is installed."
-          />
-        </HardwareTableCard>
-      </AppCollapse>
+     
 
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
@@ -366,6 +332,42 @@ const HardwarePage: React.FC = () => {
             </AppGrid>
           </>
         )}
+      </AppCollapse>
+
+       {/* ── Memory Modules ───────────────────────────────────────────────── */}
+      <SectionHeader
+        title="Memory"
+        expanded={sections.memoryModules}
+        onClick={() => toggleSection("memoryModules")}
+      />
+      <AppCollapse in={sections.memoryModules}>
+        <HardwareTableCard>
+          <UnifiedCollapsibleTable
+            data={memoryModules ?? []}
+            columns={memoryColumns}
+            getRowKey={(mod, idx) => `${mod.id}-${idx}`}
+            renderMainRow={(mod) => (
+              <>
+                <AppTableCell>{mod.id || "—"}</AppTableCell>
+                <AppTableCell>{mod.technology}</AppTableCell>
+                <AppTableCell>{mod.type}</AppTableCell>
+                <AppTableCell>{mod.size}</AppTableCell>
+                <AppTableCell>
+                  <Chip
+                    size="small"
+                    label={mod.state}
+                    color={mod.state === "Present" ? "success" : "default"}
+                    variant="soft"
+                    style={{ height: 22, fontSize: "0.75rem" }}
+                  />
+                </AppTableCell>
+                <AppTableCell>{mod.rank}</AppTableCell>
+                <AppTableCell>{mod.speed}</AppTableCell>
+              </>
+            )}
+            emptyMessage="No memory module data available. Ensure dmidecode is installed."
+          />
+        </HardwareTableCard>
       </AppCollapse>
 
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}
