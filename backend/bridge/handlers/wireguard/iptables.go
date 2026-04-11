@@ -5,17 +5,304 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
-// SetupNAT configures iptables rules for WireGuard NAT/masquerading.
-// This must be called AFTER the interface is brought up.
-func SetupNAT(interfaceName, egressNic, subnet string) error {
+type natBackend interface {
+	Name() string
+	Setup(interfaceName, egressNic, subnet string) error
+	Cleanup(interfaceName, egressNic, subnet string) error
+}
+
+type natCommandRunner interface {
+	LookPath(name string) (string, error)
+	Run(name string, args ...string) ([]byte, error)
+	RunInput(name, input string, args ...string) ([]byte, error)
+}
+
+type execNATCommandRunner struct{}
+
+type iptablesBackend struct{}
+type firewalldBackend struct{}
+type nftBackend struct{}
+
+var (
+	wireguardNATRunner natCommandRunner = execNATCommandRunner{}
+	newIPTablesClient                   = iptables.New
+)
+
+func (execNATCommandRunner) LookPath(name string) (string, error) {
+	return exec.LookPath(name)
+}
+
+func (execNATCommandRunner) Run(name string, args ...string) ([]byte, error) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return nil, err
+	}
+	return exec.Command(path, args...).CombinedOutput()
+}
+
+func (execNATCommandRunner) RunInput(name, input string, args ...string) ([]byte, error) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(path, args...)
+	cmd.Stdin = strings.NewReader(input)
+	return cmd.CombinedOutput()
+}
+
+func SetupNAT(interfaceName, egressNic, subnet string) (string, error) {
 	logger.Infof("SetupNAT: configuring NAT for %s -> %s (subnet: %s)", interfaceName, egressNic, subnet)
 
+	if err := validateNATArgs(egressNic, subnet); err != nil {
+		return "", err
+	}
+	if err := enableIPForwarding(); err != nil {
+		logger.Errorf("SetupNAT: failed to enable IP forwarding: %v", err)
+		return "", fmt.Errorf("enable IP forwarding: %w", err)
+	}
+
+	backendName, err := detectPreferredNATBackend()
+	if err != nil {
+		return "", err
+	}
+	backend, err := openNATBackend(backendName)
+	if err != nil {
+		return "", err
+	}
+
+	if err := backend.Setup(interfaceName, egressNic, subnet); err != nil {
+		return "", err
+	}
+
+	logger.Infof("SetupNAT: successfully configured NAT for %s using %s", interfaceName, backendName)
+	return backendName, nil
+}
+
+func CleanupNAT(interfaceName, egressNic, subnet, backendName string) error {
+	logger.Infof("CleanupNAT: removing NAT rules for %s -> %s (subnet: %s)", interfaceName, egressNic, subnet)
+
+	backends, err := cleanupBackends(backendName)
+	if err != nil {
+		return err
+	}
+
+	var cleanupErrors []error
+	for _, backend := range backends {
+		if err := backend.Cleanup(interfaceName, egressNic, subnet); err != nil {
+			logger.Warnf("CleanupNAT: backend %s cleanup failed: %v", backend.Name(), err)
+			cleanupErrors = append(cleanupErrors, err)
+			continue
+		}
+		logger.Infof("CleanupNAT: successfully removed NAT rules for %s using %s", interfaceName, backend.Name())
+		return nil
+	}
+
+	if len(cleanupErrors) == 0 {
+		return nil
+	}
+	return fmt.Errorf("cleanup had %d errors (first: %v)", len(cleanupErrors), cleanupErrors[0])
+}
+
+func (iptablesBackend) Name() string {
+	return "iptables"
+}
+
+func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
+	ipt, err := newIPTablesClient()
+	if err != nil {
+		logger.Errorf("SetupNAT: failed to initialize iptables: %v", err)
+		return fmt.Errorf("initialize iptables: %w", err)
+	}
+
+	if err := insertRuleIfMissing(ipt, "filter", "FORWARD", 1,
+		"-i", interfaceName,
+		"-o", egressNic,
+		"-j", "ACCEPT"); err != nil {
+		return fmt.Errorf("add forward rule (wg -> egress): %w", err)
+	}
+
+	if err := insertRuleIfMissing(ipt, "filter", "FORWARD", 1,
+		"-o", interfaceName,
+		"-i", egressNic,
+		"-m", "state",
+		"--state", "RELATED,ESTABLISHED",
+		"-j", "ACCEPT"); err != nil {
+		return fmt.Errorf("add forward rule (egress -> wg): %w", err)
+	}
+
+	if err := appendRuleIfMissing(ipt, "nat", "POSTROUTING",
+		"-o", egressNic,
+		"-s", subnet,
+		"-j", "MASQUERADE"); err != nil {
+		return fmt.Errorf("add MASQUERADE rule: %w", err)
+	}
+
+	return nil
+}
+
+func (iptablesBackend) Cleanup(interfaceName, egressNic, subnet string) error {
+	ipt, err := newIPTablesClient()
+	if err != nil {
+		return fmt.Errorf("initialize iptables: %w", err)
+	}
+
+	var cleanupErrors []error
+	if err := removeRuleIfExists(ipt, "filter", "FORWARD",
+		"-i", interfaceName,
+		"-o", egressNic,
+		"-j", "ACCEPT"); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
+	}
+	if err := removeRuleIfExists(ipt, "filter", "FORWARD",
+		"-o", interfaceName,
+		"-i", egressNic,
+		"-m", "state",
+		"--state", "RELATED,ESTABLISHED",
+		"-j", "ACCEPT"); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
+	}
+	if err := removeRuleIfExists(ipt, "nat", "POSTROUTING",
+		"-o", egressNic,
+		"-s", subnet,
+		"-j", "MASQUERADE"); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
+	}
+
+	if len(cleanupErrors) > 0 {
+		return fmt.Errorf("iptables cleanup failed (first: %v)", cleanupErrors[0])
+	}
+	return nil
+}
+
+func (firewalldBackend) Name() string {
+	return "firewalld"
+}
+
+func (firewalldBackend) Setup(interfaceName, egressNic, subnet string) error {
+	rules, err := firewalldRules()
+	if err != nil {
+		return err
+	}
+	for _, rule := range firewalldDirectRules(interfaceName, egressNic, subnet) {
+		if _, ok := rules[strings.Join(rule, " ")]; ok {
+			continue
+		}
+		args := append([]string{"--direct", "--add-rule"}, rule...)
+		output, cmdErr := wireguardNATRunner.Run("firewall-cmd", args...)
+		if cmdErr != nil {
+			return commandOutputError("firewall-cmd", args, output, cmdErr)
+		}
+	}
+	return nil
+}
+
+func (firewalldBackend) Cleanup(interfaceName, egressNic, subnet string) error {
+	rules, err := firewalldRules()
+	if err != nil {
+		return err
+	}
+	for _, rule := range firewalldDirectRules(interfaceName, egressNic, subnet) {
+		if _, ok := rules[strings.Join(rule, " ")]; !ok {
+			continue
+		}
+		args := append([]string{"--direct", "--remove-rule"}, rule...)
+		output, cmdErr := wireguardNATRunner.Run("firewall-cmd", args...)
+		if cmdErr != nil {
+			return commandOutputError("firewall-cmd", args, output, cmdErr)
+		}
+	}
+	return nil
+}
+
+func (nftBackend) Name() string {
+	return "nft"
+}
+
+func (nftBackend) Setup(interfaceName, egressNic, subnet string) error {
+	table := nftTableName(interfaceName)
+	_, _ = wireguardNATRunner.Run("nft", "delete", "table", "ip", table)
+	script := buildNFTSetupScript(table, interfaceName, egressNic, subnet)
+	output, err := wireguardNATRunner.RunInput("nft", script, "-f", "-")
+	if err != nil {
+		return commandOutputError("nft", []string{"-f", "-"}, output, err)
+	}
+	return nil
+}
+
+func (nftBackend) Cleanup(interfaceName, _, _ string) error {
+	table := nftTableName(interfaceName)
+	output, err := wireguardNATRunner.Run("nft", "delete", "table", "ip", table)
+	if err != nil && !nftMissingTable(output) {
+		return commandOutputError("nft", []string{"delete", "table", "ip", table}, output, err)
+	}
+	return nil
+}
+
+func detectPreferredNATBackend() (string, error) {
+	return preferredNATBackendName(firewalldRunning(), nftAvailable(), iptablesAvailable())
+}
+
+func preferredNATBackendName(hasFirewalld, hasNft, hasIPTables bool) (string, error) {
+	switch {
+	case hasFirewalld:
+		return "firewalld", nil
+	case hasNft:
+		return "nft", nil
+	case hasIPTables:
+		return "iptables", nil
+	default:
+		return "", fmt.Errorf("no supported firewall backend found for NAT (tried firewalld, nft, iptables)")
+	}
+}
+
+func cleanupBackends(preferred string) ([]natBackend, error) {
+	if strings.TrimSpace(preferred) != "" {
+		backend, err := openNATBackend(preferred)
+		if err != nil {
+			return nil, err
+		}
+		return []natBackend{backend}, nil
+	}
+
+	backends := make([]natBackend, 0, 3)
+	if firewalldRunning() {
+		backends = append(backends, firewalldBackend{})
+	}
+	if nftAvailable() {
+		backends = append(backends, nftBackend{})
+	}
+	if iptablesAvailable() {
+		backends = append(backends, iptablesBackend{})
+	}
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("no supported firewall backend found for NAT cleanup")
+	}
+	return backends, nil
+}
+
+func openNATBackend(name string) (natBackend, error) {
+	switch name {
+	case "firewalld":
+		return firewalldBackend{}, nil
+	case "nft":
+		return nftBackend{}, nil
+	case "iptables":
+		return iptablesBackend{}, nil
+	default:
+		return nil, fmt.Errorf("unsupported NAT backend %q", name)
+	}
+}
+
+func validateNATArgs(egressNic, subnet string) error {
 	if _, err := net.InterfaceByName(egressNic); err != nil {
 		return fmt.Errorf("egress interface %q not found: %w", egressNic, err)
 	}
@@ -26,122 +313,104 @@ func SetupNAT(interfaceName, egressNic, subnet string) error {
 	if ip == nil || ip.To4() == nil {
 		return fmt.Errorf("subnet %q is not IPv4", subnet)
 	}
-
-	ipt, err := iptables.New()
-	if err != nil {
-		logger.Errorf("SetupNAT: failed to initialize iptables: %v", err)
-		return fmt.Errorf("initialize iptables: %w", err)
-	}
-
-	if err := enableIPForwarding(); err != nil {
-		logger.Errorf("SetupNAT: failed to enable IP forwarding: %v", err)
-		return fmt.Errorf("enable IP forwarding: %w", err)
-	}
-
-	// Allow forwarding from WireGuard interface to egress interface
-	if err := insertRuleIfMissing(ipt, "filter", "FORWARD", 1,
-		"-i", interfaceName,
-		"-o", egressNic,
-		"-j", "ACCEPT"); err != nil {
-		logger.Errorf("SetupNAT: failed to add forward rule (wg -> egress): %v", err)
-		return fmt.Errorf("add forward rule (wg -> egress): %w", err)
-	}
-	logger.Debugf("SetupNAT: added FORWARD rule: %s -> %s", interfaceName, egressNic)
-
-	// Allow established/related connections back from egress to WireGuard
-	if err := insertRuleIfMissing(ipt, "filter", "FORWARD", 1,
-		"-o", interfaceName,
-		"-i", egressNic,
-		"-m", "state",
-		"--state", "RELATED,ESTABLISHED",
-		"-j", "ACCEPT"); err != nil {
-		logger.Errorf("SetupNAT: failed to add forward rule (egress -> wg): %v", err)
-		return fmt.Errorf("add forward rule (egress -> wg): %w", err)
-	}
-	logger.Debugf("SetupNAT: added FORWARD rule: %s -> %s (ESTABLISHED)", egressNic, interfaceName)
-
-	// NAT masquerading for outbound traffic
-	if err := appendRuleIfMissing(ipt, "nat", "POSTROUTING",
-		"-o", egressNic,
-		"-s", subnet,
-		"-j", "MASQUERADE"); err != nil {
-		logger.Errorf("SetupNAT: failed to add MASQUERADE rule: %v", err)
-		return fmt.Errorf("add MASQUERADE rule: %w", err)
-	}
-	logger.Debugf("SetupNAT: added MASQUERADE rule for subnet %s", subnet)
-
-	logger.Infof("SetupNAT: successfully configured NAT for %s", interfaceName)
 	return nil
 }
 
-// CleanupNAT removes iptables rules for WireGuard NAT/masquerading.
-// This should be called BEFORE the interface is brought down.
-func CleanupNAT(interfaceName, egressNic, subnet string) error {
-	logger.Infof("CleanupNAT: removing NAT rules for %s -> %s (subnet: %s)", interfaceName, egressNic, subnet)
-
-	ipt, err := iptables.New()
-	if err != nil {
-		logger.Errorf("CleanupNAT: failed to initialize iptables: %v", err)
-		return fmt.Errorf("initialize iptables: %w", err)
+func firewalldRunning() bool {
+	if _, err := wireguardNATRunner.LookPath("firewall-cmd"); err != nil {
+		return false
 	}
-
-	var cleanupErrors []error
-
-	// Remove FORWARD rule: WireGuard -> egress
-	if err := removeRuleIfExists(ipt, "filter", "FORWARD",
-		"-i", interfaceName,
-		"-o", egressNic,
-		"-j", "ACCEPT"); err != nil {
-		logger.Warnf("CleanupNAT: failed to remove forward rule (wg -> egress): %v", err)
-		cleanupErrors = append(cleanupErrors, err)
-	}
-
-	// Remove FORWARD rule: egress -> WireGuard (established)
-	if err := removeRuleIfExists(ipt, "filter", "FORWARD",
-		"-o", interfaceName,
-		"-i", egressNic,
-		"-m", "state",
-		"--state", "RELATED,ESTABLISHED",
-		"-j", "ACCEPT"); err != nil {
-		logger.Warnf("CleanupNAT: failed to remove forward rule (egress -> wg): %v", err)
-		cleanupErrors = append(cleanupErrors, err)
-	}
-
-	// Remove MASQUERADE rule
-	if err := removeRuleIfExists(ipt, "nat", "POSTROUTING",
-		"-o", egressNic,
-		"-s", subnet,
-		"-j", "MASQUERADE"); err != nil {
-		logger.Warnf("CleanupNAT: failed to remove MASQUERADE rule: %v", err)
-		cleanupErrors = append(cleanupErrors, err)
-	}
-
-	if len(cleanupErrors) > 0 {
-		logger.Warnf("CleanupNAT: completed with %d errors", len(cleanupErrors))
-		return fmt.Errorf("cleanup had %d errors (first: %v)", len(cleanupErrors), cleanupErrors[0])
-	}
-
-	logger.Infof("CleanupNAT: successfully removed NAT rules for %s", interfaceName)
-	return nil
+	output, err := wireguardNATRunner.Run("firewall-cmd", "--state")
+	return err == nil && strings.TrimSpace(string(output)) == "running"
 }
 
-// removeRuleIfExists checks if a rule exists before attempting to delete it.
+func nftAvailable() bool {
+	_, err := wireguardNATRunner.LookPath("nft")
+	return err == nil
+}
+
+func iptablesAvailable() bool {
+	_, err := newIPTablesClient()
+	return err == nil
+}
+
+func firewalldRules() (map[string]struct{}, error) {
+	output, err := wireguardNATRunner.Run("firewall-cmd", "--direct", "--get-all-rules")
+	if err != nil {
+		return nil, commandOutputError("firewall-cmd", []string{"--direct", "--get-all-rules"}, output, err)
+	}
+	rules := make(map[string]struct{})
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		rules[line] = struct{}{}
+	}
+	return rules, nil
+}
+
+func firewalldDirectRules(interfaceName, egressNic, subnet string) [][]string {
+	return [][]string{
+		{"ipv4", "filter", "FORWARD", "0", "-i", interfaceName, "-o", egressNic, "-j", "ACCEPT"},
+		{"ipv4", "filter", "FORWARD", "0", "-o", interfaceName, "-i", egressNic, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+		{"ipv4", "nat", "POSTROUTING", "0", "-o", egressNic, "-s", subnet, "-j", "MASQUERADE"},
+	}
+}
+
+func buildNFTSetupScript(table, interfaceName, egressNic, subnet string) string {
+	lines := []string{
+		fmt.Sprintf("add table ip %s", table),
+		fmt.Sprintf("add chain ip %s forward { type filter hook forward priority 0; policy accept; }", table),
+		fmt.Sprintf("add chain ip %s postrouting { type nat hook postrouting priority srcnat; policy accept; }", table),
+		fmt.Sprintf("add rule ip %s forward iifname %q oifname %q accept", table, interfaceName, egressNic),
+		fmt.Sprintf("add rule ip %s forward iifname %q oifname %q ct state related,established accept", table, egressNic, interfaceName),
+		fmt.Sprintf("add rule ip %s postrouting oifname %q ip saddr %s masquerade", table, egressNic, subnet),
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func nftTableName(interfaceName string) string {
+	var builder strings.Builder
+	builder.WriteString("linuxio_wg_")
+	for _, r := range interfaceName {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+			builder.WriteRune(r)
+		default:
+			builder.WriteRune('_')
+		}
+	}
+	return builder.String()
+}
+
+func nftMissingTable(output []byte) bool {
+	lower := strings.ToLower(string(output))
+	return strings.Contains(lower, "no such file") || strings.Contains(lower, "does not exist")
+}
+
+func commandOutputError(name string, args []string, output []byte, err error) error {
+	if err == nil {
+		return nil
+	}
+	text := strings.TrimSpace(string(output))
+	if text == "" {
+		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+	}
+	return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, text)
+}
+
 func removeRuleIfExists(ipt *iptables.IPTables, table, chain string, rulespec ...string) error {
 	exists, err := ipt.Exists(table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
-
 	if !exists {
-		logger.Debugf("removeRuleIfExists: rule does not exist in %s/%s, skipping", table, chain)
 		return nil
 	}
-
 	if err := ipt.Delete(table, chain, rulespec...); err != nil {
 		return fmt.Errorf("delete rule: %w", err)
 	}
-
-	logger.Debugf("removeRuleIfExists: removed rule from %s/%s", table, chain)
 	return nil
 }
 
@@ -151,7 +420,6 @@ func insertRuleIfMissing(ipt *iptables.IPTables, table, chain string, position i
 		return fmt.Errorf("check rule existence: %w", err)
 	}
 	if exists {
-		logger.Debugf("insertRuleIfMissing: rule already exists in %s/%s, skipping", table, chain)
 		return nil
 	}
 	if err := ipt.Insert(table, chain, position, rulespec...); err != nil {
@@ -166,7 +434,6 @@ func appendRuleIfMissing(ipt *iptables.IPTables, table, chain string, rulespec .
 		return fmt.Errorf("check rule existence: %w", err)
 	}
 	if exists {
-		logger.Debugf("appendRuleIfMissing: rule already exists in %s/%s, skipping", table, chain)
 		return nil
 	}
 	if err := ipt.Append(table, chain, rulespec...); err != nil {
@@ -175,7 +442,6 @@ func appendRuleIfMissing(ipt *iptables.IPTables, table, chain string, rulespec .
 	return nil
 }
 
-// enableIPForwarding enables IPv4 forwarding via /proc filesystem.
 func enableIPForwarding() error {
 	const path = "/proc/sys/net/ipv4/ip_forward"
 	if err := os.WriteFile(path, []byte("1\n"), 0o644); err != nil {
@@ -185,16 +451,15 @@ func enableIPForwarding() error {
 	return nil
 }
 
-// natConfigPath returns the path to the NAT config metadata file for an interface.
 func natConfigPath(interfaceName string) string {
 	return filepath.Join(wgConfigDir, interfaceName+".nat")
 }
 
-// SaveNATConfig stores NAT configuration metadata for later cleanup.
-func SaveNATConfig(interfaceName, egressNic, subnet string) error {
+func SaveNATConfig(interfaceName, egressNic, subnet, backend string) error {
 	cfg := NATConfig{
 		EgressNic: egressNic,
 		Subnet:    subnet,
+		Backend:   backend,
 	}
 
 	data, err := json.Marshal(cfg)
@@ -211,13 +476,12 @@ func SaveNATConfig(interfaceName, egressNic, subnet string) error {
 	return nil
 }
 
-// LoadNATConfig loads NAT configuration metadata for cleanup.
 func LoadNATConfig(interfaceName string) (*NATConfig, error) {
 	path := natConfigPath(interfaceName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // No NAT config exists
+			return nil, nil
 		}
 		return nil, fmt.Errorf("read NAT config from %s: %w", path, err)
 	}
@@ -231,7 +495,6 @@ func LoadNATConfig(interfaceName string) (*NATConfig, error) {
 	return &cfg, nil
 }
 
-// RemoveNATConfig removes the NAT configuration metadata file.
 func RemoveNATConfig(interfaceName string) error {
 	path := natConfigPath(interfaceName)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {

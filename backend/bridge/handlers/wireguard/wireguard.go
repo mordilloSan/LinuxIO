@@ -181,14 +181,15 @@ func bringUpInterfaceWithNAT(name, egressNic, subnet string) error {
 		return err
 	}
 
-	if err := SetupNAT(name, egressNic, subnet); err != nil {
+	backendName, err := SetupNAT(name, egressNic, subnet)
+	if err != nil {
 		if _, downErr := DownInterface([]string{name}); downErr != nil {
 			logger.Warnf("AddInterface: failed to bring down %s after NAT failure: %v", name, downErr)
 		}
 		return fmt.Errorf("setup NAT: %w", err)
 	}
 
-	if err := SaveNATConfig(name, egressNic, subnet); err != nil {
+	if err := SaveNATConfig(name, egressNic, subnet, backendName); err != nil {
 		logger.Warnf("AddInterface: failed to save NAT config for %s: %v", name, err)
 	}
 
@@ -567,7 +568,7 @@ func RemoveInterface(args []string) (any, error) {
 	if natCfg, err := LoadNATConfig(name); err != nil {
 		logger.Warnf("RemoveInterface: failed to load NAT config for %s: %v", name, err)
 	} else if natCfg != nil {
-		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet); err != nil {
+		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
 			logger.Warnf("RemoveInterface: failed to cleanup NAT for %s: %v", name, err)
 		}
 		if err := RemoveNATConfig(name); err != nil {
