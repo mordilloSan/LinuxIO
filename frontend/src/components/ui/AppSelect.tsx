@@ -1,4 +1,10 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from "react";
 import { createPortal } from "react-dom";
 
 import "./app-select.css";
@@ -68,7 +74,12 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLUListElement>(null);
-    const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; minWidth: number; fontSize: string } | null>(null);
+    const [dropdownPos, setDropdownPos] = useState<{
+      top: number;
+      left: number;
+      minWidth: number;
+      fontSize: string;
+    } | null>(null);
 
     const options = collectOptions(children);
     const currentValue = String(value ?? "");
@@ -185,42 +196,44 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
             </svg>
           </span>
         </div>
-        {open && dropdownPos && createPortal(
-          <ul
-            ref={dropdownRef}
-            className="app-select__dropdown app-select__dropdown--portal"
-            role="listbox"
-            style={{
-              top: dropdownPos.top,
-              left: dropdownPos.left,
-              minWidth: dropdownPos.minWidth,
-              fontSize: dropdownPos.fontSize,
-            }}
-          >
-            {options
-              .filter((o) => !o.hidden)
-              .map((opt) => (
-                <li
-                  key={opt.value}
-                  role="option"
-                  aria-selected={opt.value === currentValue}
-                  className={[
-                    "app-select__option",
-                    opt.value === currentValue &&
-                      "app-select__option--selected",
-                    opt.disabled && "app-select__option--disabled",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => select(opt)}
-                >
-                  {opt.label}
-                </li>
-              ))}
-          </ul>,
-          document.body,
-        )}
+        {open &&
+          dropdownPos &&
+          createPortal(
+            <ul
+              ref={dropdownRef}
+              className="app-select__dropdown app-select__dropdown--portal"
+              role="listbox"
+              style={{
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+                minWidth: dropdownPos.minWidth,
+                fontSize: dropdownPos.fontSize,
+              }}
+            >
+              {options
+                .filter((o) => !o.hidden)
+                .map((opt) => (
+                  <li
+                    key={opt.value}
+                    role="option"
+                    aria-selected={opt.value === currentValue}
+                    className={[
+                      "app-select__option",
+                      opt.value === currentValue &&
+                        "app-select__option--selected",
+                      opt.disabled && "app-select__option--disabled",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => select(opt)}
+                  >
+                    {opt.label}
+                  </li>
+                ))}
+            </ul>,
+            document.body,
+          )}
       </div>
     );
   },

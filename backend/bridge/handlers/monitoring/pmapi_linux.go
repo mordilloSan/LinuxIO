@@ -60,15 +60,15 @@ var (
 	pmapiOnce sync.Once
 	pmapiErr  error
 
-	_pmNewContext     func(ctxType int32, name string) int32
-	_pmDestroyContext func(handle int32) int32
-	_pmLookupDesc     func(pmid uint32, desc unsafe.Pointer) int32
-	_pmSetMode        func(mode int32, when unsafe.Pointer, delta int32) int32
-	_pmFetch          func(numpmid int32, pmidlist unsafe.Pointer, result unsafe.Pointer) int32
-	_pmFreeResult     func(result unsafe.Pointer)
-	_pmExtractValue      func(valfmt int32, ival unsafe.Pointer, itype int32, oval unsafe.Pointer, otype int32) int32
-	_pmGetArchiveEnd     func(tvp unsafe.Pointer) int32
-	_pmGetArchiveLabel   func(lp unsafe.Pointer) int32
+	_pmNewContext      func(ctxType int32, name string) int32
+	_pmDestroyContext  func(handle int32) int32
+	_pmLookupDesc      func(pmid uint32, desc unsafe.Pointer) int32
+	_pmSetMode         func(mode int32, when unsafe.Pointer, delta int32) int32
+	_pmFetch           func(numpmid int32, pmidlist unsafe.Pointer, result unsafe.Pointer) int32
+	_pmFreeResult      func(result unsafe.Pointer)
+	_pmExtractValue    func(valfmt int32, ival unsafe.Pointer, itype int32, oval unsafe.Pointer, otype int32) int32
+	_pmGetArchiveEnd   func(tvp unsafe.Pointer) int32
+	_pmGetArchiveLabel func(lp unsafe.Pointer) int32
 
 	// resolved via SyscallN because char** / int** output params
 	_pmLookupNameAddr      uintptr

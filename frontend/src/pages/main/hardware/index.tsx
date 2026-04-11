@@ -211,8 +211,6 @@ const HardwarePage: React.FC = () => {
         </AppGrid>
       </AppCollapse>
 
-     
-
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
         title="Hardware"
@@ -334,7 +332,7 @@ const HardwarePage: React.FC = () => {
         )}
       </AppCollapse>
 
-       {/* ── Memory Modules ───────────────────────────────────────────────── */}
+      {/* ── Memory Modules ───────────────────────────────────────────────── */}
       <SectionHeader
         title="Memory"
         expanded={sections.memoryModules}
