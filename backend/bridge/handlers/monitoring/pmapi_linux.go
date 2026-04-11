@@ -27,7 +27,9 @@ const (
 
 	pmIndomNull = 0xFFFFFFFF
 
-	pmErrEOL = -12370 // PM_ERR_EOL: End of PCP archive
+	pmErrInst    = -12360 // PM_ERR_INST: Unknown or illegal instance identifier
+	pmErrEOL     = -12370 // PM_ERR_EOL: End of PCP archive
+	pmErrInstLog = -12380 // PM_ERR_INST_LOG: Instance identifier not defined in archive
 )
 
 // ─── C struct offsets (x86_64 Linux, libpcp.so.3 / PCP_3.0 ABI) ────────────
@@ -71,10 +73,11 @@ var (
 	_pmGetArchiveLabel func(lp unsafe.Pointer) int32
 
 	// resolved via SyscallN because char** / int** output params
-	_pmLookupNameAddr      uintptr
-	_pmGetInDomAddr        uintptr
-	_pmGetInDomArchiveAddr uintptr
-	_cFreeAddr             uintptr
+	_pmLookupNameAddr         uintptr
+	_pmLookupInDomAddr        uintptr
+	_pmLookupInDomArchiveAddr uintptr
+	_pmGetInDomAddr           uintptr
+	_cFreeAddr                uintptr
 )
 
 func ensurePMAPI() error {
@@ -113,13 +116,17 @@ func loadLibPCP() error {
 	if lookupErr != nil {
 		return fmt.Errorf("cannot resolve pmLookupName: %w", lookupErr)
 	}
+	_pmLookupInDomAddr, lookupErr = purego.Dlsym(lib, "pmLookupInDom")
+	if lookupErr != nil {
+		return fmt.Errorf("cannot resolve pmLookupInDom: %w", lookupErr)
+	}
+	_pmLookupInDomArchiveAddr, lookupErr = purego.Dlsym(lib, "pmLookupInDomArchive")
+	if lookupErr != nil {
+		return fmt.Errorf("cannot resolve pmLookupInDomArchive: %w", lookupErr)
+	}
 	_pmGetInDomAddr, lookupErr = purego.Dlsym(lib, "pmGetInDom")
 	if lookupErr != nil {
 		return fmt.Errorf("cannot resolve pmGetInDom: %w", lookupErr)
-	}
-	_pmGetInDomArchiveAddr, lookupErr = purego.Dlsym(lib, "pmGetInDomArchive")
-	if lookupErr != nil {
-		return fmt.Errorf("cannot resolve pmGetInDomArchive: %w", lookupErr)
 	}
 	_cFreeAddr, lookupErr = purego.Dlsym(lib, "free")
 	if lookupErr != nil {
@@ -202,23 +209,43 @@ func pmapiLookupDesc(pmid uint32) (pmapiDesc, error) {
 	}, nil
 }
 
-func pmapiGetInDomMap(indom uint32, archive bool) (map[string]int32, error) {
-	sym := _pmGetInDomAddr
-	label := "pmGetInDom"
+func pmapiLookupInDom(indom uint32, name string, archive bool) (int32, bool, error) {
+	sym := _pmLookupInDomAddr
+	label := "pmLookupInDom"
 	if archive {
-		sym = _pmGetInDomArchiveAddr
-		label = "pmGetInDomArchive"
+		sym = _pmLookupInDomArchiveAddr
+		label = "pmLookupInDomArchive"
 	}
+
+	nameBytes := cString(name)
+	r1, _, _ := purego.SyscallN(sym, uintptr(indom), uintptr(unsafe.Pointer(&nameBytes[0])))
+	runtime.KeepAlive(nameBytes)
+	rc := int32(r1)
+	switch rc {
+	case pmErrInst, pmErrInstLog:
+		return 0, false, nil
+	}
+	if rc < 0 {
+		return 0, false, fmt.Errorf("%s(%q): %s", label, name, pmapiErrString(rc))
+	}
+	return rc, true, nil
+}
+
+func pmapiGetInDomMap(indom uint32, archive bool) (map[string]int32, error) {
+	if archive {
+		return nil, fmt.Errorf("pmGetInDomArchive is unsupported with purego; use pmLookupInDomArchive instead")
+	}
+
 	var instlistPtr unsafe.Pointer
 	var namelistPtr unsafe.Pointer
-	r1, _, _ := purego.SyscallN(sym,
+	r1, _, _ := purego.SyscallN(_pmGetInDomAddr,
 		uintptr(indom),
 		uintptr(unsafe.Pointer(&instlistPtr)),
 		uintptr(unsafe.Pointer(&namelistPtr)),
 	)
 	rc := int32(r1)
 	if rc < 0 {
-		return nil, fmt.Errorf("%s: %s", label, pmapiErrString(rc))
+		return nil, fmt.Errorf("pmGetInDom: %s", pmapiErrString(rc))
 	}
 	n := int(rc)
 
@@ -452,13 +479,13 @@ func buildInstanceFilter(instances []string, desc pmapiDesc) (map[int32]bool, er
 	if len(instances) == 0 || desc.indom == pmIndomNull {
 		return nil, nil
 	}
-	instMap, err := pmapiGetInDomMap(desc.indom, true)
-	if err != nil {
-		return nil, err
-	}
 	wantInsts := make(map[int32]bool, len(instances))
 	for _, name := range instances {
-		if id, ok := instMap[name]; ok {
+		id, ok, err := pmapiLookupInDom(desc.indom, name, true)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			wantInsts[id] = true
 		}
 	}

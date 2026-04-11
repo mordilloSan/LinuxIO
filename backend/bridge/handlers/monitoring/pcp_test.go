@@ -8,6 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPMAPIGetInDomMapRejectsArchiveEnumeration(t *testing.T) {
+	_, err := pmapiGetInDomMap(123, true)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pmGetInDomArchive is unsupported")
+}
+
 func TestGetCPUSeriesBuildsUsageFromArchiveSamples(t *testing.T) {
 	originalQuerySamples := queryPCPSamples
 	originalQueryLiveMetric := queryPCPLiveMetric

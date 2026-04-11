@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import type { GpuDevice, MonitoringRange } from "@/api";
 import { linuxio } from "@/api";
@@ -379,12 +379,57 @@ export const NetworkHistoryCard: React.FC<{
 }) => {
   const theme = useAppTheme();
   const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
+  const [selectedInterfaceInternal, setSelectedInterfaceInternal] =
+    useState("");
   const range = rangeProp ?? rangeInternal;
   const setRange = onRangeChangeProp ?? setRangeInternal;
+  const { data: interfaces, isPending: interfacesPending } =
+    linuxio.system.get_network_info.useQuery({
+      refetchInterval: 30_000,
+      staleTime: 30_000,
+    });
+  const filteredInterfaces = useMemo(
+    () =>
+      (interfaces ?? []).filter(
+        (iface) =>
+          iface.name &&
+          iface.name !== "lo" &&
+          !iface.name.startsWith("veth") &&
+          !iface.name.startsWith("docker") &&
+          !iface.name.startsWith("br"),
+      ),
+    [interfaces],
+  );
+  const interfaceOptions = useMemo(
+    () =>
+      filteredInterfaces.map((iface) => ({
+        value: iface.name,
+        label: iface.name,
+      })),
+    [filteredInterfaces],
+  );
+  const defaultInterface = useMemo(() => {
+    const primary =
+      filteredInterfaces.find((iface) => (iface.ipv4?.length ?? 0) > 0) ??
+      filteredInterfaces[0];
+    return primary?.name ?? "";
+  }, [filteredInterfaces]);
+
+  useEffect(() => {
+    const selectedExists = filteredInterfaces.some(
+      (iface) => iface.name === selectedInterfaceInternal,
+    );
+    if (!selectedExists && defaultInterface !== selectedInterfaceInternal) {
+      setSelectedInterfaceInternal(defaultInterface);
+    }
+  }, [defaultInterface, filteredInterfaces, selectedInterfaceInternal]);
+
+  const selectedInterface = selectedInterfaceInternal || defaultInterface;
 
   const { data: series, isPending } =
     linuxio.monitoring.get_network_series.useQuery({
-      args: [range, ""],
+      args: [range, selectedInterface],
+      enabled: !!selectedInterface,
       refetchInterval: RANGE_STEP_MS[range],
     });
 
@@ -395,12 +440,39 @@ export const NetworkHistoryCard: React.FC<{
       accentColor={theme.palette.primary.main}
       range={range}
       onRangeChange={setRange}
+      controls={
+        <AppSelect
+          size="small"
+          variant="standard"
+          disableUnderline
+          value={selectedInterface}
+          onChange={(event) => setSelectedInterfaceInternal(event.target.value)}
+          style={{
+            ["--app-select-input-font-size" as string]: "0.68rem",
+            marginLeft: 0,
+            maxWidth: 140,
+            color: theme.palette.text.secondary,
+            fontSize: "0.75rem",
+            lineHeight: theme.typography.body2.lineHeight,
+          }}
+        >
+          {interfaceOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </AppSelect>
+      }
       chart={
         <NetworkMonitorGraph
           range={range}
           series={series}
-          loading={isPending}
-          emptyMessage="Historical network data is not available yet."
+          loading={interfacesPending || isPending}
+          emptyMessage={
+            selectedInterface
+              ? "Historical network data is not available yet."
+              : "No eligible network interface found for historical monitoring."
+          }
           hoverRatio={hoverRatio}
           onHoverChange={onHoverChange}
         />
