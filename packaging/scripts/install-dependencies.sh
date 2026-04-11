@@ -6,6 +6,9 @@
 # =============================================================================
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+trap 'echo -e "\e[0m"; exit 1' INT
+
 # ---------- Colors & Styling ----------
 readonly COLOUR_RESET='\e[0m'
 readonly GREEN='\e[38;5;154m'
@@ -93,12 +96,13 @@ pkg_installed() {
     fi
 }
 
-# Install packages quietly, suppressing all output
+# Install packages quietly — stdout hidden, stderr captured for error reporting
 pkg_install() {
+    local err
     if is_debian; then
-        apt-get install -y -qq "$@" >/dev/null 2>&1
+        err=$(apt-get install -y -qq "$@" 2>&1 >/dev/null) || { echo "$err" >&2; return 1; }
     elif is_fedora; then
-        dnf install -y -q "$@" >/dev/null 2>&1
+        err=$(dnf install -y -q "$@" 2>&1 >/dev/null) || { echo "$err" >&2; return 1; }
     fi
 }
 
@@ -134,7 +138,9 @@ install_mandatory() {
 
     if is_debian; then
         Show 2 "Updating package lists..."
-        apt-get update -qq >/dev/null 2>&1
+        if ! apt-get update -qq >/dev/null 2>&1; then
+            Show 1 "Failed to update package lists"
+        fi
         Show 0 "Package lists updated"
     fi
 

@@ -6,6 +6,9 @@
 # =============================================================================
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+trap 'echo -e "\e[0m"; exit 1' INT
+
 # ---------- Configuration ----------
 readonly REPO_OWNER="mordilloSan"
 readonly REPO_NAME="LinuxIO"

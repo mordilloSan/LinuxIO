@@ -4,201 +4,181 @@
 # Builds and installs LinuxIO from local source code
 #  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
-
 set -euo pipefail
 
-# Colors
-RED='\033[1;31m'
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[1;34m'
-CYAN='\033[1;36m'
-NC='\033[0m' # No Color
+trap 'echo -e "\e[0m"; exit 1' INT
 
-# Configuration
-# This script is in packaging/scripts/, so go up two levels to repo root
+# ---------- Colors & Styling ----------
+readonly COLOUR_RESET='\e[0m'
+readonly GREEN='\e[38;5;154m'
+readonly BOLD='\e[1m'
+readonly GREY='\e[90m'
+readonly RED='\e[91m'
+readonly YELLOW='\e[33m'
+
+readonly LINE=" ${GREEN}───────────────────────────────────────────────────────${COLOUR_RESET}"
+readonly BULLET=" ${GREEN}-${COLOUR_RESET}"
+
+Show() {
+    local status="$1"
+    shift
+    case "$status" in
+        0) echo -e " ${GREY}[${GREEN}  OK  ${GREY}]${COLOUR_RESET} $*" ;;
+        1) echo -e " ${GREY}[${RED}FAILED${GREY}]${COLOUR_RESET} $*"; exit 1 ;;
+        2) echo -e " ${GREY}[${BOLD} INFO ${GREY}]${COLOUR_RESET} $*" ;;
+        3) echo -e " ${GREY}[${YELLOW}NOTICE${GREY}]${COLOUR_RESET} $*" ;;
+    esac
+}
+
+Header() {
+    echo ""
+    echo -e "${LINE}"
+    echo -e " ${BOLD} $*${COLOUR_RESET}"
+    echo -e "${LINE}"
+    echo ""
+}
+
+# ---------- Configuration ----------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PORT=8090
 
-echo -e "${BLUE}════════════════════════════════════════════${NC}"
-echo -e "${BLUE}  LinuxIO Local Build and Install${NC}"
-echo -e "${BLUE}════════════════════════════════════════════${NC}"
-echo ""
+# ---------- Main ----------
 
-# Check if running as root
+Header "LinuxIO ${GREY}· Local Install${COLOUR_RESET}"
+
 if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}✗ This script must be run as root${NC}"
-    echo "  Please run: sudo $0"
-    exit 1
+    Show 1 "This script must be run as root"
 fi
 
-# Check if we're in the LinuxIO repository
 if [[ ! -f "$REPO_ROOT/makefile" && ! -f "$REPO_ROOT/Makefile" ]]; then
-    echo -e "${RED}✗ Cannot find LinuxIO repository root${NC}"
-    echo -e "${RED}  Expected at: $REPO_ROOT${NC}"
-    exit 1
+    Show 1 "Cannot find LinuxIO repository root at ${REPO_ROOT}"
 fi
 
 cd "$REPO_ROOT"
 
 # ========== VERIFY BUILD ==========
-echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  Step 1/2: Verifying built binaries${NC}"
-echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo ""
+Header "Step 1/2 — Verify Binaries"
 
-# Verify binaries exist (should be built by 'make build' already)
-MISSING_BINARIES=0
+MISSING=0
 for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
     if [[ ! -f "$REPO_ROOT/$binary" ]]; then
-        echo -e "${RED}✗ Binary not found: $binary${NC}"
-        MISSING_BINARIES=1
+        Show 1 "Binary not found: ${binary}. Run 'make build' first."
+        MISSING=1
     else
-        echo -e "${GREEN}✓ Found $binary${NC}"
+        Show 0 "${binary}"
     fi
 done
 
-if [[ $MISSING_BINARIES -eq 1 ]]; then
-    echo ""
-    echo -e "${RED}✗ Missing binaries! Please run 'make build' first.${NC}"
-    echo -e "${YELLOW}  Or use 'make localinstall' which builds automatically.${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN} All binaries verified!${NC}"
-
 # ========== INSTALL ==========
-echo ""
-echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  Step 2/2: Installing files${NC}"
-echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo ""
+Header "Step 2/2 — Install"
 
-# Install binaries
-echo -e "${YELLOW} Installing binaries to /usr/local/bin...${NC}"
-install -o root -g root -m 0755 "$REPO_ROOT/linuxio" /usr/local/bin/linuxio
-install -o root -g root -m 0755 "$REPO_ROOT/linuxio-webserver" /usr/local/bin/linuxio-webserver
-install -o root -g root -m 0755 "$REPO_ROOT/linuxio-bridge" /usr/local/bin/linuxio-bridge
-install -o root -g root -m 0755 "$REPO_ROOT/linuxio-auth" /usr/local/bin/linuxio-auth
-echo -e "${GREEN}✓ Binaries installed${NC}"
+# Binaries
+Show 2 "Installing binaries..."
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+    install -o root -g root -m 0755 "$REPO_ROOT/$binary" /usr/local/bin/
+done
+Show 0 "Binaries installed to /usr/local/bin"
 
-# Install systemd files
-echo -e "${YELLOW} Installing systemd service files...${NC}"
+# Systemd
+Show 2 "Installing systemd service files..."
 for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
             linuxio-auth.socket linuxio-auth@.service \
             linuxio-bridge-socket-user.service \
             linuxio-issue.service; do
     if [[ -f "$REPO_ROOT/packaging/systemd/$file" ]]; then
         install -m 0644 "$REPO_ROOT/packaging/systemd/$file" /etc/systemd/system/
-        echo "  • Installed $file"
     else
-        echo -e "${YELLOW}    Warning: $file not found in packaging/systemd/${NC}"
+        Show 3 "${file} not found in packaging/systemd/"
     fi
 done
-echo -e "${GREEN}✓ Systemd files installed${NC}"
+Show 0 "Systemd files installed"
 
-# Install tmpfiles.d configuration
-echo -e "${YELLOW} Installing tmpfiles.d configuration...${NC}"
+# Tmpfiles
+Show 2 "Installing tmpfiles.d configuration..."
 mkdir -p /usr/lib/tmpfiles.d
 if [[ -f "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" ]]; then
     install -m 0644 "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" /usr/lib/tmpfiles.d/linuxio.conf
-    echo "  • Installed /usr/lib/tmpfiles.d/linuxio.conf"
-    # Create the directories now (don't wait for reboot)
     systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
-    echo -e "${GREEN}✓ Tmpfiles.d configuration installed${NC}"
+    Show 0 "tmpfiles.d configuration installed"
 else
-    echo -e "${YELLOW}    Warning: linuxio-tmpfiles.conf not found${NC}"
+    Show 3 "linuxio-tmpfiles.conf not found"
 fi
 
-# Install configuration files
-echo -e "${YELLOW} Installing configuration files...${NC}"
+# Config files
+Show 2 "Installing configuration files..."
 if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
     while IFS= read -r file; do
         rel_path="${file#$REPO_ROOT/packaging/etc/linuxio/}"
-        dest_path="/etc/linuxio/$rel_path"
-        install -D -o root -g root -m 0644 "$file" "$dest_path"
-        echo "  • Installed $dest_path"
+        install -D -o root -g root -m 0644 "$file" "/etc/linuxio/$rel_path"
     done < <(find "$REPO_ROOT/packaging/etc/linuxio" -type f | sort)
+    Show 0 "Configuration files installed"
 else
-    echo -e "${YELLOW}    Warning: packaging/etc/linuxio directory not found${NC}"
+    Show 3 "packaging/etc/linuxio directory not found"
 fi
 
-echo -e "${GREEN}✓ Configuration files installed${NC}"
-
-# Install PAM configuration
-echo -e "${YELLOW} Installing PAM configuration...${NC}"
+# PAM
+Show 2 "Installing PAM configuration..."
 if [[ -f "$REPO_ROOT/packaging/etc/pam.d/linuxio" ]]; then
     install -m 0644 "$REPO_ROOT/packaging/etc/pam.d/linuxio" /etc/pam.d/
-    echo "  • Installed /etc/pam.d/linuxio"
-    echo -e "${GREEN}✓ PAM configuration installed${NC}"
+    Show 0 "PAM configuration installed"
 else
-    echo -e "${RED}✗ PAM configuration not found at packaging/etc/pam.d/linuxio${NC}"
-    exit 1
+    Show 1 "PAM configuration not found at packaging/etc/pam.d/linuxio"
 fi
 
-# Install issue updater script
-echo -e "${YELLOW} Installing issue updater...${NC}"
+# Issue updater
+Show 2 "Installing issue updater..."
 mkdir -p /usr/share/linuxio/issue
 if [[ -f "$REPO_ROOT/packaging/scripts/update-issue" ]]; then
     install -m 0755 "$REPO_ROOT/packaging/scripts/update-issue" /usr/share/linuxio/issue/
-    echo "  • Installed /usr/share/linuxio/issue/update-issue"
-    echo -e "${GREEN}✓ Issue updater installed${NC}"
+    Show 0 "Issue updater installed"
 else
-    echo -e "${YELLOW}  Warning: update-issue script not found${NC}"
+    Show 3 "update-issue script not found"
 fi
 
-# Create symlink for SSH login banner
 if [[ -d /etc/motd.d ]]; then
     ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
-    echo "  • Created SSH login banner symlink"
+    Show 0 "SSH login banner configured"
 fi
 
-# Create global Watchtower data directory
-echo -e "${YELLOW} Creating Watchtower data directory...${NC}"
+# Watchtower
+Show 2 "Creating Watchtower data directory..."
 mkdir -p /var/lib/linuxIO/watchtower
 if getent group docker &>/dev/null; then
     chown root:docker /var/lib/linuxIO/watchtower
     chmod 775 /var/lib/linuxIO/watchtower
-    echo -e "${GREEN}✓ Watchtower directory created (/var/lib/linuxIO/watchtower, group: docker)${NC}"
+    Show 0 "Watchtower directory created ${GREY}(group: docker)${COLOUR_RESET}"
 else
     chmod 755 /var/lib/linuxIO/watchtower
-    echo -e "${YELLOW}  docker group not found — Watchtower directory created with mode 755${NC}"
+    Show 3 "docker group not found — Watchtower directory created with mode 755"
 fi
 
 # ========== ENABLE AND RESTART ==========
-echo ""
-echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  Enabling and restarting services${NC}"
-echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo ""
-
-echo -e "${YELLOW} Reloading systemd...${NC}"
+Show 2 "Reloading systemd..."
 systemctl daemon-reload
-echo -e "${GREEN}✓ Systemd reloaded${NC}"
+Show 0 "Systemd reloaded"
 
-echo -e "${YELLOW} Enabling services...${NC}"
-systemctl enable linuxio.target
-echo -e "${GREEN}✓ Services enabled${NC}"
+Show 2 "Enabling services..."
+systemctl enable linuxio.target >/dev/null 2>&1
+Show 0 "Services enabled"
 
-echo -e "${YELLOW} Restarting LinuxIO...${NC}"
+Show 2 "Restarting LinuxIO..."
 linuxio restart
 
-# Wait a moment for services to settle
 sleep 2
 
-# Check if target is active
 if systemctl is-active --quiet linuxio.target; then
-    echo -e "${GREEN}✓ LinuxIO restarted successfully${NC}"
+    Show 0 "LinuxIO restarted successfully"
 else
-    echo -e "${YELLOW}  Warning: LinuxIO may not have restarted properly${NC}"
+    Show 3 "LinuxIO may not have restarted properly"
 fi
 
 # ========== SUMMARY ==========
+lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}') || true
+
 echo ""
-echo -e "${GREEN}════════════════════════════════════════════${NC}"
-echo -e "${GREEN} Installation Complete!${NC}"
-echo -e "${GREEN}════════════════════════════════════════════${NC}"
-echo ""
+echo -e "${LINE}"
+echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
+echo -e "${LINE}"
 echo "Installed components:"
 echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
@@ -206,5 +186,9 @@ echo "  • Configuration:   /etc/linuxio/"
 echo "  • PAM config:      /etc/pam.d/linuxio"
 echo "  • Issue updater:   /usr/share/linuxio/issue/"
 echo ""
-echo -e "${CYAN} Access LinuxIO at: https://localhost:${PORT}${NC}"
+echo -e " ${BOLD}Dashboard:${COLOUR_RESET}"
+echo -e "${BULLET} https://localhost:${PORT}"
+if [[ -n "$lan_ip" ]]; then
+    echo -e "${BULLET} https://${lan_ip}:${PORT}"
+fi
 echo ""

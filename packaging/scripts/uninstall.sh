@@ -6,6 +6,8 @@
 # =============================================================================
 set -euo pipefail
 
+trap 'echo -e "\e[0m"; exit 1' INT
+
 # ---------- Colors & Styling ----------
 readonly COLOUR_RESET='\e[0m'
 readonly GREEN='\e[38;5;154m'
