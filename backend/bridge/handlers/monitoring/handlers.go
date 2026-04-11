@@ -11,7 +11,7 @@ type monitoringRegistration struct {
 	handler ipc.HandlerFunc
 }
 
-// RegisterHandlers registers Prometheus-backed monitoring handlers.
+// RegisterHandlers registers PCP-backed monitoring handlers.
 func RegisterHandlers() {
 	registerMonitoringHandlers([]monitoringRegistration{
 		{command: "get_cpu_series", handler: handleGetCPUSeries},

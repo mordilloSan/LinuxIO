@@ -267,26 +267,26 @@ const HardwarePage: React.FC = () => {
             variant="caption"
             style={{ color: theme.palette.text.secondary, lineHeight: 1.55 }}
           >
-            Historical charts use PCP via pmproxy. If these stay empty after
-            install, run{" "}
+            Historical charts use PCP directly via libpcp. If these stay empty
+            after install, check that the{" "}
             <span
               style={{
                 fontFamily: "monospace",
                 color: theme.palette.text.primary,
               }}
             >
-              sudo linuxio-install-pcp
+              pmcd
             </span>{" "}
-            and then{" "}
+            and{" "}
             <span
               style={{
                 fontFamily: "monospace",
                 color: theme.palette.text.primary,
               }}
             >
-              linuxio-monitoring status
-            </span>
-            .
+              pmlogger
+            </span>{" "}
+            services are running.
           </AppTypography>
         </div>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>

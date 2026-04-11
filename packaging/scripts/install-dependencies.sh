@@ -36,9 +36,11 @@ install_debian_packages() {
         lm-sensors \
         libpam0g \
         policykit-1 \
+        packagekit \
         smartmontools \
         curl \
-        nfs-common
+        nfs-common \
+        pcp
 
     log_ok "Debian/Ubuntu packages installed"
 }
@@ -49,8 +51,10 @@ install_fedora_packages() {
         lm_sensors \
         pam \
         polkit \
+        PackageKit \
         smartmontools \
-        curl
+        curl \
+        pcp
 
     log_ok "Fedora/RHEL packages installed"
 }
@@ -89,6 +93,15 @@ configure_sensors() {
     fi
 }
 
+configure_pcp() {
+    # LinuxIO reads PCP archives directly via libpcp — only pmcd and pmlogger
+    # are needed. pmproxy is not required.
+    if command -v systemctl &>/dev/null; then
+        systemctl enable --now pmcd pmlogger 2>/dev/null || true
+        log_ok "PCP services enabled (pmcd, pmlogger)"
+    fi
+}
+
 # ---------- Main ----------
 main() {
     # Check we're running as root
@@ -117,6 +130,7 @@ main() {
             log_error "  - lm-sensors"
             log_error "  - PAM libraries"
             log_error "  - PolicyKit"
+            log_error "  - PackageKit"
             log_error "  - smartmontools"
             exit 1
             ;;
@@ -124,6 +138,7 @@ main() {
 
     install_docker
     configure_sensors
+    configure_pcp
 
     log_ok "All dependencies installed successfully!"
     log_info ""
@@ -139,8 +154,10 @@ Usage: $(basename "$0")
 Installs all runtime dependencies required by LinuxIO:
   - Docker (via https://get.docker.com)
   - lm-sensors (hardware monitoring)
+  - PCP (performance metrics history)
   - PAM libraries (authentication)
   - PolicyKit (authorization)
+  - PackageKit (software updates)
   - smartmontools (disk SMART data)
 
 This script must be run as root.

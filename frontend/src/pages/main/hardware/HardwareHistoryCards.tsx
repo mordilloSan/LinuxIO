@@ -13,6 +13,19 @@ import AppSelect from "@/components/ui/AppSelect";
 import { useAppTheme } from "@/theme";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
+// Poll interval per range — matches the backend step size so we don't refetch
+// faster than new data points arrive (pcp.go rangeDefinitions).
+const RANGE_STEP_MS: Record<MonitoringRange, number> = {
+  "1m": 5_000,
+  "5m": 5_000,
+  "15m": 15_000,
+  "60m": 60_000,
+  "6h": 300_000,
+  "24h": 900_000,
+  "7d": 3_600_000,
+  "30d": 21_600_000,
+};
+
 // ─── GPU helpers ──────────────────────────────────────────────────────────────
 
 const getPrimaryGpu = (gpus: GpuDevice[] | undefined): GpuDevice | undefined =>
@@ -272,7 +285,7 @@ export const CPUHistoryCard: React.FC<{
   const setRange = onRangeChangeProp ?? setRangeInternal;
   const { data: series, isPending } =
     linuxio.monitoring.get_cpu_series.useQuery(range, {
-      refetchInterval: 5_000,
+      refetchInterval: RANGE_STEP_MS[range],
     });
 
   return (
@@ -318,7 +331,7 @@ export const MemoryHistoryCard: React.FC<{
   });
   const { data: series, isPending } =
     linuxio.monitoring.get_memory_series.useQuery(range, {
-      refetchInterval: 5_000,
+      refetchInterval: RANGE_STEP_MS[range],
     });
 
   const dockerPercent =
@@ -344,6 +357,7 @@ export const MemoryHistoryCard: React.FC<{
           stackedPercent={dockerPercent}
           stackedColor={theme.palette.info.main}
           stackedLabel="Docker"
+          stackedTooltipLabel="System"
           hoverRatio={hoverRatio}
           onHoverChange={onHoverChange}
         />
@@ -371,7 +385,7 @@ export const NetworkHistoryCard: React.FC<{
   const { data: series, isPending } =
     linuxio.monitoring.get_network_series.useQuery({
       args: [range, ""],
-      refetchInterval: 5_000,
+      refetchInterval: RANGE_STEP_MS[range],
     });
 
   return (
@@ -414,7 +428,7 @@ export const DiskIOHistoryCard: React.FC<{
   const { data: series, isPending } =
     linuxio.monitoring.get_disk_io_series.useQuery({
       args: [range, ""],
-      refetchInterval: 5_000,
+      refetchInterval: RANGE_STEP_MS[range],
     });
 
   return (

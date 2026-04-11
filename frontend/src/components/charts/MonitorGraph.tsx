@@ -7,6 +7,7 @@ import type {
   MonitoringSeriesResponse,
   NetworkMonitoringSeriesResponse,
 } from "@/api";
+import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
@@ -151,6 +152,113 @@ export const buildMonitoringPlotPoints = ({
   });
 };
 
+// ─── ChartSkeleton ──────────────────────────────────────────────────────────
+
+const SKELETON_VIEW_WIDTH = 220;
+const SKELETON_VIEW_HEIGHT = 120;
+const SKELETON_PADDING_TOP = 8;
+const SKELETON_PADDING_BOTTOM = 16;
+const SKELETON_PADDING_LEFT = 4;
+const SKELETON_INNER_HEIGHT =
+  SKELETON_VIEW_HEIGHT - SKELETON_PADDING_TOP - SKELETON_PADDING_BOTTOM;
+const SKELETON_INNER_WIDTH = SKELETON_VIEW_WIDTH - SKELETON_PADDING_LEFT;
+
+const ChartSkeleton: React.FC<{
+  ticks: { label: string; ratio: number }[];
+}> = ({ ticks }) => {
+  const theme = useAppTheme();
+
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        width: "100%",
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div style={{ display: "flex" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <svg
+            viewBox={`0 0 ${SKELETON_VIEW_WIDTH} ${SKELETON_VIEW_HEIGHT}`}
+            style={{ width: "100%", height: 120, display: "block" }}
+            preserveAspectRatio="none"
+          >
+            {ticks.map(({ ratio }) => {
+              const y =
+                SKELETON_PADDING_TOP + (1 - ratio) * SKELETON_INNER_HEIGHT;
+              return (
+                <line
+                  key={ratio}
+                  x1={SKELETON_PADDING_LEFT}
+                  y1={y}
+                  x2={SKELETON_PADDING_LEFT + SKELETON_INNER_WIDTH}
+                  y2={y}
+                  stroke={alpha(theme.chart.neutral, 0.16)}
+                  strokeWidth={1}
+                />
+              );
+            })}
+          </svg>
+        </div>
+        <div
+          style={{
+            width: 28,
+            height: 120,
+            position: "relative",
+            flexShrink: 0,
+          }}
+        >
+          {ticks.map(({ label, ratio }) => {
+            const top =
+              SKELETON_PADDING_TOP + (1 - ratio) * SKELETON_INNER_HEIGHT;
+            return (
+              <div
+                key={ratio}
+                style={{
+                  position: "absolute",
+                  top,
+                  right: 2,
+                  transform: "translateY(-50%)",
+                  fontSize: "8px",
+                  lineHeight: 1,
+                  color: alpha(theme.chart.neutral, 0.75),
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <AppSkeleton variant="text" width={80} height={14} />
+        <div style={{ flex: 1 }} />
+        <AppSkeleton variant="text" width={60} height={14} />
+      </div>
+    </div>
+  );
+};
+
+const PERCENT_TICKS = [
+  { label: "0%", ratio: 0 },
+  { label: "25%", ratio: 0.25 },
+  { label: "50%", ratio: 0.5 },
+  { label: "75%", ratio: 0.75 },
+  { label: "100%", ratio: 1 },
+];
+
+const RATE_TICKS = [
+  { label: "0 kB/s", ratio: 0 },
+  { label: "", ratio: 0.25 },
+  { label: "", ratio: 0.5 },
+  { label: "", ratio: 0.75 },
+  { label: "", ratio: 1 },
+];
+
 // ─── MonitorGraph ─────────────────────────────────────────────────────────────
 
 export const MonitorGraph: React.FC<{
@@ -163,6 +271,7 @@ export const MonitorGraph: React.FC<{
   stackedPercent?: number;
   stackedColor?: string;
   stackedLabel?: string;
+  stackedTooltipLabel?: string;
   hoverRatio?: number | null;
   onHoverChange?: (ratio: number | null) => void;
 }> = ({
@@ -175,6 +284,7 @@ export const MonitorGraph: React.FC<{
   stackedPercent,
   stackedColor,
   stackedLabel,
+  stackedTooltipLabel,
   hoverRatio: externalHoverRatio,
   onHoverChange,
 }) => {
@@ -342,19 +452,7 @@ export const MonitorGraph: React.FC<{
   };
 
   if (loading && points.length === 0) {
-    return (
-      <div
-        style={{
-          minHeight: 150,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: theme.palette.text.secondary,
-        }}
-      >
-        <AppTypography variant="body2">Loading history...</AppTypography>
-      </div>
-    );
+    return <ChartSkeleton ticks={PERCENT_TICKS} />;
   }
 
   if (!series?.available || plotPoints.length === 0) {
@@ -553,7 +651,7 @@ export const MonitorGraph: React.FC<{
               {hasStackedSegment ? (
                 <>
                   <AppTypography variant="caption" fontWeight={600}>
-                    {label}:{" "}
+                    {stackedTooltipLabel ?? label}:{" "}
                     {formatPercent(
                       hoveredPoint.point.value - activeStackedPercent,
                     )}
@@ -797,19 +895,7 @@ export const NetworkMonitorGraph: React.FC<{
   };
 
   if (loading && plotPointCount === 0) {
-    return (
-      <div
-        style={{
-          minHeight: 150,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: theme.palette.text.secondary,
-        }}
-      >
-        <AppTypography variant="body2">Loading history...</AppTypography>
-      </div>
-    );
+    return <ChartSkeleton ticks={RATE_TICKS} />;
   }
 
   if (!series?.available || plotPointCount === 0) {
@@ -1272,19 +1358,7 @@ export const DiskIOMonitorGraph: React.FC<{
   };
 
   if (loading && plotPointCount === 0) {
-    return (
-      <div
-        style={{
-          minHeight: 150,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: theme.palette.text.secondary,
-        }}
-      >
-        <AppTypography variant="body2">Loading history...</AppTypography>
-      </div>
-    );
+    return <ChartSkeleton ticks={RATE_TICKS} />;
   }
 
   if (!series?.available || plotPointCount === 0) {
