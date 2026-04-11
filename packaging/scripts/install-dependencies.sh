@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # LinuxIO Dependencies Installer
-# Installs all runtime dependencies required by LinuxIO
+# Installs mandatory runtime dependencies and optionally installs extras
 #  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 set -euo pipefail
@@ -10,56 +10,123 @@ set -euo pipefail
 log_info()  { printf "▸ %s\n" "$*"; }
 log_ok()    { printf "✓ %s\n" "$*"; }
 log_error() { printf "✗ %s\n" "$*" >&2; }
-log_warn()  { printf " %s\n" "$*"; }
+log_warn()  { printf "⚠ %s\n" "$*"; }
+log_skip()  { printf "– %s\n" "$*"; }
+
+# ---------- User Prompt ----------
+ask_yes_no() {
+    local prompt="$1"
+    local default="${2:-y}"
+    local yn
+
+    if [[ "$default" == "y" ]]; then
+        prompt="$prompt [Y/n] "
+    else
+        prompt="$prompt [y/N] "
+    fi
+
+    read -rp "$prompt" yn
+    yn="${yn:-$default}"
+    [[ "${yn,,}" == "y" || "${yn,,}" == "yes" ]]
+}
 
 # ---------- Distro Detection ----------
+DISTRO=""
 detect_distro() {
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
-        echo "${ID:-unknown}"
+        DISTRO="${ID:-unknown}"
     elif [[ -f /etc/debian_version ]]; then
-        echo "debian"
+        DISTRO="debian"
     elif [[ -f /etc/redhat-release ]]; then
-        echo "rhel"
+        DISTRO="rhel"
     else
-        echo "unknown"
+        DISTRO="unknown"
     fi
 }
 
-# ---------- Package Installation ----------
-install_debian_packages() {
-    log_info "Updating package lists..."
-    apt-get update -qq
-
-    log_info "Installing dependencies..."
-    apt-get install -y \
-        lm-sensors \
-        libpam0g \
-        policykit-1 \
-        packagekit \
-        smartmontools \
-        curl \
-        nfs-common \
-        pcp
-
-    log_ok "Debian/Ubuntu packages installed"
+is_debian() {
+    case "$DISTRO" in
+        ubuntu|debian|linuxmint|pop) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
-install_fedora_packages() {
-    log_info "Installing dependencies..."
-    dnf install -y \
-        lm_sensors \
-        pam \
-        polkit \
-        PackageKit \
-        smartmontools \
-        curl \
-        pcp
-
-    log_ok "Fedora/RHEL packages installed"
+is_fedora() {
+    case "$DISTRO" in
+        fedora|rhel|centos|rocky|almalinux) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
-# ---------- Docker Installation ----------
+# ---------- Package helpers ----------
+pkg_install() {
+    if is_debian; then
+        apt-get install -y "$@"
+    elif is_fedora; then
+        dnf install -y "$@"
+    fi
+}
+
+# ---------- Mandatory Dependencies ----------
+install_mandatory() {
+    log_info "Installing mandatory dependencies..."
+
+    if is_debian; then
+        apt-get update -qq
+        pkg_install libpam0g policykit-1 packagekit
+    elif is_fedora; then
+        pkg_install pam polkit PackageKit
+    else
+        log_error "Unsupported distribution: ${DISTRO}"
+        log_error "Please install the following mandatory dependencies manually:"
+        log_error "  - PAM libraries (authentication)"
+        log_error "  - PolicyKit (authorization)"
+        log_error "  - PackageKit (software updates)"
+        exit 1
+    fi
+
+    log_ok "Mandatory dependencies installed"
+}
+
+# ---------- Optional Dependencies ----------
+install_lm_sensors() {
+    if is_debian; then
+        pkg_install lm-sensors
+    elif is_fedora; then
+        pkg_install lm_sensors
+    fi
+    # Auto-detect sensors
+    if command -v sensors-detect &>/dev/null; then
+        log_info "Detecting hardware sensors..."
+        yes "" | sensors-detect --auto &>/dev/null || true
+    fi
+    log_ok "lm-sensors installed and configured"
+}
+
+install_smartmontools() {
+    pkg_install smartmontools
+    log_ok "smartmontools installed"
+}
+
+install_pcp() {
+    pkg_install pcp
+    # Enable PCP services — LinuxIO reads archives via libpcp directly
+    if command -v systemctl &>/dev/null; then
+        systemctl enable --now pmcd pmlogger 2>/dev/null || true
+    fi
+    log_ok "PCP installed and services enabled (pmcd, pmlogger)"
+}
+
+install_nfs() {
+    if is_debian; then
+        pkg_install nfs-common
+    elif is_fedora; then
+        pkg_install nfs-utils
+    fi
+    log_ok "NFS utilities installed"
+}
+
 install_docker() {
     if command -v docker &>/dev/null; then
         log_ok "Docker is already installed: $(docker --version)"
@@ -67,15 +134,12 @@ install_docker() {
     fi
 
     log_info "Installing Docker using official script..."
-
     if ! curl -fsSL https://get.docker.com | sh; then
         log_error "Docker installation failed"
         return 1
     fi
 
-    # Enable and start Docker service
     if command -v systemctl &>/dev/null; then
-        log_info "Enabling Docker service..."
         systemctl enable docker
         systemctl start docker
     fi
@@ -83,28 +147,30 @@ install_docker() {
     log_ok "Docker installed: $(docker --version)"
 }
 
-# ---------- Post-Installation ----------
-configure_sensors() {
-    log_info "Detecting hardware sensors..."
-    if command -v sensors-detect &>/dev/null; then
-        # Run sensors-detect with auto-accept (safe defaults)
-        yes "" | sensors-detect --auto &>/dev/null || true
-        log_ok "Sensors configured"
-    fi
-}
+# ---------- Optional dependencies ----------
+prompt_optional() {
+    echo ""
+    log_info "Optional dependencies enable extra features in LinuxIO:"
+    log_info "  - lm-sensors       (hardware temperature/voltage monitoring)"
+    log_info "  - smartmontools    (disk SMART health data)"
+    log_info "  - PCP              (CPU, memory, network, disk history charts)"
+    log_info "  - NFS utilities    (mount/browse NFS shares)"
+    log_info "  - Docker           (container management)"
+    echo ""
 
-configure_pcp() {
-    # LinuxIO reads PCP archives directly via libpcp — only pmcd and pmlogger
-    # are needed. pmproxy is not required.
-    if command -v systemctl &>/dev/null; then
-        systemctl enable --now pmcd pmlogger 2>/dev/null || true
-        log_ok "PCP services enabled (pmcd, pmlogger)"
+    if ask_yes_no "Install all optional dependencies?"; then
+        install_lm_sensors
+        install_smartmontools
+        install_pcp
+        install_nfs
+        install_docker
+    else
+        log_skip "Skipped optional dependencies — you can install them later"
     fi
 }
 
 # ---------- Main ----------
 main() {
-    # Check we're running as root
     if [[ $EUID -ne 0 ]]; then
         log_error "This script must be run as root"
         exit 1
@@ -112,35 +178,14 @@ main() {
 
     log_info "Starting LinuxIO dependencies installation"
 
-    local distro
-    distro=$(detect_distro)
-    log_info "Detected distribution: ${distro}"
+    detect_distro
+    log_info "Detected distribution: ${DISTRO}"
 
-    case "$distro" in
-        ubuntu|debian|linuxmint|pop)
-            install_debian_packages
-            ;;
-        fedora|rhel|centos|rocky|almalinux)
-            install_fedora_packages
-            ;;
-        *)
-            log_error "Unsupported distribution: ${distro}"
-            log_error "Please install dependencies manually:"
-            log_error "  - Docker"
-            log_error "  - lm-sensors"
-            log_error "  - PAM libraries"
-            log_error "  - PolicyKit"
-            log_error "  - PackageKit"
-            log_error "  - smartmontools"
-            exit 1
-            ;;
-    esac
+    install_mandatory
+    prompt_optional
 
-    install_docker
-    configure_sensors
-    configure_pcp
-
-    log_ok "All dependencies installed successfully!"
+    echo ""
+    log_ok "Installation complete!"
     log_info ""
     log_info "Next step: Install LinuxIO binaries with:"
     log_info "  curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash"
@@ -151,14 +196,19 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     cat <<EOF
 Usage: $(basename "$0")
 
-Installs all runtime dependencies required by LinuxIO:
-  - Docker (via https://get.docker.com)
-  - lm-sensors (hardware monitoring)
-  - PCP (performance metrics history)
-  - PAM libraries (authentication)
-  - PolicyKit (authorization)
-  - PackageKit (software updates)
-  - smartmontools (disk SMART data)
+Installs dependencies required by LinuxIO.
+
+Mandatory (installed automatically):
+  - PAM libraries    (authentication)
+  - PolicyKit        (authorization)
+  - PackageKit       (software updates)
+
+Optional (you will be prompted):
+  - lm-sensors       (hardware temperature/voltage monitoring)
+  - smartmontools    (disk SMART health data)
+  - PCP              (CPU, memory, network, disk history charts)
+  - NFS utilities    (mount/browse NFS shares)
+  - Docker           (container management)
 
 This script must be run as root.
 EOF

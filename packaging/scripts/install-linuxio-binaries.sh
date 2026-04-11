@@ -573,12 +573,6 @@ main() {
     fi
     echo ""
 
-    # NOTE: We intentionally do NOT stop services here during updates.
-    # All installation steps (download, verify, install binaries/config/systemd)
-    # can safely run while the old version is still serving requests.
-    # Services are only stopped/restarted at the very end, ensuring the UI
-    # remains connected and can show the full installation output.
-
     # Step 1: Download binaries (unless skipped)
     if [[ $skip_binaries -eq 0 ]]; then
         log_info "=== Step 1/5: Downloading binaries ==="
@@ -636,9 +630,6 @@ main() {
     log_info "=== Verification ==="
     verify_installation
     echo ""
-
-    # Brief pause to let journalctl stream all output to the UI
-    # Without this, the verification results may not be visible before disconnect
     sleep 2
 
     if [[ $defer_restart -eq 1 ]]; then
@@ -681,8 +672,6 @@ What gets installed:
   • Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users
-
-Note: LinuxIO uses systemd DynamicUser, no static accounts are created.
 
 Examples:
   $(basename "$0")                 # Install latest release
