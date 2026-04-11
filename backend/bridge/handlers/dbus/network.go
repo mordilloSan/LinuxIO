@@ -100,6 +100,13 @@ func getActiveConnForIface(conn *godbus.Conn, iface string) (*nmConnParts, error
 	return nil, fmt.Errorf("interface %s not found", iface)
 }
 
+func ensureNetworkManagerAvailable(conn *godbus.Conn) error {
+	if _, err := listNetworkManagerDevices(conn); err != nil {
+		return fmt.Errorf("network configuration requires NetworkManager: %w", err)
+	}
+	return nil
+}
+
 func mapDeviceType(devType uint32) string {
 	switch devType {
 	case 1:
@@ -205,7 +212,8 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 	err := RetryOnceIfClosed(nil, func() error {
 		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
-			return fmt.Errorf("failed to connect to system bus: %w", err)
+			results = collectFallbackNetworkInfo(snapshotMap, interval)
+			return nil
 		}
 		defer func() {
 			if cerr := conn.Close(); cerr != nil {
@@ -214,7 +222,9 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 		}()
 		devicePaths, err := listNetworkManagerDevices(conn)
 		if err != nil {
-			return err
+			logger.Debugf("NetworkManager unavailable, using read-only fallback: %v", err)
+			results = collectFallbackNetworkInfo(snapshotMap, interval)
+			return nil
 		}
 		results = collectNMInterfaceInfo(conn, devicePaths, snapshotMap, interval)
 		return nil
@@ -242,6 +252,135 @@ func listNetworkManagerDevices(conn *godbus.Conn) ([]godbus.ObjectPath, error) {
 		return nil, fmt.Errorf("GetDevices failed: %w", err)
 	}
 	return devicePaths, nil
+}
+
+func collectFallbackNetworkInfo(
+	snapshotMap map[string]net.IOCountersStat,
+	interval int64,
+) []NMInterfaceInfo {
+	ifaces, err := stdnet.Interfaces()
+	if err != nil {
+		return []NMInterfaceInfo{}
+	}
+
+	dns := readSystemNameservers()
+	gateways := readDefaultGateways()
+	results := make([]NMInterfaceInfo, 0, len(ifaces))
+
+	for _, iface := range ifaces {
+		addrs, _ := iface.Addrs()
+		ip4s, ip6s := collectFallbackAddresses(addrs)
+		mtu := uint32(0)
+		if iface.MTU > 0 {
+			mtu = uint32(iface.MTU)
+		}
+		rxSpeed, txSpeed := networkInterfaceSpeed(iface.Name, snapshotMap, interval)
+		results = append(results, NMInterfaceInfo{
+			Name:         iface.Name,
+			Type:         fallbackInterfaceType(iface.Name),
+			MAC:          iface.HardwareAddr.String(),
+			MTU:          mtu,
+			Speed:        networkInterfaceLinkSpeed(iface.Name),
+			Duplex:       networkInterfaceDuplex(iface.Name),
+			State:        fallbackInterfaceState(iface),
+			IP4Addresses: ip4s,
+			IP6Addresses: ip6s,
+			RxSpeed:      rxSpeed,
+			TxSpeed:      txSpeed,
+			DNS:          append([]string(nil), dns...),
+			Gateway:      gateways[iface.Name],
+			IPv4Method:   "unknown",
+		})
+	}
+
+	return results
+}
+
+func collectFallbackAddresses(addrs []stdnet.Addr) ([]string, []string) {
+	var ip4s []string
+	var ip6s []string
+	for _, addr := range addrs {
+		value := addr.String()
+		ip, _, err := stdnet.ParseCIDR(value)
+		if err != nil || ip == nil {
+			continue
+		}
+		if ip.To4() != nil {
+			ip4s = append(ip4s, value)
+			continue
+		}
+		ip6s = append(ip6s, value)
+	}
+	return ip4s, ip6s
+}
+
+func fallbackInterfaceType(name string) string {
+	switch {
+	case strings.HasPrefix(name, "lo"):
+		return "loopback"
+	case strings.HasPrefix(name, "wl"):
+		return "wifi"
+	default:
+		return "ethernet"
+	}
+}
+
+func fallbackInterfaceState(iface stdnet.Interface) uint32 {
+	if iface.Flags&stdnet.FlagUp != 0 {
+		return 100
+	}
+	return 20
+}
+
+func readSystemNameservers() []string {
+	data, err := os.ReadFile("/etc/resolv.conf")
+	if err != nil {
+		return nil
+	}
+	var servers []string
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) == 2 && fields[0] == "nameserver" {
+			servers = append(servers, fields[1])
+		}
+	}
+	return servers
+}
+
+func readDefaultGateways() map[string]string {
+	data, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return map[string]string{}
+	}
+
+	gateways := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || fields[1] != "00000000" {
+			continue
+		}
+		if gateway, ok := parseRouteGatewayHex(fields[2]); ok {
+			gateways[fields[0]] = gateway
+		}
+	}
+	return gateways
+}
+
+func parseRouteGatewayHex(raw string) (string, bool) {
+	if len(raw) != 8 {
+		return "", false
+	}
+	value, err := strconv.ParseUint(raw, 16, 32)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"%d.%d.%d.%d",
+		byte(value),
+		byte(value>>8),
+		byte(value>>16),
+		byte(value>>24),
+	), true
 }
 
 func collectNMInterfaceInfo(
@@ -473,6 +612,9 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		parts, err := getActiveConnForIface(conn, iface)
 		if err != nil {
@@ -683,6 +825,9 @@ func SetIPv4DHCP(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		parts, err := getActiveConnForIface(conn, iface)
 		if err != nil {
@@ -766,6 +911,9 @@ func SetIPv6DHCP(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		parts, err := getActiveConnForIface(conn, iface)
 		if err != nil {
@@ -840,6 +988,9 @@ func SetIPv6Static(iface, addressCIDR string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		parts, err := getActiveConnForIface(conn, iface)
 		if err != nil {
@@ -900,6 +1051,9 @@ func DisableConnection(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 
@@ -946,6 +1100,9 @@ func EnableConnection(iface string) error {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
 		defer conn.Close()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 		devicePath, err := findDevicePathByInterface(conn, nm, iface)
@@ -1033,6 +1190,9 @@ func SetMTU(iface, mtu string) error {
 				logger.Warnf("failed to close D-Bus connection: %v", cerr)
 			}
 		}()
+		if err := ensureNetworkManagerAvailable(conn); err != nil {
+			return err
+		}
 
 		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 

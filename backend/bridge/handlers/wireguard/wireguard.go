@@ -759,7 +759,11 @@ func UpInterface(args []string) (any, error) {
 		logger.Errorf("UpInterface: invalid interface name %q: %v", name, err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	cmd := exec.Command("/usr/bin/wg-quick", "up", name)
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return nil, fmt.Errorf("wg-quick not found: %w", err)
+	}
+	cmd := exec.Command(wgQuickPath, "up", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -794,7 +798,11 @@ func DownInterface(args []string) (any, error) {
 		logger.Errorf("DownInterface: invalid interface name %q: %v", name, err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	cmd := exec.Command("/usr/bin/wg-quick", "down", name)
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return nil, fmt.Errorf("wg-quick not found: %w", err)
+	}
+	cmd := exec.Command(wgQuickPath, "down", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
 	cmd.SysProcAttr = &syscall.SysProcAttr{
