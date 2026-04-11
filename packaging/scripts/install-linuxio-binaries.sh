@@ -578,12 +578,20 @@ main() {
         restart_or_start_services || true
     fi
 
+    # Detect LAN IP for the completion banner
+    local lan_ip=""
+    lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+
     echo ""
     echo -e "${LINE}"
     echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
     echo -e "${LINE}"
     echo ""
-    echo -e " ${BOLD}Dashboard:${COLOUR_RESET}  https://localhost:${SELECTED_PORT}"
+    echo -e " ${BOLD}Dashboard:${COLOUR_RESET}"
+    echo -e "${BULLET} https://localhost:${SELECTED_PORT}"
+    if [[ -n "$lan_ip" ]]; then
+        echo -e "${BULLET} https://${lan_ip}:${SELECTED_PORT}"
+    fi
     echo ""
     echo -e " ${BOLD}Useful commands:${COLOUR_RESET}"
     echo -e "${BULLET} Check status:  ${GREY}linuxio status${COLOUR_RESET}"
