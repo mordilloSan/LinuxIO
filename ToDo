@@ -2,7 +2,9 @@
 
 2 - Notifications!!!! See notifications.md
 
-3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
+3 - Fix NFS distro dependecy
+
+4 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `zod-validation-error`
 - `eslint-plugin-react`
 - `eslint-plugin-react-hooks`

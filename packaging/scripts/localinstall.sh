@@ -116,6 +116,42 @@ else
     Show 3 "packaging/etc/linuxio directory not found"
 fi
 
+# PCP derived metrics and pmproxy override
+Show 2 "Installing PCP derived metrics..."
+if [[ -f "$REPO_ROOT/packaging/etc/linuxio/pcp-derived.conf" ]]; then
+    install -D -o root -g root -m 0644 "$REPO_ROOT/packaging/etc/linuxio/pcp-derived.conf" /etc/linuxio/pcp-derived.conf
+    Show 0 "PCP derived metrics installed"
+else
+    Show 3 "pcp-derived.conf not found in packaging/etc/linuxio/"
+fi
+
+if [[ -f "$REPO_ROOT/packaging/etc/linuxio/pmlogger-linuxio.config" ]]; then
+    mkdir -p /etc/pcp/pmlogger/config.d
+    install -m 0644 "$REPO_ROOT/packaging/etc/linuxio/pmlogger-linuxio.config" \
+        /etc/pcp/pmlogger/config.d/linuxio.config
+    Show 0 "pmlogger config installed (15s intervals)"
+    if systemctl is-active --quiet pmlogger 2>/dev/null; then
+        systemctl restart pmlogger
+        Show 0 "pmlogger restarted with new config"
+    fi
+else
+    Show 3 "pmlogger-linuxio.config not found in packaging/etc/linuxio/"
+fi
+
+if [[ -f "$REPO_ROOT/packaging/systemd/linuxio-pmproxy-override.conf" ]]; then
+    mkdir -p /etc/systemd/system/pmproxy.service.d
+    install -m 0644 "$REPO_ROOT/packaging/systemd/linuxio-pmproxy-override.conf" \
+        /etc/systemd/system/pmproxy.service.d/linuxio.conf
+    Show 0 "pmproxy override installed"
+    if systemctl is-active --quiet pmproxy 2>/dev/null; then
+        systemctl daemon-reload
+        systemctl restart pmproxy
+        Show 0 "pmproxy restarted with derived metrics"
+    fi
+else
+    Show 3 "linuxio-pmproxy-override.conf not found in packaging/systemd/"
+fi
+
 # PAM
 Show 2 "Installing PAM configuration..."
 if [[ -f "$REPO_ROOT/packaging/etc/pam.d/linuxio" ]]; then
@@ -183,6 +219,9 @@ echo "Installed components:"
 echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 echo "  • Configuration:   /etc/linuxio/"
+echo "  • PCP derived:     /etc/linuxio/pcp-derived.conf"
+echo "  • PCP logging:    /etc/pcp/pmlogger/config.d/linuxio.config"
+echo "  • pmproxy drop-in: /etc/systemd/system/pmproxy.service.d/linuxio.conf"
 echo "  • PAM config:      /etc/pam.d/linuxio"
 echo "  • Issue updater:   /usr/share/linuxio/issue/"
 echo ""

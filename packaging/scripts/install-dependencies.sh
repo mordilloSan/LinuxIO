@@ -165,9 +165,37 @@ install_smartmontools() {
 
 install_pcp() {
     install_pkg "PCP" "pcp" "pcp"
+
+    # On Fedora, PMDAs are separate packages; on Debian they ship with pcp
+    if is_fedora; then
+        install_pkg "PCP PMDA lmsensors" "pcp-pmda-lmsensors" "pcp-pmda-lmsensors"
+        install_pkg "PCP PMDA docker" "pcp-pmda-docker" "pcp-pmda-docker"
+        install_pkg "PCP PMDA smart" "pcp-pmda-smart" "pcp-pmda-smart"
+        install_pkg "PCP PMDA nfsclient" "pcp-pmda-nfsclient" "pcp-pmda-nfsclient"
+        install_pkg "PCP PMDA zfs" "pcp-pmda-zfs" "pcp-pmda-zfs"
+        install_pkg "PCP PMDA libvirt" "pcp-pmda-libvirt" "pcp-pmda-libvirt"
+    fi
+
+    # Activate PMDAs into pmcd (idempotent — skips if already active or not present)
+    for pmda in lmsensors docker smart nfsclient zfs libvirt; do
+        local pmda_dir="/var/lib/pcp/pmdas/${pmda}"
+        if [[ -d "$pmda_dir" && -x "${pmda_dir}/Install" ]]; then
+            if pminfo -f "${pmda}" &>/dev/null 2>&1; then
+                Show 0 "PMDA ${pmda} ${GREY}already active${COLOUR_RESET}"
+            else
+                Show 2 "Activating PMDA ${pmda}..."
+                cd "$pmda_dir" && ./Install </dev/null >/dev/null 2>&1 || true
+                cd - >/dev/null
+                Show 0 "PMDA ${pmda} activated"
+            fi
+        else
+            Show 3 "PMDA ${pmda} ${GREY}not available, skipping${COLOUR_RESET}"
+        fi
+    done
+
     if command -v systemctl &>/dev/null; then
-        systemctl enable --now pmcd pmlogger 2>/dev/null || true
-        Show 0 "PCP services enabled ${GREY}(pmcd, pmlogger)${COLOUR_RESET}"
+        systemctl enable --now pmcd pmlogger pmproxy 2>/dev/null || true
+        Show 0 "PCP services enabled ${GREY}(pmcd, pmlogger, pmproxy)${COLOUR_RESET}"
     fi
 }
 
@@ -227,7 +255,7 @@ prompt_optional() {
     echo -e " ${BOLD}Optional dependencies enable extra features:${COLOUR_RESET}"
     echo -e "${BULLET} lm-sensors       ${GREY}hardware temperature/voltage monitoring${COLOUR_RESET}"
     echo -e "${BULLET} smartmontools    ${GREY}disk SMART health data${COLOUR_RESET}"
-    echo -e "${BULLET} PCP              ${GREY}CPU, memory, network, disk history charts${COLOUR_RESET}"
+    echo -e "${BULLET} PCP + PMDAs      ${GREY}CPU, memory, network, disk history + docker & sensor metrics${COLOUR_RESET}"
     echo -e "${BULLET} NFS utilities    ${GREY}mount/browse NFS shares${COLOUR_RESET}"
     echo -e "${BULLET} Docker           ${GREY}container management${COLOUR_RESET}"
     echo -e "${BULLET} Indexer          ${GREY}file search and directory size indexing${COLOUR_RESET}"
@@ -298,7 +326,7 @@ Mandatory (installed automatically):
 Optional (prompted interactively, or use --all):
   - lm-sensors       (hardware temperature/voltage monitoring)
   - smartmontools    (disk SMART health data)
-  - PCP              (CPU, memory, network, disk history charts)
+  - PCP + PMDAs      (CPU, memory, network, disk history + docker & sensor metrics via pmproxy)
   - NFS utilities    (mount/browse NFS shares)
   - Docker           (container management)
   - Indexer          (file search and directory size indexing)

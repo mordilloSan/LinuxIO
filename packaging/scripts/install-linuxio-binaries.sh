@@ -225,6 +225,47 @@ install_config_files() {
         Show 0 "${disallowed_file} already exists (not overwriting)"
     fi
 
+    # PCP derived metrics
+    local pcp_file="${CONFIG_DIR}/pcp-derived.conf"
+    Show 2 "Downloading PCP derived metrics..."
+    if ! curl -fsSL "${RAW_BASE}/etc/linuxio/pcp-derived.conf" -o "$pcp_file"; then
+        Show 3 "Failed to download PCP derived metrics (non-critical)"
+    else
+        chown root:root "$pcp_file"
+        chmod 0644 "$pcp_file"
+        Show 0 "PCP derived metrics installed"
+    fi
+
+    # pmlogger config (15s logging intervals)
+    Show 2 "Downloading pmlogger config..."
+    mkdir -p /etc/pcp/pmlogger/config.d
+    if ! curl -fsSL "${RAW_BASE}/etc/linuxio/pmlogger-linuxio.config" -o /etc/pcp/pmlogger/config.d/linuxio.config; then
+        Show 3 "Failed to download pmlogger config (non-critical)"
+    else
+        chmod 0644 /etc/pcp/pmlogger/config.d/linuxio.config
+        Show 0 "pmlogger config installed (15s intervals)"
+        if systemctl is-active --quiet pmlogger 2>/dev/null; then
+            systemctl restart pmlogger
+            Show 0 "pmlogger restarted with new config"
+        fi
+    fi
+
+    # pmproxy service override
+    Show 2 "Installing pmproxy service override..."
+    local pmproxy_drop_in="/etc/systemd/system/pmproxy.service.d"
+    mkdir -p "$pmproxy_drop_in"
+    if ! curl -fsSL "${RAW_BASE}/systemd/linuxio-pmproxy-override.conf" -o "${pmproxy_drop_in}/linuxio.conf"; then
+        Show 3 "Failed to download pmproxy override (non-critical)"
+    else
+        chmod 0644 "${pmproxy_drop_in}/linuxio.conf"
+        Show 0 "pmproxy override installed"
+        if systemctl is-active --quiet pmproxy 2>/dev/null; then
+            systemctl daemon-reload
+            systemctl restart pmproxy
+            Show 0 "pmproxy restarted with derived metrics"
+        fi
+    fi
+
     return 0
 }
 
@@ -626,6 +667,9 @@ What gets installed:
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
   - PAM:          /etc/pam.d/linuxio
   - Config:       /etc/linuxio/disallowed-users
+  - PCP derived:  /etc/linuxio/pcp-derived.conf (glances-compatible metrics)
+  - PCP logging:  /etc/pcp/pmlogger/config.d/linuxio.config (15s intervals)
+  - pmproxy:      /etc/systemd/system/pmproxy.service.d/linuxio.conf (loads derived config)
 
 Examples:
   $(basename "$0")                 # Install latest release
