@@ -118,21 +118,42 @@ func GetCPUSeries(ctx context.Context, rangeKey string) SeriesResponse {
 	}
 	step := int(def.Step / time.Second)
 
-	samples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric:     pcpCPUMetricIdle,
-		Range:      def,
-		ExtraCount: 1,
-	})
-	if err != nil {
-		return unavailableSeries(def.Key, step, normalizePCPQueryError(err))
+	type samplesResult struct {
+		pts []SeriesPoint
+		err error
+	}
+	type countResult struct {
+		val float64
+		err error
 	}
 
-	cpuCount, err := queryPCPLiveMetric(ctx, pcpCPUCountMetric)
-	if err != nil {
-		return unavailableSeries(def.Key, step, normalizePCPQueryError(err))
+	samplesCh := make(chan samplesResult, 1)
+	countCh := make(chan countResult, 1)
+
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric:     pcpCPUMetricIdle,
+			Range:      def,
+			ExtraCount: 1,
+		})
+		samplesCh <- samplesResult{pts, err}
+	}()
+	go func() {
+		val, err := queryPCPLiveMetric(ctx, pcpCPUCountMetric)
+		countCh <- countResult{val, err}
+	}()
+
+	samples := <-samplesCh
+	count := <-countCh
+
+	if samples.err != nil {
+		return unavailableSeries(def.Key, step, normalizePCPQueryError(samples.err))
+	}
+	if count.err != nil {
+		return unavailableSeries(def.Key, step, normalizePCPQueryError(count.err))
 	}
 
-	points := buildCPUUsagePoints(samples, cpuCount)
+	points := buildCPUUsagePoints(samples.pts, count.val)
 	if len(points) == 0 {
 		return unavailableSeries(def.Key, step, pcpHistoryUnavailableReason)
 	}
@@ -152,28 +173,45 @@ func GetMemorySeries(ctx context.Context, rangeKey string) SeriesResponse {
 	}
 	step := int(def.Step / time.Second)
 
-	availableSamples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric: pcpMemoryMetricAvailable,
-		Range:  def,
-	})
-	if err != nil {
-		return unavailableSeries(def.Key, step, normalizePCPQueryError(err))
+	type result struct {
+		pts []SeriesPoint
+		err error
 	}
 
-	physicalSamples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric: pcpMemoryMetricPhysical,
-		Range:  def,
-	})
-	if err != nil {
-		return unavailableSeries(def.Key, step, normalizePCPQueryError(err))
+	availCh := make(chan result, 1)
+	physCh := make(chan result, 1)
+
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric: pcpMemoryMetricAvailable,
+			Range:  def,
+		})
+		availCh <- result{pts, err}
+	}()
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric: pcpMemoryMetricPhysical,
+			Range:  def,
+		})
+		physCh <- result{pts, err}
+	}()
+
+	avail := <-availCh
+	phys := <-physCh
+
+	if avail.err != nil {
+		return unavailableSeries(def.Key, step, normalizePCPQueryError(avail.err))
+	}
+	if phys.err != nil {
+		return unavailableSeries(def.Key, step, normalizePCPQueryError(phys.err))
 	}
 
-	physicalMemory, ok := latestSampleValue(physicalSamples)
+	physicalMemory, ok := latestSampleValue(phys.pts)
 	if !ok {
 		return unavailableSeries(def.Key, step, pcpHistoryUnavailableReason)
 	}
 
-	points := buildMemoryUsagePoints(availableSamples, physicalMemory)
+	points := buildMemoryUsagePoints(avail.pts, physicalMemory)
 	if len(points) == 0 {
 		return unavailableSeries(def.Key, step, pcpHistoryUnavailableReason)
 	}
@@ -216,29 +254,46 @@ func GetNetworkSeries(ctx context.Context, rangeKey, device string) NetworkSerie
 		)
 	}
 
-	rxSamples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric:    pcpNetworkMetricReceive,
-		Instances: instances,
-		Range:     def,
-		NoInterp:  true,
-	})
-	if err != nil {
-		return unavailableNetworkSeries(def.Key, step, normalizePCPQueryError(err))
+	type result struct {
+		pts []SeriesPoint
+		err error
 	}
 
-	txSamples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric:    pcpNetworkMetricTransmit,
-		Instances: instances,
-		Range:     def,
-		NoInterp:  true,
-	})
-	if err != nil {
-		return unavailableNetworkSeries(def.Key, step, normalizePCPQueryError(err))
+	rxCh := make(chan result, 1)
+	txCh := make(chan result, 1)
+
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric:    pcpNetworkMetricReceive,
+			Instances: instances,
+			Range:     def,
+			NoInterp:  true,
+		})
+		rxCh <- result{pts, err}
+	}()
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric:    pcpNetworkMetricTransmit,
+			Instances: instances,
+			Range:     def,
+			NoInterp:  true,
+		})
+		txCh <- result{pts, err}
+	}()
+
+	rx := <-rxCh
+	tx := <-txCh
+
+	if rx.err != nil {
+		return unavailableNetworkSeries(def.Key, step, normalizePCPQueryError(rx.err))
+	}
+	if tx.err != nil {
+		return unavailableNetworkSeries(def.Key, step, normalizePCPQueryError(tx.err))
 	}
 
 	rxPoints, txPoints := alignSeriesPoints(
-		downsampleSeriesPoints(buildCounterRatePoints(rxSamples, 1024), def.Step),
-		downsampleSeriesPoints(buildCounterRatePoints(txSamples, 1024), def.Step),
+		downsampleSeriesPoints(buildCounterRatePoints(rx.pts, 1024), def.Step),
+		downsampleSeriesPoints(buildCounterRatePoints(tx.pts, 1024), def.Step),
 	)
 	if len(rxPoints) == 0 && len(txPoints) == 0 {
 		return unavailableNetworkSeries(
@@ -276,29 +331,46 @@ func GetDiskIOSeries(ctx context.Context, rangeKey, device string) DiskIOSeriesR
 		)
 	}
 
-	readSamples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric:     pcpDiskMetricRead,
-		Instances:  instances,
-		Range:      def,
-		ExtraCount: 1,
-	})
-	if err != nil {
-		return unavailableDiskIOSeries(def.Key, step, normalizePCPQueryError(err))
+	type result struct {
+		pts []SeriesPoint
+		err error
 	}
 
-	writeSamples, err := queryPCPSamples(ctx, pcpSamplesRequest{
-		Metric:     pcpDiskMetricWrite,
-		Instances:  instances,
-		Range:      def,
-		ExtraCount: 1,
-	})
-	if err != nil {
-		return unavailableDiskIOSeries(def.Key, step, normalizePCPQueryError(err))
+	readCh := make(chan result, 1)
+	writeCh := make(chan result, 1)
+
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric:     pcpDiskMetricRead,
+			Instances:  instances,
+			Range:      def,
+			ExtraCount: 1,
+		})
+		readCh <- result{pts, err}
+	}()
+	go func() {
+		pts, err := queryPCPSamples(ctx, pcpSamplesRequest{
+			Metric:     pcpDiskMetricWrite,
+			Instances:  instances,
+			Range:      def,
+			ExtraCount: 1,
+		})
+		writeCh <- result{pts, err}
+	}()
+
+	rd := <-readCh
+	wr := <-writeCh
+
+	if rd.err != nil {
+		return unavailableDiskIOSeries(def.Key, step, normalizePCPQueryError(rd.err))
+	}
+	if wr.err != nil {
+		return unavailableDiskIOSeries(def.Key, step, normalizePCPQueryError(wr.err))
 	}
 
 	readPoints, writePoints := alignSeriesPoints(
-		buildCounterRatePoints(readSamples, 1.0/1024.0),
-		buildCounterRatePoints(writeSamples, 1.0/1024.0),
+		buildCounterRatePoints(rd.pts, 1.0/1024.0),
+		buildCounterRatePoints(wr.pts, 1.0/1024.0),
 	)
 	if len(readPoints) == 0 && len(writePoints) == 0 {
 		return unavailableDiskIOSeries(

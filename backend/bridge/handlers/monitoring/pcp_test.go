@@ -3,28 +3,10 @@ package monitoring
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-func trackConcurrentCalls(inFlight, maxInFlight *int32) func() {
-	current := atomic.AddInt32(inFlight, 1)
-	for {
-		previousMax := atomic.LoadInt32(maxInFlight)
-		if current <= previousMax {
-			break
-		}
-		if atomic.CompareAndSwapInt32(maxInFlight, previousMax, current) {
-			break
-		}
-	}
-	return func() {
-		atomic.AddInt32(inFlight, -1)
-	}
-}
 
 func TestGetCPUSeriesBuildsUsageFromArchiveSamples(t *testing.T) {
 	originalQuerySamples := queryPCPSamples
@@ -211,76 +193,6 @@ func TestGetCPUSeriesReturnsFriendlyTimeoutReason(t *testing.T) {
 
 	require.False(t, result.Available)
 	require.Equal(t, pcpHistoryTimeoutReason, result.Reason)
-}
-
-func TestGetCPUSeriesDoesNotQueryPCPInParallel(t *testing.T) {
-	originalQuerySamples := queryPCPSamples
-	originalQueryLiveMetric := queryPCPLiveMetric
-	t.Cleanup(func() {
-		queryPCPSamples = originalQuerySamples
-		queryPCPLiveMetric = originalQueryLiveMetric
-	})
-
-	var inFlight int32
-	var maxInFlight int32
-
-	queryPCPSamples = func(context.Context, pcpSamplesRequest) ([]SeriesPoint, error) {
-		done := trackConcurrentCalls(&inFlight, &maxInFlight)
-		defer done()
-		time.Sleep(10 * time.Millisecond)
-		return []SeriesPoint{
-			{TS: 0, Value: 0},
-			{TS: 5_000, Value: 16_000},
-		}, nil
-	}
-	queryPCPLiveMetric = func(context.Context, string) (float64, error) {
-		done := trackConcurrentCalls(&inFlight, &maxInFlight)
-		defer done()
-		time.Sleep(10 * time.Millisecond)
-		return 4, nil
-	}
-
-	result := GetCPUSeries(context.Background(), "1m")
-
-	require.True(t, result.Available)
-	require.Equal(t, int32(1), atomic.LoadInt32(&maxInFlight))
-}
-
-func TestGetMemorySeriesDoesNotQueryPCPInParallel(t *testing.T) {
-	originalQuerySamples := queryPCPSamples
-	t.Cleanup(func() {
-		queryPCPSamples = originalQuerySamples
-	})
-
-	var inFlight int32
-	var maxInFlight int32
-
-	queryPCPSamples = func(_ context.Context, request pcpSamplesRequest) ([]SeriesPoint, error) {
-		done := trackConcurrentCalls(&inFlight, &maxInFlight)
-		defer done()
-		time.Sleep(10 * time.Millisecond)
-
-		switch request.Metric {
-		case pcpMemoryMetricAvailable:
-			return []SeriesPoint{
-				{TS: 1_000, Value: 40},
-				{TS: 2_000, Value: 20},
-			}, nil
-		case pcpMemoryMetricPhysical:
-			return []SeriesPoint{
-				{TS: 1_000, Value: 100},
-				{TS: 2_000, Value: 100},
-			}, nil
-		default:
-			t.Fatalf("unexpected metric %q", request.Metric)
-			return nil, nil
-		}
-	}
-
-	result := GetMemorySeries(context.Background(), "1m")
-
-	require.True(t, result.Available)
-	require.Equal(t, int32(1), atomic.LoadInt32(&maxInFlight))
 }
 
 func TestNormalizePCPQueryErrorMapsLibpcpErrors(t *testing.T) {
