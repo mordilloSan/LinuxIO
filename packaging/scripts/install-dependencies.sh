@@ -6,12 +6,35 @@
 # =============================================================================
 set -euo pipefail
 
-# ---------- Logging Functions ----------
-log_info()  { printf "▸ %s\n" "$*"; }
-log_ok()    { printf "✓ %s\n" "$*"; }
-log_error() { printf "✗ %s\n" "$*" >&2; }
-log_warn()  { printf "⚠ %s\n" "$*"; }
-log_skip()  { printf "– %s\n" "$*"; }
+# ---------- Colors & Styling ----------
+readonly COLOUR_RESET='\e[0m'
+readonly GREEN='\e[38;5;154m'
+readonly BOLD='\e[1m'
+readonly GREY='\e[90m'
+readonly RED='\e[91m'
+readonly YELLOW='\e[33m'
+
+readonly LINE=" ${GREEN}───────────────────────────────────────────────────────${COLOUR_RESET}"
+readonly BULLET=" ${GREEN}-${COLOUR_RESET}"
+
+Show() {
+    local status="$1"
+    shift
+    case "$status" in
+        0) echo -e " ${GREY}[${GREEN}  OK  ${GREY}]${COLOUR_RESET} $*" ;;
+        1) echo -e " ${GREY}[${RED}FAILED${GREY}]${COLOUR_RESET} $*"; exit 1 ;;
+        2) echo -e " ${GREY}[${BOLD} INFO ${GREY}]${COLOUR_RESET} $*" ;;
+        3) echo -e " ${GREY}[${YELLOW}NOTICE${GREY}]${COLOUR_RESET} $*" ;;
+    esac
+}
+
+Header() {
+    echo ""
+    echo -e "${LINE}"
+    echo -e " ${BOLD} $*${COLOUR_RESET}"
+    echo -e "${LINE}"
+    echo ""
+}
 
 # ---------- User Prompt ----------
 ask_yes_no() {
@@ -20,12 +43,13 @@ ask_yes_no() {
     local yn
 
     if [[ "$default" == "y" ]]; then
-        prompt="$prompt [Y/n] "
+        prompt="${BOLD}${prompt}${COLOUR_RESET} ${GREY}[Y/n]${COLOUR_RESET} "
     else
-        prompt="$prompt [y/N] "
+        prompt="${BOLD}${prompt}${COLOUR_RESET} ${GREY}[y/N]${COLOUR_RESET} "
     fi
 
-    read -rp "$prompt" yn
+    echo ""
+    read -rp "$(echo -e " $prompt")" yn
     yn="${yn:-$default}"
     [[ "${yn,,}" == "y" || "${yn,,}" == "yes" ]]
 }
@@ -60,150 +84,195 @@ is_fedora() {
 }
 
 # ---------- Package helpers ----------
+# Check if a package is already installed
+pkg_installed() {
+    if is_debian; then
+        dpkg -s "$1" &>/dev/null
+    elif is_fedora; then
+        rpm -q "$1" &>/dev/null
+    fi
+}
+
+# Install packages quietly, suppressing all output
 pkg_install() {
     if is_debian; then
-        apt-get install -y "$@"
+        apt-get install -y -qq "$@" >/dev/null 2>&1
     elif is_fedora; then
-        dnf install -y "$@"
+        dnf install -y -q "$@" >/dev/null 2>&1
+    fi
+}
+
+# Install a named dependency: show "already installed" or install quietly
+# Usage: install_pkg <display_name> <debian_pkg> <fedora_pkg>
+install_pkg() {
+    local name="$1" deb_pkg="$2" fed_pkg="$3"
+    local pkg=""
+
+    if is_debian; then pkg="$deb_pkg"
+    elif is_fedora; then pkg="$fed_pkg"
+    fi
+
+    if pkg_installed "$pkg"; then
+        Show 0 "${name} ${GREY}already installed${COLOUR_RESET}"
+    else
+        Show 2 "Installing ${name}..."
+        if pkg_install "$pkg"; then
+            Show 0 "${name} installed"
+        else
+            Show 1 "Failed to install ${name}"
+        fi
     fi
 }
 
 # ---------- Mandatory Dependencies ----------
 install_mandatory() {
-    log_info "Installing mandatory dependencies..."
+    Header "Mandatory Dependencies"
 
-    if is_debian; then
-        apt-get update -qq
-        pkg_install libpam0g policykit-1 packagekit
-    elif is_fedora; then
-        pkg_install pam polkit PackageKit
-    else
-        log_error "Unsupported distribution: ${DISTRO}"
-        log_error "Please install the following mandatory dependencies manually:"
-        log_error "  - PAM libraries (authentication)"
-        log_error "  - PolicyKit (authorization)"
-        log_error "  - PackageKit (software updates)"
-        exit 1
+    if ! is_debian && ! is_fedora; then
+        Show 1 "Unsupported distribution: ${DISTRO}"
     fi
 
-    log_ok "Mandatory dependencies installed"
+    if is_debian; then
+        Show 2 "Updating package lists..."
+        apt-get update -qq >/dev/null 2>&1
+        Show 0 "Package lists updated"
+    fi
+
+    install_pkg "PAM libraries" "libpam0g" "pam"
+    install_pkg "PolicyKit" "policykit-1" "polkit"
+    install_pkg "PackageKit" "packagekit" "PackageKit"
 }
 
 # ---------- Optional Dependencies ----------
 install_lm_sensors() {
-    if is_debian; then
-        pkg_install lm-sensors
-    elif is_fedora; then
-        pkg_install lm_sensors
-    fi
-    # Auto-detect sensors
+    install_pkg "lm-sensors" "lm-sensors" "lm_sensors"
     if command -v sensors-detect &>/dev/null; then
-        log_info "Detecting hardware sensors..."
+        Show 2 "Detecting hardware sensors..."
         yes "" | sensors-detect --auto &>/dev/null || true
+        Show 0 "Sensors configured"
     fi
-    log_ok "lm-sensors installed and configured"
 }
 
 install_smartmontools() {
-    pkg_install smartmontools
-    log_ok "smartmontools installed"
+    install_pkg "smartmontools" "smartmontools" "smartmontools"
 }
 
 install_pcp() {
-    pkg_install pcp
-    # Enable PCP services — LinuxIO reads archives via libpcp directly
+    install_pkg "PCP" "pcp" "pcp"
     if command -v systemctl &>/dev/null; then
         systemctl enable --now pmcd pmlogger 2>/dev/null || true
+        Show 0 "PCP services enabled ${GREY}(pmcd, pmlogger)${COLOUR_RESET}"
     fi
-    log_ok "PCP installed and services enabled (pmcd, pmlogger)"
 }
 
 install_nfs() {
-    if is_debian; then
-        pkg_install nfs-common
-    elif is_fedora; then
-        pkg_install nfs-utils
-    fi
-    log_ok "NFS utilities installed"
+    install_pkg "NFS utilities" "nfs-common" "nfs-utils"
 }
 
 install_docker() {
     if command -v docker &>/dev/null; then
-        log_ok "Docker is already installed: $(docker --version)"
+        Show 0 "Docker ${GREY}already installed ($(docker --version 2>/dev/null | sed 's/Docker version //'))${COLOUR_RESET}"
         return 0
     fi
 
-    log_info "Installing Docker using official script..."
-    if ! curl -fsSL https://get.docker.com | sh; then
-        log_error "Docker installation failed"
+    Show 2 "Installing Docker..."
+    if ! curl -fsSL https://get.docker.com 2>/dev/null | sh >/dev/null 2>&1; then
+        Show 3 "Docker installation failed"
         return 1
     fi
 
     if command -v systemctl &>/dev/null; then
-        systemctl enable docker
-        systemctl start docker
+        systemctl enable docker >/dev/null 2>&1
+        systemctl start docker >/dev/null 2>&1
     fi
 
-    log_ok "Docker installed: $(docker --version)"
+    Show 0 "Docker installed"
 }
 
-# ---------- Optional dependencies ----------
+install_all_optional() {
+    Header "Optional Dependencies"
+
+    install_lm_sensors
+    install_smartmontools
+    install_pcp
+    install_nfs
+    install_docker
+}
+
+# ---------- Optional prompt ----------
 prompt_optional() {
     echo ""
-    log_info "Optional dependencies enable extra features in LinuxIO:"
-    log_info "  - lm-sensors       (hardware temperature/voltage monitoring)"
-    log_info "  - smartmontools    (disk SMART health data)"
-    log_info "  - PCP              (CPU, memory, network, disk history charts)"
-    log_info "  - NFS utilities    (mount/browse NFS shares)"
-    log_info "  - Docker           (container management)"
-    echo ""
+    echo -e " ${BOLD}Optional dependencies enable extra features:${COLOUR_RESET}"
+    echo -e "${BULLET} lm-sensors       ${GREY}hardware temperature/voltage monitoring${COLOUR_RESET}"
+    echo -e "${BULLET} smartmontools    ${GREY}disk SMART health data${COLOUR_RESET}"
+    echo -e "${BULLET} PCP              ${GREY}CPU, memory, network, disk history charts${COLOUR_RESET}"
+    echo -e "${BULLET} NFS utilities    ${GREY}mount/browse NFS shares${COLOUR_RESET}"
+    echo -e "${BULLET} Docker           ${GREY}container management${COLOUR_RESET}"
 
     if ask_yes_no "Install all optional dependencies?"; then
-        install_lm_sensors
-        install_smartmontools
-        install_pcp
-        install_nfs
-        install_docker
+        install_all_optional
     else
-        log_skip "Skipped optional dependencies — you can install them later"
+        Show 3 "Skipped optional dependencies — you can install them later"
     fi
 }
 
 # ---------- Main ----------
 main() {
+    local install_all=0
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -a|--all) install_all=1; shift ;;
+            -h|--help) show_help; exit 0 ;;
+            *) shift ;;
+        esac
+    done
+
     if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root"
-        exit 1
+        Show 1 "This script must be run as root"
     fi
 
-    log_info "Starting LinuxIO dependencies installation"
+    Header "LinuxIO ${GREY}· Dependencies Installer${COLOUR_RESET}"
 
     detect_distro
-    log_info "Detected distribution: ${DISTRO}"
+    Show 2 "Detected distribution: ${BOLD}${DISTRO}${COLOUR_RESET}"
 
     install_mandatory
-    prompt_optional
+
+    if [[ $install_all -eq 1 ]]; then
+        install_all_optional
+    else
+        prompt_optional
+    fi
 
     echo ""
-    log_ok "Installation complete!"
-    log_info ""
-    log_info "Next step: Install LinuxIO binaries with:"
-    log_info "  curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash"
+    echo -e "${LINE}"
+    echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
+    echo -e "${LINE}"
+    echo ""
+    echo -e " ${BOLD}Next step:${COLOUR_RESET} Install LinuxIO binaries with:"
+    echo -e " ${GREY}curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash${COLOUR_RESET}"
+    echo ""
 }
 
 # ---------- Usage ----------
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+show_help() {
     cat <<EOF
-Usage: $(basename "$0")
+Usage: $(basename "$0") [OPTIONS]
 
 Installs dependencies required by LinuxIO.
+
+Options:
+  -a, --all     Install everything (mandatory + optional) without prompting
+  -h, --help    Show this help message
 
 Mandatory (installed automatically):
   - PAM libraries    (authentication)
   - PolicyKit        (authorization)
   - PackageKit       (software updates)
 
-Optional (you will be prompted):
+Optional (prompted interactively, or use --all):
   - lm-sensors       (hardware temperature/voltage monitoring)
   - smartmontools    (disk SMART health data)
   - PCP              (CPU, memory, network, disk history charts)
@@ -212,7 +281,6 @@ Optional (you will be prompted):
 
 This script must be run as root.
 EOF
-    exit 0
-fi
+}
 
 main "$@"

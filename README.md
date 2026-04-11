@@ -55,37 +55,36 @@ LinuxIO supports Linux kernels 5.9+.
 
 ### Quick install (recommended)
 
-
-Install dependencies (Docker, lm-sensors, PAM, PolicyKit, smartmontools)
+**Step 1** — Install dependencies (interactive, prompts for optional extras):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
 ```
 
-Install LinuxIO binaries
+To install everything without prompts, pass `--all`:
+```bash
+curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash -s -- --all
+```
+
+**Step 2** — Install LinuxIO binaries:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
 Access the dashboard at `https://localhost:8090`.
 
-### Manual dependency installation
+<details>
+<summary><strong>What gets installed?</strong></summary>
 
-If you prefer to install dependencies manually:
+| Category | Packages | Required |
+|----------|----------|----------|
+| PAM, PolicyKit, PackageKit | Auth, authorization, system updates | Mandatory |
+| lm-sensors | Hardware temperature/voltage monitoring | Optional |
+| smartmontools | Disk SMART health data | Optional |
+| PCP | CPU, memory, network, disk history charts | Optional |
+| NFS utilities | Mount/browse NFS shares | Optional |
+| Docker | Container management | Optional |
 
-**Debian/Ubuntu:**
-
-```bash
-sudo apt update
-sudo apt install -y lm-sensors libpam0g policykit-1 smartmontools nfs-common
-curl -fsSL https://get.docker.com | sudo bash
-```
-
-**Fedora/RHEL/CentOS:**
-
-```bash
-sudo dnf install -y lm_sensors pam polkit smartmontools nfs-common
-curl -fsSL https://get.docker.com | sudo bash
-```
+</details>
 
 ---
 
