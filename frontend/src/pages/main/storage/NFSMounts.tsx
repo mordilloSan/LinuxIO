@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -734,7 +734,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
     ]);
   };
   if (loading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   const mountsList = Array.isArray(mounts) ? mounts : [];
   const filtered = mountsList.filter(

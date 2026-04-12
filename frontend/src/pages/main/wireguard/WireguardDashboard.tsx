@@ -6,7 +6,7 @@ import InterfaceDetails from "./InterfaceClients";
 
 import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -210,7 +210,7 @@ const WireGuardDashboard: React.FC = () => {
   return (
     <>
       {isLoading ? (
-        <ComponentLoader />
+        <PageLoader />
       ) : isError ? (
         <AppTypography color="error">
           {error?.message || "Failed to fetch interfaces"}

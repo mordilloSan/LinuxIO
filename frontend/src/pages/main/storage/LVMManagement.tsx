@@ -12,7 +12,7 @@ import {
 import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -656,7 +656,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
     setDeleteDialogOpen(true);
   };
   if (pvsLoading || vgsLoading || lvsLoading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   const pvsList = Array.isArray(pvs) ? pvs : [];
   const vgsList = Array.isArray(vgs) ? vgs : [];

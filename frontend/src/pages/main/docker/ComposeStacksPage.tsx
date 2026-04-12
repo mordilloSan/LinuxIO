@@ -21,7 +21,7 @@ import DeleteStackDialog, {
 } from "@/components/docker/DeleteStackDialog";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -473,10 +473,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   };
 
   return (
-    <Suspense fallback={<ComponentLoader />}>
+    <Suspense fallback={<PageLoader />}>
       <div>
         {isPending && viewMode !== "card" ? (
-          <ComponentLoader />
+          <PageLoader />
         ) : (
           <ComposeList
             projects={projects}

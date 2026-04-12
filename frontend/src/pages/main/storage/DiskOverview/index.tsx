@@ -22,7 +22,7 @@ import { parseSizeToBytes } from "./utils";
 import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
@@ -495,7 +495,7 @@ const DiskOverview: React.FC = () => {
     });
   };
   if (drivesLoading || fsLoading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   return (
     <div>

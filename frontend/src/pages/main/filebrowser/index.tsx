@@ -39,7 +39,6 @@ import {
   isEditableFile,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -1158,7 +1157,7 @@ const FileBrowser: React.FC = () => {
                 justifyContent: "center",
               }}
             >
-              <ComponentLoader />
+              <PageLoader />
             </div>
           )}
 
@@ -1233,7 +1232,7 @@ const FileBrowser: React.FC = () => {
             borderTop: `1px solid ${theme.palette.divider}`,
           }}
         >
-          {shouldShowDetailLoader && <ComponentLoader />}
+          {shouldShowDetailLoader && <PageLoader />}
           {!shouldShowDetailLoader && hasSingleDetailTarget && detailError && (
             <AppTypography color="error">
               {detailError instanceof Error
