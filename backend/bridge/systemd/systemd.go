@@ -79,6 +79,15 @@ func ReloadUnit(name string) error {
 	})
 }
 
+// reloadManager asks systemd to re-read unit files from disk so cached
+// UnitFileState properties reflect symlink changes made by *UnitFiles calls.
+func reloadManager(manager godbus.BusObject) error {
+	if err := manager.Call(systemdMgrIface+".Reload", 0).Err; err != nil {
+		return fmt.Errorf("reload systemd manager: %w", err)
+	}
+	return nil
+}
+
 func EnableUnit(name string) error {
 	if err := requireUnitName(name); err != nil {
 		return err
@@ -87,7 +96,7 @@ func EnableUnit(name string) error {
 		if err := manager.Call(systemdMgrIface+".EnableUnitFiles", 0, []string{name}, false, true).Err; err != nil {
 			return fmt.Errorf("enable unit file %s: %w", name, err)
 		}
-		return nil
+		return reloadManager(manager)
 	})
 }
 
@@ -99,7 +108,7 @@ func DisableUnit(name string) error {
 		if err := manager.Call(systemdMgrIface+".DisableUnitFiles", 0, []string{name}, false).Err; err != nil {
 			return fmt.Errorf("disable unit file %s: %w", name, err)
 		}
-		return nil
+		return reloadManager(manager)
 	})
 }
 
@@ -111,7 +120,7 @@ func MaskUnit(name string) error {
 		if err := manager.Call(systemdMgrIface+".MaskUnitFiles", 0, []string{name}, false, true).Err; err != nil {
 			return fmt.Errorf("mask unit file %s: %w", name, err)
 		}
-		return nil
+		return reloadManager(manager)
 	})
 }
 
@@ -123,7 +132,7 @@ func UnmaskUnit(name string) error {
 		if err := manager.Call(systemdMgrIface+".UnmaskUnitFiles", 0, []string{name}, false).Err; err != nil {
 			return fmt.Errorf("unmask unit file %s: %w", name, err)
 		}
-		return nil
+		return reloadManager(manager)
 	})
 }
 

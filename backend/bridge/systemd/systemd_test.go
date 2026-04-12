@@ -27,10 +27,11 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) { //nolint:gocognit
 	manager := exportManager(t, bus)
 
 	tests := []struct {
-		name       string
-		invoke     func(t *testing.T)
-		wantMethod string
-		wantArgs   []any
+		name                 string
+		invoke               func(t *testing.T)
+		wantMethod           string
+		wantArgs             []any
+		wantFollowedByReload bool
 	}{
 		{
 			name: "StartUnit",
@@ -79,8 +80,9 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) { //nolint:gocognit
 					t.Fatalf("EnableUnit: %v", err)
 				}
 			},
-			wantMethod: "EnableUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false, true},
+			wantMethod:           "EnableUnitFiles",
+			wantArgs:             []any{[]string{"demo.service"}, false, true},
+			wantFollowedByReload: true,
 		},
 		{
 			name: "DisableUnit",
@@ -89,8 +91,9 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) { //nolint:gocognit
 					t.Fatalf("DisableUnit: %v", err)
 				}
 			},
-			wantMethod: "DisableUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false},
+			wantMethod:           "DisableUnitFiles",
+			wantArgs:             []any{[]string{"demo.service"}, false},
+			wantFollowedByReload: true,
 		},
 		{
 			name: "MaskUnit",
@@ -99,8 +102,9 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) { //nolint:gocognit
 					t.Fatalf("MaskUnit: %v", err)
 				}
 			},
-			wantMethod: "MaskUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false, true},
+			wantMethod:           "MaskUnitFiles",
+			wantArgs:             []any{[]string{"demo.service"}, false, true},
+			wantFollowedByReload: true,
 		},
 		{
 			name: "UnmaskUnit",
@@ -109,8 +113,9 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) { //nolint:gocognit
 					t.Fatalf("UnmaskUnit: %v", err)
 				}
 			},
-			wantMethod: "UnmaskUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false},
+			wantMethod:           "UnmaskUnitFiles",
+			wantArgs:             []any{[]string{"demo.service"}, false},
+			wantFollowedByReload: true,
 		},
 		{
 			name: "GetUnitFileState",
@@ -140,32 +145,38 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) { //nolint:gocognit
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			runManagerOperationTest(t, manager, tc.invoke, tc.wantMethod, tc.wantArgs)
+			runManagerOperationTest(t, manager, tc.invoke, tc.wantMethod, tc.wantArgs, tc.wantFollowedByReload)
 		})
 	}
 }
 
-func runManagerOperationTest(t *testing.T, manager *testdbus.SystemdManager, invoke func(t *testing.T), wantMethod string, wantArgs []any) {
+func runManagerOperationTest(t *testing.T, manager *testdbus.SystemdManager, invoke func(t *testing.T), wantMethod string, wantArgs []any, wantFollowedByReload bool) {
 	t.Helper()
 
 	manager.ResetCalls()
 	invoke(t)
 
 	calls := manager.Calls()
-	assertSingleManagerCall(t, calls, wantMethod, wantArgs)
-}
-
-func assertSingleManagerCall(t *testing.T, calls []testdbus.SystemdCall, wantMethod string, wantArgs []any) {
-	t.Helper()
-
-	if len(calls) != 1 {
-		t.Fatalf("calls = %d, want 1", len(calls))
+	wantCalls := 1
+	if wantFollowedByReload {
+		wantCalls = 2
+	}
+	if len(calls) != wantCalls {
+		t.Fatalf("calls = %d, want %d", len(calls), wantCalls)
 	}
 	if calls[0].Method != wantMethod {
 		t.Fatalf("method = %q, want %q", calls[0].Method, wantMethod)
 	}
 	if !reflect.DeepEqual(calls[0].Args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", calls[0].Args, wantArgs)
+	}
+	if wantFollowedByReload {
+		if calls[1].Method != "Reload" {
+			t.Fatalf("trailing method = %q, want %q", calls[1].Method, "Reload")
+		}
+		if len(calls[1].Args) != 0 {
+			t.Fatalf("trailing args = %#v, want []", calls[1].Args)
+		}
 	}
 }
 
