@@ -74,6 +74,7 @@ const SocketsTab: React.FC = () => {
       errorMessage="Failed to load sockets"
       compareItems={compareSocketsByName}
       matchesSearch={matchesSocketSearch}
+      urlParam="socket"
       renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
         <SocketTableView
           sockets={items}

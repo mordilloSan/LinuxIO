@@ -14,7 +14,6 @@ interface HealthItem {
   color: string;
   text: string;
   to?: string;
-  state?: Record<string, unknown>;
   detail?: string;
   spaceBefore?: boolean;
   iconStyle?: React.CSSProperties;
@@ -52,14 +51,14 @@ const SystemHealth = () => {
   }
 
   if (health?.failedServicesCount) {
+    const failed = health.failedServices?.[0];
     items.push({
       icon: "mdi:alert-circle",
       color: theme.palette.error.main,
       text: `${pluralize(health.failedServicesCount, "service has", "services have")} failed`,
-      to: "/services",
-      state: health.failedServices?.[0]
-        ? { selectedUnit: health.failedServices[0] }
-        : undefined,
+      to: failed
+        ? `/services?section=services&service=${encodeURIComponent(failed)}`
+        : "/services",
       detail: health.failedServices?.slice(0, 2).join(", "),
     });
   }
@@ -250,7 +249,7 @@ const SystemHealth = () => {
           return item.to ? (
             <div
               key={item.text}
-              onClick={() => navigate(item.to!, { state: item.state })}
+              onClick={() => navigate(item.to!)}
               style={{ cursor: "pointer", ...spacing }}
             >
               {content}

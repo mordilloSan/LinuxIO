@@ -69,6 +69,7 @@ const TimersTab: React.FC = () => {
       errorMessage="Failed to load timers"
       compareItems={compareTimersByName}
       matchesSearch={matchesTimerSearch}
+      urlParam="timer"
       renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
         <TimerTableView
           timers={items}
