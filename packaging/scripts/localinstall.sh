@@ -220,7 +220,7 @@ echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-b
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 echo "  • Configuration:   /etc/linuxio/"
 echo "  • PCP derived:     /etc/linuxio/pcp-derived.conf"
-echo "  • PCP logging:    /etc/pcp/pmlogger/config.d/linuxio.config"
+echo "  • PCP logging:     /etc/pcp/pmlogger/config.d/linuxio.config"
 echo "  • pmproxy drop-in: /etc/systemd/system/pmproxy.service.d/linuxio.conf"
 echo "  • PAM config:      /etc/pam.d/linuxio"
 echo "  • Issue updater:   /usr/share/linuxio/issue/"

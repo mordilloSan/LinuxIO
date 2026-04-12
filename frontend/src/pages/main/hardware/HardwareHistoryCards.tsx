@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import type { GpuDevice, MonitoringRange } from "@/api";
 import { linuxio } from "@/api";
@@ -415,16 +415,13 @@ export const NetworkHistoryCard: React.FC<{
     return primary?.name ?? "";
   }, [filteredInterfaces]);
 
-  useEffect(() => {
-    const selectedExists = filteredInterfaces.some(
-      (iface) => iface.name === selectedInterfaceInternal,
-    );
-    if (!selectedExists && defaultInterface !== selectedInterfaceInternal) {
-      setSelectedInterfaceInternal(defaultInterface);
-    }
-  }, [defaultInterface, filteredInterfaces, selectedInterfaceInternal]);
-
-  const selectedInterface = selectedInterfaceInternal || defaultInterface;
+  const selectedInterface = useMemo(
+    () =>
+      filteredInterfaces.find(
+        (iface) => iface.name === selectedInterfaceInternal,
+      )?.name ?? defaultInterface,
+    [defaultInterface, filteredInterfaces, selectedInterfaceInternal],
+  );
 
   const { data: series, isPending } =
     linuxio.monitoring.get_network_series.useQuery({
