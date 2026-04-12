@@ -12,9 +12,9 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
-	commonconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	internalpcp "github.com/mordilloSan/LinuxIO/backend/common/pcp"
-	commonpcpapi "github.com/mordilloSan/LinuxIO/backend/common/pcpapi"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 	case "help":
 		printHelp()
 	case "version":
-		fmt.Printf("LinuxIO PCP API %s\n", commonconfig.Version)
+		fmt.Printf("LinuxIO PCP API %s\n", version.Version)
 	case "run":
 		if err := run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -64,7 +64,7 @@ func run() error {
 		Levels: []logger.Level{logger.InfoLevel, logger.WarnLevel, logger.ErrorLevel},
 	})
 
-	cfg, token, err := commonpcpapi.EnsureDefaultFiles(commonpcpapi.DefaultConfigPath, commonpcpapi.DefaultTokenPath)
+	cfg, token, err := config.EnsureDefaultFiles(config.DefaultConfigPath, config.DefaultTokenPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}

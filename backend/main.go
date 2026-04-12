@@ -16,7 +16,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
-	commonpcpapi "github.com/mordilloSan/LinuxIO/backend/common/pcpapi"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -90,7 +90,7 @@ Examples:
 }
 
 func cliVersionLine() string {
-	return fmt.Sprintf("LinuxIO CLI %s", config.Version)
+	return fmt.Sprintf("LinuxIO CLI %s", version.Version)
 }
 
 func showVersion(args []string) {
@@ -302,7 +302,7 @@ func runPCPAPI(args []string) {
 }
 
 func showPCPAPIConfig() {
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read PCP API config: %v\n", err)
 		os.Exit(1)
@@ -317,18 +317,18 @@ func showPCPAPIConfig() {
 }
 
 func rotatePCPAPIToken() {
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read PCP API config: %v\n", err)
 		os.Exit(1)
 	}
 
-	token, err := commonpcpapi.GenerateToken()
+	token, err := config.GenerateToken()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to generate PCP API token: %v\n", err)
 		os.Exit(1)
 	}
-	err = commonpcpapi.WriteToken(cfg.Auth.TokenFile, token)
+	err = config.WriteToken(cfg.Auth.TokenFile, token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write PCP API token: %v\n", err)
 		os.Exit(1)
@@ -352,7 +352,7 @@ func rotatePCPAPIToken() {
 }
 
 func showPCPAPIStatus() {
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read PCP API config: %v\n", err)
 		os.Exit(1)

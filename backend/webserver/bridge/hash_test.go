@@ -4,14 +4,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func TestValidateBridgeHash_NoEmbeddedHash(t *testing.T) {
 	// When no hash is embedded, validation should fail
-	orig := config.BridgeSHA256
-	config.BridgeSHA256 = ""
-	defer func() { config.BridgeSHA256 = orig }()
+	orig := version.BridgeSHA256
+	version.BridgeSHA256 = ""
+	defer func() { version.BridgeSHA256 = orig }()
 
 	err := validateBridgeHash("/any/path")
 	if err == nil {
@@ -32,9 +32,9 @@ func TestValidateBridgeHash_HashMismatch(t *testing.T) {
 	f.Close()
 
 	// Set wrong hash
-	orig := config.BridgeSHA256
-	config.BridgeSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
-	defer func() { config.BridgeSHA256 = orig }()
+	orig := version.BridgeSHA256
+	version.BridgeSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+	defer func() { version.BridgeSHA256 = orig }()
 
 	err = validateBridgeHash(f.Name())
 	if err == nil {
@@ -55,9 +55,9 @@ func TestValidateBridgeHash_HashMatch(t *testing.T) {
 	f.Close()
 
 	// SHA256 of "test content"
-	orig := config.BridgeSHA256
-	config.BridgeSHA256 = "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72"
-	defer func() { config.BridgeSHA256 = orig }()
+	orig := version.BridgeSHA256
+	version.BridgeSHA256 = "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72"
+	defer func() { version.BridgeSHA256 = orig }()
 
 	err = validateBridgeHash(f.Name())
 	if err != nil {
@@ -66,9 +66,9 @@ func TestValidateBridgeHash_HashMatch(t *testing.T) {
 }
 
 func TestValidateBridgeHash_FileNotFound(t *testing.T) {
-	orig := config.BridgeSHA256
-	config.BridgeSHA256 = "somehash1234567890abcdef1234567890abcdef1234567890abcdef12345678"
-	defer func() { config.BridgeSHA256 = orig }()
+	orig := version.BridgeSHA256
+	version.BridgeSHA256 = "somehash1234567890abcdef1234567890abcdef1234567890abcdef12345678"
+	defer func() { version.BridgeSHA256 = orig }()
 
 	err := validateBridgeHash("/nonexistent/path/to/bridge")
 	if err == nil {

@@ -14,9 +14,9 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
-	commonconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	internalpcp "github.com/mordilloSan/LinuxIO/backend/common/pcp"
-	commonpcpapi "github.com/mordilloSan/LinuxIO/backend/common/pcpapi"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 
 	bridgeSystem "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 )
@@ -28,7 +28,7 @@ var (
 )
 
 type runtimeState struct {
-	Config commonpcpapi.Config
+	Config config.Config
 	Token  string
 }
 
@@ -236,7 +236,7 @@ type ioRate struct {
 	SecondTotal uint64
 }
 
-func newApp(collector *internalpcp.LiveCollector, cfg commonpcpapi.Config, token string) *app {
+func newApp(collector *internalpcp.LiveCollector, cfg config.Config, token string) *app {
 	instance := &app{collector: collector}
 	instance.runtime.Store(&runtimeState{Config: cfg, Token: token})
 	return instance
@@ -245,18 +245,18 @@ func newApp(collector *internalpcp.LiveCollector, cfg commonpcpapi.Config, token
 func (a *app) currentRuntime() runtimeState {
 	state := a.runtime.Load()
 	if state == nil {
-		return runtimeState{Config: commonpcpapi.DefaultConfig()}
+		return runtimeState{Config: config.DefaultConfig()}
 	}
 	return *state
 }
 
 func (a *app) reloadRuntime() error {
 	current := a.currentRuntime()
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		return err
 	}
-	token, err := commonpcpapi.ReadToken(cfg.Auth.TokenFile)
+	token, err := config.ReadToken(cfg.Auth.TokenFile)
 	if err != nil {
 		return err
 	}
@@ -298,7 +298,7 @@ func (a *app) protect(endpoint string, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if commonpcpapi.IsEndpointPublic(runtimeState.Config, endpoint) || !runtimeState.Config.Auth.Enabled {
+		if config.IsEndpointPublic(runtimeState.Config, endpoint) || !runtimeState.Config.Auth.Enabled {
 			next(w, r)
 			return
 		}
@@ -323,7 +323,7 @@ func (a *app) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, healthResponse{
 		OK:            true,
 		TSMS:          time.Now().UnixMilli(),
-		Version:       commonconfig.Version,
+		Version:       version.Version,
 		Enabled:       state.Config.Enabled,
 		ListenAddress: state.Config.ListenAddress,
 	})
@@ -336,9 +336,9 @@ func (a *app) handleVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, versionResponse{
 		Component: "LinuxIO PCP API",
-		Version:   commonconfig.Version,
-		CommitSHA: commonconfig.CommitSHA,
-		BuildTime: commonconfig.BuildTime,
+		Version:   version.Version,
+		CommitSHA: version.CommitSHA,
+		BuildTime: version.BuildTime,
 	})
 }
 

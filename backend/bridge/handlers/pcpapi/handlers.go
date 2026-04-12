@@ -16,7 +16,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 
-	commonpcpapi "github.com/mordilloSan/LinuxIO/backend/common/pcpapi"
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
 type registration struct {
@@ -58,7 +58,7 @@ func RegisterHandlers(sess *session.Session) {
 }
 
 func handleGetConfig(ctx context.Context, args []string, emit ipc.Events) error {
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		return err
 	}
@@ -70,13 +70,13 @@ func handleSetConfig(ctx context.Context, args []string, emit ipc.Events) error 
 		return ipc.ErrInvalidArgs
 	}
 
-	var cfg commonpcpapi.Config
+	var cfg config.Config
 	if err := json.Unmarshal([]byte(args[0]), &cfg); err != nil {
 		return ipc.ErrInvalidArgs
 	}
-	cfg = commonpcpapi.NormalizeConfig(cfg)
+	cfg = config.NormalizeConfig(cfg)
 
-	if err := commonpcpapi.WriteConfig(commonpcpapi.DefaultConfigPath, cfg); err != nil {
+	if err := config.WriteConfig(config.DefaultConfigPath, cfg); err != nil {
 		return err
 	}
 
@@ -88,22 +88,22 @@ func handleSetConfig(ctx context.Context, args []string, emit ipc.Events) error 
 }
 
 func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
-	cfg, cfgErr := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, cfgErr := config.ReadConfig(config.DefaultConfigPath)
 	if cfgErr != nil {
-		cfg = commonpcpapi.DefaultConfig()
+		cfg = config.DefaultConfig()
 	}
 
-	activeState, err := systemdapi.GetActiveState(commonpcpapi.ServiceName)
+	activeState, err := systemdapi.GetActiveState(config.ServiceName)
 	if err != nil {
 		return err
 	}
-	unitFileState, err := systemdapi.GetUnitFileState(commonpcpapi.ServiceName)
+	unitFileState, err := systemdapi.GetUnitFileState(config.ServiceName)
 	if err != nil {
 		return err
 	}
 
 	status := ServiceStatus{
-		Unit:          commonpcpapi.ServiceName,
+		Unit:          config.ServiceName,
 		ActiveState:   activeState,
 		UnitFileState: unitFileState,
 		Enabled:       strings.HasPrefix(unitFileState, "enabled"),
@@ -136,7 +136,7 @@ func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error 
 }
 
 func handleRestartService(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := systemdapi.RestartUnit(commonpcpapi.ServiceName); err != nil {
+	if err := systemdapi.RestartUnit(config.ServiceName); err != nil {
 		return err
 	}
 	return emit.Result(nil)
@@ -150,20 +150,20 @@ func handleReloadService(ctx context.Context, args []string, emit ipc.Events) er
 }
 
 func handleRotateToken(ctx context.Context, args []string, emit ipc.Events) error {
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		return err
 	}
 
-	token, err := commonpcpapi.GenerateToken()
+	token, err := config.GenerateToken()
 	if err != nil {
 		return err
 	}
-	err = commonpcpapi.WriteToken(cfg.Auth.TokenFile, token)
+	err = config.WriteToken(cfg.Auth.TokenFile, token)
 	if err != nil {
 		return err
 	}
-	activeState, err := systemdapi.GetActiveState(commonpcpapi.ServiceName)
+	activeState, err := systemdapi.GetActiveState(config.ServiceName)
 	if err != nil {
 		return err
 	}
@@ -180,11 +180,11 @@ func handleRotateToken(ctx context.Context, args []string, emit ipc.Events) erro
 }
 
 func handleGetToken(ctx context.Context, args []string, emit ipc.Events) error {
-	cfg, err := commonpcpapi.ReadConfig(commonpcpapi.DefaultConfigPath)
+	cfg, err := config.ReadConfig(config.DefaultConfigPath)
 	if err != nil {
 		return err
 	}
-	token, err := commonpcpapi.ReadToken(cfg.Auth.TokenFile)
+	token, err := config.ReadToken(cfg.Auth.TokenFile)
 	if err != nil {
 		return err
 	}
@@ -194,12 +194,12 @@ func handleGetToken(ctx context.Context, args []string, emit ipc.Events) error {
 	})
 }
 
-func applyServiceState(cfg commonpcpapi.Config) error {
+func applyServiceState(cfg config.Config) error {
 	if cfg.Enabled {
-		if err := systemdapi.EnableUnit(commonpcpapi.ServiceName); err != nil {
+		if err := systemdapi.EnableUnit(config.ServiceName); err != nil {
 			return err
 		}
-		activeState, err := systemdapi.GetActiveState(commonpcpapi.ServiceName)
+		activeState, err := systemdapi.GetActiveState(config.ServiceName)
 		if err != nil {
 			return err
 		}
@@ -207,19 +207,19 @@ func applyServiceState(cfg commonpcpapi.Config) error {
 		case "active":
 			return reloadOrRestart()
 		default:
-			return systemdapi.StartUnit(commonpcpapi.ServiceName)
+			return systemdapi.StartUnit(config.ServiceName)
 		}
 	}
 
-	if err := systemdapi.StopUnit(commonpcpapi.ServiceName); err != nil {
+	if err := systemdapi.StopUnit(config.ServiceName); err != nil {
 		return err
 	}
-	return systemdapi.DisableUnit(commonpcpapi.ServiceName)
+	return systemdapi.DisableUnit(config.ServiceName)
 }
 
 func reloadOrRestart() error {
-	if err := systemdapi.ReloadUnit(commonpcpapi.ServiceName); err == nil {
+	if err := systemdapi.ReloadUnit(config.ServiceName); err == nil {
 		return nil
 	}
-	return systemdapi.RestartUnit(commonpcpapi.ServiceName)
+	return systemdapi.RestartUnit(config.ServiceName)
 }

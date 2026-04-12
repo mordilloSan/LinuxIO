@@ -14,8 +14,8 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
-	"github.com/mordilloSan/LinuxIO/backend/common/versioncmp"
+	"github.com/mordilloSan/LinuxIO/backend/common/semver"
+	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const GitHubAPI = "https://api.github.com/repos/%s/%s/releases/latest"
@@ -52,7 +52,7 @@ func CheckForUpdate() *UpdateInfo {
 	}
 
 	// Compare versions properly - only show update if latest is actually newer
-	if versioncmp.IsNewer(latest, current) {
+	if semver.IsNewer(latest, current) {
 		logger.Infof("update available: %s -> %s", current, latest)
 		return &UpdateInfo{
 			Available:      true,
@@ -69,18 +69,18 @@ func CheckForUpdate() *UpdateInfo {
 	}
 }
 
-// getInstalledVersion returns the compiled-in version from config.Version
+// getInstalledVersion returns the compiled-in version from ver.Version
 func getInstalledVersion() string {
-	if config.Version == "" || config.Version == "untracked" {
+	if ver.Version == "" || ver.Version == "untracked" {
 		return "unknown"
 	}
-	return config.Version
+	return ver.Version
 }
 
 func fetchLatestRelease() (version string, releaseURL string) {
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	url := fmt.Sprintf(GitHubAPI, config.RepoOwner, config.RepoName)
+	url := fmt.Sprintf(GitHubAPI, ver.RepoOwner, ver.RepoName)
 	resp, err := client.Get(url)
 	if err != nil {
 		logger.Debugf("failed to fetch latest release: %v", err)
@@ -135,8 +135,8 @@ func getComponentVersions(parent context.Context) map[string]string {
 	}
 
 	components := make(map[string]string, 5)
-	if config.Version != "" {
-		components["LinuxIO Web Server"] = config.Version
+	if ver.Version != "" {
+		components["LinuxIO Web Server"] = ver.Version
 	}
 
 	probes := []componentVersionProbe{
@@ -154,7 +154,7 @@ func getComponentVersions(parent context.Context) map[string]string {
 			ctx, cancel := context.WithTimeout(parent, componentVersionCommandTimeout)
 			defer cancel()
 
-			binaryPath := filepath.Join(config.BinDir, probe.binary)
+			binaryPath := filepath.Join(ver.BinDir, probe.binary)
 			output, err := runComponentVersionCommand(ctx, binaryPath, probe.args...)
 			if err != nil {
 				logger.Debugf("failed to run '%s %s': %v", binaryPath, strings.Join(probe.args, " "), err)

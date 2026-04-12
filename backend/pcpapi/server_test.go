@@ -5,13 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	commonpcpapi "github.com/mordilloSan/LinuxIO/backend/common/pcpapi"
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
 func TestProtectAllowsPublicEndpointWithoutToken(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 	cfg.Enabled = true
-	cfg.Exposure.Categories["cpu"] = commonpcpapi.ExposurePublic
+	cfg.Exposure.Categories["cpu"] = config.ExposurePublic
 
 	app := newApp(nil, cfg, "secret-token")
 	called := false
@@ -33,7 +33,7 @@ func TestProtectAllowsPublicEndpointWithoutToken(t *testing.T) {
 }
 
 func TestProtectRejectsPrivateEndpointWithoutToken(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 	cfg.Enabled = true
 
 	app := newApp(nil, cfg, "secret-token")
@@ -54,7 +54,7 @@ func TestProtectRejectsPrivateEndpointWithoutToken(t *testing.T) {
 }
 
 func TestProtectAllowsPrivateEndpointWithValidBearerToken(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 	cfg.Enabled = true
 
 	app := newApp(nil, cfg, "secret-token")
@@ -73,7 +73,7 @@ func TestProtectAllowsPrivateEndpointWithValidBearerToken(t *testing.T) {
 }
 
 func TestProtectAllowsPrivateEndpointWhenAuthDisabled(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 	cfg.Enabled = true
 	cfg.Auth.Enabled = false
 
@@ -92,7 +92,7 @@ func TestProtectAllowsPrivateEndpointWhenAuthDisabled(t *testing.T) {
 }
 
 func TestProtectRejectsWhenServiceDisabled(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 	cfg.Enabled = false
 
 	app := newApp(nil, cfg, "secret-token")
@@ -110,9 +110,9 @@ func TestProtectRejectsWhenServiceDisabled(t *testing.T) {
 }
 
 func TestProtectRejectsNonGETRequests(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 	cfg.Enabled = true
-	cfg.Exposure.Categories["cpu"] = commonpcpapi.ExposurePublic
+	cfg.Exposure.Categories["cpu"] = config.ExposurePublic
 
 	app := newApp(nil, cfg, "secret-token")
 	handler := app.protect("/api/v1/cpu", func(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +129,7 @@ func TestProtectRejectsNonGETRequests(t *testing.T) {
 }
 
 func TestHealthAndVersionRemainPublic(t *testing.T) {
-	cfg := commonpcpapi.DefaultConfig()
+	cfg := config.DefaultConfig()
 
 	app := newApp(nil, cfg, "secret-token")
 	handler := app.routes()

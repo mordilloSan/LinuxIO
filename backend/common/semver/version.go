@@ -1,4 +1,4 @@
-package versioncmp
+package semver
 
 import (
 	"strconv"

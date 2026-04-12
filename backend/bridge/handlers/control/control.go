@@ -19,8 +19,8 @@ import (
 	"github.com/mordilloSan/go-logger/logger"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
-	"github.com/mordilloSan/LinuxIO/backend/common/versioncmp"
+	"github.com/mordilloSan/LinuxIO/backend/common/semver"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -31,9 +31,9 @@ const (
 )
 
 // buildScriptURLs constructs URLs to download install script and checksum from a specific release
-func buildScriptURLs(version string) (scriptURL, checksumURL string) {
+func buildScriptURLs(ver string) (scriptURL, checksumURL string) {
 	baseURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s",
-		config.RepoOwner, config.RepoName, version)
+		version.RepoOwner, version.RepoName, ver)
 	return baseURL + "/install-linuxio-binaries.sh",
 		baseURL + "/install-linuxio-binaries.sh.sha256"
 }
@@ -85,7 +85,7 @@ func getVersionInfo() (VersionInfo, error) {
 			info.UpdateAvailable = true
 		} else {
 			// For release versions, compare semantically
-			info.UpdateAvailable = versioncmp.IsNewer(latestVersion, currentVersion)
+			info.UpdateAvailable = semver.IsNewer(latestVersion, currentVersion)
 		}
 	}
 	return info, nil
@@ -93,7 +93,7 @@ func getVersionInfo() (VersionInfo, error) {
 
 func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 	writablePaths := []string{
-		config.BinDir,
+		version.BinDir,
 		"/etc/linuxio",
 		"/etc/pam.d",
 		"/etc/pam.d/linuxio",
@@ -131,14 +131,14 @@ func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 // runInstallScript downloads the installer and runs it in a transient unit
 // with stdout/stderr piped back to this process (so logs appear in-order).
 // If relay is non-nil, output lines are also written to it.
-func runInstallScript(version string, relay io.Writer) error {
+func runInstallScript(ver string, relay io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	client := &http.Client{Timeout: 20 * time.Second}
 
 	// Build URLs for the specific release version
-	scriptURL, checksumURL := buildScriptURLs(version)
+	scriptURL, checksumURL := buildScriptURLs(ver)
 
 	// 1) Download checksum file
 	logger.Debugf("downloading checksum from %s", checksumURL)
@@ -173,8 +173,8 @@ func runInstallScript(version string, relay io.Writer) error {
 
 	var scriptArgs []string
 	scriptArgs = append(scriptArgs, "--defer-restart")
-	if version != "" {
-		scriptArgs = append(scriptArgs, version)
+	if ver != "" {
+		scriptArgs = append(scriptArgs, ver)
 	}
 	cmd := exec.CommandContext(ctx, "systemd-run", buildInstallCommandArgs(unit, scriptArgs...)...)
 
@@ -212,21 +212,21 @@ func runInstallScript(version string, relay io.Writer) error {
 
 func getInstalledVersion() string {
 	// Use compiled-in version (most reliable)
-	// The binary is compiled with -ldflags to set config.Version
-	if config.Version != "" && config.Version != "untracked" {
-		return config.Version
+	// The binary is compiled with -ldflags to set version.Version
+	if version.Version != "" && version.Version != "untracked" {
+		return version.Version
 	}
 
 	// Fallback: try running linuxio-webserver to get version
-	cmd := exec.Command(config.BinDir+"/linuxio-webserver", "version")
+	cmd := exec.Command(version.BinDir+"/linuxio-webserver", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		logger.Debugf("failed to get version from binary: %v", err)
 		return "unknown"
 	}
-	version := parseVersionOutput(string(output))
-	logger.Debugf("detected installed version: %s", version)
-	return version
+	ver := parseVersionOutput(string(output))
+	logger.Debugf("detected installed version: %s", ver)
+	return ver
 }
 
 func parseVersionOutput(output string) string {
@@ -251,7 +251,7 @@ func parseVersionOutput(output string) string {
 
 func fetchLatestVersion() (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", config.RepoOwner, config.RepoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", version.RepoOwner, version.RepoName)
 
 	resp, err := client.Get(url)
 	if err != nil {

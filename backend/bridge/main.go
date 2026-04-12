@@ -17,9 +17,9 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // readBootstrap reads binary bootstrap from stdin.
@@ -212,7 +212,7 @@ func main() {
 }
 
 func printBridgeVersion() {
-	fmt.Printf("LinuxIO Bridge %s\n", appconfig.Version)
+	fmt.Printf("LinuxIO Bridge %s\n", version.Version)
 }
 
 // handleMainRequest sets up a yamux session for the client connection.

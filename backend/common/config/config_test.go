@@ -1,4 +1,4 @@
-package pcpapi
+package config
 
 import (
 	"path/filepath"

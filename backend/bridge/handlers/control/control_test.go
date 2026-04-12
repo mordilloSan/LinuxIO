@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
@@ -32,7 +32,7 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 	}
 
 	expectedPaths := []string{
-		config.BinDir,
+		version.BinDir,
 		"/etc/linuxio",
 		"/etc/pam.d",
 		"/etc/pam.d/linuxio",
