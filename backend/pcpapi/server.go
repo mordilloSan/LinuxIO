@@ -15,8 +15,8 @@ import (
 	"github.com/mordilloSan/go-logger/logger"
 
 	commonconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
+	internalpcp "github.com/mordilloSan/LinuxIO/backend/common/pcp"
 	commonpcpapi "github.com/mordilloSan/LinuxIO/backend/common/pcpapi"
-	internalpcp "github.com/mordilloSan/LinuxIO/backend/internal/pcp"
 
 	bridgeSystem "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 )

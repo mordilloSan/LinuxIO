@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	internalpcp "github.com/mordilloSan/LinuxIO/backend/internal/pcp"
+	internalpcp "github.com/mordilloSan/LinuxIO/backend/common/pcp"
 )
 
 func pmapiGetInDomMap(indom uint32, archive bool) (map[string]int32, error) {
