@@ -305,7 +305,6 @@ export const MonitorGraph: React.FC<{
     () => (series?.available ? series.points : []),
     [series],
   );
-  const latestPoint = points.at(-1);
   const fallbackMessage = series?.reason || emptyMessage;
   const viewWidth = 220;
   const viewHeight = 120;
@@ -709,10 +708,10 @@ export const MonitorGraph: React.FC<{
         }}
       >
         <AppTypography variant="caption" fontWeight={700}>
-          {label}: {formatPercent(latestPoint?.value)}
+          {label}: {formatPercent(activePoint?.point.value)}
         </AppTypography>
         <AppTypography variant="caption" color="text.secondary" noWrap>
-          {formatChartTimestamp(latestPoint?.ts, range)}
+          {formatChartTimestamp(activePoint?.point.ts, range)}
         </AppTypography>
       </div>
     </div>

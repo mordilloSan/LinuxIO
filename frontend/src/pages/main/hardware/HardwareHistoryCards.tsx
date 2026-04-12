@@ -343,19 +343,19 @@ export const MemoryHistoryCard: React.FC<{
     <MonitorCard
       title="Memory Usage"
       avatarIcon="la:memory"
-      accentColor={theme.palette.warning.main}
+      accentColor={theme.chart.rx}
       range={range}
       onRangeChange={setRange}
       chart={
         <MonitorGraph
-          color={theme.palette.warning.main}
+          color={theme.chart.rx}
           label="Memory"
           range={range}
           series={series}
           loading={isPending}
           emptyMessage="Memory history is not available yet."
           stackedPercent={dockerPercent}
-          stackedColor={theme.palette.info.main}
+          stackedColor={theme.chart.tx}
           stackedLabel="Docker"
           stackedTooltipLabel="System"
           hoverRatio={hoverRatio}

@@ -6,13 +6,8 @@ import type { MonitoringRange } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
 import type { SensorGroup } from "@/components/cards/SensorGroupCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
-import {
-  isPrimarySensorReading,
-  isTemperatureReading,
-} from "@/components/cards/SensorGroupCard";
-import SensorSummaryCard, {
-  SensorEmptyCard,
-} from "@/components/cards/SensorSummaryCard";
+import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
+import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -72,7 +67,8 @@ const SectionHeader: React.FC<{
   title: string;
   expanded: boolean;
   onClick: () => void;
-}> = ({ title, expanded, onClick }) => (
+  extras?: React.ReactNode;
+}> = ({ title, expanded, onClick, extras }) => (
   <div
     className="dd-section-header"
     onClick={onClick}
@@ -85,9 +81,12 @@ const SectionHeader: React.FC<{
       userSelect: "none",
     }}
   >
-    <AppTypography variant="subtitle1" fontWeight={700}>
-      {title}
-    </AppTypography>
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <AppTypography variant="subtitle1" fontWeight={700}>
+        {title}
+      </AppTypography>
+      {extras}
+    </div>
     <AppIconButton
       size="small"
       className="section-toggle"
@@ -166,24 +165,11 @@ const HardwarePage: React.FC = () => {
 
   // ── sensor summary ──
   const sensorSummary = useMemo(() => {
-    if (visibleSensorGroups.length === 0)
-      return { adapters: 0, readings: 0, maxTemp: null as number | null };
     const readings = visibleSensorGroups.reduce(
       (sum, group) => sum + group.readings.length,
       0,
     );
-    let maxTemp: number | null = null;
-    for (const g of visibleSensorGroups) {
-      for (const r of g.readings) {
-        if (
-          isTemperatureReading(r) &&
-          (maxTemp === null || r.value > maxTemp)
-        ) {
-          maxTemp = r.value;
-        }
-      }
-    }
-    return { adapters: visibleSensorGroups.length, readings, maxTemp };
+    return { adapters: visibleSensorGroups.length, readings };
   }, [visibleSensorGroups]);
 
   return (
@@ -302,22 +288,30 @@ const HardwarePage: React.FC = () => {
         title="Sensors"
         expanded={sections.sensors}
         onClick={() => toggleSection("sensors")}
+        extras={
+          visibleSensorGroups.length > 0 ? (
+            <>
+              <Chip
+                size="small"
+                label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
+                color="primary"
+                variant="soft"
+              />
+              <Chip
+                size="small"
+                label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
+                color="default"
+                variant="soft"
+              />
+            </>
+          ) : null
+        }
       />
       <AppCollapse in={sections.sensors}>
         {visibleSensorGroups.length === 0 ? (
           <SensorEmptyCard />
         ) : (
           <>
-            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
-              <AppGrid size={{ xs: 12 }}>
-                <SensorSummaryCard
-                  adapters={sensorSummary.adapters}
-                  readings={sensorSummary.readings}
-                  maxTemp={sensorSummary.maxTemp}
-                />
-              </AppGrid>
-            </AppGrid>
-
             <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
               {visibleSensorGroups.map((group, idx) => (
                 <AppGrid
