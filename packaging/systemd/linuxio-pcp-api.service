@@ -1,0 +1,15 @@
+[Unit]
+Description=LinuxIO PCP API
+PartOf=linuxio.target
+Wants=network-online.target pmcd.service
+After=network-online.target pmcd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/linuxio-pcp-api run
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=linuxio.target

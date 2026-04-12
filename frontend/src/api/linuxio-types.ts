@@ -772,6 +772,38 @@ export interface DirectoryValidationResult {
   isDirectory: boolean;
 }
 
+export type PcpApiExposurePolicy = "public" | "private";
+
+export interface PcpApiConfig {
+  enabled: boolean;
+  listen_address: string;
+  auth: {
+    enabled: boolean;
+    token_file: string;
+  };
+  exposure: {
+    categories: Record<string, PcpApiExposurePolicy>;
+    endpoints: Record<string, PcpApiExposurePolicy>;
+  };
+}
+
+export interface PcpApiStatus {
+  unit: string;
+  active_state: string;
+  unit_file_state: string;
+  enabled: boolean;
+  config_enabled: boolean;
+  listen_address: string;
+  healthy: boolean;
+  health_error?: string;
+  version?: string;
+}
+
+export interface PcpApiTokenResponse {
+  path: string;
+  token: string;
+}
+
 // ============================================================================
 // API Schema Definition
 // ============================================================================
@@ -1020,6 +1052,16 @@ export interface LinuxIOSchema {
 
   control: {
     version: { args: []; result: VersionResponse };
+  };
+
+  pcp_api: {
+    get_config: { args: []; result: PcpApiConfig };
+    set_config: { args: [config: PcpApiConfig]; result: PcpApiConfig };
+    get_status: { args: []; result: PcpApiStatus };
+    restart_service: { args: []; result: void };
+    reload_service: { args: []; result: void };
+    rotate_token: { args: []; result: PcpApiTokenResponse };
+    get_token: { args: []; result: PcpApiTokenResponse };
   };
 
   wireguard: {

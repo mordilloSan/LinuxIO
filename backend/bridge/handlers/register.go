@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/pcpapi"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
@@ -46,6 +47,7 @@ func RegisterAllHandlers(sess *session.Session) {
 	config.RegisterHandlers(sess)
 	control.RegisterHandlers()
 	dbus.RegisterHandlers()
+	pcpapi.RegisterHandlers(sess)
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()
 	storage.RegisterHandlers()

@@ -134,60 +134,39 @@ export function UnitInfoPanel({
         </button>
       </div>
 
-      <div
-        className="custom-scrollbar"
-        style={{ flex: 1, overflowX: "auto" }}
-      >
+      <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>
         <div style={{ minWidth: "max-content" }}>
-        <DetailRow label="Path" noBorder>
-          {isPending ? (
-            <div
-              style={{
-                height: 18,
-                width: "80%",
-                borderRadius: 4,
-                backgroundColor: "var(--app-palette-action-hover)",
-              }}
-            />
-          ) : (
-            <span
-              style={{
-                fontSize: "0.8rem",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {fragmentPath || "—"}
-            </span>
-          )}
-        </DetailRow>
-
-        {extraRows
-          .filter((row) => !row.hidden)
-          .map((row) => (
-            <DetailRow
-              key={row.label}
-              label={row.label}
-              noBorder={row.noBorder}
-            >
+          <DetailRow label="Path" noBorder>
+            {isPending ? (
+              <div
+                style={{
+                  height: 18,
+                  width: "80%",
+                  borderRadius: 4,
+                  backgroundColor: "var(--app-palette-action-hover)",
+                }}
+              />
+            ) : (
               <span
                 style={{
-                  fontSize: "0.75rem",
+                  fontSize: "0.8rem",
                   fontWeight: 500,
                   whiteSpace: "nowrap",
                 }}
               >
-                {row.value}
+                {fragmentPath || "—"}
               </span>
-            </DetailRow>
-          ))}
+            )}
+          </DetailRow>
 
-        {!isPending &&
-          depFields.map(({ label, key }) => {
-            const items = toStringArray(info?.[key]);
-            if (!items.length) return null;
-            return (
-              <DetailRow key={label} label={label}>
+          {extraRows
+            .filter((row) => !row.hidden)
+            .map((row) => (
+              <DetailRow
+                key={row.label}
+                label={row.label}
+                noBorder={row.noBorder}
+              >
                 <span
                   style={{
                     fontSize: "0.75rem",
@@ -195,11 +174,29 @@ export function UnitInfoPanel({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {items.join(", ")}
+                  {row.value}
                 </span>
               </DetailRow>
-            );
-          })}
+            ))}
+
+          {!isPending &&
+            depFields.map(({ label, key }) => {
+              const items = toStringArray(info?.[key]);
+              if (!items.length) return null;
+              return (
+                <DetailRow key={label} label={label}>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {items.join(", ")}
+                  </span>
+                </DetailRow>
+              );
+            })}
         </div>
       </div>
     </FrostedCard>

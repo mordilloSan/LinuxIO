@@ -9,6 +9,7 @@ frontend/vite.config.module-build.tmp.js
 linuxio-webserver
 linuxio-auth
 linuxio-bridge
+linuxio-pcp-api
 .cache
 .go-cache
 .gocache
@@ -20,7 +21,7 @@ linuxio-bridge
 .claude/
 *.swp
 .script-server.pid
-backend/backend
 frontend/.eslintcache-a
 frontend/.eslintcache-b
 frontend/.eslintcache-c
+

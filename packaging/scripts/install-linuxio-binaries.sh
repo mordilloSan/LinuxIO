@@ -95,6 +95,7 @@ download_binaries() {
         "linuxio-webserver"
         "linuxio-bridge"
         "linuxio-auth"
+        "linuxio-pcp-api"
         "SHA256SUMS"
     )
 
@@ -153,6 +154,7 @@ install_binaries() {
         ["linuxio-webserver"]="0755"
         ["linuxio-bridge"]="0755"
         ["linuxio-auth"]="0755"
+        ["linuxio-pcp-api"]="0755"
     )
 
     for binary in "${!binaries[@]}"; do
@@ -248,6 +250,31 @@ install_config_files() {
             systemctl restart pmlogger
             Show 0 "pmlogger restarted with new config"
         fi
+    fi
+
+    local pcp_api_config="${CONFIG_DIR}/pcp-api.yaml"
+    if ! curl -fsSL "${RAW_BASE}/etc/linuxio/pcp-api.yaml" -o "$pcp_api_config"; then
+        Show 1 "Failed to download PCP API config"
+    else
+        chown root:root "$pcp_api_config"
+        chmod 0640 "$pcp_api_config"
+        Show 0 "PCP API config installed"
+    fi
+
+    local pcp_api_token="${CONFIG_DIR}/pcp-api.token"
+    if [[ ! -f "$pcp_api_token" ]]; then
+        umask 077
+        if command -v openssl >/dev/null 2>&1; then
+            openssl rand -hex 32 > "$pcp_api_token"
+        else
+            head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$pcp_api_token"
+            printf '\n' >> "$pcp_api_token"
+        fi
+        chown root:root "$pcp_api_token"
+        chmod 0600 "$pcp_api_token"
+        Show 0 "Created PCP API token"
+    else
+        Show 0 "PCP API token already exists (not overwriting)"
     fi
 
     # pmproxy service override
@@ -367,7 +394,7 @@ install_systemd_files() {
     for file in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
         linuxio-auth.socket linuxio-auth@.service \
         linuxio-bridge-socket-user.service \
-        linuxio-issue.service; do
+        linuxio-issue.service linuxio-pcp-api.service; do
         Show 2 "Downloading ${file}..."
         if ! curl -fsSL "${RAW_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
             Show 1 "Failed to download ${file}"
@@ -463,6 +490,12 @@ verify_installation() {
         Show 0 "linuxio-auth: executable"
     else
         Show 3 "linuxio-auth: not executable"
+    fi
+
+    if [[ -x "${BIN_DIR}/linuxio-pcp-api" ]]; then
+        Show 0 "linuxio-pcp-api: executable"
+    else
+        Show 3 "linuxio-pcp-api: not executable"
     fi
 
     if systemctl is-enabled linuxio.target >/dev/null 2>&1; then
@@ -662,11 +695,11 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-pcp-api
   - Systemd:      /etc/systemd/system/linuxio*.service, linuxio*.socket, linuxio.target
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
   - PAM:          /etc/pam.d/linuxio
-  - Config:       /etc/linuxio/disallowed-users
+  - Config:       /etc/linuxio/disallowed-users, /etc/linuxio/pcp-api.yaml, /etc/linuxio/pcp-api.token
   - PCP derived:  /etc/linuxio/pcp-derived.conf (glances-compatible metrics)
   - PCP logging:  /etc/pcp/pmlogger/config.d/linuxio.config (15s intervals)
   - pmproxy:      /etc/systemd/system/pmproxy.service.d/linuxio.conf (loads derived config)

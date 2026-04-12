@@ -60,7 +60,7 @@ cd "$REPO_ROOT"
 Header "Step 1/2 — Verify Binaries"
 
 MISSING=0
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-pcp-api; do
     if [[ ! -f "$REPO_ROOT/$binary" ]]; then
         Show 1 "Binary not found: ${binary}. Run 'make build' first."
         MISSING=1
@@ -74,7 +74,7 @@ Header "Step 2/2 — Install"
 
 # Binaries
 Show 2 "Installing binaries..."
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-pcp-api; do
     install -o root -g root -m 0755 "$REPO_ROOT/$binary" /usr/local/bin/
 done
 Show 0 "Binaries installed to /usr/local/bin"
@@ -84,7 +84,7 @@ Show 2 "Installing systemd service files..."
 for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
             linuxio-auth.socket linuxio-auth@.service \
             linuxio-bridge-socket-user.service \
-            linuxio-issue.service; do
+            linuxio-issue.service linuxio-pcp-api.service; do
     if [[ -f "$REPO_ROOT/packaging/systemd/$file" ]]; then
         install -m 0644 "$REPO_ROOT/packaging/systemd/$file" /etc/systemd/system/
     else
@@ -114,6 +114,21 @@ if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
     Show 0 "Configuration files installed"
 else
     Show 3 "packaging/etc/linuxio directory not found"
+fi
+
+if [[ ! -f /etc/linuxio/pcp-api.token ]]; then
+    umask 077
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 32 > /etc/linuxio/pcp-api.token
+    else
+        head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /etc/linuxio/pcp-api.token
+        printf '\n' >> /etc/linuxio/pcp-api.token
+    fi
+    chown root:root /etc/linuxio/pcp-api.token
+    chmod 0600 /etc/linuxio/pcp-api.token
+    Show 0 "Created PCP API token"
+else
+    Show 0 "PCP API token already exists (not overwriting)"
 fi
 
 # PCP derived metrics and pmproxy override
@@ -216,9 +231,9 @@ echo -e "${LINE}"
 echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
 echo -e "${LINE}"
 echo "Installed components:"
-echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth}"
+echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-pcp-api}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
-echo "  • Configuration:   /etc/linuxio/"
+echo "  • Configuration:   /etc/linuxio/ (including pcp-api.yaml and pcp-api.token)"
 echo "  • PCP derived:     /etc/linuxio/pcp-derived.conf"
 echo "  • PCP logging:     /etc/pcp/pmlogger/config.d/linuxio.config"
 echo "  • pmproxy drop-in: /etc/systemd/system/pmproxy.service.d/linuxio.conf"

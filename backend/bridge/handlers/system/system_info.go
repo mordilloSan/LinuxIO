@@ -20,6 +20,19 @@ type SystemInfo struct {
 	CPUSummary     string `json:"cpuSummary"`
 }
 
+func FetchCPUSummary() string {
+	cpuInfo, err := cpu.Info()
+	if err != nil || len(cpuInfo) == 0 {
+		return ""
+	}
+
+	counts, _ := cpu.Counts(true)
+	if counts > 0 {
+		return fmt.Sprintf("%dx %s", counts, cpuInfo[0].ModelName)
+	}
+	return cpuInfo[0].ModelName
+}
+
 func FetchSystemInfo() (*SystemInfo, error) {
 	info := &SystemInfo{}
 
@@ -39,10 +52,7 @@ func FetchSystemInfo() (*SystemInfo, error) {
 		info.BIOSDate = bi.Date
 	}
 
-	if cpuInfo, err := cpu.Info(); err == nil && len(cpuInfo) > 0 {
-		counts, _ := cpu.Counts(true)
-		info.CPUSummary = fmt.Sprintf("%dx %s", counts, cpuInfo[0].ModelName)
-	}
+	info.CPUSummary = FetchCPUSummary()
 
 	return info, nil
 }

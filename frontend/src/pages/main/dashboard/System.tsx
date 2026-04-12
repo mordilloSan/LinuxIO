@@ -248,8 +248,7 @@ const SystemHealth = () => {
     (i) => i.icon === "mdi:account-clock-outline",
   );
   const alertItems = items.filter(
-    (i) =>
-      i !== servicesItem && i !== updatesItem && i !== lastLoginItem,
+    (i) => i !== servicesItem && i !== updatesItem && i !== lastLoginItem,
   );
 
   const stats = (
@@ -261,13 +260,17 @@ const SystemHealth = () => {
         width: "fit-content",
       }}
     >
-      {servicesItem ? renderItem(servicesItem) : skeletonRow("s-services", "12ch")}
+      {servicesItem
+        ? renderItem(servicesItem)
+        : skeletonRow("s-services", "12ch")}
       {alertItems.map(renderItem)}
-      {updatesItem ? renderItem(updatesItem) : skeletonRow("s-updates", "16ch", true)}
+      {updatesItem
+        ? renderItem(updatesItem)
+        : skeletonRow("s-updates", "16ch", true)}
       {lastLoginItem
         ? renderItem(lastLoginItem)
         : health?.lastLogin?.time === undefined &&
-          (loadingHealth || fetchingHealth)
+            (loadingHealth || fetchingHealth)
           ? skeletonRow("s-lastlogin", "18ch", true)
           : null}
     </div>

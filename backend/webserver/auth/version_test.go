@@ -38,6 +38,13 @@ func TestParseComponentVersionOutput(t *testing.T) {
 			ok:        true,
 		},
 		{
+			name:      "pcp api",
+			component: "LinuxIO PCP API",
+			output:    "LinuxIO PCP API v1.2.3\n",
+			want:      "v1.2.3",
+			ok:        true,
+		},
+		{
 			name:      "cli",
 			component: "LinuxIO CLI",
 			output:    "\nLinuxIO CLI v1.2.3\n",
@@ -81,6 +88,8 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 			return []byte("LinuxIO Bridge v2.3.4\n"), nil
 		case "linuxio-auth":
 			return []byte("LinuxIO Auth v3.4.5\n"), nil
+		case "linuxio-pcp-api":
+			return []byte("LinuxIO PCP API v5.6.7\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -94,6 +103,7 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 		"LinuxIO Web Server": "v9.9.9",
 		"LinuxIO Bridge":     "v2.3.4",
 		"LinuxIO Auth":       "v3.4.5",
+		"LinuxIO PCP API":    "v5.6.7",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)
@@ -131,6 +141,7 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 		{name: "linuxio", args: []string{"version", "--self"}},
 		{name: "linuxio-auth", args: []string{"version"}},
 		{name: "linuxio-bridge", args: []string{"version"}},
+		{name: "linuxio-pcp-api", args: []string{"version"}},
 	}
 	if !slices.EqualFunc(gotCalls, wantCalls, func(a, b probeCall) bool {
 		return a.name == b.name && slices.Equal(a.args, b.args)
@@ -145,6 +156,8 @@ func TestGetComponentVersionsOmitsFailedProbes(t *testing.T) {
 		case "linuxio-bridge":
 			return []byte("LinuxIO Bridge v2.3.4\n"), nil
 		case "linuxio-auth":
+			return nil, errors.New("boom")
+		case "linuxio-pcp-api":
 			return nil, errors.New("boom")
 		case "linuxio":
 			return []byte("version=v4.5.6\n"), nil
@@ -170,6 +183,8 @@ func TestGetComponentVersionsTimeoutsAreBounded(t *testing.T) {
 		case "linuxio-auth":
 			<-ctx.Done()
 			return nil, ctx.Err()
+		case "linuxio-pcp-api":
+			return []byte("LinuxIO PCP API v5.6.7\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -182,6 +197,7 @@ func TestGetComponentVersionsTimeoutsAreBounded(t *testing.T) {
 	want := map[string]string{
 		"LinuxIO Web Server": "v9.9.9",
 		"LinuxIO Bridge":     "v2.3.4",
+		"LinuxIO PCP API":    "v5.6.7",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)
@@ -219,6 +235,8 @@ func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
 			return []byte("LinuxIO Bridge v2.3.4\n"), nil
 		case "linuxio-auth":
 			return []byte("LinuxIO Auth v3.4.5\n"), nil
+		case "linuxio-pcp-api":
+			return []byte("LinuxIO PCP API v5.6.7\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -245,6 +263,7 @@ func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
 		"LinuxIO Web Server": "v9.9.9",
 		"LinuxIO Bridge":     "v2.3.4",
 		"LinuxIO Auth":       "v3.4.5",
+		"LinuxIO PCP API":    "v5.6.7",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)
@@ -264,6 +283,8 @@ func TestVersionHandlerReturnsPartialResultsOnProbeFailure(t *testing.T) {
 		case "linuxio-bridge":
 			return []byte("LinuxIO Bridge v2.3.4\n"), nil
 		case "linuxio-auth":
+			return nil, errors.New("boom")
+		case "linuxio-pcp-api":
 			return nil, errors.New("boom")
 		case "linuxio":
 			return []byte("bad output\n"), nil

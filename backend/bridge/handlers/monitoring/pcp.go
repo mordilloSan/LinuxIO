@@ -594,14 +594,6 @@ func unavailableDiskIOSeries(rangeKey string, stepSeconds int, reason string) Di
 	}
 }
 
-func computePCPSampleCount(def rangeDefinition, extraSamples int) int {
-	count := int(def.Duration/def.Step) + 1 + extraSamples
-	if count < 2 {
-		return 2
-	}
-	return count
-}
-
 func alignSeriesPoints(primaryPoints, secondaryPoints []SeriesPoint) ([]SeriesPoint, []SeriesPoint) {
 	if len(primaryPoints) == 0 && len(secondaryPoints) == 0 {
 		return nil, nil

@@ -134,7 +134,7 @@ func getComponentVersions(parent context.Context) map[string]string {
 		parent = context.Background()
 	}
 
-	components := make(map[string]string, 4)
+	components := make(map[string]string, 5)
 	if config.Version != "" {
 		components["LinuxIO Web Server"] = config.Version
 	}
@@ -142,6 +142,7 @@ func getComponentVersions(parent context.Context) map[string]string {
 	probes := []componentVersionProbe{
 		{component: "LinuxIO Bridge", binary: "linuxio-bridge", args: []string{"version"}},
 		{component: "LinuxIO Auth", binary: "linuxio-auth", args: []string{"version"}},
+		{component: "LinuxIO PCP API", binary: "linuxio-pcp-api", args: []string{"version"}},
 		{component: "LinuxIO CLI", binary: "linuxio", args: []string{"version", "--self"}},
 	}
 

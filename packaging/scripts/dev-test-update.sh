@@ -32,6 +32,8 @@ echo "▸ Downloading linuxio-bridge..."
 sleep 0.2
 echo "▸ Downloading linuxio-auth..."
 sleep 0.2
+echo "▸ Downloading linuxio-pcp-api..."
+sleep 0.2
 echo "▸ Downloading SHA256SUMS..."
 sleep 0.2
 echo "✓ All binaries downloaded"
@@ -47,6 +49,8 @@ echo "▸ Verifying linuxio-bridge..."
 echo "✓ Verified linuxio-bridge"
 echo "▸ Verifying linuxio-auth..."
 echo "✓ Verified linuxio-auth"
+echo "▸ Verifying linuxio-pcp-api..."
+echo "✓ Verified linuxio-pcp-api"
 echo "✓ All checksums verified"
 
 echo "▸ === Step 3/5: Installing binaries ==="
@@ -54,7 +58,7 @@ sleep 0.3
 echo "▸ Installing binaries to /usr/local/bin..."
 
 # Copy each binary onto itself (simulates update)
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-pcp-api; do
     echo "▸ Installing $binary with mode 0755..."
     if [[ -f "/usr/local/bin/$binary" ]]; then
         # Create temp copy and move it back (atomic operation)
@@ -89,7 +93,7 @@ sleep 0.3
 echo "▸ Installing systemd service files..."
 for service in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
                linuxio-auth.socket linuxio-auth@.service linuxio-bridge-socket-user.service \
-               linuxio-issue.service; do
+               linuxio-issue.service linuxio-pcp-api.service; do
     if [[ -f "/etc/systemd/system/$service" ]]; then
         echo "✓ $service already installed"
     fi
@@ -114,6 +118,7 @@ echo "✓ linuxio CLI: working"
 echo "✓ LinuxIO Web Server"
 echo "✓ linuxio-bridge: executable"
 echo "✓ linuxio-auth: executable"
+echo "✓ linuxio-pcp-api: executable"
 echo "✓ linuxio.target is enabled"
 echo "✓ PAM configuration installed"
 echo "✓ Configuration directory exists at /etc/linuxio"
