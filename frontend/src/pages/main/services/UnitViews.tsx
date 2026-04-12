@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React from "react";
+import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import type { UnitInfo } from "@/api";
@@ -11,11 +13,13 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 export type { UnitListItem } from "@/components/cards/UnitCard";
 export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
@@ -197,30 +201,62 @@ export function UnitStatusRows({
   );
 }
 
+const buttonIcon = (pending: boolean, iconName: string) =>
+  pending ? (
+    <AppCircularProgress size={16} color="inherit" />
+  ) : (
+    <Icon icon={iconName} width={16} height={16} />
+  );
+
 export const UnitCardActions: React.FC<{
   unitName: string;
   activeState: string;
   unitFileState: string;
   info: UnitInfo | undefined;
 }> = ({ unitName, activeState, unitFileState, info }) => {
+  const queryClient = useQueryClient();
+
+  const invalidateUnit = React.useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: linuxio.dbus.list_services.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.dbus.get_unit_info.queryKey(unitName),
+    });
+  }, [queryClient, unitName]);
+
+  const makeHandlers = React.useCallback(
+    (verb: string) => ({
+      onSuccess: () => {
+        toast.success(`${unitName} ${verb}`);
+        invalidateUnit();
+      },
+      onError: (err: Error) =>
+        toast.error(
+          getMutationErrorMessage(err, `Failed to ${verb} ${unitName}`),
+        ),
+    }),
+    [unitName, invalidateUnit],
+  );
+
   const { mutate: startService, isPending: isStarting } =
-    linuxio.dbus.start_service.useMutation();
+    linuxio.dbus.start_service.useMutation(makeHandlers("started"));
   const { mutate: stopService, isPending: isStopping } =
-    linuxio.dbus.stop_service.useMutation();
+    linuxio.dbus.stop_service.useMutation(makeHandlers("stopped"));
   const { mutate: restartService, isPending: isRestarting } =
-    linuxio.dbus.restart_service.useMutation();
+    linuxio.dbus.restart_service.useMutation(makeHandlers("restarted"));
   const { mutate: reloadService, isPending: isReloading } =
-    linuxio.dbus.reload_service.useMutation();
+    linuxio.dbus.reload_service.useMutation(makeHandlers("reloaded"));
   const { mutate: enableService, isPending: isEnabling } =
-    linuxio.dbus.enable_service.useMutation();
+    linuxio.dbus.enable_service.useMutation(makeHandlers("enabled"));
   const { mutate: disableService, isPending: isDisabling } =
-    linuxio.dbus.disable_service.useMutation();
+    linuxio.dbus.disable_service.useMutation(makeHandlers("disabled"));
   const { mutate: maskService, isPending: isMasking } =
-    linuxio.dbus.mask_service.useMutation();
+    linuxio.dbus.mask_service.useMutation(makeHandlers("masked"));
   const { mutate: unmaskService, isPending: isUnmasking } =
-    linuxio.dbus.unmask_service.useMutation();
+    linuxio.dbus.unmask_service.useMutation(makeHandlers("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    linuxio.dbus.reset_failed_service.useMutation();
+    linuxio.dbus.reset_failed_service.useMutation(makeHandlers("reset"));
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";
@@ -256,7 +292,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="error"
-            startIcon={<Icon icon="mdi:stop-circle" width={16} height={16} />}
+            startIcon={buttonIcon(isStopping, "mdi:stop-circle")}
             onClick={() => stopService([unitName])}
             disabled={anyPending}
           >
@@ -269,7 +305,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="success"
-            startIcon={<Icon icon="mdi:play" width={16} height={16} />}
+            startIcon={buttonIcon(isStarting, "mdi:play")}
             onClick={() => startService([unitName])}
             disabled={anyPending}
           >
@@ -282,7 +318,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             size="small"
             variant="outlined"
-            startIcon={<Icon icon="mdi:restart" width={16} height={16} />}
+            startIcon={buttonIcon(isRestarting, "mdi:restart")}
             onClick={() => restartService([unitName])}
             disabled={!isActive || anyPending}
           >
@@ -295,7 +331,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             size="small"
             variant="outlined"
-            startIcon={<Icon icon="mdi:refresh" width={16} height={16} />}
+            startIcon={buttonIcon(isReloading, "mdi:refresh")}
             onClick={() => reloadService([unitName])}
             disabled={!isActive || anyPending}
           >
@@ -309,9 +345,7 @@ export const UnitCardActions: React.FC<{
             <AppButton
               size="small"
               variant="outlined"
-              startIcon={
-                <Icon icon="mdi:block-helper" width={16} height={16} />
-              }
+              startIcon={buttonIcon(isDisabling, "mdi:block-helper")}
               onClick={() => disableService([unitName])}
               disabled={isMasked || anyPending}
             >
@@ -326,7 +360,7 @@ export const UnitCardActions: React.FC<{
               size="small"
               variant="outlined"
               color="success"
-              startIcon={<Icon icon="mdi:play" width={16} height={16} />}
+              startIcon={buttonIcon(isEnabling, "mdi:play")}
               onClick={() => enableService([unitName])}
               disabled={isMasked || anyPending}
             >
@@ -341,7 +375,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="warning"
-            startIcon={<Icon icon="mdi:eye" width={16} height={16} />}
+            startIcon={buttonIcon(isUnmasking, "mdi:eye")}
             onClick={() => unmaskService([unitName])}
             disabled={anyPending}
           >
@@ -353,7 +387,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             size="small"
             variant="outlined"
-            startIcon={<Icon icon="mdi:eye-off" width={16} height={16} />}
+            startIcon={buttonIcon(isMasking, "mdi:eye-off")}
             onClick={() => maskService([unitName])}
             disabled={anyPending}
           >
@@ -367,7 +401,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="warning"
-            startIcon={<Icon icon="mdi:broom" width={16} height={16} />}
+            startIcon={buttonIcon(isResettingFailed, "mdi:broom")}
             onClick={() => resetFailedService([unitName])}
             disabled={anyPending}
           >
