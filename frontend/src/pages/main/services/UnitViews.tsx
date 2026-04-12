@@ -241,7 +241,13 @@ export const UnitCardActions: React.FC<{
 
   return (
     <div
-      style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}
+      style={{
+        display: "flex",
+        gap: 6,
+        flexWrap: "nowrap",
+        marginTop: 12,
+        minWidth: 0,
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       {isActive ? (
@@ -250,7 +256,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="error"
-            startIcon={<Icon icon="mdi:stop-circle" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:stop-circle" width={16} height={16} />}
             onClick={() => stopService([unitName])}
             disabled={anyPending}
           >
@@ -263,7 +269,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="success"
-            startIcon={<Icon icon="mdi:play" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:play" width={16} height={16} />}
             onClick={() => startService([unitName])}
             disabled={anyPending}
           >
@@ -276,7 +282,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             size="small"
             variant="outlined"
-            startIcon={<Icon icon="mdi:restart" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:restart" width={16} height={16} />}
             onClick={() => restartService([unitName])}
             disabled={!isActive || anyPending}
           >
@@ -289,7 +295,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             size="small"
             variant="outlined"
-            startIcon={<Icon icon="mdi:refresh" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:refresh" width={16} height={16} />}
             onClick={() => reloadService([unitName])}
             disabled={!isActive || anyPending}
           >
@@ -304,7 +310,7 @@ export const UnitCardActions: React.FC<{
               size="small"
               variant="outlined"
               startIcon={
-                <Icon icon="mdi:block-helper" width={20} height={20} />
+                <Icon icon="mdi:block-helper" width={16} height={16} />
               }
               onClick={() => disableService([unitName])}
               disabled={isMasked || anyPending}
@@ -320,7 +326,7 @@ export const UnitCardActions: React.FC<{
               size="small"
               variant="outlined"
               color="success"
-              startIcon={<Icon icon="mdi:play" width={20} height={20} />}
+              startIcon={<Icon icon="mdi:play" width={16} height={16} />}
               onClick={() => enableService([unitName])}
               disabled={isMasked || anyPending}
             >
@@ -335,7 +341,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="warning"
-            startIcon={<Icon icon="mdi:eye" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:eye" width={16} height={16} />}
             onClick={() => unmaskService([unitName])}
             disabled={anyPending}
           >
@@ -347,7 +353,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             size="small"
             variant="outlined"
-            startIcon={<Icon icon="mdi:eye-off" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:eye-off" width={16} height={16} />}
             onClick={() => maskService([unitName])}
             disabled={anyPending}
           >
@@ -361,11 +367,11 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="warning"
-            startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
+            startIcon={<Icon icon="mdi:broom" width={16} height={16} />}
             onClick={() => resetFailedService([unitName])}
             disabled={anyPending}
           >
-            Reset Failed
+            Reset
           </AppButton>
         </AppTooltip>
       )}
