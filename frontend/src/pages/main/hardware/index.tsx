@@ -137,7 +137,7 @@ const HardwarePage: React.FC = () => {
   );
 
   // ── shared history range + hover ──
-  const [historyRange, setHistoryRange] = useState<MonitoringRange>("1m");
+  const [historyRange, setHistoryRange] = useState<MonitoringRange>("24h");
   const [historyHoverRatio, setHistoryHoverRatio] = useState<number | null>(
     null,
   );

@@ -341,9 +341,9 @@ export const MemoryHistoryCard: React.FC<{
 
   return (
     <MonitorCard
-      title="Memory Usage"
+      title="Memory"
       avatarIcon="la:memory"
-      accentColor={theme.chart.rx}
+      accentColor={theme.palette.primary.main}
       range={range}
       onRangeChange={setRange}
       chart={
@@ -378,7 +378,7 @@ export const NetworkHistoryCard: React.FC<{
   onHoverChange,
 }) => {
   const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
+  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("24h");
   const [selectedInterfaceInternal, setSelectedInterfaceInternal] =
     useState("");
   const range = rangeProp ?? rangeInternal;
@@ -437,7 +437,7 @@ export const NetworkHistoryCard: React.FC<{
       accentColor={theme.palette.primary.main}
       range={range}
       onRangeChange={setRange}
-      controls={
+      leftControls={
         <AppSelect
           size="small"
           variant="standard"
@@ -502,7 +502,7 @@ export const DiskIOHistoryCard: React.FC<{
 
   return (
     <MonitorCard
-      title="I/O"
+      title="Disk I/O"
       avatarIcon="mdi:harddisk"
       accentColor={theme.palette.primary.main}
       range={range}

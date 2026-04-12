@@ -7,6 +7,8 @@ export interface CardIconHeaderProps {
   icon: React.ReactNode;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  /** Content rendered inline, immediately after the title. */
+  titleSuffix?: React.ReactNode;
   /** Content rendered on the right side (chips, buttons, dropdowns…). */
   right?: React.ReactNode;
   style?: React.CSSProperties;
@@ -16,6 +18,7 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
   icon,
   title,
   subtitle,
+  titleSuffix,
   right,
   style,
 }) => (
@@ -49,14 +52,17 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
         {icon}
       </div>
       <div style={{ minWidth: 0 }}>
-        <AppTypography
-          variant="subtitle1"
-          fontWeight={700}
-          style={{ lineHeight: 1.2 }}
-          noWrap
-        >
-          {title}
-        </AppTypography>
+        <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
+          <AppTypography
+            variant="subtitle1"
+            fontWeight={700}
+            style={{ lineHeight: 1.2 }}
+            noWrap
+          >
+            {title}
+          </AppTypography>
+          {titleSuffix}
+        </div>
         {subtitle !== undefined && (
           <AppTypography variant="caption" color="text.secondary" noWrap>
             {subtitle}

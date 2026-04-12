@@ -57,6 +57,7 @@ const MonitorCard: React.FC<{
   range: MonitoringRange;
   onRangeChange: (value: MonitoringRange) => void;
   controls?: React.ReactNode;
+  leftControls?: React.ReactNode;
   chart: React.ReactNode;
 }> = ({
   title,
@@ -65,6 +66,7 @@ const MonitorCard: React.FC<{
   range,
   onRangeChange,
   controls,
+  leftControls,
   chart,
 }) => {
   return (
@@ -81,6 +83,7 @@ const MonitorCard: React.FC<{
           <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
         }
         title={title}
+        titleSuffix={leftControls}
         right={
           <div
             style={{
