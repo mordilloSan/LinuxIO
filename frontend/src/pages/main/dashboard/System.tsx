@@ -81,7 +81,7 @@ const SystemHealth = () => {
       spaceBefore: true,
       iconStyle: { transform: "translateY(2px)" },
     });
-  } else {
+  } else if (health) {
     items.push({
       icon: "mdi:check-circle",
       color: theme.palette.success.main,
@@ -164,104 +164,114 @@ const SystemHealth = () => {
     </div>
   );
 
-  const statsSkeleton = (
+  const renderItem = (item: HealthItem) => {
+    const content = (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(1),
+        }}
+      >
+        <Icon
+          icon={item.icon}
+          width={18}
+          height={18}
+          color={item.color}
+          style={{ flexShrink: 0, ...item.iconStyle }}
+        />
+        <div style={{ minWidth: 0 }}>
+          <AppTypography
+            variant="body2"
+            fontWeight={500}
+            style={{
+              color:
+                item.color === theme.palette.text.secondary
+                  ? undefined
+                  : item.color,
+            }}
+          >
+            {item.text}
+          </AppTypography>
+          {item.detail ? (
+            <AppTypography
+              variant="caption"
+              color="text.secondary"
+              style={{ display: "block", marginTop: -2 }}
+            >
+              {item.detail}
+            </AppTypography>
+          ) : null}
+        </div>
+      </div>
+    );
+
+    const spacing = item.spaceBefore
+      ? { marginTop: theme.spacing(1) }
+      : undefined;
+
+    return item.to ? (
+      <div
+        key={item.text}
+        onClick={() => navigate(item.to!)}
+        style={{ cursor: "pointer", ...spacing }}
+      >
+        {content}
+      </div>
+    ) : (
+      <div key={item.text} style={spacing}>
+        {content}
+      </div>
+    );
+  };
+
+  const skeletonRow = (key: string, width: string, spaceBefore = false) => (
+    <div
+      key={key}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(1),
+        ...(spaceBefore ? { marginTop: theme.spacing(1) } : undefined),
+      }}
+    >
+      <AppSkeleton variant="circular" width={18} height={18} />
+      <SkeletonText variant="body2" width={width} />
+    </div>
+  );
+
+  const servicesItem = items.find((i) => i.icon === "mdi:cog-sync-outline");
+  const updatesItem = items.find(
+    (i) => i.icon === "mdi:package-up" || i.icon === "mdi:check-circle",
+  );
+  const lastLoginItem = items.find(
+    (i) => i.icon === "mdi:account-clock-outline",
+  );
+  const alertItems = items.filter(
+    (i) =>
+      i !== servicesItem && i !== updatesItem && i !== lastLoginItem,
+  );
+
+  const stats = (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(1),
+        alignSelf: "flex-start",
+        width: "fit-content",
       }}
     >
-      {(["12ch", "16ch", "18ch"] as const).map((w) => (
-        <div
-          key={w}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppSkeleton variant="circular" width={18} height={18} />
-          <SkeletonText variant="body2" width={w} />
-        </div>
-      ))}
+      {servicesItem ? renderItem(servicesItem) : skeletonRow("s-services", "12ch")}
+      {alertItems.map(renderItem)}
+      {updatesItem ? renderItem(updatesItem) : skeletonRow("s-updates", "16ch", true)}
+      {lastLoginItem
+        ? renderItem(lastLoginItem)
+        : health?.lastLogin?.time === undefined &&
+          (loadingHealth || fetchingHealth)
+          ? skeletonRow("s-lastlogin", "18ch", true)
+          : null}
     </div>
   );
-
-  const stats =
-    !health && (loadingHealth || fetchingHealth) ? (
-      statsSkeleton
-    ) : (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignSelf: "flex-start",
-          width: "fit-content",
-        }}
-      >
-        {items.map((item) => {
-          const content = (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: theme.spacing(1),
-              }}
-            >
-              <Icon
-                icon={item.icon}
-                width={18}
-                height={18}
-                color={item.color}
-                style={{ flexShrink: 0, ...item.iconStyle }}
-              />
-              <div style={{ minWidth: 0 }}>
-                <AppTypography
-                  variant="body2"
-                  fontWeight={500}
-                  style={{
-                    color:
-                      item.color === theme.palette.text.secondary
-                        ? undefined
-                        : item.color,
-                  }}
-                >
-                  {item.text}
-                </AppTypography>
-                {item.detail ? (
-                  <AppTypography
-                    variant="caption"
-                    color="text.secondary"
-                    style={{ display: "block", marginTop: -2 }}
-                  >
-                    {item.detail}
-                  </AppTypography>
-                ) : null}
-              </div>
-            </div>
-          );
-
-          const spacing = item.spaceBefore
-            ? { marginTop: theme.spacing(1) }
-            : undefined;
-
-          return item.to ? (
-            <div
-              key={item.text}
-              onClick={() => navigate(item.to!)}
-              style={{ cursor: "pointer", ...spacing }}
-            >
-              {content}
-            </div>
-          ) : (
-            <div key={item.text} style={spacing}>
-              {content}
-            </div>
-          );
-        })}
-      </div>
-    );
 
   return (
     <DashboardCard
