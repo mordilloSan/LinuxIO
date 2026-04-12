@@ -134,7 +134,11 @@ export function UnitInfoPanel({
         </button>
       </div>
 
-      <div style={{ flex: 1 }}>
+      <div
+        className="custom-scrollbar"
+        style={{ flex: 1, overflowX: "auto" }}
+      >
+        <div style={{ minWidth: "max-content" }}>
         <DetailRow label="Path" noBorder>
           {isPending ? (
             <div
@@ -150,7 +154,7 @@ export function UnitInfoPanel({
               style={{
                 fontSize: "0.8rem",
                 fontWeight: 500,
-                wordBreak: "break-all",
+                whiteSpace: "nowrap",
               }}
             >
               {fragmentPath || "—"}
@@ -170,7 +174,7 @@ export function UnitInfoPanel({
                 style={{
                   fontSize: "0.75rem",
                   fontWeight: 500,
-                  wordBreak: "break-word",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {row.value}
@@ -188,7 +192,7 @@ export function UnitInfoPanel({
                   style={{
                     fontSize: "0.75rem",
                     fontWeight: 500,
-                    wordBreak: "break-word",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {items.join(", ")}
@@ -196,6 +200,7 @@ export function UnitInfoPanel({
               </DetailRow>
             );
           })}
+        </div>
       </div>
     </FrostedCard>
   );

@@ -519,8 +519,8 @@ export function UnitCardsView<T extends UnitListItem>({
       >
         <div
           style={{
-            width: isCompactLayout ? "100%" : "33.33%",
-            flexShrink: 0,
+            flex: isCompactLayout ? "0 0 auto" : 1,
+            width: isCompactLayout ? "100%" : undefined,
             display: "flex",
           }}
         >
@@ -534,7 +534,11 @@ export function UnitCardsView<T extends UnitListItem>({
           />
         </div>
         <motion.div
-          style={{ flex: 1, display: "flex", width: "100%" }}
+          style={{
+            width: isCompactLayout ? "100%" : "33.33%",
+            flexShrink: 0,
+            display: "flex",
+          }}
           initial={{
             opacity: 0,
             x: isCompactLayout ? 0 : 40,
