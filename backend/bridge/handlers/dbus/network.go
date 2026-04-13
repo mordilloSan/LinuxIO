@@ -163,9 +163,12 @@ func SetMTU(iface, mtu string) error {
 	if strings.TrimSpace(iface) == "" || strings.TrimSpace(mtu) == "" {
 		return fmt.Errorf("SetMTU requires interface and MTU value")
 	}
-	value, err := strconv.ParseUint(strings.TrimSpace(mtu), 10, 32)
+	value, err := strconv.ParseUint(strings.TrimSpace(mtu), 10, 16)
 	if err != nil {
 		return fmt.Errorf("invalid MTU value: %w", err)
+	}
+	if value < 68 {
+		return fmt.Errorf("invalid MTU value: %d (must be between 68 and 65535)", value)
 	}
 	backend, err := network.OpenBackend(networkEnv, iface)
 	if err != nil {

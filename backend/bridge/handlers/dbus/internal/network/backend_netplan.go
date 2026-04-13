@@ -124,7 +124,7 @@ func (b *netplanBackend) SetIPv6Static(addressCIDR string) error {
 
 func (b *netplanBackend) SetMTU(mtu uint32) error {
 	return b.update(func(ifaceMap map[string]any) error {
-		ifaceMap["mtu"] = int(mtu)
+		ifaceMap["mtu"] = int64(mtu)
 		return nil
 	})
 }
