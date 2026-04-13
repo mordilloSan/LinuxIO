@@ -270,3 +270,9 @@ jobs:
           exit 1
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Refresh Go Report Card
+        if: success()
+        run: |
+          curl -fsS -X POST -d "repo=github.com/${{ github.repository }}/backend" \
+            https://goreportcard.com/checks || echo "Go Report Card refresh failed (non-fatal)"
