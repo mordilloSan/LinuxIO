@@ -28,7 +28,6 @@ import {
   NetworkHistoryCard,
   MotherboardInfoCard,
 } from "@/pages/main/hardware/HardwareHistoryCards";
-import { useAppTheme } from "@/theme";
 import "@/theme/section.css";
 
 // ─── constants ──────────────────────────────────────────────────────────────
@@ -111,7 +110,6 @@ const SectionHeader: React.FC<{
 // ─── main component ──────────────────────────────────────────────────────────
 
 const HardwarePage: React.FC = () => {
-
   // ── data ──
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
     refetchInterval: 5000,
