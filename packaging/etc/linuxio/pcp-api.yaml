@@ -1,9 +1,0 @@
-enabled: true
-listen_address: 0.0.0.1:8091
-auth:
-  enabled: false
-  token_file: /etc/linuxio/pcp-api.token
-exposure:
-  categories:
-    summary: public
-  endpoints: {}

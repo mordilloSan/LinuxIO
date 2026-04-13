@@ -57,8 +57,8 @@ Show 0 "Services stopped and disabled"
 # ========== REMOVE SYSTEMD FILES ==========
 Header "Removing Files"
 Show 2 "Removing systemd files..."
-rm -f /etc/systemd/system/linuxio*
-rm -f /lib/systemd/system/linuxio*
+rm -rf /etc/systemd/system/linuxio*
+rm -rf /lib/systemd/system/linuxio*
 rm -f /etc/systemd/system/*.wants/linuxio*
 Show 0 "Systemd files removed"
 
@@ -79,23 +79,6 @@ rm -rf /etc/linuxio
 rm -f /etc/pam.d/linuxio
 Show 0 "Configuration files removed"
 
-# ========== REMOVE PCP CONFIGURATION ==========
-Show 2 "Removing PCP configuration..."
-rm -f /etc/pcp/pmlogger/config.d/linuxio.config
-if systemctl is-active --quiet pmlogger 2>/dev/null; then
-    systemctl restart pmlogger 2>/dev/null || true
-fi
-Show 0 "pmlogger config removed"
-
-Show 2 "Removing pmproxy override..."
-rm -f /etc/systemd/system/pmproxy.service.d/linuxio.conf
-rmdir /etc/systemd/system/pmproxy.service.d 2>/dev/null || true
-if systemctl is-active --quiet pmproxy 2>/dev/null; then
-    systemctl daemon-reload
-    systemctl restart pmproxy 2>/dev/null || true
-fi
-Show 0 "pmproxy override removed"
-
 # ========== REMOVE RUNTIME FILES ==========
 Show 2 "Removing runtime and data files..."
 rm -rf /run/linuxio
@@ -115,7 +98,7 @@ Show 2 "Cleaning build artifacts from repo..."
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
     cd "$REPO_ROOT"
-    rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-pcp-api 2>/dev/null || true
+    rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth 2>/dev/null || true
     Show 0 "Build artifacts cleaned"
 else
     Show 3 "Cannot find repo directory, skipping build artifact cleanup"
@@ -131,7 +114,6 @@ echo -e " ${BOLD}Removed:${COLOUR_RESET}"
 echo -e " ${GREEN}-${COLOUR_RESET} All systemd services and sockets"
 echo -e " ${GREEN}-${COLOUR_RESET} All binaries from /usr/local/bin"
 echo -e " ${GREEN}-${COLOUR_RESET} Configuration files from /etc/linuxio"
-echo -e " ${GREEN}-${COLOUR_RESET} PCP derived metrics and pmproxy override"
 echo -e " ${GREEN}-${COLOUR_RESET} PAM configuration"
 echo -e " ${GREEN}-${COLOUR_RESET} Runtime files from /run and /var/lib"
 echo -e " ${GREEN}-${COLOUR_RESET} Development files from /tmp/linuxio"

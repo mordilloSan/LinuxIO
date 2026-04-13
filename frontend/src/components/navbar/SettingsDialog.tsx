@@ -3,7 +3,6 @@ import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
-import PcpApiSettingsSection from "./PcpApiSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,16 +10,14 @@ import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab = "general" | "docker" | "pcpApi";
+type SettingsTab = "general" | "docker";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useAppTheme();
-  const { privileged } = useAuth();
   const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const handleClose = () => {
@@ -77,9 +74,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           options={[
             { value: "general", label: "General" },
             { value: "docker", label: "Docker" },
-            ...(privileged
-              ? [{ value: "pcpApi", label: "PCP API" as const }]
-              : []),
           ]}
           style={{ marginBottom: 0 }}
         />
@@ -130,10 +124,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
             <ThemeColorsSection />
           </div>
-        ) : activeTab === "docker" ? (
-          <DockerFolderSettingsSection />
         ) : (
-          <PcpApiSettingsSection />
+          <DockerFolderSettingsSection />
         )}
       </AppDialogContent>
     </GeneralDialog>

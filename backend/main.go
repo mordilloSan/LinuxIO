@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -24,7 +22,6 @@ const (
 	linuxioWebserverServiceName    = "linuxio-webserver.service"
 	linuxioAuthSocketName          = "linuxio-auth.socket"
 	linuxioBridgeSocketUserService = "linuxio-bridge-socket-user.service"
-	linuxioPCPAPIServiceName       = "linuxio-pcp-api.service"
 )
 
 var versionExecCommand = exec.Command
@@ -53,8 +50,6 @@ func main() {
 		runVerbose(args)
 	case "version":
 		showVersion(args)
-	case "pcp-api":
-		runPCPAPI(args)
 	case "help", "-h", "--help":
 		showHelp()
 	default:
@@ -71,11 +66,10 @@ Usage: linuxio <command> [options]
 
 Commands:
   status      Show status of all LinuxIO services
-  logs        Tail logs [webserver|bridge|auth|pcp-api] [lines] (default: all, 100)
+  logs        Tail logs [webserver|bridge|auth] [lines] (default: all, 100)
   start       Start LinuxIO services
   stop        Stop LinuxIO services
   restart     Restart LinuxIO control plane [--full]
-  pcp-api     Manage the LinuxIO PCP API service
   verbose     Manage verbose logging [enable|disable|status]
   version     Show version information [--self]
   help        Show this help message
@@ -85,7 +79,6 @@ Examples:
   linuxio restart
   linuxio restart --full
   linuxio logs bridge 200
-  linuxio pcp-api status
   linuxio version --self`)
 }
 
@@ -130,13 +123,6 @@ func showVersion(args []string) {
 		fmt.Println("linuxio-auth: not found or error")
 	}
 
-	out, err = versionExecCommand("linuxio-pcp-api", "version").CombinedOutput()
-	if err == nil {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		fmt.Printf("  %s\n", line)
-	} else {
-		fmt.Println("linuxio-pcp-api: not found or error")
-	}
 }
 
 func runStatus() {
@@ -232,7 +218,6 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-auth.socket",
 		"_SYSTEMD_UNIT=linuxio-auth@.service",
 		"_SYSTEMD_UNIT=linuxio-issue.service",
-		"_SYSTEMD_UNIT=linuxio-pcp-api.service",
 	}
 	includeAuthTag := true
 
@@ -251,156 +236,12 @@ func journalTermsForMode(mode string) []string {
 			"_SYSTEMD_UNIT=linuxio-auth.socket",
 			"_SYSTEMD_UNIT=linuxio-auth@.service",
 		}
-	case "pcp-api", "pcp", "pcpapi":
-		journalTerms = []string{"_SYSTEMD_UNIT=linuxio-pcp-api.service"}
-		includeAuthTag = false
 	}
 
 	if includeAuthTag {
 		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
 	}
 	return journalTerms
-}
-
-func runPCPAPI(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: linuxio pcp-api [status|restart|reload|config get|token rotate]")
-		os.Exit(1)
-	}
-
-	switch args[0] {
-	case "status":
-		showPCPAPIStatus()
-	case "restart":
-		runSystemctlTargets("restart", []string{linuxioPCPAPIServiceName}, linuxioPCPAPIServiceName)
-	case "reload":
-		if err := systemd.ReloadUnit(linuxioPCPAPIServiceName); err != nil {
-			if restartErr := systemd.RestartUnit(linuxioPCPAPIServiceName); restartErr != nil {
-				fmt.Fprintf(os.Stderr, "Failed to reload or restart %s: %v\n", linuxioPCPAPIServiceName, restartErr)
-				os.Exit(1)
-			}
-		}
-		fmt.Printf("Successfully reloaded %s\n", linuxioPCPAPIServiceName)
-	case "config":
-		if len(args) == 2 && args[1] == "get" {
-			showPCPAPIConfig()
-			return
-		}
-		fmt.Fprintln(os.Stderr, "Usage: linuxio pcp-api config get")
-		os.Exit(1)
-	case "token":
-		if len(args) == 2 && args[1] == "rotate" {
-			rotatePCPAPIToken()
-			return
-		}
-		fmt.Fprintln(os.Stderr, "Usage: linuxio pcp-api token rotate")
-		os.Exit(1)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown pcp-api command: %s\n", strings.Join(args, " "))
-		os.Exit(1)
-	}
-}
-
-func showPCPAPIConfig() {
-	cfg, err := config.ReadConfig(config.DefaultConfigPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read PCP API config: %v\n", err)
-		os.Exit(1)
-	}
-
-	output, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to render PCP API config: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println(string(output))
-}
-
-func rotatePCPAPIToken() {
-	cfg, err := config.ReadConfig(config.DefaultConfigPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read PCP API config: %v\n", err)
-		os.Exit(1)
-	}
-
-	token, err := config.GenerateToken()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to generate PCP API token: %v\n", err)
-		os.Exit(1)
-	}
-	err = config.WriteToken(cfg.Auth.TokenFile, token)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write PCP API token: %v\n", err)
-		os.Exit(1)
-	}
-	activeState, err := systemd.GetActiveState(linuxioPCPAPIServiceName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read PCP API state: %v\n", err)
-		os.Exit(1)
-	}
-	if activeState == "active" {
-		if err := systemd.ReloadUnit(linuxioPCPAPIServiceName); err != nil {
-			if restartErr := systemd.RestartUnit(linuxioPCPAPIServiceName); restartErr != nil {
-				fmt.Fprintf(os.Stderr, "Failed to apply new token: %v\n", restartErr)
-				os.Exit(1)
-			}
-		}
-	}
-
-	fmt.Printf("Rotated token for %s\n", linuxioPCPAPIServiceName)
-	fmt.Printf("Token: %s\n", token)
-}
-
-func showPCPAPIStatus() {
-	cfg, err := config.ReadConfig(config.DefaultConfigPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read PCP API config: %v\n", err)
-		os.Exit(1)
-	}
-
-	activeState, err := systemd.GetActiveState(linuxioPCPAPIServiceName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read unit active state: %v\n", err)
-		os.Exit(1)
-	}
-	unitFileState, err := systemd.GetUnitFileState(linuxioPCPAPIServiceName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read unit file state: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("PCP API unit: %s\n", linuxioPCPAPIServiceName)
-	fmt.Printf("  active: %s\n", activeState)
-	fmt.Printf("  unit file: %s\n", unitFileState)
-	fmt.Printf("  config enabled: %t\n", cfg.Enabled)
-	fmt.Printf("  listen: %s\n", cfg.ListenAddress)
-
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.ListenAddress))
-	if err != nil {
-		fmt.Printf("  health: error (%v)\n", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	var payload struct {
-		OK      bool   `json:"ok"`
-		Version string `json:"version"`
-	}
-	body, readErr := io.ReadAll(resp.Body)
-	if readErr != nil {
-		fmt.Printf("  health: error (%v)\n", readErr)
-		return
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		fmt.Printf("  health: invalid response (%v)\n", err)
-		return
-	}
-
-	fmt.Printf("  health: %t\n", payload.OK)
-	if payload.Version != "" {
-		fmt.Printf("  version: %s\n", payload.Version)
-	}
 }
 
 func streamFormattedJournal(stdout io.Reader) {

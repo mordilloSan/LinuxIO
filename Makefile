@@ -466,26 +466,6 @@ build-bridge: $(GO_BUILD_PREREQ)
 	echo "   Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "   SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
-build-pcp-api: $(GO_BUILD_PREREQ)
-	@echo ""
-	@echo "🏗️  Building PCP API..."
-	@echo "   Module: $(MODULE_PATH)"
-	@echo "   Version: $(GIT_VERSION)"
-	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
-	"$(GO_BIN)" build -trimpath \
-	-ldflags "\
-		-s -w \
-		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
-	-o ../linuxio-pcp-api ./pcpapi && \
-	echo "✅ PCP API built successfully!" && \
-	echo "   Path: $(PWD)/linuxio-pcp-api" && \
-	echo "   Version: $(GIT_VERSION)" && \
-	echo "   Size: $$(du -h ../linuxio-pcp-api | cut -f1)" && \
-	echo "   SHA256: $$(shasum -a 256 ../linuxio-pcp-api | awk '{ print $$1 }')"
-
 build-auth:
 	@echo ""
 	@echo "🏗️  Building Session helper (C)..."
@@ -602,7 +582,6 @@ _build-binaries: ensure-go
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
-	@$(MAKE) --no-print-directory build-pcp-api SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
 
@@ -618,7 +597,6 @@ clean:
 	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
 	@rm -f ./linuxio-auth || true
-	@rm -f ./linuxio-pcp-api || true
 	@rm -f $(VITE_DEV_PID) $(VITE_DEV_LOG) $(SCRIPT_SERVER_PID) || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
@@ -678,7 +656,6 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-pcp-api    $(COLOR_RESET) Build the PCP API binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"
 	@$(PRINTC) ""
@@ -742,7 +719,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-pcp-api build-auth build-cli \
+  build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

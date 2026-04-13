@@ -4,13 +4,14 @@
 
 3 - Fix NFS distro dependecy
 
-4 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
+4 - Implement monitoring
+
+5 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `zod-validation-error`
 - `eslint-plugin-react`
 - `eslint-plugin-react-hooks`
 
 Remove func StartSimpleNetInfoSampler() - Done
-Implement monitoring - Done
 ChunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts - DONE
 Different view modes on cards/tables with user config (migrate all tables to cards) - DONE
 Docker auto update - DONE

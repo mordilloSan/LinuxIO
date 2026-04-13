@@ -1,8 +1,7 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
-import type { MonitoringRange } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
 import type { SensorGroup } from "@/components/cards/SensorGroupCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
@@ -112,7 +111,6 @@ const SectionHeader: React.FC<{
 // ─── main component ──────────────────────────────────────────────────────────
 
 const HardwarePage: React.FC = () => {
-  const theme = useAppTheme();
 
   // ── data ──
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
@@ -134,12 +132,6 @@ const HardwarePage: React.FC = () => {
         }))
         .filter((group) => group.readings.length > 0),
     [sensorGroups],
-  );
-
-  // ── shared history range + hover ──
-  const [historyRange, setHistoryRange] = useState<MonitoringRange>("24h");
-  const [historyHoverRatio, setHistoryHoverRatio] = useState<number | null>(
-    null,
   );
 
   // ── section collapse state ──
@@ -204,80 +196,25 @@ const HardwarePage: React.FC = () => {
         onClick={() => toggleSection("hardware")}
       />
       <AppCollapse in={sections.hardware}>
-        <div
-          style={{
-            marginBottom: 12,
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${theme.palette.divider}`,
-            background: theme.palette.background.paper,
-          }}
-        >
-          <AppTypography
-            variant="caption"
-            style={{ color: theme.palette.text.secondary, lineHeight: 1.55 }}
-          >
-            Historical charts use PCP directly via libpcp. If these stay empty
-            after install, check that the{" "}
-            <span
-              style={{
-                fontFamily: "monospace",
-                color: theme.palette.text.primary,
-              }}
-            >
-              pmcd
-            </span>{" "}
-            and{" "}
-            <span
-              style={{
-                fontFamily: "monospace",
-                color: theme.palette.text.primary,
-              }}
-            >
-              pmlogger
-            </span>{" "}
-            services are running.
-          </AppTypography>
-        </div>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <CPUHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
+              <CPUHistoryCard />
             </ErrorBoundary>
           </AppGrid>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <MemoryHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
+              <MemoryHistoryCard />
             </ErrorBoundary>
           </AppGrid>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <DiskIOHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
+              <DiskIOHistoryCard />
             </ErrorBoundary>
           </AppGrid>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <NetworkHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
+              <NetworkHistoryCard />
             </ErrorBoundary>
           </AppGrid>
         </AppGrid>
