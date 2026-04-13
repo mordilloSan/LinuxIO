@@ -1,13 +1,16 @@
 import React from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 
 export interface CardIconHeaderProps {
   icon: React.ReactNode;
   title: React.ReactNode;
-  subtitle: React.ReactNode;
-  /** Gap between icon box and text. Default 6. */
-  gap?: number;
+  subtitle?: React.ReactNode;
+  /** Content rendered inline, immediately after the title. */
+  titleSuffix?: React.ReactNode;
+  /** Content rendered on the right side (chips, buttons, dropdowns…). */
+  right?: React.ReactNode;
   style?: React.CSSProperties;
 }
 
@@ -15,36 +18,59 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
   icon,
   title,
   subtitle,
-  gap = 6,
+  titleSuffix,
+  right,
   style,
 }) => (
-  <div style={{ display: "flex", alignItems: "center", gap, ...style }}>
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      ...style,
+    }}
+  >
     <div
       style={{
-        width: 40,
-        height: 40,
-        borderRadius: 8,
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
+        gap: GAP_SM,
+        minWidth: 0,
       }}
     >
-      {icon}
-    </div>
-    <div style={{ minWidth: 0 }}>
-      <AppTypography
-        variant="subtitle1"
-        fontWeight={700}
-        style={{ lineHeight: 1.2 }}
-        noWrap
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
       >
-        {title}
-      </AppTypography>
-      <AppTypography variant="caption" color="text.secondary" noWrap>
-        {subtitle}
-      </AppTypography>
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
+          <AppTypography
+            variant="subtitle1"
+            fontWeight={700}
+            style={{ lineHeight: 1.2 }}
+            noWrap
+          >
+            {title}
+          </AppTypography>
+          {titleSuffix}
+        </div>
+        {subtitle !== undefined && (
+          <AppTypography variant="caption" color="text.secondary" noWrap>
+            {subtitle}
+          </AppTypography>
+        )}
+      </div>
     </div>
+    {right}
   </div>
 );
 

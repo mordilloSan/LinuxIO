@@ -325,7 +325,15 @@ func ListShells() ([]string, error) {
 	file, err := os.Open(shellsFile)
 	if err != nil {
 		// Return common defaults if file doesn't exist
-		return []string{"/bin/bash", "/bin/sh", "/usr/bin/zsh", "/sbin/nologin"}, nil
+		return []string{
+			"/bin/bash",
+			"/bin/sh",
+			"/usr/bin/zsh",
+			"/usr/sbin/nologin",
+			"/sbin/nologin",
+			"/bin/false",
+			"/usr/bin/false",
+		}, nil
 	}
 	defer file.Close()
 

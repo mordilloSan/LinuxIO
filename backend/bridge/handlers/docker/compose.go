@@ -678,52 +678,43 @@ func tryTranslatePath(cli *client.Client, containerID, containerPath, containerN
 		return containerPath
 	}
 
-	// Check each mount to see if the container path is within it
 	for _, mount := range containerJSON.Mounts {
-		// Check if the container path starts with this mount's destination
-		if relPath, found := strings.CutPrefix(containerPath, mount.Destination); found {
-			// Remove leading slash if any
-			relPath = strings.TrimPrefix(relPath, "/")
-
-			// Construct the host path
-			if mount.Source != "" {
-				hostPath := filepath.Join(mount.Source, relPath)
-
-				// Check if this is a bind mount (user-accessible) or volume (Docker-managed)
-				// For bind mounts, the source is a regular filesystem path
-				// For volumes, the source is typically /var/lib/docker/volumes/...
-				isVolume := mount.Type == "volume"
-				isBindMount := mount.Type == "bind"
-
-				// Verify the path exists and is accessible
-				if stat, err := os.Stat(hostPath); err == nil {
-					// Check if it's a Docker volume path
-					if isVolume && strings.HasPrefix(mount.Source, "/var/lib/docker/volumes/") {
-						logger.Debugf("found path in Docker volume %s (path: %s) - may require elevated permissions", mount.Name, hostPath)
-						// Still return it - it exists and might be accessible
-					} else if isBindMount {
-						logger.Debugf("translated container path %s to host path %s via bind mount in container %s", containerPath, hostPath, containerName)
-					}
-
-					// Only return if it's a regular file or directory
-					if stat.IsDir() || stat.Mode().IsRegular() {
-						return hostPath
-					}
-				} else {
-					// If the exact path doesn't exist, try checking parent directory + filename
-					// This handles cases where we're translating a full file path
-					parentDir := filepath.Dir(hostPath)
-					if parentStat, err := os.Stat(parentDir); err == nil && parentStat.IsDir() {
-						// Parent directory exists, return the path even if file doesn't exist yet
-						logger.Debugf("translated container path %s to host path %s (parent dir verified) via container %s", containerPath, hostPath, containerName)
-						return hostPath
-					}
-				}
-			}
+		if hostPath, ok := translateMountPath(mount, containerPath, containerName); ok {
+			return hostPath
 		}
 	}
 
 	return containerPath
+}
+
+func translateMountPath(mount container.MountPoint, containerPath, containerName string) (string, bool) {
+	relPath, found := strings.CutPrefix(containerPath, mount.Destination)
+	if !found || mount.Source == "" {
+		return "", false
+	}
+
+	relPath = strings.TrimPrefix(relPath, "/")
+	hostPath := filepath.Join(mount.Source, relPath)
+
+	if stat, err := os.Stat(hostPath); err == nil {
+		if mount.Type == "volume" && strings.HasPrefix(mount.Source, "/var/lib/docker/volumes/") {
+			logger.Debugf("found path in Docker volume %s (path: %s) - may require elevated permissions", mount.Name, hostPath)
+		} else if mount.Type == "bind" {
+			logger.Debugf("translated container path %s to host path %s via bind mount in container %s", containerPath, hostPath, containerName)
+		}
+		if stat.IsDir() || stat.Mode().IsRegular() {
+			return hostPath, true
+		}
+		return "", false
+	}
+
+	// Check parent directory for file paths that don't exist yet
+	parentDir := filepath.Dir(hostPath)
+	if parentStat, err := os.Stat(parentDir); err == nil && parentStat.IsDir() {
+		logger.Debugf("translated container path %s to host path %s (parent dir verified) via container %s", containerPath, hostPath, containerName)
+		return hostPath, true
+	}
+	return "", false
 }
 
 func parseConfigFiles(configFilesStr string) []string {
@@ -1294,19 +1285,8 @@ func fetchIndexerEntriesPage(basePath string, limit, offset int) ([]indexerSearc
 
 // searchIndexerForYAML searches the indexer for YAML files in the specified base path
 func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
-	// Normalize the base path
-	normPath := basePath
-	if normPath == "" || normPath == "/" {
-		normPath = "/"
-	} else {
-		normPath = strings.TrimRight(normPath, "/")
-		if !strings.HasPrefix(normPath, "/") {
-			normPath = "/" + normPath
-		}
-	}
+	normPath := normalizeIndexerPath(basePath)
 
-	// Fetch entries in pages to ensure we scan the entire directory recursively.
-	// Then keep only YAML candidates for compose validation.
 	var yamlFiles []indexerSearchResult
 	seenPaths := make(map[string]struct{})
 	offset := 0
@@ -1323,18 +1303,12 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 		}
 
 		for _, result := range results {
-			if result.IsDir {
-				continue
+			if isYAMLFile(result) {
+				if _, exists := seenPaths[result.Path]; !exists {
+					seenPaths[result.Path] = struct{}{}
+					yamlFiles = append(yamlFiles, result)
+				}
 			}
-			lowerName := strings.ToLower(result.Name)
-			if !strings.HasSuffix(lowerName, ".yml") && !strings.HasSuffix(lowerName, ".yaml") {
-				continue
-			}
-			if _, exists := seenPaths[result.Path]; exists {
-				continue
-			}
-			seenPaths[result.Path] = struct{}{}
-			yamlFiles = append(yamlFiles, result)
 		}
 
 		offset += len(results)
@@ -1348,6 +1322,25 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	}
 
 	return yamlFiles, nil
+}
+
+func normalizeIndexerPath(path string) string {
+	if path == "" || path == "/" {
+		return "/"
+	}
+	path = strings.TrimRight(path, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return path
+}
+
+func isYAMLFile(r indexerSearchResult) bool {
+	if r.IsDir {
+		return false
+	}
+	lower := strings.ToLower(r.Name)
+	return strings.HasSuffix(lower, ".yml") || strings.HasSuffix(lower, ".yaml")
 }
 
 // isValidComposeFile checks if a file is a valid docker-compose file
@@ -1610,8 +1603,15 @@ func DeleteComposeStack(username, projectName string) error {
 		}
 	}
 
-	// Delete all config files
-	for _, configFile := range project.ConfigFiles {
+	deleteComposeFiles(projectName, project.ConfigFiles)
+	tryRemoveEmptyDir(project.WorkingDir, projectName)
+
+	logger.InfoKV("compose stack deleted successfully", "project", projectName)
+	return nil
+}
+
+func deleteComposeFiles(projectName string, files []string) {
+	for _, configFile := range files {
 		logger.InfoKV("deleting compose file",
 			"project", projectName,
 			"file", configFile)
@@ -1620,28 +1620,29 @@ func DeleteComposeStack(username, projectName string) error {
 			if os.IsNotExist(err) {
 				logger.WarnKV("compose file already deleted", "file", configFile)
 			} else {
-				return fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
-			}
-		}
-	}
-
-	// Try to delete working directory if it's empty
-	if project.WorkingDir != "" {
-		entries, err := os.ReadDir(project.WorkingDir)
-		if err == nil && len(entries) == 0 {
-			logger.InfoKV("removing empty working directory",
-				"project", projectName,
-				"dir", project.WorkingDir)
-
-			if err := os.Remove(project.WorkingDir); err != nil {
-				logger.WarnKV("failed to remove working directory",
-					"dir", project.WorkingDir,
+				logger.WarnKV("failed to delete compose file",
+					"file", configFile,
 					"error", err.Error())
-				// Don't fail - directory removal is optional
 			}
 		}
 	}
+}
 
-	logger.InfoKV("compose stack deleted successfully", "project", projectName)
-	return nil
+func tryRemoveEmptyDir(dir, projectName string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) > 0 {
+		return
+	}
+	logger.InfoKV("removing empty working directory",
+		"project", projectName,
+		"dir", dir)
+
+	if err := os.Remove(dir); err != nil {
+		logger.WarnKV("failed to remove working directory",
+			"dir", dir,
+			"error", err.Error())
+	}
 }

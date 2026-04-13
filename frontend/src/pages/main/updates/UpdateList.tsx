@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import UpdateCard from "@/components/cards/UpdateCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { Update } from "@/types/update";
@@ -76,7 +76,7 @@ const UpdateList: React.FC<Props> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
   if (isLoading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   if (!updates.length && !isUpdating) {
     return (

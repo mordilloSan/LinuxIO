@@ -6,6 +6,9 @@
 # =============================================================================
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+trap 'echo -e "\e[0m"; exit 1' INT
+
 # ---------- Configuration ----------
 readonly REPO_OWNER="mordilloSan"
 readonly REPO_NAME="LinuxIO"
@@ -16,22 +19,45 @@ readonly CONFIG_DIR="/etc/linuxio"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
 
-# ---------- Logging Functions ----------
-log_info()  { printf "▸ %s\n" "$*"; }
-log_ok()    { printf "✓ %s\n" "$*"; }
-log_error() { printf "✗ %s\n" "$*" >&2; }
-log_warn()  { printf " %s\n" "$*"; }
+# ---------- Colors & Styling ----------
+readonly COLOUR_RESET='\e[0m'
+readonly GREEN='\e[38;5;154m'
+readonly BOLD='\e[1m'
+readonly GREY='\e[90m'
+readonly RED='\e[91m'
+readonly YELLOW='\e[33m'
 
-# Track if services were stopped (to ensure they're restarted on exit)
+readonly LINE=" ${GREEN}───────────────────────────────────────────────────────${COLOUR_RESET}"
+readonly BULLET=" ${GREEN}-${COLOUR_RESET}"
+
+Show() {
+    local status="$1"
+    shift
+    case "$status" in
+        0) echo -e " ${GREY}[${GREEN}  OK  ${GREY}]${COLOUR_RESET} $*" ;;
+        1) echo -e " ${GREY}[${RED}FAILED${GREY}]${COLOUR_RESET} $*"; exit 1 ;;
+        2) echo -e " ${GREY}[${BOLD} INFO ${GREY}]${COLOUR_RESET} $*" ;;
+        3) echo -e " ${GREY}[${YELLOW}NOTICE${GREY}]${COLOUR_RESET} $*" ;;
+    esac
+}
+
+Header() {
+    echo ""
+    echo -e "${LINE}"
+    echo -e " ${BOLD} $*${COLOUR_RESET}"
+    echo -e "${LINE}"
+    echo ""
+}
+
+# Track if services may need a recovery start on exit
 SERVICES_STOPPED=0
 
 cleanup() {
     local exit_code=$?
 
     # Always try to start services if we stopped them
-    # This ensures services come back up even if script fails
     if [[ $SERVICES_STOPPED -eq 1 ]]; then
-        log_info "Ensuring LinuxIO services are started..."
+        Show 2 "Ensuring LinuxIO services are started..."
         if command -v linuxio &>/dev/null; then
             linuxio start 2>/dev/null || systemctl start linuxio.target 2>/dev/null || true
         else
@@ -39,7 +65,6 @@ cleanup() {
         fi
     fi
 
-    # Clean up staging directory
     if [[ -d "$STAGING" ]]; then
         rm -rf "$STAGING" 2>/dev/null || true
     fi
@@ -59,10 +84,10 @@ download_binaries() {
 
     if [[ -n "$version" ]]; then
         base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${version}"
-        log_info "Downloading version ${version}"
+        Show 2 "Downloading version ${BOLD}${version}${COLOUR_RESET}"
     else
         base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download"
-        log_info "Downloading latest release"
+        Show 2 "Downloading ${BOLD}latest${COLOUR_RESET} release"
     fi
 
     local files=(
@@ -74,68 +99,55 @@ download_binaries() {
     )
 
     for file in "${files[@]}"; do
-        log_info "Downloading ${file}..."
+        Show 2 "Downloading ${file}..."
         if ! curl -fsSL "${base_url}/${file}" -o "${STAGING}/${file}"; then
-            log_error "Failed to download ${file}"
-            return 1
+            Show 1 "Failed to download ${file}"
         fi
     done
 
-    log_ok "All binaries downloaded"
+    Show 0 "All binaries downloaded"
     return 0
 }
 
 verify_checksums() {
-    log_info "Verifying checksums..."
+    Show 2 "Verifying checksums..."
 
     local checksum_file="${STAGING}/SHA256SUMS"
     if [[ ! -f "$checksum_file" ]]; then
-        log_error "SHA256SUMS file not found"
-        return 1
+        Show 1 "SHA256SUMS file not found"
     fi
 
     cd "$STAGING" || return 1
 
-    # Parse checksums and verify each binary
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
 
         local expected_hash filename
         read -r expected_hash filename <<< "$line"
 
-        # Skip tarball entries
         [[ "$filename" == *.tar.gz ]] && continue
-
-        # Skip if file doesn't exist (like tarball)
         [[ ! -f "$filename" ]] && continue
 
-        log_info "Verifying ${filename}..."
         local actual_hash
         actual_hash=$(sha256sum "$filename" | awk '{print $1}')
 
         if [[ "$actual_hash" != "$expected_hash" ]]; then
-            log_error "Checksum mismatch for ${filename}"
-            log_error "Expected: ${expected_hash}"
-            log_error "Got:      ${actual_hash}"
-            return 1
+            Show 1 "Checksum mismatch for ${filename}"
         fi
 
-        log_ok "Verified ${filename}"
+        Show 0 "Verified ${filename}"
     done < "$checksum_file"
 
     cd - >/dev/null || return 1
-    log_ok "All checksums verified"
+    Show 0 "All checksums verified"
     return 0
 }
 
 install_binaries() {
-    log_info "Installing binaries to ${BIN_DIR}..."
+    Show 2 "Installing binaries to ${BOLD}${BIN_DIR}${COLOUR_RESET}"
 
-    # Ensure target directory exists
     mkdir -p "$BIN_DIR"
 
-    # Define binaries with their permissions
-    # linuxio-auth runs via systemd socket activation (no setuid needed)
     local -A binaries=(
         ["linuxio"]="0755"
         ["linuxio-webserver"]="0755"
@@ -149,187 +161,147 @@ install_binaries() {
         local mode="${binaries[$binary]}"
 
         if [[ ! -f "$src" ]]; then
-            log_error "Source file not found: ${src}"
-            return 1
+            Show 1 "Source file not found: ${src}"
         fi
 
-        log_info "Installing ${binary} with mode ${mode}..."
-
-        # Use /tmp for temp file instead of /usr/local/bin
         local tmp="/tmp/${binary}.new.$$"
 
-        # Copy file to /tmp
         if ! cp "$src" "$tmp"; then
-            log_error "Failed to copy ${binary} to temp location"
-            return 1
+            Show 1 "Failed to copy ${binary} to temp location"
         fi
 
-        # Set permissions
         if ! chmod "$mode" "$tmp"; then
-            log_error "Failed to chmod ${binary}"
             rm -f "$tmp"
-            return 1
+            Show 1 "Failed to chmod ${binary}"
         fi
 
-        # Set ownership to root
         if ! chown root:root "$tmp"; then
-            log_error "Failed to chown ${binary}"
             rm -f "$tmp"
-            return 1
+            Show 1 "Failed to chown ${binary}"
         fi
 
-        # Atomic move (works even if $dst is running)
         if ! mv "$tmp" "$dst"; then
-            log_error "Failed to install ${binary}"
             rm -f "$tmp"
-            return 1
+            Show 1 "Failed to install ${binary}"
         fi
 
-        # Double-check final permissions
-        chmod "$mode" "$dst" || log_warn "Failed to re-apply permissions to ${dst}"
-
-        log_ok "Installed ${binary} (mode: ${mode})"
+        chmod "$mode" "$dst" || Show 3 "Failed to re-apply permissions to ${dst}"
+        Show 0 "Installed ${binary}"
     done
 
-    # Verify installations
-    log_info "Verifying installations..."
+    Show 2 "Verifying installations..."
     for binary in "${!binaries[@]}"; do
         local dst="${BIN_DIR}/${binary}"
         if [[ ! -x "$dst" ]]; then
-            log_error "${binary} is not executable"
-            return 1
+            Show 1 "${binary} is not executable"
         fi
     done
 
-    log_ok "All binaries installed successfully"
+    Show 0 "All binaries installed"
     return 0
 }
 
 # ---------- Configuration Functions ----------
 
 install_config_files() {
-    log_info "Installing configuration files..."
+    Show 2 "Installing configuration files..."
 
-    # Create config directory
     if [[ ! -d "$CONFIG_DIR" ]]; then
-        log_info "Creating ${CONFIG_DIR}..."
         mkdir -p "$CONFIG_DIR"
         chown root:root "$CONFIG_DIR"
         chmod 0755 "$CONFIG_DIR"
     fi
 
-    # Install disallowed-users file
     local disallowed_file="${CONFIG_DIR}/disallowed-users"
     if [[ ! -f "$disallowed_file" ]]; then
-        log_info "Downloading disallowed-users..."
+        Show 2 "Downloading disallowed-users..."
         if ! curl -fsSL "${RAW_BASE}/etc/linuxio/disallowed-users" -o "$disallowed_file"; then
-            log_error "Failed to download disallowed-users"
-            return 1
+            Show 1 "Failed to download disallowed-users"
         fi
         chown root:root "$disallowed_file"
         chmod 0644 "$disallowed_file"
-        log_ok "Created ${disallowed_file}"
+        Show 0 "Created ${disallowed_file}"
     else
-        log_ok "${disallowed_file} already exists (not overwriting)"
+        Show 0 "${disallowed_file} already exists (not overwriting)"
     fi
-
-    local monitoring_dir="${CONFIG_DIR}/docker/linuxio-monitoring"
-    log_info "Ensuring monitoring stack directory exists..."
-    mkdir -p "$monitoring_dir"
-    chown root:root "$monitoring_dir"
-    chmod 0755 "$monitoring_dir"
-
-    local monitoring_files=(
-        "docker-compose.yml"
-        "prometheus.yml"
-    )
-
-    for file in "${monitoring_files[@]}"; do
-        local dest="${monitoring_dir}/${file}"
-        if [[ -f "$dest" ]]; then
-            log_ok "${dest} already exists (not overwriting contents)"
-        else
-            log_info "Downloading monitoring stack file ${file}..."
-            if ! curl -fsSL "${RAW_BASE}/etc/linuxio/docker/linuxio-monitoring/${file}" -o "$dest"; then
-                log_error "Failed to download monitoring stack file ${file}"
-                return 1
-            fi
-            log_ok "Created ${dest}"
-        fi
-        chown root:root "$dest"
-        chmod 0644 "$dest"
-        log_ok "Enforced root:root 0644 on ${dest}"
-    done
 
     return 0
 }
 
 install_pam_config() {
-    log_info "Installing PAM configuration..."
+    Show 2 "Installing PAM configuration..."
 
     local pam_file="${PAM_DIR}/linuxio"
 
-    log_info "Downloading PAM configuration..."
     if ! curl -fsSL "${RAW_BASE}/etc/pam.d/linuxio" -o "$pam_file"; then
-        log_error "Failed to download PAM configuration"
-        return 1
+        Show 1 "Failed to download PAM configuration"
     fi
 
     chown root:root "$pam_file"
     chmod 0644 "$pam_file"
-    log_ok "Installed PAM configuration"
+    Show 0 "PAM configuration installed"
 
     return 0
 }
 
 # ---------- Systemd Functions ----------
 
-# Global variable to store the selected port
 SELECTED_PORT=8090
 
-stop_existing_services() {
-    # Stop existing linuxio services before starting new version
-    # Called at the END of installation (not the beginning) to ensure:
-    # 1. UI remains connected during download/install and shows full output
-    # 2. Port is freed just before new version starts
-    if systemctl is-active linuxio.target >/dev/null 2>&1 || \
-       systemctl is-active linuxio-webserver.service >/dev/null 2>&1 || \
-       systemctl is-active linuxio-webserver.socket >/dev/null 2>&1; then
-        log_info "Stopping existing LinuxIO services..."
-        SERVICES_STOPPED=1  # Mark that we stopped services (cleanup trap will ensure restart)
-        systemctl stop linuxio.target 2>/dev/null || true
-        log_ok "Existing services stopped"
+linuxio_services_active() {
+    systemctl is-active linuxio.target >/dev/null 2>&1 || \
+        systemctl is-active linuxio-webserver.service >/dev/null 2>&1 || \
+        systemctl is-active linuxio-webserver.socket >/dev/null 2>&1
+}
+
+restart_or_start_services() {
+    SERVICES_STOPPED=1
+
+    if linuxio_services_active; then
+        Show 2 "Restarting LinuxIO services..."
+        if systemctl restart linuxio.target; then
+            Show 0 "LinuxIO services restarted"
+            SERVICES_STOPPED=0
+            return 0
+        fi
+
+        Show 3 "Failed to restart — cleanup will retry"
+        return 1
     fi
+
+    Show 2 "Starting LinuxIO service..."
+    if systemctl start linuxio.target; then
+        Show 0 "LinuxIO service started"
+        SERVICES_STOPPED=0
+        return 0
+    fi
+
+    Show 3 "Failed to start — cleanup will retry"
+    return 1
 }
 
 is_port_in_use() {
     local port="$1"
-    # Check if port is in use by a process OTHER than linuxio
-    # If linuxio is already using the port, that's fine (we're reinstalling/upgrading)
 
-    # First check: if existing linuxio socket is configured for this port, it's ours
     local existing_socket="/lib/systemd/system/linuxio-webserver.socket"
     if [[ -f "$existing_socket" ]]; then
         if grep -qE "ListenStream=.*:${port}\$" "$existing_socket" 2>/dev/null; then
-            return 1  # linuxio socket owns it, consider it available
+            return 1
         fi
     fi
 
     local proc
     proc=$(ss -tlnpH "sport = :${port}" 2>/dev/null)
 
-    # Port not in use at all
     [[ -z "$proc" ]] && return 1
 
-    # Port in use - check if it's owned by linuxio or systemd (socket activation)
     if echo "$proc" | grep -qE 'linuxio|systemd'; then
-        # Could be socket-activated, check if linuxio socket unit is active for this port
         if systemctl is-active --quiet linuxio-webserver.socket 2>/dev/null; then
-            return 1  # linuxio socket owns it
+            return 1
         fi
     fi
 
-    return 0  # Some other process owns it
+    return 0
 }
 
 find_available_port() {
@@ -344,97 +316,80 @@ find_available_port() {
         ((port++))
     done
 
-    # Fallback to default if all ports checked
     echo "8090"
     return 1
 }
 
 install_systemd_files() {
-    log_info "Installing systemd service files..."
+    Show 2 "Installing systemd service files..."
 
     for file in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
         linuxio-auth.socket linuxio-auth@.service \
         linuxio-bridge-socket-user.service \
-        linuxio-issue.service linuxio-monitoring.service; do
-        log_info "Downloading ${file}..."
+        linuxio-issue.service ; do
+        Show 2 "Downloading ${file}..."
         if ! curl -fsSL "${RAW_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
-            log_error "Failed to download ${file}"
-            return 1
+            Show 1 "Failed to download ${file}"
         fi
         chmod 0644 "${SYSTEMD_DIR}/${file}"
-        log_ok "Installed ${file}"
+        Show 0 "Installed ${file}"
     done
 
-    # Check if default port is in use and find alternative
     SELECTED_PORT=$(find_available_port)
     if [[ "$SELECTED_PORT" != "8090" ]]; then
-        log_warn "Port 8090 is in use, using port ${SELECTED_PORT} instead"
+        Show 3 "Port 8090 is in use, using port ${BOLD}${SELECTED_PORT}${COLOUR_RESET} instead"
         sed -i "s/ListenStream=0.0.0.0:8090/ListenStream=0.0.0.0:${SELECTED_PORT}/" "${SYSTEMD_DIR}/linuxio-webserver.socket"
-        log_ok "Updated socket to use port ${SELECTED_PORT}"
     fi
 
-    # Install SSH login banner support
-    log_info "Installing SSH login banner support..."
+    Show 2 "Installing SSH login banner support..."
     mkdir -p /usr/share/linuxio/issue
     if ! curl -fsSL "${RAW_BASE}/scripts/update-issue" -o /usr/share/linuxio/issue/update-issue; then
-        log_warn "Failed to download issue script (non-critical)"
+        Show 3 "Failed to download issue script (non-critical)"
     else
         chmod 0755 /usr/share/linuxio/issue/update-issue
-        # Create symlink for SSH login banner (motd.d)
         if [[ -d /etc/motd.d ]]; then
             ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
-            log_ok "SSH login banner configured"
+            Show 0 "SSH login banner configured"
         else
-            log_info "No /etc/motd.d found, skipping login banner setup"
+            Show 2 "No /etc/motd.d found, skipping login banner setup"
         fi
     fi
 
-    # Install tmpfiles.d configuration for icon cache
-    log_info "Installing tmpfiles.d configuration..."
+    Show 2 "Installing tmpfiles.d configuration..."
     mkdir -p /usr/lib/tmpfiles.d
     if ! curl -fsSL "${RAW_BASE}/systemd/linuxio-tmpfiles.conf" -o /usr/lib/tmpfiles.d/linuxio.conf; then
-        log_warn "Failed to download tmpfiles.d config (non-critical)"
+        Show 3 "Failed to download tmpfiles.d config (non-critical)"
     else
         chmod 0644 /usr/lib/tmpfiles.d/linuxio.conf
-        # Create the directories now (don't wait for reboot)
         systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
-        log_ok "Installed tmpfiles.d configuration"
+        Show 0 "tmpfiles.d configuration installed"
     fi
 
-    # Create global Watchtower data directory
-    log_info "Creating Watchtower data directory..."
+    Show 2 "Creating Watchtower data directory..."
     mkdir -p /var/lib/linuxIO/watchtower
     if getent group docker &>/dev/null; then
         chown root:docker /var/lib/linuxIO/watchtower
         chmod 775 /var/lib/linuxIO/watchtower
-        log_ok "Watchtower directory created (/var/lib/linuxIO/watchtower, group: docker)"
+        Show 0 "Watchtower directory created ${GREY}(group: docker)${COLOUR_RESET}"
     else
         chmod 755 /var/lib/linuxIO/watchtower
-        log_warn "docker group not found — Watchtower directory created with mode 755"
+        Show 3 "docker group not found — Watchtower directory created with mode 755"
     fi
 
-    # Reload systemd
-    log_info "Reloading systemd daemon..."
+    Show 2 "Reloading systemd daemon..."
     systemctl daemon-reload
-    log_ok "Systemd daemon reloaded"
+    Show 0 "Systemd daemon reloaded"
 
     return 0
 }
 
 enable_services() {
-    log_info "Enabling systemd services..."
+    Show 2 "Enabling systemd services..."
 
-    # Enable the target (pulls in all sockets and services)
     if systemctl enable linuxio.target >/dev/null 2>&1; then
-        log_ok "Enabled linuxio.target"
+        Show 0 "Enabled linuxio.target"
     else
-        log_warn "Failed to enable linuxio.target"
-    fi
-
-    if systemctl enable linuxio-monitoring.service >/dev/null 2>&1; then
-        log_ok "Enabled linuxio-monitoring.service"
-    else
-        log_warn "Failed to enable linuxio-monitoring.service"
+        Show 3 "Failed to enable linuxio.target"
     fi
 
     return 0
@@ -443,74 +398,59 @@ enable_services() {
 # ---------- Verification Functions ----------
 
 verify_installation() {
-    log_info "Running post-installation checks..."
-
-    # Check that binaries can execute
     if "${BIN_DIR}/linuxio" help >/dev/null 2>&1; then
-        log_ok "linuxio CLI: working"
+        Show 0 "linuxio CLI: working"
     else
-        log_warn "linuxio CLI did not run successfully"
+        Show 3 "linuxio CLI did not run successfully"
     fi
 
     if "${BIN_DIR}/linuxio-webserver" >/dev/null 2>&1; then
         local version
         version=$("${BIN_DIR}/linuxio-webserver" 2>&1 | head -n1 || echo "unknown")
-        log_ok "${version}"
+        Show 0 "${version}"
     else
-        log_warn "linuxio-webserver did not run successfully (may be arch mismatch)"
+        Show 3 "linuxio-webserver did not run successfully (may be arch mismatch)"
     fi
 
-    # Check bridge is executable (it's session-based, only runs when user logs in)
     if [[ -x "${BIN_DIR}/linuxio-bridge" ]]; then
-        log_ok "linuxio-bridge: executable"
+        Show 0 "linuxio-bridge: executable"
     else
-        log_warn "linuxio-bridge: not executable"
+        Show 3 "linuxio-bridge: not executable"
     fi
 
-    # Check auth helper is executable
     if [[ -x "${BIN_DIR}/linuxio-auth" ]]; then
-        log_ok "linuxio-auth: executable"
+        Show 0 "linuxio-auth: executable"
     else
-        log_warn "linuxio-auth: not executable"
+        Show 3 "linuxio-auth: not executable"
     fi
 
-    # Check systemd target
     if systemctl is-enabled linuxio.target >/dev/null 2>&1; then
-        log_ok "linuxio.target is enabled"
+        Show 0 "linuxio.target is enabled"
     else
-        log_warn "linuxio.target is not enabled"
+        Show 3 "linuxio.target is not enabled"
     fi
 
-    if systemctl is-enabled linuxio-monitoring.service >/dev/null 2>&1; then
-        log_ok "linuxio-monitoring.service is enabled"
-    else
-        log_warn "linuxio-monitoring.service is not enabled"
-    fi
-
-    # Check PAM config
     if [[ -f "${PAM_DIR}/linuxio" ]]; then
-        log_ok "PAM configuration installed"
+        Show 0 "PAM configuration installed"
     else
-        log_warn "PAM configuration not found"
+        Show 3 "PAM configuration not found"
     fi
 
-    # Check config directory
     if [[ -d "$CONFIG_DIR" ]]; then
-        log_ok "Configuration directory exists at ${CONFIG_DIR}"
+        Show 0 "Configuration directory exists"
     else
-        log_warn "Configuration directory not found at ${CONFIG_DIR}"
+        Show 3 "Configuration directory not found"
     fi
 
     return 0
 }
 
 verify_dry_run_targets() {
-    log_info "Dry run: validating writable install targets..."
+    Show 2 "Dry run: validating writable install targets..."
 
     local targets=(
         "${BIN_DIR}"
         "${CONFIG_DIR}"
-        "${CONFIG_DIR}/docker/linuxio-monitoring"
         "${PAM_DIR}"
         "${SYSTEMD_DIR}"
         "/usr/lib/tmpfiles.d"
@@ -520,21 +460,20 @@ verify_dry_run_targets() {
 
     for target in "${targets[@]}"; do
         if [[ ! -d "$target" ]]; then
-            log_warn "${target} does not exist, skipping"
+            Show 3 "${target} does not exist, skipping"
             continue
         fi
 
         local probe="${target}/.linuxio-dry-run-$$"
         if : > "$probe"; then
             rm -f "$probe"
-            log_ok "Writable: ${target}"
+            Show 0 "Writable: ${target}"
         else
-            log_error "Not writable: ${target}"
-            return 1
+            Show 1 "Not writable: ${target}"
         fi
     done
 
-    log_ok "Dry run completed successfully"
+    Show 0 "Dry run completed successfully"
     return 0
 }
 
@@ -544,8 +483,8 @@ main() {
     local version="${1:-}"
     local skip_binaries=0
     local dry_run=0
+    local defer_restart=0
 
-    # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run)
@@ -554,6 +493,10 @@ main() {
                 ;;
             --skip-binaries)
                 skip_binaries=1
+                shift
+                ;;
+            --defer-restart)
+                defer_restart=1
                 shift
                 ;;
             -h|--help)
@@ -570,119 +513,93 @@ main() {
         esac
     done
 
-    # Check we're running as root
     if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root"
-        exit 1
+        Show 1 "This script must be run as root"
     fi
 
     if [[ $dry_run -eq 1 ]]; then
         if ! verify_dry_run_targets; then
-            log_error "Dry run failed"
-            exit 1
+            Show 1 "Dry run failed"
         fi
         exit 0
     fi
 
-    log_info "Starting LinuxIO full installation"
+    Header "LinuxIO ${GREY}· Binary Installer${COLOUR_RESET}"
+
     if [[ -n "$version" ]]; then
-        log_info "Target version: ${version}"
+        Show 2 "Target version: ${BOLD}${version}${COLOUR_RESET}"
     else
-        log_info "Target version: latest"
+        Show 2 "Target version: ${BOLD}latest${COLOUR_RESET}"
     fi
-    echo ""
 
-    # NOTE: We intentionally do NOT stop services here during updates.
-    # All installation steps (download, verify, install binaries/config/systemd)
-    # can safely run while the old version is still serving requests.
-    # Services are only stopped/restarted at the very end, ensuring the UI
-    # remains connected and can show the full installation output.
-
-    # Step 1: Download binaries (unless skipped)
+    # Step 1-3: Binaries
     if [[ $skip_binaries -eq 0 ]]; then
-        log_info "=== Step 1/5: Downloading binaries ==="
+        Header "Step 1/5 — Download Binaries"
         if ! download_binaries "$version"; then
-            log_error "Download failed"
-            exit 1
+            Show 1 "Download failed"
         fi
-        echo ""
 
-        # Step 2: Verify checksums
-        log_info "=== Step 2/5: Verifying checksums ==="
+        Header "Step 2/5 — Verify Checksums"
         if ! verify_checksums; then
-            log_error "Checksum verification failed"
-            exit 1
+            Show 1 "Checksum verification failed"
         fi
-        echo ""
 
-        # Step 3: Install binaries
-        log_info "=== Step 3/5: Installing binaries ==="
+        Header "Step 3/5 — Install Binaries"
         if ! install_binaries; then
-            log_error "Binary installation failed"
-            exit 1
+            Show 1 "Binary installation failed"
         fi
     else
-        log_info "=== Steps 1-3: Skipping binary installation ==="
+        Header "Steps 1-3 — Skipping binary installation"
     fi
-    echo ""
 
-    # Step 4: Install configuration files
-    log_info "=== Step 4/5: Installing configuration ==="
+    # Step 4: Configuration
+    Header "Step 4/5 — Configuration"
     if ! install_config_files; then
-        log_error "Config installation failed"
-        exit 1
+        Show 1 "Config installation failed"
     fi
-
     if ! install_pam_config; then
-        log_error "PAM configuration failed"
-        exit 1
+        Show 1 "PAM configuration failed"
     fi
-    echo ""
 
-    # Step 5: Install systemd files
-    log_info "=== Step 5/5: Installing systemd services ==="
+    # Step 5: Systemd
+    Header "Step 5/5 — Systemd Services"
     if ! install_systemd_files; then
-        log_error "Systemd installation failed"
-        exit 1
+        Show 1 "Systemd installation failed"
     fi
-
     if ! enable_services; then
-        log_warn "Some services may not be enabled"
+        Show 3 "Some services may not be enabled"
     fi
-    echo ""
 
-    # Verify everything
-    log_info "=== Verification ==="
+    # Verification
+    Header "Verification"
     verify_installation
-    echo ""
-
-    # Brief pause to let journalctl stream all output to the UI
-    # Without this, the verification results may not be visible before disconnect
     sleep 2
 
-    # Stop existing services if running (this is the only point where we stop)
-    # This ensures all installation output was visible before disconnection
-    stop_existing_services
-
-    # Start the service
-    log_info "Starting LinuxIO service..."
-    if systemctl start linuxio.target; then
-        log_ok "LinuxIO service started"
-        SERVICES_STOPPED=0  # Clear flag - services are running, cleanup doesn't need to restart
+    if [[ $defer_restart -eq 1 ]]; then
+        Show 2 "Deferring service restart to the caller"
     else
-        log_warn "Failed to start LinuxIO service - cleanup will retry"
-        # Leave SERVICES_STOPPED=1 so cleanup trap will try again
+        restart_or_start_services || true
     fi
 
-    log_ok "Installation complete!"
+    # Detect LAN IP for the completion banner
+    local lan_ip=""
+    lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+
     echo ""
-    echo "Access the dashboard at: https://localhost:${SELECTED_PORT}"
+    echo -e "${LINE}"
+    echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
+    echo -e "${LINE}"
     echo ""
-    echo "Useful commands:"
-    echo "  • Check status:   linuxio status"
-    echo "  • View logs:      linuxio logs"
-    echo "  • Monitoring:     linuxio monitoring status"
-    echo "  • All commands:   linuxio"
+    echo -e " ${BOLD}Dashboard:${COLOUR_RESET}"
+    echo -e "${BULLET} https://localhost:${SELECTED_PORT}"
+    if [[ -n "$lan_ip" ]]; then
+        echo -e "${BULLET} https://${lan_ip}:${SELECTED_PORT}"
+    fi
+    echo ""
+    echo -e " ${BOLD}Useful commands:${COLOUR_RESET}"
+    echo -e "${BULLET} Check status:  ${GREY}linuxio status${COLOUR_RESET}"
+    echo -e "${BULLET} View logs:     ${GREY}linuxio logs${COLOUR_RESET}"
+    echo -e "${BULLET} All commands:  ${GREY}linuxio${COLOUR_RESET}"
     echo ""
 
     exit 0
@@ -699,18 +616,16 @@ Arguments:
 
 Options:
   --dry-run         Validate writable install targets and exit
+  --defer-restart   Do not restart services; caller will do it after the script exits
   --skip-binaries   Skip downloading and installing binaries (config only)
   -h, --help        Show this help message
 
 What gets installed:
-  • Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
-  • Systemd:      /etc/systemd/system/linuxio*.service, linuxio*.socket, linuxio.target
-  • Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
-  • PAM:          /etc/pam.d/linuxio
-  • Config:       /etc/linuxio/disallowed-users
-  • Monitoring:   /etc/linuxio/docker/linuxio-monitoring/
-
-Note: LinuxIO uses systemd DynamicUser, no static accounts are created.
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
+  - Systemd:      /etc/systemd/system/linuxio*.service, linuxio*.socket, linuxio.target
+  - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
+  - PAM:          /etc/pam.d/linuxio
+  - Config:       /etc/linuxio/disallowed-users
 
 Examples:
   $(basename "$0")                 # Install latest release

@@ -64,4 +64,5 @@ type ipManager struct {
 type NATConfig struct {
 	EgressNic string `json:"egress_nic"`
 	Subnet    string `json:"subnet"`
+	Backend   string `json:"backend,omitempty"`
 }

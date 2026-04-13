@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -137,7 +137,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       },
     });
   };
-  if (isLoading) return <ComponentLoader />;
+  if (isLoading) return <PageLoader />;
   if (isError)
     return (
       <AppTypography color="error">Failed to load peer details</AppTypography>

@@ -97,7 +97,7 @@ a {
   opacity: 1;
 }
 
-/* App-owned reset replacing the old MUI CssBaseline side effects. */
+/* App-owned side effects. */
 
 .xterm-helper-textarea,
 .xterm-textarea {

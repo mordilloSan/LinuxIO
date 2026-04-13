@@ -435,10 +435,10 @@ build-backend: $(GO_BUILD_PREREQ)
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
-		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
-		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
+		-X '$(MODULE_PATH)/common/version.BridgeSHA256=$(BRIDGE_SHA256)'" \
 	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-webserver" && \
@@ -456,9 +456,9 @@ build-bridge: $(GO_BUILD_PREREQ)
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
-		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-bridge" && \
@@ -499,9 +499,9 @@ build-cli: $(GO_BUILD_PREREQ)
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
-		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio ./ && \
 	echo "✅ CLI built successfully!" && \
 	echo "   Path: $(PWD)/linuxio" && \

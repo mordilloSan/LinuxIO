@@ -189,7 +189,7 @@ jobs:
           ./linuxio-webserver help || { echo "linuxio-webserver verification failed"; exit 1; }
           echo "✓ linuxio-webserver runs correctly"
 
-          # Verify linuxio-bridge and linuxio-auth are valid ELF executables
+          # Verify linuxio-bridge, linuxio-auth, are valid ELF executables
           # (they require special input/privileges to actually run)
           for bin in linuxio-bridge linuxio-auth; do
             chmod +x "$bin"
@@ -265,3 +265,9 @@ jobs:
           exit 1
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Refresh Go Report Card
+        if: success()
+        run: |
+          curl -fsS -X POST -d "repo=github.com/${{ github.repository }}/backend" \
+            https://goreportcard.com/checks || echo "Go Report Card refresh failed (non-fatal)"

@@ -46,23 +46,9 @@ func ComputeArchiveSize(fileList []string) (int64, error) {
 		}
 
 		if stat.IsDir() {
-			var dirSize int64
-			err := root.WalkDir(resolvedPath, func(_ string, entry fs.DirEntry, walkErr error) error {
-				if walkErr != nil {
-					return nil // Keep old behavior: skip walk errors while estimating size
-				}
-				if entry.IsDir() {
-					return nil
-				}
-				entryInfo, err := entry.Info()
-				if err != nil {
-					return nil
-				}
-				dirSize += entryInfo.Size()
-				return nil
-			})
-			if err != nil {
-				return 0, err
+			dirSize, walkErr := estimateDirSize(root, resolvedPath)
+			if walkErr != nil {
+				return 0, walkErr
 			}
 			estimatedSize += dirSize
 		} else {
@@ -71,6 +57,22 @@ func ComputeArchiveSize(fileList []string) (int64, error) {
 	}
 
 	return estimatedSize, nil
+}
+
+func estimateDirSize(root *fsroot.FSRoot, path string) (int64, error) {
+	var total int64
+	err := root.WalkDir(path, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		total += entryInfo.Size()
+		return nil
+	})
+	return total, err
 }
 
 func resolveLinkTargetPath(linkPath, target string) string {
@@ -120,64 +122,68 @@ func ComputeExtractSize(archivePath string) (int64, error) {
 
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		archiveFile, err := root.Root.Open(relPath(archivePath))
-		if err != nil {
-			return 0, err
-		}
-		defer archiveFile.Close()
-
-		stat, err := archiveFile.Stat()
-		if err != nil {
-			return 0, err
-		}
-
-		reader, err := zip.NewReader(archiveFile, stat.Size())
-		if err != nil {
-			return 0, err
-		}
-
-		var total int64
-		for _, file := range reader.File {
-			if file.FileInfo().IsDir() {
-				continue
-			}
-			total += int64(file.UncompressedSize64)
-		}
-		return total, nil
-
+		return computeZipExtractSize(root, archivePath)
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
-		file, err := root.Root.Open(relPath(archivePath))
-		if err != nil {
-			return 0, err
-		}
-		defer file.Close()
-
-		gzipReader, err := gzip.NewReader(file)
-		if err != nil {
-			return 0, err
-		}
-		defer gzipReader.Close()
-
-		tarReader := tar.NewReader(gzipReader)
-		var total int64
-		for {
-			header, err := tarReader.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return 0, err
-			}
-			if header.FileInfo().IsDir() {
-				continue
-			}
-			total += header.Size
-		}
-		return total, nil
-
+		return computeTarGzExtractSize(root, archivePath)
 	default:
 		return 0, ipc.ErrUnsupportedFormat
 	}
+}
+
+func computeZipExtractSize(root *fsroot.FSRoot, archivePath string) (int64, error) {
+	archiveFile, err := root.Root.Open(relPath(archivePath))
+	if err != nil {
+		return 0, err
+	}
+	defer archiveFile.Close()
+
+	stat, err := archiveFile.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	reader, err := zip.NewReader(archiveFile, stat.Size())
+	if err != nil {
+		return 0, err
+	}
+
+	var total int64
+	for _, file := range reader.File {
+		if !file.FileInfo().IsDir() {
+			total += int64(file.UncompressedSize64)
+		}
+	}
+	return total, nil
+}
+
+func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, error) {
+	file, err := root.Root.Open(relPath(archivePath))
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return 0, err
+	}
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+	var total int64
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, err
+		}
+		if !header.FileInfo().IsDir() {
+			total += header.Size
+		}
+	}
+	return total, nil
 }
 
 // CreateZip creates a zip archive from the provided file list.

@@ -4,129 +4,119 @@
 # Removes all LinuxIO files, services, and configurations
 #  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
-
 set -euo pipefail
 
-# Colors
-RED='\033[1;31m'
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[1;34m'
-NC='\033[0m' # No Color
+trap 'echo -e "\e[0m"; exit 1' INT
 
-echo -e "${BLUE}════════════════════════════════════════════${NC}"
-echo -e "${BLUE}  LinuxIO Complete Uninstall${NC}"
-echo -e "${BLUE}════════════════════════════════════════════${NC}"
-echo ""
+# ---------- Colors & Styling ----------
+readonly COLOUR_RESET='\e[0m'
+readonly GREEN='\e[38;5;154m'
+readonly BOLD='\e[1m'
+readonly GREY='\e[90m'
+readonly RED='\e[91m'
+readonly YELLOW='\e[33m'
+
+readonly LINE=" ${GREEN}───────────────────────────────────────────────────────${COLOUR_RESET}"
+
+Show() {
+    local status="$1"
+    shift
+    case "$status" in
+        0) echo -e " ${GREY}[${GREEN}  OK  ${GREY}]${COLOUR_RESET} $*" ;;
+        1) echo -e " ${GREY}[${RED}FAILED${GREY}]${COLOUR_RESET} $*"; exit 1 ;;
+        2) echo -e " ${GREY}[${BOLD} INFO ${GREY}]${COLOUR_RESET} $*" ;;
+        3) echo -e " ${GREY}[${YELLOW}NOTICE${GREY}]${COLOUR_RESET} $*" ;;
+    esac
+}
+
+Header() {
+    echo ""
+    echo -e "${LINE}"
+    echo -e " ${BOLD} $*${COLOUR_RESET}"
+    echo -e "${LINE}"
+    echo ""
+}
+
+# ---------- Main ----------
+
+Header "LinuxIO ${GREY}· Uninstaller${COLOUR_RESET}"
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}✗ This script must be run as root${NC}"
-    echo "  Please run: sudo $0"
-    exit 1
+    Show 1 "This script must be run as root"
 fi
 
 # ========== STOP AND DISABLE SERVICES ==========
-echo -e "${YELLOW} Stopping and disabling LinuxIO services...${NC}"
+Header "Stopping Services"
+Show 2 "Stopping and disabling LinuxIO services..."
 systemctl stop linuxio.target 2>/dev/null || true
-# Stop all linuxio units
 systemctl stop 'linuxio*' 2>/dev/null || true
-# Disable all linuxio units
 systemctl disable 'linuxio*' 2>/dev/null || true
-echo -e "${GREEN}✓ Services stopped and disabled${NC}"
+Show 0 "Services stopped and disabled"
 
 # ========== REMOVE SYSTEMD FILES ==========
-echo -e "${YELLOW}  Removing systemd files...${NC}"
-rm -f /etc/systemd/system/linuxio*
-rm -f /lib/systemd/system/linuxio*
-# Remove any symlinks in target.wants directories
+Header "Removing Files"
+Show 2 "Removing systemd files..."
+rm -rf /etc/systemd/system/linuxio*
+rm -rf /lib/systemd/system/linuxio*
 rm -f /etc/systemd/system/*.wants/linuxio*
-echo -e "${GREEN}✓ Systemd files removed${NC}"
+Show 0 "Systemd files removed"
 
 # ========== RELOAD SYSTEMD ==========
-echo -e "${YELLOW} Reloading systemd...${NC}"
+Show 2 "Reloading systemd..."
 systemctl daemon-reload
 systemctl reset-failed 2>/dev/null || true
-echo -e "${GREEN}✓ Systemd reloaded${NC}"
+Show 0 "Systemd reloaded"
 
 # ========== REMOVE BINARIES ==========
-echo -e "${YELLOW}  Removing binaries...${NC}"
+Show 2 "Removing binaries..."
 rm -f /usr/local/bin/linuxio*
-echo -e "${GREEN}✓ Binaries removed${NC}"
+Show 0 "Binaries removed"
 
 # ========== REMOVE CONFIGURATION FILES ==========
-echo -e "${YELLOW}  Removing configuration files...${NC}"
+Show 2 "Removing configuration files..."
 rm -rf /etc/linuxio
 rm -f /etc/pam.d/linuxio
-echo -e "${GREEN}✓ Configuration files removed${NC}"
+Show 0 "Configuration files removed"
 
 # ========== REMOVE RUNTIME FILES ==========
-echo -e "${YELLOW}  Removing runtime and data files...${NC}"
+Show 2 "Removing runtime and data files..."
 rm -rf /run/linuxio
 rm -rf /usr/share/linuxio
 rm -rf /var/lib/linuxIO
-
-# Remove motd symlink if it exists
 rm -f /etc/motd.d/linuxio 2>/dev/null || true
-
-echo -e "${GREEN}✓ Runtime files removed${NC}"
-
-# ========== REMOVE OLD STATIC GROUP/USER (IF EXISTS) ==========
-echo -e "${YELLOW}  Removing old static accounts (if they exist)...${NC}"
-
-# Remove static linuxio user if it exists
-if getent passwd linuxio >/dev/null 2>&1; then
-    userdel linuxio 2>/dev/null || true
-    echo -e "${GREEN}✓ Removed static 'linuxio' user${NC}"
-fi
-
-# Remove static linuxio group if it exists
-if getent group linuxio >/dev/null 2>&1; then
-    groupdel linuxio 2>/dev/null || true
-    echo -e "${GREEN}✓ Removed static 'linuxio' group${NC}"
-fi
-
-# Remove user from linuxio group if they were added (for current non-root user)
-if [[ -n "${SUDO_USER:-}" ]]; then
-    if id -nG "$SUDO_USER" 2>/dev/null | tr ' ' '\n' | grep -qx linuxio; then
-        gpasswd -d "$SUDO_USER" linuxio 2>/dev/null || true
-        echo -e "${GREEN}✓ Removed $SUDO_USER from 'linuxio' group${NC}"
-    fi
-fi
+Show 0 "Runtime files removed"
 
 # ========== REMOVE DEV FILES ==========
-echo -e "${YELLOW}  Removing development files...${NC}"
+Show 2 "Removing development files..."
 rm -rf /tmp/linuxio
 rm -f /etc/sudoers.d/linuxio-dev
-echo -e "${GREEN}✓ Development files removed${NC}"
+Show 0 "Development files removed"
 
 # ========== CLEAN BUILD ARTIFACTS ==========
-echo -e "${YELLOW}  Cleaning build artifacts from repo...${NC}"
-# This script is in packaging/scripts/, so go up two levels to repo root
+Show 2 "Cleaning build artifacts from repo..."
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
     cd "$REPO_ROOT"
     rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth 2>/dev/null || true
-    echo -e "${GREEN}✓ Build artifacts cleaned${NC}"
+    Show 0 "Build artifacts cleaned"
 else
-    echo -e "${YELLOW}  Cannot find repo directory, skipping build artifact cleanup${NC}"
+    Show 3 "Cannot find repo directory, skipping build artifact cleanup"
 fi
 
 # ========== SUMMARY ==========
 echo ""
-echo -e "${GREEN}════════════════════════════════════════════${NC}"
-echo -e "${GREEN} LinuxIO completely uninstalled!${NC}"
-echo -e "${GREEN}════════════════════════════════════════════${NC}"
+echo -e "${LINE}"
+echo -e " ${GREEN}${BOLD}LinuxIO completely uninstalled!${COLOUR_RESET}"
+echo -e "${LINE}"
 echo ""
-echo "Removed:"
-echo "  • All systemd services and sockets"
-echo "  • All binaries from /usr/local/bin"
-echo "  • Configuration files from /etc/linuxio"
-echo "  • PAM configuration"
-echo "  • Runtime files from /run and /var/lib"
-echo "  • Development files from /tmp/linuxio"
-echo "  • Static user/group accounts (if any)"
+echo -e " ${BOLD}Removed:${COLOUR_RESET}"
+echo -e " ${GREEN}-${COLOUR_RESET} All systemd services and sockets"
+echo -e " ${GREEN}-${COLOUR_RESET} All binaries from /usr/local/bin"
+echo -e " ${GREEN}-${COLOUR_RESET} Configuration files from /etc/linuxio"
+echo -e " ${GREEN}-${COLOUR_RESET} PAM configuration"
+echo -e " ${GREEN}-${COLOUR_RESET} Runtime files from /run and /var/lib"
+echo -e " ${GREEN}-${COLOUR_RESET} Development files from /tmp/linuxio"
 echo ""
-echo "To reinstall LinuxIO, run: make localinstall"
-echo "  or directly: sudo ./packaging/scripts/localinstall.sh"
+echo -e " ${BOLD}To reinstall:${COLOUR_RESET} ${GREY}make localinstall${COLOUR_RESET}"
 echo ""

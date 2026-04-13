@@ -62,48 +62,45 @@ func FetchDriveInfo() ([]DriveInfo, error) {
 		if dev.Type != "disk" {
 			continue
 		}
-
-		drive := DriveInfo{
-			Name:   dev.Name,
-			Model:  strings.TrimSpace(dev.Model),
-			Serial: strings.TrimSpace(dev.Serial),
-			Size:   dev.Size,
-			Type:   dev.Tran, // transport (sata, nvme, usb, etc)
-			Vendor: strings.TrimSpace(dev.Vendor),
-			RO:     dev.RO,
-		}
-
-		// SMART info (best-effort)
-		if smart, err := FetchSmartInfo(dev.Name); err != nil {
-			drive.SmartError = err.Error()
-		} else {
-			drive.Smart = smart
-
-			// Try to extract vendor from SMART data if lsblk didn't provide it
-			if drive.Vendor == "" {
-				if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
-					// Extract first word from model name as vendor
-					parts := strings.Fields(modelName)
-					if len(parts) > 0 {
-						drive.Vendor = parts[0]
-					}
-				}
-			}
-		}
-
-		// NVMe power info if it's an NVMe device
-		if isNVMeDevice(dev) {
-			if power, err := GetNVMePowerState(dev.Name); err != nil {
-				drive.PowerError = err.Error()
-			} else {
-				drive.Power = power
-			}
-		}
-
-		drives = append(drives, drive)
+		drives = append(drives, buildDriveInfo(dev))
 	}
 
 	return drives, nil
+}
+
+func buildDriveInfo(dev BlockDevice) DriveInfo {
+	drive := DriveInfo{
+		Name:   dev.Name,
+		Model:  strings.TrimSpace(dev.Model),
+		Serial: strings.TrimSpace(dev.Serial),
+		Size:   dev.Size,
+		Type:   dev.Tran,
+		Vendor: strings.TrimSpace(dev.Vendor),
+		RO:     dev.RO,
+	}
+
+	if smart, err := FetchSmartInfo(dev.Name); err != nil {
+		drive.SmartError = err.Error()
+	} else {
+		drive.Smart = smart
+		if drive.Vendor == "" {
+			if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
+				if parts := strings.Fields(modelName); len(parts) > 0 {
+					drive.Vendor = parts[0]
+				}
+			}
+		}
+	}
+
+	if isNVMeDevice(dev) {
+		if power, err := GetNVMePowerState(dev.Name); err != nil {
+			drive.PowerError = err.Error()
+		} else {
+			drive.Power = power
+		}
+	}
+
+	return drive
 }
 
 func isNVMeDevice(dev BlockDevice) bool {
@@ -175,40 +172,41 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 		return nil, fmt.Errorf("no power states found for %s", device)
 	}
 
-	// Step 2: Get current power state
-	cmd = exec.Command("nvme", "smart-log", "/dev/"+device)
-	out, err = cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run nvme smart-log for %s: %w", device, err)
-	}
-
-	match := nvmeStateRe.FindStringSubmatch(string(out))
-
-	currentState := -1
-	var estimated float64
-
-	if len(match) == 2 {
-		if s, err := strconv.Atoi(match[1]); err == nil {
-			currentState = s
-			for _, ps := range states {
-				if ps.State == currentState {
-					estimated = ps.MaxPowerW
-					break
-				}
-			}
-		}
-	}
-
-	// Fallback: if we couldn't determine current state, use the first state's power as a rough estimate
-	if currentState == -1 && len(states) > 0 && estimated == 0 {
-		estimated = states[0].MaxPowerW
-	}
+	currentState, estimated := resolveCurrentNVMePowerState(device, states)
 
 	return &InferredPowerData{
 		CurrentState: currentState,
 		EstimatedW:   estimated,
 		States:       states,
 	}, nil
+}
+
+func resolveCurrentNVMePowerState(device string, states []PowerStateInfo) (int, float64) {
+	cmd := exec.Command("nvme", "smart-log", "/dev/"+device)
+	out, err := cmd.Output()
+	if err != nil {
+		if len(states) > 0 {
+			return -1, states[0].MaxPowerW
+		}
+		return -1, 0
+	}
+
+	match := nvmeStateRe.FindStringSubmatch(string(out))
+	if len(match) == 2 {
+		if s, err := strconv.Atoi(match[1]); err == nil {
+			for _, ps := range states {
+				if ps.State == s {
+					return s, ps.MaxPowerW
+				}
+			}
+			return s, 0
+		}
+	}
+
+	if len(states) > 0 {
+		return -1, states[0].MaxPowerW
+	}
+	return -1, 0
 }
 
 // RunSmartTest starts a SMART self-test on the specified device.

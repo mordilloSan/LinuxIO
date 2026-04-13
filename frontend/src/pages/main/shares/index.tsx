@@ -14,7 +14,7 @@ import {
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -1092,7 +1092,7 @@ const SharesPage: React.FC = () => {
   });
 
   if (loadingNFS || loadingSamba) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
 
   const shareGroups = buildShareGroups(

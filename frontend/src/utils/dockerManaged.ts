@@ -1,7 +1,4 @@
-const linuxioManagedComposeProjects = new Set([
-  "linuxio-watchtower",
-  "linuxio-monitoring",
-]);
+const linuxioManagedComposeProjects = new Set(["linuxio-watchtower"]);
 
 export const isLinuxIOManagedComposeProject = (
   projectName?: string | null,

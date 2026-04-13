@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,11 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -26,10 +22,6 @@ const (
 	linuxioWebserverServiceName    = "linuxio-webserver.service"
 	linuxioAuthSocketName          = "linuxio-auth.socket"
 	linuxioBridgeSocketUserService = "linuxio-bridge-socket-user.service"
-	monitoringUnitName             = "linuxio-monitoring.service"
-	monitoringProjectName          = "linuxio-monitoring"
-	monitoringComposePath          = "/etc/linuxio/docker/linuxio-monitoring/docker-compose.yml"
-	monitoringGeneratedComposePath = "/run/linuxio-monitoring/docker-compose.generated.yml"
 )
 
 var versionExecCommand = exec.Command
@@ -54,8 +46,6 @@ func main() {
 		runSystemctl("stop", linuxioTargetName)
 	case "restart":
 		runRestart(args)
-	case "monitoring":
-		runMonitoring(args)
 	case "verbose":
 		runVerbose(args)
 	case "version":
@@ -76,11 +66,10 @@ Usage: linuxio <command> [options]
 
 Commands:
   status      Show status of all LinuxIO services
-  logs        Tail logs [webserver|bridge|auth|monitoring] [lines] (default: all, 100)
+  logs        Tail logs [webserver|bridge|auth] [lines] (default: all, 100)
   start       Start LinuxIO services
   stop        Stop LinuxIO services
   restart     Restart LinuxIO control plane [--full]
-  monitoring  Manage monitoring stack [start|stop|restart|enable|disable|status]
   verbose     Manage verbose logging [enable|disable|status]
   version     Show version information [--self]
   help        Show this help message
@@ -89,13 +78,12 @@ Examples:
   linuxio status
   linuxio restart
   linuxio restart --full
-  linuxio monitoring status
-  linuxio logs monitoring 200
+  linuxio logs bridge 200
   linuxio version --self`)
 }
 
 func cliVersionLine() string {
-	return fmt.Sprintf("LinuxIO CLI %s", config.Version)
+	return fmt.Sprintf("LinuxIO CLI %s", version.Version)
 }
 
 func showVersion(args []string) {
@@ -134,6 +122,7 @@ func showVersion(args []string) {
 	} else {
 		fmt.Println("linuxio-auth: not found or error")
 	}
+
 }
 
 func runStatus() {
@@ -215,8 +204,6 @@ func parseLogsArgs(args []string) (string, int) {
 			mode = "bridge"
 		case "auth":
 			mode = "auth"
-		case "monitoring":
-			mode = "monitoring"
 		}
 	}
 	return mode, lines
@@ -231,7 +218,6 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-auth.socket",
 		"_SYSTEMD_UNIT=linuxio-auth@.service",
 		"_SYSTEMD_UNIT=linuxio-issue.service",
-		"_SYSTEMD_UNIT=" + monitoringUnitName,
 	}
 	includeAuthTag := true
 
@@ -250,9 +236,6 @@ func journalTermsForMode(mode string) []string {
 			"_SYSTEMD_UNIT=linuxio-auth.socket",
 			"_SYSTEMD_UNIT=linuxio-auth@.service",
 		}
-	case "monitoring":
-		journalTerms = []string{"_SYSTEMD_UNIT=" + monitoringUnitName}
-		includeAuthTag = false
 	}
 
 	if includeAuthTag {
@@ -437,192 +420,6 @@ func restartTargets(args []string) ([]string, string, error) {
 	}
 
 	return nil, "", fmt.Errorf("unknown restart option: %s", strings.Join(args, " "))
-}
-
-func runMonitoring(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: linuxio monitoring [start|stop|restart|enable|disable|status]")
-		os.Exit(1)
-	}
-
-	switch args[0] {
-	case "start", "stop", "restart", "enable", "disable":
-		runSystemctl(args[0], monitoringUnitName)
-	case "status":
-		showMonitoringStatus()
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown monitoring action: %s\n", args[0])
-		fmt.Fprintln(os.Stderr, "Usage: linuxio monitoring [start|stop|restart|enable|disable|status]")
-		os.Exit(1)
-	}
-}
-
-func showMonitoringStatus() {
-	fmt.Printf("\033[1mLinuxIO Monitoring Stack\033[0m\n")
-	fmt.Printf("  Unit:        %s\n", monitoringUnitName)
-	fmt.Printf("  Active:      %s\n", systemctlState("is-active", monitoringUnitName))
-	fmt.Printf("  Enabled:     %s\n", systemctlState("is-enabled", monitoringUnitName))
-
-	switch _, err := os.Stat(monitoringComposePath); {
-	case err == nil:
-		fmt.Printf("  Compose:     %s\n", monitoringComposePath)
-	case os.IsNotExist(err):
-		fmt.Printf("  Compose:     missing (%s)\n", monitoringComposePath)
-	default:
-		fmt.Printf("  Compose:     error: %v\n", err)
-	}
-	switch _, err := os.Stat(monitoringGeneratedComposePath); {
-	case err == nil:
-		fmt.Printf("  Override:    %s\n", monitoringGeneratedComposePath)
-	case os.IsPermission(err):
-		fmt.Printf("  Override:    %s (restricted)\n", monitoringGeneratedComposePath)
-	}
-
-	showMonitoringContainers()
-}
-
-type composeContainer struct {
-	Name   string `json:"Name"`
-	State  string `json:"State"`
-	Health string `json:"Health"`
-}
-
-func showMonitoringContainers() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
-		return
-	}
-	defer cli.Close()
-
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
-		All: true,
-		Filters: filters.NewArgs(
-			filters.Arg("label", "com.docker.compose.project="+monitoringProjectName),
-		),
-	})
-	if err != nil {
-		fmt.Printf("\n  Containers:  unable to query (%v)\n", err)
-		return
-	}
-
-	if len(containers) == 0 {
-		fmt.Printf("\n  Containers:  none running\n")
-		return
-	}
-
-	composeContainers := make([]composeContainer, 0, len(containers))
-	for _, ctr := range containers {
-		composeContainers = append(composeContainers, composeContainer{
-			Name:   monitoringContainerName(ctr.Names),
-			State:  monitoringContainerState(ctr.State, ctr.Status),
-			Health: monitoringContainerHealth(ctr.Status),
-		})
-	}
-
-	if len(composeContainers) == 0 {
-		fmt.Printf("\n  Containers:  none running\n")
-		return
-	}
-
-	sort.Slice(composeContainers, func(i, j int) bool {
-		return composeContainers[i].Name < composeContainers[j].Name
-	})
-
-	fmt.Printf("\n    \033[4m%-28s  %-12s  %s\033[0m\n", "CONTAINER", "STATE", "HEALTH")
-	for _, c := range composeContainers {
-		var dot string
-		switch {
-		case c.State == "running" && (c.Health == "healthy" || c.Health == ""):
-			dot = "\033[32m●\033[0m"
-		case c.State == "running":
-			dot = "\033[33m●\033[0m"
-		default:
-			dot = "\033[31m●\033[0m"
-		}
-		health := c.Health
-		if health == "" {
-			health = "-"
-		}
-		fmt.Printf("  %s %-28s  %-12s  %s\n", dot, c.Name, c.State, health)
-	}
-}
-
-func monitoringContainerName(names []string) string {
-	for _, name := range names {
-		name = strings.TrimPrefix(strings.TrimSpace(name), "/")
-		if name != "" {
-			return name
-		}
-	}
-	return "-"
-}
-
-func monitoringContainerState(state, status string) string {
-	state = strings.TrimSpace(strings.ToLower(state))
-	if state != "" {
-		return state
-	}
-
-	status = strings.TrimSpace(strings.ToLower(status))
-	switch {
-	case strings.HasPrefix(status, "up "):
-		return "running"
-	case strings.HasPrefix(status, "exited"):
-		return "exited"
-	case strings.HasPrefix(status, "created"):
-		return "created"
-	case strings.HasPrefix(status, "restarting"):
-		return "restarting"
-	case strings.HasPrefix(status, "removing"):
-		return "removing"
-	case strings.HasPrefix(status, "paused"):
-		return "paused"
-	case strings.HasPrefix(status, "dead"):
-		return "dead"
-	default:
-		return "-"
-	}
-}
-
-func monitoringContainerHealth(status string) string {
-	status = strings.TrimSpace(strings.ToLower(status))
-	start := strings.LastIndex(status, "(")
-	end := strings.LastIndex(status, ")")
-	if start == -1 || end <= start {
-		return "-"
-	}
-
-	health := strings.TrimSpace(status[start+1 : end])
-	health = strings.TrimPrefix(health, "health: ")
-	switch health {
-	case "healthy", "unhealthy", "starting":
-		return health
-	default:
-		return "-"
-	}
-}
-
-func systemctlState(subcommand, name string) string {
-	switch subcommand {
-	case "is-active":
-		state, err := systemd.GetActiveState(name)
-		if err != nil {
-			return "unknown"
-		}
-		return state
-	case "is-enabled":
-		state, err := systemd.GetUnitFileState(name)
-		if err != nil {
-			return "unknown"
-		}
-		return state
-	default:
-		return "unknown"
-	}
 }
 
 const verboseDropinPath = "/etc/systemd/system/linuxio-webserver.service.d/verbose.conf"

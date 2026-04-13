@@ -559,7 +559,22 @@ func handleDownload(stream net.Conn, args []string, chunkSize int) error {
 	}
 	defer file.Close()
 
-	// Stream file chunks
+	if err := streamFileChunks(stream, file, totalSize, chunkSize); err != nil {
+		return err
+	}
+
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
+		"path":     path,
+		"size":     totalSize,
+		"fileName": filepath.Base(realPath),
+	}))
+
+	logger.Infof(" Download complete: path=%s size=%d", path, totalSize)
+	return nil
+}
+
+func streamFileChunks(stream net.Conn, file io.Reader, totalSize int64, chunkSize int) error {
 	buf := make([]byte, chunkSize)
 	var bytesRead int64
 	var lastProgress int64
@@ -567,7 +582,6 @@ func handleDownload(stream net.Conn, args []string, chunkSize int) error {
 	for {
 		n, readErr := file.Read(buf)
 		if n > 0 {
-			// Send data chunk
 			if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 				Opcode:   ipc.OpStreamData,
 				StreamID: 0,
@@ -578,7 +592,6 @@ func handleDownload(stream net.Conn, args []string, chunkSize int) error {
 
 			bytesRead += int64(n)
 
-			// Send progress update periodically
 			if bytesRead-lastProgress >= progressIntervalDownload || bytesRead == totalSize {
 				pct := 0
 				if totalSize > 0 {
@@ -601,15 +614,6 @@ func handleDownload(stream net.Conn, args []string, chunkSize int) error {
 			return fmt.Errorf("read file: %w", readErr)
 		}
 	}
-
-	// Send success result and close stream.
-	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
-		"path":     path,
-		"size":     totalSize,
-		"fileName": filepath.Base(realPath),
-	}))
-
-	logger.Infof(" Download complete: path=%s size=%d", path, totalSize)
 	return nil
 }
 

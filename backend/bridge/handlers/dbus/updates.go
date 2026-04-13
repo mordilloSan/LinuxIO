@@ -792,27 +792,30 @@ func installPackage(packageID string) error {
 		}
 
 		// 3. Wait for Finished/ErrorCode signal
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-
-		for {
-			select {
-			case sig := <-sigCh:
-				if sig == nil {
-					return fmt.Errorf("nil signal from D-Bus")
-				}
-				switch sig.Name {
-				case transactionIfc + ".ErrorCode":
-					code, _ := sig.Body[0].(uint32)
-					msg, _ := sig.Body[1].(string)
-					return fmt.Errorf("PackageKit error code %d: %s", code, msg)
-				case transactionIfc + ".Finished":
-					// Success!
-					return nil
-				}
-			case <-ctx.Done():
-				return fmt.Errorf("timeout waiting for PackageKit to finish install")
-			}
-		}
+		return awaitPackageKitSignal(sigCh, transactionIfc)
 	})
+}
+
+func awaitPackageKitSignal(sigCh chan *godbus.Signal, transactionIfc string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	for {
+		select {
+		case sig := <-sigCh:
+			if sig == nil {
+				return fmt.Errorf("nil signal from D-Bus")
+			}
+			switch sig.Name {
+			case transactionIfc + ".ErrorCode":
+				code, _ := sig.Body[0].(uint32)
+				msg, _ := sig.Body[1].(string)
+				return fmt.Errorf("PackageKit error code %d: %s", code, msg)
+			case transactionIfc + ".Finished":
+				return nil
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for PackageKit to finish install")
+		}
+	}
 }

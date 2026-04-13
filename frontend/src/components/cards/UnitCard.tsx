@@ -33,7 +33,7 @@ const cardStyle: React.CSSProperties = {
 const selectedCardStyle: React.CSSProperties = {
   ...baseCardStyle,
   width: "100%",
-  borderBottomColor: "var(--svc-status-color)",
+  borderBottomColor: "transparent",
 };
 
 interface UnitCardProps<T extends UnitListItem> {

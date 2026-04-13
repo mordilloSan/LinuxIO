@@ -9,7 +9,7 @@ import {
   type AutoUpdateScope,
   type AutoUpdateState,
 } from "@/api";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppButton from "@/components/ui/AppButton";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
@@ -175,7 +175,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
     applyOffline,
   } = state;
   if (loading || !serverState || !currentOptions) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   return (
     <div

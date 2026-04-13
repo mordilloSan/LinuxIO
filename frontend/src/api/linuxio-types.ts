@@ -248,47 +248,6 @@ export interface NetworkInterface {
   ipv4_method?: "auto" | "manual" | "disabled" | "unknown";
 }
 
-export type MonitoringRange =
-  | "1m"
-  | "5m"
-  | "15m"
-  | "60m"
-  | "6h"
-  | "24h"
-  | "7d"
-  | "30d";
-
-export interface MonitoringSeriesPoint {
-  ts: number;
-  value: number;
-}
-
-export interface MonitoringSeriesResponse {
-  available: boolean;
-  range: MonitoringRange | string;
-  stepSeconds: number;
-  points: MonitoringSeriesPoint[];
-  reason?: string;
-}
-
-export interface NetworkMonitoringSeriesResponse {
-  available: boolean;
-  range: MonitoringRange | string;
-  stepSeconds: number;
-  rxPoints: MonitoringSeriesPoint[];
-  txPoints: MonitoringSeriesPoint[];
-  reason?: string;
-}
-
-export interface DiskIOMonitoringSeriesResponse {
-  available: boolean;
-  range: MonitoringRange | string;
-  stepSeconds: number;
-  readPoints: MonitoringSeriesPoint[];
-  writePoints: MonitoringSeriesPoint[];
-  reason?: string;
-}
-
 // ============================================================================
 // Docker Types
 // ============================================================================
@@ -801,29 +760,6 @@ export interface LinuxIOSchema {
     get_health_summary: { args: []; result: SystemHealthSummary };
     get_server_time: { args: []; result: string };
     get_timezones: { args: []; result: string[] };
-  };
-
-  monitoring: {
-    get_cpu_series: {
-      args: [range: MonitoringRange];
-      result: MonitoringSeriesResponse;
-    };
-    get_memory_series: {
-      args: [range: MonitoringRange];
-      result: MonitoringSeriesResponse;
-    };
-    get_gpu_series: {
-      args: [range: MonitoringRange];
-      result: MonitoringSeriesResponse;
-    };
-    get_network_series: {
-      args: [range: MonitoringRange, iface: string];
-      result: NetworkMonitoringSeriesResponse;
-    };
-    get_disk_io_series: {
-      args: [range: MonitoringRange, device: string];
-      result: DiskIOMonitoringSeriesResponse;
-    };
   };
 
   docker: {

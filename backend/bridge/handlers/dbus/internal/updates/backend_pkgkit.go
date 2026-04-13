@@ -20,12 +20,20 @@ func (*pkgkitBackend) Detect() bool {
 		return false
 	}
 	defer conn.Close()
-	// Check if PackageKit service exists
 	var names []string
 	if err := conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names); err != nil {
 		return false
 	}
-	return slices.Contains(names, "org.freedesktop.PackageKit")
+	var activatable []string
+	if err := conn.BusObject().Call("org.freedesktop.DBus.ListActivatableNames", 0).Store(&activatable); err != nil {
+		return containsDBusName(names, "org.freedesktop.PackageKit")
+	}
+	return containsDBusName(names, "org.freedesktop.PackageKit") ||
+		containsDBusName(activatable, "org.freedesktop.PackageKit")
+}
+
+func containsDBusName(names []string, target string) bool {
+	return slices.Contains(names, target)
 }
 
 // Read returns a minimal state since PackageKit doesn't manage auto-update configuration

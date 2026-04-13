@@ -97,36 +97,28 @@ const HardwareCard: React.FC<{
     }}
     hoverLift
   >
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 6,
-        marginBottom: 6,
-      }}
-    >
-      <CardIconHeader
-        icon={
-          <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
-        }
-        title={title}
-        subtitle={subtitle}
-        gap={3}
-      />
-      {actions && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexShrink: 0,
-          }}
-        >
-          {actions}
-        </div>
-      )}
-    </div>
+    <CardIconHeader
+      icon={
+        <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+      }
+      title={title}
+      subtitle={subtitle}
+      right={
+        actions ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
+            {actions}
+          </div>
+        ) : undefined
+      }
+      style={{ marginBottom: 6 }}
+    />
 
     <div style={{ display: "flex", flexWrap: "wrap", gap: 16, flex: 1 }}>
       <div

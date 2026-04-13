@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jaypipes/ghw/pkg/gpu"
+	"github.com/jaypipes/ghw/pkg/pci"
 )
 
 type nvidiaGPUStats struct {
@@ -37,51 +38,54 @@ func FetchGPUInfo() ([]map[string]any, error) {
 	nvidiaStats := readNvidiaSMIStats()
 	gpus := make([]map[string]any, 0, len(info.GraphicsCards))
 	for _, card := range info.GraphicsCards {
-		entry := map[string]any{
-			"address": normalizePCIAddress(card.Address),
-		}
-
-		if card.DeviceInfo != nil {
-			setIfNonEmpty(entry, "revision", card.DeviceInfo.Revision)
-			setIfNonEmpty(entry, "driver", card.DeviceInfo.Driver)
-
-			if card.DeviceInfo.Vendor != nil {
-				setIfNonEmpty(entry, "vendor", card.DeviceInfo.Vendor.Name)
-				setIfNonEmpty(entry, "vendor_id", card.DeviceInfo.Vendor.ID)
-			}
-			if card.DeviceInfo.Product != nil {
-				setIfNonEmpty(entry, "model", card.DeviceInfo.Product.Name)
-				setIfNonEmpty(entry, "device_id", card.DeviceInfo.Product.ID)
-			}
-			if card.DeviceInfo.Subsystem != nil {
-				setIfNonEmpty(entry, "subsystem", card.DeviceInfo.Subsystem.Name)
-				setIfNonEmpty(entry, "subsystem_id", card.DeviceInfo.Subsystem.ID)
-			}
-			if card.DeviceInfo.Class != nil {
-				setIfNonEmpty(entry, "class_name", card.DeviceInfo.Class.Name)
-			}
-			if card.DeviceInfo.Subclass != nil {
-				setIfNonEmpty(entry, "subclass_name", card.DeviceInfo.Subclass.Name)
-			}
-			if card.DeviceInfo.ProgrammingInterface != nil {
-				setIfNonEmpty(entry, "programming_interface", card.DeviceInfo.ProgrammingInterface.Name)
-			}
-		}
-
-		if card.Node != nil {
-			entry["numa_node"] = card.Node.ID
-		}
-
+		entry := buildGPUEntry(card)
 		enrichGPUFromSysfs(card.Address, entry)
-
 		if stats, ok := nvidiaStats[normalizePCIAddress(card.Address)]; ok {
 			mergeNvidiaStats(entry, stats)
 		}
-
 		gpus = append(gpus, entry)
 	}
 
 	return gpus, nil
+}
+
+func buildGPUEntry(card *gpu.GraphicsCard) map[string]any {
+	entry := map[string]any{
+		"address": normalizePCIAddress(card.Address),
+	}
+	if card.DeviceInfo != nil {
+		populateDeviceInfo(entry, card.DeviceInfo)
+	}
+	if card.Node != nil {
+		entry["numa_node"] = card.Node.ID
+	}
+	return entry
+}
+
+func populateDeviceInfo(entry map[string]any, di *pci.Device) {
+	setIfNonEmpty(entry, "revision", di.Revision)
+	setIfNonEmpty(entry, "driver", di.Driver)
+	if di.Vendor != nil {
+		setIfNonEmpty(entry, "vendor", di.Vendor.Name)
+		setIfNonEmpty(entry, "vendor_id", di.Vendor.ID)
+	}
+	if di.Product != nil {
+		setIfNonEmpty(entry, "model", di.Product.Name)
+		setIfNonEmpty(entry, "device_id", di.Product.ID)
+	}
+	if di.Subsystem != nil {
+		setIfNonEmpty(entry, "subsystem", di.Subsystem.Name)
+		setIfNonEmpty(entry, "subsystem_id", di.Subsystem.ID)
+	}
+	if di.Class != nil {
+		setIfNonEmpty(entry, "class_name", di.Class.Name)
+	}
+	if di.Subclass != nil {
+		setIfNonEmpty(entry, "subclass_name", di.Subclass.Name)
+	}
+	if di.ProgrammingInterface != nil {
+		setIfNonEmpty(entry, "programming_interface", di.ProgrammingInterface.Name)
+	}
 }
 
 func mergeNvidiaStats(entry map[string]any, stats nvidiaGPUStats) {

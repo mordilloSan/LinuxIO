@@ -260,21 +260,7 @@ func replaceSmbSection(content, oldName, newName string, properties map[string]s
 			if strings.EqualFold(matches[1], oldName) {
 				found = true
 				skipping = true
-				// Write the replacement section header + properties
-				result = append(result, fmt.Sprintf("[%s]", newName))
-				if path, ok := properties["path"]; ok {
-					result = append(result, fmt.Sprintf("   path = %s", path))
-				}
-				var keys []string
-				for k := range properties {
-					if k != "path" {
-						keys = append(keys, k)
-					}
-				}
-				sort.Strings(keys)
-				for _, k := range keys {
-					result = append(result, fmt.Sprintf("   %s = %s", k, properties[k]))
-				}
+				result = append(result, formatSmbSection(newName, properties)...)
 				continue
 			}
 		}
@@ -287,6 +273,24 @@ func replaceSmbSection(content, oldName, newName string, properties map[string]s
 	}
 
 	return strings.Join(result, "\n"), found
+}
+
+func formatSmbSection(name string, properties map[string]string) []string {
+	lines := []string{fmt.Sprintf("[%s]", name)}
+	if path, ok := properties["path"]; ok {
+		lines = append(lines, fmt.Sprintf("   path = %s", path))
+	}
+	var keys []string
+	for k := range properties {
+		if k != "path" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		lines = append(lines, fmt.Sprintf("   %s = %s", k, properties[k]))
+	}
+	return lines
 }
 
 // removeSmbSection removes a named section and all its content from smb.conf

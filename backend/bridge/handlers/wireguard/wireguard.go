@@ -181,14 +181,15 @@ func bringUpInterfaceWithNAT(name, egressNic, subnet string) error {
 		return err
 	}
 
-	if err := SetupNAT(name, egressNic, subnet); err != nil {
+	backendName, err := SetupNAT(name, egressNic, subnet)
+	if err != nil {
 		if _, downErr := DownInterface([]string{name}); downErr != nil {
 			logger.Warnf("AddInterface: failed to bring down %s after NAT failure: %v", name, downErr)
 		}
 		return fmt.Errorf("setup NAT: %w", err)
 	}
 
-	if err := SaveNATConfig(name, egressNic, subnet); err != nil {
+	if err := SaveNATConfig(name, egressNic, subnet, backendName); err != nil {
 		logger.Warnf("AddInterface: failed to save NAT config for %s: %v", name, err)
 	}
 
@@ -567,7 +568,7 @@ func RemoveInterface(args []string) (any, error) {
 	if natCfg, err := LoadNATConfig(name); err != nil {
 		logger.Warnf("RemoveInterface: failed to load NAT config for %s: %v", name, err)
 	} else if natCfg != nil {
-		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet); err != nil {
+		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
 			logger.Warnf("RemoveInterface: failed to cleanup NAT for %s: %v", name, err)
 		}
 		if err := RemoveNATConfig(name); err != nil {
@@ -759,7 +760,11 @@ func UpInterface(args []string) (any, error) {
 		logger.Errorf("UpInterface: invalid interface name %q: %v", name, err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	cmd := exec.Command("/usr/bin/wg-quick", "up", name)
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return nil, fmt.Errorf("wg-quick not found: %w", err)
+	}
+	cmd := exec.Command(wgQuickPath, "up", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -794,7 +799,11 @@ func DownInterface(args []string) (any, error) {
 		logger.Errorf("DownInterface: invalid interface name %q: %v", name, err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	cmd := exec.Command("/usr/bin/wg-quick", "down", name)
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return nil, fmt.Errorf("wg-quick not found: %w", err)
+	}
+	cmd := exec.Command(wgQuickPath, "down", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
 	cmd.SysProcAttr = &syscall.SysProcAttr{

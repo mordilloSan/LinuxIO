@@ -1,18 +1,12 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
-import type { MonitoringRange } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
 import type { SensorGroup } from "@/components/cards/SensorGroupCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
-import {
-  isPrimarySensorReading,
-  isTemperatureReading,
-} from "@/components/cards/SensorGroupCard";
-import SensorSummaryCard, {
-  SensorEmptyCard,
-} from "@/components/cards/SensorSummaryCard";
+import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
+import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -30,7 +24,6 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
-  GPUHistoryCard,
   MemoryHistoryCard,
   NetworkHistoryCard,
   MotherboardInfoCard,
@@ -72,7 +65,8 @@ const SectionHeader: React.FC<{
   title: string;
   expanded: boolean;
   onClick: () => void;
-}> = ({ title, expanded, onClick }) => (
+  extras?: React.ReactNode;
+}> = ({ title, expanded, onClick, extras }) => (
   <div
     className="dd-section-header"
     onClick={onClick}
@@ -85,9 +79,12 @@ const SectionHeader: React.FC<{
       userSelect: "none",
     }}
   >
-    <AppTypography variant="subtitle1" fontWeight={700}>
-      {title}
-    </AppTypography>
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <AppTypography variant="subtitle1" fontWeight={700}>
+        {title}
+      </AppTypography>
+      {extras}
+    </div>
     <AppIconButton
       size="small"
       className="section-toggle"
@@ -135,12 +132,6 @@ const HardwarePage: React.FC = () => {
     [sensorGroups],
   );
 
-  // ── shared history range + hover ──
-  const [historyRange, setHistoryRange] = useState<MonitoringRange>("1m");
-  const [historyHoverRatio, setHistoryHoverRatio] = useState<number | null>(
-    null,
-  );
-
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
   const sections = { ...defaultHwSections, ...(hwSections ?? {}) };
@@ -164,24 +155,11 @@ const HardwarePage: React.FC = () => {
 
   // ── sensor summary ──
   const sensorSummary = useMemo(() => {
-    if (visibleSensorGroups.length === 0)
-      return { adapters: 0, readings: 0, maxTemp: null as number | null };
     const readings = visibleSensorGroups.reduce(
       (sum, group) => sum + group.readings.length,
       0,
     );
-    let maxTemp: number | null = null;
-    for (const g of visibleSensorGroups) {
-      for (const r of g.readings) {
-        if (
-          isTemperatureReading(r) &&
-          (maxTemp === null || r.value > maxTemp)
-        ) {
-          maxTemp = r.value;
-        }
-      }
-    }
-    return { adapters: visibleSensorGroups.length, readings, maxTemp };
+    return { adapters: visibleSensorGroups.length, readings };
   }, [visibleSensorGroups]);
 
   return (
@@ -207,6 +185,80 @@ const HardwarePage: React.FC = () => {
             </AppGrid>
           ))}
         </AppGrid>
+      </AppCollapse>
+
+      {/* ── Hardware Cards ──────────────────────────────────────────────── */}
+      <SectionHeader
+        title="Hardware"
+        expanded={sections.hardware}
+        onClick={() => toggleSection("hardware")}
+      />
+      <AppCollapse in={sections.hardware}>
+        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+            <ErrorBoundary>
+              <CPUHistoryCard />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+            <ErrorBoundary>
+              <MemoryHistoryCard />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+            <ErrorBoundary>
+              <DiskIOHistoryCard />
+            </ErrorBoundary>
+          </AppGrid>
+          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+            <ErrorBoundary>
+              <NetworkHistoryCard />
+            </ErrorBoundary>
+          </AppGrid>
+        </AppGrid>
+      </AppCollapse>
+
+      {/* ── Sensor Readings ────────────────────────────────────────────── */}
+      <SectionHeader
+        title="Sensors"
+        expanded={sections.sensors}
+        onClick={() => toggleSection("sensors")}
+        extras={
+          visibleSensorGroups.length > 0 ? (
+            <>
+              <Chip
+                size="small"
+                label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
+                color="primary"
+                variant="soft"
+              />
+              <Chip
+                size="small"
+                label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
+                color="default"
+                variant="soft"
+              />
+            </>
+          ) : null
+        }
+      />
+      <AppCollapse in={sections.sensors}>
+        {visibleSensorGroups.length === 0 ? (
+          <SensorEmptyCard />
+        ) : (
+          <>
+            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
+              {visibleSensorGroups.map((group, idx) => (
+                <AppGrid
+                  key={`${group.adapter}-${idx}`}
+                  size={{ xs: 12, sm: 6, lg: 4 }}
+                >
+                  <SensorGroupCard group={group} />
+                </AppGrid>
+              ))}
+            </AppGrid>
+          </>
+        )}
       </AppCollapse>
 
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
@@ -243,102 +295,6 @@ const HardwarePage: React.FC = () => {
             emptyMessage="No memory module data available. Ensure dmidecode is installed."
           />
         </HardwareTableCard>
-      </AppCollapse>
-
-      {/* ── Hardware Cards ──────────────────────────────────────────────── */}
-      <SectionHeader
-        title="Hardware"
-        expanded={sections.hardware}
-        onClick={() => toggleSection("hardware")}
-      />
-      <AppCollapse in={sections.hardware}>
-        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
-            <ErrorBoundary>
-              <CPUHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
-            <ErrorBoundary>
-              <MemoryHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 2 }}>
-            <ErrorBoundary>
-              <GPUHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-            <ErrorBoundary>
-              <DiskIOHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-            <ErrorBoundary>
-              <NetworkHistoryCard
-                range={historyRange}
-                onRangeChange={setHistoryRange}
-                hoverRatio={historyHoverRatio}
-                onHoverChange={setHistoryHoverRatio}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-        </AppGrid>
-      </AppCollapse>
-
-      {/* ── Sensor Readings ────────────────────────────────────────────── */}
-      <SectionHeader
-        title="Sensors"
-        expanded={sections.sensors}
-        onClick={() => toggleSection("sensors")}
-      />
-      <AppCollapse in={sections.sensors}>
-        {visibleSensorGroups.length === 0 ? (
-          <SensorEmptyCard />
-        ) : (
-          <>
-            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
-              <AppGrid size={{ xs: 12 }}>
-                <SensorSummaryCard
-                  adapters={sensorSummary.adapters}
-                  readings={sensorSummary.readings}
-                  maxTemp={sensorSummary.maxTemp}
-                />
-              </AppGrid>
-            </AppGrid>
-
-            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
-              {visibleSensorGroups.map((group, idx) => (
-                <AppGrid
-                  key={`${group.adapter}-${idx}`}
-                  size={{ xs: 12, sm: 6, lg: 4 }}
-                >
-                  <SensorGroupCard group={group} />
-                </AppGrid>
-              ))}
-            </AppGrid>
-          </>
-        )}
       </AppCollapse>
 
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}

@@ -54,7 +54,7 @@ sleep 0.3
 echo "▸ Installing binaries to /usr/local/bin..."
 
 # Copy each binary onto itself (simulates update)
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth ; do
     echo "▸ Installing $binary with mode 0755..."
     if [[ -f "/usr/local/bin/$binary" ]]; then
         # Create temp copy and move it back (atomic operation)
@@ -89,7 +89,7 @@ sleep 0.3
 echo "▸ Installing systemd service files..."
 for service in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
                linuxio-auth.socket linuxio-auth@.service linuxio-bridge-socket-user.service \
-               linuxio-issue.service; do
+               linuxio-issue.service ; do
     if [[ -f "/etc/systemd/system/$service" ]]; then
         echo "✓ $service already installed"
     fi

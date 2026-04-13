@@ -1,15 +1,14 @@
+import { Icon } from "@iconify/react";
 import React, { useMemo, useState } from "react";
 
-import type { GpuDevice, MonitoringRange } from "@/api";
+import type { GpuDevice } from "@/api";
 import { linuxio } from "@/api";
+import CardIconHeader from "@/components/cards/CardIconHeader";
+import FrostedCard from "@/components/cards/FrostedCard";
 import HardwareCard from "@/components/cards/HardwareCard";
-import MonitorCard from "@/components/cards/MonitorCard";
-import {
-  DiskIOMonitorGraph,
-  MonitorGraph,
-  NetworkMonitorGraph,
-} from "@/components/charts/MonitorGraph";
 import AppSelect from "@/components/ui/AppSelect";
+import AppTypography from "@/components/ui/AppTypography";
+import { cardHeight } from "@/constants";
 import { useAppTheme } from "@/theme";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
@@ -253,230 +252,65 @@ export const GPUInfoCard: React.FC = () => {
   );
 };
 
-// ─── History cards ────────────────────────────────────────────────────────────
+// ─── History card placeholders ───────────────────────────────────────────────
 
-export const CPUHistoryCard: React.FC<{
-  range?: MonitoringRange;
-  onRangeChange?: (v: MonitoringRange) => void;
-  hoverRatio?: number | null;
-  onHoverChange?: (ratio: number | null) => void;
-}> = ({
-  range: rangeProp,
-  onRangeChange: onRangeChangeProp,
-  hoverRatio,
-  onHoverChange,
-}) => {
+const HistoryPlaceholder: React.FC<{
+  title: string;
+  avatarIcon: string;
+}> = ({ title, avatarIcon }) => {
   const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const range = rangeProp ?? rangeInternal;
-  const setRange = onRangeChangeProp ?? setRangeInternal;
-  const { data: series, isPending } =
-    linuxio.monitoring.get_cpu_series.useQuery(range, {
-      refetchInterval: 5_000,
-    });
 
   return (
-    <MonitorCard
-      title="Processor"
-      avatarIcon="ph:cpu"
-      accentColor={theme.palette.primary.main}
-      range={range}
-      onRangeChange={setRange}
-      chart={
-        <MonitorGraph
-          color={theme.palette.primary.main}
-          label="CPU"
-          range={range}
-          series={series}
-          loading={isPending}
-          emptyMessage="CPU history is not available yet."
-          hoverRatio={hoverRatio}
-          onHoverChange={onHoverChange}
-        />
-      }
-    />
+    <FrostedCard
+      style={{
+        minHeight: cardHeight,
+        display: "flex",
+        flexDirection: "column",
+        padding: 6,
+      }}
+    >
+      <CardIconHeader
+        icon={
+          <Icon
+            icon={avatarIcon}
+            width={28}
+            height={28}
+            color={theme.palette.primary.main}
+          />
+        }
+        title={title}
+        style={{ marginBottom: 8 }}
+      />
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: theme.palette.text.secondary,
+          padding: 16,
+        }}
+      >
+        <AppTypography variant="body2" align="center">
+          Historical data not available.
+        </AppTypography>
+      </div>
+    </FrostedCard>
   );
 };
 
-export const MemoryHistoryCard: React.FC<{
-  range?: MonitoringRange;
-  onRangeChange?: (v: MonitoringRange) => void;
-  hoverRatio?: number | null;
-  onHoverChange?: (ratio: number | null) => void;
-}> = ({
-  range: rangeProp,
-  onRangeChange: onRangeChangeProp,
-  hoverRatio,
-  onHoverChange,
-}) => {
-  const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const range = rangeProp ?? rangeInternal;
-  const setRange = onRangeChangeProp ?? setRangeInternal;
-  const { data: memoryData } = linuxio.system.get_memory_info.useQuery({
-    refetchInterval: 5_000,
-  });
-  const { data: series, isPending } =
-    linuxio.monitoring.get_memory_series.useQuery(range, {
-      refetchInterval: 5_000,
-    });
+export const CPUHistoryCard: React.FC = () => (
+  <HistoryPlaceholder title="Processor" avatarIcon="ph:cpu" />
+);
 
-  const dockerPercent =
-    memoryData?.system?.total && memoryData.system.total > 0
-      ? ((memoryData?.docker?.used ?? 0) / memoryData.system.total) * 100
-      : 0;
+export const MemoryHistoryCard: React.FC = () => (
+  <HistoryPlaceholder title="Memory" avatarIcon="la:memory" />
+);
 
-  return (
-    <MonitorCard
-      title="Memory Usage"
-      avatarIcon="la:memory"
-      accentColor={theme.palette.warning.main}
-      range={range}
-      onRangeChange={setRange}
-      chart={
-        <MonitorGraph
-          color={theme.palette.warning.main}
-          label="Memory"
-          range={range}
-          series={series}
-          loading={isPending}
-          emptyMessage="Memory history is not available yet."
-          stackedPercent={dockerPercent}
-          stackedColor={theme.palette.info.main}
-          stackedLabel="Docker"
-          hoverRatio={hoverRatio}
-          onHoverChange={onHoverChange}
-        />
-      }
-    />
-  );
-};
+export const NetworkHistoryCard: React.FC = () => (
+  <HistoryPlaceholder title="Network" avatarIcon="mdi:ethernet" />
+);
 
-export const GPUHistoryCard: React.FC<{
-  range?: MonitoringRange;
-  onRangeChange?: (v: MonitoringRange) => void;
-  hoverRatio?: number | null;
-  onHoverChange?: (ratio: number | null) => void;
-}> = ({
-  range: rangeProp,
-  onRangeChange: onRangeChangeProp,
-  hoverRatio,
-  onHoverChange,
-}) => {
-  const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const range = rangeProp ?? rangeInternal;
-  const setRange = onRangeChangeProp ?? setRangeInternal;
-  const { data: series, isPending } =
-    linuxio.monitoring.get_gpu_series.useQuery(range, {
-      refetchInterval: 5_000,
-    });
-
-  return (
-    <MonitorCard
-      title="GPU"
-      avatarIcon="bi:gpu-card"
-      accentColor={theme.palette.primary.main}
-      range={range}
-      onRangeChange={setRange}
-      chart={
-        <MonitorGraph
-          color={theme.palette.primary.main}
-          label="GPU"
-          range={range}
-          series={series}
-          loading={isPending}
-          emptyMessage="Historical GPU data is not available on this host yet."
-          hoverRatio={hoverRatio}
-          onHoverChange={onHoverChange}
-        />
-      }
-    />
-  );
-};
-
-export const NetworkHistoryCard: React.FC<{
-  range?: MonitoringRange;
-  onRangeChange?: (v: MonitoringRange) => void;
-  hoverRatio?: number | null;
-  onHoverChange?: (ratio: number | null) => void;
-}> = ({
-  range: rangeProp,
-  onRangeChange: onRangeChangeProp,
-  hoverRatio,
-  onHoverChange,
-}) => {
-  const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const range = rangeProp ?? rangeInternal;
-  const setRange = onRangeChangeProp ?? setRangeInternal;
-
-  const { data: series, isPending } =
-    linuxio.monitoring.get_network_series.useQuery({
-      args: [range, ""],
-      refetchInterval: 5_000,
-    });
-
-  return (
-    <MonitorCard
-      title="Network"
-      avatarIcon="mdi:ethernet"
-      accentColor={theme.palette.primary.main}
-      range={range}
-      onRangeChange={setRange}
-      chart={
-        <NetworkMonitorGraph
-          range={range}
-          series={series}
-          loading={isPending}
-          emptyMessage="Historical network data is not available yet."
-          hoverRatio={hoverRatio}
-          onHoverChange={onHoverChange}
-        />
-      }
-    />
-  );
-};
-
-export const DiskIOHistoryCard: React.FC<{
-  range?: MonitoringRange;
-  onRangeChange?: (v: MonitoringRange) => void;
-  hoverRatio?: number | null;
-  onHoverChange?: (ratio: number | null) => void;
-}> = ({
-  range: rangeProp,
-  onRangeChange: onRangeChangeProp,
-  hoverRatio,
-  onHoverChange,
-}) => {
-  const theme = useAppTheme();
-  const [rangeInternal, setRangeInternal] = useState<MonitoringRange>("1m");
-  const range = rangeProp ?? rangeInternal;
-  const setRange = onRangeChangeProp ?? setRangeInternal;
-
-  const { data: series, isPending } =
-    linuxio.monitoring.get_disk_io_series.useQuery({
-      args: [range, ""],
-      refetchInterval: 5_000,
-    });
-
-  return (
-    <MonitorCard
-      title="I/O"
-      avatarIcon="mdi:harddisk"
-      accentColor={theme.palette.primary.main}
-      range={range}
-      onRangeChange={setRange}
-      chart={
-        <DiskIOMonitorGraph
-          range={range}
-          series={series}
-          loading={isPending}
-          emptyMessage="Historical disk I/O data is not available yet."
-          hoverRatio={hoverRatio}
-          onHoverChange={onHoverChange}
-        />
-      }
-    />
-  );
-};
+export const DiskIOHistoryCard: React.FC = () => (
+  <HistoryPlaceholder title="Disk I/O" avatarIcon="mdi:harddisk" />
+);

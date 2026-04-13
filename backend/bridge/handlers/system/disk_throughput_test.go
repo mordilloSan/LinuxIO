@@ -2,6 +2,7 @@ package system
 
 import (
 	"testing"
+	"time"
 
 	gopsdisk "github.com/shirou/gopsutil/v4/disk"
 	"github.com/stretchr/testify/require"
@@ -70,6 +71,77 @@ func TestBuildDiskThroughputResponseAggregatesAndSortsDevices(t *testing.T) {
 	require.Zero(t, response.Devices[2].WriteBytesPerSec)
 	require.Zero(t, response.Devices[2].ReadOpsPerSec)
 	require.Zero(t, response.Devices[2].WriteOpsPerSec)
+}
+
+func TestFetchDiskThroughputComputesRatesOnDemand(t *testing.T) {
+	originalCounterSampler := diskCounterSampler
+	originalClock := diskClock
+	originalLastCounters := lastDiskCounters
+	originalLastSampleAt := lastDiskSampleAt
+	t.Cleanup(func() {
+		diskCounterSampler = originalCounterSampler
+		diskClock = originalClock
+		lastDiskCounters = originalLastCounters
+		lastDiskSampleAt = originalLastSampleAt
+	})
+
+	lastDiskCounters = map[string]gopsdisk.IOCountersStat{}
+	lastDiskSampleAt = time.Time{}
+
+	samples := []map[string]gopsdisk.IOCountersStat{
+		{
+			"nvme0n1": {
+				ReadBytes:  1024,
+				WriteBytes: 2048,
+				ReadCount:  10,
+				WriteCount: 20,
+			},
+		},
+		{
+			"nvme0n1": {
+				ReadBytes:  4096,
+				WriteBytes: 6144,
+				ReadCount:  18,
+				WriteCount: 24,
+			},
+		},
+	}
+	sampleIndex := 0
+	diskCounterSampler = func() map[string]gopsdisk.IOCountersStat {
+		sample := samples[sampleIndex]
+		sampleIndex++
+		return sample
+	}
+
+	timestamps := []time.Time{
+		time.Unix(100, 0),
+		time.Unix(101, 0),
+	}
+	timestampIndex := 0
+	diskClock = func() time.Time {
+		ts := timestamps[timestampIndex]
+		timestampIndex++
+		return ts
+	}
+
+	first, err := FetchDiskThroughput()
+	require.NoError(t, err)
+	require.Equal(t, 0.0, first.IntervalSeconds)
+	require.Len(t, first.Devices, 1)
+	require.Equal(t, "nvme0n1", first.Devices[0].Name)
+	require.Zero(t, first.Devices[0].ReadBytesPerSec)
+	require.Zero(t, first.Devices[0].WriteBytesPerSec)
+	require.Zero(t, first.Devices[0].ReadOpsPerSec)
+	require.Zero(t, first.Devices[0].WriteOpsPerSec)
+
+	second, err := FetchDiskThroughput()
+	require.NoError(t, err)
+	require.Equal(t, 1.0, second.IntervalSeconds)
+	require.Len(t, second.Devices, 1)
+	require.Equal(t, 3072.0, second.Devices[0].ReadBytesPerSec)
+	require.Equal(t, 4096.0, second.Devices[0].WriteBytesPerSec)
+	require.Equal(t, 8.0, second.Devices[0].ReadOpsPerSec)
+	require.Equal(t, 4.0, second.Devices[0].WriteOpsPerSec)
 }
 
 func TestCounterRateReturnsZeroForInvalidSamples(t *testing.T) {

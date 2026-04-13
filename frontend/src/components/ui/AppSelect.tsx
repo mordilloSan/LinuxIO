@@ -1,4 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
 
 import "./app-select.css";
 
@@ -66,17 +73,42 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
   ) => {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLUListElement>(null);
+    const [dropdownPos, setDropdownPos] = useState<{
+      top: number;
+      left: number;
+      minWidth: number;
+      fontSize: string;
+    } | null>(null);
 
     const options = collectOptions(children);
     const currentValue = String(value ?? "");
     const current = options.find((o) => o.value === currentValue);
+
+    const updatePosition = useCallback(() => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const cs = getComputedStyle(containerRef.current);
+      setDropdownPos({
+        top: rect.bottom + 2,
+        left: rect.left,
+        minWidth: rect.width,
+        fontSize: cs.fontSize,
+      });
+    }, []);
+
+    useLayoutEffect(() => {
+      if (open) updatePosition();
+    }, [open, updatePosition]);
 
     useEffect(() => {
       if (!open) return;
       const handler = (e: MouseEvent) => {
         if (
           containerRef.current &&
-          !containerRef.current.contains(e.target as Node)
+          !containerRef.current.contains(e.target as Node) &&
+          dropdownRef.current &&
+          !dropdownRef.current.contains(e.target as Node)
         ) {
           setOpen(false);
         }
@@ -163,8 +195,21 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
               <path d="M7 10l5 5 5-5z" fill="currentColor" />
             </svg>
           </span>
-          {open && (
-            <ul className="app-select__dropdown" role="listbox">
+        </div>
+        {open &&
+          dropdownPos &&
+          createPortal(
+            <ul
+              ref={dropdownRef}
+              className="app-select__dropdown app-select__dropdown--portal"
+              role="listbox"
+              style={{
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+                minWidth: dropdownPos.minWidth,
+                fontSize: dropdownPos.fontSize,
+              }}
+            >
               {options
                 .filter((o) => !o.hidden)
                 .map((opt) => (
@@ -186,9 +231,9 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
                     {opt.label}
                   </li>
                 ))}
-            </ul>
+            </ul>,
+            document.body,
           )}
-        </div>
       </div>
     );
   },

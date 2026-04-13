@@ -12,7 +12,7 @@ import {
 import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -655,7 +656,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
     setDeleteDialogOpen(true);
   };
   if (pvsLoading || vgsLoading || lvsLoading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   const pvsList = Array.isArray(pvs) ? pvs : [];
   const vgsList = Array.isArray(vgs) ? vgs : [];
@@ -669,14 +670,14 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
       <div
         style={{
           display: "grid",
-          gap: 12,
+          gap: GAP_SM,
         }}
       >
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
+            gap: GAP_SM,
           }}
         >
           <LVMMetricCard

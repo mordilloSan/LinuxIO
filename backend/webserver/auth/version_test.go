@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func TestParseComponentVersionOutput(t *testing.T) {
@@ -65,7 +65,7 @@ func TestParseComponentVersionOutput(t *testing.T) {
 	}
 }
 
-func TestGetComponentVersionsAllSuccess(t *testing.T) {
+func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, nil)
 	defer restore()
 
@@ -308,18 +308,18 @@ func stubVersionCollector(
 ) func() {
 	t.Helper()
 
-	oldVersion := config.Version
+	oldVersion := ver.Version
 	oldTimeout := componentVersionCommandTimeout
 	oldRunner := runComponentVersionCommand
 
-	config.Version = version
+	ver.Version = version
 	componentVersionCommandTimeout = timeout
 	if runner != nil {
 		runComponentVersionCommand = runner
 	}
 
 	return func() {
-		config.Version = oldVersion
+		ver.Version = oldVersion
 		componentVersionCommandTimeout = oldTimeout
 		runComponentVersionCommand = oldRunner
 	}

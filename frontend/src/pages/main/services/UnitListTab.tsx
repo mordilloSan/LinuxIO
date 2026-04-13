@@ -1,8 +1,15 @@
-import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from "react";
+import { useSearchParams } from "react-router-dom";
 
 import type { UnitListItem } from "./UnitViews";
 
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
@@ -39,7 +46,7 @@ interface UnitListTabProps<T extends UnitListItem> {
   renderTableView: (props: UnitTableViewRenderProps<T>) => React.ReactNode;
   renderCardsView: (props: UnitCardsViewRenderProps<T>) => React.ReactNode;
   renderDetailPanel: (item: T, onClose: () => void) => React.ReactNode;
-  initialSelected?: string;
+  urlParam: string;
 }
 
 function UnitListTab<T extends UnitListItem>({
@@ -56,12 +63,28 @@ function UnitListTab<T extends UnitListItem>({
   renderTableView,
   renderCardsView,
   renderDetailPanel,
-  initialSelected,
+  urlParam,
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(
-    initialSelected ?? null,
+  const [searchParams, setSearchParams] = useSearchParams();
+  const expanded = searchParams.get(urlParam);
+  const setExpanded = useCallback(
+    (name: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (name === null) {
+            next.delete(urlParam);
+          } else {
+            next.set(urlParam, name);
+          }
+          return next;
+        },
+        { replace: false },
+      );
+    },
+    [urlParam, setSearchParams],
   );
   const [returnToTable, setReturnToTable] = useState(false);
 
@@ -110,7 +133,7 @@ function UnitListTab<T extends UnitListItem>({
 
   return (
     <>
-      {isPending && <ComponentLoader />}
+      {isPending && <PageLoader />}
       {isError && (
         <AppAlert severity="error">
           {error instanceof Error ? error.message : errorMessage}

@@ -6,7 +6,7 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -129,7 +129,7 @@ const NetworkInterfaceList = () => {
   }, []);
 
   if (isLoading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
   const selectedIface = interfaces.find((i) => i.name === expanded);
 

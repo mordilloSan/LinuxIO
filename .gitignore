@@ -20,7 +20,7 @@ linuxio-bridge
 .claude/
 *.swp
 .script-server.pid
-backend/backend
 frontend/.eslintcache-a
 frontend/.eslintcache-b
 frontend/.eslintcache-c
+

@@ -11,9 +11,9 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // yamuxSessions manages persistent yamux sessions per session ID
@@ -27,7 +27,7 @@ var yamuxSessions = struct {
 // validateBridgeHash computes SHA256 of the bridge binary and compares to expected.
 // Returns error if no hash embedded, hash mismatch, or file cannot be read.
 func validateBridgeHash(bridgePath string) error {
-	expectedHash := config.BridgeSHA256
+	expectedHash := version.BridgeSHA256
 	if expectedHash == "" {
 		return fmt.Errorf("bridge hash not embedded at build time")
 	}
@@ -56,7 +56,7 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
-const bridgeBinaryPath = config.BinDir + "/linuxio-bridge"
+const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.

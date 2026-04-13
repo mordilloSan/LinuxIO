@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ServerConfig is the minimal runtime config passed to the server.
@@ -29,7 +29,7 @@ func StartLinuxIO() {
 		printGeneralUsage()
 		return
 	case "version", "-v", "--version":
-		fmt.Printf("LinuxIO Web Server %s\n", config.Version)
+		fmt.Printf("LinuxIO Web Server %s\n", version.Version)
 		return
 	case "run":
 		runCmd := flag.NewFlagSet("run", flag.ExitOnError)

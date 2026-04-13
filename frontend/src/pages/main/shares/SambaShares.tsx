@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { linuxio, type SambaShare } from "@/api";
 import SambaShareCard from "@/components/cards/SambaShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -592,7 +592,7 @@ const SambaShares: React.FC<SambaSharesProps> = ({
   };
 
   if (loading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
 
   const sharesList = Array.isArray(shares) ? shares : [];

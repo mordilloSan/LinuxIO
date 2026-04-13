@@ -34,29 +34,7 @@ func ListServices() ([]ServiceStatus, error) {
 			wg.Add(1)
 			go func(i int, entry listedUnit) {
 				defer wg.Done()
-				service := ServiceStatus{
-					Name:          entry.Name,
-					Description:   entry.Description,
-					LoadState:     entry.LoadState,
-					ActiveState:   entry.ActiveState,
-					SubState:      entry.SubState,
-					UnitFileState: entry.UnitFileState,
-				}
-
-				if entry.Path != "" {
-					unit := unitObject(conn, entry.Path)
-					if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
-						service.UnitFileState = state
-					}
-					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
-						service.ActiveEnterTimestamp = ts
-					}
-					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
-						service.InactiveEnterTimestamp = ts
-					}
-				}
-
-				results[i] = service
+				results[i] = fetchServiceStatus(conn, entry)
 			}(i, entry)
 		}
 
@@ -65,6 +43,32 @@ func ListServices() ([]ServiceStatus, error) {
 		return nil
 	})
 	return services, err
+}
+
+func fetchServiceStatus(conn *godbus.Conn, entry listedUnit) ServiceStatus {
+	service := ServiceStatus{
+		Name:          entry.Name,
+		Description:   entry.Description,
+		LoadState:     entry.LoadState,
+		ActiveState:   entry.ActiveState,
+		SubState:      entry.SubState,
+		UnitFileState: entry.UnitFileState,
+	}
+	if entry.Path == "" {
+		return service
+	}
+
+	unit := unitObject(conn, entry.Path)
+	if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
+		service.UnitFileState = state
+	}
+	if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
+		service.ActiveEnterTimestamp = ts
+	}
+	if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
+		service.InactiveEnterTimestamp = ts
+	}
+	return service
 }
 
 // Start a service

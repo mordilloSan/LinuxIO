@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 
+import DriveGraph from "./DriveGraph";
+
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -51,6 +53,10 @@ const Drive: React.FC = () => {
     isPending: isLoading,
     isError,
   } = linuxio.storage.get_drive_info.useQuery();
+  const { data: diskThroughput, isPending: isThroughputLoading } =
+    linuxio.system.get_disk_throughput.useQuery({
+      refetchInterval: 1000,
+    });
 
   const drives = useMemo<DriveInfo[]>(
     () =>
@@ -106,6 +112,9 @@ const Drive: React.FC = () => {
   const selectedDrive = drives.find(
     (drive) => drive.name === selectedDriveName,
   );
+  const selectedDriveThroughput = diskThroughput?.devices.find(
+    (device) => device.name === selectedDriveName,
+  );
   const content = selectedDrive ? (
     <div
       style={{ display: "flex", flexDirection: "column", width: "fit-content" }}
@@ -157,6 +166,21 @@ const Drive: React.FC = () => {
   ) : (
     <AppTypography variant="body2">No drive selected.</AppTypography>
   );
+  const content2 = selectedDrive ? (
+    isThroughputLoading ? (
+      <ComponentLoader />
+    ) : (
+      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
+        <DriveGraph
+          key={selectedDriveName}
+          readBytesPerSec={selectedDriveThroughput?.readBytesPerSec ?? 0}
+          writeBytesPerSec={selectedDriveThroughput?.writeBytesPerSec ?? 0}
+        />
+      </div>
+    )
+  ) : (
+    <AppTypography variant="body2">No I/O data.</AppTypography>
+  );
 
   const options = drives.map((drive) => ({
     value: drive.name,
@@ -168,6 +192,7 @@ const Drive: React.FC = () => {
       title="Drives"
       avatarIcon="mdi:harddisk"
       stats={content}
+      stats2={content2}
       selectOptions={options}
       selectedOption={selectedDriveName}
       selectedOptionLabel={selectedDriveName}

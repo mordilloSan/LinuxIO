@@ -1,4 +1,4 @@
-package config
+package version
 
 // Installation paths
 const (
@@ -12,7 +12,7 @@ const (
 )
 
 // Build info - set at build time via ldflags:
-// go build -ldflags "-X github.com/.../config.Version=v1.0.0"
+// go build -ldflags "-X github.com/.../version.Version=v1.0.0"
 var (
 	Version      = "untracked"
 	CommitSHA    = ""

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { linuxio, type NFSExport, type NFSClient } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PageLoader from "@/components/loaders/PageLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -668,7 +668,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   };
 
   if (loading) {
-    return <ComponentLoader />;
+    return <PageLoader />;
   }
 
   const sharesList = Array.isArray(shares) ? shares : [];

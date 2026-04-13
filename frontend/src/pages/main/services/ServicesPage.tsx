@@ -1,5 +1,4 @@
 import React from "react";
-import { useLocation } from "react-router-dom";
 
 import ServicesTab from "./ServicesTab";
 import SocketsTab from "./SocketsTab";
@@ -9,15 +8,11 @@ import UnitViewToggle from "./UnitViewToggle";
 import TabContainer from "@/components/tabbar/TabContainer";
 
 const ServicesPage: React.FC = () => {
-  const location = useLocation();
-  const selectedUnit = (location.state as { selectedUnit?: string } | null)
-    ?.selectedUnit;
-
   const tabs = [
     {
       value: "services",
       label: "Services",
-      component: <ServicesTab initialSelected={selectedUnit} />,
+      component: <ServicesTab />,
       rightContent: <UnitViewToggle viewModeKey="services.list" />,
     },
     {
