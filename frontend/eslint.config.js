@@ -1,15 +1,14 @@
 import js from "@eslint/js";
-import react from "eslint-plugin-react";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactCompiler from "eslint-plugin-react-compiler";
+import tanstackQuery from "@tanstack/eslint-plugin-query";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-import prettier from "eslint-plugin-prettier";
 import prettierConfig from "eslint-config-prettier";
 import importPlugin from "eslint-plugin-import-x";
+import prettier from "eslint-plugin-prettier";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
 import unusedImports from "eslint-plugin-unused-imports";
 import globals from "globals";
-import tanstackQuery from "@tanstack/eslint-plugin-query";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
@@ -56,7 +55,6 @@ export default [
     plugins: {
       react,
       "react-hooks": reactHooks,
-      "react-compiler": reactCompiler,
       "import-x": importPlugin,
       "unused-imports": unusedImports,
     },
@@ -68,21 +66,25 @@ export default [
     },
     rules: {
       ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
-      "react-compiler/react-compiler": "error",
+      ...reactHooks.configs.flat["recommended-latest"].rules,
       "react/react-in-jsx-scope": "warn",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
       "no-unused-vars": "off",
       "unused-imports/no-unused-imports": "warn",
-      "unused-imports/no-unused-vars": [ "warn", {
+      "unused-imports/no-unused-vars": [
+        "warn",
+        {
           vars: "all",
           varsIgnorePattern: "^_",
           args: "after-used",
           argsIgnorePattern: "^_",
-        },],
+        },
+      ],
 
-      "import-x/order": [ "warn", {
+      "import-x/order": [
+        "warn",
+        {
           groups: [
             "builtin",
             "external",

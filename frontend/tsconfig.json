@@ -15,7 +15,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "typeRoots": ["src/types", "node_modules/@types", "node_modules"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "noFallthroughCasesInSwitch": true,
     "paths": {
       // Folders
@@ -40,5 +40,5 @@
       "@/routes": ["./src/routes"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "vite.config.ts"]
 }

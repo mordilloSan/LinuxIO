@@ -1,9 +1,9 @@
 // vite.config.ts
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
-import { compression } from 'vite-plugin-compression2';
-import { analyzer } from 'vite-bundle-analyzer';
+import { compression } from "vite-plugin-compression2";
+import { analyzer } from "vite-bundle-analyzer";
 
 export default defineConfig(async ({ command }) => {
   const { generateIcons } = await import("./scripts/generate-icons.mjs");
@@ -17,9 +17,13 @@ export default defineConfig(async ({ command }) => {
   const proxyTarget = process.env.PROXY_TARGET || "https://localhost:8090";
   const devPort = Number(process.env.VITE_DEV_PORT || 3000);
 
-  const plugins: (Plugin | Plugin[])[] = [react()];
+  const plugins: PluginOption[] = [react()];
   if (isBuild) {
-    plugins.push(await babel({ presets: [reactCompilerPreset()] } as never) as unknown as Plugin);
+    plugins.push(
+      (await babel({
+        presets: [reactCompilerPreset()],
+      })) as unknown as PluginOption,
+    );
     plugins.push(
       compression({
         algorithms: ["gzip"],
@@ -46,7 +50,12 @@ export default defineConfig(async ({ command }) => {
       port: devPort,
       strictPort: false,
       proxy: {
-        "/ws": { target: proxyTarget, changeOrigin: true, ws: true, secure: false },
+        "/ws": {
+          target: proxyTarget,
+          changeOrigin: true,
+          ws: true,
+          secure: false,
+        },
         "/auth": { target: proxyTarget, changeOrigin: true, secure: false },
         "/api": { target: proxyTarget, changeOrigin: true, secure: false },
       },
