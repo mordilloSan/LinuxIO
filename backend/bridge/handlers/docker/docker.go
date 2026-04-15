@@ -90,29 +90,25 @@ func releaseClient(_ *client.Client) {
 	})
 }
 
-// dockerAvailable verifies that Docker client initialization and daemon ping both work.
-func dockerAvailable() (bool, error) {
-	cli, err := getClient()
+// CheckDockerAvailability verifies that Docker is installed and accessible.
+// It uses a short-lived throwaway client so that repeated capability polls
+// (which the frontend runs every ~minute) do not reset the shared client's
+// idle timer and prevent it from ever being released.
+func CheckDockerAvailability() (bool, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
+		logger.Infof("docker service not available")
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer cli.Close()
 
-	if _, err := cli.Ping(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := cli.Ping(ctx); err != nil {
+		logger.Infof("docker service not available")
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 
-	return true, nil
-}
-
-// CheckDockerAvailability verifies that Docker is installed and accessible
-func CheckDockerAvailability() (bool, error) {
-	ok, err := dockerAvailable()
-	if err != nil {
-		logger.Infof("docker service not available")
-		return false, err
-	}
-
 	logger.Infof("docker service available")
-	return ok, nil
+	return true, nil
 }
