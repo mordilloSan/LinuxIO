@@ -21,6 +21,7 @@ type dockerRegistration struct {
 // RegisterHandlers registers all docker handlers with the global registry
 func RegisterHandlers(sess *session.Session) {
 	username := sess.User.Username
+	sessionUsername = username
 
 	if err := initIconCache(); err != nil {
 		logger.Warnf("failed to initialize icon cache: %v", err)

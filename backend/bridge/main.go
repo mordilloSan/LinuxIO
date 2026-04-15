@@ -16,7 +16,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -134,9 +133,6 @@ func main() {
 	config.EnsureConfigReady(sess.User.Username)
 	logger.Debugf("[bridge] config ready")
 
-	// Ensure the shared linuxio-docker network exists (fails silently if Docker unavailable)
-	docker.EnsureLinuxIONetwork()
-
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(sess)
 
@@ -236,12 +232,6 @@ func handleYamuxSession(conn net.Conn) {
 	// Track active streams for graceful shutdown
 	var streamWg sync.WaitGroup
 
-	// Sync Watchtower on first incoming request (after capabilities checks have run).
-	// SyncWatchtowerStack involves multiple docker API calls and takes longer than the
-	// initial capabilities check, so starting it here ensures its log appears after
-	// the capabilities logs rather than during early bridge startup.
-	var watchtowerOnce sync.Once
-
 	// Accept streams until session closes or bridge shuts down.
 	// The loop exits when ymuxSession.Accept() returns an error
 	// (e.g., the session is closed by the shutdown goroutine).
@@ -255,8 +245,6 @@ func handleYamuxSession(conn net.Conn) {
 			}
 			break
 		}
-
-		watchtowerOnce.Do(func() { go docker.SyncWatchtowerStack(sess.User.Username) })
 
 		streamID := strconv.FormatUint(streamCounter.Add(1), 10)
 		s := stream

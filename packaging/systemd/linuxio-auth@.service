@@ -14,3 +14,7 @@ User=root
 Group=root
 SuccessExitStatus=1 5 126 127
 Restart=no
+# Return freed Go heap pages to the OS immediately (default MADV_FREE keeps RSS high).
+Environment=GODEBUG=madvdontneed=1
+# Cap Go GC target; the runtime will collect more aggressively before reaching this.
+Environment=GOMEMLIMIT=400MiB
