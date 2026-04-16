@@ -5,11 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -45,14 +44,13 @@ func validateBridgeHash(bridgePath string) error {
 	actualHash := hex.EncodeToString(h.Sum(nil))
 
 	if actualHash != expectedHash {
-		logger.ErrorKV("bridge binary hash mismatch - possible tampering",
+		slog.Error("bridge binary hash mismatch - possible tampering",
 			"expected", expectedHash,
 			"actual", actualHash,
 			"path", bridgePath)
 		return fmt.Errorf("bridge integrity check failed: hash mismatch")
 	}
-
-	logger.DebugKV("bridge hash validated", "hash", actualHash[:16]+"...")
+	slog.Debug("bridge hash validated", "hash", actualHash[:16]+"...")
 	return nil
 }
 
@@ -65,7 +63,7 @@ func StartBridge(sm *session.Manager, sessionID, username, password string, verb
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
-	logger.Debugf("Auth daemon available, using socket-based auth")
+	slog.Debug("Auth daemon available, using socket-based auth")
 	req := BuildRequest(username, sessionID, password, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
@@ -80,14 +78,13 @@ func StartBridge(sm *session.Manager, sessionID, username, password string, verb
 
 	if err := attachBridgeSession(sess, result.Conn); err != nil {
 		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
-			logger.WarnKV("failed to cleanup session after bridge setup failure",
+			slog.Warn("failed to cleanup session after bridge setup failure",
 				"session_id", sess.SessionID,
 				"error", delErr)
 		}
 		return nil, err
 	}
-
-	logger.InfoKV("bridge launch via daemon acknowledged",
+	slog.Info("bridge launch via daemon acknowledged",
 		"user", sess.User.Username,
 		"privileged", result.Privileged,
 		"session_id", sess.SessionID)
@@ -121,12 +118,12 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 		yamuxSessions.Lock()
 		delete(yamuxSessions.sessions, sess.SessionID)
 		yamuxSessions.Unlock()
-		logger.DebugKV("yamux session closed and removed", "session_id", sess.SessionID)
+		slog.Debug("yamux session closed and removed", "session_id", sess.SessionID)
 
 		// Terminate the session when bridge dies
 		// This triggers session deletion which closes the WebSocket
 		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
-			logger.WarnKV("failed to terminate session after bridge closure",
+			slog.Warn("failed to terminate session after bridge closure",
 				"session_id", sess.SessionID,
 				"error", err)
 		}
@@ -176,6 +173,6 @@ func CloseYamuxSession(sessionID string) {
 
 	if exists {
 		session.Close()
-		logger.DebugKV("yamux session closed", "session_id", sessionID)
+		slog.Debug("yamux session closed", "session_id", sessionID)
 	}
 }

@@ -211,6 +211,9 @@ func parseLogsArgs(args []string) (string, int) {
 
 func journalTermsForMode(mode string) []string {
 	journalTerms := []string{
+		"SYSLOG_IDENTIFIER=linuxio-webserver",
+		"SYSLOG_IDENTIFIER=linuxio-bridge",
+		"SYSLOG_IDENTIFIER=linuxio-auth",
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
 		"_SYSTEMD_UNIT=linuxio-webserver.socket",
@@ -219,27 +222,22 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-auth@.service",
 		"_SYSTEMD_UNIT=linuxio-issue.service",
 	}
-	includeAuthTag := true
 
 	switch mode {
 	case "webserver":
 		journalTerms = []string{
+			"SYSLOG_IDENTIFIER=linuxio-webserver",
 			"_SYSTEMD_UNIT=linuxio-webserver.service",
 			"_SYSTEMD_UNIT=linuxio-webserver.socket",
 		}
-		includeAuthTag = false
 	case "bridge":
-		journalTerms = []string{"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service"}
-		includeAuthTag = false
+		journalTerms = []string{"SYSLOG_IDENTIFIER=linuxio-bridge"}
 	case "auth":
 		journalTerms = []string{
+			"SYSLOG_IDENTIFIER=linuxio-auth",
 			"_SYSTEMD_UNIT=linuxio-auth.socket",
 			"_SYSTEMD_UNIT=linuxio-auth@.service",
 		}
-	}
-
-	if includeAuthTag {
-		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
 	}
 	return journalTerms
 }

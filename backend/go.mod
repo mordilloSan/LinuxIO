@@ -13,7 +13,6 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jaypipes/ghw v0.24.0
 	github.com/libp2p/go-yamux/v5 v5.1.0
-	github.com/mordilloSan/go-logger v1.0.4
 	github.com/shirou/gopsutil/v4 v4.26.3
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stretchr/testify v1.11.1

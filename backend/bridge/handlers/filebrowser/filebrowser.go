@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,8 +17,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -61,7 +60,7 @@ func resourceGet(args []string) (any, error) {
 		Content: getContent,
 	})
 	if err != nil {
-		logger.Debugf("error getting file info: %v", err)
+		slog.Debug("error getting file info", "path", path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
@@ -82,13 +81,13 @@ func resourceStat(args []string) (any, error) {
 		Expand: false,
 	})
 	if err != nil {
-		logger.Debugf("error getting file stat info: %v", err)
+		slog.Debug("error getting file stat info", "path", path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	statData, err := iteminfo.CollectStatInfo(fileInfo.RealPath)
 	if err != nil {
-		logger.Debugf("error collecting stat info: %v", err)
+		slog.Debug("error collecting stat info", "path", fileInfo.RealPath, "error", err)
 		return nil, fmt.Errorf("error collecting stat info: %w", err)
 	}
 
@@ -109,7 +108,7 @@ func resourceDelete(args []string) (any, error) {
 	}
 
 	path := args[0]
-	logger.Infof("Delete requested: path=%s", path)
+	slog.Info("delete requested", "path", path)
 
 	if path == "/" {
 		return nil, fmt.Errorf("bad_request:cannot delete root")
@@ -120,22 +119,22 @@ func resourceDelete(args []string) (any, error) {
 		Expand: false,
 	})
 	if err != nil {
-		logger.Debugf("error getting file info: %v", err)
+		slog.Debug("error getting file info", "path", path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	err = services.DeleteFiles(fileInfo.RealPath)
 	if err != nil {
-		logger.Debugf("error deleting file: %v", err)
+		slog.Debug("error deleting file", "path", fileInfo.RealPath, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	// Notify indexer about the deletion
 	if err := deleteFromIndexer(path); err != nil {
-		logger.Debugf("failed to update indexer after delete: %v", err)
+		slog.Debug("failed to update indexer after delete", "path", path, "error", err)
 		// Don't fail the operation if indexer update fails
 	}
-	logger.Infof("Delete complete: path=%s", path)
+	slog.Info("delete complete", "path", path)
 
 	return map[string]any{"message": "deleted"}, nil
 }
@@ -193,22 +192,22 @@ func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error 
 func createDirectoryResource(root *fsroot.FSRoot, req resourcePostRequest) (any, error) {
 	if stat, statErr := root.Root.Stat(req.relPath); statErr == nil && !stat.IsDir() && req.override {
 		if removeErr := root.Root.Remove(req.relPath); removeErr != nil {
-			logger.Debugf("error removing existing file for directory create: %v", removeErr)
+			slog.Debug("error removing existing file for directory create", "path", req.cleanPath, "error", removeErr)
 			return nil, fmt.Errorf("bad_request:%v", removeErr)
 		}
 	}
 
 	if mkdirErr := root.Root.MkdirAll(req.relPath, services.PermDir); mkdirErr != nil {
-		logger.Debugf("error writing directory: %v", mkdirErr)
+		slog.Debug("error writing directory", "path", req.cleanPath, "error", mkdirErr)
 		return nil, fmt.Errorf("bad_request:%v", mkdirErr)
 	}
 	if chmodErr := root.Root.Chmod(req.relPath, services.PermDir); chmodErr != nil {
-		logger.Debugf("error setting directory permissions: %v", chmodErr)
+		slog.Debug("error setting directory permissions", "path", req.cleanPath, "error", chmodErr)
 		return nil, fmt.Errorf("bad_request:%v", chmodErr)
 	}
 
 	notifyIndexerForCreatedResource(root, req.cleanPath, req.relPath, "directory")
-	logger.Infof("Directory created: path=%s", req.cleanPath)
+	slog.Info("directory created", "path", req.cleanPath)
 	return map[string]any{"message": "created"}, nil
 }
 
@@ -216,7 +215,7 @@ func createFileResource(root *fsroot.FSRoot, req resourcePostRequest) (any, erro
 	parentRel := filepath.Dir(req.relPath)
 	if parentRel != "." {
 		if mkdirErr := root.Root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
-			logger.Debugf("error creating parent directory: %v", mkdirErr)
+			slog.Debug("error creating parent directory", "path", req.cleanPath, "error", mkdirErr)
 			return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
 		}
 	}
@@ -227,22 +226,22 @@ func createFileResource(root *fsroot.FSRoot, req resourcePostRequest) (any, erro
 
 	f, err := root.Root.OpenFile(req.relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
 	if err != nil {
-		logger.Debugf("error creating file: %v", err)
+		slog.Debug("error creating file", "path", req.cleanPath, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 	if cerr := f.Close(); cerr != nil {
-		logger.Warnf("failed to close created file: %v", cerr)
+		slog.Warn("failed to close created file", "path", req.cleanPath, "error", cerr)
 	}
 
 	notifyIndexerForCreatedResource(root, req.cleanPath, req.relPath, "file")
-	logger.Infof("File created: path=%s", req.cleanPath)
+	slog.Info("file created", "path", req.cleanPath)
 	return map[string]any{"message": "created"}, nil
 }
 
 func notifyIndexerForCreatedResource(root *fsroot.FSRoot, cleanPath, relPath, kind string) {
 	if info, err := root.Root.Stat(relPath); err == nil {
 		if err := addToIndexer(cleanPath, info); err != nil {
-			logger.Debugf("failed to update indexer after %s create: %v", kind, err)
+			slog.Debug("failed to update indexer after create", "path", cleanPath, "type", kind, "error", err)
 		}
 	}
 }
@@ -276,7 +275,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	dstClean := strings.TrimRight(req.dst, "/")
 	parentDir := filepath.Dir(dstClean)
 	if _, err := root.Root.Stat(fsroot.ToRel(parentDir)); err != nil {
-		logger.Debugf("parent directory not found: %s (error: %v)", parentDir, err)
+		slog.Debug("parent directory not found", "path", parentDir, "error", err)
 		return req, fmt.Errorf("bad_request:parent directory not found")
 	}
 
@@ -288,7 +287,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 
 	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
 	if err != nil {
-		logger.Debugf("error getting source info: %v", err)
+		slog.Debug("error getting source info", "path", req.realSrc, "error", err)
 		return req, fmt.Errorf("bad_request:source not found")
 	}
 	if req.realSrc == req.realDest && req.action == "copy" {
@@ -301,7 +300,7 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest, src
 	destInfo, err := root.Root.Stat(fsroot.ToRel(req.realDest))
 	destExists := err == nil
 	if err != nil && !os.IsNotExist(err) {
-		logger.Debugf("error stating destination: %v", err)
+		slog.Debug("error stating destination", "path", req.realDest, "error", err)
 		return fmt.Errorf("bad_request:could not stat destination")
 	}
 	if !destExists {
@@ -322,7 +321,7 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest, src
 func computePatchSize(realSrc string) int64 {
 	totalSize, err := services.ComputeCopySize(realSrc)
 	if err != nil {
-		logger.Debugf("failed to compute size: %v", err)
+		slog.Debug("failed to compute filebrowser operation size", "path", realSrc, "error", err)
 		return 0
 	}
 	return totalSize
@@ -345,14 +344,19 @@ func newPatchCallbacks(ctx context.Context, emit ipc.Events, action string, tota
 				phase = "moving"
 			}
 			pct := min(int(bytesProcessed*100/totalSize), 100)
-			logger.Debugf("Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
+			slog.Debug("filebrowser operation progress",
+				"action", action,
+				"bytes", bytesProcessed,
+				"total", totalSize,
+				"pct", pct,
+				"phase", phase)
 			if err := emit.Progress(FileProgress{
 				Bytes: bytesProcessed,
 				Total: totalSize,
 				Pct:   pct,
 				Phase: phase,
 			}); err != nil {
-				logger.Debugf("failed to write progress update: %v", err)
+				slog.Debug("failed to write filebrowser progress update", "action", action, "error", err)
 				return
 			}
 			lastProgress = bytesProcessed
@@ -384,16 +388,16 @@ func notifyIndexerAfterPatch(root *fsroot.FSRoot, req resourcePatchRequest) {
 	case "copy":
 		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
 			if err := addToIndexer(req.dst, info); err != nil {
-				logger.Debugf("failed to update indexer after copy: %v", err)
+				slog.Debug("failed to update indexer after copy", "path", req.dst, "error", err)
 			}
 		}
 	case "rename", "move":
 		if err := deleteFromIndexer(req.src); err != nil {
-			logger.Debugf("failed to update indexer after move (delete source): %v", err)
+			slog.Debug("failed to update indexer after move delete", "path", req.src, "error", err)
 		}
 		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
 			if err := addToIndexer(req.dst, info); err != nil {
-				logger.Debugf("failed to update indexer after move (add destination): %v", err)
+				slog.Debug("failed to update indexer after move add", "path", req.dst, "error", err)
 			}
 		}
 	}
@@ -407,19 +411,19 @@ func resourcePost(args []string) (any, error) {
 		return nil, err
 	}
 	if req.isDir {
-		logger.Infof("Create directory requested: path=%s override=%v", req.cleanPath, req.override)
+		slog.Info("create directory requested", "path", req.cleanPath, "overwrite", req.override)
 	} else {
-		logger.Infof("Create file requested: path=%s override=%v", req.cleanPath, req.override)
+		slog.Info("create file requested", "path", req.cleanPath, "overwrite", req.override)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		logger.Debugf("error opening filesystem root: %v", err)
+		slog.Debug("error opening filesystem root", "error", err)
 		return nil, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer func() {
 		if cerr := root.Close(); cerr != nil {
-			logger.Warnf("failed to close filesystem root: %v", cerr)
+			slog.Warn("failed to close filesystem root", "error", cerr)
 		}
 	}()
 
@@ -453,9 +457,12 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 	}
 
 	totalSize := computePatchSize(req.realSrc)
-
-	// Send initial progress
-	logger.Infof("Starting %s operation: %s -> %s (size=%d)", req.action, req.realSrc, req.realDest, totalSize)
+	// Send initial progress.
+	slog.Info("starting filebrowser operation",
+		"action", req.action,
+		"source", req.realSrc,
+		"destination", req.realDest,
+		"size", totalSize)
 	if err := emit.Progress(FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
@@ -465,7 +472,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 
 	opts := newPatchCallbacks(ctx, emit, req.action, totalSize)
 	if err := executeResourcePatch(req, opts); err != nil {
-		logger.Debugf("error patching resource: %v", err)
+		slog.Debug("error patching resource", "action", req.action, "source", req.realSrc, "destination", req.realDest, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
@@ -591,15 +598,16 @@ func addToIndexer(path string, info os.FileInfo) error {
 
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
-		// Log but don't fail the operation if indexer is unavailable
-		logger.Debugf("indexer add request failed (indexer may be offline): %v", err)
+		slog.
+			// Log but don't fail the operation if indexer is unavailable
+			Debug(fmt.Sprintf("indexer add request failed (indexer may be offline): %v", err))
 		setIndexerAvailability(false)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("indexer add returned non-OK status: %s", resp.Status)
+		slog.Debug("indexer add returned non-OK status", "status", resp.Status)
 		if resp.StatusCode >= http.StatusInternalServerError {
 			setIndexerAvailability(false)
 		}
@@ -613,7 +621,7 @@ func addToIndexer(path string, info os.FileInfo) error {
 	if entry.IsDir {
 		fileType = "directory"
 	}
-	logger.InfoKV("notified indexer of added/updated entry",
+	slog.Info("notified indexer of added/updated entry",
 		"path", entry.Path,
 		"type", fileType,
 		"size", entry.Size)
@@ -638,15 +646,16 @@ func deleteFromIndexer(path string) error {
 
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
-		// Log but don't fail the operation if indexer is unavailable
-		logger.Debugf("indexer delete request failed (indexer may be offline): %v", err)
+		slog.
+			// Log but don't fail the operation if indexer is unavailable
+			Debug(fmt.Sprintf("indexer delete request failed (indexer may be offline): %v", err))
 		setIndexerAvailability(false)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("indexer delete returned non-OK status: %s", resp.Status)
+		slog.Debug("indexer delete returned non-OK status", "status", resp.Status)
 		if resp.StatusCode >= http.StatusInternalServerError {
 			setIndexerAvailability(false)
 		}
@@ -654,9 +663,10 @@ func deleteFromIndexer(path string) error {
 	}
 
 	setIndexerAvailability(true)
+	slog.
 
-	// Log successful indexer deletion
-	logger.InfoKV("notified indexer of deleted entry", "path", normPath)
+		// Log successful indexer deletion
+		Info("notified indexer of deleted entry", "path", normPath)
 
 	return nil
 }
@@ -689,7 +699,7 @@ func CheckIndexerAvailability() (bool, error) {
 	}
 
 	setIndexerAvailability(true)
-	logger.Infof("indexer service available")
+	slog.Info("indexer service available")
 
 	return true, nil
 }
@@ -813,7 +823,7 @@ func indexerStatus(args []string) (any, error) {
 		if errors.Is(err, errIndexerUnavailable) {
 			return nil, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		logger.Debugf("error fetching indexer status: %v", err)
+		slog.Debug("error fetching indexer status", "error", err)
 		return nil, fmt.Errorf("error fetching indexer status: %w", err)
 	}
 
@@ -838,7 +848,7 @@ func dirSize(args []string) (any, error) {
 	// Check if path exists and is a directory
 	stat, err := root.Root.Stat(fsroot.ToRel(path))
 	if err != nil {
-		logger.Debugf("error stating directory: %v", err)
+		slog.Debug("error stating directory", "path", path, "error", err)
 		return nil, fmt.Errorf("bad_request:directory not found")
 	}
 
@@ -852,7 +862,7 @@ func dirSize(args []string) (any, error) {
 		if errors.Is(err, errIndexerUnavailable) {
 			return nil, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		logger.Debugf("error fetching directory size from indexer: %v", err)
+		slog.Debug("error fetching directory size from indexer", "path", path, "error", err)
 		return nil, fmt.Errorf("error fetching directory size: %w", err)
 	}
 
@@ -889,7 +899,7 @@ func subfolders(args []string) (any, error) {
 	if path != "/" {
 		stat, statErr := root.Root.Stat(fsroot.ToRel(path))
 		if statErr != nil {
-			logger.Debugf("error stating directory: %v", statErr)
+			slog.Debug("error stating directory", "path", path, "error", statErr)
 			return nil, fmt.Errorf("bad_request:directory not found")
 		}
 		if !stat.IsDir() {
@@ -903,7 +913,7 @@ func subfolders(args []string) (any, error) {
 		if errors.Is(err, errIndexerUnavailable) {
 			return nil, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		logger.Debugf("error fetching subfolders from indexer: %v", err)
+		slog.Debug("error fetching subfolders from indexer", "path", path, "error", err)
 		return nil, fmt.Errorf("error fetching subfolders: %w", err)
 	}
 
@@ -985,7 +995,7 @@ func searchFiles(args []string) (any, error) {
 		if errors.Is(err, errIndexerUnavailable) {
 			return nil, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		logger.Debugf("error searching indexer: %v", err)
+		slog.Debug("error searching indexer", "query", query, "base_path", basePath, "error", err)
 		return nil, fmt.Errorf("error searching files: %w", err)
 	}
 
@@ -1139,25 +1149,25 @@ func resourceChmod(args []string) (any, error) {
 
 	err = services.ChangePermissions(realPath, os.FileMode(mode), recursive)
 	if err != nil {
-		logger.Debugf("error changing permissions: %v", err)
+		slog.Debug("error changing permissions", "path", realPath, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	if strings.TrimSpace(owner) != "" || strings.TrimSpace(group) != "" {
 		uid, err := resolveUserID(owner)
 		if err != nil {
-			logger.Debugf("error resolving owner: %v", err)
+			slog.Debug("error resolving owner", "owner", owner, "error", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
 
 		gid, err := resolveGroupID(group)
 		if err != nil {
-			logger.Debugf("error resolving group: %v", err)
+			slog.Debug("error resolving group", "group", group, "error", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
 
 		if err := services.ChangeOwnership(realPath, uid, gid, recursive); err != nil {
-			logger.Debugf("error changing ownership: %v", err)
+			slog.Debug("error changing ownership", "path", realPath, "owner", owner, "group", group, "error", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
 	}
@@ -1218,13 +1228,13 @@ func resolveGroupID(identifier string) (int, error) {
 func usersGroups() (any, error) {
 	users, err := getAllUsers()
 	if err != nil {
-		logger.Debugf("error getting users: %v", err)
+		slog.Debug("error getting users", "error", err)
 		return nil, fmt.Errorf("error getting users: %w", err)
 	}
 
 	groups, err := getAllGroups()
 	if err != nil {
-		logger.Debugf("error getting groups: %v", err)
+		slog.Debug("error getting groups", "error", err)
 		return nil, fmt.Errorf("error getting groups: %w", err)
 	}
 

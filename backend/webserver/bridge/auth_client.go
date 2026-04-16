@@ -3,10 +3,9 @@ package bridge
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -94,7 +93,7 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 	}
 
 	privileged := resp.IsPrivileged()
-	logger.InfoKV("auth daemon: bridge spawned",
+	slog.Info("auth daemon: bridge spawned",
 		"user", resp.User.Username,
 		"privileged", privileged)
 

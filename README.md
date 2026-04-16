@@ -109,7 +109,7 @@ sudo apt install -y libpam0g-dev cppcheck clang-tools bear
 sudo dnf install -y pam-devel cppcheck clang-tools-extra bear
 ```
 
-> Optional: install `libsystemd-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora/RHEL/CentOS) for journald integration in the auth worker. Without it, logs fall back to syslog. `scan-build` ships with `clang-tools`/`clang-tools-extra` and is optional for `make analyze-auth`.
+> Install `libsystemd-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora/RHEL/CentOS). Journald support is required for the auth worker build. `scan-build` ships with `clang-tools`/`clang-tools-extra` and is optional for `make analyze-auth`.
 
 ### Initial Setup
 

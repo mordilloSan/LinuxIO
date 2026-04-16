@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +19,6 @@ import (
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/go-connections/nat"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const (
@@ -100,7 +100,7 @@ func DisableCaddy(username string) (any, error) {
 	}
 
 	if err := removeCaddyContainer(); err != nil {
-		logger.Warnf("remove error: %v", err)
+		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
 
 	cfg.Docker.Proxy.CaddyEnabled = false
@@ -155,7 +155,7 @@ func deployCaddyContainer() error {
 	// Pull image
 	rc, pullErr := cli.ImagePull(ctx, caddyImage, image.PullOptions{})
 	if pullErr != nil {
-		logger.Warnf("pull warning: %v", pullErr)
+		slog.Warn("failed to pull caddy image", "component", "docker", "subsystem", "caddy", "image", caddyImage, "error", pullErr)
 	} else {
 		_ = rc.Close()
 	}
@@ -204,8 +204,7 @@ func deployCaddyContainer() error {
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("start container: %w", err)
 	}
-
-	logger.Infof("container started: %s", resp.ID[:12])
+	slog.Info("caddy container started", "component", "docker", "subsystem", "caddy", "container", resp.ID[:12])
 	return nil
 }
 
@@ -336,8 +335,7 @@ func reloadCaddyfile(proxyCfg config.DockerProxy) error {
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("caddy reload returned %s", resp.Status)
 	}
-
-	logger.Infof("Caddyfile reloaded (%d routes)", len(routes))
+	slog.Info("Caddyfile reloaded", "component", "docker", "subsystem", "caddy", "route_count", len(routes))
 	return nil
 }
 

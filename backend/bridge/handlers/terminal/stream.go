@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -19,7 +20,6 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -49,7 +49,7 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 //   - Server sends: OpStreamData with PTY output bytes
 //   - Either side can send OpStreamClose to terminate
 func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
-	logger.Debugf("[StreamTerminal] Starting for user=%s args=%v", sess.User.Username, args)
+	slog.Debug("starting terminal stream", "user", sess.User.Username, "args", args)
 
 	// Parse initial size from args (cols, rows)
 	cols, rows := 120, 32
@@ -65,9 +65,10 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 	// Look up user for environment setup
 	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
 	if err != nil {
-		logger.Errorf("[StreamTerminal] lookup user %s failed: %v", sess.User.Username, err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil { // streamID 1 for terminal
-			logger.Debugf("[StreamTerminal] failed to write stream close frame: %v", closeErr)
+		slog.Error("failed to look up terminal user", "user", sess.User.Username, "error", err)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			// streamID 1 for terminal
+			slog.Debug("failed to write terminal stream close frame", "error", closeErr)
 		}
 		return fmt.Errorf("lookup user: %w", err)
 	}
@@ -105,9 +106,9 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		logger.Errorf("[StreamTerminal] pty start failed: %v", err)
+		slog.Error("failed to start terminal PTY", "user", sess.User.Username, "error", err)
 		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[StreamTerminal] failed to write stream close frame: %v", closeErr)
+			slog.Debug("failed to write terminal stream close frame", "error", closeErr)
 		}
 		return err
 	}
@@ -117,7 +118,7 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 		Cols: safeUint16(cols),
 		Rows: safeUint16(rows),
 	}); err != nil {
-		logger.Debugf("[StreamTerminal] failed to set initial PTY size: %v", err)
+		slog.Debug("failed to set initial PTY size", "cols", cols, "rows", rows, "error", err)
 	}
 
 	sts := &StreamTerminalSession{
@@ -163,7 +164,7 @@ func (sts *StreamTerminalSession) relayPTYToStream() {
 		if err != nil {
 			// Send close frame
 			if closeErr := ipc.WriteStreamClose(sts.Stream, 1); closeErr != nil {
-				logger.Debugf("[StreamTerminal] failed to write stream close frame: %v", closeErr)
+				slog.Debug("failed to write terminal stream close frame", "error", closeErr)
 			}
 			return
 		}
@@ -196,7 +197,7 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
 				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
 				if err := pty.Setsize(sts.PTY, &pty.Winsize{Cols: cols, Rows: rows}); err != nil {
-					logger.Debugf("[StreamTerminal] failed to resize PTY: %v", err)
+					slog.Debug("failed to resize terminal PTY", "cols", cols, "rows", rows, "error", err)
 				}
 			}
 
@@ -218,28 +219,28 @@ func (sts *StreamTerminalSession) cleanup() {
 	// Signal PTY process to terminate
 	if sts.Cmd != nil && sts.Cmd.Process != nil {
 		if err := syscall.Kill(-sts.Cmd.Process.Pid, syscall.SIGHUP); err != nil {
-			logger.Debugf("[StreamTerminal] failed to send SIGHUP to process group: %v", err)
+			slog.Debug("failed to send SIGHUP to terminal process group", "error", err)
 		}
 	}
 
 	// Close PTY
 	if sts.PTY != nil {
 		if err := sts.PTY.Close(); err != nil {
-			logger.Debugf("[StreamTerminal] failed to close PTY: %v", err)
+			slog.Debug("failed to close terminal PTY", "error", err)
 		}
 	}
 
 	// Close stream
 	if sts.Stream != nil {
 		if err := sts.Stream.Close(); err != nil {
-			logger.Debugf("[StreamTerminal] failed to close stream: %v", err)
+			slog.Debug("failed to close terminal stream", "error", err)
 		}
 	}
 
 	// Wait for process
 	if sts.Cmd != nil {
 		if err := sts.Cmd.Wait(); err != nil {
-			logger.Debugf("[StreamTerminal] process exited with error: %v", err)
+			slog.Debug("terminal process exited with error", "error", err)
 		}
 	}
 }
@@ -259,19 +260,18 @@ func safeUint16(val int) uint16 {
 func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
 	containerID, shell, cols, rows, err := parseContainerTerminalArgs(args)
 	if err != nil {
-		logger.Errorf("[ContainerTerminal] %v", err)
+		slog.Error("invalid container terminal arguments", "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
-
-	logger.Debugf("[ContainerTerminal] Starting for container=%s shell=%s user=%s", containerID, shell, sess.User.Username)
+	slog.Debug("starting container terminal stream", "container", containerID, "shell", shell, "user", sess.User.Username)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		logger.Errorf("[ContainerTerminal] docker client error: %v", err)
+		slog.Error("container terminal docker client error", "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
@@ -279,14 +279,14 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 
 	execResp, err := createContainerExec(ctx, cli, containerID, shell, cols, rows)
 	if err != nil {
-		logger.Errorf("[ContainerTerminal] exec create failed: %v", err)
+		slog.Error("container terminal exec create failed", "container", containerID, "shell", shell, "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
 
 	attachResp, err := attachContainerExec(ctx, cli, execResp.ID, cols, rows)
 	if err != nil {
-		logger.Errorf("[ContainerTerminal] exec attach failed: %v", err)
+		slog.Error("container terminal exec attach failed", "container", containerID, "exec_id", execResp.ID, "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
@@ -352,7 +352,7 @@ func resizeContainerExec(ctx context.Context, cli *client.Client, execID string,
 		Width:  uint(cols),
 		Height: uint(rows),
 	}); err != nil {
-		logger.Debugf("[ContainerTerminal] failed to resize exec tty: %v", err)
+		slog.Debug("failed to resize container exec tty", "exec_id", execID, "cols", cols, "rows", rows, "error", err)
 	}
 }
 
@@ -430,18 +430,18 @@ func waitForContainerTerminalEnd(cancel context.CancelFunc, closeAttach func(), 
 	select {
 	case secondErr := <-done:
 		if secondErr != nil && !errors.Is(secondErr, io.EOF) && !errors.Is(secondErr, net.ErrClosed) {
-			logger.Debugf("[ContainerTerminal] session ended with secondary error: %v", secondErr)
+			slog.Debug("container terminal ended with secondary error", "error", secondErr)
 		}
 	case <-time.After(100 * time.Millisecond):
 	}
 	if err != nil && !errors.Is(err, io.EOF) {
-		logger.Debugf("[ContainerTerminal] session ended with error: %v", err)
+		slog.Debug("container terminal ended with error", "error", err)
 	}
 	return nil
 }
 
 func writeContainerTerminalClose(stream net.Conn) {
 	if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-		logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
+		slog.Debug("failed to write container terminal stream close frame", "error", closeErr)
 	}
 }

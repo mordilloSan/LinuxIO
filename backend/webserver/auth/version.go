@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/semver"
 	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -41,19 +40,19 @@ func CheckForUpdate() *UpdateInfo {
 	current := getInstalledVersion()
 
 	if current == "" || current == "unknown" {
-		logger.Debugf("cannot determine installed version, skipping check")
+		slog.Debug("cannot determine installed version, skipping check")
 		return nil
 	}
 
 	latest, releaseURL := fetchLatestRelease()
 	if latest == "" {
-		logger.Debugf("could not fetch latest release")
+		slog.Debug("could not fetch latest release")
 		return nil
 	}
 
 	// Compare versions properly - only show update if latest is actually newer
 	if semver.IsNewer(latest, current) {
-		logger.Infof("update available: %s -> %s", current, latest)
+		slog.Info("update available", "current_version", current, "latest_version", latest)
 		return &UpdateInfo{
 			Available:      true,
 			CurrentVersion: current,
@@ -61,8 +60,7 @@ func CheckForUpdate() *UpdateInfo {
 			ReleaseURL:     releaseURL,
 		}
 	}
-
-	logger.Debugf("already on latest version: %s", current)
+	slog.Debug("already on latest version", "current_version", current)
 	return &UpdateInfo{
 		Available:      false,
 		CurrentVersion: current,
@@ -83,19 +81,19 @@ func fetchLatestRelease() (version string, releaseURL string) {
 	url := fmt.Sprintf(GitHubAPI, ver.RepoOwner, ver.RepoName)
 	resp, err := client.Get(url)
 	if err != nil {
-		logger.Debugf("failed to fetch latest release: %v", err)
+		slog.Debug("failed to fetch latest release", "error", err)
 		return "", ""
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("GitHub API returned status %d", resp.StatusCode)
+		slog.Debug("GitHub API returned non-OK status", "status", resp.StatusCode)
 		return "", ""
 	}
 
 	body, err := readBodyLimited(resp.Body, maxGitHubReleaseBodyBytes)
 	if err != nil {
-		logger.Debugf("failed to read response body: %v", err)
+		slog.Debug("failed to read latest release response body", "error", err)
 		return "", ""
 	}
 
@@ -105,7 +103,7 @@ func fetchLatestRelease() (version string, releaseURL string) {
 	}
 
 	if err := json.Unmarshal(body, &release); err != nil {
-		logger.Debugf("failed to parse JSON: %v", err)
+		slog.Debug("failed to parse latest release response", "error", err)
 		return "", ""
 	}
 
@@ -156,13 +154,19 @@ func getComponentVersions(parent context.Context) map[string]string {
 			binaryPath := filepath.Join(ver.BinDir, probe.binary)
 			output, err := runComponentVersionCommand(ctx, binaryPath, probe.args...)
 			if err != nil {
-				logger.Debugf("failed to run '%s %s': %v", binaryPath, strings.Join(probe.args, " "), err)
+				slog.Debug("failed to run component version command",
+					"component", probe.component,
+					"path", binaryPath,
+					"args", strings.Join(probe.args, " "),
+					"error", err)
 				return
 			}
 
 			version, ok := parseComponentVersionOutput(probe.component, output)
 			if !ok {
-				logger.Debugf("failed to parse version output for %s: %q", probe.component, strings.TrimSpace(string(output)))
+				slog.Debug("failed to parse component version output",
+					"component", probe.component,
+					"output", strings.TrimSpace(string(output)))
 				return
 			}
 

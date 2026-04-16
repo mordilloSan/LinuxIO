@@ -5,11 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"os/exec"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -32,21 +31,32 @@ type generalLogsRequest struct {
 // - identifier: filter by SYSLOG_IDENTIFIER (optional, empty = all)
 func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	req := parseGeneralLogsRequest(args)
-	logger.Debugf("[GeneralLogs] Starting stream lines=%s timePeriod=%s priority=%s identifier=%s",
-		req.lines, req.timePeriod, req.priority, req.identifier)
+	slog.Debug("starting general log stream",
+		"component", "logs",
+		"stream_type", StreamTypeGeneralLogs,
+		"lines", req.lines,
+		"time_period", req.timePeriod,
+		"priority", req.priority,
+		"identifier", req.identifier)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cmd, stdout, err := startGeneralLogsCommand(ctx, req)
 	if err != nil {
-		logger.Errorf("[GeneralLogs] failed to create stdout pipe: %v", err)
+		slog.Error("failed to create general log stream pipe",
+			"component", "logs",
+			"stream_type", StreamTypeGeneralLogs,
+			"error", err)
 		closeLogsStream(stream, "[GeneralLogs]")
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
-		logger.Errorf("[GeneralLogs] failed to start journalctl: %v", err)
+		slog.Error("failed to start general log stream",
+			"component", "logs",
+			"stream_type", StreamTypeGeneralLogs,
+			"error", err)
 		closeLogsStream(stream, "[GeneralLogs]")
 		return err
 	}
@@ -112,7 +122,10 @@ func streamJournalLines(ctx context.Context, stream net.Conn, stdout io.Reader, 
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err != io.EOF && !errors.Is(err, context.Canceled) {
-				logger.Debugf("%s read error: %v", label, err)
+				slog.Debug("log stream read error",
+					"component", "logs",
+					"stream_label", label,
+					"error", err)
 			}
 			return
 		}
@@ -130,7 +143,10 @@ func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, stream ne
 	select {
 	case <-ctx.Done():
 		if killErr := cmd.Process.Kill(); killErr != nil {
-			logger.Debugf("%s failed to kill journalctl process: %v", label, killErr)
+			slog.Debug("failed to kill journalctl process",
+				"component", "logs",
+				"stream_label", label,
+				"error", killErr)
 		}
 		closeLogsStream(stream, label)
 		return true
@@ -141,12 +157,18 @@ func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, stream ne
 
 func waitForLogsCommand(cmd *exec.Cmd, label string) {
 	if err := cmd.Wait(); err != nil {
-		logger.Debugf("%s journalctl exited with error: %v", label, err)
+		slog.Debug("journalctl exited with error",
+			"component", "logs",
+			"stream_label", label,
+			"error", err)
 	}
 }
 
 func closeLogsStream(stream net.Conn, label string) {
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("%s failed to write stream close frame: %v", label, err)
+		slog.Debug("failed to write log stream close frame",
+			"component", "logs",
+			"stream_label", label,
+			"error", err)
 	}
 }

@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"slices"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -24,7 +24,7 @@ func RegisterHandlers(sess *session.Session) {
 	sessionUsername = username
 
 	if err := initIconCache(); err != nil {
-		logger.Warnf("failed to initialize icon cache: %v", err)
+		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "error", err)
 	}
 
 	registerDockerHandlers([]dockerRegistration{
@@ -95,7 +95,7 @@ func dockerNoArgCallWithContext[T any](fn func(context.Context) (T, error)) ipc.
 
 func loggedDockerNoArgCallWithContext[T any](message string, fn func(context.Context) (T, error)) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("%s", message)
+		slog.Info(message, "component", "docker")
 		result, err := fn(ctx)
 		return emitDockerResult(emit, result, err)
 	}
@@ -136,7 +136,7 @@ func dockerUserCall[T any](username string, fn func(string) (T, error)) ipc.Hand
 
 func loggedDockerUserCall[T any](message, username string, fn func(string) (T, error)) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("%s", message)
+		slog.Info(message, "component", "docker", "user", username)
 		result, err := fn(username)
 		return emitDockerResult(emit, result, err)
 	}
@@ -195,7 +195,7 @@ func normalizeComposeHandler() ipc.HandlerFunc {
 
 func reindexDockerFolderHandler(username string) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("reindex_docker_folder requested")
+		slog.Info("reindex_docker_folder requested")
 		result, err := IndexDockerFolder(username)
 		return emitDockerResult(emit, result, err)
 	}
@@ -254,7 +254,7 @@ func getIconInfoHandler() ipc.HandlerFunc {
 
 func clearIconCacheHandler() ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("clear_icon_cache requested")
+		slog.Info("clear_icon_cache requested")
 		if err := ClearIconCache(); err != nil {
 			return err
 		}
@@ -291,7 +291,7 @@ func setAutoUpdateHandler(username string) ipc.HandlerFunc {
 		if payload.Container == "" {
 			return ipc.ErrInvalidArgs
 		}
-		logger.Infof("set_auto_update requested: container=%s enabled=%v", payload.Container, payload.Enabled)
+		slog.Info("set_auto_update requested", "component", "docker", "container", payload.Container, "mode", payload.Enabled, "user", username)
 
 		cfg, _, err := config.Load(username)
 		if err != nil {
@@ -325,10 +325,7 @@ func systemPruneHandler() ipc.HandlerFunc {
 		if err := json.Unmarshal([]byte(args[0]), &opts); err != nil {
 			return ipc.ErrInvalidArgs
 		}
-		logger.Infof(
-			"system_prune requested: containers=%v images=%v buildCache=%v networks=%v volumes=%v",
-			opts.Containers, opts.Images, opts.BuildCache, opts.Networks, opts.Volumes,
-		)
+		slog.Info("system_prune requested", "component", "docker", "error", fmt.Errorf("containers=%t images=%t build_cache=%t networks=%t volumes=%t", opts.Containers, opts.Images, opts.BuildCache, opts.Networks, opts.Volumes))
 		result, err := SystemPrune(opts)
 		return emitDockerResult(emit, result, err)
 	}
@@ -342,41 +339,41 @@ func emitDockerResult(emit ipc.Events, result any, err error) error {
 }
 
 func logStartContainer(id string) {
-	logger.Infof("start_container requested: id=%s", id)
+	slog.Info("start_container requested", "component", "docker", "container", id)
 }
 
 func logStopContainer(id string) {
-	logger.Infof("stop_container requested: id=%s", id)
+	slog.Info("stop_container requested", "component", "docker", "container", id)
 }
 
 func logRemoveContainer(id string) {
-	logger.Infof("remove_container requested: id=%s", id)
+	slog.Info("remove_container requested", "component", "docker", "container", id)
 }
 
 func logRestartContainer(id string) {
-	logger.Infof("restart_container requested: id=%s", id)
+	slog.Info("restart_container requested", "component", "docker", "container", id)
 }
 
 func logDeleteImage(id string) {
-	logger.Infof("delete_image requested: id=%s", id)
+	slog.Info("delete_image requested", "component", "docker", "image", id)
 }
 
 func logCreateNetwork(name string) {
-	logger.Infof("create_network requested: name=%s", name)
+	slog.Info("create_network requested", "component", "docker", "service", name)
 }
 
 func logDeleteNetwork(name string) {
-	logger.Infof("delete_network requested: name=%s", name)
+	slog.Info("delete_network requested", "component", "docker", "service", name)
 }
 
 func logCreateVolume(name string) {
-	logger.Infof("create_volume requested: name=%s", name)
+	slog.Info("create_volume requested", "component", "docker", "service", name)
 }
 
 func logDeleteVolume(name string) {
-	logger.Infof("delete_volume requested: name=%s", name)
+	slog.Info("delete_volume requested", "component", "docker", "service", name)
 }
 
 func logConnectToProxy(id string) {
-	logger.Infof("connect_to_proxy requested: id=%s", id)
+	slog.Info("connect_to_proxy requested", "component", "docker", "container", id)
 }

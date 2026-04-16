@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"path/filepath"
 	"regexp"
@@ -14,7 +15,6 @@ import (
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
@@ -44,16 +44,15 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 func HandleDockerLogsStream(_ *session.Session, stream net.Conn, args []string) error {
 	containerID, tail, err := parseDockerLogsArgs(args)
 	if err != nil {
-		logger.Errorf("%v", err)
+		slog.Error("invalid docker logs stream args", "component", "docker", "stream_type", StreamTypeDockerLogs, "error", err)
 		writeDockerLogsClose(stream)
 		return err
 	}
-
-	logger.Debugf("Starting stream for container=%s tail=%s", containerID, tail)
+	slog.Debug("starting docker log stream", "component", "docker", "stream_type", StreamTypeDockerLogs, "container", containerID, "mode", tail)
 
 	cli, err := getClient()
 	if err != nil {
-		logger.Errorf("docker client error: %v", err)
+		slog.Error("failed to get docker client", "component", "docker", "stream_type", StreamTypeDockerLogs, "container", containerID, "error", err)
 		writeDockerLogsClose(stream)
 		return err
 	}
@@ -73,7 +72,7 @@ func HandleDockerLogsStream(_ *session.Session, stream net.Conn, args []string) 
 
 	reader, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
-		logger.Errorf("failed to get logs: %v", err)
+		slog.Error("failed to get container logs", "component", "docker", "stream_type", StreamTypeDockerLogs, "container", containerID, "error", err)
 		writeDockerLogsClose(stream)
 		return err
 	}
@@ -114,7 +113,7 @@ func streamDockerLogs(ctx context.Context, stream net.Conn, reader io.Reader) er
 
 		payload, done, err := readDockerLogFrame(reader, header)
 		if err != nil {
-			logger.Debugf("docker log stream error: %v", err)
+			slog.Debug("docker log stream ended with read error", "component", "docker", "stream_type", StreamTypeDockerLogs, "error", err)
 			break
 		}
 		if done {
@@ -162,7 +161,7 @@ func readDockerLogFrame(reader io.Reader, header []byte) ([]byte, bool, error) {
 
 func writeDockerLogsClose(stream net.Conn) {
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("failed to write stream close frame: %v", err)
+		slog.Debug("failed to write stream close frame", "component", "docker", "error", err)
 	}
 }
 
@@ -178,7 +177,7 @@ type ComposeStreamMessage struct {
 // action can be: "up", "down", "stop", "restart"
 func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		logger.Errorf("missing required arguments")
+		slog.Error("missing required arguments")
 		sendComposeError(stream, "missing required arguments: action, projectName")
 		return errors.New("missing required arguments")
 	}
@@ -190,8 +189,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	if len(args) >= 3 {
 		composePath = args[2]
 	}
-
-	logger.Infof("action=%s project=%s composePath=%s", action, projectName, composePath)
+	slog.Info("docker compose stream requested", "component", "docker", "stream_type", StreamTypeDockerCompose, "action", action, "service", projectName, "path", composePath, "user", username)
 
 	// Determine config file and working directory
 	var configFile string
@@ -218,7 +216,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			logger.Debugf("client disconnected, cancelling command")
+			slog.Debug("client disconnected, cancelling command")
 			cancel()
 		}
 	}()
@@ -263,7 +261,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	streamMu.Lock()
 	sendComposeMessage(stream, "complete", "operation completed successfully")
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("failed to write stream close frame: %v", err)
+		slog.Debug("failed to write stream close frame", "component", "docker", "stream_type", StreamTypeDockerCompose, "error", err)
 	}
 	streamMu.Unlock()
 	return nil
@@ -277,7 +275,7 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 
 	data, err := json.Marshal(msg)
 	if err != nil {
-		logger.Errorf("failed to marshal message: %v", err)
+		slog.Error("failed to marshal compose stream message", "component", "docker", "stream_type", StreamTypeDockerCompose, "error", err)
 		return
 	}
 
@@ -288,14 +286,14 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 	}
 
 	if err := ipc.WriteRelayFrame(stream, frame); err != nil {
-		logger.Debugf("failed to write frame: %v", err)
+		slog.Debug("failed to write compose stream frame", "component", "docker", "stream_type", StreamTypeDockerCompose, "error", err)
 	}
 }
 
 func sendComposeError(stream net.Conn, message string) {
 	sendComposeMessage(stream, "error", message)
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("failed to write stream close frame: %v", err)
+		slog.Debug("failed to write stream close frame", "component", "docker", "stream_type", StreamTypeDockerCompose, "error", err)
 	}
 }
 
@@ -307,14 +305,14 @@ func HandleDockerIndexerStream(sess *session.Session, stream net.Conn, args []st
 	cfg, _, err := config.Load(username)
 	if err != nil {
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, "failed to load user config", 500); writeErr != nil {
-			logger.Debugf("failed to write error+close frame: %v", writeErr)
+			slog.Debug("failed to write error+close frame", "component", "docker", "stream_type", StreamTypeDockerIndexer, "error", writeErr)
 		}
 		return err
 	}
 
 	if cfg.Docker.Folder == "" {
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, "docker folder not configured", 400); writeErr != nil {
-			logger.Debugf("failed to write error+close frame: %v", writeErr)
+			slog.Debug("failed to write error+close frame", "component", "docker", "stream_type", StreamTypeDockerIndexer, "error", writeErr)
 		}
 		return errors.New("docker folder not configured")
 	}
@@ -335,8 +333,7 @@ func HandleDockerIndexerStream(sess *session.Session, stream net.Conn, args []st
 			if err := ipc.WriteStreamClose(stream, 0); err != nil {
 				return err
 			}
-			logger.Infof("Indexing complete: path=%s files=%d dirs=%d duration=%dms",
-				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			slog.Info("docker folder indexing complete", "component", "docker", "stream_type", StreamTypeDockerIndexer, "path", r.Path, "error", fmt.Errorf("files=%d dirs=%d duration_ms=%d", r.FilesIndexed, r.DirsIndexed, r.DurationMs))
 			return nil
 		},
 		OnError: func(msg string, code int) error {
@@ -366,8 +363,7 @@ func HandleDockerIndexerAttachStream(sess *session.Session, stream net.Conn, arg
 			if err := ipc.WriteStreamClose(stream, 0); err != nil {
 				return err
 			}
-			logger.Infof("Attach complete: files=%d dirs=%d duration=%dms",
-				r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			slog.Info("docker folder attach indexing complete", "component", "docker", "stream_type", StreamTypeDockerIndexerAttach, "error", fmt.Errorf("files=%d dirs=%d duration_ms=%d", r.FilesIndexed, r.DirsIndexed, r.DurationMs))
 			return nil
 		},
 		OnError: func(msg string, code int) error {

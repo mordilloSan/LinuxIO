@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -19,13 +18,13 @@ import (
 
 func closeWithLog(name string, closer io.Closer) {
 	if err := closer.Close(); err != nil {
-		logger.Debugf("failed to close %s: %v", name, err)
+		slog.Debug("failed to close archive resource", "component", "filebrowser", "subsystem", "archive", "path", name, "error", err)
 	}
 }
 
 func removeWithLog(root *fsroot.FSRoot, path string) {
 	if err := root.Root.Remove(path); err != nil && !os.IsNotExist(err) {
-		logger.Debugf("failed to remove %s: %v", path, err)
+		slog.Debug("failed to remove archive path", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
 	}
 }
 
@@ -232,7 +231,7 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 			if addErr == ipc.ErrAborted {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
-				logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
+				slog.Error("failed to add file to zip", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
 			}
 			return addErr
 		}
@@ -302,7 +301,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 			if addErr == ipc.ErrAborted {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
-				logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
+				slog.Error("failed to add file to tar.gz", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
 			}
 			return addErr
 		}

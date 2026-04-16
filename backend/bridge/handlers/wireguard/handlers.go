@@ -2,8 +2,7 @@ package wireguard
 
 import (
 	"context"
-
-	"github.com/mordilloSan/go-logger/logger"
+	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -13,7 +12,7 @@ func RegisterHandlers() {
 	reg := func(action string, fn func([]string) (any, error)) {
 		ipc.RegisterFunc("wireguard", action, func(_ context.Context, args []string, emit ipc.Events) error {
 			if action != "list_interfaces" && action != "list_peers" && action != "peer_qrcode" && action != "peer_config_download" {
-				logger.Infof("%s requested", action)
+				slog.Info("wireguard action requested", "component", "wireguard", "mode", action)
 			}
 			result, err := fn(args)
 			if err != nil {

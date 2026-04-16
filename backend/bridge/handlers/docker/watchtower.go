@@ -3,11 +3,11 @@ package docker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
@@ -25,14 +25,14 @@ const (
 func SyncWatchtowerStack(username string) {
 	cfg, _, err := config.Load(username)
 	if err != nil {
-		logger.Warnf("failed to load config: %v", err)
+		slog.Warn("failed to load docker config for watchtower", "component", "docker", "subsystem", "watchtower", "user", username, "error", err)
 		return
 	}
 
 	// When no stacks have auto-update enabled, stop Watchtower entirely.
 	if len(cfg.Docker.AutoUpdateStacks) == 0 {
 		stopWatchtower()
-		logger.Infof("no auto-update stacks — watchtower stopped")
+		slog.Info("no auto-update stacks — watchtower stopped")
 		return
 	}
 
@@ -41,15 +41,15 @@ func SyncWatchtowerStack(username string) {
 	// Write the generated compose file.
 	content := generateWatchtowerCompose(containerNames)
 	if err := os.WriteFile(watchtowerComposePath, []byte(content), 0o644); err != nil {
-		logger.Warnf("failed to write compose file: %v", err)
+		slog.Warn("failed to write watchtower compose file", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 		return
 	}
 
 	// Start or recreate Watchtower with the new config.
 	if err := composeUpWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
-		logger.Warnf("compose up failed: %v", err)
+		slog.Warn("watchtower compose up failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	} else {
-		logger.Infof("synced with containers: %s", strings.Join(containerNames, ", "))
+		slog.Info("synced watchtower with containers", "component", "docker", "subsystem", "watchtower", "container_count", len(containerNames))
 	}
 }
 
@@ -61,11 +61,11 @@ func stopWatchtower() {
 	}
 
 	if err := composeDownWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, false, nil); err != nil {
-		logger.Warnf("compose down failed: %v", err)
+		slog.Warn("watchtower compose down failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	}
 
 	if err := os.Remove(watchtowerComposePath); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("failed to remove compose file: %v", err)
+		slog.Warn("failed to remove watchtower compose file", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	}
 }
 
@@ -75,14 +75,14 @@ func stopWatchtower() {
 func collectContainerNames(autoUpdateContainers []string) []string {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("docker client unavailable, using container names as fallback: %v", err)
+		slog.Debug("docker client unavailable for watchtower sync; using fallback container names", "component", "docker", "subsystem", "watchtower", "error", err)
 		return autoUpdateContainers
 	}
 	defer releaseClient(cli)
 
 	running, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
 	if err != nil {
-		logger.Warnf("failed to list containers: %v", err)
+		slog.Warn("failed to list running containers for watchtower sync", "component", "docker", "subsystem", "watchtower", "error", err)
 		return autoUpdateContainers
 	}
 

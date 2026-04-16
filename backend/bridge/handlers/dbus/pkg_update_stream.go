@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -132,11 +132,11 @@ func isRealWorkStatus(status uint32) bool {
 // HandlePackageUpdateStream handles streaming package updates with real-time progress.
 // args: package IDs to update (null-byte separated in payload)
 func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
-	logger.Infof("Starting update stream with %d packages", len(args))
+	slog.Info("starting package update stream", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(args)), "user", sess.User.Username)
 
 	if len(args) == 0 {
 		if err := ipc.WriteResultErrorAndClose(stream, 0, "no packages specified", 400); err != nil {
-			logger.Debugf("failed to write error+close frame: %v", err)
+			slog.Debug("failed to write error+close frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 		}
 		return fmt.Errorf("no packages specified")
 	}
@@ -147,14 +147,14 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 		Status:     "Initializing",
 		Percentage: new(uint32(0)),
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 
 	err := updatePackagesWithProgress(stream, args)
 	if err != nil {
-		logger.Errorf("Error: %v", err)
+		slog.Error("package update stream failed", "component", "dbus", "subsystem", "packagekit", "error", err)
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
-			logger.Debugf("failed to write error+close frame: %v", writeErr)
+			slog.Debug("failed to write error+close frame", "component", "dbus", "subsystem", "packagekit", "error", writeErr)
 		}
 		return err
 	}
@@ -162,9 +162,9 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"updated": len(args),
 	}); err != nil {
-		logger.Debugf("failed to write ok+close frame: %v", err)
+		slog.Debug("failed to write ok+close frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
-	logger.Infof("Completed update stream for %d packages", len(args))
+	slog.Info("completed package update stream", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(args)), "user", sess.User.Username)
 	return nil
 }
 
@@ -178,7 +178,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "packagekit", "error", cerr)
 		}
 	}()
 
@@ -195,10 +195,9 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	sigCh := subscribePackageKitSignals(conn, transPath, 100)
 	defer conn.RemoveSignal(sigCh)
 	defer removePackageKitSignalMatch(conn, transPath)
-
 	// Call UpdatePackages with all package IDs at once
 	// Flag 0 = no special flags (install normally)
-	logger.Infof("Calling UpdatePackages with %d packages", len(packageIDs))
+	slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(packageIDs)))
 	call := trans.Call(transactionIfc+".UpdatePackages", 0, uint64(0), packageIDs)
 	if call.Err != nil {
 		return fmt.Errorf("UpdatePackages failed: %w", call.Err)
@@ -249,14 +248,14 @@ func subscribePackageKitSignals(
 	sigCh := make(chan *godbus.Signal, buffer)
 	conn.Signal(sigCh)
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Warnf("failed to add D-Bus match signal: %v", err)
+		slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 	return sigCh
 }
 
 func removePackageKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
 	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
@@ -305,7 +304,7 @@ func handleItemProgressSignal(stream net.Conn, sig *godbus.Signal, lastWorkStatu
 		StatusCode: new(status),
 		ItemPct:    new(pct),
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
@@ -324,7 +323,7 @@ func handlePackageSignal(stream net.Conn, sig *godbus.Signal) {
 		Status:         packageInfoName(info),
 		InfoCode:       new(info),
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
@@ -340,7 +339,7 @@ func handleMessageSignal(stream net.Conn, sig *godbus.Signal) {
 		Status:  fmt.Sprintf("Message %d", msgType),
 		Message: details,
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
@@ -354,13 +353,13 @@ func packageUpdateSignalError(sig *godbus.Signal) error {
 }
 
 func handleFinishedSignal(stream net.Conn) {
-	logger.Infof("Finished signal received")
+	slog.Info("Finished signal received")
 	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Finished",
 		Percentage: new(uint32(100)),
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
@@ -415,7 +414,7 @@ func writePercentageProgress(stream net.Conn, props map[string]godbus.Variant, s
 		Type:       "percentage",
 		Percentage: new(pct),
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
@@ -428,7 +427,7 @@ func writeStatusProgress(stream net.Conn, currentStatus uint32, hasStatus bool) 
 		Status:     packageStatusName(currentStatus),
 		StatusCode: new(currentStatus),
 	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 

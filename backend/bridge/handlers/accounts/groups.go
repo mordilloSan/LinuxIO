@@ -3,12 +3,11 @@ package accounts
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const (
@@ -105,8 +104,7 @@ func CreateGroup(req CreateGroupRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to create group: %s", strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Created group: %s", req.Name)
+	slog.Info("group created", "group", req.Name)
 	return nil
 }
 
@@ -144,8 +142,7 @@ func DeleteGroup(name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete group: %s", strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Deleted group: %s", name)
+	slog.Info("group deleted", "group", name)
 	return nil
 }
 
@@ -221,7 +218,7 @@ func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 	}
 
 	if sameGroupMembers(group.Members, members) {
-		logger.Infof("Group members unchanged: %s", req.GroupName)
+		slog.Info("group members unchanged", "group", req.GroupName)
 		return nil
 	}
 
@@ -230,7 +227,6 @@ func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to set group members for %s: %s", req.GroupName, strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Modified group members: %s", req.GroupName)
+	slog.Info("group members modified", "group", req.GroupName)
 	return nil
 }

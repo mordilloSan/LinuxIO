@@ -478,8 +478,9 @@ build-auth:
 	  LIBS="$$LIBS -lsystemd"; \
 	  echo "   Linking with libsystemd for journald support"; \
 	else \
-	  echo "⚠️  libsystemd-dev not found - auth helper logs will fall back to syslog"; \
+	  echo "❌ libsystemd-dev/systemd-devel is required to build linuxio-auth"; \
 	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
+	  exit 1; \
 	fi; \
 	$(CC) $(CFLAGS) -DLINUXIO_VERSION=\"$(GIT_VERSION)\" -o linuxio-auth backend/auth/linuxio-auth.c $(LDFLAGS) $$LIBS; \
 	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth; fi; \

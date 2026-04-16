@@ -4,10 +4,9 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // tlsRedirectListener wraps a net.Listener and peeks at each connection's
@@ -74,7 +73,9 @@ func (l *tlsRedirectListener) redirectHTTP(conn net.Conn) {
 		target, len(body), body,
 	)
 	if _, err := conn.Write([]byte(resp)); err != nil {
-		logger.Debugf("failed to write HTTP-to-HTTPS redirect to %v: %v", conn.RemoteAddr(), err)
+		slog.Debug("failed to write HTTP-to-HTTPS redirect",
+			"address", conn.RemoteAddr(),
+			"error", err)
 		return
 	}
 }

@@ -3,14 +3,13 @@ package control
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -53,8 +52,7 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 	if len(args) > 1 {
 		version = args[1]
 	}
-
-	logger.Infof("[app-update] starting: run_id=%s version=%q user=%s", runID, version, sess.User.Username)
+	slog.Info("app update stream starting", "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version, "user", sess.User.Username)
 
 	// Resolve version if not specified
 	if version == "" {
@@ -63,14 +61,14 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 			return writeUpdateError(stream, fmt.Sprintf("failed to fetch latest version: %v", err), 500)
 		}
 		version = latest
-		logger.Infof("[app-update] resolved latest version: %s", version)
+		slog.Info("resolved latest app version", "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version)
 	}
 
 	startedAt := time.Now().Unix()
 
 	// Write initial status file
 	if err := writeStatusFile(runID, "running", nil, startedAt, 0); err != nil {
-		logger.Warnf("[app-update] failed to write initial status file: %v", err)
+		slog.Warn("failed to write initial update status file", "component", "control", "subsystem", "app_update", "stream_id", runID, "path", updateStatusPath, "error", err)
 	}
 
 	// Create a relay writer that sends OpStreamData frames
@@ -86,7 +84,7 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
-		logger.Errorf("[app-update] install script failed: %v", err)
+		slog.Error("app update install script failed", "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version, "error", err)
 	}
 
 	// Write final status file
@@ -95,33 +93,31 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 		status = "error"
 	}
 	if writeErr := writeStatusFile(runID, status, &exitCode, startedAt, finishedAt); writeErr != nil {
-		logger.Warnf("[app-update] failed to write final status file: %v", writeErr)
+		slog.Warn("failed to write final update status file", "component", "control", "subsystem", "app_update", "stream_id", runID, "path", updateStatusPath, "error", writeErr)
 	}
 
 	// Send result frame
 	if exitCode == 0 {
 		_, _ = fmt.Fprintf(relay, "Installation complete\n")
 		if writeErr := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"exit_code": 0}); writeErr != nil {
-			logger.Debugf("[app-update] failed to write ok+close frame: %v", writeErr)
+			slog.Debug("failed to write ok+close frame", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", writeErr)
 		}
 	} else {
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("update failed: %v", err), exitCode); writeErr != nil {
-			logger.Debugf("[app-update] failed to write error+close frame: %v", writeErr)
+			slog.Debug("failed to write error+close frame", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", writeErr)
 		}
 		return nil
 	}
-
 	// Success path: daemon-reload and schedule service restart
-	logger.Debugf("[app-update] reloading systemd daemon")
+	slog.Debug("reloading systemd daemon", "component", "control", "subsystem", "app_update", "stream_id", runID)
 	if reloadErr := systemdapi.DaemonReload(); reloadErr != nil {
-		logger.Warnf("[app-update] daemon-reload failed: %v (continuing anyway)", reloadErr)
+		slog.Warn("systemd daemon-reload failed", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", reloadErr)
 	}
-
-	logger.Infof("[app-update] scheduling service restart")
+	slog.Info("scheduling service restart", "component", "control", "subsystem", "app_update", "stream_id", runID)
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		if restartErr := restartService(); restartErr != nil {
-			logger.Errorf("[app-update] failed to restart service: %v", restartErr)
+			slog.Error("failed to restart service after update", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", restartErr)
 		}
 	}()
 
@@ -204,7 +200,7 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 
 func writeUpdateError(stream net.Conn, message string, code int) error {
 	if err := ipc.WriteResultErrorAndClose(stream, 0, message, code); err != nil {
-		logger.Debugf("[app-update] failed to write error+close frame: %v", err)
+		slog.Debug("failed to write error+close frame", "component", "control", "subsystem", "app_update", "error", err)
 	}
 	return fmt.Errorf("%s", message)
 }

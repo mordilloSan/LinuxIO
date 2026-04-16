@@ -3,6 +3,7 @@ package updates
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/systemd"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 type aptBackend struct{}
@@ -199,19 +199,19 @@ func enableAptUpgradeTimer(ctx context.Context, sd *systemd.Client) error {
 
 func disableAptDailyTimer(ctx context.Context, sd *systemd.Client, reason string) {
 	if err := sd.Stop(ctx, "apt-daily.timer"); err != nil {
-		logger.Debugf("failed to stop apt-daily.timer %s: %v", reason, err)
+		slog.Debug("failed to stop apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "mode", reason, "error", err)
 	}
 	if err := sd.Disable(ctx, "apt-daily.timer"); err != nil {
-		logger.Debugf("failed to disable apt-daily.timer %s: %v", reason, err)
+		slog.Debug("failed to disable apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "mode", reason, "error", err)
 	}
 }
 
 func disableAptUpgradeTimer(ctx context.Context, sd *systemd.Client, reason string) {
 	if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
-		logger.Debugf("failed to stop apt-daily-upgrade.timer %s: %v", reason, err)
+		slog.Debug("failed to stop apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "mode", reason, "error", err)
 	}
 	if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
-		logger.Debugf("failed to disable apt-daily-upgrade.timer %s: %v", reason, err)
+		slog.Debug("failed to disable apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "mode", reason, "error", err)
 	}
 }
 
@@ -220,13 +220,13 @@ func restartAptTimers(ctx context.Context, sd *systemd.Client, o AutoUpdateOptio
 		return
 	}
 	if err := sd.Restart(ctx, "apt-daily.timer"); err != nil {
-		logger.Debugf("failed to restart apt-daily.timer: %v", err)
+		slog.Debug("failed to restart apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "error", err)
 	}
 	if o.DownloadOnly {
 		return
 	}
 	if err := sd.Restart(ctx, "apt-daily-upgrade.timer"); err != nil {
-		logger.Debugf("failed to restart apt-daily-upgrade.timer: %v", err)
+		slog.Debug("failed to restart apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "error", err)
 	}
 }
 

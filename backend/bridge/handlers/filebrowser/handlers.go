@@ -3,12 +3,11 @@ package filebrowser
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"syscall"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
@@ -75,7 +74,7 @@ func emitFilebrowserArgsResult(fn func([]string) (any, error)) ipc.HandlerFunc {
 
 func emitFilebrowserLoggedArgsResult(message string, fn func([]string) (any, error)) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("%s", message)
+		slog.Info(message, "component", "filebrowser")
 		result, err := fn(args)
 		if err != nil {
 			return err
@@ -85,7 +84,7 @@ func emitFilebrowserLoggedArgsResult(message string, fn func([]string) (any, err
 }
 
 func handleResourcePatch(ctx context.Context, args []string, emit ipc.Events) error {
-	logger.Infof("resource_patch requested")
+	slog.Info("resource_patch requested")
 	result, err := resourcePatchWithProgress(ctx, args, emit)
 	if err != nil {
 		return err
@@ -129,7 +128,7 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	if err != nil {
 		return err
 	}
-	logger.Infof("upload requested: path=%s size=%d", upload.path, upload.expectedSize)
+	slog.Info("upload requested", "component", "filebrowser", "path", upload.path, "size", upload.expectedSize)
 
 	root, preserveState, err := openUploadRoot(upload)
 	if err != nil {
@@ -155,8 +154,7 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	if err := finalizeUpload(root, file, upload, bytesWritten, preserveState); err != nil {
 		return err
 	}
-
-	logger.Infof("Upload complete: path=%s size=%d", upload.path, bytesWritten)
+	slog.Info("upload complete", "component", "filebrowser", "path", upload.path, "size", bytesWritten)
 	return emit.Result(map[string]any{
 		"path": upload.path,
 		"size": bytesWritten,
@@ -217,10 +215,10 @@ func loadUploadPreserveState(root *fsroot.FSRoot, upload *uploadContext) (upload
 
 func cleanupUploadTempFile(root *fsroot.FSRoot, file *os.File, tempRel, tempPath string) {
 	if closeErr := file.Close(); closeErr != nil {
-		logger.Debugf("failed to close temp upload file: %v", closeErr)
+		slog.Debug("failed to close temp upload file", "component", "filebrowser", "path", tempPath, "error", closeErr)
 	}
 	if removeErr := root.Root.Remove(tempRel); removeErr != nil && !os.IsNotExist(removeErr) {
-		logger.Debugf("failed to remove temp upload file %s: %v", tempPath, removeErr)
+		slog.Debug("failed to remove temp upload file", "component", "filebrowser", "path", tempPath, "error", removeErr)
 	}
 }
 
@@ -286,9 +284,9 @@ func restoreUploadMetadata(root *fsroot.FSRoot, realRel, realPath string, preser
 		return
 	}
 	if err := root.Root.Chmod(realRel, preserveState.mode); err != nil {
-		logger.Debugf("failed to restore mode on %s: %v", realPath, err)
+		slog.Debug("failed to restore file mode", "component", "filebrowser", "path", realPath, "error", err)
 	}
 	if err := root.Root.Chown(realRel, preserveState.uid, preserveState.gid); err != nil {
-		logger.Debugf("failed to restore ownership on %s: %v", realPath, err)
+		slog.Debug("failed to restore file ownership", "component", "filebrowser", "path", realPath, "error", err)
 	}
 }

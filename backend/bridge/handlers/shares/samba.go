@@ -3,6 +3,7 @@ package shares
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -10,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const smbConfFile = "/etc/samba/smb.conf"
@@ -99,8 +99,7 @@ func CreateSambaShare(name string, properties map[string]string) error {
 	if _, err := f.WriteString("\n" + block); err != nil {
 		return fmt.Errorf("failed to write to %s: %w", smbConfFile, err)
 	}
-
-	logger.Infof("Created Samba share: %s", name)
+	slog.Info("Samba share created", "name", name, "path", path)
 	return reloadSamba()
 }
 
@@ -151,8 +150,7 @@ func UpdateSambaShare(oldName, newName string, properties map[string]string) err
 	if err := os.WriteFile(smbConfFile, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
-
-	logger.Infof("Updated Samba share: %s -> %s", oldName, newName)
+	slog.Info("Samba share updated", "name", oldName, "new_name", newName, "path", path)
 	return reloadSamba()
 }
 
@@ -171,8 +169,7 @@ func DeleteSambaShare(name string) error {
 	if err := os.WriteFile(smbConfFile, []byte(newContent), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
-
-	logger.Infof("Deleted Samba share: %s", name)
+	slog.Info("Samba share deleted", "name", name)
 	return reloadSamba()
 }
 
@@ -330,19 +327,21 @@ func reloadSamba() error {
 	// smbcontrol is the most portable method
 	out, err := smbcontrolReload()
 	if err == nil {
-		logger.Infof("Samba configuration reloaded via smbcontrol")
+		slog.Info("Samba configuration reloaded via smbcontrol")
 		return nil
 	}
-	logger.Debugf("smbcontrol failed: %s", strings.TrimSpace(string(out)))
+	slog.Debug("smbcontrol reload failed",
+		"error", err,
+		"output", strings.TrimSpace(string(out)))
 
 	// Fall back to distro-specific unit names through the shared systemd D-Bus helper.
 	for _, service := range []string{"smbd.service", "smb.service", "samba.service"} {
 		err := systemdReloadUnit(service)
 		if err == nil {
-			logger.Infof("Samba reloaded via systemd D-Bus reload %s", service)
+			slog.Info("Samba reloaded via systemd D-Bus", "service", service)
 			return nil
 		}
-		logger.Debugf("systemd D-Bus reload %s failed: %v", service, err)
+		slog.Debug("systemd D-Bus reload failed", "service", service, "error", err)
 	}
 
 	return fmt.Errorf("failed to reload Samba: no working reload method found (is Samba installed?)")

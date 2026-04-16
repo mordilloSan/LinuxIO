@@ -3,6 +3,7 @@ package wireguard
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"path/filepath"
 	"regexp"
@@ -18,7 +19,6 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
@@ -55,7 +55,7 @@ func peerConfigPath(iface, peerName string) string {
 func isInterfaceUp(name string) bool {
 	client, err := wgctrl.New()
 	if err != nil {
-		logger.Debugf("isInterfaceUp: failed to create wgctrl client: %v", err)
+		slog.Debug("failed to create wgctrl client", "component", "wireguard", "interface", name, "error", err)
 		return false
 	}
 	defer client.Close()
@@ -68,7 +68,7 @@ func isInterfaceEnabled(name string) bool {
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
 	state, err := systemd.GetUnitFileState(serviceName)
 	if err != nil {
-		logger.Debugf("isInterfaceEnabled: failed to query state for %s: %v", serviceName, err)
+		slog.Debug("failed to query interface enabled state", "component", "wireguard", "interface", name, "service", serviceName, "error", err)
 		return false
 	}
 
@@ -98,27 +98,27 @@ func parseCSV(s string) []string {
 func newIPManager(serverCIDR string) (*ipManager, error) {
 	ip, ipNet, err := net.ParseCIDR(strings.TrimSpace(serverCIDR))
 	if err != nil {
-		logger.Errorf("newIPManager: parse CIDR failed for %s: %v", serverCIDR, err)
+		slog.Error("failed to parse server CIDR", "component", "wireguard", "path", serverCIDR, "error", err)
 		return nil, fmt.Errorf("invalid CIDR %q: %w", serverCIDR, err)
 	}
 
 	// Ensure IPv4 only
 	v4 := ip.To4()
 	if v4 == nil {
-		logger.Errorf("newIPManager: %s is not an IPv4 address", serverCIDR)
+		slog.Error("server CIDR is not IPv4", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("IPv6 addresses are not supported: %s", serverCIDR)
 	}
 
 	maskBits, totalBits := ipNet.Mask.Size()
 	if totalBits != 32 {
-		logger.Errorf("newIPManager: unexpected mask size for %s", serverCIDR)
+		slog.Error("unexpected IPv4 mask size", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("invalid IPv4 mask for %s", serverCIDR)
 	}
 
 	// Only support subnets within a /24 boundary (mask >= 24)
 	// This simplifies IP math to last-octet operations
 	if maskBits < 24 {
-		logger.Errorf("newIPManager: subnet %s too large, max supported is /24", serverCIDR)
+		slog.Error("wireguard subnet is too large", "component", "wireguard", "path", serverCIDR, "mode", "max-/24")
 		return nil, fmt.Errorf("subnet too large: max supported is /24, got /%d", maskBits)
 	}
 
@@ -127,7 +127,7 @@ func newIPManager(serverCIDR string) (*ipManager, error) {
 	// For /28: hostBits=4, maxHost=14 (2^4-2)
 	hostBits := 32 - maskBits
 	if hostBits < 2 {
-		logger.Errorf("newIPManager: subnet %s too small for peer allocation", serverCIDR)
+		slog.Error("wireguard subnet is too small for peer allocation", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("subnet too small: need at least /30, got /%d", maskBits)
 	}
 	maxHost := (1 << hostBits) - 2 // -2 for network and broadcast
@@ -135,14 +135,14 @@ func newIPManager(serverCIDR string) (*ipManager, error) {
 	// Server is always at host offset 1 (first usable IP)
 	// Peers start at offset 2 (minHostOffset)
 	if maxHost < minHostOffset {
-		logger.Errorf("newIPManager: subnet %s has no room for peers (server uses only usable IP)", serverCIDR)
+		slog.Error("wireguard subnet has no room for peers", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("subnet /%d too small: no room for peers after server", maskBits)
 	}
 
 	// Get network base address
 	netBase := ipNet.IP.To4()
 	if netBase == nil {
-		logger.Errorf("newIPManager: could not get network base for %s", serverCIDR)
+		slog.Error("failed to determine network base", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("could not determine network base for %s", serverCIDR)
 	}
 
@@ -162,8 +162,7 @@ func (m *ipManager) findNextAvailable(peers []PeerConfig) (string, int, error) {
 			return m.makeIP(offset), offset, nil
 		}
 	}
-
-	logger.Errorf("ipManager: no available IPs in subnet %v (max host offset: %d)", m.netBase, m.maxHost)
+	slog.Error("no available IPs in subnet", "component", "wireguard", "subsystem", "ip_manager", "path", m.netBase.String(), "error", fmt.Errorf("max host offset: %d", m.maxHost))
 	return "", 0, fmt.Errorf("no available IPs in subnet")
 }
 
@@ -189,7 +188,7 @@ func (m *ipManager) buildUsedIPMap(peers []PeerConfig) map[int]bool {
 // For subnet 10.0.0.16/28 with offset 2: produces 10.0.0.18/32
 func (m *ipManager) makeIP(hostOffset int) string {
 	if len(m.netBase) < 4 {
-		logger.Errorf("ipManager.makeIP: invalid netBase")
+		slog.Error("ipManager.makeIP: invalid netBase")
 		return ""
 	}
 	// Add host offset to the network base's last octet
@@ -268,7 +267,7 @@ func getDefaultGatewayIPv4() (string, error) {
 func getGatewayForInterfaceIPv4(iface string) (string, error) {
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
-		logger.Errorf("getGatewayForInterfaceIPv4: lookup %s failed: %v", iface, err)
+		slog.Error("failed to lookup interface", "component", "wireguard", "interface", iface, "error", err)
 		return "", fmt.Errorf("lookup interface %s: %w", iface, err)
 	}
 	return getGatewayFromNetlink(link.Attrs().Index)
@@ -286,7 +285,7 @@ func getGatewayFromNetlink(linkIndex int) (string, error) {
 
 	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, filter, mask)
 	if err != nil {
-		logger.Errorf("getGatewayFromNetlink: list routes failed: %v", err)
+		slog.Error("failed to list routes", "component", "wireguard", "subsystem", "netlink", "error", err)
 		return "", fmt.Errorf("list routes: %w", err)
 	}
 
@@ -299,8 +298,7 @@ func getGatewayFromNetlink(linkIndex int) (string, error) {
 		}
 		return r.Gw.String(), nil
 	}
-
-	logger.Debugf("getGatewayFromNetlink: no default gateway found (linkIndex=%d)", linkIndex)
+	slog.Debug("no default gateway found", "component", "wireguard", "subsystem", "netlink", "interface", linkIndex)
 	return "", fmt.Errorf("default gateway not found")
 }
 
@@ -346,7 +344,7 @@ func parseOptionalPeers(args []string, index int) []PeerConfig {
 func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 	ipMgr, err := newIPManager(serverAddr)
 	if err != nil {
-		logger.Errorf("generatePeers: newIPManager failed: %v", err)
+		slog.Error("failed to initialize peer IP manager", "component", "wireguard", "path", serverAddr, "error", err)
 		return nil, err
 	}
 
@@ -367,14 +365,14 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 		}
 
 		if peerIP == "" {
-			logger.Errorf("generatePeers: insufficient IPs for %d peers (subnet /%d)", count, ipMgr.maskBits)
+			slog.Error("insufficient IPs for peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", fmt.Errorf("count=%d subnet=/%d", count, ipMgr.maskBits))
 			return nil, fmt.Errorf("insufficient IPs for %d peers in /%d subnet", count, ipMgr.maskBits)
 		}
 
 		// Generate keys
 		privKey, err := wgtypes.GeneratePrivateKey()
 		if err != nil {
-			logger.Errorf("generatePeers: generate key for peer %d failed: %v", i+1, err)
+			slog.Error("failed to generate peer key", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", err)
 			return nil, fmt.Errorf("generate key for peer %d: %w", i+1, err)
 		}
 
@@ -386,15 +384,14 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 			Name:                fmt.Sprintf("Peer%d", hostOffset),
 		})
 	}
-
-	logger.Infof("generatePeers: generated %d peers for server %s", count, serverAddr)
+	slog.Info("generated peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", fmt.Errorf("count=%d", count))
 	return peers, nil
 }
 
 // --- INI Helper Functions ---
 func setKey(section *ini.Section, key, value string) {
 	if _, err := section.NewKey(key, value); err != nil {
-		logger.Warnf("setKey: failed to set %s: %v", key, err)
+		slog.Warn("failed to set INI key", "component", "wireguard", "subsystem", "config", "path", key, "error", err)
 	}
 }
 

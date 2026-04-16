@@ -3,13 +3,13 @@ package docker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const dockerIdleTimeout = 5 * time.Minute
@@ -81,7 +81,7 @@ func releaseClient(_ *client.Client) {
 		dockerIdleTimer = nil
 		// Allow EnsureLinuxIONetwork to run again for the next client.
 		ensureNetOnce = sync.Once{}
-		logger.Debugf("docker client closed after %s idle", dockerIdleTimeout)
+		slog.Debug("docker client closed after idle timeout", "component", "docker", "mode", dockerIdleTimeout.String())
 		// Force GC and return freed pages to the OS immediately.
 		go func() {
 			runtime.GC()
@@ -97,7 +97,7 @@ func releaseClient(_ *client.Client) {
 func CheckDockerAvailability() (bool, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		logger.Infof("docker service not available")
+		slog.Info("docker service not available")
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
 	defer cli.Close()
@@ -105,10 +105,9 @@ func CheckDockerAvailability() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if _, err := cli.Ping(ctx); err != nil {
-		logger.Infof("docker service not available")
+		slog.Info("docker service not available")
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
-
-	logger.Infof("docker service available")
+	slog.Info("docker service available")
 	return true, nil
 }

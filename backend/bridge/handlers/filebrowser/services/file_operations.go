@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,8 +12,6 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
@@ -84,20 +83,20 @@ func MoveFile(src, dst string, overwrite bool) error {
 	// fallback
 	err = copyWithRoot(root, src, dst, overwrite)
 	if err != nil {
-		logger.Errorf("CopyFile failed %v %v %v ", src, dst, err)
+		slog.Error("copy fallback failed", "component", "filebrowser", "subsystem", "file_operations", "path", src, "destination", dst, "error", err)
 		return err
 	}
 
 	go func(removePath string) {
 		asyncRoot, openErr := fsroot.Open()
 		if openErr != nil {
-			logger.Errorf("open root failed during async remove %v", openErr)
+			slog.Error("failed to open root during async remove", "component", "filebrowser", "subsystem", "file_operations", "error", openErr)
 			return
 		}
 		defer asyncRoot.Close()
 
 		if removeErr := asyncRoot.Root.RemoveAll(relPath(removePath)); removeErr != nil {
-			logger.Errorf("Root.RemoveAll failed %v %v ", removePath, removeErr)
+			slog.Error("failed to remove source after fallback copy", "component", "filebrowser", "subsystem", "file_operations", "path", removePath, "error", removeErr)
 		}
 	}(src)
 
@@ -434,7 +433,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	}
 
 	if err := copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
-		logger.Errorf("CopyFileWithCallbacks failed %v %v %v ", src, dst, err)
+		slog.Error("copy with callbacks failed", "component", "filebrowser", "subsystem", "file_operations", "path", src, "destination", dst, "error", err)
 		return err
 	}
 
@@ -444,7 +443,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 
 	// Delete source after successful copy
 	if removeErr := root.Root.RemoveAll(relPath(src)); removeErr != nil {
-		logger.Errorf("Root.RemoveAll failed %v %v ", src, removeErr)
+		slog.Error("failed to remove source after copy", "component", "filebrowser", "subsystem", "file_operations", "path", src, "error", removeErr)
 		return fmt.Errorf("failed to remove source after copy: %w", removeErr)
 	}
 
@@ -458,7 +457,7 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCall
 
 	totalSize, sizeErr := ComputeCopySize(dst)
 	if sizeErr != nil {
-		logger.Debugf("failed to compute move size after rename for %s: %v", dst, sizeErr)
+		slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
 		return true, nil
 	}
 
@@ -744,7 +743,7 @@ func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
 	if info.IsDir() && recursive {
 		return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
-				logger.Errorf("error walking path %s: %v", walkRel, walkErr)
+				slog.Error("error walking path during chmod", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
 				return nil // Continue walking even if one item fails
 			}
 
@@ -754,7 +753,7 @@ func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
 			}
 
 			if err := root.Root.Chmod(walkRel, mode); err != nil {
-				logger.Errorf("failed to chmod %s: %v", walkRel, err)
+				slog.Error("failed to chmod path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
 				// Continue even if one item fails
 				return nil
 			}
@@ -790,7 +789,7 @@ func ChangeOwnership(path string, uid, gid int, recursive bool) error {
 	if info.IsDir() && recursive {
 		return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
-				logger.Errorf("error walking path %s: %v", walkRel, walkErr)
+				slog.Error("error walking path during chown", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
 				return nil
 			}
 
@@ -800,7 +799,7 @@ func ChangeOwnership(path string, uid, gid int, recursive bool) error {
 			}
 
 			if err := root.Root.Lchown(walkRel, uid, gid); err != nil {
-				logger.Errorf("failed to chown %s: %v", walkRel, err)
+				slog.Error("failed to chown path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
 			}
 
 			return nil

@@ -2,14 +2,13 @@ package wireguard
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // --- Peer Management ---
@@ -33,7 +32,7 @@ func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceC
 	// Ensure peer directory exists
 	peerDir := peerDirPath(interfaceName)
 	if err := os.MkdirAll(peerDir, 0o700); err != nil {
-		logger.Errorf("ExportPeerConfig: create peer dir %s failed: %v", peerDir, err)
+		slog.Error("failed to create peer directory", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerDir, "error", err)
 		return "", fmt.Errorf("create peer dir: %w", err)
 	}
 
@@ -43,7 +42,7 @@ func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceC
 	// Create Interface section for peer
 	ifSec, err := iniFile.NewSection("Interface")
 	if err != nil {
-		logger.Errorf("ExportPeerConfig: create interface section failed for %s: %v", peerPath, err)
+		slog.Error("failed to create peer interface section", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerPath, "error", err)
 		return "", fmt.Errorf("create interface section: %w", err)
 	}
 
@@ -54,7 +53,7 @@ func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceC
 	setKeyIfPositive(ifSec, "ListenPort", ifaceCfg.ListenPort)
 
 	if peer.PrivateKey == "" {
-		logger.Errorf("ExportPeerConfig: peer private key is empty for %s", peerPath)
+		slog.Error("peer private key is empty", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerPath)
 		return "", fmt.Errorf("peer private key is empty")
 	}
 	setKey(ifSec, "PrivateKey", peer.PrivateKey)
@@ -71,14 +70,14 @@ func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceC
 	// Create Peer section (connecting to server)
 	peerSec, err := iniFile.NewSection("Peer")
 	if err != nil {
-		logger.Errorf("ExportPeerConfig: create peer section failed for %s: %v", peerPath, err)
+		slog.Error("failed to create peer section", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerPath, "error", err)
 		return "", fmt.Errorf("create peer section: %w", err)
 	}
 
 	// Get server public key
 	serverKey, err := wgtypes.ParseKey(ifaceCfg.PrivateKey)
 	if err != nil {
-		logger.Errorf("ExportPeerConfig: parse server key failed: %v", err)
+		slog.Error("failed to parse server private key", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "error", err)
 		return "", fmt.Errorf("parse server key: %w", err)
 	}
 
@@ -96,11 +95,10 @@ func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceC
 
 	// Save peer config
 	if err := iniFile.SaveTo(peerPath); err != nil {
-		logger.Errorf("ExportPeerConfig: save peer config %s failed: %v", peerPath, err)
+		slog.Error("failed to save peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerPath, "error", err)
 		return "", fmt.Errorf("save peer config: %w", err)
 	}
-
-	logger.Infof("ExportPeerConfig: wrote peer config %s", peerPath)
+	slog.Info("wrote peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerPath)
 	return peerPath, nil
 }
 

@@ -3,11 +3,11 @@ package updates
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 type pkgkitBackend struct{}
@@ -97,7 +97,7 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 	// Step 3: Download updates (UpdatePackages with ONLY_DOWNLOAD flag = 2)
 	if err := pkTransactionCallWithUpdates(conn, pkBusName, pkObjPath, transactionIfc); err != nil {
 		// Non-fatal - updates may already be downloaded or none available
-		logger.Debugf("PackageKit download step returned non-fatal error: %v", err)
+		slog.Debug("PackageKit download step returned non-fatal error", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 
 	// Step 4: Trigger offline update
@@ -124,12 +124,12 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 	matchPath := transPath
 	defer func() {
 		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath)); err != nil {
-			logger.Debugf("failed to remove PackageKit signal match: %v", err)
+			slog.Debug("failed to remove PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 		}
 	}()
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to add PackageKit signal match: %v", err)
+		slog.Debug("failed to add PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 
 	if err := trans.Call(transIfc+"."+method, 0, args...).Err; err != nil {
@@ -252,14 +252,14 @@ func subscribePkgKitSignals(conn *godbus.Conn, transPath godbus.ObjectPath, buff
 	sigCh := make(chan *godbus.Signal, buffer)
 	conn.Signal(sigCh)
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to add PackageKit signal match: %v", err)
+		slog.Debug("failed to add PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 	return sigCh
 }
 
 func removePkgKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
 	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to remove PackageKit signal match: %v", err)
+		slog.Debug("failed to remove PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 }
 

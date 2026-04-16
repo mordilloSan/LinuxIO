@@ -5,9 +5,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -26,7 +25,10 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	if len(args) < 2 {
 		err := fmt.Errorf("invalid bridge args: expected [type, command, ...args], got %v", args)
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400); writeErr != nil {
-			logger.Debugf("[BridgeStream] failed to write error+close frame: %v", writeErr)
+			slog.Debug("failed to write bridge error response",
+				"component", "bridge",
+				"stream_type", "bridge",
+				"error", writeErr)
 		}
 		return err
 	}
@@ -40,7 +42,12 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	if !ok {
 		err := fmt.Errorf("handler not found: %s.%s", handlerType, command)
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 404); writeErr != nil {
-			logger.Debugf("[BridgeStream] failed to write error+close frame: %v", writeErr)
+			slog.Debug("failed to write missing bridge handler response",
+				"component", "bridge",
+				"stream_type", "bridge",
+				"subsystem", handlerType,
+				"command", command,
+				"error", writeErr)
 		}
 		return err
 	}
@@ -64,17 +71,26 @@ func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, a
 	if err := h.Execute(ctx, args, emit); err != nil {
 		// Handler returned error - send error result
 		if emitErr := emit.Error(err, 500); emitErr != nil {
-			logger.Debugf("[BridgeStream] failed to write handler error frame: %v", emitErr)
+			slog.Debug("failed to write bridge handler error frame",
+				"component", "bridge",
+				"stream_type", "bridge",
+				"error", emitErr)
 		}
 		if closeErr := emit.Close("handler error"); closeErr != nil {
-			logger.Debugf("[BridgeStream] failed to write stream close frame: %v", closeErr)
+			slog.Debug("failed to write bridge stream close frame",
+				"component", "bridge",
+				"stream_type", "bridge",
+				"error", closeErr)
 		}
 		return err
 	}
 
 	// Success - close stream
 	if err := emit.Close(""); err != nil {
-		logger.Debugf("[BridgeStream] failed to write stream close frame: %v", err)
+		slog.Debug("failed to write bridge stream close frame",
+			"component", "bridge",
+			"stream_type", "bridge",
+			"error", err)
 	}
 	return nil
 }
@@ -94,16 +110,25 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.Bidirection
 	// Execute handler with input channel
 	if err := h.ExecuteWithInput(ctx, args, emit, inputChan); err != nil {
 		if emitErr := emit.Error(err, 500); emitErr != nil {
-			logger.Debugf("[BridgeStream] failed to write handler error frame: %v", emitErr)
+			slog.Debug("failed to write bridge handler error frame",
+				"component", "bridge",
+				"stream_type", "bridge",
+				"error", emitErr)
 		}
 		if closeErr := emit.Close("handler error"); closeErr != nil {
-			logger.Debugf("[BridgeStream] failed to write stream close frame: %v", closeErr)
+			slog.Debug("failed to write bridge stream close frame",
+				"component", "bridge",
+				"stream_type", "bridge",
+				"error", closeErr)
 		}
 		return err
 	}
 
 	if err := emit.Close(""); err != nil {
-		logger.Debugf("[BridgeStream] failed to write stream close frame: %v", err)
+		slog.Debug("failed to write bridge stream close frame",
+			"component", "bridge",
+			"stream_type", "bridge",
+			"error", err)
 	}
 	return nil
 }

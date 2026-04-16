@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -72,7 +71,7 @@ func handleGetConfig(username string) ipc.HandlerFunc {
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		logger.Debugf("user=%q path=%s", username, cfgPath)
+		slog.Debug("loaded user config", "component", "config", "user", username, "path", cfgPath)
 		return emit.Result(cfg)
 	}
 }
@@ -83,7 +82,7 @@ func handleSetConfig(username string) ipc.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		logger.Infof("user=%q update requested", username)
+		slog.Info("config update requested", "component", "config", "user", username)
 
 		cfg, _, err := Load(username)
 		if err != nil {
@@ -98,8 +97,7 @@ func handleSetConfig(username string) ipc.HandlerFunc {
 		if err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
-
-		logger.Infof("user=%q updated config: path=%s", username, cfgPath)
+		slog.Info("user config updated", "component", "config", "user", username, "path", cfgPath)
 		return emit.Result(map[string]any{
 			"message": "config updated",
 			"path":    cfgPath,

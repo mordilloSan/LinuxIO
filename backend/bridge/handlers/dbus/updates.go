@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/updates"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
@@ -188,8 +188,7 @@ func sanitizeInfoEnum(pkgID string, infoEnum uint32) uint32 {
 	if infoEnum <= 30 {
 		return infoEnum
 	}
-
-	logger.Debugf(" Package %s has invalid InfoEnum: %d (sanitizing to 0=Unknown)", pkgID, infoEnum)
+	slog.Debug("package has invalid PackageKit InfoEnum", "component", "dbus", "subsystem", "updates", "package", pkgID, "code", infoEnum)
 	return 0
 }
 
@@ -225,13 +224,13 @@ func watchTransactionSignals(conn *godbus.Conn, transPath godbus.ObjectPath, add
 	conn.Signal(sigCh)
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Warnf(addMatchMessage, err)
+		slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 
 	cleanup := func() {
 		conn.RemoveSignal(sigCh)
 		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+			slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
 		}
 	}
 
@@ -490,7 +489,7 @@ func getUpdatesBasic() ([]UpdateDetail, error) {
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
 		}
 	}()
 
@@ -523,7 +522,7 @@ func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
 		}
 	}()
 
@@ -553,7 +552,7 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
 		}
 	}()
 
@@ -610,14 +609,14 @@ type UpdateHistoryEntry struct {
 
 func GetUpdateHistory() ([]UpdateHistoryEntry, error) {
 	if _, err := os.Stat("/var/log/dpkg.log"); err == nil {
-		logger.Debugf("Parsing dpkg update history")
+		slog.Debug("Parsing dpkg update history")
 		return parseDpkgLogs(), nil
 	}
 	if _, err := os.Stat("/var/log/dnf.log"); err == nil {
-		logger.Debugf("Parsing dnf update history")
+		slog.Debug("Parsing dnf update history")
 		return parseDnfHistory("/var/log/dnf.log"), nil
 	}
-	logger.Warnf("No known package manager log found")
+	slog.Warn("No known package manager log found")
 	return []UpdateHistoryEntry{}, nil
 }
 
@@ -637,7 +636,7 @@ func parseDpkgLogs() []UpdateHistoryEntry {
 	for _, logPath := range matches {
 		reader, closer, err := openLogFile(logPath)
 		if err != nil {
-			logger.Warnf("Failed to open %s: %v", logPath, err)
+			slog.Warn("failed to open update log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
 			continue
 		}
 
@@ -697,7 +696,7 @@ func openLogFile(path string) (io.Reader, func(), error) {
 func parseDnfHistory(logPath string) []UpdateHistoryEntry {
 	file, err := os.Open(logPath)
 	if err != nil {
-		logger.Errorf("Failed to open DNF log: %v", err)
+		slog.Error("failed to open DNF log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
 		return nil
 	}
 	defer file.Close()
@@ -754,7 +753,7 @@ func installPackage(packageID string) error {
 		}
 		defer func() {
 			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+				slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
 			}
 		}()
 
@@ -778,11 +777,11 @@ func installPackage(packageID string) error {
 		defer conn.RemoveSignal(sigCh)
 		defer func() {
 			if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-				logger.Debugf("failed to remove D-Bus match signal: %v", err)
+				slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
 			}
 		}()
 		if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			logger.Warnf("failed to add D-Bus match signal: %v", err)
+			slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
 		}
 
 		// 2. Call InstallPackages

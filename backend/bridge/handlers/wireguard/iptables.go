@@ -3,6 +3,7 @@ package wireguard
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -11,7 +12,6 @@ import (
 	"unicode"
 
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 type natBackend interface {
@@ -60,13 +60,13 @@ func (execNATCommandRunner) RunInput(name, input string, args ...string) ([]byte
 }
 
 func SetupNAT(interfaceName, egressNic, subnet string) (string, error) {
-	logger.Infof("SetupNAT: configuring NAT for %s -> %s (subnet: %s)", interfaceName, egressNic, subnet)
+	slog.Info("configuring NAT", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet)
 
 	if err := validateNATArgs(egressNic, subnet); err != nil {
 		return "", err
 	}
 	if err := enableIPForwarding(); err != nil {
-		logger.Errorf("SetupNAT: failed to enable IP forwarding: %v", err)
+		slog.Error("failed to enable IP forwarding", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "error", err)
 		return "", fmt.Errorf("enable IP forwarding: %w", err)
 	}
 
@@ -82,13 +82,12 @@ func SetupNAT(interfaceName, egressNic, subnet string) (string, error) {
 	if err := backend.Setup(interfaceName, egressNic, subnet); err != nil {
 		return "", err
 	}
-
-	logger.Infof("SetupNAT: successfully configured NAT for %s using %s", interfaceName, backendName)
+	slog.Info("configured NAT", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backendName)
 	return backendName, nil
 }
 
 func CleanupNAT(interfaceName, egressNic, subnet, backendName string) error {
-	logger.Infof("CleanupNAT: removing NAT rules for %s -> %s (subnet: %s)", interfaceName, egressNic, subnet)
+	slog.Info("removing NAT rules", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backendName)
 
 	backends, err := cleanupBackends(backendName)
 	if err != nil {
@@ -98,11 +97,11 @@ func CleanupNAT(interfaceName, egressNic, subnet, backendName string) error {
 	var cleanupErrors []error
 	for _, backend := range backends {
 		if err := backend.Cleanup(interfaceName, egressNic, subnet); err != nil {
-			logger.Warnf("CleanupNAT: backend %s cleanup failed: %v", backend.Name(), err)
+			slog.Warn("NAT backend cleanup failed", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backend.Name(), "error", err)
 			cleanupErrors = append(cleanupErrors, err)
 			continue
 		}
-		logger.Infof("CleanupNAT: successfully removed NAT rules for %s using %s", interfaceName, backend.Name())
+		slog.Info("removed NAT rules", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backend.Name())
 		return nil
 	}
 
@@ -119,7 +118,7 @@ func (iptablesBackend) Name() string {
 func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
 	ipt, err := newIPTablesClient()
 	if err != nil {
-		logger.Errorf("SetupNAT: failed to initialize iptables: %v", err)
+		slog.Error("failed to initialize iptables", "component", "wireguard", "subsystem", "nat", "error", err)
 		return fmt.Errorf("initialize iptables: %w", err)
 	}
 
@@ -447,7 +446,7 @@ func enableIPForwarding() error {
 	if err := os.WriteFile(path, []byte("1\n"), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	logger.Debugf("enableIPForwarding: enabled IPv4 forwarding")
+	slog.Debug("enableIPForwarding: enabled IPv4 forwarding")
 	return nil
 }
 
@@ -471,8 +470,7 @@ func SaveNATConfig(interfaceName, egressNic, subnet, backend string) error {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write NAT config to %s: %w", path, err)
 	}
-
-	logger.Debugf("SaveNATConfig: saved NAT config for %s to %s", interfaceName, path)
+	slog.Debug("saved NAT config", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "path", path)
 	return nil
 }
 
@@ -490,8 +488,7 @@ func LoadNATConfig(interfaceName string) (*NATConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal NAT config: %w", err)
 	}
-
-	logger.Debugf("LoadNATConfig: loaded NAT config for %s from %s", interfaceName, path)
+	slog.Debug("loaded NAT config", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "path", path)
 	return &cfg, nil
 }
 
@@ -500,6 +497,6 @@ func RemoveNATConfig(interfaceName string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove NAT config %s: %w", path, err)
 	}
-	logger.Debugf("RemoveNATConfig: removed NAT config for %s", interfaceName)
+	slog.Debug("removed NAT config", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "path", path)
 	return nil
 }

@@ -3,11 +3,10 @@ package web
 import (
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -111,7 +110,7 @@ func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 
 	// Fallback: just copy the content
 	if _, err := io.Copy(w, f); err != nil {
-		logger.Warnf("Failed to copy %q to response: %v", name, err)
+		slog.Warn("failed to copy file response", "path", name, "error", err)
 	}
 }
 
@@ -124,6 +123,6 @@ func (HTTPErrorLogAdapter) Write(p []byte) (n int, err error) {
 	if strings.Contains(msg, "TLS handshake error") {
 		return len(p), nil
 	}
-	logger.Warnf("[http.Server] %s", msg)
+	slog.Warn("http server", "message", msg)
 	return len(p), nil
 }

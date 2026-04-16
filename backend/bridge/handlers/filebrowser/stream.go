@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -123,7 +122,7 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 
 func logWriteErr(action string, err error) {
 	if err != nil {
-		logger.Debugf("[FBStream] failed to write %s frame: %v", action, err)
+		slog.Debug("failed to write filebrowser stream frame", "action", action, "error", err)
 	}
 }
 
@@ -238,7 +237,7 @@ func handleUploadFrame(stream net.Conn, file *os.File, frame *ipc.StreamFrame, e
 	case ipc.OpStreamAbort:
 		return false, ipc.ErrAborted
 	default:
-		logger.Debugf(" Ignoring opcode: 0x%02x", frame.Opcode)
+		slog.Debug("ignoring filebrowser stream opcode", "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
 		return false, nil
 	}
 }
@@ -259,22 +258,22 @@ func writeUploadProgress(stream net.Conn, bytesWritten, expectedSize int64) {
 func restoreUploadedFile(root *fsroot.FSRoot, realRel string, attrs uploadAttributes) {
 	if attrs.hasExisting {
 		if err := root.Root.Chmod(realRel, attrs.mode); err != nil {
-			logger.Debugf(" Failed to restore permissions: %v", err)
+			slog.Debug("failed to restore uploaded file permissions", "path", realRel, "error", err)
 		}
 		if err := root.Root.Chown(realRel, attrs.uid, attrs.gid); err != nil {
-			logger.Debugf(" Failed to restore ownership: %v", err)
+			slog.Debug("failed to restore uploaded file ownership", "path", realRel, "error", err)
 		}
 		return
 	}
 	if err := root.Root.Chmod(realRel, services.PermFile); err != nil {
-		logger.Debugf(" Failed to set permissions: %v", err)
+		slog.Debug("failed to set uploaded file permissions", "path", realRel, "error", err)
 	}
 }
 
 func notifyUploadedFile(path string, info os.FileInfo) {
 	go func(stat os.FileInfo) {
 		if err := addToIndexer(path, stat); err != nil {
-			logger.Debugf(" Failed to update indexer: %v", err)
+			slog.Debug("failed to update indexer after upload", "path", path, "error", err)
 		}
 	}(info)
 }
@@ -293,7 +292,7 @@ func archiveExtension(format string) (string, error) {
 func computeArchiveSize(paths []string) int64 {
 	totalSize, err := services.ComputeArchiveSize(paths)
 	if err != nil {
-		logger.Debugf(" Failed to compute archive size: %v", err)
+		slog.Debug("failed to compute archive size", "error", err)
 		return 0
 	}
 	return totalSize
@@ -302,7 +301,7 @@ func computeArchiveSize(paths []string) int64 {
 func computeExtractSize(archivePath string) int64 {
 	totalSize, err := services.ComputeExtractSize(archivePath)
 	if err != nil {
-		logger.Debugf(" Failed to compute extract size: %v", err)
+		slog.Debug("failed to compute extract size", "path", archivePath, "error", err)
 		return 0
 	}
 	return totalSize
@@ -365,7 +364,7 @@ func streamArchiveFile(stream net.Conn, archiveFile *os.File, archiveSize int64,
 				Pct:   pct,
 				Phase: "streaming",
 			}); err != nil {
-				logger.Debugf(" failed to write archive stream progress: %v", err)
+				slog.Debug("failed to write archive stream progress", "error", err)
 			}
 		}
 
@@ -424,14 +423,14 @@ func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string) (string, error
 
 func cleanupArchiveTarget(root *fsroot.FSRoot, targetRel, targetPath string) {
 	if err := root.Root.Remove(targetRel); err != nil && !errors.Is(err, os.ErrNotExist) {
-		logger.Debugf(" failed to remove failed archive %s: %v", targetPath, err)
+		slog.Debug("failed to remove failed archive", "path", targetPath, "error", err)
 	}
 }
 
 func notifyCompressedArchive(targetPath string, info os.FileInfo) {
 	go func(stat os.FileInfo) {
 		if err := addToIndexer(targetPath, stat); err != nil {
-			logger.Debugf(" Failed to update indexer: %v", err)
+			slog.Debug("failed to update indexer after archive creation", "path", targetPath, "error", err)
 		}
 	}(info)
 }
@@ -453,7 +452,7 @@ func notifyExtractedFiles(destination string) {
 	go func(destPath string) {
 		walkRoot, err := fsroot.Open()
 		if err != nil {
-			logger.Debugf(" Failed to open root for indexer walk: %v", err)
+			slog.Debug("failed to open root for indexer walk", "path", destPath, "error", err)
 			return
 		}
 		defer walkRoot.Close()
@@ -468,11 +467,11 @@ func notifyExtractedFiles(destination string) {
 			}
 			absPath := filepath.Clean("/" + strings.TrimPrefix(rel, "/"))
 			if err := addToIndexer(absPath, info); err != nil {
-				logger.Debugf(" Failed to update indexer for %s: %v", absPath, err)
+				slog.Debug("failed to update indexer for extracted path", "path", absPath, "error", err)
 			}
 			return nil
 		}); err != nil {
-			logger.Debugf(" failed to walk extracted destination %s: %v", destPath, err)
+			slog.Debug("failed to walk extracted destination", "path", destPath, "error", err)
 		}
 	}(destination)
 }
@@ -569,8 +568,7 @@ func handleDownload(stream net.Conn, args []string, chunkSize int) error {
 		"size":     totalSize,
 		"fileName": filepath.Base(realPath),
 	}))
-
-	logger.Infof(" Download complete: path=%s size=%d", path, totalSize)
+	slog.Info("download complete", "path", path, "size", totalSize)
 	return nil
 }
 
@@ -662,7 +660,7 @@ func handleUpload(stream net.Conn, args []string) error {
 		file.Close()
 		if !uploadSuccess {
 			if removeErr := root.Root.Remove(realRel); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				logger.Debugf(" failed to remove partial upload %s: %v", realPath, removeErr)
+				slog.Debug("failed to remove partial upload", "path", realPath, "error", removeErr)
 			}
 		}
 	}()
@@ -684,8 +682,7 @@ func handleUpload(stream net.Conn, args []string) error {
 		"path": path,
 		"size": bytesWritten,
 	}))
-
-	logger.Infof(" Upload complete: path=%s size=%d", path, bytesWritten)
+	slog.Info("upload complete", "path", path, "size", bytesWritten)
 	return nil
 }
 
@@ -723,7 +720,7 @@ func handleArchiveDownload(stream net.Conn, args []string, chunkSize int) error 
 	opts := newPhaseCallbacks(stream, cancelFn, totalSize, "compressing")
 	err = createArchive(format, tempPath, opts, paths)
 	if err == ipc.ErrAborted {
-		logger.Infof(" Archive download aborted")
+		slog.Info(" Archive download aborted")
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
@@ -758,8 +755,7 @@ func handleArchiveDownload(stream net.Conn, args []string, chunkSize int) error 
 		"size":        archiveSize,
 		"format":      format,
 	}))
-
-	logger.Infof(" Archive download complete: files=%d size=%d", len(paths), archiveSize)
+	slog.Info("archive download complete", "count", len(paths), "size", archiveSize, "format", format)
 	return nil
 }
 
@@ -809,7 +805,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	opts := newPhaseCallbacks(stream, cancelFn, totalSize, "compressing")
 	err = createArchive(format, targetPath, opts, paths)
 	if err == ipc.ErrAborted {
-		logger.Infof(" Compress aborted, cleaning up: %s", targetPath)
+		slog.Info("compress aborted, cleaning up", "path", targetPath)
 		cleanupArchiveTarget(root, targetRel, targetPath)
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
@@ -833,8 +829,7 @@ func handleCompress(stream net.Conn, args []string) error {
 		"size":   archiveSize,
 		"format": format,
 	}))
-
-	logger.Infof(" Compress complete: path=%s files=%d size=%d", targetPath, len(paths), archiveSize)
+	slog.Info("compress complete", "path", targetPath, "count", len(paths), "size", archiveSize, "format", format)
 	return nil
 }
 
@@ -875,10 +870,10 @@ func handleExtract(stream net.Conn, args []string) error {
 	opts := newPhaseCallbacks(stream, cancelFn, totalSize, "extracting")
 	err = services.ExtractArchive(archivePath, destination, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof(" Extract aborted, cleaning up: %s", destination)
+		slog.Info("extract aborted, cleaning up", "path", destination)
 		if !destExistedBefore {
 			if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {
-				logger.Debugf(" Failed to clean up extraction directory: %v", removeErr)
+				slog.Debug("failed to clean up extraction directory", "path", destination, "error", removeErr)
 			}
 		}
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
@@ -895,8 +890,7 @@ func handleExtract(stream net.Conn, args []string) error {
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"destination": destination,
 	}))
-
-	logger.Infof(" Extract complete: archive=%s destination=%s", archivePath, destination)
+	slog.Info("extract complete", "archive", archivePath, "destination", destination)
 	return nil
 }
 
@@ -917,8 +911,11 @@ func handleReindex(stream net.Conn, args []string) error {
 		},
 		OnResult: func(r indexer.IndexerResult) error {
 			logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, r))
-			logger.Infof(" Reindex complete: path=%s files=%d dirs=%d duration=%dms",
-				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			slog.Info("reindex complete",
+				"path", r.Path,
+				"files", r.FilesIndexed,
+				"dirs", r.DirsIndexed,
+				"duration_ms", r.DurationMs)
 			return nil
 		},
 		OnError: func(msg string, code int) error {
@@ -941,8 +938,10 @@ func handleIndexerAttach(stream net.Conn) error {
 		},
 		OnResult: func(r indexer.IndexerResult) error {
 			logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, r))
-			logger.Infof(" Indexer attach complete: files=%d dirs=%d duration=%dms",
-				r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			slog.Info("indexer attach complete",
+				"files", r.FilesIndexed,
+				"dirs", r.DirsIndexed,
+				"duration_ms", r.DurationMs)
 			return nil
 		},
 		OnError: func(msg string, code int) error {
@@ -1009,7 +1008,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Compute total size for progress
 	totalSize, err := services.ComputeCopySize(source)
 	if err != nil {
-		logger.Debugf(" Failed to compute copy size: %v", err)
+		slog.Debug("failed to compute copy size", "source", source, "error", err)
 		totalSize = 0
 	}
 
@@ -1033,7 +1032,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Perform the copy operation
 	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof(" Copy aborted: %s -> %s", source, destination)
+		slog.Info("copy aborted", "source", source, "destination", destination)
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
@@ -1046,7 +1045,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	if info, err := root.Root.Stat(fsroot.ToRel(destination)); err == nil {
 		go func(stat os.FileInfo) {
 			if err := addToIndexer(destination, stat); err != nil {
-				logger.Debugf(" Failed to update indexer: %v", err)
+				slog.Debug("failed to update indexer after copy", "path", destination, "error", err)
 			}
 		}(info)
 	}
@@ -1057,8 +1056,7 @@ func handleCopy(stream net.Conn, args []string) error {
 		"destination": destination,
 		"size":        totalSize,
 	}))
-
-	logger.Infof(" Copy complete: %s -> %s size=%d", source, destination, totalSize)
+	slog.Info("copy complete", "source", source, "destination", destination, "size", totalSize)
 	return nil
 }
 
@@ -1100,7 +1098,7 @@ func handleMove(stream net.Conn, args []string) error {
 
 	totalSize, err := services.ComputeCopySize(req.source)
 	if err != nil {
-		logger.Debugf(" Failed to compute move size: %v", err)
+		slog.Debug("failed to compute move size", "source", req.source, "error", err)
 		totalSize = 0
 	}
 
@@ -1113,7 +1111,7 @@ func handleMove(stream net.Conn, args []string) error {
 	opts := newPhaseCallbacks(stream, cancelFn, totalSize, "moving")
 	err = services.MoveFileWithCallbacks(req.source, req.destination, req.overwrite, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof(" Move aborted: %s -> %s", req.source, req.destination)
+		slog.Info("move aborted", "source", req.source, "destination", req.destination)
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
@@ -1124,15 +1122,15 @@ func handleMove(stream net.Conn, args []string) error {
 
 	destInfoAfterMove, statErr := root.Root.Stat(fsroot.ToRel(req.destination))
 	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		logger.Debugf(" failed to stat move destination %s: %v", req.destination, statErr)
+		slog.Debug("failed to stat move destination", "destination", req.destination, "error", statErr)
 	}
 	go func(info os.FileInfo) {
 		if err := deleteFromIndexer(req.source); err != nil {
-			logger.Debugf(" Failed to delete from indexer: %v", err)
+			slog.Debug("failed to delete from indexer after move", "source", req.source, "error", err)
 		}
 		if info != nil {
 			if err := addToIndexer(req.destination, info); err != nil {
-				logger.Debugf(" Failed to update indexer: %v", err)
+				slog.Debug("failed to update indexer after move", "destination", req.destination, "error", err)
 			}
 		}
 	}(destInfoAfterMove)
@@ -1143,7 +1141,6 @@ func handleMove(stream net.Conn, args []string) error {
 		"destination": req.destination,
 		"size":        totalSize,
 	}))
-
-	logger.Infof(" Move complete: %s -> %s size=%d", req.source, req.destination, totalSize)
+	slog.Info("move complete", "source", req.source, "destination", req.destination, "size", totalSize)
 	return nil
 }

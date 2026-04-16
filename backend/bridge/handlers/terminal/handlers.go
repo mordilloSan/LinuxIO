@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/user"
@@ -11,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -48,7 +48,7 @@ func (h *terminalHandler) Execute(ctx context.Context, args []string, emit ipc.E
 
 func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, emit ipc.Events, input <-chan []byte) error {
 	cols, rows := parseTerminalSize(args)
-	logger.Debugf("[Terminal] Starting for user=%s size=%dx%d", h.sess.User.Username, cols, rows)
+	slog.Debug("starting terminal session", "component", "terminal", "user", h.sess.User.Username, "cols", cols, "rows", rows)
 
 	terminalUser, err := lookupTerminalUser(h.sess)
 	if err != nil {
@@ -62,15 +62,13 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 	defer ptmx.Close()
 
 	setTerminalSize(ptmx, cols, rows)
-
-	logger.Infof("[Terminal] Started for user=%s pid=%d", h.sess.User.Username, cmd.Process.Pid)
+	slog.Info("terminal session started", "component", "terminal", "user", h.sess.User.Username, "pid", cmd.Process.Pid)
 
 	resizeChan, _ := ipc.ResizeChannel(ctx)
 	done := relayTerminalOutput(ptmx, emit)
 	manageTerminalSession(ctx, input, resizeChan, ptmx, cmd, done, h.sess.User.Username)
 	exitCode := waitTerminalCommand(cmd)
-
-	logger.Infof("[Terminal] Closed for user=%s exitCode=%d", h.sess.User.Username, exitCode)
+	slog.Info("terminal session closed", "component", "terminal", "user", h.sess.User.Username, "code", exitCode)
 
 	return emit.Result(map[string]any{
 		"exit_code": exitCode,
@@ -154,7 +152,7 @@ func setTerminalSize(ptmx *os.File, cols, rows int) {
 		Cols: safeUint16(cols),
 		Rows: safeUint16(rows),
 	}); err != nil {
-		logger.Debugf("[Terminal] failed to set initial PTY size: %v", err)
+		slog.Debug("failed to set initial PTY size", "component", "terminal", "error", err)
 	}
 }
 
@@ -174,7 +172,7 @@ func relayTerminalOutput(ptmx *os.File, emit ipc.Events) <-chan struct{} {
 				return
 			}
 			if err != nil {
-				logger.Errorf("[Terminal] PTY read error: %v", err)
+				slog.Error("PTY read error", "component", "terminal", "error", err)
 				return
 			}
 		}
@@ -196,12 +194,12 @@ func manageTerminalSession(
 		select {
 		case chunk, ok := <-input:
 			if !ok {
-				logger.Debugf("[Terminal] Client closed connection")
+				slog.Debug("[Terminal] Client closed connection")
 				killTerminalProcess(cmd.Process, "[Terminal] failed to kill process after client close")
 				return
 			}
 			if _, err := ptmx.Write(chunk); err != nil {
-				logger.Errorf("[Terminal] PTY write error: %v", err)
+				slog.Error("PTY write error", "component", "terminal", "error", err)
 				return
 			}
 		case ev, ok := <-currentResizeChan:
@@ -209,16 +207,16 @@ func manageTerminalSession(
 				currentResizeChan = nil
 				continue
 			}
-			logger.Debugf("[Terminal] Resize %dx%d for user=%s", ev.Cols, ev.Rows, username)
+			slog.Debug("resizing terminal", "component", "terminal", "user", username, "cols", ev.Cols, "rows", ev.Rows)
 			if err := pty.Setsize(ptmx, &pty.Winsize{Cols: ev.Cols, Rows: ev.Rows}); err != nil {
-				logger.Debugf("[Terminal] failed to resize PTY: %v", err)
+				slog.Debug("failed to resize PTY", "component", "terminal", "user", username, "error", err)
 			}
 		case <-ctx.Done():
-			logger.Debugf("[Terminal] Context cancelled")
+			slog.Debug("[Terminal] Context cancelled")
 			killTerminalProcess(cmd.Process, "[Terminal] failed to kill process on context cancel")
 			return
 		case <-done:
-			logger.Debugf("[Terminal] PTY closed")
+			slog.Debug("[Terminal] PTY closed")
 			return
 		}
 	}
@@ -226,7 +224,7 @@ func manageTerminalSession(
 
 func killTerminalProcess(proc *os.Process, message string) {
 	if err := proc.Kill(); err != nil {
-		logger.Debugf("%s: %v", message, err)
+		slog.Debug(message, "component", "terminal", "error", err)
 	}
 }
 
