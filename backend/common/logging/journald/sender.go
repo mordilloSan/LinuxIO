@@ -87,7 +87,9 @@ func appendField(buf *bytes.Buffer, name, value string) {
 	if strings.ContainsRune(value, '\n') {
 		buf.WriteString(name)
 		buf.WriteByte('\n')
-		_ = binary.Write(buf, binary.LittleEndian, uint64(len(value)))
+		var size [8]byte
+		binary.LittleEndian.PutUint64(size[:], uint64(len(value)))
+		buf.Write(size[:])
 		buf.WriteString(value)
 		buf.WriteByte('\n')
 		return

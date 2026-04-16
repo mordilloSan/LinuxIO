@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"runtime"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +23,8 @@ var standardPassthroughFields = map[string]struct{}{
 	"MESSAGE_ID":    {},
 	"TID":           {},
 }
+
+var normalizedFieldComponentCache sync.Map
 
 // Options configures the native journald slog handler.
 type Options struct {
@@ -40,6 +42,13 @@ type Handler struct {
 	sender     Sender
 	attrs      []slog.Attr
 	groups     []string
+	statePool  *sync.Pool
+}
+
+type handlerState struct {
+	fields []Field
+	index  map[string]int
+	groups []string
 }
 
 // NewHandler builds a journald-backed slog.Handler.
@@ -62,11 +71,22 @@ func NewHandler(opts Options) (*Handler, error) {
 		}
 	}
 
+	statePool := &sync.Pool{
+		New: func() any {
+			return &handlerState{
+				fields: make([]Field, 0, 16),
+				index:  make(map[string]int, 16),
+				groups: make([]string, 0, 4),
+			}
+		},
+	}
+
 	return &Handler{
 		identifier: opts.Identifier,
 		level:      level,
 		addSource:  opts.AddSource,
 		sender:     sender,
+		statePool:  statePool,
 	}, nil
 }
 
@@ -75,31 +95,27 @@ func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 func (h *Handler) Handle(_ context.Context, record slog.Record) error {
-	fields := map[string]string{
-		"MESSAGE":           record.Message,
-		"PRIORITY":          priorityForLevel(record.Level),
-		"SYSLOG_IDENTIFIER": h.identifier,
-	}
+	state := h.getState()
+	defer h.putState(state)
 
+	state.set("MESSAGE", record.Message)
+	state.set("PRIORITY", priorityForLevel(record.Level))
+	state.set("SYSLOG_IDENTIFIER", h.identifier)
+	state.groups = append(state.groups, h.groups...)
 	if h.addSource && record.PC != 0 {
-		addSourceFields(fields, record.PC)
+		addSourceFields(state, record.PC)
 	}
 
 	for _, attr := range h.attrs {
-		addAttr(fields, h.groups, attr)
+		addAttr(state, state.groups, attr)
 	}
 
 	record.Attrs(func(attr slog.Attr) bool {
-		addAttr(fields, h.groups, attr)
+		addAttr(state, state.groups, attr)
 		return true
 	})
 
-	payload := make([]Field, 0, len(fields))
-	for name, value := range fields {
-		payload = append(payload, Field{Name: name, Value: value})
-	}
-	sort.Slice(payload, func(i, j int) bool { return payload[i].Name < payload[j].Name })
-	return h.sender.Send(payload)
+	return h.sender.Send(state.fields)
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
@@ -117,26 +133,60 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 	return &clone
 }
 
-func addSourceFields(fields map[string]string, pc uintptr) {
+func (h *Handler) getState() *handlerState {
+	v := h.statePool.Get()
+	state, ok := v.(*handlerState)
+	if !ok || state == nil {
+		state = &handlerState{
+			fields: make([]Field, 0, 16),
+			index:  make(map[string]int, 16),
+			groups: make([]string, 0, 4),
+		}
+	}
+	clear(state.index)
+	state.fields = state.fields[:0]
+	state.groups = state.groups[:0]
+	return state
+}
+
+func (h *Handler) putState(state *handlerState) {
+	state.fields = state.fields[:0]
+	state.groups = state.groups[:0]
+	clear(state.index)
+	h.statePool.Put(state)
+}
+
+func (s *handlerState) set(name, value string) {
+	if idx, ok := s.index[name]; ok {
+		s.fields[idx].Value = value
+		return
+	}
+	s.index[name] = len(s.fields)
+	s.fields = append(s.fields, Field{Name: name, Value: value})
+}
+
+func (s *handlerState) setIfMissing(name, value string) {
+	if _, ok := s.index[name]; ok {
+		return
+	}
+	s.index[name] = len(s.fields)
+	s.fields = append(s.fields, Field{Name: name, Value: value})
+}
+
+func addSourceFields(state *handlerState, pc uintptr) {
 	frame, _ := runtime.CallersFrames([]uintptr{pc}).Next()
 	if frame.File != "" {
-		if _, exists := fields["CODE_FILE"]; !exists {
-			fields["CODE_FILE"] = frame.File
-		}
+		state.setIfMissing("CODE_FILE", frame.File)
 	}
 	if frame.Function != "" {
-		if _, exists := fields["CODE_FUNC"]; !exists {
-			fields["CODE_FUNC"] = frame.Function
-		}
+		state.setIfMissing("CODE_FUNC", frame.Function)
 	}
 	if frame.Line != 0 {
-		if _, exists := fields["CODE_LINE"]; !exists {
-			fields["CODE_LINE"] = strconv.Itoa(frame.Line)
-		}
+		state.setIfMissing("CODE_LINE", strconv.Itoa(frame.Line))
 	}
 }
 
-func addAttr(fields map[string]string, groups []string, attr slog.Attr) {
+func addAttr(state *handlerState, groups []string, attr slog.Attr) {
 	attr.Value = attr.Value.Resolve()
 	if attr.Equal(slog.Attr{}) {
 		return
@@ -145,10 +195,10 @@ func addAttr(fields map[string]string, groups []string, attr slog.Attr) {
 	if attr.Value.Kind() == slog.KindGroup {
 		nextGroups := groups
 		if attr.Key != "" {
-			nextGroups = append(slices.Clone(groups), attr.Key)
+			nextGroups = append(nextGroups, attr.Key)
 		}
 		for _, child := range attr.Value.Group() {
-			addAttr(fields, nextGroups, child)
+			addAttr(state, nextGroups, child)
 		}
 		return
 	}
@@ -162,24 +212,32 @@ func addAttr(fields map[string]string, groups []string, attr slog.Attr) {
 	if !ok {
 		return
 	}
-	fields[fieldName] = fieldValue
+	state.set(fieldName, fieldValue)
 }
 
 func fieldNameForAttr(groups []string, key string) string {
-	parts := make([]string, 0, len(groups)+1)
-	for _, group := range groups {
-		if normalized := normalizeFieldComponent(group); normalized != "" {
-			parts = append(parts, normalized)
+	var builder strings.Builder
+	hasPart := false
+	appendPart := func(part string) {
+		if part == "" {
+			return
 		}
+		if hasPart {
+			builder.WriteByte('_')
+		}
+		builder.WriteString(part)
+		hasPart = true
 	}
-	if normalized := normalizeFieldComponent(key); normalized != "" {
-		parts = append(parts, normalized)
+
+	for _, group := range groups {
+		appendPart(normalizeFieldComponent(group))
 	}
-	if len(parts) == 0 {
+	appendPart(normalizeFieldComponent(key))
+	if !hasPart {
 		return ""
 	}
 
-	name := strings.Join(parts, "_")
+	name := builder.String()
 	if _, ok := standardPassthroughFields[name]; ok {
 		return name
 	}
@@ -193,6 +251,11 @@ func normalizeFieldComponent(component string) string {
 	component = strings.TrimSpace(component)
 	if component == "" {
 		return ""
+	}
+	if cached, ok := normalizedFieldComponentCache.Load(component); ok {
+		if normalized, ok := cached.(string); ok {
+			return normalized
+		}
 	}
 
 	var builder strings.Builder
@@ -216,7 +279,9 @@ func normalizeFieldComponent(component string) string {
 			}
 		}
 	}
-	return strings.Trim(builder.String(), "_")
+	normalized := strings.Trim(builder.String(), "_")
+	normalizedFieldComponentCache.Store(component, normalized)
+	return normalized
 }
 
 func fieldValueForAttr(value slog.Value) (string, bool) {
