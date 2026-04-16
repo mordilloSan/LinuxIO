@@ -2,17 +2,19 @@ package wireguard
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode"
-
-	"github.com/coreos/go-iptables/iptables"
 )
+
+const iptablesCmd = "iptables"
 
 type natBackend interface {
 	Name() string
@@ -32,10 +34,7 @@ type iptablesBackend struct{}
 type firewalldBackend struct{}
 type nftBackend struct{}
 
-var (
-	wireguardNATRunner natCommandRunner = execNATCommandRunner{}
-	newIPTablesClient                   = iptables.New
-)
+var wireguardNATRunner natCommandRunner = execNATCommandRunner{}
 
 func (execNATCommandRunner) LookPath(name string) (string, error) {
 	return exec.LookPath(name)
@@ -116,20 +115,14 @@ func (iptablesBackend) Name() string {
 }
 
 func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
-	ipt, err := newIPTablesClient()
-	if err != nil {
-		slog.Error("failed to initialize iptables", "component", "wireguard", "subsystem", "nat", "error", err)
-		return fmt.Errorf("initialize iptables: %w", err)
-	}
-
-	if err := insertRuleIfMissing(ipt, "filter", "FORWARD", 1,
+	if err := insertRuleIfMissing("filter", "FORWARD", 1,
 		"-i", interfaceName,
 		"-o", egressNic,
 		"-j", "ACCEPT"); err != nil {
 		return fmt.Errorf("add forward rule (wg -> egress): %w", err)
 	}
 
-	if err := insertRuleIfMissing(ipt, "filter", "FORWARD", 1,
+	if err := insertRuleIfMissing("filter", "FORWARD", 1,
 		"-o", interfaceName,
 		"-i", egressNic,
 		"-m", "state",
@@ -138,7 +131,7 @@ func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
 		return fmt.Errorf("add forward rule (egress -> wg): %w", err)
 	}
 
-	if err := appendRuleIfMissing(ipt, "nat", "POSTROUTING",
+	if err := appendRuleIfMissing("nat", "POSTROUTING",
 		"-o", egressNic,
 		"-s", subnet,
 		"-j", "MASQUERADE"); err != nil {
@@ -149,19 +142,14 @@ func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
 }
 
 func (iptablesBackend) Cleanup(interfaceName, egressNic, subnet string) error {
-	ipt, err := newIPTablesClient()
-	if err != nil {
-		return fmt.Errorf("initialize iptables: %w", err)
-	}
-
 	var cleanupErrors []error
-	if err := removeRuleIfExists(ipt, "filter", "FORWARD",
+	if err := removeRuleIfExists("filter", "FORWARD",
 		"-i", interfaceName,
 		"-o", egressNic,
 		"-j", "ACCEPT"); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	if err := removeRuleIfExists(ipt, "filter", "FORWARD",
+	if err := removeRuleIfExists("filter", "FORWARD",
 		"-o", interfaceName,
 		"-i", egressNic,
 		"-m", "state",
@@ -169,7 +157,7 @@ func (iptablesBackend) Cleanup(interfaceName, egressNic, subnet string) error {
 		"-j", "ACCEPT"); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	if err := removeRuleIfExists(ipt, "nat", "POSTROUTING",
+	if err := removeRuleIfExists("nat", "POSTROUTING",
 		"-o", egressNic,
 		"-s", subnet,
 		"-j", "MASQUERADE"); err != nil {
@@ -329,8 +317,23 @@ func nftAvailable() bool {
 }
 
 func iptablesAvailable() bool {
-	_, err := newIPTablesClient()
-	return err == nil
+	if _, err := wireguardNATRunner.LookPath(iptablesCmd); err != nil {
+		return false
+	}
+	// Probe that both --wait (added in 1.4.20) and -C (added in 1.4.11) are
+	// understood by this binary. A -C against a link-local rule that is
+	// overwhelmingly unlikely to exist should return exit 1 ("rule not
+	// present") on modern iptables; exit 2 or similar means a flag was
+	// rejected and we should not advertise iptables as available.
+	args := []string{"--wait", "-t", "filter", "-C", "FORWARD",
+		"-s", "169.254.255.255/32", "-d", "169.254.255.254/32",
+		"-j", "ACCEPT"}
+	_, err := wireguardNATRunner.Run(iptablesCmd, args...)
+	if err == nil {
+		return true
+	}
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == 1
 }
 
 func firewalldRules() (map[string]struct{}, error) {
@@ -399,44 +402,73 @@ func commandOutputError(name string, args []string, output []byte, err error) er
 	return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, text)
 }
 
-func removeRuleIfExists(ipt *iptables.IPTables, table, chain string, rulespec ...string) error {
-	exists, err := ipt.Exists(table, chain, rulespec...)
+// iptablesRun invokes iptables with --wait so we participate in the xtables
+// lock. Returns the combined output and (for callers that care) the raw error
+// so they can inspect the exit code.
+func iptablesRun(args ...string) ([]byte, error) {
+	full := append([]string{"--wait"}, args...)
+	return wireguardNATRunner.Run(iptablesCmd, full...)
+}
+
+// iptablesRuleExists checks for a rule via `iptables -C`. Exit code 1 means
+// the rule is absent; any other non-zero exit is a real failure.
+func iptablesRuleExists(table, chain string, rulespec ...string) (bool, error) {
+	args := append([]string{"-t", table, "-C", chain}, rulespec...)
+	output, err := iptablesRun(args...)
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, commandOutputError(iptablesCmd, args, output, err)
+}
+
+func removeRuleIfExists(table, chain string, rulespec ...string) error {
+	exists, err := iptablesRuleExists(table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
 	if !exists {
 		return nil
 	}
-	if err := ipt.Delete(table, chain, rulespec...); err != nil {
-		return fmt.Errorf("delete rule: %w", err)
+	args := append([]string{"-t", table, "-D", chain}, rulespec...)
+	output, err := iptablesRun(args...)
+	if err != nil {
+		return fmt.Errorf("delete rule: %w", commandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }
 
-func insertRuleIfMissing(ipt *iptables.IPTables, table, chain string, position int, rulespec ...string) error {
-	exists, err := ipt.Exists(table, chain, rulespec...)
+func insertRuleIfMissing(table, chain string, position int, rulespec ...string) error {
+	exists, err := iptablesRuleExists(table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
 	if exists {
 		return nil
 	}
-	if err := ipt.Insert(table, chain, position, rulespec...); err != nil {
-		return fmt.Errorf("insert rule: %w", err)
+	args := append([]string{"-t", table, "-I", chain, strconv.Itoa(position)}, rulespec...)
+	output, err := iptablesRun(args...)
+	if err != nil {
+		return fmt.Errorf("insert rule: %w", commandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }
 
-func appendRuleIfMissing(ipt *iptables.IPTables, table, chain string, rulespec ...string) error {
-	exists, err := ipt.Exists(table, chain, rulespec...)
+func appendRuleIfMissing(table, chain string, rulespec ...string) error {
+	exists, err := iptablesRuleExists(table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
 	if exists {
 		return nil
 	}
-	if err := ipt.Append(table, chain, rulespec...); err != nil {
-		return fmt.Errorf("append rule: %w", err)
+	args := append([]string{"-t", table, "-A", chain}, rulespec...)
+	output, err := iptablesRun(args...)
+	if err != nil {
+		return fmt.Errorf("append rule: %w", commandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }

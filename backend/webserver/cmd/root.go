@@ -16,8 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-systemd/activation"
-
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
@@ -120,7 +118,7 @@ func serveWithSocketActivation(
 	lastHit *atomic.Int64,
 	done chan struct{},
 ) bool {
-	listeners, err := activation.Listeners()
+	listeners, err := systemdListeners()
 	if err != nil {
 		slog.Warn("socket activation listener lookup failed", "error", err)
 	}
