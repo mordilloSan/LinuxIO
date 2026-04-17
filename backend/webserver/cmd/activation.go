@@ -42,7 +42,7 @@ func systemdListeners() ([]net.Listener, error) {
 	}
 
 	listeners := make([]net.Listener, 0, nfds)
-	for i := 0; i < nfds; i++ {
+	for i := range nfds {
 		fd := listenFDsStart + i
 		syscall.CloseOnExec(fd)
 		file := os.NewFile(uintptr(fd), fmt.Sprintf("LISTEN_FD_%d", fd))

@@ -130,6 +130,8 @@ static void journal_send_formatted(int priority, const struct journal_field *fie
   {
     if (!fields[i].name || !fields[i].value || fields[i].name[0] == '\0')
       continue;
+    if (strcmp(fields[i].name, "LINUXIO_SESSION_ID") == 0)
+      continue;
     (void)safe_snprintf(field_bufs[i], sizeof(field_bufs[i]), "%s=%s",
                         fields[i].name, fields[i].value);
     iov[iov_count++] = (struct iovec){.iov_base = field_bufs[i], .iov_len = strlen(field_bufs[i])};

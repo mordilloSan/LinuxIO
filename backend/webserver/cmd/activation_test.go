@@ -41,14 +41,20 @@ func TestSystemdListenersHappyPath(t *testing.T) {
 	}
 	defer tcpListener.Close()
 
-	file, err := tcpListener.(*net.TCPListener).File()
+	tcpFileListener, ok := tcpListener.(*net.TCPListener)
+	if !ok {
+		t.Fatalf("want *net.TCPListener, got %T", tcpListener)
+	}
+
+	file, err := tcpFileListener.File()
 	if err != nil {
 		t.Fatalf("file: %v", err)
 	}
 	defer file.Close()
 
 	savedFd, savedErr := syscall.Dup(listenFDsStart)
-	if err := syscall.Dup2(int(file.Fd()), listenFDsStart); err != nil {
+	err = syscall.Dup2(int(file.Fd()), listenFDsStart)
+	if err != nil {
 		t.Fatalf("dup2: %v", err)
 	}
 	t.Cleanup(func() {

@@ -24,11 +24,10 @@ type capabilitiesResponse struct {
 
 func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	if path, err := exec.LookPath(command); err != nil {
-		slog.Info("dependency unavailable", "component", "system", "package", dependencyName)
+		slog.Info(dependencyName + " unavailable")
 		return false, fmt.Errorf("%s not found (missing %s dependency)", command, dependencyName)
 	} else {
-		slog.Info("lm-sensors available", "component", "system", "package", dependencyName)
-		slog.Debug("dependency path resolved", "component", "system", "package", dependencyName, "path", path)
+		slog.Info(dependencyName+" available", "path", path)
 	}
 	return true, nil
 }

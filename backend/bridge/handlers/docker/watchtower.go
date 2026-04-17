@@ -49,7 +49,7 @@ func SyncWatchtowerStack(username string) {
 	if err := composeUpWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
 		slog.Warn("watchtower compose up failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	} else {
-		slog.Info("synced watchtower with containers", "component", "docker", "subsystem", "watchtower", "container_count", len(containerNames))
+		slog.Info("watchtower synced", "containers", len(containerNames))
 	}
 }
 

@@ -269,13 +269,22 @@ type journalEntry struct {
 	SyslogPID string `json:"SYSLOG_PID"`
 	Priority  string `json:"PRIORITY"`
 	Message   string `json:"MESSAGE"`
+	Fields    map[string]string
+}
+
+var visibleJournalFields = map[string]struct{}{
+	"LINUXIO_GID":        {},
+	"LINUXIO_MODE":       {},
+	"LINUXIO_PRIVILEGED": {},
+	"LINUXIO_UID":        {},
+	"LINUXIO_USER":       {},
 }
 
 // formatJournalEntry parses a journalctl JSON line and formats it with colors
 // PRIORITY levels: 7=DEBUG(cyan), 6,5=INFO(green), 4=WARNING(yellow), 3,2,1,0=ERROR(red)
 func formatJournalEntry(jsonLine string) string {
-	var entry journalEntry
-	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
+	entry, err := parseJournalEntry(jsonLine)
+	if err != nil {
 		return ""
 	}
 
@@ -283,11 +292,38 @@ func formatJournalEntry(jsonLine string) string {
 	unit := journalUnit(entry)
 	pid := journalPID(entry)
 	level := journalPriorityLevel(entry)
+	message := journalMessage(entry)
 
 	if pid != "" {
-		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, entry.Message)
+		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
 	}
-	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, entry.Message)
+	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
+}
+
+func parseJournalEntry(jsonLine string) (journalEntry, error) {
+	var entry journalEntry
+	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
+		return journalEntry{}, err
+	}
+
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonLine), &rawFields); err != nil {
+		return journalEntry{}, err
+	}
+
+	fields := make(map[string]string)
+	for name, raw := range rawFields {
+		if !strings.HasPrefix(name, "LINUXIO_") {
+			continue
+		}
+		value := journalRawValue(raw)
+		if value == "" {
+			continue
+		}
+		fields[name] = value
+	}
+	entry.Fields = fields
+	return entry, nil
 }
 
 func journalTimestamp(entry journalEntry) string {
@@ -299,10 +335,10 @@ func journalTimestamp(entry journalEntry) string {
 
 func journalUnit(entry journalEntry) string {
 	unit := "unknown"
-	if entry.Unit != "" {
-		unit = entry.Unit
-	} else if entry.SyslogID != "" {
+	if entry.SyslogID != "" {
 		unit = entry.SyslogID
+	} else if entry.Unit != "" {
+		unit = entry.Unit
 	}
 	if at := strings.Index(unit, "@"); at >= 0 {
 		unit = unit[:at]
@@ -317,6 +353,69 @@ func journalPID(entry journalEntry) string {
 		return entry.PID
 	}
 	return entry.SyslogPID
+}
+
+func journalMessage(entry journalEntry) string {
+	keys := make([]string, 0, len(entry.Fields))
+	for name := range entry.Fields {
+		if _, ok := visibleJournalFields[name]; !ok {
+			continue
+		}
+		keys = append(keys, name)
+	}
+	if len(keys) == 0 {
+		return entry.Message
+	}
+
+	sort.Strings(keys)
+
+	var builder strings.Builder
+	builder.WriteString(entry.Message)
+	for _, name := range keys {
+		builder.WriteByte(' ')
+		builder.WriteString(strings.ToLower(strings.TrimPrefix(name, "LINUXIO_")))
+		builder.WriteByte('=')
+		builder.WriteString(journalFieldValue(entry.Fields[name]))
+	}
+	return builder.String()
+}
+
+func journalRawValue(raw json.RawMessage) string {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return journalAnyValue(value)
+}
+
+func journalAnyValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			part := journalAnyValue(item)
+			if part == "" {
+				continue
+			}
+			parts = append(parts, part)
+		}
+		return strings.Join(parts, ",")
+	default:
+		return fmt.Sprintf("%v", value)
+	}
+}
+
+func journalFieldValue(value string) string {
+	if strings.ContainsAny(value, " \t") {
+		return strconv.Quote(value)
+	}
+	return value
 }
 
 func journalPriorityLevel(entry journalEntry) string {

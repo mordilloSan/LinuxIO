@@ -41,8 +41,8 @@ func TestHandlerMapsLevelIdentifierAndAppFields(t *testing.T) {
 	if got["MESSAGE"] != "bridge start timeout" {
 		t.Fatalf("message = %q", got["MESSAGE"])
 	}
-	if got["LINUXIO_SESSION_ID"] != "abc" {
-		t.Fatalf("session field = %q", got["LINUXIO_SESSION_ID"])
+	if _, ok := got["LINUXIO_SESSION_ID"]; ok {
+		t.Fatalf("session field unexpectedly present: %q", got["LINUXIO_SESSION_ID"])
 	}
 	if got["LINUXIO_PRIVILEGED"] != "true" {
 		t.Fatalf("privileged field = %q", got["LINUXIO_PRIVILEGED"])

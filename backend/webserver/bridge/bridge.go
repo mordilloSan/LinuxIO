@@ -84,10 +84,9 @@ func StartBridge(sm *session.Manager, sessionID, username, password string, verb
 		}
 		return nil, err
 	}
-	slog.Info("bridge launch via daemon acknowledged",
+	slog.Debug("bridge launch via daemon acknowledged",
 		"user", sess.User.Username,
-		"privileged", result.Privileged,
-		"session_id", sess.SessionID)
+		"privileged", result.Privileged)
 
 	return sess, nil
 }

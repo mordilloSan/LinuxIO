@@ -26,6 +26,10 @@ var standardPassthroughFields = map[string]struct{}{
 
 var normalizedFieldComponentCache sync.Map
 
+var suppressedLinuxIOFields = map[string]struct{}{
+	"LINUXIO_SESSION_ID": {},
+}
+
 // Options configures the native journald slog handler.
 type Options struct {
 	Identifier string
@@ -242,9 +246,16 @@ func fieldNameForAttr(groups []string, key string) string {
 		return name
 	}
 	if strings.HasPrefix(name, "LINUXIO_") {
+		if _, ok := suppressedLinuxIOFields[name]; ok {
+			return ""
+		}
 		return name
 	}
-	return "LINUXIO_" + name
+	name = "LINUXIO_" + name
+	if _, ok := suppressedLinuxIOFields[name]; ok {
+		return ""
+	}
+	return name
 }
 
 func normalizeFieldComponent(component string) string {

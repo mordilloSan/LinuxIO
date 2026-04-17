@@ -3,7 +3,6 @@ package bridge
 
 import (
 	"fmt"
-	"log/slog"
 	"net"
 	"time"
 
@@ -92,12 +91,8 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 		}
 	}
 
-	privileged := resp.IsPrivileged()
-	slog.Info("auth daemon: bridge spawned",
-		"user", resp.User.Username,
-		"privileged", privileged)
-
 	// Clear deadlines for Yamux use
+	privileged := resp.IsPrivileged()
 	if err = conn.SetDeadline(time.Time{}); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to clear deadlines: %w", err)
