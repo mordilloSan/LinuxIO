@@ -600,7 +600,7 @@ func addToIndexer(path string, info os.FileInfo) error {
 	if err != nil {
 		slog.
 			// Log but don't fail the operation if indexer is unavailable
-			Debug(fmt.Sprintf("indexer add request failed (indexer may be offline): %v", err))
+			Debug("indexer add request failed (indexer may be offline)", "error", err)
 		setIndexerAvailability(false)
 		return nil
 	}
@@ -648,7 +648,7 @@ func deleteFromIndexer(path string) error {
 	if err != nil {
 		slog.
 			// Log but don't fail the operation if indexer is unavailable
-			Debug(fmt.Sprintf("indexer delete request failed (indexer may be offline): %v", err))
+			Debug("indexer delete request failed (indexer may be offline)", "error", err)
 		setIndexerAvailability(false)
 		return nil
 	}

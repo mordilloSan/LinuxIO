@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	ini "gopkg.in/ini.v1"
@@ -158,7 +159,7 @@ func (b *nmConnectionBackend) SetIPv6Static(addressCIDR string) error {
 func (b *nmConnectionBackend) SetMTU(mtu uint32) error {
 	return b.update(func(cfg *ini.File) error {
 		mtuSection := nmMTUSection(cfg)
-		mtuSection.Key("mtu").SetValue(fmt.Sprintf("%d", mtu))
+		mtuSection.Key("mtu").SetValue(strconv.FormatUint(uint64(mtu), 10))
 		return nil
 	})
 }

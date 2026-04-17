@@ -96,7 +96,7 @@ func ListDockerNetworks() (any, error) {
 		if err != nil {
 			slog.
 				// Log warning but continue
-				Warn(fmt.Sprintf("failed to inspect network %s: %v", nw.Name, err))
+				Warn("failed to inspect network", "network", nw.Name, "error", err)
 			continue
 		}
 

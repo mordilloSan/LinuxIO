@@ -71,7 +71,7 @@ func ListComposeProjects(username string) (any, error) {
 	if err := discoverOfflineStacks(username, projects); err != nil {
 		slog.
 			// Log but don't fail - indexer might be unavailable
-			Debug(fmt.Sprintf("failed to discover offline stacks from indexer: %v", err))
+			Debug("failed to discover offline stacks from indexer", "error", err)
 	}
 
 	// Load config once to check auto-update preferences.

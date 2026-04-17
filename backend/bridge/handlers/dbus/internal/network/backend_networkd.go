@@ -3,6 +3,7 @@ package network
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	ini "gopkg.in/ini.v1"
@@ -105,7 +106,7 @@ func (b *networkdBackend) SetIPv6Static(addressCIDR string) error {
 
 func (b *networkdBackend) SetMTU(mtu uint32) error {
 	return b.update(func(cfg *ini.File) error {
-		cfg.Section("Link").Key("MTUBytes").SetValue(fmt.Sprintf("%d", mtu))
+		cfg.Section("Link").Key("MTUBytes").SetValue(strconv.FormatUint(uint64(mtu), 10))
 		return nil
 	})
 }
@@ -261,7 +262,7 @@ func updateNetworkdConfig(cfg *ini.File, family int, addressCIDR, gateway string
 		networkSection.Key("DHCP").SetValue("no")
 	}
 	if mtu != nil {
-		cfg.Section("Link").Key("MTUBytes").SetValue(fmt.Sprintf("%d", *mtu))
+		cfg.Section("Link").Key("MTUBytes").SetValue(strconv.FormatUint(uint64(*mtu), 10))
 	}
 	maybeDeleteEmptySection(cfg, "Route")
 	maybeDeleteEmptySection(cfg, "Address")
