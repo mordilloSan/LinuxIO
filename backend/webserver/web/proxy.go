@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -112,7 +113,14 @@ func resolveContainerTarget(ctx context.Context, name string) (*url.URL, error) 
 		}
 	}
 
-	return url.Parse(fmt.Sprintf("http://%s:%s", ip, port))
+	return containerTargetURL(ip, port), nil
+}
+
+func containerTargetURL(ip, port string) *url.URL {
+	return &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(ip, port),
+	}
 }
 
 func containerNetworkIP(info container.InspectResponse) string {
