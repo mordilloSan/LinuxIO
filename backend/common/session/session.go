@@ -76,11 +76,19 @@ type Timing struct {
 	AbsoluteUntil time.Time `json:"absolute_until"`
 }
 
+type Capabilities struct {
+	DockerAvailable        bool `json:"docker_available"`
+	IndexerAvailable       bool `json:"indexer_available"`
+	LMSensorsAvailable     bool `json:"lm_sensors_available"`
+	SmartmontoolsAvailable bool `json:"smartmontools_available"`
+}
+
 type Session struct {
-	SessionID  string `json:"session_id"`
-	User       User   `json:"user"`
-	Privileged bool   `json:"privileged"`
-	Timing     Timing `json:"timing"`
+	SessionID    string       `json:"session_id"`
+	User         User         `json:"user"`
+	Privileged   bool         `json:"privileged"`
+	Capabilities Capabilities `json:"capabilities"`
+	Timing       Timing       `json:"timing"`
 
 	// Termination handler (not serialized)
 	terminateFunc func(DeleteReason) error
@@ -375,6 +383,15 @@ func (m *Manager) SetPrivileged(id string, v bool) error {
 		return err
 	}
 	s.Privileged = v
+	return m.commitSession(s)
+}
+
+func (m *Manager) SetCapabilities(id string, v Capabilities) error {
+	s, err := m.GetSession(id)
+	if err != nil {
+		return err
+	}
+	s.Capabilities = v
 	return m.commitSession(s)
 }
 

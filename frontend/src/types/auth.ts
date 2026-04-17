@@ -70,9 +70,6 @@ export const AUTH_ACTIONS = {
 
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
-
-  /** Dispatched after the bridge is connected to refresh capability flags. */
-  UPDATE_CAPABILITIES: "UPDATE_CAPABILITIES",
 } as const satisfies Record<string, string>;
 
 /**
@@ -99,12 +96,6 @@ export interface AuthActionTypes {
     smartmontoolsAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
-  [AUTH_ACTIONS.UPDATE_CAPABILITIES]: {
-    dockerAvailable: boolean;
-    indexerAvailable: boolean;
-    lmSensorsAvailable: boolean;
-    smartmontoolsAvailable: boolean;
-  };
 }
 
 export type AuthActions = ActionMap<AuthActionTypes>[keyof AuthActionTypes];
@@ -120,8 +111,10 @@ export interface LoginResponse {
   success: boolean;
   privileged: boolean;
   update?: UpdateInfo;
-  docker_available?: boolean;
-  indexer_available?: boolean;
+  docker_available: boolean;
+  indexer_available: boolean;
+  lm_sensors_available: boolean;
+  smartmontools_available: boolean;
 }
 
 export type LoginErrorCode =

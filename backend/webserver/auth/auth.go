@@ -31,6 +31,16 @@ type loginErrorResponse struct {
 	Code  string `json:"code,omitempty"`
 }
 
+type loginSuccessResponse struct {
+	Success                bool        `json:"success"`
+	Privileged             bool        `json:"privileged"`
+	DockerAvailable        bool        `json:"docker_available"`
+	IndexerAvailable       bool        `json:"indexer_available"`
+	LMSensorsAvailable     bool        `json:"lm_sensors_available"`
+	SmartmontoolsAvailable bool        `json:"smartmontools_available"`
+	Update                 *UpdateInfo `json:"update,omitempty"`
+}
+
 func writeLoginError(w http.ResponseWriter, status int, code, message string) {
 	web.WriteJSON(w, status, loginErrorResponse{
 		Error: message,
@@ -93,15 +103,19 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.SM.WriteCookie(w, sess.SessionID)
 
-	response := map[string]any{
-		"success":    true,
-		"privileged": sess.Privileged,
+	response := loginSuccessResponse{
+		Success:                true,
+		Privileged:             sess.Privileged,
+		DockerAvailable:        sess.Capabilities.DockerAvailable,
+		IndexerAvailable:       sess.Capabilities.IndexerAvailable,
+		LMSensorsAvailable:     sess.Capabilities.LMSensorsAvailable,
+		SmartmontoolsAvailable: sess.Capabilities.SmartmontoolsAvailable,
 	}
 
 	// Only check for updates if user is privileged
 	if sess.Privileged {
 		if updateInfo := CheckForUpdate(); updateInfo != nil {
-			response["update"] = updateInfo
+			response.Update = updateInfo
 		}
 	}
 

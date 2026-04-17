@@ -65,7 +65,21 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}()
 
 	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
-		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
+		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
+		if err != nil {
+			return nil, err
+		}
+		caps := session.Capabilities{
+			DockerAvailable:        true,
+			IndexerAvailable:       false,
+			LMSensorsAvailable:     true,
+			SmartmontoolsAvailable: false,
+		}
+		sess.Capabilities = caps
+		if err := sm.SetCapabilities(sessionID, caps); err != nil {
+			return nil, err
+		}
+		return sess, nil
 	}
 	// Manager + handlers
 	cfg := session.DefaultConfig
@@ -96,6 +110,18 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if resp["privileged"] != true {
 		t.Fatalf("expected privileged=true, got %v", resp)
 	}
+	if resp["docker_available"] != true {
+		t.Fatalf("expected docker_available=true, got %v", resp)
+	}
+	if resp["indexer_available"] != false {
+		t.Fatalf("expected indexer_available=false, got %v", resp)
+	}
+	if resp["lm_sensors_available"] != true {
+		t.Fatalf("expected lm_sensors_available=true, got %v", resp)
+	}
+	if resp["smartmontools_available"] != false {
+		t.Fatalf("expected smartmontools_available=false, got %v", resp)
+	}
 
 	// Session exists and is marked privileged (validated later by websocket)
 	sess, err := sm.GetSession(c.Value)
@@ -104,6 +130,49 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}
 	if !sess.Privileged {
 		t.Fatalf("expected session privileged=true, got %v", sess.Privileged)
+	}
+	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable {
+		t.Fatalf("expected session capabilities to persist, got %+v", sess.Capabilities)
+	}
+}
+
+func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) {
+	oldStart := startBridge
+	defer func() { startBridge = oldStart }()
+
+	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
+		if err != nil {
+			return nil, err
+		}
+		return sess, nil
+	}
+
+	cfg := session.DefaultConfig
+	sm := session.NewManager(session.New(), cfg)
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
+	r := newRouterForTests(h)
+
+	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal login response: %v", err)
+	}
+	if resp["docker_available"] != false {
+		t.Fatalf("expected docker_available=false, got %v", resp)
+	}
+	if resp["indexer_available"] != false {
+		t.Fatalf("expected indexer_available=false, got %v", resp)
+	}
+	if resp["lm_sensors_available"] != false {
+		t.Fatalf("expected lm_sensors_available=false, got %v", resp)
+	}
+	if resp["smartmontools_available"] != false {
+		t.Fatalf("expected smartmontools_available=false, got %v", resp)
 	}
 }
 

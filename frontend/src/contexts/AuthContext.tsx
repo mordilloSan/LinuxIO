@@ -8,7 +8,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio, initStreamMux, closeStreamMux, type MuxStatus } from "@/api";
+import { initStreamMux, closeStreamMux, type MuxStatus } from "@/api";
 import {
   AuthContextType,
   AuthState,
@@ -22,6 +22,68 @@ import {
 } from "@/types/auth";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
+const AUTH_CAPABILITIES_KEY = "auth_capabilities";
+
+type StoredCapabilities = Pick<
+  AuthState,
+  | "dockerAvailable"
+  | "indexerAvailable"
+  | "lmSensorsAvailable"
+  | "smartmontoolsAvailable"
+>;
+
+const emptyCapabilities: StoredCapabilities = {
+  dockerAvailable: null,
+  indexerAvailable: null,
+  lmSensorsAvailable: null,
+  smartmontoolsAvailable: null,
+};
+
+const capabilitiesFromLoginResponse = (
+  data: Pick<
+    LoginResponse,
+    | "docker_available"
+    | "indexer_available"
+    | "lm_sensors_available"
+    | "smartmontools_available"
+  >,
+): StoredCapabilities => ({
+  dockerAvailable: data.docker_available,
+  indexerAvailable: data.indexer_available,
+  lmSensorsAvailable: data.lm_sensors_available,
+  smartmontoolsAvailable: data.smartmontools_available,
+});
+
+const readStoredCapabilities = (): StoredCapabilities => {
+  try {
+    const raw = localStorage.getItem(AUTH_CAPABILITIES_KEY);
+    if (!raw) {
+      return emptyCapabilities;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<StoredCapabilities>;
+    return {
+      dockerAvailable:
+        typeof parsed.dockerAvailable === "boolean"
+          ? parsed.dockerAvailable
+          : null,
+      indexerAvailable:
+        typeof parsed.indexerAvailable === "boolean"
+          ? parsed.indexerAvailable
+          : null,
+      lmSensorsAvailable:
+        typeof parsed.lmSensorsAvailable === "boolean"
+          ? parsed.lmSensorsAvailable
+          : null,
+      smartmontoolsAvailable:
+        typeof parsed.smartmontoolsAvailable === "boolean"
+          ? parsed.smartmontoolsAvailable
+          : null,
+    };
+  } catch {
+    return emptyCapabilities;
+  }
+};
 
 const loginErrorMessage = (
   code?: LoginErrorCode,
@@ -108,14 +170,6 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
       };
-    case AUTH_ACTIONS.UPDATE_CAPABILITIES:
-      return {
-        ...state,
-        dockerAvailable: action.payload.dockerAvailable,
-        indexerAvailable: action.payload.indexerAvailable,
-        lmSensorsAvailable: action.payload.lmSensorsAvailable,
-        smartmontoolsAvailable: action.payload.smartmontoolsAvailable,
-      };
     default: {
       const exhaustiveCheck: never = action;
       void exhaustiveCheck;
@@ -137,6 +191,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     // The WebSocket connection will validate the session cookie
     const storedUsername = localStorage.getItem("auth_username");
     const storedPrivileged = localStorage.getItem("auth_privileged");
+    const storedCapabilities = readStoredCapabilities();
 
     if (storedUsername) {
       // Optimistically set authenticated - WebSocket will validate
@@ -145,7 +200,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       const privileged = storedPrivileged === "true";
       dispatch({
         type: AUTH_ACTIONS.INITIALIZE_SUCCESS,
-        payload: { user, privileged },
+        payload: { user, privileged, ...storedCapabilities },
       });
     } else {
       // No stored username, not authenticated
@@ -161,6 +216,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       sessionStorage.removeItem("update_info");
       localStorage.removeItem("auth_username");
       localStorage.removeItem("auth_privileged");
+      localStorage.removeItem(AUTH_CAPABILITIES_KEY);
     } catch {
       /* ignore */
     }
@@ -198,36 +254,6 @@ function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (state.isAuthenticated) {
       const mux = initStreamMux();
-
-      const refreshCapabilities = async () => {
-        try {
-          const caps = await linuxio.system.get_capabilities.call();
-          dispatch({
-            type: AUTH_ACTIONS.UPDATE_CAPABILITIES,
-            payload: {
-              dockerAvailable: caps.docker_available,
-              indexerAvailable: caps.indexer_available,
-              lmSensorsAvailable: caps.lm_sensors_available,
-              smartmontoolsAvailable: caps.smartmontools_available,
-            },
-          });
-        } catch (err) {
-          console.warn("[AuthContext] Failed to refresh capabilities:", err);
-          dispatch({
-            type: AUTH_ACTIONS.UPDATE_CAPABILITIES,
-            payload: {
-              dockerAvailable: false,
-              indexerAvailable: false,
-              lmSensorsAvailable: false,
-              smartmontoolsAvailable: false,
-            },
-          });
-        }
-      };
-
-      if (mux.status === "open") {
-        void refreshCapabilities();
-      }
       // Listen for WebSocket status changes
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
         if (status === "error") {
@@ -236,8 +262,6 @@ function AuthProvider({ children }: AuthProviderProps) {
           console.log("[AuthContext] Session invalid or expired");
           toast.error("Session expired. Please sign in again.");
           doLocalSignOut(false);
-        } else if (status === "open") {
-          void refreshCapabilities();
         } else if (status === "closed") {
           // Network issue or tab closed - don't logout
           // Session cookie might still be valid
@@ -267,6 +291,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       throw new Error(loginErrorMessage(err.code, err.error));
     }
     const data: LoginResponse = await res.json();
+    const capabilities = capabilitiesFromLoginResponse(data);
 
     // Store update info if present
     if (data.update) {
@@ -281,6 +306,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     try {
       localStorage.setItem("auth_username", username);
       localStorage.setItem("auth_privileged", String(data.privileged));
+      localStorage.setItem(AUTH_CAPABILITIES_KEY, JSON.stringify(capabilities));
     } catch (error) {
       console.error("Failed to store user info:", error);
     }
@@ -291,6 +317,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       payload: {
         user,
         privileged: data.privileged,
+        ...capabilities,
       },
     });
 
