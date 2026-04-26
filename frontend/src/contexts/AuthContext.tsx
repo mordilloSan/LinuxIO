@@ -30,6 +30,7 @@ type StoredCapabilities = Pick<
   | "indexerAvailable"
   | "lmSensorsAvailable"
   | "smartmontoolsAvailable"
+  | "packageKitAvailable"
 >;
 
 const emptyCapabilities: StoredCapabilities = {
@@ -37,6 +38,7 @@ const emptyCapabilities: StoredCapabilities = {
   indexerAvailable: null,
   lmSensorsAvailable: null,
   smartmontoolsAvailable: null,
+  packageKitAvailable: null,
 };
 
 const capabilitiesFromLoginResponse = (
@@ -46,12 +48,14 @@ const capabilitiesFromLoginResponse = (
     | "indexer_available"
     | "lm_sensors_available"
     | "smartmontools_available"
+    | "packagekit_available"
   >,
 ): StoredCapabilities => ({
   dockerAvailable: data.docker_available,
   indexerAvailable: data.indexer_available,
   lmSensorsAvailable: data.lm_sensors_available,
   smartmontoolsAvailable: data.smartmontools_available,
+  packageKitAvailable: data.packagekit_available,
 });
 
 const readStoredCapabilities = (): StoredCapabilities => {
@@ -78,6 +82,10 @@ const readStoredCapabilities = (): StoredCapabilities => {
       smartmontoolsAvailable:
         typeof parsed.smartmontoolsAvailable === "boolean"
           ? parsed.smartmontoolsAvailable
+          : null,
+      packageKitAvailable:
+        typeof parsed.packageKitAvailable === "boolean"
+          ? parsed.packageKitAvailable
           : null,
     };
   } catch {
@@ -118,6 +126,7 @@ const initialState: AuthState = {
   indexerAvailable: null,
   lmSensorsAvailable: null,
   smartmontoolsAvailable: null,
+  packageKitAvailable: null,
 };
 
 const reducer = (state: AuthState, action: AuthActions): AuthState => {
@@ -135,6 +144,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         indexerAvailable: action.payload.indexerAvailable ?? null,
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
+        packageKitAvailable: action.payload.packageKitAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
       return {
@@ -147,6 +157,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         indexerAvailable: null,
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
+        packageKitAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
       return {
@@ -158,6 +169,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         indexerAvailable: action.payload.indexerAvailable ?? null,
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
+        packageKitAvailable: action.payload.packageKitAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
       return {
@@ -169,6 +181,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         indexerAvailable: null,
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
+        packageKitAvailable: null,
       };
     default: {
       const exhaustiveCheck: never = action;

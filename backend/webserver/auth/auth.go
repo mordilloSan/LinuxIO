@@ -38,6 +38,7 @@ type loginSuccessResponse struct {
 	IndexerAvailable       bool        `json:"indexer_available"`
 	LMSensorsAvailable     bool        `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool        `json:"smartmontools_available"`
+	PackageKitAvailable    bool        `json:"packagekit_available"`
 	Update                 *UpdateInfo `json:"update,omitempty"`
 }
 
@@ -110,6 +111,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		IndexerAvailable:       sess.Capabilities.IndexerAvailable,
 		LMSensorsAvailable:     sess.Capabilities.LMSensorsAvailable,
 		SmartmontoolsAvailable: sess.Capabilities.SmartmontoolsAvailable,
+		PackageKitAvailable:    sess.Capabilities.PackageKitAvailable,
 	}
 
 	// Only check for updates if user is privileged

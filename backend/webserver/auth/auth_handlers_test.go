@@ -74,6 +74,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 			IndexerAvailable:       false,
 			LMSensorsAvailable:     true,
 			SmartmontoolsAvailable: false,
+			PackageKitAvailable:    true,
 		}
 		sess.Capabilities = caps
 		if err := sm.SetCapabilities(sessionID, caps); err != nil {
@@ -122,6 +123,9 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if resp["smartmontools_available"] != false {
 		t.Fatalf("expected smartmontools_available=false, got %v", resp)
 	}
+	if resp["packagekit_available"] != true {
+		t.Fatalf("expected packagekit_available=true, got %v", resp)
+	}
 
 	// Session exists and is marked privileged (validated later by websocket)
 	sess, err := sm.GetSession(c.Value)
@@ -131,7 +135,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if !sess.Privileged {
 		t.Fatalf("expected session privileged=true, got %v", sess.Privileged)
 	}
-	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable {
+	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable {
 		t.Fatalf("expected session capabilities to persist, got %+v", sess.Capabilities)
 	}
 }
@@ -173,6 +177,9 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	}
 	if resp["smartmontools_available"] != false {
 		t.Fatalf("expected smartmontools_available=false, got %v", resp)
+	}
+	if resp["packagekit_available"] != false {
+		t.Fatalf("expected packagekit_available=false, got %v", resp)
 	}
 }
 

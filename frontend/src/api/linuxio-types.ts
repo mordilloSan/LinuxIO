@@ -185,10 +185,12 @@ export interface CapabilitiesResponse {
   indexer_available: boolean;
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
+  packagekit_available: boolean;
   docker_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
   smartmontools_error?: string;
+  packagekit_error?: string;
 }
 
 export interface DistroInfo {

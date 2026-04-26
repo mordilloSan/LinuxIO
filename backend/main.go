@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -165,7 +166,38 @@ func runStatus() {
 	fmt.Printf("\n\033[1m%d loaded units listed.\033[0m\n", len(units))
 }
 
+func hasJournalAccess() bool {
+	u, err := user.Current()
+	if err != nil {
+		return true
+	}
+	gids, err := u.GroupIds()
+	if err != nil {
+		return true
+	}
+	for _, gid := range gids {
+		g, err := user.LookupGroupId(gid)
+		if err != nil {
+			continue
+		}
+		if g.Name == "systemd-journal" || g.Name == "adm" {
+			return true
+		}
+	}
+	return false
+}
+
 func runLogs(args []string) {
+	if !hasJournalAccess() {
+		fmt.Fprintf(os.Stderr, "Error: user %q cannot read the system journal.\n", func() string {
+			if u, err := user.Current(); err == nil {
+				return u.Username
+			}
+			return "current"
+		}())
+		fmt.Fprintf(os.Stderr, "Fix: sudo usermod -aG systemd-journal $USER  (then log out and back in)\n")
+		os.Exit(1)
+	}
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")

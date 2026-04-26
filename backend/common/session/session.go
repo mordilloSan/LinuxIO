@@ -81,6 +81,7 @@ type Capabilities struct {
 	IndexerAvailable       bool `json:"indexer_available"`
 	LMSensorsAvailable     bool `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool `json:"smartmontools_available"`
+	PackageKitAvailable    bool `json:"packagekit_available"`
 }
 
 type Session struct {

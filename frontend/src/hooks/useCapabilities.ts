@@ -6,7 +6,8 @@ export type CapabilityKey =
   | "dockerAvailable"
   | "indexerAvailable"
   | "lmSensorsAvailable"
-  | "smartmontoolsAvailable";
+  | "smartmontoolsAvailable"
+  | "packageKitAvailable";
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
 export interface AccessContext {
@@ -15,6 +16,7 @@ export interface AccessContext {
   indexerAvailable: boolean | null;
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
+  packageKitAvailable: boolean | null;
 }
 
 export interface AccessPolicy {
@@ -58,6 +60,12 @@ export const getCapabilityReason = (
       : "smartmontools dependency is unavailable.";
   }
 
+  if (capability === "packageKitAvailable") {
+    return status === "unknown"
+      ? "PackageKit availability is still being checked."
+      : "PackageKit D-Bus service is unavailable.";
+  }
+
   return status === "unknown"
     ? "Docker availability is still being checked."
     : "Docker service is unavailable.";
@@ -86,6 +94,7 @@ export const useAccessContext = (): AccessContext => {
     indexerAvailable,
     lmSensorsAvailable,
     smartmontoolsAvailable,
+    packageKitAvailable,
   } = useAuth();
 
   return useMemo(
@@ -95,6 +104,7 @@ export const useAccessContext = (): AccessContext => {
       indexerAvailable,
       lmSensorsAvailable,
       smartmontoolsAvailable,
+      packageKitAvailable,
     }),
     [
       privileged,
@@ -102,6 +112,7 @@ export const useAccessContext = (): AccessContext => {
       indexerAvailable,
       lmSensorsAvailable,
       smartmontoolsAvailable,
+      packageKitAvailable,
     ],
   );
 };
