@@ -157,7 +157,7 @@ if [[ -n "${SUDO_USER:-}" ]]; then
     if ! id -nG "$SUDO_USER" | tr ' ' '\n' | grep -qxE "systemd-journal|adm"; then
         Show 2 "Granting ${SUDO_USER} journal read access..."
         usermod -aG systemd-journal "$SUDO_USER"
-        Show 0 "${SUDO_USER} added to systemd-journal group ${GREY}(re-login required for 'linuxio logs')${COLOUR_RESET}"
+        Show 0 "${SUDO_USER} added to systemd-journal group ${GREY}(re-login refreshes the shell session)${COLOUR_RESET}"
     else
         Show 0 "${SUDO_USER} already has journal read access"
     fi

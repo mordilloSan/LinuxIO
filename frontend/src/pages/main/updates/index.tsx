@@ -18,8 +18,9 @@ import { useAppTheme } from "@/theme";
 const Updates: React.FC = () => {
   const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { status: packageKitStatus, reason: packageKitReason } =
-    useCapability("packageKitAvailable");
+  const { status: packageKitStatus, reason: packageKitReason } = useCapability(
+    "packageKitAvailable",
+  );
   const packageKitUnavailable = packageKitStatus === "unavailable";
   const {
     data: rawUpdates,

@@ -1,8 +1,9 @@
 package main
 
-import "slices"
-
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestJournalTermsForMode(t *testing.T) {
 	tests := []struct {
@@ -63,6 +64,23 @@ func TestJournalTermsForMode(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestJournalctlCommandUsesSgForPendingGroup(t *testing.T) {
+	cmd := journalctlCommand([]string{"SYSLOG_IDENTIFIER=linuxio-auth", "+", "-n", "25", "--no-pager"}, "systemd-journal")
+
+	want := []string{"sg", "systemd-journal", "-c", "journalctl SYSLOG_IDENTIFIER=linuxio-auth + -n 25 --no-pager"}
+	if !slices.Equal(cmd.Args, want) {
+		t.Fatalf("journalctlCommand() args = %v, want %v", cmd.Args, want)
+	}
+}
+
+func TestJournalctlShellCommandQuotesUnsafeArgs(t *testing.T) {
+	got := journalctlShellCommand([]string{"MESSAGE=can't stop", "-n", "10"})
+	want := `journalctl 'MESSAGE=can'"'"'t stop' -n 10`
+	if got != want {
+		t.Fatalf("journalctlShellCommand() = %q, want %q", got, want)
 	}
 }
 

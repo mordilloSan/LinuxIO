@@ -166,42 +166,54 @@ func runStatus() {
 	fmt.Printf("\n\033[1m%d loaded units listed.\033[0m\n", len(units))
 }
 
-func hasJournalAccess() bool {
-	u, err := user.Current()
-	if err != nil {
-		return true
+func isJournalGroup(name string) bool {
+	return name == "systemd-journal" || name == "adm"
+}
+
+// journalAccessState returns (hasAccess, pendingGroup).
+// hasAccess means this process already has journal access in its kernel group list.
+// pendingGroup is set when /etc/group grants access but this session predates it.
+func journalAccessState() (bool, string) {
+	if os.Geteuid() == 0 {
+		return true, ""
 	}
-	gids, err := u.GroupIds()
-	if err != nil {
-		return true
-	}
-	for _, gid := range gids {
-		g, err := user.LookupGroupId(gid)
-		if err != nil {
-			continue
+
+	// Check actual process groups (what the kernel sees for this session).
+	if pgids, err := os.Getgroups(); err == nil {
+		for _, gid := range pgids {
+			if g, err := user.LookupGroupId(strconv.Itoa(gid)); err == nil && isJournalGroup(g.Name) {
+				return true, ""
+			}
 		}
-		if g.Name == "systemd-journal" || g.Name == "adm" {
-			return true
+	}
+	// Check /etc/group to distinguish "never added" from "added but not yet active".
+	if u, err := user.Current(); err == nil {
+		if fgids, err := u.GroupIds(); err == nil {
+			for _, gid := range fgids {
+				if g, err := user.LookupGroupId(gid); err == nil && isJournalGroup(g.Name) {
+					return false, g.Name
+				}
+			}
 		}
 	}
-	return false
+	return false, ""
 }
 
 func runLogs(args []string) {
-	if !hasJournalAccess() {
-		fmt.Fprintf(os.Stderr, "Error: user %q cannot read the system journal.\n", func() string {
-			if u, err := user.Current(); err == nil {
-				return u.Username
-			}
-			return "current"
-		}())
-		fmt.Fprintf(os.Stderr, "Fix: sudo usermod -aG systemd-journal $USER  (then log out and back in)\n")
+	hasAccess, pendingGroup := journalAccessState()
+	if !hasAccess && pendingGroup == "" {
+		username := "current"
+		if u, err := user.Current(); err == nil {
+			username = u.Username
+		}
+		fmt.Fprintf(os.Stderr, "Error: user %q cannot read the system journal.\n", username)
+		fmt.Fprintf(os.Stderr, "Fix: sudo usermod -aG systemd-journal $USER  (then run 'linuxio logs' again; reconnect later to refresh your shell)\n")
 		os.Exit(1)
 	}
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
-	cmd := exec.Command("journalctl", journalctlArgs...)
+	cmd := journalctlCommand(journalctlArgs, pendingGroup)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -219,6 +231,37 @@ func runLogs(args []string) {
 
 	streamFormattedJournal(stdout)
 	waitForJournalctl(cmd)
+}
+
+func journalctlCommand(args []string, pendingGroup string) *exec.Cmd {
+	if pendingGroup == "" {
+		return exec.Command("journalctl", args...)
+	}
+	return exec.Command("sg", pendingGroup, "-c", journalctlShellCommand(args))
+}
+
+func journalctlShellCommand(args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, "journalctl")
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	if strings.IndexFunc(arg, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			strings.ContainsRune("@%_+=:,./-", r))
+	}) == -1 {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
 }
 
 func parseLogsArgs(args []string) (string, int) {
