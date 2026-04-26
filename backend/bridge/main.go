@@ -295,7 +295,14 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 
 	// Parse stream type and args from payload
 	streamType, args := ipc.ParseStreamOpenPayload(frame.Payload)
-	slog.Debug("stream opened", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "args", args)
+	startedAt := time.Now()
+	if streamType != "bridge" {
+		slog.Debug("stream started: "+streamType,
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"stream_type", streamType,
+			"arg_count", len(args))
+	}
 
 	// Look up registered stream handler
 	handler, found := handlers.GetStreamHandler(streamType)
@@ -313,8 +320,31 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 
 	// Execute stream handler
 	if err := handler(sess, stream, args); err != nil {
-		if !errors.Is(err, ipc.ErrAborted) {
-			slog.Warn("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		if streamType == "bridge" {
+			return
 		}
+		if errors.Is(err, ipc.ErrAborted) {
+			slog.Debug("stream aborted: "+streamType,
+				"session_id", sess.SessionID,
+				"stream_id", streamID,
+				"stream_type", streamType,
+				"duration", time.Since(startedAt))
+			return
+		}
+		slog.Warn("stream failed: "+streamType,
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"stream_type", streamType,
+			"duration", time.Since(startedAt),
+			"error", err)
+		return
+	}
+
+	if streamType != "bridge" {
+		slog.Debug("stream completed: "+streamType,
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"stream_type", streamType,
+			"duration", time.Since(startedAt))
 	}
 }

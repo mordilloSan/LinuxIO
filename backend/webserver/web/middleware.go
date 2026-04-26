@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -28,12 +29,59 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
-		slog.Debug("request completed",
+
+		kind, label, displayPath := requestLogValues(r.URL.Path)
+		outcome, verb := "success", "succeeded"
+		if wrapped.status >= http.StatusBadRequest {
+			outcome, verb = "failure", "failed"
+		}
+
+		slog.Debug(label+" "+verb+": "+r.Method+" "+displayPath,
+			"request_kind", kind,
 			"method", r.Method,
-			"path", r.URL.Path,
+			"path", displayPath,
 			"status", wrapped.status,
+			"outcome", outcome,
 			"duration", time.Since(start))
 	})
+}
+
+func requestLogValues(requestPath string) (kind string, label string, displayPath string) {
+	switch {
+	case requestPath == "/ws":
+		return "websocket", "websocket upgrade", requestPath
+	case strings.HasPrefix(requestPath, "/auth/"), strings.HasPrefix(requestPath, "/api/"):
+		return "api_http", "api http", requestPath
+	case strings.HasPrefix(requestPath, "/proxy/"):
+		return "proxy", "proxy request", summarizeProxyPath(requestPath)
+	case strings.HasPrefix(requestPath, "/assets/"):
+		return "asset", "asset request", "/assets/*"
+	case isStaticAsset(requestPath):
+		return "asset", "asset request", requestPath
+	default:
+		return "spa", "spa request", requestPath
+	}
+}
+
+func isStaticAsset(requestPath string) bool {
+	switch requestPath {
+	case "/favicon.ico", "/manifest.json", "/robots.txt":
+		return true
+	}
+	return strings.HasPrefix(requestPath, "/favicon-") ||
+		strings.HasPrefix(requestPath, "/apple-touch-icon")
+}
+
+func summarizeProxyPath(requestPath string) string {
+	trimmed := strings.TrimPrefix(requestPath, "/proxy/")
+	if trimmed == "" {
+		return "/proxy"
+	}
+
+	if strings.Contains(trimmed, "/") {
+		return "/proxy/<container>/..."
+	}
+	return "/proxy/<container>"
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code.

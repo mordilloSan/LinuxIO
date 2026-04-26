@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -23,19 +24,26 @@ const sessionContextKey contextKey = "session"
 // Example: "bridge\0storage\0get_drive_info"
 func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		err := fmt.Errorf("invalid bridge args: expected [type, command, ...args], got %v", args)
+		err := fmt.Errorf("invalid bridge args: expected [type, command, ...args], got %d arg(s)", len(args))
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400); writeErr != nil {
 			slog.Debug("failed to write bridge error response",
 				"component", "bridge",
 				"stream_type", "bridge",
 				"error", writeErr)
 		}
+		slog.LogAttrs(context.Background(), slog.LevelDebug, "bridge rpc failed: invalid request",
+			slog.String("component", "bridge"),
+			slog.String("stream_type", "bridge"),
+			slog.Int("arg_count", len(args)),
+			slog.String("outcome", "failure"),
+			slog.Any("error", err))
 		return err
 	}
 
 	handlerType := args[0]
 	command := args[1]
 	handlerArgs := args[2:]
+	logMeta := newBridgeRPCLogMeta(sess, handlerType, command, handlerArgs)
 
 	// Look up handler
 	h, ok := ipc.Get(handlerType, command)
@@ -49,6 +57,7 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 				"command", command,
 				"error", writeErr)
 		}
+		logBridgeRPCCompletion(context.Background(), logMeta, nil, err)
 		return err
 	}
 
@@ -57,18 +66,21 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 
 	// Check if bidirectional
 	if bidirHandler, ok := h.(ipc.BidirectionalHandler); ok {
-		return handleBidirectional(ctx, stream, bidirHandler, handlerArgs)
+		return handleBidirectional(ctx, stream, bidirHandler, handlerArgs, logMeta)
 	}
 
 	// Standard unidirectional handler
-	return handleUnidirectional(ctx, stream, h, handlerArgs)
+	return handleUnidirectional(ctx, stream, h, handlerArgs, logMeta)
 }
 
-func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, args []string) error {
-	emit := newEventEmitter(stream)
+func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, args []string, logMeta bridgeRPCLogMeta) (err error) {
+	emit := newLoggingEmitter(stream)
+	defer func() {
+		logBridgeRPCCompletion(ctx, logMeta, emit, err)
+	}()
 
 	// Execute handler
-	if err := h.Execute(ctx, args, emit); err != nil {
+	if err = h.Execute(ctx, args, emit); err != nil {
 		// Handler returned error - send error result
 		if emitErr := emit.Error(err, 500); emitErr != nil {
 			slog.Debug("failed to write bridge handler error frame",
@@ -86,29 +98,33 @@ func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, a
 	}
 
 	// Success - close stream
-	if err := emit.Close(""); err != nil {
+	if closeErr := emit.Close(""); closeErr != nil {
 		slog.Debug("failed to write bridge stream close frame",
 			"component", "bridge",
 			"stream_type", "bridge",
-			"error", err)
+			"error", closeErr)
 	}
 	return nil
 }
 
-func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.BidirectionalHandler, args []string) error {
+func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.BidirectionalHandler, args []string, logMeta bridgeRPCLogMeta) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	resizeChan := make(chan ipc.ResizeEvent, 1)
 	ctx = ipc.WithResizeChannel(ctx, resizeChan)
 
-	emit := newEventEmitter(stream)
+	emit := newLoggingEmitter(stream)
+	defer func() {
+		logBridgeRPCCompletion(ctx, logMeta, emit, err)
+	}()
+
 	inputChan := make(chan []byte, 16)
 
 	go readClientFrames(ctx, cancel, stream, inputChan, resizeChan)
 
 	// Execute handler with input channel
-	if err := h.ExecuteWithInput(ctx, args, emit, inputChan); err != nil {
+	if err = h.ExecuteWithInput(ctx, args, emit, inputChan); err != nil {
 		if emitErr := emit.Error(err, 500); emitErr != nil {
 			slog.Debug("failed to write bridge handler error frame",
 				"component", "bridge",
@@ -124,11 +140,11 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.Bidirection
 		return err
 	}
 
-	if err := emit.Close(""); err != nil {
+	if closeErr := emit.Close(""); closeErr != nil {
 		slog.Debug("failed to write bridge stream close frame",
 			"component", "bridge",
 			"stream_type", "bridge",
-			"error", err)
+			"error", closeErr)
 	}
 	return nil
 }
@@ -176,6 +192,18 @@ func newEventEmitter(stream net.Conn) *eventEmitter {
 	return &eventEmitter{stream: stream}
 }
 
+type loggingEmitter struct {
+	inner        *eventEmitter
+	dataSent     bool
+	progressSent bool
+	resultSent   bool
+	errorSent    bool
+}
+
+func newLoggingEmitter(stream net.Conn) *loggingEmitter {
+	return &loggingEmitter{inner: newEventEmitter(stream)}
+}
+
 func (e *eventEmitter) Data(chunk []byte) error {
 	return ipc.WriteRelayFrame(e.stream, &ipc.StreamFrame{
 		Opcode:  ipc.OpStreamData,
@@ -206,4 +234,77 @@ func (e *eventEmitter) Close(reason string) error {
 	// Note: We could extend the protocol to include a reason in the close frame
 	// For now, just send the close opcode
 	return ipc.WriteStreamClose(e.stream, 0)
+}
+
+func (e *loggingEmitter) Data(chunk []byte) error {
+	e.dataSent = true
+	return e.inner.Data(chunk)
+}
+
+func (e *loggingEmitter) Progress(progress any) error {
+	e.progressSent = true
+	return e.inner.Progress(progress)
+}
+
+func (e *loggingEmitter) Result(result any) error {
+	e.resultSent = true
+	return e.inner.Result(result)
+}
+
+func (e *loggingEmitter) Error(err error, code int) error {
+	e.errorSent = true
+	return e.inner.Error(err, code)
+}
+
+func (e *loggingEmitter) Close(reason string) error {
+	return e.inner.Close(reason)
+}
+
+type bridgeRPCLogMeta struct {
+	startedAt   time.Time
+	handlerType string
+	command     string
+	operation   string
+	user        string
+	uid         uint32
+	argCount    int
+}
+
+func newBridgeRPCLogMeta(sess *session.Session, handlerType, command string, args []string) bridgeRPCLogMeta {
+	return bridgeRPCLogMeta{
+		startedAt:   time.Now(),
+		handlerType: handlerType,
+		command:     command,
+		operation:   handlerType + "." + command,
+		user:        sess.User.Username,
+		uid:         sess.User.UID,
+		argCount:    len(args),
+	}
+}
+
+func logBridgeRPCCompletion(ctx context.Context, meta bridgeRPCLogMeta, emit *loggingEmitter, err error) {
+	outcome := "success"
+	verb := "succeeded"
+	if err != nil || (emit != nil && emit.errorSent) {
+		outcome = "failure"
+		verb = "failed"
+	}
+
+	attrs := []slog.Attr{
+		slog.String("component", "bridge"),
+		slog.String("stream_type", "bridge"),
+		slog.String("handler", meta.handlerType),
+		slog.String("command", meta.command),
+		slog.String("operation", meta.operation),
+		slog.String("user", meta.user),
+		slog.Uint64("uid", uint64(meta.uid)),
+		slog.Int("arg_count", meta.argCount),
+		slog.String("outcome", outcome),
+		slog.Duration("duration", time.Since(meta.startedAt)),
+	}
+	if err != nil {
+		attrs = append(attrs, slog.Any("error", err))
+	}
+
+	slog.LogAttrs(ctx, slog.LevelDebug, fmt.Sprintf("bridge rpc %s: %s", verb, meta.operation), attrs...)
 }

@@ -371,7 +371,6 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 
 	// Start reading from yamux stream and relaying to WebSocket
 	go r.relayFromBridge(rs)
-	slog.Debug("stream opened", "stream_id", streamID)
 }
 
 // handleDATA writes payload to the yamux stream
@@ -414,13 +413,11 @@ func (r *streamRelay) handleFIN(streamID uint32, payload []byte) {
 			return
 		}
 	}
-	slog.Debug("stream FIN forwarded", "stream_id", streamID)
 }
 
 // handleRST aborts the stream
 func (r *streamRelay) handleRST(streamID uint32) {
 	r.closeStream(streamID)
-	slog.Debug("stream aborted", "stream_id", streamID)
 }
 
 // relayFromBridge reads from yamux stream and sends to WebSocket
@@ -439,11 +436,11 @@ func (r *streamRelay) relayFromBridge(rs *relayStream) {
 			r.sendFrame(rs.id, FlagDATA, buf[:n])
 		}
 		if err != nil {
+			// Send FIN to WebSocket
+			r.sendFrame(rs.id, FlagFIN, nil)
 			if err != io.EOF {
 				slog.Debug("stream read error", "stream_id", rs.id, "error", err)
 			}
-			// Send FIN to WebSocket
-			r.sendFrame(rs.id, FlagFIN, nil)
 			r.closeStream(rs.id)
 			return
 		}
@@ -495,7 +492,6 @@ func (r *streamRelay) closeStream(streamID uint32) {
 	if exists {
 		close(rs.cancel)
 		rs.stream.Close()
-		slog.Debug("stream closed", "stream_id", streamID)
 	}
 }
 
