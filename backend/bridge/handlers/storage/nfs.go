@@ -33,6 +33,8 @@ const (
 
 var managedNFSMountsPath = "/var/lib/linuxio/nfs-mounts.json"
 
+var requiredNFSCommands = []string{"showmount", "mount.nfs"}
+
 // fstabEntry contains info parsed from an fstab line
 type fstabEntry struct {
 	source  string
@@ -86,6 +88,27 @@ func parseNFSSource(source string) (server, exportPath string) {
 
 func isNFSFSType(fstype string) bool {
 	return fstype == "nfs" || fstype == "nfs4"
+}
+
+// CheckNFSAvailability verifies that the optional NFS client utilities are installed.
+func CheckNFSAvailability() (bool, error) {
+	for _, command := range requiredNFSCommands {
+		if _, err := exec.LookPath(command); err != nil {
+			return false, fmt.Errorf("%s not found (install nfs-common or nfs-utils)", command)
+		}
+	}
+	return true, nil
+}
+
+func requireNFSAvailability() error {
+	ok, err := CheckNFSAvailability()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("NFS utilities are unavailable")
+	}
+	return nil
 }
 
 func mountFromFstabEntry(mountpoint string, entry fstabEntry) NFSMount {
@@ -249,6 +272,10 @@ func mountFromManagedEntry(entry managedNFSMountEntry) NFSMount {
 
 // ListNFSExports queries an NFS server for available exports using showmount -e
 func ListNFSExports(ctx context.Context, server string) ([]string, error) {
+	if err := requireNFSAvailability(); err != nil {
+		return nil, err
+	}
+
 	// Validate server input
 	if !validNFSServer.MatchString(server) {
 		slog.Warn("invalid NFS server hostname", "server", server)
@@ -405,6 +432,10 @@ func mergeManagedMounts(mounts map[string]NFSMount, managedEntries map[string]ma
 
 // MountNFS mounts an NFS share
 func MountNFS(ctx context.Context, server, exportPath, mountpoint, optionsJSON string, persist bool) (map[string]any, error) {
+	if err := requireNFSAvailability(); err != nil {
+		return nil, err
+	}
+
 	// Validate inputs
 	if !validNFSServer.MatchString(server) {
 		slog.Warn("invalid NFS server hostname", "server", server)
@@ -480,6 +511,10 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint, optionsJSON s
 
 // RemountNFS remounts an NFS share with new options
 func RemountNFS(ctx context.Context, mountpoint, newOptions string, updateFstab bool) (map[string]any, error) {
+	if err := requireNFSAvailability(); err != nil {
+		return nil, err
+	}
+
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
 		slog.Warn("invalid mountpoint", "mountpoint", mountpoint)

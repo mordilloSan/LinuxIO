@@ -38,6 +38,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import DirectoryTree from "@/components/ui/DirectoryTree";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -395,6 +396,9 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { reason: nfsReason, status: nfsStatus } =
+    useCapability("nfsAvailable");
+  const nfsUnavailable = nfsStatus === "unavailable";
   const [path, setPath] = useState("");
   const [sambaEnabled, setSambaEnabled] = useState(true);
   const [nfsEnabled, setNFSEnabled] = useState(false);
@@ -440,6 +444,10 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
     }
     if (sambaEnabled && !resolvedName) {
       setValidationError("Share name is required when SMB is enabled");
+      return;
+    }
+    if (nfsEnabled && nfsUnavailable) {
+      setValidationError(nfsReason);
       return;
     }
     if (nfsEnabled && parsedNFSClients.length === 0) {
@@ -578,7 +586,11 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
                 />
               }
               label="Enable NFS"
+              disabled={nfsUnavailable}
             />
+            {nfsUnavailable ? (
+              <AppAlert severity="warning">{nfsReason}</AppAlert>
+            ) : null}
             {nfsEnabled ? (
               <div
                 style={{
@@ -633,6 +645,9 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   onSuccess,
   group,
 }) => {
+  const { reason: nfsReason, status: nfsStatus } =
+    useCapability("nfsAvailable");
+  const nfsUnavailable = nfsStatus === "unavailable";
   const [sambaEnabled, setSambaEnabled] = useState(Boolean(group?.samba));
   const [nfsEnabled, setNFSEnabled] = useState(Boolean(group?.nfs));
   const [sambaName, setSambaName] = useState(
@@ -683,6 +698,10 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
     }
     if (sambaEnabled && !resolvedName) {
       setValidationError("Share name is required when SMB is enabled");
+      return;
+    }
+    if (nfsEnabled && nfsUnavailable) {
+      setValidationError(nfsReason);
       return;
     }
     if (nfsEnabled && parsedNFSClients.length === 0) {
@@ -841,7 +860,11 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
                 />
               }
               label="Enable NFS"
+              disabled={nfsUnavailable && !nfsEnabled}
             />
+            {nfsUnavailable ? (
+              <AppAlert severity="warning">{nfsReason}</AppAlert>
+            ) : null}
             {nfsEnabled ? (
               <div
                 style={{
@@ -1066,6 +1089,9 @@ function renderExpandedContent(
 }
 
 const SharesPage: React.FC = () => {
+  const { reason: nfsReason, status: nfsStatus } =
+    useCapability("nfsAvailable");
+  const nfsUnavailable = nfsStatus === "unavailable";
   const [viewMode, setViewMode] = useViewMode("shares", "table");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
@@ -1264,14 +1290,21 @@ const SharesPage: React.FC = () => {
                   </AppIconButton>
                 </AppTooltip>
                 {mountNFSHandler && (
-                  <AppButton
-                    variant="contained"
-                    size="small"
-                    onClick={mountNFSHandler}
-                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
-                  >
-                    Mount NFS
-                  </AppButton>
+                  <AppTooltip title={nfsUnavailable ? nfsReason : "Mount NFS"}>
+                    <span>
+                      <AppButton
+                        variant="contained"
+                        size="small"
+                        onClick={mountNFSHandler}
+                        disabled={nfsUnavailable}
+                        startIcon={
+                          <Icon icon="mdi:plus" width={20} height={20} />
+                        }
+                      >
+                        Mount NFS
+                      </AppButton>
+                    </span>
+                  </AppTooltip>
                 )}
               </>
             ),

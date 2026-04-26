@@ -26,6 +26,7 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import DirectoryTree from "@/components/ui/DirectoryTree";
+import { useCapability } from "@/hooks/useCapabilities";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NFSSharesProps {
@@ -634,6 +635,11 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   onCreateHandler,
   viewMode = "table",
 }) => {
+  const {
+    reason: nfsReason,
+    status: nfsStatus,
+  } = useCapability("nfsAvailable");
+  const nfsUnavailable = nfsStatus === "unavailable";
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -648,8 +654,12 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   });
 
   const handleCreate = useCallback(() => {
+    if (nfsUnavailable) {
+      toast.error(nfsReason);
+      return;
+    }
     setCreateOpen(true);
-  }, []);
+  }, [nfsUnavailable, nfsReason]);
 
   useEffect(() => {
     if (onCreateHandler) {
@@ -687,6 +697,10 @@ const NFSShares: React.FC<NFSSharesProps> = ({
 
   return (
     <div>
+      {nfsUnavailable ? (
+        <AppAlert severity="warning">{nfsReason}</AppAlert>
+      ) : null}
+
       {viewMode === "card" ? (
         sharesList.length > 0 ? (
           <AppGrid container spacing={2}>

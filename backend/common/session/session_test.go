@@ -57,6 +57,7 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 		LMSensorsAvailable:     false,
 		SmartmontoolsAvailable: true,
 		PackageKitAvailable:    true,
+		NFSAvailable:           true,
 	}
 	if err := m.SetCapabilities(s.SessionID, caps); err != nil {
 		t.Fatalf("SetCapabilities error: %v", err)

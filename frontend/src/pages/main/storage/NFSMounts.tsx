@@ -36,6 +36,7 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useCapability } from "@/hooks/useCapabilities";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface NFSMountsProps {
@@ -79,6 +80,8 @@ const MountEntryActions: React.FC<{
   onMount: (mount: NFSMount) => void;
   onUnmount: (mount: NFSMount) => void;
   onRemove: (mount: NFSMount) => void;
+  nfsAvailable: boolean;
+  nfsReason: string;
   stopPropagation?: boolean;
 }> = ({
   mount,
@@ -87,6 +90,8 @@ const MountEntryActions: React.FC<{
   onMount,
   onUnmount,
   onRemove,
+  nfsAvailable,
+  nfsReason,
   stopPropagation = false,
 }) => {
   const wrapClick =
@@ -102,7 +107,13 @@ const MountEntryActions: React.FC<{
   const mountActionColor = mount.mounted
     ? "var(--color-success)"
     : "var(--color-text-secondary)";
+  const mountActionDisabled = !mount.mounted && !nfsAvailable;
   const mountActionLabel = mount.mounted ? "Unmount entry" : "Mount entry";
+  const mountActionTitle = mountActionDisabled
+    ? nfsReason
+    : isMounting
+      ? "Mounting..."
+      : mountActionLabel;
 
   return (
     <div
@@ -124,7 +135,7 @@ const MountEntryActions: React.FC<{
           <Icon icon="mdi:pencil-outline" width={18} />
         </AppIconButton>
       </AppTooltip>
-      <AppTooltip title={isMounting ? "Mounting..." : mountActionLabel}>
+      <AppTooltip title={mountActionTitle}>
         <span
           style={{
             display: "inline-flex",
@@ -134,7 +145,7 @@ const MountEntryActions: React.FC<{
             size="small"
             color="inherit"
             aria-label={mountActionLabel}
-            disabled={isMounting}
+            disabled={isMounting || mountActionDisabled}
             onClick={wrapClick(mount.mounted ? onUnmount : onMount)}
             style={{
               color: mountActionColor,
@@ -660,6 +671,11 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const {
+    reason: nfsReason,
+    status: nfsStatus,
+  } = useCapability("nfsAvailable");
+  const nfsUnavailable = nfsStatus === "unavailable";
   const [search] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
@@ -704,8 +720,12 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
     },
   });
   const handleMountNFS = useCallback(() => {
+    if (nfsUnavailable) {
+      toast.error(nfsReason);
+      return;
+    }
     setMountDialogOpen(true);
-  }, []);
+  }, [nfsUnavailable, nfsReason]);
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleMountNFS);
@@ -723,6 +743,10 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
     setRemoveDialogOpen(true);
   };
   const handleMountExisting = (mount: NFSMount) => {
+    if (nfsUnavailable) {
+      toast.error(nfsReason);
+      return;
+    }
     if (!mount.server || !mount.exportPath) {
       toast.error("This NFS entry is missing its server or export path");
       return;
@@ -779,6 +803,10 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   ];
   return (
     <div>
+      {nfsUnavailable ? (
+        <AppAlert severity="warning">{nfsReason}</AppAlert>
+      ) : null}
+
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <AppGrid container spacing={2}>
@@ -804,6 +832,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       onMount={handleMountExisting}
                       onUnmount={handleUnmount}
                       onRemove={handleRemove}
+                      nfsAvailable={!nfsUnavailable}
+                      nfsReason={nfsReason}
                     />
                   }
                 />
@@ -905,6 +935,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                   onMount={handleMountExisting}
                   onUnmount={handleUnmount}
                   onRemove={handleRemove}
+                  nfsAvailable={!nfsUnavailable}
+                  nfsReason={nfsReason}
                   stopPropagation
                 />
               </AppTableCell>
