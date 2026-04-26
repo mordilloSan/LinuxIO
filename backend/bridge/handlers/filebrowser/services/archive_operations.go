@@ -729,7 +729,7 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 
 // copyWithCallbacks writes from src to dst using the provided callbacks.
 func copyWithCallbacks(dst io.Writer, src io.Reader, opts *ipc.OperationCallbacks) error {
-	buf := make([]byte, 8*1024)
+	buf := make([]byte, 256*1024)
 	for {
 		if opts.IsCancelled() {
 			return ipc.ErrAborted

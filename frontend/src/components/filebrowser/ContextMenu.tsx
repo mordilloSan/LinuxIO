@@ -192,7 +192,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         disabled={compressDisabled}
         startAdornment={<Icon icon="mdi:archive" width={20} height={20} />}
       >
-        Compress to ZIP
+        Compress
       </AppMenuItem>
 
       <AppMenuItem

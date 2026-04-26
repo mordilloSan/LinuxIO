@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 
@@ -45,6 +46,10 @@ func handleRecover(ctx context.Context, args []string, emit ipc.Events) error {
 	}
 	job, err := bridgejobs.Recover(args[0])
 	if err != nil {
+		var jobErr *bridgejobs.Error
+		if errors.As(err, &jobErr) && jobErr.Code == 404 {
+			return emit.Result((*bridgejobs.Snapshot)(nil))
+		}
 		return err
 	}
 	return emit.Result(job.Snapshot())

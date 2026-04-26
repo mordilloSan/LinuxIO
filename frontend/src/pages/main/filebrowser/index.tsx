@@ -22,6 +22,7 @@ import {
 } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
+import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
@@ -35,6 +36,7 @@ import SortBar, { SortField } from "@/components/filebrowser/SortBar";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import {
   ensureZipExtension,
+  ensureTarGzExtension,
   isArchiveFile,
   isEditableFile,
   stripArchiveExtension,
@@ -149,6 +151,10 @@ const FileBrowser: React.FC = () => {
   } = useFileUpload();
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [compressFormatDialog, setCompressFormatDialog] = useState<{
+    paths: string[];
+    baseName: string;
+  } | null>(null);
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
@@ -639,7 +645,7 @@ const FileBrowser: React.FC = () => {
     handleOpenDirectory,
     setSearchQuery,
   ]);
-  const handleCompressSelection = useCallback(async () => {
+  const handleCompressSelection = useCallback(() => {
     handleCloseContextMenu();
     const paths = Array.from(selectedPaths);
     if (!paths.length) return;
@@ -647,47 +653,51 @@ const FileBrowser: React.FC = () => {
       selectedItems.length === 1
         ? stripArchiveExtension(selectedItems[0].name)
         : "archive";
-    const pendingNames = pendingArchiveNamesRef.current;
-    const archiveName = getUniqueName(
-      ensureZipExtension(baseName || "archive"),
-      pendingNames,
-    );
-    pendingNames.add(archiveName);
-    try {
-      await compressItems({
-        paths,
-        archiveName,
-        destination: normalizedPath,
-      });
-    } catch (err: any) {
-      const isConflict = err?.response?.status === 409;
-      if (isConflict) {
-        const message =
-          err?.response?.data?.error || `${archiveName} already exists`;
-        toast.error(message);
-        pendingArchiveConflictNamesRef.current.add(archiveName);
-      } else if (
-        err?.name !== "CanceledError" &&
-        err?.name !== "AbortError" &&
-        err?.message !== "canceled"
-      ) {
-        const message =
-          err?.response?.data?.error ||
-          err?.message ||
-          "Failed to create archive";
-        toast.error(message);
+    setCompressFormatDialog({ paths, baseName: baseName || "archive" });
+  }, [handleCloseContextMenu, selectedItems, selectedPaths]);
+
+  const handleCompressConfirm = useCallback(
+    async (format: "zip" | "tar.gz") => {
+      if (!compressFormatDialog) return;
+      const { paths, baseName } = compressFormatDialog;
+      const pendingNames = pendingArchiveNamesRef.current;
+      const archiveName = getUniqueName(
+        format === "tar.gz"
+          ? ensureTarGzExtension(baseName)
+          : ensureZipExtension(baseName),
+        pendingNames,
+      );
+      pendingNames.add(archiveName);
+      try {
+        await compressItems({
+          paths,
+          archiveName,
+          destination: normalizedPath,
+        });
+      } catch (err: any) {
+        const isConflict = err?.response?.status === 409;
+        if (isConflict) {
+          const message =
+            err?.response?.data?.error || `${archiveName} already exists`;
+          toast.error(message);
+          pendingArchiveConflictNamesRef.current.add(archiveName);
+        } else if (
+          err?.name !== "CanceledError" &&
+          err?.name !== "AbortError" &&
+          err?.message !== "canceled"
+        ) {
+          const message =
+            err?.response?.data?.error ||
+            err?.message ||
+            "Failed to create archive";
+          toast.error(message);
+        }
+      } finally {
+        pendingArchiveNamesRef.current.delete(archiveName);
       }
-    } finally {
-      pendingArchiveNamesRef.current.delete(archiveName);
-    }
-  }, [
-    compressItems,
-    getUniqueName,
-    handleCloseContextMenu,
-    normalizedPath,
-    selectedItems,
-    selectedPaths,
-  ]);
+    },
+    [compressFormatDialog, compressItems, getUniqueName, normalizedPath],
+  );
   const handleExtractSelection = useCallback(async () => {
     handleCloseContextMenu();
     if (!archiveSelection) return;
@@ -1204,6 +1214,12 @@ const FileBrowser: React.FC = () => {
         canOpenContainingFolder={
           Boolean(searchQuery) && selectedPaths.size === 1
         }
+      />
+
+      <CompressFormatDialog
+        open={Boolean(compressFormatDialog)}
+        onClose={() => setCompressFormatDialog(null)}
+        onConfirm={handleCompressConfirm}
       />
 
       <FileBrowserDialog

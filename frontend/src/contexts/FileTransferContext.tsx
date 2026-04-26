@@ -2293,6 +2293,25 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     let cancelled = false;
+    let externalIndexerRecoveryAttempted = false;
+
+    const recoverExternalIndexerJob = async () => {
+      if (externalIndexerRecoveryAttempted) {
+        return;
+      }
+      externalIndexerRecoveryAttempted = true;
+      try {
+        const indexerJob = await linuxio.jobs.recover.call(
+          JOB_TYPE_FILE_INDEXER,
+        );
+        if (!cancelled && indexerJob) {
+          attachRecoveredJob(indexerJob);
+        }
+      } catch (error) {
+        console.debug("Failed to recover external indexer job", error);
+      }
+    };
+
     const syncActiveJobs = async () => {
       try {
         const jobs = await linuxio.jobs.list.call("active");
@@ -2302,18 +2321,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         for (const job of jobs) {
           attachRecoveredJob(job);
         }
-        const indexerJob = await linuxio.jobs.recover
-          .call(JOB_TYPE_FILE_INDEXER)
-          .catch(() => null);
-        if (!cancelled && indexerJob) {
-          attachRecoveredJob(indexerJob);
-        }
       } catch (error) {
         console.debug("Failed to recover active jobs", error);
       }
     };
 
     void syncActiveJobs();
+    void recoverExternalIndexerJob();
     const intervalId = window.setInterval(() => {
       void syncActiveJobs();
     }, 5000);

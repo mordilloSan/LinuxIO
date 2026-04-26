@@ -472,6 +472,9 @@ func runIndexerJob(ctx context.Context, job *bridgejobs.Job, args []string) (any
 func recoverIndexerJob(registry *bridgejobs.Registry) (*bridgejobs.Job, error) {
 	status, err := fetchIndexerStatusFromIndexer()
 	if err != nil {
+		if errors.Is(err, errIndexerUnavailable) {
+			return nil, bridgejobs.NewError("no active indexer job", 404)
+		}
 		return nil, err
 	}
 	if !status.Running {

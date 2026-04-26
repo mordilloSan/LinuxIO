@@ -768,7 +768,7 @@ export interface JobSnapshot {
 export interface LinuxIOSchema {
   jobs: {
     start: { args: [jobType: string, ...args: string[]]; result: JobSnapshot };
-    recover: { args: [jobType: string]; result: JobSnapshot };
+    recover: { args: [jobType: string]; result: JobSnapshot | null };
     list: { args: [status?: string]; result: JobSnapshot[] };
     get: { args: [jobId: string]; result: JobSnapshot };
     cancel: { args: [jobId: string]; result: JobSnapshot };
