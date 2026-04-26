@@ -92,9 +92,7 @@ const readStoredCapabilities = (): StoredCapabilities => {
           ? parsed.packageKitAvailable
           : null,
       nfsAvailable:
-        typeof parsed.nfsAvailable === "boolean"
-          ? parsed.nfsAvailable
-          : null,
+        typeof parsed.nfsAvailable === "boolean" ? parsed.nfsAvailable : null,
     };
   } catch {
     return emptyCapabilities;

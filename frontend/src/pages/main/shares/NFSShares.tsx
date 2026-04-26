@@ -635,10 +635,8 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   onCreateHandler,
   viewMode = "table",
 }) => {
-  const {
-    reason: nfsReason,
-    status: nfsStatus,
-  } = useCapability("nfsAvailable");
+  const { reason: nfsReason, status: nfsStatus } =
+    useCapability("nfsAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);

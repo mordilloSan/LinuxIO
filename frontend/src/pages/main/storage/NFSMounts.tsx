@@ -671,10 +671,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const {
-    reason: nfsReason,
-    status: nfsStatus,
-  } = useCapability("nfsAvailable");
+  const { reason: nfsReason, status: nfsStatus } =
+    useCapability("nfsAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
   const [search] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
