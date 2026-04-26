@@ -163,6 +163,11 @@ const FileBrowser: React.FC = () => {
     .map((segment) => decodeURIComponent(segment))
     .join("/");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
+  const [prevNormalizedPath, setPrevNormalizedPath] = useState(normalizedPath);
+  if (normalizedPath !== prevNormalizedPath) {
+    setPrevNormalizedPath(normalizedPath);
+    setSearchQuery("");
+  }
   const {
     createFile,
     createFolder,
@@ -274,10 +279,6 @@ const FileBrowser: React.FC = () => {
     };
   }, [resource, searchQuery, searchResults, isSearchUnavailable]);
 
-  // Clear search when navigating to a different directory
-  useEffect(() => {
-    setSearchQuery("");
-  }, [normalizedPath]);
   const handleCloseContextMenu = useCallback(() => {
     setContextMenuPosition(null);
   }, [setContextMenuPosition]);

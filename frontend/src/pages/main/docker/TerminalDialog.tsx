@@ -1,6 +1,12 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import React, { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import {

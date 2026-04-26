@@ -135,12 +135,14 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const [ownerInput, setOwnerInput] = useState(owner || "");
   const [groupInput, setGroupInput] = useState(group || "");
 
-  React.useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setOwnerInput(owner || "");
       setGroupInput(group || "");
     }
-  }, [open, owner, group]);
+  }
   // Fetch users and groups when dialog opens
   const { data: usersGroupsData } = linuxio.filebrowser.users_groups.useQuery({
     enabled: open,

@@ -53,10 +53,14 @@ const DockerFolderSettingsSection: React.FC = () => {
     ((confirmed: boolean) => void) | null
   >(null);
 
-  useEffect(() => {
+  const [prevDockerFolder, setPrevDockerFolder] = useState<string | undefined>(
+    dockerFolder,
+  );
+  if (dockerFolder !== prevDockerFolder) {
+    setPrevDockerFolder(dockerFolder);
     setDraft(dockerFolder ?? "");
     setErrorText(null);
-  }, [dockerFolder]);
+  }
 
   const currentNormalized = useMemo(
     () => normalizePathInput(dockerFolder ?? ""),

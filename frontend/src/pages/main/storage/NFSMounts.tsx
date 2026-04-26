@@ -218,13 +218,16 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
-    if (!server || server.length < 3) {
-      setExports([]);
-      return;
-    }
-    debounceRef.current = setTimeout(() => {
-      fetchExports(server);
-    }, 500);
+    debounceRef.current = setTimeout(
+      () => {
+        if (!server || server.length < 3) {
+          setExports([]);
+        } else {
+          fetchExports(server);
+        }
+      },
+      !server || server.length < 3 ? 0 : 500,
+    );
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
