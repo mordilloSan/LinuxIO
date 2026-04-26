@@ -466,6 +466,31 @@ build-bridge: $(GO_BUILD_PREREQ)
 	echo "   Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "   SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
+check-c-build-deps:
+	@missing=""; pkgs=""; \
+	if ! command -v $(CC) >/dev/null 2>&1; then \
+	  missing="$$missing\n  - C compiler ($(CC)) not found"; \
+	  pkgs="$$pkgs build-essential"; \
+	fi; \
+	if ! (command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null) && \
+	   ! [ -f /usr/include/systemd/sd-journal.h ]; then \
+	  missing="$$missing\n  - libsystemd-dev"; \
+	  pkgs="$$pkgs libsystemd-dev"; \
+	fi; \
+	if ! [ -f /usr/include/security/pam_appl.h ]; then \
+	  missing="$$missing\n  - libpam-dev"; \
+	  pkgs="$$pkgs libpam-dev"; \
+	fi; \
+	if [ -n "$$missing" ]; then \
+	  echo ""; \
+	  echo "❌ Missing build dependencies for linuxio-auth:"; \
+	  printf "$$missing\n"; \
+	  echo ""; \
+	  echo "   Install with: sudo apt-get install$$pkgs"; \
+	  echo ""; \
+	  exit 1; \
+	fi
+
 build-auth:
 	@echo ""
 	@echo "🏗️  Building Session helper (C)..."
@@ -577,7 +602,7 @@ dev: setup dev-prep
 	@linuxio logs $(DEV_LOG_LINES)
 
 # Internal target: build backend + auth + cli (requires bridge already built)
-_build-binaries: ensure-go
+_build-binaries: ensure-go check-c-build-deps
 	@echo ""
 	@echo "🔑 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
@@ -720,7 +745,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-auth build-cli \
+  build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-auth build-cli check-c-build-deps \
   dev dev-prep setup test test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
