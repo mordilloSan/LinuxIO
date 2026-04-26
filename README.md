@@ -100,16 +100,16 @@ Access the dashboard at `https://localhost:8090`.
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck clang-tools bear
+sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck clang-tools clang-tidy bear
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra bear
+sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra clang-tidy bear
 ```
 
-> `cppcheck`, `clang-tools`/`clang-tools-extra`, and `bear` are optional — only needed for `make analyze-auth`. `libsystemd-dev`/`systemd-devel` is required for the auth worker build.
+> `cppcheck`, `clang-tools`/`clang-tools-extra`, `clang-tidy`, and `bear` are optional — only needed for `make analyze-auth`. `libsystemd-dev`/`systemd-devel` is required for the auth worker build.
 
 ### Initial Setup
 
