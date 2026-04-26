@@ -7,9 +7,7 @@
 4 - Implement monitoring
 
 5 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
-- `zod-validation-error`
 - `eslint-plugin-react`
-- `eslint-plugin-react-hooks`
 
 6 - review bridge and server logging
 
