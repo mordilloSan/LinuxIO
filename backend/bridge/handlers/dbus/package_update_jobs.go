@@ -2,25 +2,16 @@ package dbus
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
 
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const JobTypePackageUpdate = "package.update"
-
-// RegisterStreamHandlers registers DBus live stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
-}
 
 func RegisterJobRunners() {
 	bridgejobs.RegisterRunner(JobTypePackageUpdate, runPackageUpdateJob)
@@ -39,26 +30,7 @@ type PkgUpdateProgress struct {
 	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
 }
 
-// writePkgUpdateProgress writes a package update progress frame to the stream.
-func writePkgUpdateProgress(w io.Writer, streamID uint32, p *PkgUpdateProgress) error {
-	payload, err := json.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("marshal pkg update progress: %w", err)
-	}
-	return ipc.WriteRelayFrame(w, &ipc.StreamFrame{
-		Opcode:   ipc.OpStreamProgress,
-		StreamID: streamID,
-		Payload:  payload,
-	})
-}
-
 type pkgUpdateReporter func(*PkgUpdateProgress) error
-
-func streamPkgUpdateReporter(stream net.Conn) pkgUpdateReporter {
-	return func(p *PkgUpdateProgress) error {
-		return writePkgUpdateProgress(stream, 0, p)
-	}
-}
 
 func jobPkgUpdateReporter(job *bridgejobs.Job) pkgUpdateReporter {
 	return func(p *PkgUpdateProgress) error {
@@ -151,43 +123,6 @@ var realWorkStatuses = map[uint32]bool{
 // isRealWorkStatus returns true if this status represents actual package work
 func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
-}
-
-// HandlePackageUpdateStream handles streaming package updates with real-time progress.
-// args: package IDs to update (null-byte separated in payload)
-func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
-	slog.Info("starting package update stream", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(args)), "user", sess.User.Username)
-
-	if len(args) == 0 {
-		if err := ipc.WriteResultErrorAndClose(stream, 0, "no packages specified", 400); err != nil {
-			slog.Debug("failed to write error+close frame", "component", "dbus", "subsystem", "packagekit", "error", err)
-		}
-		return fmt.Errorf("no packages specified")
-	}
-
-	report := streamPkgUpdateReporter(stream)
-	reportPkgUpdateProgress(report, &PkgUpdateProgress{
-		Type:       "status",
-		Status:     "Initializing",
-		Percentage: new(uint32(0)),
-	})
-
-	err := updatePackagesWithProgress(context.Background(), args, report)
-	if err != nil {
-		slog.Error("package update stream failed", "component", "dbus", "subsystem", "packagekit", "error", err)
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
-			slog.Debug("failed to write error+close frame", "component", "dbus", "subsystem", "packagekit", "error", writeErr)
-		}
-		return err
-	}
-
-	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
-		"updated": len(args),
-	}); err != nil {
-		slog.Debug("failed to write ok+close frame", "component", "dbus", "subsystem", "packagekit", "error", err)
-	}
-	slog.Info("completed package update stream", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(args)), "user", sess.User.Username)
-	return nil
 }
 
 func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {

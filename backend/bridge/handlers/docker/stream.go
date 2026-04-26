@@ -20,11 +20,6 @@ const StreamTypeDockerLogs = "docker-logs"
 
 var dockerLogANSIRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-// RegisterStreamHandlers registers Docker live stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
-	handlers[StreamTypeDockerLogs] = HandleDockerLogsStream
-}
-
 // HandleDockerLogsStream streams container logs in real time.
 // Args: [containerID, tail] where tail is the number of lines to start with (default "100")
 func HandleDockerLogsStream(_ *session.Session, stream net.Conn, args []string) error {

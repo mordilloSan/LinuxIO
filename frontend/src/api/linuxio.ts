@@ -15,10 +15,6 @@ import {
   encodeString,
 } from "./StreamMultiplexer";
 
-function isSingleFileDownload(paths: string[]): boolean {
-  return paths.length === 1 && !paths[0].endsWith("/");
-}
-
 function openMuxStream(
   type: StreamType,
   initialPayload: Uint8Array,
@@ -222,43 +218,19 @@ export function openAppUpdateStream(
   return openMuxStream("app-update", encodeString(parts.join("\0")));
 }
 
-export function openFileUploadStream(
-  path: string,
-  size: number,
-  override: boolean = false,
-): Stream | null {
-  const parts = ["fb-upload", path, String(size)];
-  if (override) parts.push("true");
-  return openMuxStream("fb-upload", encodeString(parts.join("\0")));
-}
-
-export function openFileDownloadStream(paths: string[]): Stream | null {
-  if (paths.length === 0) return null;
-  if (isSingleFileDownload(paths)) {
-    return openMuxStream(
-      "fb-download",
-      encodeString(["fb-download", paths[0]].join("\0")),
-    );
-  }
-  return openMuxStream(
-    "fb-archive",
-    encodeString(["fb-archive", "zip", ...paths].join("\0")),
-  );
-}
-
-export function openJobStartStream(
-  jobType: string,
-  args: string[] = [],
-): Stream | null {
-  return openMuxStream(
-    "jobs-start",
-    encodeString(["jobs-start", jobType, ...args].join("\0")),
-  );
-}
-
 export function openJobAttachStream(jobId: string): Stream | null {
   return openMuxStream(
     "jobs-attach",
     encodeString(["jobs-attach", jobId].join("\0")),
+  );
+}
+
+export function openJobDataStream(
+  jobId: string,
+  offset: number = 0,
+): Stream | null {
+  return openMuxStream(
+    "jobs-data",
+    encodeString(["jobs-data", jobId, String(offset)].join("\0")),
   );
 }

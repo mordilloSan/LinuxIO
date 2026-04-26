@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 )
@@ -69,13 +70,15 @@ type Event struct {
 
 type Runner func(ctx context.Context, job *Job, args []string) (any, error)
 type Recoverer func(registry *Registry) (*Job, error)
+type DataAttacher func(ctx context.Context, job *Job, stream net.Conn, args []string) error
 
 type Registry struct {
-	mu         sync.RWMutex
-	runners    map[string]Runner
-	recoverers map[string]Recoverer
-	jobs       map[string]*Job
-	nextID     uint64
+	mu            sync.RWMutex
+	runners       map[string]Runner
+	recoverers    map[string]Recoverer
+	dataAttachers map[string]DataAttacher
+	jobs          map[string]*Job
+	nextID        uint64
 }
 
 type Job struct {
@@ -101,9 +104,10 @@ var DefaultRegistry = NewRegistry()
 
 func NewRegistry() *Registry {
 	return &Registry{
-		runners:    make(map[string]Runner),
-		recoverers: make(map[string]Recoverer),
-		jobs:       make(map[string]*Job),
+		runners:       make(map[string]Runner),
+		recoverers:    make(map[string]Recoverer),
+		dataAttachers: make(map[string]DataAttacher),
+		jobs:          make(map[string]*Job),
 	}
 }
 
@@ -113,6 +117,10 @@ func RegisterRunner(jobType string, runner Runner) {
 
 func RegisterRecoverer(jobType string, recoverer Recoverer) {
 	DefaultRegistry.RegisterRecoverer(jobType, recoverer)
+}
+
+func RegisterDataAttacher(jobType string, attacher DataAttacher) {
+	DefaultRegistry.RegisterDataAttacher(jobType, attacher)
 }
 
 func Start(jobType string, args []string) (*Job, error) {
@@ -143,6 +151,10 @@ func Recover(jobType string) (*Job, error) {
 	return DefaultRegistry.Recover(jobType)
 }
 
+func AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
+	return DefaultRegistry.AttachData(ctx, job, stream, args)
+}
+
 func (r *Registry) RegisterRunner(jobType string, runner Runner) {
 	if jobType == "" {
 		panic("job type cannot be empty")
@@ -167,6 +179,33 @@ func (r *Registry) RegisterRecoverer(jobType string, recoverer Recoverer) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.recoverers[jobType] = recoverer
+}
+
+func (r *Registry) RegisterDataAttacher(jobType string, attacher DataAttacher) {
+	if jobType == "" {
+		panic("job type cannot be empty")
+	}
+	if attacher == nil {
+		panic("job data attacher cannot be nil")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.dataAttachers[jobType] = attacher
+}
+
+func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
+	if job == nil {
+		return fmt.Errorf("job cannot be nil")
+	}
+
+	r.mu.RLock()
+	attacher, ok := r.dataAttachers[job.Type()]
+	r.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("job data attacher not found: %s", job.Type())
+	}
+	return attacher(ctx, job, stream, args)
 }
 
 func (r *Registry) Start(jobType string, args []string) (*Job, error) {

@@ -13,9 +13,8 @@ import {
   linuxio,
   bindStreamHandlers,
   isConnected,
-  openFileUploadStream,
-  openFileDownloadStream,
   openJobAttachStream,
+  openJobDataStream,
   useStreamMux,
   STREAM_MULTIPLEXER_CONFIG,
   type Stream,
@@ -30,6 +29,9 @@ const JOB_TYPE_FILE_EXTRACT = "file.extract";
 const JOB_TYPE_FILE_COPY = "file.copy";
 const JOB_TYPE_FILE_MOVE = "file.move";
 const JOB_TYPE_FILE_INDEXER = "file.indexer";
+const JOB_TYPE_FILE_UPLOAD = "file.upload";
+const JOB_TYPE_FILE_DOWNLOAD = "file.download";
+const JOB_TYPE_FILE_ARCHIVE = "file.archive";
 const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
 const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
 const JOB_TYPE_PACKAGE_UPDATE = "package.update";
@@ -38,6 +40,7 @@ const JOB_TYPE_STORAGE_SMART_TEST = "storage.smart_test";
 interface Download {
   id: string;
   type: "download";
+  jobId?: string;
   paths: string[];
   progress: number;
   label: string;
@@ -51,6 +54,7 @@ interface Download {
 interface Upload {
   id: string;
   type: "upload";
+  jobId?: string;
   totalFiles: number;
   completedFiles: number;
   currentFile: string;
@@ -288,6 +292,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const activeCopyIdsRef = useRef<Set<string>>(new Set());
   const activeMoveIdsRef = useRef<Set<string>>(new Set());
   const activeBackgroundJobIdsRef = useRef<Set<string>>(new Set());
+  const activeFileTransferJobIdsRef = useRef<Set<string>>(new Set());
   const recoveringJobIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
@@ -434,6 +439,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const removeDownload = useCallback(
     (id: string) => {
       setDownloads((prev) => prev.filter((d) => d.id !== id));
+      activeFileTransferJobIdsRef.current.delete(id);
       releaseDownloadLabelBase(id);
       transferRatesRef.current.delete(id);
       streamRefsRef.current.delete(id);
@@ -450,6 +456,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       paths: string[],
       reqId: string,
       _downloadLabelBase: string,
+      downloadJob: JobSnapshot,
       abortSignal: AbortSignal,
       formatDownloadLabel: (
         stage: string,
@@ -460,7 +467,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const chunks: Uint8Array[] = [];
       const getSpeed = createProgressSpeedCalculator();
       await runStreamResult({
-        open: () => openFileDownloadStream(paths),
+        open: () => openJobDataStream(downloadJob.id, 0),
         openErrorMessage: "Failed to open download stream",
         signal: abortSignal,
         onOpen: (stream) => {
@@ -513,7 +520,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     async (paths: string[]) => {
       if (!paths.length) return;
 
-      const reqId = crypto.randomUUID();
+      const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
+      let reqId: string = crypto.randomUUID();
       const abortController = new AbortController();
 
       const sanitizeLabelBase = (path: string) => {
@@ -526,7 +534,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       };
       const candidateLabelBase =
         paths.length === 1 ? sanitizeLabelBase(paths[0]) : "download.zip";
-      const downloadLabelBase = allocateDownloadLabelBase(
+      let downloadLabelBase = allocateDownloadLabelBase(
         candidateLabelBase,
         reqId,
       );
@@ -543,18 +551,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return base;
       };
 
-      const download: Download = {
-        id: reqId,
-        type: "download",
-        paths,
-        progress: 0,
-        label: formatDownloadLabel("Preparing", { percent: 0 }),
-        speed: undefined,
-        abortController,
-      };
-
-      setDownloads((prev) => [...prev, download]);
-
       if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeDownload(reqId);
@@ -562,11 +558,77 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       try {
+        const activeDownloadJob = await linuxio.jobs.start.call(
+          isSingleFile ? JOB_TYPE_FILE_DOWNLOAD : JOB_TYPE_FILE_ARCHIVE,
+          ...(isSingleFile ? [paths[0]] : ["zip", ...paths]),
+        );
+        activeFileTransferJobIdsRef.current.add(activeDownloadJob.id);
+        releaseDownloadLabelBase(reqId);
+        reqId = activeDownloadJob.id;
+        downloadLabelBase = allocateDownloadLabelBase(
+          candidateLabelBase,
+          reqId,
+        );
+
+        const download: Download = {
+          id: reqId,
+          type: "download",
+          jobId: activeDownloadJob.id,
+          paths,
+          progress: 0,
+          label: formatDownloadLabel("Preparing", { percent: 0 }),
+          speed: undefined,
+          abortController,
+        };
+
+        setDownloads((prev) => [...prev, download]);
+        const getJobSpeed = createProgressSpeedCalculator();
+        void runStreamResult<unknown, ProgressFrame>({
+          open: () => openJobAttachStream(activeDownloadJob.id),
+          signal: abortController.signal,
+          closeOnAbort: "none",
+          openErrorMessage: "Failed to attach download job",
+          closeMessage: "Download job stream closed unexpectedly",
+          onProgress: (progress) => {
+            const speed = getJobSpeed(progress.bytes);
+            let phaseLabel: string;
+            switch (progress.phase) {
+              case "preparing":
+                phaseLabel = "Preparing";
+                break;
+              case "compressing":
+                phaseLabel = "Downloading (compressing)";
+                break;
+              case "waiting_for_client":
+                phaseLabel = "Download waiting";
+                break;
+              case "streaming":
+              default:
+                phaseLabel = "Downloading";
+                break;
+            }
+            updateDownload(reqId, {
+              progress: progress.pct,
+              label: formatDownloadLabel(phaseLabel, {
+                percent: progress.pct,
+              }),
+              bytes: progress.bytes,
+              total: progress.total,
+              ...(speed !== undefined && { speed }),
+            });
+          },
+          onError: (error) => {
+            if (!abortController.signal.aborted) {
+              console.debug("Download job attachment failed", error);
+            }
+          },
+        });
         primeTransferRate(reqId, 0);
         const blob = await startStreamBasedDownload(
           paths,
           reqId,
           downloadLabelBase,
+          activeDownloadJob,
           abortController.signal,
           formatDownloadLabel,
         );
@@ -581,8 +643,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         recordTransferRate(reqId, undefined);
 
         // Trigger browser download
-        const fileName =
-          paths.length === 1 ? downloadLabelBase : `${downloadLabelBase}.zip`;
+        const fileName = downloadLabelBase;
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = blobUrl;
@@ -614,6 +675,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       allocateDownloadLabelBase,
       recordTransferRate,
       primeTransferRate,
+      releaseDownloadLabelBase,
+      runStreamResult,
       startStreamBasedDownload,
     ],
   );
@@ -630,11 +693,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           stream.abort(); // Use abort() instead of close() for immediate cancellation
           streamRefsRef.current.delete(id);
         }
+        if (download.jobId) {
+          cancelBridgeJob(download.jobId);
+        }
         toast.info("Download cancelled");
         removeDownload(id);
       }
     },
-    [downloads, removeDownload],
+    [downloads, cancelBridgeJob, removeDownload],
   );
 
   const removeCompression = useCallback(
@@ -1148,8 +1214,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   /**
-   * Stream-based single file upload implementation.
-   * Sends file directly to bridge via yamux stream - no temp files on server.
+   * Job-backed single file upload implementation.
+   * The job owns progress and the server-side partial file; this stream only
+   * attaches browser-owned bytes while the frontend is connected.
    */
   const uploadFileViaStream = useCallback(
     async (
@@ -1163,8 +1230,28 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return { success: false, error: "Stream connection not ready" };
       }
 
-      const stream = openFileUploadStream(targetPath, file.size);
+      let job: JobSnapshot;
+      try {
+        job = await linuxio.jobs.start.call(
+          JOB_TYPE_FILE_UPLOAD,
+          targetPath,
+          String(file.size),
+        );
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Failed to start upload",
+        };
+      }
+
+      updateUpload(uploadId, { jobId: job.id });
+      activeFileTransferJobIdsRef.current.add(job.id);
+
+      const stream = openJobDataStream(job.id, 0);
       if (!stream) {
+        activeFileTransferJobIdsRef.current.delete(job.id);
+        cancelBridgeJob(job.id);
         return { success: false, error: "Failed to open upload stream" };
       }
 
@@ -1195,8 +1282,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           settled = true;
           unbind();
           streamRefsRef.current.delete(uploadId);
+          activeFileTransferJobIdsRef.current.delete(job.id);
           setUploads((prev) =>
-            prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
+            prev.map((u) =>
+              u.id === uploadId ? { ...u, stream: null, jobId: undefined } : u,
+            ),
           );
           resolve(result);
         };
@@ -1291,7 +1381,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         sendNextChunk();
       });
     },
-    [chunkSize, uploadWindowSize],
+    [cancelBridgeJob, chunkSize, updateUpload, uploadWindowSize],
   );
 
   const startUpload = useCallback(
@@ -1570,12 +1660,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           stream.abort(); // RST for immediate cancellation
           streamRefsRef.current.delete(id);
         }
+        if (upload.jobId) {
+          activeFileTransferJobIdsRef.current.delete(upload.jobId);
+          cancelBridgeJob(upload.jobId);
+        }
         upload.abortController.abort();
         toast.info("Upload cancelled");
         removeUpload(id);
       }
     },
-    [uploads, removeUpload],
+    [uploads, cancelBridgeJob, removeUpload],
   );
 
   const startCopy = useCallback(
@@ -1896,9 +1990,27 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               package_id?: string;
               files_indexed?: number;
               dirs_indexed?: number;
+              phase?: string;
+              pct?: number;
             }
           | undefined;
         switch (job.type) {
+          case JOB_TYPE_FILE_UPLOAD: {
+            const name = getName(args[0], "file");
+            return data?.phase === "waiting_for_client"
+              ? `Upload waiting: ${name}`
+              : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          }
+          case JOB_TYPE_FILE_DOWNLOAD: {
+            const name = getName(args[0], "file");
+            return data?.phase === "waiting_for_client"
+              ? `Download waiting: ${name}`
+              : `Downloading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          }
+          case JOB_TYPE_FILE_ARCHIVE:
+            return data?.phase === "waiting_for_client"
+              ? "Archive download waiting"
+              : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           case JOB_TYPE_DOCKER_COMPOSE:
             return data?.message ?? `Docker compose ${args[0] ?? "operation"}`;
           case JOB_TYPE_DOCKER_INDEXER:
@@ -2223,7 +2335,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         case JOB_TYPE_DOCKER_COMPOSE:
         case JOB_TYPE_DOCKER_INDEXER:
         case JOB_TYPE_PACKAGE_UPDATE:
-        case JOB_TYPE_STORAGE_SMART_TEST: {
+        case JOB_TYPE_STORAGE_SMART_TEST:
+        case JOB_TYPE_FILE_UPLOAD:
+        case JOB_TYPE_FILE_DOWNLOAD:
+        case JOB_TYPE_FILE_ARCHIVE: {
+          if (activeFileTransferJobIdsRef.current.has(job.id)) {
+            return;
+          }
           if (activeBackgroundJobIdsRef.current.has(job.id)) return;
           const initialProgress = genericProgressPct(job.progress);
           activeBackgroundJobIdsRef.current.add(job.id);

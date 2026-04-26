@@ -23,6 +23,9 @@ const (
 	JobTypeFileCopy     = "file.copy"
 	JobTypeFileMove     = "file.move"
 	JobTypeFileIndexer  = "file.indexer"
+	JobTypeFileUpload   = "file.upload"
+	JobTypeFileDownload = "file.download"
+	JobTypeFileArchive  = "file.archive"
 )
 
 type transferRequest struct {
@@ -37,7 +40,13 @@ func RegisterJobRunners() {
 	bridgejobs.RegisterRunner(JobTypeFileCopy, runCopyJob)
 	bridgejobs.RegisterRunner(JobTypeFileMove, runMoveJob)
 	bridgejobs.RegisterRunner(JobTypeFileIndexer, runIndexerJob)
+	bridgejobs.RegisterRunner(JobTypeFileUpload, runUploadJob)
+	bridgejobs.RegisterRunner(JobTypeFileDownload, runDownloadJob)
+	bridgejobs.RegisterRunner(JobTypeFileArchive, runArchiveJob)
 	bridgejobs.RegisterRecoverer(JobTypeFileIndexer, recoverIndexerJob)
+	bridgejobs.RegisterDataAttacher(JobTypeFileUpload, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(JobTypeFileDownload, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(JobTypeFileArchive, attachFileTransferData)
 }
 
 func newJobPhaseCallbacks(ctx context.Context, job *bridgejobs.Job, totalSize int64, phase string) *ipc.OperationCallbacks {

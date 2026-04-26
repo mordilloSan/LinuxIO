@@ -31,8 +31,9 @@ func GetStreamHandler(streamType string) (func(*session.Session, net.Conn, []str
 }
 
 func RegisterAllHandlers(sess *session.Session) {
-	// Register the universal bridge stream handler
-	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
+	// Register the universal RPC stream handler.
+	// Typed frontend calls like linuxio.storage.get_drive_info.call()
+	// open a "bridge" stream and dispatch through ipc.RegisterFunc handlers.
 	streamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
 		return generic.HandleBridgeStream(s, conn, args)
 	}
@@ -51,12 +52,9 @@ func RegisterAllHandlers(sess *session.Session) {
 	storage.RegisterHandlers()
 	shares.RegisterHandlers()
 
-	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
+	// Register stream handlers for yamux streams (terminal, jobs, logs, etc.)
 	control.RegisterStreamHandlers(streamHandlers)
 	terminal.RegisterStreamHandlers(streamHandlers)
-	filebrowser.RegisterStreamHandlers(streamHandlers)
 	jobhandlers.RegisterStreamHandlers(streamHandlers)
-	dbus.RegisterStreamHandlers(streamHandlers)
-	docker.RegisterStreamHandlers(streamHandlers)
 	logs.RegisterStreamHandlers(streamHandlers)
 }

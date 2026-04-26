@@ -1296,5 +1296,5 @@ func getAllGroups() ([]string, error) {
 	return groups, nil
 }
 
-// NOTE: fileUploadFromTemp, fileUpdateFromTemp, fileDownloadToTemp, archiveDownloadSetup removed
-// These operations now use yamux streams (fb-upload, fb-download, fb-archive)
+// NOTE: fileUploadFromTemp, fileUpdateFromTemp, fileDownloadToTemp, archiveDownloadSetup removed.
+// These operations now use durable jobs plus generic jobs-data streams.

@@ -30,10 +30,8 @@ export {
   openServiceLogsStream,
   openGeneralLogsStream,
   openAppUpdateStream,
-  openFileUploadStream,
-  openFileDownloadStream,
-  openJobStartStream,
   openJobAttachStream,
+  openJobDataStream,
 } from "./linuxio";
 
 // === Connection Management ===

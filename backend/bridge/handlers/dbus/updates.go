@@ -219,7 +219,7 @@ func newPackageKitTransaction(conn *godbus.Conn) (godbus.BusObject, godbus.Objec
 	return conn.Object(packageKitBusName, transPath), transPath, nil
 }
 
-func watchTransactionSignals(conn *godbus.Conn, transPath godbus.ObjectPath, addMatchMessage string) (chan *godbus.Signal, func()) {
+func watchTransactionSignals(conn *godbus.Conn, transPath godbus.ObjectPath) (chan *godbus.Signal, func()) {
 	sigCh := make(chan *godbus.Signal, 20)
 	conn.Signal(sigCh)
 
@@ -497,7 +497,7 @@ func getUpdatesBasic() ([]UpdateDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	sigCh, cleanup := watchTransactionSignals(conn, transPath, "Failed to add D-Bus match signal: %v")
+	sigCh, cleanup := watchTransactionSignals(conn, transPath)
 	defer cleanup()
 
 	if err := callPackageKitTransaction(trans, "GetUpdates", uint64(0)); err != nil {
@@ -530,7 +530,7 @@ func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	sigCh, cleanup := watchTransactionSignals(conn, transPath, "failed to add D-Bus match signal: %v")
+	sigCh, cleanup := watchTransactionSignals(conn, transPath)
 	defer cleanup()
 
 	if err := callPackageKitTransaction(trans, "GetUpdateDetail", []string{packageID}); err != nil {
@@ -561,7 +561,7 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	updatesCh, cleanupUpdates := watchTransactionSignals(conn, updatesTransPath, "Failed to add D-Bus match signal: %v")
+	updatesCh, cleanupUpdates := watchTransactionSignals(conn, updatesTransPath)
 	defer cleanupUpdates()
 
 	if callErr := callPackageKitTransaction(updatesTrans, "GetUpdates", uint64(0)); callErr != nil {
@@ -582,7 +582,7 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	detailsCh, cleanupDetails := watchTransactionSignals(conn, detailsTransPath, "failed to add D-Bus match signal for details transaction: %v")
+	detailsCh, cleanupDetails := watchTransactionSignals(conn, detailsTransPath)
 	defer cleanupDetails()
 
 	if callErr := callPackageKitTransaction(detailsTrans, "GetUpdateDetail", pkgIDs); callErr != nil {

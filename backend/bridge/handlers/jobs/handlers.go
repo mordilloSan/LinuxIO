@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	StreamTypeJobsStart  = "jobs-start"
 	StreamTypeJobsAttach = "jobs-attach"
+	StreamTypeJobsData   = "jobs-data"
 )
 
 func RegisterHandlers() {
@@ -25,8 +25,8 @@ func RegisterHandlers() {
 }
 
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
-	handlers[StreamTypeJobsStart] = HandleStartStream
 	handlers[StreamTypeJobsAttach] = HandleAttachStream
+	handlers[StreamTypeJobsData] = HandleDataStream
 }
 
 func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
@@ -85,17 +85,6 @@ func handleCancel(ctx context.Context, args []string, emit ipc.Events) error {
 	return emit.Result(job.Snapshot())
 }
 
-func HandleStartStream(sess *session.Session, stream net.Conn, args []string) error {
-	if len(args) < 1 {
-		return ipc.WriteResultErrorAndClose(stream, 0, "missing job type", 400)
-	}
-	job, err := bridgejobs.Start(args[0], args[1:])
-	if err != nil {
-		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 404)
-	}
-	return AttachStream(stream, job)
-}
-
 func HandleAttachStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		return ipc.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
@@ -105,6 +94,20 @@ func HandleAttachStream(sess *session.Session, stream net.Conn, args []string) e
 		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", args[0]), 404)
 	}
 	return AttachStream(stream, job)
+}
+
+func HandleDataStream(sess *session.Session, stream net.Conn, args []string) error {
+	if len(args) < 1 {
+		return ipc.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
+	}
+	job, ok := bridgejobs.Get(args[0])
+	if !ok {
+		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", args[0]), 404)
+	}
+	if err := bridgejobs.AttachData(context.Background(), job, stream, args[1:]); err != nil {
+		return err
+	}
+	return nil
 }
 
 func AttachStream(stream net.Conn, job *bridgejobs.Job) error {

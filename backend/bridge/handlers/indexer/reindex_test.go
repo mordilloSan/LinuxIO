@@ -57,6 +57,10 @@ func newTwoStepServer(t *testing.T, triggerStatus int, sseHandler func(http.Resp
 			sseHandler(w, r)
 			return
 		}
+		if r.Method == http.MethodGet && r.URL.Path == "/status" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
 		w.WriteHeader(http.StatusNotFound)
 	}))

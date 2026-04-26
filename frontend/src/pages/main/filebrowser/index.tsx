@@ -17,7 +17,7 @@ import {
   linuxio,
   CACHE_TTL_MS,
   isConnected,
-  openFileUploadStream,
+  openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
@@ -79,6 +79,7 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   card: <Icon icon="mdi:view-grid" width={20} height={20} />,
   list: <Icon icon="mdi:view-list" width={20} height={20} />,
 };
+const JOB_TYPE_FILE_UPLOAD = "file.upload";
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
@@ -760,8 +761,13 @@ const FileBrowser: React.FC = () => {
   );
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
+      const job = await linuxio.jobs.start.call(
+        JOB_TYPE_FILE_UPLOAD,
+        path,
+        String(contentBytes.length),
+      );
       await runChunkedStreamResult<void>({
-        open: () => openFileUploadStream(path, contentBytes.length),
+        open: () => openJobDataStream(job.id, 0),
         openErrorMessage: "Failed to open save stream",
         data: contentBytes,
         chunkSize: chunkSize,
