@@ -17,4 +17,4 @@ session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_seli
 session    optional     pam_keyinit.so force revoke
 session    include      common-session-noninteractive
 session    required     pam_env.so
-session    required     pam_env.so user_readenv=1 envfile=/etc/default/locale
+session    required     pam_env.so envfile=/etc/default/locale
