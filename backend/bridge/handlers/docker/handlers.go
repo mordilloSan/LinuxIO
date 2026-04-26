@@ -22,6 +22,7 @@ type dockerRegistration struct {
 func RegisterHandlers(sess *session.Session) {
 	username := sess.User.Username
 	sessionUsername = username
+	RegisterJobRunners(username)
 
 	if err := initIconCache(); err != nil {
 		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "error", err)

@@ -19,7 +19,7 @@ import type {
 } from "./types";
 import { parseSizeToBytes } from "./utils";
 
-import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
+import { linuxio, openJobAttachStream, type Stream, type ApiDisk } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -33,6 +33,8 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const JOB_TYPE_STORAGE_SMART_TEST = "storage.smart_test";
 
 interface DriveDetailsProps {
   drive: DriveInfo;
@@ -118,86 +120,98 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     if (streamRef.current) {
       streamRef.current.close();
     }
-    const stream = openSmartTestStream(rawDrive.name, testType);
-    if (!stream) {
-      runSmartTest([rawDrive.name, testType], {
-        onSuccess: () => {
-          toast.success(
-            `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
-          );
-          setStartPending(null);
+    void (async () => {
+      let jobId: string | null = null;
+      try {
+        const job = await linuxio.jobs.start.call(
+          JOB_TYPE_STORAGE_SMART_TEST,
+          rawDrive.name,
+          testType,
+        );
+        jobId = job.id;
+      } catch {
+        runSmartTest([rawDrive.name, testType], {
+          onSuccess: () => {
+            toast.success(
+              `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
+            );
+            setStartPending(null);
+          },
+          onError: () => {
+            setTestProgress((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: "error",
+                    message: "Failed to start test",
+                  }
+                : null,
+            );
+            setStartPending(null);
+          },
+        });
+        return;
+      }
+
+      void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
+        open: () => (jobId ? openJobAttachStream(jobId) : null),
+        onOpen: (stream) => {
+          streamRef.current = stream;
         },
-        onError: () => {
-          setTestProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  status: "error",
-                  message: "Failed to start test",
-                }
-              : null,
-          );
-          setStartPending(null);
+        onProgress: (data) => {
+          setTestProgress((prev) => ({
+            ...(prev || {}),
+            ...data,
+            test_type: data.test_type ?? prev?.test_type ?? testType,
+            device: data.device ?? prev?.device ?? rawDrive.name,
+          }));
+          if (data.status && data.status !== "starting") {
+            setStartPending(null);
+          }
         },
-      });
-      return;
-    }
-    streamRef.current = stream;
-    void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
-      open: () => stream,
-      onProgress: (data) => {
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          ...data,
-          test_type: data.test_type ?? prev?.test_type ?? testType,
-          device: data.device ?? prev?.device ?? rawDrive.name,
-        }));
-        if (data.status && data.status !== "starting") {
+        closeMessage: "SMART self-test stream closed unexpectedly",
+      })
+        .then((data) => {
+          const finalStatus = data?.status ?? "completed";
+          setTestProgress((prev) => ({
+            ...(prev || {}),
+            type: "status",
+            status: finalStatus as SmartTestProgressEvent["status"],
+            message: data?.message ?? prev?.message,
+            test_type: data?.test_type ?? prev?.test_type ?? testType,
+            device: data?.device ?? prev?.device ?? rawDrive.name,
+          }));
+          if (finalStatus === "completed") {
+            toast.success(
+              `${testType === "short" ? "Short" : "Extended"} self-test completed on /dev/${rawDrive.name}`,
+            );
+          } else {
+            toast.error(
+              `${testType === "short" ? "Short" : "Extended"} self-test ${finalStatus}`,
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          const errorMessage =
+            error instanceof Error ? error.message : "SMART self-test failed";
+          setTestProgress((prev) => ({
+            ...(prev || {}),
+            type: "status",
+            status: "error",
+            message: errorMessage,
+            test_type: prev?.test_type ?? testType,
+            device: prev?.device ?? rawDrive.name,
+          }));
+          toast.error(errorMessage);
+        })
+        .finally(() => {
+          streamRef.current = null;
           setStartPending(null);
-        }
-      },
-      closeMessage: "SMART self-test stream closed unexpectedly",
-    })
-      .then((data) => {
-        const finalStatus = data?.status ?? "completed";
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          type: "status",
-          status: finalStatus as SmartTestProgressEvent["status"],
-          message: data?.message ?? prev?.message,
-          test_type: data?.test_type ?? prev?.test_type ?? testType,
-          device: data?.device ?? prev?.device ?? rawDrive.name,
-        }));
-        if (finalStatus === "completed") {
-          toast.success(
-            `${testType === "short" ? "Short" : "Extended"} self-test completed on /dev/${rawDrive.name}`,
-          );
-        } else {
-          toast.error(
-            `${testType === "short" ? "Short" : "Extended"} self-test ${finalStatus}`,
-          );
-        }
-      })
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        const errorMessage =
-          error instanceof Error ? error.message : "SMART self-test failed";
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          type: "status",
-          status: "error",
-          message: errorMessage,
-          test_type: prev?.test_type ?? testType,
-          device: prev?.device ?? rawDrive.name,
-        }));
-        toast.error(errorMessage);
-      })
-      .finally(() => {
-        streamRef.current = null;
-        setStartPending(null);
-      });
+        });
+    })();
   };
   const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);

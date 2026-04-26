@@ -25,7 +25,8 @@ interface CompletedTransfer {
     | "extraction"
     | "indexer"
     | "copy"
-    | "move";
+    | "move"
+    | "job";
   label?: string;
   completedAt: Date;
 }
@@ -79,6 +80,8 @@ const getTransferTitle = (type: string) => {
       return "Copying";
     case "move":
       return "Moving";
+    case "job":
+      return "Running job";
     default:
       return "Processing";
   }
@@ -100,6 +103,8 @@ const getCompletedTitle = (type: string) => {
       return "Copy complete";
     case "move":
       return "Move complete";
+    case "job":
+      return "Job complete";
     default:
       return "Operation complete";
   }
@@ -231,6 +236,7 @@ function NavbarNotificationsDropdown() {
     cancelExtraction,
     cancelCopy,
     cancelMove,
+    cancelJob,
     openIndexerDialog,
   } = useFileTransfers();
 
@@ -318,6 +324,7 @@ function NavbarNotificationsDropdown() {
     else if (transfer.type === "extraction") cancelExtraction(transfer.id);
     else if (transfer.type === "copy") cancelCopy(transfer.id);
     else if (transfer.type === "move") cancelMove(transfer.id);
+    else if (transfer.type === "job") cancelJob(transfer.id);
   };
 
   const clearCompletedTransfers = () => setCompletedTransfers([]);
@@ -410,6 +417,7 @@ function NavbarNotificationsDropdown() {
       case "indexer":
       case "copy":
       case "move":
+      case "job":
         return {
           icon: (
             <Icon icon="mdi:folder-sync" width={iconSize} height={iconSize} />

@@ -16,6 +16,8 @@ type dbusRegistration struct {
 
 // RegisterHandlers registers dbus handlers with the new handler system
 func RegisterHandlers() {
+	RegisterJobRunners()
+
 	registerDBusHandlers([]dbusRegistration{
 		{command: "reboot", handler: dbusNoArgActionHandler("reboot requested", func() error { return CallLogin1Action("Reboot") })},
 		{command: "power_off", handler: dbusNoArgActionHandler("power_off requested", func() error { return CallLogin1Action("PowerOff") })},

@@ -2,15 +2,20 @@ package services
 
 import (
 	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+
+	zip "github.com/klauspost/compress/zip"
+	gzip "github.com/klauspost/pgzip"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -371,16 +376,57 @@ func extractZip(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.
 		return err
 	}
 
+	// Wrap callbacks with a mutex so concurrent goroutines can report progress safely.
+	// When opts is nil, safeOpts is also nil (OperationCallbacks methods are nil-safe).
+	var safeOpts *ipc.OperationCallbacks
+	if opts != nil {
+		var mu sync.Mutex
+		safeOpts = &ipc.OperationCallbacks{
+			Cancel: opts.Cancel,
+			Progress: func(n int64) {
+				mu.Lock()
+				defer mu.Unlock()
+				opts.ReportProgress(n)
+			},
+			OnComplete: func(path string) {
+				mu.Lock()
+				defer mu.Unlock()
+				opts.ReportComplete(path)
+			},
+		}
+	}
+
+	// Create directory entries first (sequential) to avoid concurrent MkdirAll races on empty dirs.
 	for _, file := range reader.File {
 		if opts.IsCancelled() {
 			return ipc.ErrAborted
 		}
-		if err := extractZipEntry(root, file, destination, opts); err != nil {
-			return err
+		if file.FileInfo().IsDir() {
+			if err := extractZipEntry(root, file, destination, safeOpts); err != nil {
+				return err
+			}
 		}
 	}
 
-	return nil
+	// Extract file entries in parallel, bounded by CPU count.
+	// zip.File.Open uses ReadAt which is safe for concurrent calls on the same file.
+	g, _ := errgroup.WithContext(context.Background())
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		f := file
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+			if opts.IsCancelled() {
+				return ipc.ErrAborted
+			}
+			return extractZipEntry(root, f, destination, safeOpts)
+		})
+	}
+	return g.Wait()
 }
 
 func extractZipEntry(root *fsroot.FSRoot, file *zip.File, destination string, opts *ipc.OperationCallbacks) error {

@@ -15,6 +15,8 @@ type storageRegistration struct {
 
 // RegisterHandlers registers all storage handlers with the global registry
 func RegisterHandlers() {
+	RegisterJobRunners()
+
 	registerStorageHandlers([]storageRegistration{
 		{command: "list_pvs", handler: handleListPVs},
 		{command: "list_vgs", handler: handleListVGs},

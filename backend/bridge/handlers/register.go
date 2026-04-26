@@ -10,6 +10,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
@@ -41,6 +42,7 @@ func RegisterAllHandlers(sess *session.Session) {
 	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
 	filebrowser.RegisterHandlers()
+	jobhandlers.RegisterHandlers()
 	config.RegisterHandlers(sess)
 	control.RegisterHandlers()
 	dbus.RegisterHandlers()
@@ -53,6 +55,7 @@ func RegisterAllHandlers(sess *session.Session) {
 	control.RegisterStreamHandlers(streamHandlers)
 	terminal.RegisterStreamHandlers(streamHandlers)
 	filebrowser.RegisterStreamHandlers(streamHandlers)
+	jobhandlers.RegisterStreamHandlers(streamHandlers)
 	dbus.RegisterStreamHandlers(streamHandlers)
 	docker.RegisterStreamHandlers(streamHandlers)
 	logs.RegisterStreamHandlers(streamHandlers)

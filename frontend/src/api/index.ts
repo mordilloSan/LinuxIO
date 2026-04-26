@@ -29,20 +29,11 @@ export {
   openDockerLogsStream,
   openServiceLogsStream,
   openGeneralLogsStream,
-  openDockerComposeStream,
-  openDockerIndexerStream,
-  openDockerIndexerAttachStream,
   openAppUpdateStream,
-  openPackageUpdateStream,
-  openSmartTestStream,
   openFileUploadStream,
   openFileDownloadStream,
-  openFileCompressStream,
-  openFileExtractStream,
-  openFileIndexerStream,
-  openFileIndexerAttachStream,
-  openFileCopyStream,
-  openFileMoveStream,
+  openJobStartStream,
+  openJobAttachStream,
 } from "./linuxio";
 
 // === Connection Management ===

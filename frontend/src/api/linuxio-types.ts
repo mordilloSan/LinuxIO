@@ -731,6 +731,32 @@ export interface DirectoryValidationResult {
   isDirectory: boolean;
 }
 
+export type JobState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export interface JobError {
+  message: string;
+  code?: number;
+}
+
+export interface JobSnapshot {
+  id: string;
+  type: string;
+  args?: string[];
+  state: JobState;
+  progress?: unknown;
+  result?: unknown;
+  error?: JobError;
+  created_at: string;
+  started_at?: string;
+  updated_at: string;
+  finished_at?: string;
+}
+
 // ============================================================================
 // API Schema Definition
 // ============================================================================
@@ -740,6 +766,14 @@ export interface DirectoryValidationResult {
  * Format: { handler: { command: { args: ArgsType, result: ResultType } } }
  */
 export interface LinuxIOSchema {
+  jobs: {
+    start: { args: [jobType: string, ...args: string[]]; result: JobSnapshot };
+    recover: { args: [jobType: string]; result: JobSnapshot };
+    list: { args: [status?: string]; result: JobSnapshot[] };
+    get: { args: [jobId: string]; result: JobSnapshot };
+    cancel: { args: [jobId: string]; result: JobSnapshot };
+  };
+
   system: {
     get_capabilities: { args: []; result: CapabilitiesResponse };
     get_cpu_info: { args: []; result: CPUInfoResponse };
