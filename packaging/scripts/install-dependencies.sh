@@ -96,6 +96,14 @@ pkg_installed() {
     fi
 }
 
+pkg_available() {
+    if is_debian; then
+        apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate: [^()]'
+    elif is_fedora; then
+        dnf list --available "$1" &>/dev/null
+    fi
+}
+
 # Install packages quietly — stdout hidden, stderr captured for error reporting
 pkg_install() {
     local err
@@ -107,24 +115,38 @@ pkg_install() {
 }
 
 # Install a named dependency: show "already installed" or install quietly
-# Usage: install_pkg <display_name> <debian_pkg> <fedora_pkg>
+# Usage: install_pkg <display_name> <debian_pkg_candidates> <fedora_pkg_candidates>
+# Candidate package names are space-separated; the first installed or available
+# package is used. This handles distro package renames.
 install_pkg() {
-    local name="$1" deb_pkg="$2" fed_pkg="$3"
-    local pkg=""
+    local name="$1" deb_pkgs="$2" fed_pkgs="$3"
+    local pkgs="" pkg="" candidate=""
 
-    if is_debian; then pkg="$deb_pkg"
-    elif is_fedora; then pkg="$fed_pkg"
+    if is_debian; then pkgs="$deb_pkgs"
+    elif is_fedora; then pkgs="$fed_pkgs"
     fi
 
-    if pkg_installed "$pkg"; then
-        Show 0 "${name} ${GREY}already installed${COLOUR_RESET}"
-    else
-        Show 2 "Installing ${name}..."
-        if pkg_install "$pkg"; then
-            Show 0 "${name} installed"
-        else
-            Show 1 "Failed to install ${name}"
+    for candidate in $pkgs; do
+        if pkg_installed "$candidate"; then
+            Show 0 "${name} ${GREY}already installed${COLOUR_RESET}"
+            return 0
         fi
+    done
+
+    for candidate in $pkgs; do
+        if pkg_available "$candidate"; then
+            pkg="$candidate"
+            break
+        fi
+    done
+
+    pkg="${pkg:-${pkgs%% *}}"
+
+    Show 2 "Installing ${name}..."
+    if pkg_install "$pkg"; then
+        Show 0 "${name} installed"
+    else
+        Show 1 "Failed to install ${name}"
     fi
 }
 
@@ -145,7 +167,7 @@ install_mandatory() {
     fi
 
     install_pkg "PAM libraries" "libpam0g" "pam"
-    install_pkg "PolicyKit" "policykit-1" "polkit"
+    install_pkg "PolicyKit" "polkitd policykit-1" "polkit"
     install_pkg "PackageKit" "packagekit" "PackageKit"
 }
 

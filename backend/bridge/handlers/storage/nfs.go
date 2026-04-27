@@ -436,24 +436,8 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint, optionsJSON s
 		return nil, err
 	}
 
-	// Validate inputs
-	if !validNFSServer.MatchString(server) {
-		slog.Warn("invalid NFS server hostname", "server", server)
-		return nil, fmt.Errorf("invalid NFS server hostname")
-	}
-	if !validPath.MatchString(exportPath) {
-		slog.Warn("invalid NFS export path", "path", exportPath)
-		return nil, fmt.Errorf("invalid export path")
-	}
-	if !validPath.MatchString(mountpoint) {
-		slog.Warn("invalid mountpoint", "mountpoint", mountpoint)
-		return nil, fmt.Errorf("invalid mountpoint")
-	}
-
-	// Block dangerous mountpoints
-	if isSystemPath(mountpoint) {
-		slog.Warn("blocked mount to system path", "mountpoint", mountpoint)
-		return nil, fmt.Errorf("cannot mount to system path: %s", mountpoint)
+	if err := validateNFSMountRequest(server, exportPath, mountpoint); err != nil {
+		return nil, err
 	}
 
 	source := fmt.Sprintf("%s:%s", server, exportPath)
@@ -465,14 +449,7 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint, optionsJSON s
 		return nil, fmt.Errorf("failed to create mountpoint: %w", err)
 	}
 
-	// Build mount command
-	args := []string{"-t", "nfs"}
-	if optionsJSON != "" && optionsJSON != "[]" {
-		if len(options) > 0 {
-			args = append(args, "-o", strings.Join(options, ","))
-		}
-	}
-	args = append(args, source, mountpoint)
+	args := buildNFSMountArgs(source, mountpoint, optionsJSON, options)
 	slog.Info("mounting NFS share", "source", source, "mountpoint", mountpoint, "options", args)
 	out, err := runNFSCombinedOutput(ctx, nfsMountCommandTimeout, "mount", args...)
 	if err != nil {
@@ -487,26 +464,62 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint, optionsJSON s
 		"mountpoint": mountpoint,
 	}
 
-	// Add to fstab if persist is true
+	recordSuccessfulNFSMount(result, source, mountpoint, options, persist)
+	return result, nil
+}
+
+func validateNFSMountRequest(server, exportPath, mountpoint string) error {
+	if !validNFSServer.MatchString(server) {
+		slog.Warn("invalid NFS server hostname", "server", server)
+		return fmt.Errorf("invalid NFS server hostname")
+	}
+	if !validPath.MatchString(exportPath) {
+		slog.Warn("invalid NFS export path", "path", exportPath)
+		return fmt.Errorf("invalid export path")
+	}
+	if !validPath.MatchString(mountpoint) {
+		slog.Warn("invalid mountpoint", "mountpoint", mountpoint)
+		return fmt.Errorf("invalid mountpoint")
+	}
+	if isSystemPath(mountpoint) {
+		slog.Warn("blocked mount to system path", "mountpoint", mountpoint)
+		return fmt.Errorf("cannot mount to system path: %s", mountpoint)
+	}
+	return nil
+}
+
+func buildNFSMountArgs(source, mountpoint, optionsJSON string, options []string) []string {
+	args := []string{"-t", "nfs"}
+	if optionsJSON != "" && optionsJSON != "[]" && len(options) > 0 {
+		args = append(args, "-o", strings.Join(options, ","))
+	}
+	return append(args, source, mountpoint)
+}
+
+func recordSuccessfulNFSMount(result map[string]any, source, mountpoint string, options []string, persist bool) {
 	if persist {
-		if err := addToFstab(source, mountpoint, "nfs", options); err != nil {
-			slog.Warn("mount succeeded but fstab update failed", "mountpoint", mountpoint, "error", err)
-			result["warning"] = fmt.Sprintf("mount succeeded but fstab update failed: %v", err)
-			if err := upsertManagedNFSMount(source, mountpoint, "nfs", options); err != nil {
-				slog.Warn("failed to persist temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
-			}
-		} else {
-			slog.Info("added NFS mount to fstab", "mountpoint", mountpoint)
-			if err := removeManagedNFSMount(mountpoint); err != nil {
-				slog.Warn("failed to clean up temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
-			}
-		}
-	} else if err := upsertManagedNFSMount(source, mountpoint, "nfs", options); err != nil {
+		recordPersistentNFSMount(result, source, mountpoint, options)
+		return
+	}
+	if err := upsertManagedNFSMount(source, mountpoint, "nfs", options); err != nil {
 		slog.Warn("mount succeeded but LinuxIO registry update failed", "mountpoint", mountpoint, "error", err)
 		result["warning"] = fmt.Sprintf("mount succeeded but LinuxIO registry update failed: %v", err)
 	}
+}
 
-	return result, nil
+func recordPersistentNFSMount(result map[string]any, source, mountpoint string, options []string) {
+	if err := addToFstab(source, mountpoint, "nfs", options); err != nil {
+		slog.Warn("mount succeeded but fstab update failed", "mountpoint", mountpoint, "error", err)
+		result["warning"] = fmt.Sprintf("mount succeeded but fstab update failed: %v", err)
+		if err := upsertManagedNFSMount(source, mountpoint, "nfs", options); err != nil {
+			slog.Warn("failed to persist temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
+		}
+		return
+	}
+	slog.Info("added NFS mount to fstab", "mountpoint", mountpoint)
+	if err := removeManagedNFSMount(mountpoint); err != nil {
+		slog.Warn("failed to clean up temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
+	}
 }
 
 // RemountNFS remounts an NFS share with new options

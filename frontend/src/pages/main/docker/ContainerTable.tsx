@@ -196,10 +196,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   const isManagedContainer = isLinuxIOManagedContainer(container.Labels);
 
   // ---- auto-update ----
-  const { data: autoUpdateContainers = [] } =
+  const { data: rawAutoUpdateContainers } =
     linuxio.docker.list_auto_update_containers.useQuery({
       enabled: !isManagedContainer,
     });
+  const autoUpdateContainers = rawAutoUpdateContainers ?? [];
   const autoUpdate = autoUpdateContainers.includes(name);
   const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
   const autoUpdateChecked = isManagedContainer ? true : autoUpdate;

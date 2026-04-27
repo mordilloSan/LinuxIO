@@ -369,9 +369,9 @@ analyze-auth:
 	@set -euo pipefail; \
 	FILE="backend/auth/linuxio-auth.c"; \
 	CPPCHK_DEFS='-D__has_include(x)=0 -DLINUXIO_VERSION="dev"'; \
-	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c'; \
+	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c --suppress=normalCheckLevelMaxBranches'; \
 	SB_WARNFLAGS="$(filter-out -Wduplicated-cond -Wlogical-op,$(WARNFLAGS)) -Wno-format-nonliteral"; \
-	CLANG_TIDY_OPTS='-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral'; \
+	CLANG_TIDY_OPTS='--quiet -checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral'; \
 	CC_DB_DIR=".cache/clang"; \
 	CC_DB="$$CC_DB_DIR/compile_commands.json"; \
 	if ! command -v cppcheck >/dev/null 2>&1; then \

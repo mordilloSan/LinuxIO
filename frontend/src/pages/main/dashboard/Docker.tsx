@@ -24,7 +24,8 @@ const getStatusLabel = (status: string, state: string): string => {
   if (health === "healthy" || health === "unhealthy") return health;
   return state;
 };
-const getCollectionCount = <T,>(items: T[]) => items.length;
+const getCollectionCount = <T,>(items: T[] | null | undefined) =>
+  items?.length ?? 0;
 const DockerInfo: React.FC = () => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
@@ -132,12 +133,13 @@ const DockerInfo: React.FC = () => {
     ],
   );
   const {
-    data: containers = [],
+    data: rawContainers,
     isPending: isContainersLoading,
     isError: isContainersError,
   } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
+  const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const { data: imagesCount = 0 } =
     linuxio.docker.list_images.useQueryWithSelect({
       refetchInterval: 30_000,

@@ -33,9 +33,10 @@ const ContainerList: React.FC<ContainerListProps> = ({
   editMode,
   viewMode = "card",
 }) => {
-  const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
+  const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
+  const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
 
   const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
 

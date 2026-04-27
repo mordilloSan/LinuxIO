@@ -29,9 +29,10 @@ const DockerPage: React.FC = () => {
     useCapability("indexerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
-  const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
+  const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
+  const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const stoppedContainers = useMemo(
     () => containers.filter((c) => c.State === "exited" || c.State === "dead"),
     [containers],

@@ -89,7 +89,7 @@ func ListDockerNetworks() (any, error) {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
 
-	var results []map[string]any
+	results := make([]map[string]any, 0, len(networks))
 
 	for _, nw := range networks {
 		inspect, err := cli.NetworkInspect(context.Background(), nw.ID, network.InspectOptions{})

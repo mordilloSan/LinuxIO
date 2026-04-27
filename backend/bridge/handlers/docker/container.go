@@ -67,7 +67,7 @@ func ListContainers(ctx context.Context) (any, error) {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	var enriched []ContainerWithMetrics
+	enriched := make([]ContainerWithMetrics, 0, len(containers))
 
 	for _, ctr := range containers {
 		if err := ctx.Err(); err != nil {

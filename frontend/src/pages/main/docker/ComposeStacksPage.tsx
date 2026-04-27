@@ -1,5 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import ComposeList, { type ComposeProject } from "./ComposeList";
@@ -100,12 +106,13 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const {
-    data: projects = [],
+    data: rawProjects,
     isPending,
     refetch,
   } = linuxio.docker.list_compose_projects.useQuery({
     refetchInterval: 5000,
   });
+  const projects = useMemo(() => rawProjects ?? [], [rawProjects]);
 
   const { mutateAsync: deleteStack } =
     linuxio.docker.delete_stack.useMutation();

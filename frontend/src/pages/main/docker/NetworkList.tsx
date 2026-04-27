@@ -265,9 +265,10 @@ const NetworkList: React.FC<NetworkListProps> = ({
   viewMode = "table",
 }) => {
   const theme = useAppTheme();
-  const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
+  const { data: rawNetworks } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 10000,
   });
+  const networks = rawNetworks ?? [];
 
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
