@@ -1062,30 +1062,64 @@ func extractHostPorts(svc map[string]any) []string {
 				result = append(result, hp)
 			}
 		case map[string]any:
-			// Long syntax: {target: 80, published: "8080", protocol: "tcp"}
-			if published, ok := v["published"]; ok && published != nil {
-				if s := fmt.Sprintf("%v", published); s != "" && s != "0" {
-					result = append(result, s)
-				}
+			if hp := parseLongSyntaxHostPort(v); hp != "" {
+				result = append(result, hp)
 			}
 		}
 	}
 	return result
 }
 
+func parseLongSyntaxHostPort(port map[string]any) string {
+	published, ok := port["published"]
+	if !ok || published == nil {
+		return ""
+	}
+	hostPort := fmt.Sprintf("%v", published)
+	if hostPort == "" || hostPort == "0" {
+		return ""
+	}
+	return hostPortKey(hostPort, portProtocol(port))
+}
+
+func portProtocol(port map[string]any) string {
+	protocol, ok := port["protocol"]
+	if !ok || protocol == nil {
+		return "tcp"
+	}
+	if value := strings.TrimSpace(fmt.Sprintf("%v", protocol)); value != "" {
+		return value
+	}
+	return "tcp"
+}
+
 // parseHostPort extracts the host-side port key from a short-syntax port string.
 // Returns empty string when there is no explicit host binding.
 func parseHostPort(port string) string {
-	port = strings.SplitN(port, "/", 2)[0] // strip protocol
+	protocol := "tcp"
+	if portPart, protocolPart, found := strings.Cut(port, "/"); found {
+		port = portPart
+		if protocolPart != "" {
+			protocol = protocolPart
+		}
+	}
 	parts := strings.Split(port, ":")
 	switch len(parts) {
 	case 2:
-		return parts[0] // "8080:80" → "8080"
+		return hostPortKey(parts[0], protocol) // "8080:80" -> "8080/tcp"
 	case 3:
-		return parts[0] + ":" + parts[1] // "127.0.0.1:8080:80" → "127.0.0.1:8080"
+		return hostPortKey(parts[0]+":"+parts[1], protocol) // "127.0.0.1:8080:80" -> "127.0.0.1:8080/tcp"
 	default:
 		return "" // container-only port, no host binding
 	}
+}
+
+func hostPortKey(hostPort, protocol string) string {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol == "" {
+		protocol = "tcp"
+	}
+	return fmt.Sprintf("%s/%s", hostPort, protocol)
 }
 
 // sanitizeStackName sanitizes a stack name for use in file paths
