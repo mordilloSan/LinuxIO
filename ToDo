@@ -9,8 +9,7 @@
 5 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `eslint-plugin-react`
 
-6 - review bridge and server logging
-
+Review bridge and server logging - Done
 Remove func StartSimpleNetInfoSampler() - Done
 ChunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts - DONE
 Different view modes on cards/tables with user config (migrate all tables to cards) - DONE

@@ -40,7 +40,40 @@ func buildScriptURLs(ver string) (scriptURL, checksumURL string) {
 // --- small helper for clean log lines (no ANSI) ---
 var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
 
-func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer) {
+// outputTail keeps the last N lines of script output so we can include
+// them in the error returned when the installer fails silently.
+type outputTail struct {
+	mu    sync.Mutex
+	max   int
+	lines []string
+}
+
+func newOutputTail(max int) *outputTail {
+	return &outputTail{max: max}
+}
+
+func (t *outputTail) Add(line string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.lines = append(t.lines, line)
+	if len(t.lines) > t.max {
+		t.lines = t.lines[len(t.lines)-t.max:]
+	}
+}
+
+func (t *outputTail) String() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join(t.lines, "\n")
+}
+
+func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *outputTail) {
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		line := ansiRE.ReplaceAllString(sc.Text(), "")
@@ -49,6 +82,7 @@ func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer) {
 		} else {
 			slog.Error(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		}
+		tail.Add(line)
 		if relay != nil {
 			// Best-effort relay; don't fail the update on write errors
 			_, _ = io.WriteString(relay, line+"\n")
@@ -166,14 +200,10 @@ func runInstallScript(ver string, relay io.Writer) error {
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
-	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit)
+	systemdRunArgs := buildInstallCommandArgs(unit, scriptArgs(ver)...)
+	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
 
-	var scriptArgs []string
-	scriptArgs = append(scriptArgs, "--defer-restart")
-	if ver != "" {
-		scriptArgs = append(scriptArgs, ver)
-	}
-	cmd := exec.CommandContext(ctx, "systemd-run", buildInstallCommandArgs(unit, scriptArgs...)...)
+	cmd := exec.CommandContext(ctx, "systemd-run", systemdRunArgs...)
 
 	// Connect streams BEFORE Start
 	stdout, _ := cmd.StdoutPipe()
@@ -182,16 +212,17 @@ func runInstallScript(ver string, relay io.Writer) error {
 
 	err = cmd.Start()
 	if err != nil {
-		return fmt.Errorf("failed to start systemd-run: %w", err)
+		return fmt.Errorf("failed to start systemd-run (unit=%s): %w", unit, err)
 	}
 
-	// Stream logs in real-time with WaitGroup to ensure completion
+	// Stream logs in real-time and capture a bounded tail for error reporting.
+	tail := newOutputTail(40)
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		logStream(stdout, "", true, relay)
+		logStream(stdout, "", true, relay, tail)
 	})
 	wg.Go(func() {
-		logStream(stderr, "", false, relay)
+		logStream(stderr, "", false, relay, tail)
 	})
 
 	// Wait for command to complete
@@ -201,10 +232,22 @@ func runInstallScript(ver string, relay io.Writer) error {
 	wg.Wait()
 
 	if err != nil {
-		return fmt.Errorf("installer failed: %w", err)
+		captured := tail.String()
+		if captured == "" {
+			return fmt.Errorf("installer failed (unit=%s, no script output captured): %w", unit, err)
+		}
+		return fmt.Errorf("installer failed (unit=%s): %w; last output:\n%s", unit, err, captured)
 	}
 
 	return nil
+}
+
+func scriptArgs(ver string) []string {
+	args := []string{"--defer-restart"}
+	if ver != "" {
+		args = append(args, ver)
+	}
+	return args
 }
 
 func getInstalledVersion() string {

@@ -14,6 +14,7 @@ type updateStatusFile struct {
 	ID         string `json:"id"`
 	Status     string `json:"status"`
 	ExitCode   *int   `json:"exit_code,omitempty"`
+	Error      string `json:"error,omitempty"`
 	StartedAt  *int64 `json:"started_at,omitempty"`
 	FinishedAt *int64 `json:"finished_at,omitempty"`
 }
@@ -74,5 +75,6 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		ExitCode:   statusFile.ExitCode,
 		StartedAt:  statusFile.StartedAt,
 		FinishedAt: statusFile.FinishedAt,
+		Message:    statusFile.Error,
 	})
 }
