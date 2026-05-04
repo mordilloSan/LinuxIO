@@ -130,7 +130,7 @@ static void journal_send_formatted(int priority, const struct journal_field *fie
   {
     if (!fields[i].name || !fields[i].value || fields[i].name[0] == '\0')
       continue;
-    if (strcmp(fields[i].name, "LINUXIO_SESSION_ID") == 0)
+    if (strcmp(fields[i].name, LINUXIO_JOURNAL_FIELD_SESSION_ID) == 0)
       continue;
     (void)safe_snprintf(field_bufs[i], sizeof(field_bufs[i]), "%s=%s",
                         fields[i].name, fields[i].value);
@@ -1532,10 +1532,9 @@ static int handle_client(int input_fd, int output_fd)
   if (rc_bootstrap != 0)
   {
     const struct journal_field fields[] = {
-        {"LINUXIO_SESSION_ID", session_id},
         {"LINUXIO_USER", auth_user.name},
     };
-    journal_error_fieldsf(fields, 2, "failed to write bootstrap to pipe");
+    journal_error_fieldsf(fields, 1, "failed to write bootstrap to pipe");
     close(exec_status_pipe[0]);
     close(bridge_fd);
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bootstrap communication failed");
@@ -1570,10 +1569,9 @@ static int handle_client(int input_fd, int output_fd)
   if (exec_status_sel == 0)
   {
     const struct journal_field fields[] = {
-        {"LINUXIO_SESSION_ID", session_id},
         {"LINUXIO_USER", auth_user.name},
     };
-    journal_error_fieldsf(fields, 2, "bridge exec timed out after %d ms", BRIDGE_START_TIMEOUT_MS);
+    journal_error_fieldsf(fields, 1, "bridge exec timed out after %d ms", BRIDGE_START_TIMEOUT_MS);
     close(exec_status_fd);
     kill(child, SIGKILL);
     while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
@@ -1589,10 +1587,9 @@ static int handle_client(int input_fd, int output_fd)
   if (exec_status_sel < 0)
   {
     const struct journal_field fields[] = {
-        {"LINUXIO_SESSION_ID", session_id},
         {"LINUXIO_USER", auth_user.name},
     };
-    journal_error_fieldsf(fields, 2, "exec-status wait failed: %m");
+    journal_error_fieldsf(fields, 1, "exec-status wait failed: %m");
     close(exec_status_fd);
     kill(child, SIGKILL);
     while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
@@ -1619,11 +1616,10 @@ static int handle_client(int input_fd, int output_fd)
     char status_buf[16];
     (void)safe_snprintf(status_buf, sizeof(status_buf), "%u", (unsigned)exec_status_byte);
     const struct journal_field fields[] = {
-        {"LINUXIO_SESSION_ID", session_id},
         {"LINUXIO_USER", auth_user.name},
         {"LINUXIO_STATUS", status_buf},
     };
-    journal_error_fieldsf(fields, 3, "bridge exec failed");
+    journal_error_fieldsf(fields, 2, "bridge exec failed");
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec failed");
     // Child already exited, but wait to reap
     (void)waitpid(child, NULL, 0);
@@ -1649,14 +1645,13 @@ static int handle_client(int input_fd, int output_fd)
     (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
     (void)safe_snprintf(gid_buf, sizeof(gid_buf), "%u", (unsigned)auth_user.gid);
     const struct journal_field fields[] = {
-        {"LINUXIO_SESSION_ID", session_id},
         {"LINUXIO_USER", auth_user.name},
         {"LINUXIO_UID", uid_buf},
         {"LINUXIO_GID", gid_buf},
         {"LINUXIO_MODE", mode_name},
         {"LINUXIO_PRIVILEGED", mode == PROTO_MODE_PRIVILEGED ? "true" : "false"},
     };
-    journal_info_fieldsf(fields, 6, "bridge spawned");
+    journal_info_fieldsf(fields, 5, "bridge spawned");
   }
 
   int status = 0;
@@ -1675,11 +1670,10 @@ static int handle_client(int input_fd, int output_fd)
     char exit_buf[32];
     (void)safe_snprintf(exit_buf, sizeof(exit_buf), "%d", exitcode);
     const struct journal_field fields[] = {
-        {"LINUXIO_SESSION_ID", session_id},
         {"LINUXIO_USER", auth_user.name},
         {"LINUXIO_STATUS", exit_buf},
     };
-    journal_error_fieldsf(fields, 3, "bridge exited with status %d", exitcode);
+    journal_error_fieldsf(fields, 2, "bridge exited with status %d", exitcode);
   }
 
   pam_close_session(pamh, 0);

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 const DefaultSocketPath = "/run/systemd/journal/socket"
@@ -102,7 +104,7 @@ func appendField(buf *bytes.Buffer, name, value string) {
 }
 
 func (s *nativeSender) sendLargePayload(payload []byte) error {
-	file, err := createTempPayloadFile()
+	file, err := createPayloadMemfd()
 	if err != nil {
 		return err
 	}
@@ -111,27 +113,24 @@ func (s *nativeSender) sendLargePayload(payload []byte) error {
 	if _, writeErr := file.Write(payload); writeErr != nil {
 		return writeErr
 	}
+
+	// Seal the memfd so journald can rely on the contents being immutable.
+	if _, sealErr := unix.FcntlInt(file.Fd(), unix.F_ADD_SEALS,
+		unix.F_SEAL_SHRINK|unix.F_SEAL_GROW|unix.F_SEAL_WRITE); sealErr != nil {
+		return sealErr
+	}
+
 	rights := syscall.UnixRights(int(file.Fd()))
 	_, _, err = s.conn.WriteMsgUnix(nil, rights, s.addr)
 	return err
 }
 
-func createTempPayloadFile() (*os.File, error) {
-	for _, dir := range []string{"/dev/shm", ""} {
-		file, err := os.CreateTemp(dir, "linuxio-journal-*")
-		if err != nil {
-			if dir == "" {
-				return nil, err
-			}
-			continue
-		}
-		if removeErr := os.Remove(file.Name()); removeErr != nil {
-			file.Close()
-			return nil, removeErr
-		}
-		return file, nil
+func createPayloadMemfd() (*os.File, error) {
+	fd, err := unix.MemfdCreate("linuxio-journal", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("failed to create journald payload file")
+	return os.NewFile(uintptr(fd), "linuxio-journal"), nil
 }
 
 func isSocketSpaceError(err error) bool {

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 var standardPassthroughFields = map[string]struct{}{
@@ -27,7 +29,7 @@ var standardPassthroughFields = map[string]struct{}{
 var normalizedFieldComponentCache sync.Map
 
 var suppressedLinuxIOFields = map[string]struct{}{
-	"LINUXIO_SESSION_ID": {},
+	ipc.JournalFieldSessionID: {},
 }
 
 // Options configures the native journald slog handler.

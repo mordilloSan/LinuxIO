@@ -93,4 +93,10 @@
 #define PROTO_MAX_SESSION_ID         64
 #define PROTO_MAX_ERROR              256
 
+/* ==========================================================================
+ * Shared journald field names
+ * ========================================================================== */
+
+#define LINUXIO_JOURNAL_FIELD_SESSION_ID "LINUXIO_SESSION_ID"
+
 #endif /* LINUXIO_PROTOCOL_H */
