@@ -4,7 +4,11 @@ import { toast } from "sonner";
 
 import { linuxio, useStreamMux, openJobAttachStream, type Stream } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import {
+  AppDialogContent,
+  AppDialogTitle,
+  type AppDialogCloseEvent,
+} from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
@@ -55,14 +59,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     abortControllerRef.current = null;
   }, []);
 
-  const cancelJob = useCallback(() => {
-    const jobId = jobIdRef.current;
-    if (!jobId) return;
-    void linuxio.jobs.cancel.call(jobId).catch((cancelError) => {
-      console.debug("Failed to cancel compose job", cancelError);
-    });
-  }, []);
-
   const resetState = useCallback(() => {
     closeJobStream();
     setOutput([]);
@@ -104,7 +100,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           ...jobArgs,
         );
         if (cancelled) {
-          void linuxio.jobs.cancel.call(job.id).catch(() => undefined);
           return;
         }
         jobIdRef.current = job.id;
@@ -179,11 +174,21 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     }
   };
 
-  const handleClose = () => {
+  const handleClose = (
+    _event?: AppDialogCloseEvent,
+    reason?: "backdropClick" | "escapeKeyDown",
+  ) => {
+    if (
+      isRunning &&
+      (reason === "backdropClick" || reason === "escapeKeyDown")
+    ) {
+      return;
+    }
+
     if (isRunning) {
       closedByUserRef.current = true;
-      cancelJob();
       closeJobStream();
+      toast.info("Compose operation is still running in the background");
     }
     onClose();
   };
@@ -241,7 +246,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             {getActionLabel()} Stack: {projectName}
           </AppTypography>
         </div>
-        <AppIconButton onClick={handleClose} size="small">
+        <AppIconButton onClick={() => handleClose()} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
         </AppIconButton>
       </AppDialogTitle>
