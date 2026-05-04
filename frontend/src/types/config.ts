@@ -53,6 +53,16 @@ export interface BackendSettings {
   docker: {
     folder: string;
   };
+  jobs?: JobSettings;
+}
+
+export interface JobSettings {
+  progressMinIntervalMs: number;
+  notificationMinIntervalMs: number;
+  progressMinBytesMB: number;
+  heavyArchiveConcurrency: number;
+  archiveCompressionWorkers: number;
+  archiveExtractWorkers: number;
 }
 
 // Flattened config for frontend use
@@ -82,6 +92,7 @@ export interface AppConfig {
   };
   viewModes?: AppViewModes;
   chunkSizeMB?: number;
+  jobs?: JobSettings;
 }
 
 export interface ConfigContextType {

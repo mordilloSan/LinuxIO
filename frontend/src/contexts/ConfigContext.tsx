@@ -51,6 +51,7 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   viewModes: normalizeViewModes(settings.appSettings.viewModes),
   chunkSizeMB: settings.appSettings.chunkSizeMB,
   dockerFolder: settings.docker.folder,
+  jobs: settings.jobs,
 });
 
 // Transform frontend config to backend settings format (partial update)
@@ -102,6 +103,9 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
   if (config.dockerFolder !== undefined) {
     payload.docker = { folder: config.dockerFolder };
   }
+  if (config.jobs !== undefined) {
+    payload.jobs = config.jobs;
+  }
 
   return payload;
 };
@@ -120,6 +124,7 @@ const defaultConfig: AppConfig = {
   hardwareSections: undefined,
   viewModes: undefined,
   chunkSizeMB: undefined,
+  jobs: undefined,
 };
 
 const applyDefaults = (
@@ -138,6 +143,7 @@ const applyDefaults = (
   hardwareSections: cfg?.hardwareSections ?? defaultConfig.hardwareSections,
   viewModes: cfg?.viewModes ?? defaultConfig.viewModes,
   chunkSizeMB: cfg?.chunkSizeMB ?? defaultConfig.chunkSizeMB,
+  jobs: cfg?.jobs ?? defaultConfig.jobs,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 

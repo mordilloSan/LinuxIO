@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"sync"
 	"time"
@@ -36,10 +37,31 @@ func NewError(message string, code int) *Error {
 	return &Error{Message: message, Code: code}
 }
 
+type Owner struct {
+	SessionID string `json:"session_id,omitempty"`
+	Username  string `json:"username,omitempty"`
+	UID       uint32 `json:"uid,omitempty"`
+}
+
+func (o Owner) Empty() bool {
+	return o.SessionID == "" && o.Username == "" && o.UID == 0
+}
+
+func (o Owner) Matches(other Owner) bool {
+	if o.Empty() || other.Empty() {
+		return false
+	}
+	if o.Username != "" && other.Username != "" {
+		return o.Username == other.Username
+	}
+	return o.UID != 0 && o.UID == other.UID
+}
+
 type Snapshot struct {
 	ID         string     `json:"id"`
 	Type       string     `json:"type"`
 	Args       []string   `json:"args,omitempty"`
+	Owner      Owner      `json:"owner"`
 	State      State      `json:"state"`
 	Progress   any        `json:"progress,omitempty"`
 	Result     any        `json:"result,omitempty"`
@@ -53,6 +75,7 @@ type Snapshot struct {
 type EventType string
 
 const (
+	EventSnapshot EventType = "job.snapshot"
 	EventStarted  EventType = "job.started"
 	EventProgress EventType = "job.progress"
 	EventResult   EventType = "job.result"
@@ -69,7 +92,7 @@ type Event struct {
 }
 
 type Runner func(ctx context.Context, job *Job, args []string) (any, error)
-type Recoverer func(registry *Registry) (*Job, error)
+type Recoverer func(registry *Registry, owner Owner) (*Job, error)
 type DataAttacher func(ctx context.Context, job *Job, stream net.Conn, args []string) error
 
 type Registry struct {
@@ -78,7 +101,10 @@ type Registry struct {
 	recoverers    map[string]Recoverer
 	dataAttachers map[string]DataAttacher
 	jobs          map[string]*Job
+	subscribers   map[chan Event]struct{}
 	nextID        uint64
+	cleanupStop   chan struct{}
+	cleanupOnce   sync.Once
 }
 
 type Job struct {
@@ -88,6 +114,7 @@ type Job struct {
 	id          string
 	typ         string
 	args        []string
+	owner       Owner
 	state       State
 	progress    any
 	result      any
@@ -102,13 +129,22 @@ type Job struct {
 
 var DefaultRegistry = NewRegistry()
 
+const (
+	DefaultTerminalJobTTL         = 30 * time.Minute
+	DefaultTerminalJobSweepPeriod = time.Minute
+)
+
 func NewRegistry() *Registry {
-	return &Registry{
+	r := &Registry{
 		runners:       make(map[string]Runner),
 		recoverers:    make(map[string]Recoverer),
 		dataAttachers: make(map[string]DataAttacher),
 		jobs:          make(map[string]*Job),
+		subscribers:   make(map[chan Event]struct{}),
+		cleanupStop:   make(chan struct{}),
 	}
+	r.startCleanupLoop(DefaultTerminalJobTTL, DefaultTerminalJobSweepPeriod)
+	return r
 }
 
 func RegisterRunner(jobType string, runner Runner) {
@@ -127,32 +163,64 @@ func Start(jobType string, args []string) (*Job, error) {
 	return DefaultRegistry.Start(jobType, args)
 }
 
+func StartForOwner(jobType string, args []string, owner Owner) (*Job, error) {
+	return DefaultRegistry.StartForOwner(jobType, args, owner)
+}
+
 func StartWithRunner(jobType string, args []string, runner Runner) (*Job, error) {
 	return DefaultRegistry.StartWithRunner(jobType, args, runner)
+}
+
+func StartWithRunnerForOwner(jobType string, args []string, owner Owner, runner Runner) (*Job, error) {
+	return DefaultRegistry.StartWithRunnerForOwner(jobType, args, owner, runner)
 }
 
 func Get(id string) (*Job, bool) {
 	return DefaultRegistry.Get(id)
 }
 
+func GetForOwner(id string, owner Owner) (*Job, bool) {
+	return DefaultRegistry.GetForOwner(id, owner)
+}
+
 func List() []Snapshot {
 	return DefaultRegistry.List()
+}
+
+func ListForOwner(owner Owner) []Snapshot {
+	return DefaultRegistry.ListForOwner(owner)
 }
 
 func ListActive() []Snapshot {
 	return DefaultRegistry.ListActive()
 }
 
+func ListActiveForOwner(owner Owner) []Snapshot {
+	return DefaultRegistry.ListActiveForOwner(owner)
+}
+
 func FindActiveByType(jobType string) (*Job, bool) {
 	return DefaultRegistry.FindActiveByType(jobType)
 }
 
+func FindActiveByTypeForOwner(jobType string, owner Owner) (*Job, bool) {
+	return DefaultRegistry.FindActiveByTypeForOwner(jobType, owner)
+}
+
 func Recover(jobType string) (*Job, error) {
-	return DefaultRegistry.Recover(jobType)
+	return DefaultRegistry.RecoverForOwner(jobType, Owner{})
+}
+
+func RecoverForOwner(jobType string, owner Owner) (*Job, error) {
+	return DefaultRegistry.RecoverForOwner(jobType, owner)
 }
 
 func AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
 	return DefaultRegistry.AttachData(ctx, job, stream, args)
+}
+
+func Subscribe(buffer int) (<-chan Event, func()) {
+	return DefaultRegistry.Subscribe(buffer)
 }
 
 func (r *Registry) RegisterRunner(jobType string, runner Runner) {
@@ -209,6 +277,10 @@ func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, ar
 }
 
 func (r *Registry) Start(jobType string, args []string) (*Job, error) {
+	return r.StartForOwner(jobType, args, Owner{})
+}
+
+func (r *Registry) StartForOwner(jobType string, args []string, owner Owner) (*Job, error) {
 	r.mu.Lock()
 	runner, ok := r.runners[jobType]
 	if !ok {
@@ -216,11 +288,15 @@ func (r *Registry) Start(jobType string, args []string) (*Job, error) {
 		return nil, fmt.Errorf("job runner not found: %s", jobType)
 	}
 	r.mu.Unlock()
-	return r.StartWithRunner(jobType, args, runner)
+	return r.StartWithRunnerForOwner(jobType, args, owner, runner)
 }
 
 func (r *Registry) Recover(jobType string) (*Job, error) {
-	if job, ok := r.FindActiveByType(jobType); ok {
+	return r.RecoverForOwner(jobType, Owner{})
+}
+
+func (r *Registry) RecoverForOwner(jobType string, owner Owner) (*Job, error) {
+	if job, ok := r.FindActiveByTypeForOwner(jobType, owner); ok {
 		return job, nil
 	}
 
@@ -230,10 +306,14 @@ func (r *Registry) Recover(jobType string) (*Job, error) {
 	if !ok {
 		return nil, fmt.Errorf("job recoverer not found: %s", jobType)
 	}
-	return recoverer(r)
+	return recoverer(r, owner)
 }
 
 func (r *Registry) StartWithRunner(jobType string, args []string, runner Runner) (*Job, error) {
+	return r.StartWithRunnerForOwner(jobType, args, Owner{}, runner)
+}
+
+func (r *Registry) StartWithRunnerForOwner(jobType string, args []string, owner Owner, runner Runner) (*Job, error) {
 	if jobType == "" {
 		return nil, fmt.Errorf("job type cannot be empty")
 	}
@@ -251,6 +331,7 @@ func (r *Registry) StartWithRunner(jobType string, args []string, runner Runner)
 		id:          id,
 		typ:         jobType,
 		args:        append([]string(nil), args...),
+		owner:       owner,
 		state:       StateQueued,
 		createdAt:   now,
 		updatedAt:   now,
@@ -271,6 +352,17 @@ func (r *Registry) Get(id string) (*Job, bool) {
 	return job, ok
 }
 
+func (r *Registry) GetForOwner(id string, owner Owner) (*Job, bool) {
+	job, ok := r.Get(id)
+	if !ok {
+		return nil, false
+	}
+	if !job.Owner().Matches(owner) {
+		return nil, false
+	}
+	return job, true
+}
+
 func (r *Registry) List() []Snapshot {
 	r.mu.RLock()
 	jobs := make([]*Job, 0, len(r.jobs))
@@ -286,6 +378,17 @@ func (r *Registry) List() []Snapshot {
 	return snapshots
 }
 
+func (r *Registry) ListForOwner(owner Owner) []Snapshot {
+	all := r.List()
+	filtered := all[:0]
+	for _, snapshot := range all {
+		if snapshot.Owner.Matches(owner) {
+			filtered = append(filtered, snapshot)
+		}
+	}
+	return filtered
+}
+
 func (r *Registry) ListActive() []Snapshot {
 	all := r.List()
 	active := all[:0]
@@ -297,7 +400,22 @@ func (r *Registry) ListActive() []Snapshot {
 	return active
 }
 
+func (r *Registry) ListActiveForOwner(owner Owner) []Snapshot {
+	all := r.ListForOwner(owner)
+	active := all[:0]
+	for _, snapshot := range all {
+		if snapshot.State == StateQueued || snapshot.State == StateRunning {
+			active = append(active, snapshot)
+		}
+	}
+	return active
+}
+
 func (r *Registry) FindActiveByType(jobType string) (*Job, bool) {
+	return r.FindActiveByTypeForOwner(jobType, Owner{})
+}
+
+func (r *Registry) FindActiveByTypeForOwner(jobType string, owner Owner) (*Job, bool) {
 	r.mu.RLock()
 	jobs := make([]*Job, 0, len(r.jobs))
 	for _, job := range r.jobs {
@@ -307,11 +425,33 @@ func (r *Registry) FindActiveByType(jobType string) (*Job, bool) {
 
 	for _, job := range jobs {
 		snapshot := job.Snapshot()
-		if snapshot.Type == jobType && (snapshot.State == StateQueued || snapshot.State == StateRunning) {
+		if snapshot.Type == jobType &&
+			(owner.Empty() || snapshot.Owner.Matches(owner)) &&
+			(snapshot.State == StateQueued || snapshot.State == StateRunning) {
 			return job, true
 		}
 	}
 	return nil, false
+}
+
+func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
+	if buffer <= 0 {
+		buffer = 32
+	}
+	ch := make(chan Event, buffer)
+	r.mu.Lock()
+	r.subscribers[ch] = struct{}{}
+	r.mu.Unlock()
+
+	unsubscribe := func() {
+		r.mu.Lock()
+		if _, ok := r.subscribers[ch]; ok {
+			delete(r.subscribers, ch)
+			close(ch)
+		}
+		r.mu.Unlock()
+	}
+	return ch, unsubscribe
 }
 
 func (j *Job) ID() string {
@@ -322,6 +462,12 @@ func (j *Job) Type() string {
 	return j.typ
 }
 
+func (j *Job) Owner() Owner {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.owner
+}
+
 func (j *Job) Snapshot() Snapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
@@ -329,6 +475,7 @@ func (j *Job) Snapshot() Snapshot {
 		ID:         j.id,
 		Type:       j.typ,
 		Args:       append([]string(nil), j.args...),
+		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,
 		Result:     j.result,
@@ -478,6 +625,27 @@ func (j *Job) broadcast(event Event) {
 			slog.Debug("dropping job event for slow subscriber", "job_id", j.id, "job_type", j.typ)
 		}
 	}
+
+	if j.registry != nil {
+		j.registry.broadcast(event)
+	}
+}
+
+func (r *Registry) broadcast(event Event) {
+	r.mu.RLock()
+	subscribers := make([]chan Event, 0, len(r.subscribers))
+	for ch := range r.subscribers {
+		subscribers = append(subscribers, ch)
+	}
+	r.mu.RUnlock()
+
+	for _, ch := range subscribers {
+		select {
+		case ch <- event:
+		default:
+			slog.Debug("dropping registry job event for slow subscriber", "job_id", event.Job.ID, "job_type", event.Job.Type)
+		}
+	}
 }
 
 func (j *Job) closeSubscribers() {
@@ -499,6 +667,7 @@ func (j *Job) snapshotLocked() Snapshot {
 		ID:         j.id,
 		Type:       j.typ,
 		Args:       append([]string(nil), j.args...),
+		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,
 		Result:     j.result,
@@ -508,6 +677,66 @@ func (j *Job) snapshotLocked() Snapshot {
 		UpdatedAt:  j.updatedAt,
 		FinishedAt: cloneTimePtr(j.finishedAt),
 	}
+}
+
+func (r *Registry) SweepTerminalOlderThan(cutoff time.Time) int {
+	r.mu.RLock()
+	jobs := make(map[string]*Job, len(r.jobs))
+	maps.Copy(jobs, r.jobs)
+	r.mu.RUnlock()
+
+	removeIDs := make([]string, 0)
+	for id, job := range jobs {
+		snapshot := job.Snapshot()
+		if snapshot.FinishedAt == nil {
+			continue
+		}
+		if snapshot.State != StateCompleted && snapshot.State != StateFailed && snapshot.State != StateCanceled {
+			continue
+		}
+		if snapshot.FinishedAt.Before(cutoff) {
+			removeIDs = append(removeIDs, id)
+		}
+	}
+
+	if len(removeIDs) == 0 {
+		return 0
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	removed := 0
+	for _, id := range removeIDs {
+		if _, ok := r.jobs[id]; ok {
+			delete(r.jobs, id)
+			removed++
+		}
+	}
+	return removed
+}
+
+func (r *Registry) startCleanupLoop(ttl, interval time.Duration) {
+	if ttl <= 0 || interval <= 0 {
+		return
+	}
+	r.cleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					cutoff := time.Now().UTC().Add(-ttl)
+					removed := r.SweepTerminalOlderThan(cutoff)
+					if removed > 0 {
+						slog.Debug("swept terminal jobs", "count", removed, "ttl", ttl)
+					}
+				case <-r.cleanupStop:
+					return
+				}
+			}
+		}()
+	})
 }
 
 func cloneTimePtr(t *time.Time) *time.Time {

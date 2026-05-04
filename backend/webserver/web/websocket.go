@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	yamux "github.com/libp2p/go-yamux/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
@@ -154,6 +155,20 @@ func isExpectedWSClose(err error) bool {
 	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "use of closed network connection") ||
 		strings.Contains(errStr, "i/o timeout")
+}
+
+func isExpectedStreamReadClose(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, yamux.ErrStreamReset) || errors.Is(err, yamux.ErrStreamClosed) {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "use of closed network connection") ||
+		strings.Contains(errStr, "i/o timeout") ||
+		strings.Contains(errStr, "stream reset") ||
+		strings.Contains(errStr, "stream closed")
 }
 
 // wsAuthMiddleware validates the session for WebSocket connections.
@@ -438,7 +453,7 @@ func (r *streamRelay) relayFromBridge(rs *relayStream) {
 		if err != nil {
 			// Send FIN to WebSocket
 			r.sendFrame(rs.id, FlagFIN, nil)
-			if err != io.EOF {
+			if !isExpectedStreamReadClose(err) {
 				slog.Debug("stream read error", "stream_id", rs.id, "error", err)
 			}
 			r.closeStream(rs.id)

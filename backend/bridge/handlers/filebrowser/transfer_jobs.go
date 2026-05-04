@@ -217,6 +217,12 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, args []string) (any
 	if err != nil {
 		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", format), 400)
 	}
+	settings := jobSettingsForJob(job)
+	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
+	if err != nil {
+		return nil, context.Canceled
+	}
+	defer release()
 
 	transfer := &archiveTransferJob{
 		job:         job,
@@ -248,7 +254,7 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, args []string) (any
 	transfer.mu.Unlock()
 
 	callbacks := newArchiveJobCallbacks(ctx, transfer)
-	err = createArchive(format, tempPath, callbacks, paths)
+	err = createArchive(format, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
 	if err != nil {
 		transfer.setReadyError(err)
 		if errors.Is(err, context.Canceled) || errors.Is(err, ipc.ErrAborted) {
@@ -346,18 +352,16 @@ func archiveNameForPaths(paths []string, extension string) string {
 }
 
 func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob) *ipc.OperationCallbacks {
-	var processed int64
-	var last int64
+	limiter := newProgressLimiter(jobSettingsForJob(transfer.job), transfer.total)
 	return &ipc.OperationCallbacks{
 		Cancel: func() bool {
 			return ctx.Err() != nil
 		},
 		Progress: func(n int64) {
-			processed += n
-			if transfer.total > 0 && processed-last < progressReportIntervalBytes && processed < transfer.total {
+			processed, _, ok := limiter.Add(n)
+			if !ok {
 				return
 			}
-			last = processed
 			transfer.mu.Lock()
 			transfer.bytes = processed
 			transfer.mu.Unlock()

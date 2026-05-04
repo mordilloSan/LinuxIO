@@ -26,7 +26,6 @@ func RegisterHandlers() {
 		{command: "indexer_status", handler: emitFilebrowserArgsResult(indexerStatus)},
 		{command: "subfolders", handler: emitFilebrowserArgsResult(subfolders)},
 		{command: "search", handler: emitFilebrowserArgsResult(searchFiles)},
-		{command: "chmod", handler: emitFilebrowserLoggedArgsResult("chmod requested", resourceChmod)},
 		{command: "users_groups", handler: handleUsersGroups},
 	})
 }

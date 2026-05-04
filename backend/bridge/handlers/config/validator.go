@@ -72,6 +72,15 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 		cfg.Docker.Folder = defaults.Docker.Folder
 		changed = true
 	}
+	if cfg.Jobs.ProgressMinIntervalMs < 0 ||
+		cfg.Jobs.NotificationMinIntervalMs < 0 ||
+		cfg.Jobs.ProgressMinBytesMB < 0 ||
+		cfg.Jobs.HeavyArchiveConcurrency < 0 ||
+		cfg.Jobs.ArchiveCompressionWorkers < 0 ||
+		cfg.Jobs.ArchiveExtractWorkers < 0 {
+		cfg.Jobs = defaults.Jobs
+		changed = true
+	}
 	return changed
 }
 
@@ -154,6 +163,24 @@ func ValidateConfig(cfg *Settings) []string {
 	folder := strings.TrimSpace(string(cfg.Docker.Folder))
 	if folder == "" {
 		errs = append(errs, "docker.folder cannot be empty")
+	}
+	if cfg.Jobs.ProgressMinIntervalMs < 0 {
+		errs = append(errs, "jobs.progressMinIntervalMs must be >= 0")
+	}
+	if cfg.Jobs.NotificationMinIntervalMs < 0 {
+		errs = append(errs, "jobs.notificationMinIntervalMs must be >= 0")
+	}
+	if cfg.Jobs.ProgressMinBytesMB < 0 {
+		errs = append(errs, "jobs.progressMinBytesMB must be >= 0")
+	}
+	if cfg.Jobs.HeavyArchiveConcurrency < 0 {
+		errs = append(errs, "jobs.heavyArchiveConcurrency must be >= 0")
+	}
+	if cfg.Jobs.ArchiveCompressionWorkers < 0 {
+		errs = append(errs, "jobs.archiveCompressionWorkers must be >= 0")
+	}
+	if cfg.Jobs.ArchiveExtractWorkers < 0 {
+		errs = append(errs, "jobs.archiveExtractWorkers must be >= 0")
 	}
 
 	return errs

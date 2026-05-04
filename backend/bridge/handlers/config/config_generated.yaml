@@ -5,3 +5,10 @@ appSettings:
   showHiddenFiles: false
 docker:
   folder: /var/lib/linuxio/docker
+jobs:
+  progressMinIntervalMs: 250
+  notificationMinIntervalMs: 1000
+  progressMinBytesMB: 16
+  heavyArchiveConcurrency: 1
+  archiveCompressionWorkers: 0
+  archiveExtractWorkers: 0

@@ -751,6 +751,11 @@ export interface JobSnapshot {
   id: string;
   type: string;
   args?: string[];
+  owner?: {
+    session_id?: string;
+    username?: string;
+    uid?: number;
+  };
   state: JobState;
   progress?: unknown;
   result?: unknown;
@@ -759,6 +764,20 @@ export interface JobSnapshot {
   started_at?: string;
   updated_at: string;
   finished_at?: string;
+}
+
+export interface JobEvent {
+  type:
+    | "job.snapshot"
+    | "job.started"
+    | "job.progress"
+    | "job.result"
+    | "job.error"
+    | "job.canceled";
+  job: JobSnapshot;
+  progress?: unknown;
+  result?: unknown;
+  error?: JobError;
 }
 
 // ============================================================================

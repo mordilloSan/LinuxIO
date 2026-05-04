@@ -234,3 +234,7 @@ export function openJobDataStream(
     encodeString(["jobs-data", jobId, String(offset)].join("\0")),
   );
 }
+
+export function openJobEventsStream(): Stream | null {
+  return openMuxStream("jobs-events", encodeString("jobs-events"));
+}

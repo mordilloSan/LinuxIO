@@ -68,6 +68,19 @@ type User struct {
 	GID      uint32 `json:"gid"`
 }
 
+type contextKey struct{}
+
+// WithContext returns a context carrying the authenticated LinuxIO session.
+func WithContext(ctx context.Context, sess *Session) context.Context {
+	return context.WithValue(ctx, contextKey{}, sess)
+}
+
+// FromContext returns the authenticated LinuxIO session from ctx when present.
+func FromContext(ctx context.Context) (*Session, bool) {
+	sess, ok := ctx.Value(contextKey{}).(*Session)
+	return sess, ok
+}
+
 type Timing struct {
 	CreatedAt     time.Time `json:"created_at"`
 	LastAccess    time.Time `json:"last_access"`

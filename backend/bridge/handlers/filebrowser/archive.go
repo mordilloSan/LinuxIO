@@ -27,12 +27,12 @@ func computeArchiveSize(paths []string) int64 {
 	return totalSize
 }
 
-func createArchive(format, targetPath string, opts *ipc.OperationCallbacks, paths []string) error {
+func createArchive(format, targetPath string, opts *ipc.OperationCallbacks, compressionWorkers int, paths []string) error {
 	switch format {
 	case "zip":
 		return services.CreateZip(targetPath, opts, targetPath, paths...)
 	case "tar.gz":
-		return services.CreateTarGz(targetPath, opts, targetPath, paths...)
+		return services.CreateTarGz(targetPath, opts, targetPath, compressionWorkers, paths...)
 	default:
 		return ipc.ErrUnsupportedFormat
 	}

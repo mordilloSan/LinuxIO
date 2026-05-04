@@ -15,11 +15,13 @@ import {
   isConnected,
   openJobAttachStream,
   openJobDataStream,
+  openJobEventsStream,
   useStreamMux,
   STREAM_MULTIPLEXER_CONFIG,
   type Stream,
   type ProgressFrame,
   type JobSnapshot,
+  type JobEvent,
 } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useStreamResult } from "@/hooks/useStreamResult";
@@ -32,6 +34,7 @@ const JOB_TYPE_FILE_INDEXER = "file.indexer";
 const JOB_TYPE_FILE_UPLOAD = "file.upload";
 const JOB_TYPE_FILE_DOWNLOAD = "file.download";
 const JOB_TYPE_FILE_ARCHIVE = "file.archive";
+const JOB_TYPE_FILE_CHMOD = "file.chmod";
 const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
 const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
 const JOB_TYPE_PACKAGE_UPDATE = "package.update";
@@ -169,6 +172,14 @@ type Transfer =
   | Move
   | BackgroundJob;
 
+function jobIdentityKey(type: string, args: readonly string[] = []) {
+  return JSON.stringify([type, ...args]);
+}
+
+function isTerminalJobState(state: JobSnapshot["state"]) {
+  return state === "completed" || state === "failed" || state === "canceled";
+}
+
 function createProgressSpeedCalculator(minWindowMs = 500, alpha = 0.3) {
   let lastBytes = 0;
   let lastTime = Date.now();
@@ -294,6 +305,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const activeBackgroundJobIdsRef = useRef<Set<string>>(new Set());
   const activeFileTransferJobIdsRef = useRef<Set<string>>(new Set());
   const recoveringJobIdsRef = useRef<Set<string>>(new Set());
+  const pendingLocalJobKeysRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<
@@ -1691,6 +1703,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_COPY, [
+        source,
+        destination,
+      ]);
+      pendingLocalJobKeysRef.current.add(pendingKey);
+
       let job: JobSnapshot;
       try {
         job = await linuxio.jobs.start.call(
@@ -1702,6 +1720,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         toast.error(
           error instanceof Error ? error.message : "Failed to start copy",
         );
+        pendingLocalJobKeysRef.current.delete(pendingKey);
         return;
       }
 
@@ -1726,8 +1745,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         abortController,
       };
 
-      setCopies((prev) => [...prev, copy]);
       activeCopyIdsRef.current.add(id);
+      pendingLocalJobKeysRef.current.delete(pendingKey);
+      setCopies((prev) =>
+        prev.some((item) => item.id === id) ? prev : [...prev, copy],
+      );
 
       const getSpeed = createProgressSpeedCalculator();
 
@@ -1824,6 +1846,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_MOVE, [
+        source,
+        destination,
+      ]);
+      pendingLocalJobKeysRef.current.add(pendingKey);
+
       let job: JobSnapshot;
       try {
         job = await linuxio.jobs.start.call(
@@ -1835,6 +1863,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         toast.error(
           error instanceof Error ? error.message : "Failed to start move",
         );
+        pendingLocalJobKeysRef.current.delete(pendingKey);
         return;
       }
 
@@ -1859,8 +1888,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         abortController,
       };
 
-      setMoves((prev) => [...prev, move]);
       activeMoveIdsRef.current.add(id);
+      pendingLocalJobKeysRef.current.delete(pendingKey);
+      setMoves((prev) =>
+        prev.some((item) => item.id === id) ? prev : [...prev, move],
+      );
 
       const getSpeed = createProgressSpeedCalculator();
 
@@ -1960,6 +1992,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       if (recoveringJobIdsRef.current.has(job.id)) {
         return;
       }
+      if (isTerminalJobState(job.state)) {
+        return;
+      }
+      if (
+        pendingLocalJobKeysRef.current.has(jobIdentityKey(job.type, job.args))
+      ) {
+        return;
+      }
 
       const progress = job.progress as ProgressFrame | undefined;
       const initialPct = Math.min(99, progress?.pct ?? 0);
@@ -2011,6 +2051,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             return data?.phase === "waiting_for_client"
               ? "Archive download waiting"
               : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          case JOB_TYPE_FILE_CHMOD:
+            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           case JOB_TYPE_DOCKER_COMPOSE:
             return data?.message ?? `Docker compose ${args[0] ?? "operation"}`;
           case JOB_TYPE_DOCKER_INDEXER:
@@ -2338,7 +2380,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         case JOB_TYPE_STORAGE_SMART_TEST:
         case JOB_TYPE_FILE_UPLOAD:
         case JOB_TYPE_FILE_DOWNLOAD:
-        case JOB_TYPE_FILE_ARCHIVE: {
+        case JOB_TYPE_FILE_ARCHIVE:
+        case JOB_TYPE_FILE_CHMOD: {
           if (activeFileTransferJobIdsRef.current.has(job.id)) {
             return;
           }
@@ -2411,6 +2454,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     let cancelled = false;
+    let cleanupEvents: (() => void) | undefined;
+    let eventStream: Stream | null = null;
     let externalIndexerRecoveryAttempted = false;
 
     const recoverExternalIndexerJob = async () => {
@@ -2430,29 +2475,29 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     };
 
-    const syncActiveJobs = async () => {
-      try {
-        const jobs = await linuxio.jobs.list.call("active");
-        if (cancelled) {
-          return;
-        }
-        for (const job of jobs) {
-          attachRecoveredJob(job);
-        }
-      } catch (error) {
-        console.debug("Failed to recover active jobs", error);
-      }
-    };
+    eventStream = openJobEventsStream();
+    if (eventStream) {
+      cleanupEvents = bindStreamHandlers<JobEvent>(eventStream, {
+        onProgress: (event) => {
+          if (!event?.job || cancelled) return;
+          attachRecoveredJob(event.job);
+        },
+        onClose: () => {
+          if (!cancelled) {
+            console.debug("Job events stream closed");
+          }
+        },
+      });
+    } else {
+      console.debug("Failed to open job events stream");
+    }
 
-    void syncActiveJobs();
     void recoverExternalIndexerJob();
-    const intervalId = window.setInterval(() => {
-      void syncActiveJobs();
-    }, 5000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      cleanupEvents?.();
+      eventStream?.close();
     };
   }, [attachRecoveredJob, streamMuxStatus]);
 

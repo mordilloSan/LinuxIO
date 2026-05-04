@@ -13,11 +13,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// contextKey is a custom type for context keys to avoid collisions
-type contextKey string
-
-const sessionContextKey contextKey = "session"
-
 // HandleBridgeStream is the universal entry point for all bridge streams.
 //
 // Protocol: "bridge\0handlerType\0command\0arg1\0arg2..."
@@ -61,8 +56,8 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 		return err
 	}
 
-	// Create context with session for handlers that need runtime session access
-	ctx := context.WithValue(context.Background(), sessionContextKey, sess)
+	// Create context with session for handlers that need runtime session access.
+	ctx := session.WithContext(context.Background(), sess)
 
 	// Check if bidirectional
 	if bidirHandler, ok := h.(ipc.BidirectionalHandler); ok {
