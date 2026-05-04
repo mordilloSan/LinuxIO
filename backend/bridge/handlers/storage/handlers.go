@@ -153,7 +153,7 @@ func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
 	}
 	persist := len(args) > 4 && (args[4] == "true" || args[4] == "1")
 	options := args[3]
-	slog.Info("mounting NFS share",
+	slog.Debug("mount_nfs request",
 		"server", args[0],
 		"path", args[1],
 		"mountpoint", args[2],
@@ -168,7 +168,6 @@ func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
 			"error", err)
 		return err
 	}
-	slog.Info("NFS share mounted", "server", args[0], "path", args[1], "mountpoint", args[2])
 	return emit.Result(result)
 }
 
@@ -178,13 +177,12 @@ func handleUnmountNFS(ctx context.Context, args []string, emit ipc.Events) error
 		return ipc.ErrInvalidArgs
 	}
 	removeFstab := len(args) > 1 && (args[1] == "true" || args[1] == "1")
-	slog.Info("unmounting NFS share", "mountpoint", args[0], "remove_fstab", removeFstab)
+	slog.Debug("unmount_nfs request", "mountpoint", args[0], "remove_fstab", removeFstab)
 	result, err := UnmountNFS(ctx, args[0], removeFstab)
 	if err != nil {
 		slog.Error("failed to unmount NFS share", "mountpoint", args[0], "error", err)
 		return err
 	}
-	slog.Info("NFS share unmounted", "mountpoint", args[0])
 	return emit.Result(result)
 }
 
@@ -194,13 +192,12 @@ func handleRemountNFS(ctx context.Context, args []string, emit ipc.Events) error
 		return ipc.ErrInvalidArgs
 	}
 	updateFstab := len(args) > 2 && (args[2] == "true" || args[2] == "1")
-	slog.Info("remounting NFS share", "mountpoint", args[0], "options", args[1], "update_fstab", updateFstab)
+	slog.Debug("remount_nfs request", "mountpoint", args[0], "options", args[1], "update_fstab", updateFstab)
 	result, err := RemountNFS(ctx, args[0], args[1], updateFstab)
 	if err != nil {
 		slog.Error("failed to remount NFS share", "mountpoint", args[0], "error", err)
 		return err
 	}
-	slog.Info("NFS share remounted", "mountpoint", args[0])
 	return emit.Result(result)
 }
 
