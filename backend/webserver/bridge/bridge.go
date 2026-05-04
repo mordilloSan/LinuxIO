@@ -1,15 +1,16 @@
 package bridge
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -45,18 +46,97 @@ func validateBridgeHash(bridgePath string) error {
 	actualHash := hex.EncodeToString(h.Sum(nil))
 
 	if actualHash != expectedHash {
-		logger.ErrorKV("bridge binary hash mismatch - possible tampering",
+		slog.Error("bridge binary hash mismatch - possible tampering",
 			"expected", expectedHash,
 			"actual", actualHash,
 			"path", bridgePath)
 		return fmt.Errorf("bridge integrity check failed: hash mismatch")
 	}
-
-	logger.DebugKV("bridge hash validated", "hash", actualHash[:16]+"...")
+	slog.Debug("bridge hash validated", "hash", actualHash[:16]+"...")
 	return nil
 }
 
 const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
+
+func bridgeOpenPayload(handlerType, command string, args ...string) []byte {
+	payload := []byte("bridge\x00" + handlerType + "\x00" + command)
+	for _, arg := range args {
+		payload = append(payload, 0)
+		payload = append(payload, arg...)
+	}
+	return payload
+}
+
+func writeCapabilitiesRequest(stream io.Writer) error {
+	return ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+		Opcode:  ipc.OpStreamOpen,
+		Payload: bridgeOpenPayload("system", "get_capabilities"),
+	})
+}
+
+func decodeCapabilitiesResult(frame *ipc.StreamFrame) (session.Capabilities, error) {
+	var (
+		caps   session.Capabilities
+		result ipc.ResultFrame
+	)
+
+	if err := json.Unmarshal(frame.Payload, &result); err != nil {
+		return caps, fmt.Errorf("decode capabilities result frame: %w", err)
+	}
+	if result.Status != "ok" {
+		if result.Error == "" {
+			return caps, fmt.Errorf("capabilities request failed with status %q", result.Status)
+		}
+		return caps, fmt.Errorf("capabilities request failed: %s", result.Error)
+	}
+	if len(result.Data) == 0 {
+		return caps, fmt.Errorf("capabilities request returned empty data")
+	}
+	if err := json.Unmarshal(result.Data, &caps); err != nil {
+		return caps, fmt.Errorf("decode capabilities payload: %w", err)
+	}
+
+	return caps, nil
+}
+
+func readCapabilitiesResponse(stream io.Reader) (session.Capabilities, error) {
+	for {
+		frame, err := ipc.ReadRelayFrame(stream)
+		if err != nil {
+			return session.Capabilities{}, fmt.Errorf("read capabilities response: %w", err)
+		}
+
+		switch frame.Opcode {
+		case ipc.OpStreamProgress:
+			continue
+		case ipc.OpStreamResult:
+			return decodeCapabilitiesResult(frame)
+		case ipc.OpStreamClose:
+			return session.Capabilities{}, fmt.Errorf("capabilities stream closed before result")
+		default:
+			return session.Capabilities{}, fmt.Errorf("unexpected capabilities opcode: 0x%02x", frame.Opcode)
+		}
+	}
+}
+
+func fetchSessionCapabilities(sessionID string) (session.Capabilities, error) {
+	yamuxSession, err := GetYamuxSession(sessionID)
+	if err != nil {
+		return session.Capabilities{}, fmt.Errorf("get yamux session: %w", err)
+	}
+
+	stream, err := yamuxSession.Open(context.Background())
+	if err != nil {
+		return session.Capabilities{}, fmt.Errorf("open capabilities stream: %w", err)
+	}
+	defer stream.Close()
+
+	if err := writeCapabilitiesRequest(stream); err != nil {
+		return session.Capabilities{}, fmt.Errorf("write capabilities request: %w", err)
+	}
+
+	return readCapabilitiesResponse(stream)
+}
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.
@@ -65,7 +145,7 @@ func StartBridge(sm *session.Manager, sessionID, username, password string, verb
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
-	logger.Debugf("Auth daemon available, using socket-based auth")
+	slog.Debug("Auth daemon available, using socket-based auth")
 	req := BuildRequest(username, sessionID, password, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
@@ -78,19 +158,34 @@ func StartBridge(sm *session.Manager, sessionID, username, password string, verb
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	if err := attachBridgeSession(sess, result.Conn); err != nil {
+	if attachErr := attachBridgeSession(sess, result.Conn); attachErr != nil {
 		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
-			logger.WarnKV("failed to cleanup session after bridge setup failure",
+			slog.Warn("failed to cleanup session after bridge setup failure",
 				"session_id", sess.SessionID,
 				"error", delErr)
 		}
-		return nil, err
+		return nil, attachErr
 	}
 
-	logger.InfoKV("bridge launch via daemon acknowledged",
+	caps, err := fetchSessionCapabilities(sess.SessionID)
+	if err != nil {
+		slog.Warn("failed to fetch session capabilities, using defaults",
+			"session_id", sess.SessionID,
+			"error", err)
+	}
+	sess.Capabilities = caps
+	if err := sm.SetCapabilities(sess.SessionID, caps); err != nil {
+		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
+			slog.Warn("failed to cleanup session after capability persistence failure",
+				"session_id", sess.SessionID,
+				"error", delErr)
+		}
+		return nil, fmt.Errorf("failed to persist session capabilities: %w", err)
+	}
+
+	slog.Debug("bridge launch via daemon acknowledged",
 		"user", sess.User.Username,
-		"privileged", result.Privileged,
-		"session_id", sess.SessionID)
+		"privileged", result.Privileged)
 
 	return sess, nil
 }
@@ -121,12 +216,12 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 		yamuxSessions.Lock()
 		delete(yamuxSessions.sessions, sess.SessionID)
 		yamuxSessions.Unlock()
-		logger.DebugKV("yamux session closed and removed", "session_id", sess.SessionID)
+		slog.Debug("yamux session closed and removed", "session_id", sess.SessionID)
 
 		// Terminate the session when bridge dies
 		// This triggers session deletion which closes the WebSocket
 		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
-			logger.WarnKV("failed to terminate session after bridge closure",
+			slog.Warn("failed to terminate session after bridge closure",
 				"session_id", sess.SessionID,
 				"error", err)
 		}
@@ -176,6 +271,6 @@ func CloseYamuxSession(sessionID string) {
 
 	if exists {
 		session.Close()
-		logger.DebugKV("yamux session closed", "session_id", sessionID)
+		slog.Debug("yamux session closed", "session_id", sessionID)
 	}
 }

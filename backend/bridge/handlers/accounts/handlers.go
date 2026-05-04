@@ -3,8 +3,7 @@ package accounts
 import (
 	"context"
 	"encoding/json"
-
-	"github.com/mordilloSan/go-logger/logger"
+	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -47,7 +46,7 @@ func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error
 	if err != nil {
 		return err
 	}
-	logger.Infof("create_user requested: username=%s", req.Username)
+	slog.Info("create user requested", "user", req.Username)
 	if err := CreateUser(req); err != nil {
 		return err
 	}
@@ -58,7 +57,7 @@ func handleDeleteUser(ctx context.Context, args []string, emit ipc.Events) error
 	if err := requireAccountArgs(args, 1); err != nil {
 		return err
 	}
-	logger.Infof("delete_user requested: username=%s", args[0])
+	slog.Info("delete user requested", "user", args[0])
 	if err := DeleteUser(args[0]); err != nil {
 		return err
 	}
@@ -70,7 +69,7 @@ func handleModifyUser(ctx context.Context, args []string, emit ipc.Events) error
 	if err != nil {
 		return err
 	}
-	logger.Infof("modify_user requested: username=%s", req.Username)
+	slog.Info("modify user requested", "user", req.Username)
 	if err := ModifyUser(req); err != nil {
 		return err
 	}
@@ -81,7 +80,7 @@ func handleChangePassword(ctx context.Context, args []string, emit ipc.Events) e
 	if err := requireAccountArgs(args, 2); err != nil {
 		return err
 	}
-	logger.Infof("change_password requested: username=%s", args[0])
+	slog.Info("change password requested", "user", args[0])
 	if err := ChangePassword(args[0], args[1]); err != nil {
 		return err
 	}
@@ -92,7 +91,7 @@ func handleLockUser(ctx context.Context, args []string, emit ipc.Events) error {
 	if err := requireAccountArgs(args, 1); err != nil {
 		return err
 	}
-	logger.Infof("lock_user requested: username=%s", args[0])
+	slog.Info("lock user requested", "user", args[0])
 	if err := LockUser(args[0]); err != nil {
 		return err
 	}
@@ -103,7 +102,7 @@ func handleUnlockUser(ctx context.Context, args []string, emit ipc.Events) error
 	if err := requireAccountArgs(args, 1); err != nil {
 		return err
 	}
-	logger.Infof("unlock_user requested: username=%s", args[0])
+	slog.Info("unlock user requested", "user", args[0])
 	if err := UnlockUser(args[0]); err != nil {
 		return err
 	}
@@ -119,7 +118,7 @@ func handleCreateGroup(ctx context.Context, args []string, emit ipc.Events) erro
 	if err != nil {
 		return err
 	}
-	logger.Infof("create_group requested: group=%s", req.Name)
+	slog.Info("create group requested", "group", req.Name)
 	if err := CreateGroup(req); err != nil {
 		return err
 	}
@@ -130,7 +129,7 @@ func handleDeleteGroup(ctx context.Context, args []string, emit ipc.Events) erro
 	if err := requireAccountArgs(args, 1); err != nil {
 		return err
 	}
-	logger.Infof("delete_group requested: group=%s", args[0])
+	slog.Info("delete group requested", "group", args[0])
 	if err := DeleteGroup(args[0]); err != nil {
 		return err
 	}
@@ -142,7 +141,7 @@ func handleModifyGroupMembers(ctx context.Context, args []string, emit ipc.Event
 	if err != nil {
 		return err
 	}
-	logger.Infof("modify_group_members requested: group=%s", req.GroupName)
+	slog.Info("modify group members requested", "group", req.GroupName)
 	if err := ModifyGroupMembers(req); err != nil {
 		return err
 	}

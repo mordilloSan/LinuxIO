@@ -3,12 +3,13 @@ package system
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 
-	"github.com/mordilloSan/go-logger/logger"
-
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -17,19 +18,22 @@ type capabilitiesResponse struct {
 	IndexerAvailable       bool   `json:"indexer_available"`
 	LMSensorsAvailable     bool   `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool   `json:"smartmontools_available"`
+	PackageKitAvailable    bool   `json:"packagekit_available"`
+	NFSAvailable           bool   `json:"nfs_available"`
 	DockerError            string `json:"docker_error,omitempty"`
 	IndexerError           string `json:"indexer_error,omitempty"`
 	LMSensorsError         string `json:"lm_sensors_error,omitempty"`
 	SmartmontoolsError     string `json:"smartmontools_error,omitempty"`
+	PackageKitError        string `json:"packagekit_error,omitempty"`
+	NFSError               string `json:"nfs_error,omitempty"`
 }
 
 func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	if path, err := exec.LookPath(command); err != nil {
-		logger.Infof("%s dependency unavailable", dependencyName)
+		slog.Info(dependencyName + " unavailable")
 		return false, fmt.Errorf("%s not found (missing %s dependency)", command, dependencyName)
 	} else {
-		logger.Infof("%s dependency available", dependencyName)
-		logger.Debugf("%s found at %s", dependencyName, path)
+		slog.Info(dependencyName+" available", "path", path)
 	}
 	return true, nil
 }
@@ -64,6 +68,23 @@ func registerCapabilitiesHandlers() {
 			out.SmartmontoolsError = err.Error()
 		} else {
 			out.SmartmontoolsAvailable = ok
+		}
+
+		if ok, err := pkgkit.Available(); err != nil {
+			out.PackageKitAvailable = false
+			out.PackageKitError = err.Error()
+		} else {
+			out.PackageKitAvailable = ok
+			if !ok {
+				out.PackageKitError = pkgkit.ErrUnavailable.Error()
+			}
+		}
+
+		if ok, err := storage.CheckNFSAvailability(); err != nil {
+			out.NFSAvailable = false
+			out.NFSError = err.Error()
+		} else {
+			out.NFSAvailable = ok
 		}
 
 		return emit.Result(out)

@@ -9,14 +9,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/semver"
@@ -46,9 +45,9 @@ func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer) {
 	for sc.Scan() {
 		line := ansiRE.ReplaceAllString(sc.Text(), "")
 		if isInfo {
-			logger.Infof("%s%s", prefix, line)
+			slog.Info(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		} else {
-			logger.Errorf("%s%s", prefix, line)
+			slog.Error(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		}
 		if relay != nil {
 			// Best-effort relay; don't fail the update on write errors
@@ -75,7 +74,7 @@ func getVersionInfo() (VersionInfo, error) {
 
 	latestVersion, err := fetchLatestVersion()
 	if err != nil {
-		logger.Debugf("[version] failed to fetch latest version: %v", err)
+		slog.Debug("failed to fetch latest version", "component", "control", "subsystem", "version", "error", err)
 		info.Error = fmt.Sprintf("could not check for updates: %v", err)
 	} else {
 		info.LatestVersion = latestVersion
@@ -139,37 +138,35 @@ func runInstallScript(ver string, relay io.Writer) error {
 
 	// Build URLs for the specific release version
 	scriptURL, checksumURL := buildScriptURLs(ver)
-
 	// 1) Download checksum file
-	logger.Debugf("downloading checksum from %s", checksumURL)
+	slog.Debug("downloading checksum", "component", "control", "subsystem", "app_update", "path", checksumURL)
 	expectedChecksum, err := downloadChecksum(ctx, client, checksumURL)
 	if err != nil {
 		return fmt.Errorf("download checksum failed: %w", err)
 	}
-	logger.Infof("expected checksum: %s", expectedChecksum)
+	slog.Info("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
 
 	// 2) Download install script
-	logger.Debugf("downloading install script from %s", scriptURL)
+	slog.Debug("downloading install script", "component", "control", "subsystem", "app_update", "path", scriptURL)
 	scriptBytes, err := downloadScript(ctx, client, scriptURL)
 	if err != nil {
 		return fmt.Errorf("download script failed: %w", err)
 	}
-	logger.Debugf("downloaded %d bytes", len(scriptBytes))
+	slog.Debug("downloaded install script", "component", "control", "subsystem", "app_update", "bytes", len(scriptBytes))
 
 	// 3) Verify checksum
 	actualChecksum := computeSHA256(scriptBytes)
-	logger.Debugf("computed checksum: %s", actualChecksum)
+	slog.Debug("computed install script checksum", "component", "control", "subsystem", "app_update", "checksum", actualChecksum)
 
 	if actualChecksum != expectedChecksum {
-		logger.Errorf("SECURITY: checksum mismatch! expected=%s actual=%s", expectedChecksum, actualChecksum)
+		slog.Error("install script checksum mismatch", "component", "control", "subsystem", "app_update", "expected_checksum", expectedChecksum, "actual_checksum", actualChecksum)
 		return fmt.Errorf("checksum verification failed: script integrity compromised")
 	}
-	logger.Infof("checksum verified successfully")
+	slog.Info("checksum verified successfully")
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
-
-	logger.Infof("systemd-run unit: %s", unit)
+	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit)
 
 	var scriptArgs []string
 	scriptArgs = append(scriptArgs, "--defer-restart")
@@ -221,11 +218,11 @@ func getInstalledVersion() string {
 	cmd := exec.Command(version.BinDir+"/linuxio-webserver", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Debugf("failed to get version from binary: %v", err)
+		slog.Debug("failed to get version from binary", "component", "control", "subsystem", "version", "error", err)
 		return "unknown"
 	}
 	ver := parseVersionOutput(string(output))
-	logger.Debugf("detected installed version: %s", ver)
+	slog.Debug("detected installed version", "component", "control", "subsystem", "version", "version", ver)
 	return ver
 }
 
@@ -365,15 +362,15 @@ func readErrorBody(r io.Reader) string {
 }
 
 func restartService() error {
-	logger.Infof("restarting linuxio service")
+	slog.Info("restarting linuxio service")
 	var lastErr error
 	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
 		if err := systemdapi.RestartUnit(unit); err == nil {
-			logger.Infof("service restarted successfully via %s", unit)
+			slog.Info("service restarted successfully", "component", "control", "subsystem", "app_update", "unit", unit)
 			return nil
 		} else {
 			lastErr = err
-			logger.Debugf("restart via %s failed: %v", unit, err)
+			slog.Debug("service restart attempt failed", "component", "control", "subsystem", "app_update", "unit", unit, "error", err)
 		}
 	}
 	return fmt.Errorf("restart failed: %w", lastErr)

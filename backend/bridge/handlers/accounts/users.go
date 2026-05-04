@@ -3,13 +3,12 @@ package accounts
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const (
@@ -167,12 +166,13 @@ func CreateUser(req CreateUserRequest) error {
 	if err := setPassword(req.Username, req.Password); err != nil {
 		// Try to clean up the user if password setting fails
 		if cleanupErr := DeleteUser(req.Username); cleanupErr != nil {
-			logger.Warnf("failed to clean up user %s after password setup failure: %v", req.Username, cleanupErr)
+			slog.Warn("failed to clean up user after password setup failure",
+				"user", req.Username,
+				"error", cleanupErr)
 		}
 		return fmt.Errorf("failed to set password: %w", err)
 	}
-
-	logger.Infof("Created user: %s", req.Username)
+	slog.Info("user created", "user", req.Username)
 	return nil
 }
 
@@ -197,8 +197,7 @@ func DeleteUser(username string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete user: %s", strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Deleted user: %s", username)
+	slog.Info("user deleted", "user", username)
 	return nil
 }
 
@@ -247,8 +246,7 @@ func ModifyUser(req ModifyUserRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to modify user: %s", strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Modified user: %s", req.Username)
+	slog.Info("user modified", "user", req.Username)
 	return nil
 }
 
@@ -291,8 +289,7 @@ func LockUser(username string) error {
 	if err != nil {
 		return fmt.Errorf("failed to lock user: %s", strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Locked user: %s", username)
+	slog.Info("user locked", "user", username)
 	return nil
 }
 
@@ -313,8 +310,7 @@ func UnlockUser(username string) error {
 	if err != nil {
 		return fmt.Errorf("failed to unlock user: %s", strings.TrimSpace(string(output)))
 	}
-
-	logger.Infof("Unlocked user: %s", username)
+	slog.Info("user unlocked", "user", username)
 	return nil
 }
 

@@ -3,11 +3,12 @@ package updates
 import (
 	"context"
 	"fmt"
-	"slices"
+	"log/slog"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
 )
 
 type pkgkitBackend struct{}
@@ -15,25 +16,8 @@ type pkgkitBackend struct{}
 func newPkgKitBackend() Backend     { return &pkgkitBackend{} }
 func (*pkgkitBackend) Name() string { return "packagekit" }
 func (*pkgkitBackend) Detect() bool {
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return false
-	}
-	defer conn.Close()
-	var names []string
-	if err := conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names); err != nil {
-		return false
-	}
-	var activatable []string
-	if err := conn.BusObject().Call("org.freedesktop.DBus.ListActivatableNames", 0).Store(&activatable); err != nil {
-		return containsDBusName(names, "org.freedesktop.PackageKit")
-	}
-	return containsDBusName(names, "org.freedesktop.PackageKit") ||
-		containsDBusName(activatable, "org.freedesktop.PackageKit")
-}
-
-func containsDBusName(names []string, target string) bool {
-	return slices.Contains(names, target)
+	ok, err := pkgkit.Available()
+	return err == nil && ok
 }
 
 // Read returns a minimal state since PackageKit doesn't manage auto-update configuration
@@ -62,10 +46,10 @@ func (*pkgkitBackend) Apply(_ context.Context, _ AutoUpdateOptions) error {
 // This is the main purpose of the PackageKit backend
 func (*pkgkitBackend) ApplyOfflineNow() error {
 	const (
-		pkBusName      = "org.freedesktop.PackageKit"
-		pkObjPath      = "/org/freedesktop/PackageKit"
-		transactionIfc = "org.freedesktop.PackageKit.Transaction"
-		offlineIfc     = "org.freedesktop.PackageKit.Offline"
+		pkBusName      = pkgkit.BusName
+		pkObjPath      = pkgkit.ObjectPath
+		transactionIfc = pkgkit.TransactionInterface
+		offlineIfc     = pkgkit.OfflineInterface
 	)
 
 	conn, err := godbus.ConnectSystemBus()
@@ -73,6 +57,10 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
 	defer conn.Close()
+
+	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+		return err
+	}
 
 	pkObj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
 
@@ -97,7 +85,7 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 	// Step 3: Download updates (UpdatePackages with ONLY_DOWNLOAD flag = 2)
 	if err := pkTransactionCallWithUpdates(conn, pkBusName, pkObjPath, transactionIfc); err != nil {
 		// Non-fatal - updates may already be downloaded or none available
-		logger.Debugf("PackageKit download step returned non-fatal error: %v", err)
+		slog.Debug("PackageKit download step returned non-fatal error", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 
 	// Step 4: Trigger offline update
@@ -113,7 +101,10 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 	obj := conn.Object(busName, godbus.ObjectPath(objPath))
 
 	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+		return err
+	}
+	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
 		return fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 
@@ -124,12 +115,12 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 	matchPath := transPath
 	defer func() {
 		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath)); err != nil {
-			logger.Debugf("failed to remove PackageKit signal match: %v", err)
+			slog.Debug("failed to remove PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 		}
 	}()
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to add PackageKit signal match: %v", err)
+		slog.Debug("failed to add PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 
 	if err := trans.Call(transIfc+"."+method, 0, args...).Err; err != nil {
@@ -177,7 +168,10 @@ func collectPackageKitUpdates(
 	busName, transIfc string,
 ) ([]string, error) {
 	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+		return nil, err
+	}
+	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
 		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 
@@ -217,7 +211,10 @@ func downloadPackageKitUpdates(
 	packageIDs []string,
 ) error {
 	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+		return err
+	}
+	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
 		return err
 	}
 
@@ -252,14 +249,14 @@ func subscribePkgKitSignals(conn *godbus.Conn, transPath godbus.ObjectPath, buff
 	sigCh := make(chan *godbus.Signal, buffer)
 	conn.Signal(sigCh)
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to add PackageKit signal match: %v", err)
+		slog.Debug("failed to add PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 	return sigCh
 }
 
 func removePkgKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
 	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to remove PackageKit signal match: %v", err)
+		slog.Debug("failed to remove PackageKit signal match", "component", "dbus", "subsystem", "updates", "error", err)
 	}
 }
 

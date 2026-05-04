@@ -159,9 +159,10 @@ const ImageList: React.FC<ImageListProps> = ({
   viewMode = "table",
 }) => {
   const theme = useAppTheme();
-  const { data: images = [] } = linuxio.docker.list_images.useQuery({
+  const { data: rawImages } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
+  const images = rawImages ?? [];
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

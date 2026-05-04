@@ -44,21 +44,25 @@ const StateChip: React.FC<{
 const DockerDashboard: React.FC = () => {
   const theme = useAppTheme();
   const [, setSearchParams] = useSearchParams();
-  const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
+  const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
-  const { data: images = [] } = linuxio.docker.list_images.useQuery({
+  const { data: rawImages } = linuxio.docker.list_images.useQuery({
     refetchInterval: 30000,
   });
-  const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
+  const { data: rawNetworks } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 30000,
   });
-  const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
+  const { data: rawVolumes } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 30000,
   });
   const { data: dockerInfo } = linuxio.docker.get_docker_info.useQuery({
     refetchInterval: 60000,
   });
+  const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
+  const images = useMemo(() => rawImages ?? [], [rawImages]);
+  const networks = rawNetworks ?? [];
+  const volumes = rawVolumes ?? [];
   const navigateToTab = (tab: string) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);

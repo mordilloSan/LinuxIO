@@ -2,14 +2,21 @@ import { Icon } from "@iconify/react";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
-import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
+import { linuxio, useStreamMux, openJobAttachStream, type Stream } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import {
+  AppDialogContent,
+  AppDialogTitle,
+  type AppDialogCloseEvent,
+} from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
-import { useLiveStream } from "@/hooks/useLiveStream";
+import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
+
+const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
+
 interface ComposeOperationDialogProps {
   open: boolean;
   onClose: () => void;
@@ -17,10 +24,12 @@ interface ComposeOperationDialogProps {
   projectName: string;
   composePath?: string;
 }
+
 interface ComposeMessage {
   type: "stdout" | "stderr" | "error" | "complete";
   message: string;
 }
+
 const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   open,
   onClose,
@@ -34,89 +43,122 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
-  const { streamRef, openStream, closeStream } = useLiveStream();
+  const streamRef = useRef<Stream | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const jobIdRef = useRef<string | null>(null);
+  const closedByUserRef = useRef(false);
   const { isOpen: muxIsOpen } = useStreamMux();
+  const { run: runStreamResult } = useStreamResult();
 
-  // Scroll to bottom when output changes
+  const closeJobStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
+    }
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+  }, []);
+
+  const resetState = useCallback(() => {
+    closeJobStream();
+    setOutput([]);
+    setIsRunning(true);
+    setError(null);
+    setSuccess(false);
+    jobIdRef.current = null;
+    closedByUserRef.current = false;
+  }, [closeJobStream]);
+
   useEffect(() => {
     if (open && outputBoxRef.current) {
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }
   }, [output, open]);
 
-  // Reset state helper - called from transition callbacks, not effects
-  const resetState = useCallback(() => {
-    closeStream();
-    setOutput([]);
-    setIsRunning(true);
-    setError(null);
-    setSuccess(false);
-  }, [closeStream]);
-
-  // Cleanup stream when dialog closes (only close stream, not state)
   useEffect(() => {
     if (!open) {
-      closeStream();
+      closeJobStream();
     }
-  }, [open, closeStream]);
+  }, [open, closeJobStream]);
 
-  // Open stream when dialog opens
   useEffect(() => {
-    if (!open || !muxIsOpen) {
-      return;
-    }
+    if (!open || !muxIsOpen) return;
+    if (streamRef.current || jobIdRef.current) return;
 
-    // Don't create duplicate streams
-    if (streamRef.current) {
-      return;
-    }
-    openStream({
-      open: () => openDockerComposeStream(action, projectName, composePath),
-      onOpenError: () => {
-        queueMicrotask(() => {
-          setError("Failed to start compose operation");
-          setIsRunning(false);
-          toast.error("Failed to start compose operation");
-        });
-      },
-      onData: (data: Uint8Array) => {
-        const text = decodeString(data);
-        try {
-          const msg: ComposeMessage = JSON.parse(text);
-          switch (msg.type) {
-            case "stdout":
-            case "stderr":
-              setOutput((prev) => [...prev, msg.message]);
-              break;
-            case "error":
-              setError(msg.message);
-              setIsRunning(false);
-              toast.error(`Failed to ${action} stack: ${msg.message}`);
-              break;
-            case "complete":
-              setSuccess(true);
-              setIsRunning(false);
-              setOutput((prev) => [...prev, "✓ " + msg.message]);
-              break;
-          }
-        } catch {
-          // If not JSON, just append as-is
-          setOutput((prev) => [...prev, text]);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    closedByUserRef.current = false;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const jobArgs = composePath
+          ? [action, projectName, composePath]
+          : [action, projectName];
+        const job = await linuxio.jobs.start.call(
+          JOB_TYPE_DOCKER_COMPOSE,
+          ...jobArgs,
+        );
+        if (cancelled) {
+          return;
         }
-      },
-      onClose: () => {
-        setIsRunning(false);
-      },
-    });
-  }, [
-    open,
-    action,
-    projectName,
-    composePath,
-    muxIsOpen,
-    openStream,
-    streamRef,
-  ]);
+        jobIdRef.current = job.id;
+
+        await runStreamResult<ComposeMessage, ComposeMessage>({
+          open: () => openJobAttachStream(job.id),
+          signal: abortController.signal,
+          closeOnAbort: "none",
+          openErrorMessage: "Failed to attach compose operation",
+          closeMessage: "Compose operation stream closed unexpectedly",
+          onOpen: (stream) => {
+            streamRef.current = stream;
+          },
+          onProgress: (msg) => {
+            switch (msg.type) {
+              case "stdout":
+              case "stderr":
+                setOutput((prev) => [...prev, msg.message]);
+                break;
+              case "error":
+                setError(msg.message);
+                setIsRunning(false);
+                toast.error(`Failed to ${action} stack: ${msg.message}`);
+                break;
+              case "complete":
+                setSuccess(true);
+                setIsRunning(false);
+                setOutput((prev) => [...prev, "✓ " + msg.message]);
+                break;
+            }
+          },
+          onSuccess: (msg) => {
+            if (msg?.type === "complete") {
+              setSuccess(true);
+            }
+          },
+        });
+      } catch (streamError) {
+        if (closedByUserRef.current) return;
+        const message =
+          streamError instanceof Error
+            ? streamError.message
+            : "Failed to start compose operation";
+        setError(message);
+        toast.error(`Failed to ${action} stack: ${message}`);
+      } finally {
+        if (!closedByUserRef.current) {
+          setIsRunning(false);
+        }
+        streamRef.current = null;
+        abortControllerRef.current = null;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, action, projectName, composePath, muxIsOpen, runStreamResult]);
+
   const getActionLabel = () => {
     switch (action) {
       case "up":
@@ -131,13 +173,26 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         return "Processing";
     }
   };
-  const handleClose = () => {
+
+  const handleClose = (
+    _event?: AppDialogCloseEvent,
+    reason?: "backdropClick" | "escapeKeyDown",
+  ) => {
+    if (
+      isRunning &&
+      (reason === "backdropClick" || reason === "escapeKeyDown")
+    ) {
+      return;
+    }
+
     if (isRunning) {
-      // Close stream if still running
-      closeStream();
+      closedByUserRef.current = true;
+      closeJobStream();
+      toast.info("Compose operation is still running in the background");
     }
     onClose();
   };
+
   return (
     <GeneralDialog
       open={open}
@@ -170,13 +225,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             gap: theme.spacing(1),
           }}
         >
-          {isRunning && (
-            <AppLinearProgress
-              style={{
-                width: 100,
-              }}
-            />
-          )}
+          {isRunning && <AppLinearProgress style={{ width: 100 }} />}
           {success && (
             <Icon
               icon="mdi:check-circle"
@@ -197,16 +246,12 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             {getActionLabel()} Stack: {projectName}
           </AppTypography>
         </div>
-        <AppIconButton onClick={handleClose} size="small">
+        <AppIconButton onClick={() => handleClose()} size="small">
           <Icon icon="mdi:close" width={20} height={20} />
         </AppIconButton>
       </AppDialogTitle>
 
-      <AppDialogContent
-        style={{
-          padding: 0,
-        }}
-      >
+      <AppDialogContent style={{ padding: 0 }}>
         <div
           ref={outputBoxRef}
           style={{
@@ -231,12 +276,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             <div key={index}>{line}</div>
           ))}
           {error && (
-            <AppTypography
-              color="error"
-              style={{
-                marginTop: 8,
-              }}
-            >
+            <AppTypography color="error" style={{ marginTop: 8 }}>
               Error: {error}
             </AppTypography>
           )}
@@ -245,4 +285,5 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     </GeneralDialog>
   );
 };
+
 export default ComposeOperationDialog;

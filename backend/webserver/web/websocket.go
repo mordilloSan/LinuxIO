@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/mordilloSan/go-logger/logger"
+	yamux "github.com/libp2p/go-yamux/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
@@ -71,7 +72,7 @@ func addWebSocketForSession(sessionID string, conn *websocket.Conn) {
 	connsInterface, _ := wsConnsBySession.LoadOrStore(sessionID, &sync.Map{})
 	connsMap, ok := connsInterface.(*sync.Map)
 	if !ok {
-		logger.Errorf("Invalid type in wsConnsBySession for session: %s", sessionID)
+		slog.Error("invalid WebSocket connection map type", "session_id", sessionID)
 		return
 	}
 	connsMap.Store(conn, struct{}{})
@@ -82,7 +83,7 @@ func removeWebSocketForSession(sessionID string, conn *websocket.Conn) {
 	if connsInterface, ok := wsConnsBySession.Load(sessionID); ok {
 		connsMap, ok := connsInterface.(*sync.Map)
 		if !ok {
-			logger.Errorf("Invalid type in wsConnsBySession for session: %s", sessionID)
+			slog.Error("invalid WebSocket connection map type", "session_id", sessionID)
 			return
 		}
 		connsMap.Delete(conn)
@@ -105,7 +106,7 @@ func CloseWebSocketForSession(sessionID string) {
 	if connsInterface, ok := wsConnsBySession.Load(sessionID); ok {
 		connsMap, ok := connsInterface.(*sync.Map)
 		if !ok {
-			logger.Errorf("Invalid type in wsConnsBySession for session: %s", sessionID)
+			slog.Error("invalid WebSocket connection map type", "session_id", sessionID)
 			return
 		}
 		count := 0
@@ -113,7 +114,7 @@ func CloseWebSocketForSession(sessionID string) {
 		connsMap.Range(func(key, value any) bool {
 			conn, ok := key.(*websocket.Conn)
 			if !ok {
-				logger.Errorf("Invalid WebSocket type in connection map for session: %s", sessionID)
+				slog.Error("invalid WebSocket entry type", "session_id", sessionID)
 				return true // Continue to next connection
 			}
 
@@ -121,19 +122,25 @@ func CloseWebSocketForSession(sessionID string) {
 			// This allows the frontend to distinguish session expiry from network errors
 			closeMsg := websocket.FormatCloseMessage(1008, "Session expired")
 			if err := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); err != nil {
-				logger.Debugf("failed to write close control frame for session %s: %v", sessionID, err)
+				slog.Debug("failed to write WebSocket close control frame",
+					"session_id", sessionID,
+					"error", err)
 			}
 
 			// Close the underlying connection
 			if err := conn.Close(); err != nil {
-				logger.Debugf("failed to close websocket for session %s: %v", sessionID, err)
+				slog.Debug("failed to close WebSocket",
+					"session_id", sessionID,
+					"error", err)
 			}
 			count++
 			return true // Continue iteration
 		})
 
 		wsConnsBySession.Delete(sessionID)
-		logger.Debugf("Closed %d WebSocket(s) for expired session: %s", count, sessionID)
+		slog.Debug("closed WebSockets for expired session",
+			"session_id", sessionID,
+			"count", count)
 	}
 }
 
@@ -150,6 +157,20 @@ func isExpectedWSClose(err error) bool {
 		strings.Contains(errStr, "i/o timeout")
 }
 
+func isExpectedStreamReadClose(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, yamux.ErrStreamReset) || errors.Is(err, yamux.ErrStreamClosed) {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "use of closed network connection") ||
+		strings.Contains(errStr, "i/o timeout") ||
+		strings.Contains(errStr, "stream reset") ||
+		strings.Contains(errStr, "stream closed")
+}
+
 // wsAuthMiddleware validates the session for WebSocket connections.
 // Unlike RequireSession, it upgrades the WebSocket before rejecting invalid
 // sessions, so auth failures are communicated as close code 1008 ("no-session")
@@ -160,12 +181,12 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 		if err != nil {
 			conn, upgradeErr := upgrader.Upgrade(w, r, nil)
 			if upgradeErr != nil {
-				logger.Debugf("failed to upgrade unauthenticated WebSocket: %v", upgradeErr)
+				slog.Debug("failed to upgrade unauthenticated WebSocket", "error", upgradeErr)
 				return
 			}
 			closeMsg := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "no-session")
 			if writeErr := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); writeErr != nil {
-				logger.Debugf("failed to send no-session close: %v", writeErr)
+				slog.Debug("failed to send no-session close", "error", writeErr)
 			}
 			// Wait briefly for the client to receive the close frame before
 			// tearing down the TCP connection.  Without this, conn.Close()
@@ -186,7 +207,9 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 
 func refreshSessionActivity(sm *session.Manager, sessionID string) {
 	if err := sm.Refresh(sessionID); err != nil {
-		logger.Debugf("failed to refresh websocket session '%s': %v", sessionID, err)
+		slog.Debug("failed to refresh WebSocket session",
+			"session_id", sessionID,
+			"error", err)
 	}
 }
 
@@ -196,14 +219,15 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := session.SessionFromContext(r.Context())
 		if sess == nil {
-			// Should not happen — wsAuthMiddleware guarantees session in context.
-			logger.Errorf("WebSocketRelayHandler: missing session in context")
+			slog.
+				// Should not happen — wsAuthMiddleware guarantees session in context.
+				Error("WebSocketRelayHandler: missing session in context")
 			return
 		}
 
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			logger.Errorf("upgrade failed: %v", err)
+			slog.Error("WebSocket upgrade failed", "error", err)
 			return
 		}
 
@@ -220,25 +244,30 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 			removeWebSocketForSession(sess.SessionID, conn)
 			relay.closeAll()
 		}()
-
-		logger.Infof("Connected: user=%s", sess.User.Username)
+		slog.Info("WebSocket connected", "user", sess.User.Username, "session_id", sess.SessionID)
 
 		// Count websocket liveness toward session activity so transport and
 		// idle-session lifecycles stay aligned under the configured throttle.
 		conn.SetPongHandler(func(string) error {
-			logger.Debugf("pong received, resetting deadline to %v", pongWait)
+			slog.Debug("WebSocket pong received", "session_id", sess.SessionID, "deadline", pongWait)
 			if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-				logger.Debugf("failed to set read deadline in pong handler: %v", err)
+				slog.Debug("failed to set WebSocket read deadline in pong handler",
+					"session_id", sess.SessionID,
+					"error", err)
 				return err
 			}
 			refreshSessionActivity(sm, sess.SessionID)
 			return nil
 		})
-
-		// Set initial read deadline
-		logger.Debugf("setting initial read deadline: %v (pingInterval=%v, pongWait=%v)", pongWait, pingInterval, pongWait)
+		// Set initial read deadline.
+		slog.Debug("setting initial WebSocket read deadline",
+			"session_id", sess.SessionID,
+			"deadline", pongWait,
+			"ping_interval", pingInterval)
 		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Warnf("failed to set initial read deadline: %v", err)
+			slog.Warn("failed to set initial WebSocket read deadline",
+				"session_id", sess.SessionID,
+				"error", err)
 			return
 		}
 
@@ -246,7 +275,7 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 		go relay.pingLoop()
 
 		relay.readLoop(sm, sess)
-		logger.Infof("Disconnected: user=%s", sess.User.Username)
+		slog.Info("WebSocket disconnected", "user", sess.User.Username, "session_id", sess.SessionID)
 	})
 }
 
@@ -255,24 +284,24 @@ func (r *streamRelay) readLoop(sm *session.Manager, sess *session.Session) {
 		messageType, data, err := r.ws.ReadMessage()
 		if err != nil {
 			if !isExpectedWSClose(err) {
-				logger.Warnf("read error: %v", err)
+				slog.Warn("WebSocket read error", "error", err)
 			}
 			return
 		}
 
 		if err := r.ws.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Debugf("failed to reset read deadline: %v", err)
+			slog.Debug("failed to reset WebSocket read deadline", "error", err)
 			return
 		}
 		refreshSessionActivity(sm, sess.SessionID)
 
 		if messageType != websocket.BinaryMessage {
-			logger.Debugf("ignoring non-binary message type=%d", messageType)
+			slog.Debug("ignoring non-binary WebSocket message", "type", messageType)
 			continue
 		}
 
 		if len(data) < 5 {
-			logger.Warnf("frame too short: %d bytes", len(data))
+			slog.Warn("WebSocket frame too short", "size", len(data))
 			continue
 		}
 
@@ -298,7 +327,7 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	r.mu.Lock()
 	if _, exists := r.streams[streamID]; exists {
 		r.mu.Unlock()
-		logger.Warnf("stream %d already exists", streamID)
+		slog.Warn("stream already exists", "stream_id", streamID)
 		return
 	}
 	r.mu.Unlock()
@@ -306,7 +335,10 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	// Get yamux session for this user (created by StartBridge during login)
 	yamuxSession, err := bridge.GetYamuxSession(sess.SessionID)
 	if err != nil {
-		logger.Errorf("failed to get yamux session: %v", err)
+		slog.Error("failed to get yamux session",
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"error", err)
 		r.sendFrame(streamID, FlagRST, nil)
 		// Bridge is gone (likely session expired) - close the WebSocket entirely
 		// This signals to the frontend that reconnection/re-auth is needed
@@ -317,7 +349,10 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	// Open new yamux stream
 	stream, err := yamuxSession.Open(context.Background())
 	if err != nil {
-		logger.Errorf("failed to open stream: %v", err)
+		slog.Error("failed to open yamux stream",
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"error", err)
 		r.sendFrame(streamID, FlagRST, nil)
 		return
 	}
@@ -334,7 +369,7 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 		r.mu.Unlock()
 		// Another goroutine won the race - close our stream and return
 		stream.Close()
-		logger.Warnf("stream %d race detected, closing duplicate", streamID)
+		slog.Warn("stream race detected, closing duplicate", "stream_id", streamID)
 		return
 	}
 	r.streams[streamID] = rs
@@ -343,7 +378,7 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	// Write payload directly - frontend sends StreamFrame-formatted bytes
 	if len(payload) > 0 {
 		if _, err := stream.Write(payload); err != nil {
-			logger.Warnf("failed to write SYN payload: %v", err)
+			slog.Warn("failed to write SYN payload", "stream_id", streamID, "error", err)
 			r.closeStream(streamID)
 			return
 		}
@@ -351,8 +386,6 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 
 	// Start reading from yamux stream and relaying to WebSocket
 	go r.relayFromBridge(rs)
-
-	logger.Debugf("stream %d opened", streamID)
 }
 
 // handleDATA writes payload to the yamux stream
@@ -362,13 +395,13 @@ func (r *streamRelay) handleDATA(streamID uint32, payload []byte) {
 	r.mu.RUnlock()
 
 	if !exists {
-		logger.Debugf("DATA for unknown stream %d", streamID)
+		slog.Debug("data received for unknown stream", "stream_id", streamID)
 		return
 	}
 
 	if len(payload) > 0 {
 		if _, err := rs.stream.Write(payload); err != nil {
-			logger.Debugf("write to stream %d failed: %v", streamID, err)
+			slog.Debug("failed to write stream payload", "stream_id", streamID, "error", err)
 			r.closeStream(streamID)
 		}
 	}
@@ -382,7 +415,7 @@ func (r *streamRelay) handleFIN(streamID uint32, payload []byte) {
 	r.mu.RUnlock()
 
 	if !exists {
-		logger.Debugf("FIN for unknown stream %d", streamID)
+		slog.Debug("FIN received for unknown stream", "stream_id", streamID)
 		return
 	}
 
@@ -390,19 +423,16 @@ func (r *streamRelay) handleFIN(streamID uint32, payload []byte) {
 	// Don't close the stream - let relayFromBridge handle that when bridge responds
 	if len(payload) > 0 {
 		if _, err := rs.stream.Write(payload); err != nil {
-			logger.Debugf("write FIN payload to stream %d failed: %v", streamID, err)
+			slog.Debug("failed to write FIN payload", "stream_id", streamID, "error", err)
 			r.closeStream(streamID)
 			return
 		}
 	}
-
-	logger.Debugf("stream %d FIN forwarded, waiting for bridge response", streamID)
 }
 
 // handleRST aborts the stream
 func (r *streamRelay) handleRST(streamID uint32) {
 	r.closeStream(streamID)
-	logger.Debugf("stream %d aborted (RST)", streamID)
 }
 
 // relayFromBridge reads from yamux stream and sends to WebSocket
@@ -421,11 +451,11 @@ func (r *streamRelay) relayFromBridge(rs *relayStream) {
 			r.sendFrame(rs.id, FlagDATA, buf[:n])
 		}
 		if err != nil {
-			if err != io.EOF {
-				logger.Debugf("stream %d read error: %v", rs.id, err)
-			}
 			// Send FIN to WebSocket
 			r.sendFrame(rs.id, FlagFIN, nil)
+			if !isExpectedStreamReadClose(err) {
+				slog.Debug("stream read error", "stream_id", rs.id, "error", err)
+			}
 			r.closeStream(rs.id)
 			return
 		}
@@ -449,7 +479,7 @@ func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
 	defer r.wsMu.Unlock()
 
 	if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
-		logger.Debugf("failed to set write deadline: %v", err)
+		slog.Debug("failed to set WebSocket write deadline", "error", err)
 		return
 	}
 
@@ -457,11 +487,11 @@ func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
 
 	// Always clear deadline after write attempt
 	if clearErr := r.ws.SetWriteDeadline(time.Time{}); clearErr != nil {
-		logger.Debugf("failed to clear write deadline: %v", clearErr)
+		slog.Debug("failed to clear WebSocket write deadline", "error", clearErr)
 	}
 
 	if err != nil {
-		logger.Debugf("failed to send frame: %v", err)
+		slog.Debug("failed to send WebSocket frame", "stream_id", streamID, "error", err)
 	}
 }
 
@@ -477,7 +507,6 @@ func (r *streamRelay) closeStream(streamID uint32) {
 	if exists {
 		close(rs.cancel)
 		rs.stream.Close()
-		logger.Debugf("stream %d closed", streamID)
 	}
 }
 
@@ -522,7 +551,7 @@ func (r *streamRelay) pingLoop() {
 			// Set write deadline, write ping, then clear deadline
 			if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 				r.wsMu.Unlock()
-				logger.Debugf("ping: failed to set write deadline: %v", err)
+				slog.Debug("failed to set ping write deadline", "error", err)
 				return
 			}
 
@@ -530,15 +559,15 @@ func (r *streamRelay) pingLoop() {
 
 			// Always clear deadline after write attempt
 			if clearErr := r.ws.SetWriteDeadline(time.Time{}); clearErr != nil {
-				logger.Debugf("ping: failed to clear write deadline: %v", clearErr)
+				slog.Debug("failed to clear ping write deadline", "error", clearErr)
 			}
 			r.wsMu.Unlock()
 
 			if err != nil {
-				logger.Debugf("ping failed: %v", err)
+				slog.Debug("WebSocket ping failed", "error", err)
 				return
 			}
-			logger.Debugf("ping sent")
+			slog.Debug("ping sent")
 		}
 	}
 }

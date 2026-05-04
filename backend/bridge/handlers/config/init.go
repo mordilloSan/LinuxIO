@@ -3,9 +3,8 @@
 package config
 
 import (
+	"log/slog"
 	"path/filepath"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const (
@@ -26,54 +25,53 @@ func Initialize(username string) error {
 	// 1) Resolve base dir
 	base, baseErr := Homedir(username)
 	if baseErr != nil {
-		logger.Warnf("homedir not available for %q: %v — attempting fallback", username, baseErr)
+		slog.Warn("homedir not available, attempting fallback", "user", username, "error", baseErr)
 		b, err := fallbackBase(username)
 		if err != nil {
-			logger.Errorf("fallback base resolution failed for %q: %v", username, err)
+			slog.Error("fallback base resolution failed", "user", username, "error", err)
 			return err
 		}
 		base = b
-		logger.Infof("using fallback base for %q → %s", username, base)
+		slog.Info("using fallback config base", "user", username, "path", base)
 	} else {
-		logger.Debugf("resolved home for %q → %s", username, base)
+		slog.Debug("resolved home directory", "user", username, "path", base)
 	}
 
 	cfgPath := filepath.Join(base, cfgFileName)
-	logger.Debugf("target path for %q → %s", username, cfgPath)
+	slog.Debug("resolved config path", "user", username, "path", cfgPath)
 
 	// 2) Check existence
 	exists, err := CheckConfig(cfgPath)
 	if err != nil {
-		logger.Errorf("check config failed at %s: %v", cfgPath, err)
+		slog.Error("check config failed", "path", cfgPath, "error", err)
 		return err
 	}
 
 	// 3) Repair or create
 	if exists {
-		logger.Debugf("existing config detected for %q at %s — validating/repairing", username, cfgPath)
+		slog.Debug("existing config detected, validating", "user", username, "path", cfgPath)
 		if err := repairConfig(cfgPath, base); err != nil {
-			logger.Errorf("repair failed for %q at %s: %v", username, cfgPath, err)
+			slog.Error("config repair failed", "user", username, "path", cfgPath, "error", err)
 			return err
 		}
 		if err := ensureFilePerms(cfgPath, filePerm); err != nil {
-			logger.Errorf("chmod existing config %s: %v", cfgPath, err)
+			slog.Error("failed to set existing config permissions", "path", cfgPath, "error", err)
 			return err
 		}
-		logger.Debugf("existing config ready for %q at %s", username, cfgPath)
+		slog.Debug("existing config ready", "user", username, "path", cfgPath)
 		return nil
 	}
-
-	// Create new with defaults (Docker.Folder = <base>/docker)
-	logger.Infof("new user detected — generating default config for %q", username)
+	// Create new with defaults (Docker.Folder = <base>/docker).
+	slog.Info("new user detected, generating default config", "user", username)
 	if err := writeConfig(cfgPath, base); err != nil {
-		logger.Errorf("write default config at %s failed: %v", cfgPath, err)
+		slog.Error("write default config failed", "path", cfgPath, "error", err)
 		return err
 	}
 	if err := ensureFilePerms(cfgPath, filePerm); err != nil {
-		logger.Errorf("chmod new config %s: %v", cfgPath, err)
+		slog.Error("failed to set new config permissions", "path", cfgPath, "error", err)
 		return err
 	}
-	logger.Infof("created default config for %q at %s", username, cfgPath)
+	slog.Info("created default config", "user", username, "path", cfgPath)
 	return nil
 }
 
@@ -82,32 +80,32 @@ func Initialize(username string) error {
 func EnsureConfigReady(username string) {
 	// Create/repair
 	if err := Initialize(username); err != nil {
-		logger.Warnf("Initialize failed for %q: %v", username, err)
+		slog.Warn("initialize config failed", "user", username, "error", err)
 		return
 	}
 
 	// Strict load (determines the actual path, respecting fallbacks)
 	cfg, cfgPath, err := Load(username)
 	if err != nil {
-		logger.Warnf("Load failed for %q: %v", username, err)
+		slog.Warn("load config failed", "user", username, "error", err)
 		return
 	}
 
 	// If root, fix ownership of file and parent dir (no-op otherwise)
 	if err := chownIfRoot(filepath.Dir(cfgPath), username); err != nil {
-		logger.Warnf("chown dir %s (user=%s) failed: %v", filepath.Dir(cfgPath), username, err)
+		slog.Warn("failed to ensure config directory ownership", "path", filepath.Dir(cfgPath), "user", username, "error", err)
 	} else {
-		logger.Debugf("ensured ownership for dir %s (user=%s)", filepath.Dir(cfgPath), username)
+		slog.Debug("ensured config directory ownership", "path", filepath.Dir(cfgPath), "user", username)
 	}
 	if err := chownIfRoot(cfgPath, username); err != nil {
-		logger.Warnf("chown file %s (user=%s) failed: %v", cfgPath, username, err)
+		slog.Warn("failed to ensure config file ownership", "path", cfgPath, "user", username, "error", err)
 	} else {
-		logger.Debugf("ensured ownership for file %s (user=%s)", cfgPath, username)
+		slog.Debug("ensured config file ownership", "path", cfgPath, "user", username)
 	}
-
-	logger.Infof("Config ready for %s", username)
-	logger.Debugf(
-		"config details: path=%q theme=%s primary=%s showHidden=%v",
-		cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor, cfg.AppSettings.ShowHiddenFiles,
-	)
+	slog.Info("config ready", "user", username)
+	slog.Debug("config details",
+		"path", cfgPath,
+		"theme", cfg.AppSettings.Theme,
+		"primary", cfg.AppSettings.PrimaryColor,
+		"show_hidden", cfg.AppSettings.ShowHiddenFiles)
 }

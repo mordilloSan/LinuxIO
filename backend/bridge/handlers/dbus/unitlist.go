@@ -2,12 +2,12 @@ package dbus
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
@@ -45,7 +45,7 @@ func withSystemdManager(
 		}
 		defer func() {
 			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+				slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "systemd", "error", cerr)
 			}
 		}()
 

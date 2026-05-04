@@ -12,6 +12,7 @@ import (
 type Settings struct {
 	AppSettings AppSettings `json:"appSettings" yaml:"appSettings"`
 	Docker      Docker      `json:"docker" yaml:"docker"`
+	Jobs        JobSettings `json:"jobs" yaml:"jobs"`
 }
 
 // DockerDashboardSections holds the collapsed state of each dashboard section
@@ -59,6 +60,15 @@ type Docker struct {
 	Folder           AbsolutePath `json:"folder" yaml:"folder"`
 	AutoUpdateStacks []string     `json:"autoUpdateStacks,omitempty" yaml:"autoUpdateStacks,omitempty"`
 	Proxy            DockerProxy  `json:"proxy" yaml:"proxy,omitempty"`
+}
+
+type JobSettings struct {
+	ProgressMinIntervalMs     int `json:"progressMinIntervalMs" yaml:"progressMinIntervalMs"`
+	NotificationMinIntervalMs int `json:"notificationMinIntervalMs" yaml:"notificationMinIntervalMs"`
+	ProgressMinBytesMB        int `json:"progressMinBytesMB" yaml:"progressMinBytesMB"`
+	HeavyArchiveConcurrency   int `json:"heavyArchiveConcurrency" yaml:"heavyArchiveConcurrency"`
+	ArchiveCompressionWorkers int `json:"archiveCompressionWorkers" yaml:"archiveCompressionWorkers"`
+	ArchiveExtractWorkers     int `json:"archiveExtractWorkers" yaml:"archiveExtractWorkers"`
 }
 
 // Theme represents a validated theme value (LIGHT or DARK)

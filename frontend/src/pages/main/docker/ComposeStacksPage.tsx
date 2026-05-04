@@ -1,5 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import ComposeList, { type ComposeProject } from "./ComposeList";
@@ -8,7 +14,7 @@ import {
   linuxio,
   CACHE_TTL_MS,
   isConnected,
-  openFileUploadStream,
+  openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -31,6 +37,8 @@ import {
 } from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
 import { useStreamResult } from "@/hooks/useStreamResult";
+
+const JOB_TYPE_FILE_UPLOAD = "file.upload";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -98,12 +106,13 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const {
-    data: projects = [],
+    data: rawProjects,
     isPending,
     refetch,
   } = linuxio.docker.list_compose_projects.useQuery({
     refetchInterval: 5000,
   });
+  const projects = useMemo(() => rawProjects ?? [], [rawProjects]);
 
   const { mutateAsync: deleteStack } =
     linuxio.docker.delete_stack.useMutation();
@@ -352,9 +361,15 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
+      const job = await linuxio.jobs.start.call(
+        JOB_TYPE_FILE_UPLOAD,
+        filePath,
+        String(contentSize),
+        ...(override ? ["true"] : []),
+      );
 
       await runChunkedStreamResult<void>({
-        open: () => openFileUploadStream(filePath, contentSize, override),
+        open: () => openJobDataStream(job.id, 0),
         openErrorMessage: "Failed to open save stream",
         data: contentBytes,
         chunkSize: chunkSize,

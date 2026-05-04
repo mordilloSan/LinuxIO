@@ -51,6 +51,22 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 		t.Fatalf("SetPrivileged did not persist")
 	}
 
+	caps := Capabilities{
+		DockerAvailable:        true,
+		IndexerAvailable:       true,
+		LMSensorsAvailable:     false,
+		SmartmontoolsAvailable: true,
+		PackageKitAvailable:    true,
+		NFSAvailable:           true,
+	}
+	if err := m.SetCapabilities(s.SessionID, caps); err != nil {
+		t.Fatalf("SetCapabilities error: %v", err)
+	}
+	got3, _ := m.GetSession(s.SessionID)
+	if got3.Capabilities != caps {
+		t.Fatalf("SetCapabilities did not persist: got=%+v want=%+v", got3.Capabilities, caps)
+	}
+
 	// Delete
 	if err := m.DeleteSession(s.SessionID, ReasonManual); err != nil {
 		t.Fatalf("DeleteSession error: %v", err)

@@ -37,12 +37,7 @@
 #define PR_SET_NO_NEW_PRIVS 38
 #endif
 
-#ifdef __has_include
-#if __has_include(<systemd/sd-journal.h>)
 #include <systemd/sd-journal.h>
-#define HAVE_SD_JOURNAL 1
-#endif
-#endif
 
 // Protocol constants
 #include "linuxio_protocol.h"
@@ -104,38 +99,71 @@ static int safe_snprintf(char *dst, size_t dstsz, const char *fmt, ...)
 }
 
 // -------- minimal logging  --------
-static void journal_errorf(const char *fmt, ...)
+struct journal_field {
+  const char *name;
+  const char *value;
+};
+
+static void journal_send_formatted(int priority, const struct journal_field *fields,
+                                   size_t field_count, const char *fmt, va_list ap)
 {
   char buf[512];
-  va_list ap;
-  va_start(ap, fmt);
+  char priority_buf[32];
+  char message_buf[sizeof(buf) + 16];
+  char field_bufs[8][256];
+  struct iovec iov[3 + 8];
+  size_t iov_count = 0;
+
   (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
-  va_end(ap);
-#ifdef HAVE_SD_JOURNAL
-  (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_ERR,
-                        "SYSLOG_IDENTIFIER=linuxio-auth", NULL);
-#else
-  openlog("linuxio-auth", LOG_PID, LOG_AUTHPRIV);
-  syslog(LOG_ERR, "%s", buf);
-  closelog();
-#endif
+  (void)safe_snprintf(priority_buf, sizeof(priority_buf), "PRIORITY=%i", priority);
+  (void)safe_snprintf(message_buf, sizeof(message_buf), "MESSAGE=%s", buf);
+
+  iov[iov_count++] = (struct iovec){.iov_base = message_buf, .iov_len = strlen(message_buf)};
+  iov[iov_count++] = (struct iovec){.iov_base = priority_buf, .iov_len = strlen(priority_buf)};
+  iov[iov_count++] = (struct iovec){.iov_base = "SYSLOG_IDENTIFIER=linuxio-auth",
+                                    .iov_len = strlen("SYSLOG_IDENTIFIER=linuxio-auth")};
+
+  if (field_count > 8)
+    field_count = 8;
+
+  for (size_t i = 0; i < field_count; i++)
+  {
+    if (!fields[i].name || !fields[i].value || fields[i].name[0] == '\0')
+      continue;
+    if (strcmp(fields[i].name, LINUXIO_JOURNAL_FIELD_SESSION_ID) == 0)
+      continue;
+    (void)safe_snprintf(field_bufs[i], sizeof(field_bufs[i]), "%s=%s",
+                        fields[i].name, fields[i].value);
+    iov[iov_count++] = (struct iovec){.iov_base = field_bufs[i], .iov_len = strlen(field_bufs[i])};
+  }
+
+  (void)sd_journal_sendv(iov, (int)iov_count);
 }
 
-static void journal_infof(const char *fmt, ...)
+static void journal_errorf(const char *fmt, ...)
 {
-  char buf[512];
   va_list ap;
   va_start(ap, fmt);
-  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
+  journal_send_formatted(LOG_ERR, NULL, 0, fmt, ap);
   va_end(ap);
-#ifdef HAVE_SD_JOURNAL
-  (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_INFO,
-                        "SYSLOG_IDENTIFIER=linuxio-auth", NULL);
-#else
-  openlog("linuxio-auth", LOG_PID, LOG_AUTHPRIV);
-  syslog(LOG_INFO, "%s", buf);
-  closelog();
-#endif
+}
+
+static void journal_info_fieldsf(const struct journal_field *fields, size_t field_count,
+                                 const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  journal_send_formatted(LOG_INFO, fields, field_count, fmt, ap);
+  va_end(ap);
+}
+
+static void journal_error_fieldsf(const struct journal_field *fields, size_t field_count,
+                                  const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  journal_send_formatted(LOG_ERR, fields, field_count, fmt, ap);
+  va_end(ap);
 }
 
 static void log_stderrf(const char *fmt, ...)
@@ -1150,7 +1178,7 @@ static pid_t spawn_bridge_process(
   setenv("LC_ALL", safe_lang, 1);
   setenv("TERM", safe_term, 1);
 
-  // Restore JOURNAL_STREAM if present - needed for proper syslog priority logging
+  // Restore JOURNAL_STREAM if present - child processes may still emit stderr output
   if (safe_journal_stream[0] != '\0')
     setenv("JOURNAL_STREAM", safe_journal_stream, 1);
 
@@ -1328,7 +1356,10 @@ static int handle_client(int input_fd, int output_fd)
   // Handle password expiration
   if (rc == PAM_NEW_AUTHTOK_REQD)
   {
-    journal_infof("password expired for user '%s'", user);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", user},
+    };
+    journal_info_fieldsf(fields, 1, "password expired");
     send_error_response(output_fd, PROTO_RESULT_PASSWORD_EXPIRED,
                         "Password has expired. Please change it via SSH or console.");
     pam_end(pamh, rc);
@@ -1370,7 +1401,15 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
-  journal_infof("PAM auth success for user '%s' (uid=%u)", user, (unsigned)auth_user.uid);
+  {
+    char uid_buf[32];
+    (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", user},
+        {"LINUXIO_UID", uid_buf},
+    };
+    journal_info_fieldsf(fields, 2, "pam auth success");
+  }
 
   // Check sudo capability
   int nopasswd = 0;
@@ -1492,7 +1531,10 @@ static int handle_client(int input_fd, int output_fd)
 
   if (rc_bootstrap != 0)
   {
-    journal_errorf("failed to write bootstrap to pipe");
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    journal_error_fieldsf(fields, 1, "failed to write bootstrap to pipe");
     close(exec_status_pipe[0]);
     close(bridge_fd);
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bootstrap communication failed");
@@ -1526,7 +1568,10 @@ static int handle_client(int input_fd, int output_fd)
 
   if (exec_status_sel == 0)
   {
-    journal_errorf("bridge exec timed out after %d ms", BRIDGE_START_TIMEOUT_MS);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    journal_error_fieldsf(fields, 1, "bridge exec timed out after %d ms", BRIDGE_START_TIMEOUT_MS);
     close(exec_status_fd);
     kill(child, SIGKILL);
     while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
@@ -1541,7 +1586,10 @@ static int handle_client(int input_fd, int output_fd)
 
   if (exec_status_sel < 0)
   {
-    journal_errorf("exec-status wait failed: %m");
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    journal_error_fieldsf(fields, 1, "exec-status wait failed: %m");
     close(exec_status_fd);
     kill(child, SIGKILL);
     while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
@@ -1565,7 +1613,13 @@ static int handle_client(int input_fd, int output_fd)
   if (exec_status_n > 0)
   {
     // Child wrote error byte - exec failed
-    journal_errorf("bridge exec failed (status byte: %d)", exec_status_byte);
+    char status_buf[16];
+    (void)safe_snprintf(status_buf, sizeof(status_buf), "%u", (unsigned)exec_status_byte);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+        {"LINUXIO_STATUS", status_buf},
+    };
+    journal_error_fieldsf(fields, 2, "bridge exec failed");
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec failed");
     // Child already exited, but wait to reap
     (void)waitpid(child, NULL, 0);
@@ -1584,8 +1638,21 @@ static int handle_client(int input_fd, int output_fd)
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
   // The parent's copy will be closed when we exit, which is fine
 
-  journal_infof("bridge spawned for user '%s' mode=%s", user,
-                mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged");
+  {
+    char uid_buf[32];
+    char gid_buf[32];
+    const char *mode_name = mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged";
+    (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
+    (void)safe_snprintf(gid_buf, sizeof(gid_buf), "%u", (unsigned)auth_user.gid);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+        {"LINUXIO_UID", uid_buf},
+        {"LINUXIO_GID", gid_buf},
+        {"LINUXIO_MODE", mode_name},
+        {"LINUXIO_PRIVILEGED", mode == PROTO_MODE_PRIVILEGED ? "true" : "false"},
+    };
+    journal_info_fieldsf(fields, 5, "bridge spawned");
+  }
 
   int status = 0;
   while (waitpid(child, &status, 0) < 0 && errno == EINTR)
@@ -1600,7 +1667,13 @@ static int handle_client(int input_fd, int output_fd)
 
   if (exitcode != 0)
   {
-    journal_errorf("bridge exited with status %d", exitcode);
+    char exit_buf[32];
+    (void)safe_snprintf(exit_buf, sizeof(exit_buf), "%d", exitcode);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+        {"LINUXIO_STATUS", exit_buf},
+    };
+    journal_error_fieldsf(fields, 2, "bridge exited with status %d", exitcode);
   }
 
   pam_close_session(pamh, 0);

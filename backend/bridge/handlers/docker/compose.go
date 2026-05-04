@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,7 +19,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/goccy/go-yaml"
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
@@ -69,8 +69,9 @@ func ListComposeProjects(username string) (any, error) {
 
 	// Query indexer for offline stacks (compose files without running containers)
 	if err := discoverOfflineStacks(username, projects); err != nil {
-		// Log but don't fail - indexer might be unavailable
-		logger.Debugf("failed to discover offline stacks from indexer: %v", err)
+		slog.
+			// Log but don't fail - indexer might be unavailable
+			Debug("failed to discover offline stacks from indexer", "error", err)
 	}
 
 	// Load config once to check auto-update preferences.
@@ -243,7 +244,7 @@ func GetComposeProject(username, projectName string) (any, error) {
 
 // ComposeUp starts a compose project
 func ComposeUp(username, projectName, composePath string) (any, error) {
-	logger.Infof("compose up requested: user=%s project=%s compose_path=%s", username, projectName, composePath)
+	slog.Info("compose up requested", "user", username, "project", projectName, "compose_path", composePath)
 	var configFile string
 	var workingDir string
 
@@ -285,7 +286,7 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
-	logger.Infof("compose up complete: project=%s config=%s", projectName, configFile)
+	slog.Info("compose up complete", "project", projectName, "config", configFile)
 
 	return map[string]string{"message": "Project started successfully", "output": collector.String()}, nil
 }
@@ -333,7 +334,7 @@ func findComposeFile(username, projectName string) (string, string, error) {
 
 // ComposeDown stops and removes a compose project
 func ComposeDown(username, projectName string) (any, error) {
-	logger.Infof("compose down requested: user=%s project=%s", username, projectName)
+	slog.Info("compose down requested", "user", username, "project", projectName)
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
@@ -359,7 +360,7 @@ func ComposeDown(username, projectName string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
-	logger.Infof("compose down complete: project=%s config=%s", projectName, configFile)
+	slog.Info("compose down complete", "project", projectName, "config", configFile)
 
 	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
 }
@@ -372,8 +373,11 @@ type DeleteStackOptions struct {
 
 // DeleteStack removes a compose stack with options to delete files
 func DeleteStack(username, projectName string, options DeleteStackOptions) (any, error) {
-	logger.Infof("delete stack requested: user=%s project=%s delete_file=%v delete_directory=%v",
-		username, projectName, options.DeleteFile, options.DeleteDirectory)
+	slog.Info("delete stack requested",
+		"user", username,
+		"project", projectName,
+		"delete_file", options.DeleteFile,
+		"delete_directory", options.DeleteDirectory)
 	// Get project info first
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
@@ -389,7 +393,7 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 		if delErr != nil {
 			return nil, delErr
 		}
-		logger.Infof("delete stack complete: project=%s", projectName)
+		slog.Info("delete stack complete", "project", projectName)
 		return result, nil
 	}
 
@@ -414,7 +418,10 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 		collector := &composeMessageCollector{}
 		cmdErr := composeDownWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
 		if cmdErr != nil {
-			logger.Warnf("docker compose down failed for %s: %v, output: %s", projectName, cmdErr, collector.String())
+			slog.Warn("docker compose down failed",
+				"project", projectName,
+				"error", cmdErr,
+				"output", collector.String())
 			// Continue with file deletion even if down fails
 		}
 	}
@@ -424,7 +431,7 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 	if delErr != nil {
 		return nil, delErr
 	}
-	logger.Infof("delete stack complete: project=%s", projectName)
+	slog.Info("delete stack complete", "project", projectName)
 	return result, nil
 }
 
@@ -452,7 +459,7 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 			}
 			result["dir_deleted"] = true
 			result["deleted_path"] = workingDir
-			logger.InfoKV("deleted stack directory", "project", projectName, "path", workingDir)
+			slog.Info("deleted stack directory", "project", projectName, "path", workingDir)
 		}
 
 		return result, nil
@@ -466,7 +473,7 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 			}
 			result["files_deleted"] = true
 			result["deleted_path"] = configFile
-			logger.InfoKV("deleted compose file", "project", projectName, "path", configFile)
+			slog.Info("deleted compose file", "project", projectName, "path", configFile)
 		}
 	}
 
@@ -475,7 +482,7 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 
 // ComposeRestart restarts a compose project
 func ComposeRestart(username, projectName string) (any, error) {
-	logger.Infof("compose restart requested: user=%s project=%s", username, projectName)
+	slog.Info("compose restart requested", "user", username, "project", projectName)
 	configFile, workingDir, err := resolveComposeRestartTarget(username, projectName)
 	if err != nil {
 		return nil, err
@@ -487,7 +494,7 @@ func ComposeRestart(username, projectName string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
-	logger.Infof("compose restart complete: project=%s config=%s", projectName, configFile)
+	slog.Info("compose restart complete", "project", projectName, "config", configFile)
 
 	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
 }
@@ -506,14 +513,14 @@ func resolveComposeRestartTarget(username, projectName string) (string, string, 
 	if err != nil {
 		return "", "", fmt.Errorf("compose file not found: %w", err)
 	}
-	logger.InfoKV("found compose file via search", "project", projectName, "path", configFile)
+	slog.Info("found compose file via search", "project", projectName, "path", configFile)
 	return configFile, workingDir, nil
 }
 
 func resolveComposeRestartTargetFromProject(projectName string, composeProject *ComposeProject) (string, string) {
 	cli, err := getClient()
 	if err != nil {
-		logger.WarnKV("failed to get Docker client for path translation", "project", projectName, "error", err.Error())
+		slog.Warn("failed to get Docker client for path translation", "project", projectName, "error", err.Error())
 		return resolveComposeRestartWithoutClient(projectName, composeProject)
 	}
 	defer releaseClient(cli)
@@ -535,7 +542,7 @@ func resolveComposeRestartWithoutClient(projectName string, composeProject *Comp
 	if _, err := os.Stat(configFile); err == nil {
 		return configFile, fallbackWorkingDir(composeProject.WorkingDir, configFile)
 	}
-	logger.WarnKV("compose file from container labels not found",
+	slog.Warn("compose file from container labels not found",
 		"project", projectName,
 		"labeled_path", configFile)
 	return "", ""
@@ -554,17 +561,16 @@ func resolveComposeRestartFromConfigFiles(
 
 	translatedConfigFile := translateContainerPathToHost(cli, configFile)
 	if translatedConfigFile == configFile {
-		logger.WarnKV("compose file from container labels not found and translation failed",
+		slog.Warn("compose file from container labels not found and translation failed",
 			"project", projectName,
 			"labeled_path", configFile)
 		return "", ""
 	}
 	if _, err := os.Stat(translatedConfigFile); err != nil {
-		logger.WarnKV("translated path does not exist", "project", projectName, "translated_path", translatedConfigFile)
+		slog.Warn("translated path does not exist", "project", projectName, "translated_path", translatedConfigFile)
 		return "", ""
 	}
-
-	logger.InfoKV("translated container config path to host path",
+	slog.Info("translated container config path to host path",
 		"project", projectName,
 		"container_path", configFile,
 		"host_path", translatedConfigFile)
@@ -576,7 +582,7 @@ func resolveComposeRestartFromConfigFiles(
 
 func resolveComposeRestartFromWorkingDir(cli *client.Client, projectName, workingDir string) (string, string) {
 	translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
-	logger.DebugKV("translating working directory",
+	slog.Debug("translating working directory",
 		"project", projectName,
 		"container_path", workingDir,
 		"host_path", translatedWorkingDir)
@@ -584,7 +590,7 @@ func resolveComposeRestartFromWorkingDir(cli *client.Client, projectName, workin
 	for _, fileName := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
 		possiblePath := filepath.Join(translatedWorkingDir, fileName)
 		if _, err := os.Stat(possiblePath); err == nil {
-			logger.InfoKV("found compose file via working_dir translation", "project", projectName, "path", possiblePath)
+			slog.Info("found compose file via working_dir translation", "project", projectName, "path", possiblePath)
 			return possiblePath, translatedWorkingDir
 		}
 	}
@@ -600,7 +606,7 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 
 // ComposeStop stops a compose project without removing containers
 func ComposeStop(username, projectName string) (any, error) {
-	logger.Infof("compose stop requested: user=%s project=%s", username, projectName)
+	slog.Info("compose stop requested", "user", username, "project", projectName)
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
@@ -626,7 +632,7 @@ func ComposeStop(username, projectName string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
-	logger.Infof("compose stop complete: project=%s config=%s", projectName, configFile)
+	slog.Info("compose stop complete", "project", projectName, "config", configFile)
 
 	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
 }
@@ -639,7 +645,7 @@ func translateContainerPathToHost(cli *client.Client, containerPath string) stri
 	// First, get all running containers to search for the correct mount
 	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
-		logger.Warnf("failed to list containers: %v", err)
+		slog.Warn("failed to list containers for path translation", "error", err)
 		return containerPath
 	}
 
@@ -666,8 +672,7 @@ func translateContainerPathToHost(cli *client.Client, containerPath string) stri
 			return hostPath
 		}
 	}
-
-	logger.Debugf("no mount found for container path %s, using original", containerPath)
+	slog.Debug("no mount found for container path, using original", "path", containerPath)
 	return containerPath // Return original path if no mount translation found
 }
 
@@ -698,9 +703,9 @@ func translateMountPath(mount container.MountPoint, containerPath, containerName
 
 	if stat, err := os.Stat(hostPath); err == nil {
 		if mount.Type == "volume" && strings.HasPrefix(mount.Source, "/var/lib/docker/volumes/") {
-			logger.Debugf("found path in Docker volume %s (path: %s) - may require elevated permissions", mount.Name, hostPath)
+			slog.Debug("found path in Docker volume", "volume", mount.Name, "path", hostPath)
 		} else if mount.Type == "bind" {
-			logger.Debugf("translated container path %s to host path %s via bind mount in container %s", containerPath, hostPath, containerName)
+			slog.Debug("translated container path via bind mount", "container_path", containerPath, "host_path", hostPath, "container", containerName)
 		}
 		if stat.IsDir() || stat.Mode().IsRegular() {
 			return hostPath, true
@@ -711,7 +716,7 @@ func translateMountPath(mount container.MountPoint, containerPath, containerName
 	// Check parent directory for file paths that don't exist yet
 	parentDir := filepath.Dir(hostPath)
 	if parentStat, err := os.Stat(parentDir); err == nil && parentStat.IsDir() {
-		logger.Debugf("translated container path %s to host path %s (parent dir verified) via container %s", containerPath, hostPath, containerName)
+		slog.Debug("translated container path via parent directory verification", "container_path", containerPath, "host_path", hostPath, "container", containerName)
 		return hostPath, true
 	}
 	return "", false
@@ -990,7 +995,7 @@ func validateComposeVersionField(composeData map[string]any, result *ValidationR
 		return
 	}
 	if versionStr != "" {
-		logger.Debugf("Compose file version: %s", versionStr)
+		slog.Debug("compose file version detected", "component", "docker", "subsystem", "compose", "version", versionStr)
 	}
 }
 
@@ -1057,30 +1062,64 @@ func extractHostPorts(svc map[string]any) []string {
 				result = append(result, hp)
 			}
 		case map[string]any:
-			// Long syntax: {target: 80, published: "8080", protocol: "tcp"}
-			if published, ok := v["published"]; ok && published != nil {
-				if s := fmt.Sprintf("%v", published); s != "" && s != "0" {
-					result = append(result, s)
-				}
+			if hp := parseLongSyntaxHostPort(v); hp != "" {
+				result = append(result, hp)
 			}
 		}
 	}
 	return result
 }
 
+func parseLongSyntaxHostPort(port map[string]any) string {
+	published, ok := port["published"]
+	if !ok || published == nil {
+		return ""
+	}
+	hostPort := fmt.Sprintf("%v", published)
+	if hostPort == "" || hostPort == "0" {
+		return ""
+	}
+	return hostPortKey(hostPort, portProtocol(port))
+}
+
+func portProtocol(port map[string]any) string {
+	protocol, ok := port["protocol"]
+	if !ok || protocol == nil {
+		return "tcp"
+	}
+	if value := strings.TrimSpace(fmt.Sprintf("%v", protocol)); value != "" {
+		return value
+	}
+	return "tcp"
+}
+
 // parseHostPort extracts the host-side port key from a short-syntax port string.
 // Returns empty string when there is no explicit host binding.
 func parseHostPort(port string) string {
-	port = strings.SplitN(port, "/", 2)[0] // strip protocol
+	protocol := "tcp"
+	if portPart, protocolPart, found := strings.Cut(port, "/"); found {
+		port = portPart
+		if protocolPart != "" {
+			protocol = protocolPart
+		}
+	}
 	parts := strings.Split(port, ":")
 	switch len(parts) {
 	case 2:
-		return parts[0] // "8080:80" → "8080"
+		return hostPortKey(parts[0], protocol) // "8080:80" -> "8080/tcp"
 	case 3:
-		return parts[0] + ":" + parts[1] // "127.0.0.1:8080:80" → "127.0.0.1:8080"
+		return hostPortKey(parts[0]+":"+parts[1], protocol) // "127.0.0.1:8080:80" -> "127.0.0.1:8080/tcp"
 	default:
 		return "" // container-only port, no host binding
 	}
+}
+
+func hostPortKey(hostPort, protocol string) string {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol == "" {
+		protocol = "tcp"
+	}
+	return fmt.Sprintf("%s/%s", hostPort, protocol)
 }
 
 // sanitizeStackName sanitizes a stack name for use in file paths
@@ -1213,7 +1252,7 @@ func ValidateStackDirectory(dirPath string) (any, error) {
 	// The actual directory will be created when the stack is saved
 	err = os.RemoveAll(dirPath)
 	if err != nil {
-		logger.Warnf("Failed to clean up test directory %s: %v", dirPath, err)
+		slog.Warn("failed to clean up test directory", "component", "docker", "subsystem", "compose", "path", dirPath, "error", err)
 	}
 
 	result.CanCreate = true
@@ -1294,7 +1333,7 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	for range indexerEntriesMaxPages {
 		results, err := fetchIndexerEntriesPage(normPath, indexerEntriesPageSize, offset)
 		if err != nil {
-			logger.Debugf("indexer search request failed (indexer may be offline): %v", err)
+			slog.Debug("indexer search request failed", "component", "docker", "subsystem", "compose", "path", normPath, "error", err)
 			return nil, fmt.Errorf("indexer unavailable: %w", err)
 		}
 
@@ -1318,7 +1357,7 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	}
 
 	if offset >= indexerEntriesPageSize*indexerEntriesMaxPages {
-		logger.Warnf("indexer YAML scan reached max pages for path %s", normPath)
+		slog.Warn("indexer YAML scan reached max pages", "component", "docker", "subsystem", "compose", "path", normPath)
 	}
 
 	return yamlFiles, nil
@@ -1426,8 +1465,7 @@ func indexDockerFolder(username string) error {
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("indexer returned status %s", resp.Status)
 	}
-
-	logger.InfoKV("triggered indexing of docker folder", "path", dockerFolder, "user", username)
+	slog.Info("triggered indexing of docker folder", "path", dockerFolder, "user", username)
 
 	return nil
 }
@@ -1475,7 +1513,7 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 	}
 
 	if cfg.Docker.Folder == "" {
-		logger.Debugf("no docker folder configured for user %s, skipping offline stack discovery", username)
+		slog.Debug("no docker folder configured; skipping offline stack discovery", "component", "docker", "subsystem", "compose", "user", username)
 		return nil
 	}
 
@@ -1483,7 +1521,7 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 	if err != nil {
 		return fmt.Errorf("failed to search indexer: %w", err)
 	}
-	logger.Debugf("found %d YAML files in docker folder via indexer", len(yamlFiles))
+	slog.Debug("found YAML files in docker folder via indexer", "component", "docker", "subsystem", "compose", "user", username, "file_count", len(yamlFiles))
 
 	for _, yamlFile := range yamlFiles {
 		if !isValidComposeFile(yamlFile.Path) {
@@ -1525,7 +1563,7 @@ func mergeOfflineComposeFile(project *ComposeProject, composePath string) {
 			project.Icon = icon
 		}
 	}
-	logger.DebugKV("matched compose file to existing project", "compose_file", composePath, "project", project.Name)
+	slog.Debug("matched compose file to existing project", "compose_file", composePath, "project", project.Name)
 }
 
 func addOfflineComposeProject(projects map[string]*ComposeProject, composePath string) {
@@ -1533,7 +1571,7 @@ func addOfflineComposeProject(projects map[string]*ComposeProject, composePath s
 	if projectName == "" {
 		return
 	}
-	logger.InfoKV("discovered offline stack via indexer", "project", projectName, "compose_file", composePath)
+	slog.Info("discovered offline stack via indexer", "project", projectName, "compose_file", composePath)
 	projects[projectName] = &ComposeProject{
 		Name:        projectName,
 		Icon:        extractComposeIcon(composePath),
@@ -1554,7 +1592,7 @@ func extractComposeIcon(composePath string) string {
 
 // DeleteComposeStack runs docker compose down and deletes the compose file(s)
 func DeleteComposeStack(username, projectName string) error {
-	logger.Infof("delete compose stack requested: user=%s project=%s", username, projectName)
+	slog.Info("delete compose stack requested", "component", "docker", "subsystem", "compose", "user", username, "service", projectName)
 	// Get project details to find config files
 	projects, err := ListComposeProjects(username)
 	if err != nil {
@@ -1581,7 +1619,7 @@ func DeleteComposeStack(username, projectName string) error {
 
 	// Run docker compose down first to clean up containers/networks
 	if len(project.ConfigFiles) > 0 {
-		logger.InfoKV("running docker compose down before deleting files",
+		slog.Info("running docker compose down before deleting files",
 			"project", projectName,
 			"working_dir", project.WorkingDir)
 
@@ -1595,7 +1633,7 @@ func DeleteComposeStack(username, projectName string) error {
 			collector.Emit,
 		)
 		if err != nil {
-			logger.WarnKV("failed to run docker compose down",
+			slog.Warn("failed to run docker compose down",
 				"project", projectName,
 				"error", err.Error(),
 				"output", collector.String())
@@ -1605,22 +1643,21 @@ func DeleteComposeStack(username, projectName string) error {
 
 	deleteComposeFiles(projectName, project.ConfigFiles)
 	tryRemoveEmptyDir(project.WorkingDir, projectName)
-
-	logger.InfoKV("compose stack deleted successfully", "project", projectName)
+	slog.Info("compose stack deleted successfully", "project", projectName)
 	return nil
 }
 
 func deleteComposeFiles(projectName string, files []string) {
 	for _, configFile := range files {
-		logger.InfoKV("deleting compose file",
+		slog.Info("deleting compose file",
 			"project", projectName,
 			"file", configFile)
 
 		if err := os.Remove(configFile); err != nil {
 			if os.IsNotExist(err) {
-				logger.WarnKV("compose file already deleted", "file", configFile)
+				slog.Warn("compose file already deleted", "file", configFile)
 			} else {
-				logger.WarnKV("failed to delete compose file",
+				slog.Warn("failed to delete compose file",
 					"file", configFile,
 					"error", err.Error())
 			}
@@ -1636,12 +1673,12 @@ func tryRemoveEmptyDir(dir, projectName string) {
 	if err != nil || len(entries) > 0 {
 		return
 	}
-	logger.InfoKV("removing empty working directory",
+	slog.Info("removing empty working directory",
 		"project", projectName,
 		"dir", dir)
 
 	if err := os.Remove(dir); err != nil {
-		logger.WarnKV("failed to remove working directory",
+		slog.Warn("failed to remove working directory",
 			"dir", dir,
 			"error", err.Error())
 	}

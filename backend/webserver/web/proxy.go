@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -10,7 +12,6 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const (
@@ -41,7 +42,10 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	target, err := resolveContainerTarget(r.Context(), containerName)
 	if err != nil {
-		logger.Warnf("[proxy] cannot resolve %q: %v", containerName, err)
+		slog.Warn("proxy target unavailable",
+			"component", "proxy",
+			"container", containerName,
+			"error", err)
 		http.Error(w, fmt.Sprintf("container %q not available: %v", containerName, err), http.StatusBadGateway)
 		return
 	}
@@ -65,7 +69,10 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 		FlushInterval: -1,
 		ErrorLog:      nil,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			logger.Warnf("[proxy] backend error for %q: %v", containerName, err)
+			slog.Warn("proxy backend error",
+				"component", "proxy",
+				"container", containerName,
+				"error", err)
 			http.Error(w, "proxy error", http.StatusBadGateway)
 		},
 	}
@@ -82,7 +89,9 @@ func resolveContainerTarget(ctx context.Context, name string) (*url.URL, error) 
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("[proxy] failed to close docker client: %v", cerr)
+			slog.Warn("failed to close docker client",
+				"component", "proxy",
+				"error", cerr)
 		}
 	}()
 
@@ -104,7 +113,14 @@ func resolveContainerTarget(ctx context.Context, name string) (*url.URL, error) 
 		}
 	}
 
-	return url.Parse(fmt.Sprintf("http://%s:%s", ip, port))
+	return containerTargetURL(ip, port), nil
+}
+
+func containerTargetURL(ip, port string) *url.URL {
+	return &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(ip, port),
+	}
 }
 
 func containerNetworkIP(info container.InspectResponse) string {
@@ -121,7 +137,11 @@ func connectAndResolveIP(ctx context.Context, cli *client.Client, name string, i
 		return "", fmt.Errorf("container not connected to %s network", proxyNetwork)
 	}
 	if connectErr := cli.NetworkConnect(ctx, proxyNetwork, info.ID, nil); connectErr != nil {
-		logger.Debugf("[proxy] network connect for %q returned: %v", name, connectErr)
+		slog.Debug("network connect returned error",
+			"component", "proxy",
+			"container", name,
+			"network", proxyNetwork,
+			"error", connectErr)
 	}
 	info, err := cli.ContainerInspect(ctx, info.ID)
 	if err != nil {

@@ -7,11 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // -----------------------------------------------------------------------------
@@ -69,6 +68,19 @@ type User struct {
 	GID      uint32 `json:"gid"`
 }
 
+type contextKey struct{}
+
+// WithContext returns a context carrying the authenticated LinuxIO session.
+func WithContext(ctx context.Context, sess *Session) context.Context {
+	return context.WithValue(ctx, contextKey{}, sess)
+}
+
+// FromContext returns the authenticated LinuxIO session from ctx when present.
+func FromContext(ctx context.Context) (*Session, bool) {
+	sess, ok := ctx.Value(contextKey{}).(*Session)
+	return sess, ok
+}
+
 type Timing struct {
 	CreatedAt     time.Time `json:"created_at"`
 	LastAccess    time.Time `json:"last_access"`
@@ -77,11 +89,21 @@ type Timing struct {
 	AbsoluteUntil time.Time `json:"absolute_until"`
 }
 
+type Capabilities struct {
+	DockerAvailable        bool `json:"docker_available"`
+	IndexerAvailable       bool `json:"indexer_available"`
+	LMSensorsAvailable     bool `json:"lm_sensors_available"`
+	SmartmontoolsAvailable bool `json:"smartmontools_available"`
+	PackageKitAvailable    bool `json:"packagekit_available"`
+	NFSAvailable           bool `json:"nfs_available"`
+}
+
 type Session struct {
-	SessionID  string `json:"session_id"`
-	User       User   `json:"user"`
-	Privileged bool   `json:"privileged"`
-	Timing     Timing `json:"timing"`
+	SessionID    string       `json:"session_id"`
+	User         User         `json:"user"`
+	Privileged   bool         `json:"privileged"`
+	Capabilities Capabilities `json:"capabilities"`
+	Timing       Timing       `json:"timing"`
 
 	// Termination handler (not serialized)
 	terminateFunc func(DeleteReason) error
@@ -119,9 +141,13 @@ type Manager struct {
 // Callers should start from DefaultConfig and override fields explicitly.
 func NewManager(store Store, cfg SessionConfig) *Manager {
 	m := &Manager{st: store, cfg: cfg}
-	logger.Infof("Session manager ready")
-	logger.Debugf("Session timings (idle=%v, absolute=%v, refresh=%v, singleUser=%v, gc=%v)",
-		m.cfg.IdleTimeout, m.cfg.AbsoluteTimeout, m.cfg.RefreshThrottle, m.cfg.SingleSessionPerUser, m.cfg.GCInterval)
+	slog.Info("Session manager ready")
+	slog.Debug("session timings configured",
+		"idle_timeout", m.cfg.IdleTimeout,
+		"absolute_timeout", m.cfg.AbsoluteTimeout,
+		"refresh_throttle", m.cfg.RefreshThrottle,
+		"single_user", m.cfg.SingleSessionPerUser,
+		"gc_interval", m.cfg.GCInterval)
 
 	// Stored records get a short TTL grace after absolute expiry so manager GC
 	// can emit delete hooks before the store prunes any leftovers.
@@ -141,10 +167,10 @@ func (m *Manager) Close() {
 	}
 	if closer, ok := m.st.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
-			logger.Warnf("Failed to close session store: %v", err)
+			slog.Warn("failed to close session store", "error", err)
 		}
 	}
-	logger.Infof("Session manager stopped")
+	slog.Info("Session manager stopped")
 }
 
 // -----------------------------------------------------------------------------
@@ -191,7 +217,7 @@ func (m *Manager) broadcastOnDelete(s *Session, r DeleteReason) {
 		go func(ff func(*Session, DeleteReason)) {
 			defer func() {
 				if panicVal := recover(); panicVal != nil {
-					logger.Warnf("panic in session onDelete callback: %v", panicVal)
+					slog.Warn("panic in session delete callback", "panic", panicVal)
 				}
 			}()
 			ff(s, r)
@@ -319,8 +345,10 @@ func (m *Manager) CreateSessionWithID(id string, user User, privileged bool) (*S
 	sess.setTerminateFunc(func(reason DeleteReason) error {
 		return m.DeleteSession(sess.SessionID, reason)
 	})
-
-	logger.Infof("Created session for user '%s'", user.Username)
+	slog.Info("session created",
+		"user", user.Username,
+		"session_id", sess.SessionID,
+		"privileged", privileged)
 	return sess, nil
 }
 
@@ -355,7 +383,10 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 		return err
 	}
 	if s, err := m.decode(b); err == nil {
-		logger.Infof("Deleted session for user '%s' (reason=%s)", s.User.Username, r)
+		slog.Info("session deleted",
+			"user", s.User.Username,
+			"session_id", s.SessionID,
+			"reason", string(r))
 		m.broadcastOnDelete(s, r)
 	}
 	return nil
@@ -370,6 +401,15 @@ func (m *Manager) SetPrivileged(id string, v bool) error {
 	return m.commitSession(s)
 }
 
+func (m *Manager) SetCapabilities(id string, v Capabilities) error {
+	s, err := m.GetSession(id)
+	if err != nil {
+		return err
+	}
+	s.Capabilities = v
+	return m.commitSession(s)
+}
+
 func (m *Manager) Refresh(id string) error {
 	s, err := m.GetSession(id)
 	if err != nil {
@@ -378,13 +418,19 @@ func (m *Manager) Refresh(id string) error {
 	now := time.Now()
 	if expiredAbsolute(s, now) {
 		if delErr := m.DeleteSession(id, ReasonGCAbsolute); delErr != nil {
-			logger.Warnf("failed to delete absolute-expired session '%s': %v", id, delErr)
+			slog.Warn("failed to delete absolute-expired session",
+				"session_id", id,
+				"reason", string(ReasonGCAbsolute),
+				"error", delErr)
 		}
 		return fmt.Errorf("session expired")
 	}
 	if expiredIdle(s, now) {
 		if delErr := m.DeleteSession(id, ReasonGCIdle); delErr != nil {
-			logger.Warnf("failed to delete idle-expired session '%s': %v", id, delErr)
+			slog.Warn("failed to delete idle-expired session",
+				"session_id", id,
+				"reason", string(ReasonGCIdle),
+				"error", delErr)
 		}
 		return fmt.Errorf("session expired")
 	}
@@ -429,26 +475,42 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 	}
 	s, err := m.GetSession(ck.Value)
 	if err != nil {
-		logger.Debugf("Access attempt with unknown %s: %s", m.cfg.Cookie.Name, ck.Value)
+		slog.Debug("access attempt with unknown session cookie",
+			"cookie_name", m.cfg.Cookie.Name,
+			"session_id", ck.Value)
 		return nil, fmt.Errorf("unknown session ID")
 	}
 	now := time.Now()
 	if expiredAbsolute(s, now) {
 		if delErr := m.DeleteSession(s.SessionID, ReasonGCAbsolute); delErr != nil {
-			logger.Warnf("failed to delete absolute-expired session '%s': %v", s.SessionID, delErr)
+			slog.Warn("failed to delete absolute-expired session",
+				"session_id", s.SessionID,
+				"reason", string(ReasonGCAbsolute),
+				"error", delErr)
 		}
-		logger.Warnf("Expired session (absolute) by '%s'", s.User.Username)
+		slog.Warn("session expired",
+			"user", s.User.Username,
+			"session_id", s.SessionID,
+			"reason", string(ReasonGCAbsolute))
 		return nil, fmt.Errorf("session expired")
 	}
 	if expiredIdle(s, now) {
 		if delErr := m.DeleteSession(s.SessionID, ReasonGCIdle); delErr != nil {
-			logger.Warnf("failed to delete idle-expired session '%s': %v", s.SessionID, delErr)
+			slog.Warn("failed to delete idle-expired session",
+				"session_id", s.SessionID,
+				"reason", string(ReasonGCIdle),
+				"error", delErr)
 		}
-		logger.Warnf("Expired session (idle) by '%s'", s.User.Username)
+		slog.Warn("session expired",
+			"user", s.User.Username,
+			"session_id", s.SessionID,
+			"reason", string(ReasonGCIdle))
 		return nil, fmt.Errorf("session expired")
 	}
 	if refreshErr := m.refreshLoadedSession(s, now); refreshErr != nil {
-		logger.Warnf("failed to refresh session '%s': %v", s.SessionID, refreshErr)
+		slog.Warn("failed to refresh session",
+			"session_id", s.SessionID,
+			"error", refreshErr)
 	}
 	return s, nil
 }
@@ -470,7 +532,7 @@ func (m *Manager) RequireSession(next http.Handler) http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			if _, writeErr := w.Write([]byte(`{"error":"unauthorized"}`)); writeErr != nil {
-				logger.Debugf("failed to write unauthorized response: %v", writeErr)
+				slog.Debug("failed to write unauthorized response", "error", writeErr)
 			}
 			return
 		}
@@ -524,7 +586,10 @@ func (m *Manager) evictUserSessions(username string) {
 		}
 		if s.User.Username == username {
 			if deleteErr := m.st.Delete(tok); deleteErr != nil {
-				logger.Warnf("failed deleting existing session for user '%s': %v", username, deleteErr)
+				slog.Warn("failed deleting existing session",
+					"user", username,
+					"session_id", tok,
+					"error", deleteErr)
 				continue
 			}
 			m.broadcastOnDelete(s, ReasonManual)
@@ -553,7 +618,10 @@ func (m *Manager) gcCollect() {
 		}
 		if reason != "" {
 			if err := m.st.Delete(tok); err != nil {
-				logger.Warnf("failed to delete expired session '%s': %v", tok, err)
+				slog.Warn("failed to delete expired session",
+					"session_id", tok,
+					"reason", string(reason),
+					"error", err)
 				continue
 			}
 			m.broadcastOnDelete(s, reason)
@@ -561,7 +629,7 @@ func (m *Manager) gcCollect() {
 		}
 	}
 	if collected > 0 {
-		logger.Infof("Session GC: collected %d idle-expired session(s)", collected)
+		slog.Info("session garbage collection completed", "count", collected)
 	}
 }
 

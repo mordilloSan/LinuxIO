@@ -111,7 +111,7 @@ func TestComputeExtractSize(t *testing.T) {
 		createTestFile(t, srcDir, "nested.txt", content)
 		tarPath := filepath.Join(tmpDir, "archive.tar.gz")
 
-		err := CreateTarGz(tarPath, nil, tarPath, srcDir)
+		err := CreateTarGz(tarPath, nil, tarPath, 0, srcDir)
 		require.NoError(t, err)
 
 		size, err := ComputeExtractSize(tarPath)
@@ -202,7 +202,7 @@ func TestCreateTarGz(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("test content"))
 		targzPath := filepath.Join(tmpDir, "test.tar.gz")
 
-		err := CreateTarGz(targzPath, nil, targzPath, srcFile)
+		err := CreateTarGz(targzPath, nil, targzPath, 0, srcFile)
 		assert.NoError(t, err, "CreateTarGz should not error")
 
 		// Verify tar.gz file exists and has content
@@ -216,7 +216,7 @@ func TestCreateTarGz(t *testing.T) {
 		file2 := createTestFile(t, tmpDir, "file2.txt", []byte("content2"))
 		targzPath := filepath.Join(tmpDir, "multi.tar.gz")
 
-		err := CreateTarGz(targzPath, nil, targzPath, file1, file2)
+		err := CreateTarGz(targzPath, nil, targzPath, 0, file1, file2)
 		assert.NoError(t, err, "CreateTarGz should handle multiple files")
 
 		stat, err := os.Stat(targzPath)
@@ -229,7 +229,7 @@ func TestCreateTarGz(t *testing.T) {
 		createTestFile(t, subDir, "file.txt", []byte("data"))
 		targzPath := filepath.Join(tmpDir, "dir.tar.gz")
 
-		err := CreateTarGz(targzPath, nil, targzPath, subDir)
+		err := CreateTarGz(targzPath, nil, targzPath, 0, subDir)
 		assert.NoError(t, err, "CreateTarGz should handle directories")
 
 		stat, err := os.Stat(targzPath)
@@ -250,7 +250,7 @@ func TestExtractArchive(t *testing.T) {
 		require.NoError(t, err, "CreateZip should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "zip-dest")
-		err = ExtractArchive(zipPath, destDir, nil)
+		err = ExtractArchive(zipPath, destDir, nil, 0)
 		require.NoError(t, err, "ExtractArchive should extract zip")
 
 		content, err := os.ReadFile(filepath.Join(destDir, "zip-src", "file.txt"))
@@ -263,11 +263,11 @@ func TestExtractArchive(t *testing.T) {
 		createTestFile(t, srcDir, "nested.txt", []byte("tar data"))
 		tarPath := filepath.Join(tmpDir, "archive.tar.gz")
 
-		err := CreateTarGz(tarPath, nil, tarPath, srcDir)
+		err := CreateTarGz(tarPath, nil, tarPath, 0, srcDir)
 		require.NoError(t, err, "CreateTarGz should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "tar-dest")
-		err = ExtractArchive(tarPath, destDir, nil)
+		err = ExtractArchive(tarPath, destDir, nil, 0)
 		require.NoError(t, err, "ExtractArchive should extract tar.gz")
 
 		content, err := os.ReadFile(filepath.Join(destDir, "tar-src", "nested.txt"))

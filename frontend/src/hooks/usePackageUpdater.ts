@@ -1,10 +1,11 @@
 // src/hooks/usePackageUpdater.ts
 import { useState, useCallback, useRef } from "react";
 
-import { linuxio, openPackageUpdateStream, type Stream } from "@/api";
+import { linuxio, openJobAttachStream, type Stream } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 const MIN_PROGRESS_VISIBLE_MS = 1500;
+const JOB_TYPE_PACKAGE_UPDATE = "package.update";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -46,16 +47,12 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const jobIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
   const { run: runStreamResult } = useStreamResult();
 
   const { mutateAsync: installPackage } =
     linuxio.dbus.install_package.useMutation();
-
-  const { refetch: refetchUpdatesBasic } =
-    linuxio.dbus.get_updates_basic.useQuery({
-      enabled: false,
-    });
 
   const appendEvent = useCallback((message: string) => {
     const trimmed = message.trim();
@@ -97,69 +94,12 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
     [appendEvent, installPackage, onComplete],
   );
 
-  const updateAllFallback = useCallback(
-    async (pkgs: string[]) => {
-      const updated = new Set<string>();
-      let remaining = [...pkgs];
-      const failedPackages: string[] = [];
-
-      while (remaining.length > 0) {
-        const pkg = remaining[0];
-        setUpdatingPackage(extractPackageName(pkg));
-        setStatus("Installing");
-
-        try {
-          await installPackage([pkg]);
-          updated.add(pkg);
-
-          const totalProcessed = updated.size + failedPackages.length;
-          const totalPackages =
-            updated.size + failedPackages.length + remaining.length - 1;
-          setProgress((totalProcessed / totalPackages) * 100);
-
-          const { data: freshUpdates } = await refetchUpdatesBasic();
-          const fresh = freshUpdates || [];
-
-          remaining = fresh
-            .map((u: { package_id: string }) => u.package_id)
-            .filter(
-              (id: string) => !updated.has(id) && !failedPackages.includes(id),
-            );
-        } catch (err) {
-          console.error(`Failed to update ${pkg}`, err);
-          failedPackages.push(pkg);
-          remaining = remaining.filter((p) => p !== pkg);
-        }
-      }
-
-      setProgress(100);
-      setUpdatingPackage(null);
-      setStatus(null);
-
-      if (failedPackages.length > 0) {
-        setError(
-          `Updated ${updated.size} packages. Failed: ${failedPackages.length} (${failedPackages.map(extractPackageName).join(", ")})`,
-        );
-      }
-
-      await onComplete();
-    },
-    [installPackage, onComplete, refetchUpdatesBasic],
-  );
-
   const updateAll = useCallback(
     async (packages: string[]) => {
       const startedAtMs = Date.now();
       if (packages.length === 0) {
         console.log("No packages to update");
         return;
-      }
-
-      const stream = openPackageUpdateStream(packages);
-      if (!stream) {
-        // Fallback to sequential updates if stream not available
-        console.warn("Stream connection not ready, using fallback");
-        return updateAllFallback(packages);
       }
 
       setProgress(0);
@@ -170,11 +110,19 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
 
-      streamRef.current = stream;
-
       try {
+        const job = await linuxio.jobs.start.call(
+          JOB_TYPE_PACKAGE_UPDATE,
+          ...packages,
+        );
+        jobIdRef.current = job.id;
+
         await runStreamResult<void, PkgUpdateProgress>({
-          open: () => stream,
+          open: () => openJobAttachStream(job.id),
+          closeOnAbort: "none",
+          onOpen: (stream) => {
+            streamRef.current = stream;
+          },
           onProgress: (data) => {
             switch (data.type) {
               case "item_progress":
@@ -251,17 +199,22 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         setStatus(null);
       } finally {
         streamRef.current = null;
+        jobIdRef.current = null;
         cancelledRef.current = false;
       }
     },
-    [appendEvent, onComplete, runStreamResult, updateAllFallback],
+    [appendEvent, onComplete, runStreamResult],
   );
 
   const cancelUpdate = useCallback(() => {
-    if (streamRef.current) {
+    if (streamRef.current || jobIdRef.current) {
       cancelledRef.current = true;
-      streamRef.current.abort();
+      streamRef.current?.abort();
       streamRef.current = null;
+      if (jobIdRef.current) {
+        void linuxio.jobs.cancel.call(jobIdRef.current).catch(() => undefined);
+        jobIdRef.current = null;
+      }
       setUpdatingPackage(null);
       setStatus(null);
       setError("Update cancelled");

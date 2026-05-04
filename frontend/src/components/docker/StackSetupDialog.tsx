@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
@@ -37,15 +37,16 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     workingDir?: string;
   }>({});
 
-  // Reset state when dialog opens
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setStackName("");
       setWorkingDir(defaultWorkingDir || "");
       setIsWorkingDirManuallyEdited(false);
       setErrors({});
     }
-  }, [open, defaultWorkingDir]);
+  }
   const sanitizeStackName = (name: string): string => {
     return name
       .toLowerCase()

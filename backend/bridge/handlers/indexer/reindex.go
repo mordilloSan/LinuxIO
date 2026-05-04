@@ -3,10 +3,12 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -25,6 +27,10 @@ var indexerClient = &http.Client{
 		},
 	},
 }
+
+var errIndexerStreamEnded = errors.New("indexer stream ended unexpectedly")
+
+const maxStatusStreamReattachAttempts = 3
 
 // IndexerCallbacks defines how indexer events are delivered to the caller.
 // Nil callbacks are safely skipped (no-op).
@@ -104,6 +110,23 @@ func triggerReindex(ctx context.Context, path string, cb IndexerCallbacks) error
 
 // attachStatusStream connects to GET /status?stream=true for live SSE events.
 func attachStatusStream(ctx context.Context, cb IndexerCallbacks) error {
+	for attempt := 0; ; attempt++ {
+		err := attachStatusStreamOnce(ctx, cb)
+		if !errors.Is(err, errIndexerStreamEnded) {
+			return err
+		}
+
+		reattach, statusErr := recoverEndedStatusStream(ctx, cb, attempt)
+		if statusErr != nil {
+			return statusErr
+		}
+		if !reattach {
+			return nil
+		}
+	}
+}
+
+func attachStatusStreamOnce(ctx context.Context, cb IndexerCallbacks) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/status?stream=true", nil)
 	if err != nil {
 		if callbackErr := callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500); callbackErr != nil {
@@ -136,6 +159,101 @@ func attachStatusStream(ctx context.Context, cb IndexerCallbacks) error {
 	}
 
 	return consumeSSEEvents(ctx, resp, cb)
+}
+
+type indexerStatusSnapshot struct {
+	Running      bool
+	Status       string
+	FilesIndexed int64
+	DirsIndexed  int64
+	TotalSize    int64
+}
+
+func fetchIndexerStatus(ctx context.Context) (indexerStatusSnapshot, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/status", nil)
+	if err != nil {
+		return indexerStatusSnapshot{}, fmt.Errorf("create status request: %w", err)
+	}
+
+	resp, err := indexerClient.Do(req)
+	if err != nil {
+		return indexerStatusSnapshot{}, fmt.Errorf("indexer status request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return indexerStatusSnapshot{}, fmt.Errorf("indexer status: %s", resp.Status)
+	}
+
+	var raw struct {
+		Status    string `json:"status"`
+		NumDirs   int64  `json:"num_dirs"`
+		NumFiles  int64  `json:"num_files"`
+		TotalSize int64  `json:"total_size"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return indexerStatusSnapshot{}, fmt.Errorf("decode indexer status: %w", err)
+	}
+
+	status := strings.ToLower(strings.TrimSpace(raw.Status))
+	return indexerStatusSnapshot{
+		Running:      status == "running" || status == "indexing",
+		Status:       status,
+		FilesIndexed: raw.NumFiles,
+		DirsIndexed:  raw.NumDirs,
+		TotalSize:    raw.TotalSize,
+	}, nil
+}
+
+func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, attempt int) (bool, error) {
+	status, err := fetchIndexerStatus(ctx)
+	if err != nil {
+		if callbackErr := callOnError(cb, "indexer stream ended unexpectedly", 500); callbackErr != nil {
+			return false, fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return false, errIndexerStreamEnded
+	}
+
+	if status.Running {
+		if progressErr := callOnProgress(cb, IndexerProgress{
+			FilesIndexed: status.FilesIndexed,
+			DirsIndexed:  status.DirsIndexed,
+			Phase:        "indexing",
+		}); progressErr != nil {
+			return false, fmt.Errorf("on progress callback: %w", progressErr)
+		}
+		if attempt >= maxStatusStreamReattachAttempts {
+			if callbackErr := callOnError(cb, "indexer status stream kept closing while indexer was running", 500); callbackErr != nil {
+				return false, fmt.Errorf("on error callback: %w", callbackErr)
+			}
+			return false, errIndexerStreamEnded
+		}
+		select {
+		case <-time.After(500 * time.Millisecond):
+			return true, nil
+		case <-ctx.Done():
+			return false, reportIndexerAbort(cb)
+		}
+	}
+
+	if status.Status == "error" || status.Status == "failed" {
+		if callbackErr := callOnError(cb, "indexer failed", 500); callbackErr != nil {
+			return false, fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return false, fmt.Errorf("indexer failed")
+	}
+
+	if cb.OnResult != nil {
+		if err := cb.OnResult(IndexerResult{
+			Path:         "/",
+			FilesIndexed: status.FilesIndexed,
+			DirsIndexed:  status.DirsIndexed,
+			TotalSize:    status.TotalSize,
+		}); err != nil {
+			return false, fmt.Errorf("on result callback: %w", err)
+		}
+	}
+	return false, nil
 }
 
 // StreamIndexerAttach connects to the indexer status SSE endpoint to attach
@@ -181,10 +299,7 @@ func consumeSSEEvents(ctx context.Context, resp *http.Response, cb IndexerCallba
 		return fmt.Errorf("read SSE: %w", err)
 	}
 
-	if err := callOnError(cb, "indexer stream ended unexpectedly", 500); err != nil {
-		return fmt.Errorf("on error callback: %w", err)
-	}
-	return fmt.Errorf("indexer stream ended unexpectedly")
+	return errIndexerStreamEnded
 }
 
 func handleIndexerSSEEvent(cb IndexerCallbacks, evt SSEEvent) (bool, error) {

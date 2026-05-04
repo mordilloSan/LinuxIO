@@ -2,16 +2,20 @@ package services
 
 import (
 	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
-	"github.com/mordilloSan/go-logger/logger"
+	zip "github.com/klauspost/compress/zip"
+	gzip "github.com/klauspost/pgzip"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -19,13 +23,13 @@ import (
 
 func closeWithLog(name string, closer io.Closer) {
 	if err := closer.Close(); err != nil {
-		logger.Debugf("failed to close %s: %v", name, err)
+		slog.Debug("failed to close archive resource", "component", "filebrowser", "subsystem", "archive", "path", name, "error", err)
 	}
 }
 
 func removeWithLog(root *fsroot.FSRoot, path string) {
 	if err := root.Root.Remove(path); err != nil && !os.IsNotExist(err) {
-		logger.Debugf("failed to remove %s: %v", path, err)
+		slog.Debug("failed to remove archive path", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
 	}
 }
 
@@ -232,7 +236,7 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 			if addErr == ipc.ErrAborted {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
-				logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
+				slog.Error("failed to add file to zip", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
 			}
 			return addErr
 		}
@@ -256,7 +260,7 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 // CreateTarGz creates a tar.gz archive from the provided file list.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // opts is optional - pass nil if callbacks are not needed.
-func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, filenames ...string) error {
+func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, compressionWorkers int, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -283,6 +287,13 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 	}()
 
 	gzWriter := gzip.NewWriter(file)
+	if compressionWorkers <= 0 {
+		compressionWorkers = runtime.GOMAXPROCS(0)
+	}
+	if err := gzWriter.SetConcurrency(1<<20, compressionWorkers); err != nil {
+		closeWithLog("gzip writer", gzWriter)
+		return err
+	}
 	tarWriter := tar.NewWriter(gzWriter)
 
 	for _, fname := range filenames {
@@ -302,7 +313,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 			if addErr == ipc.ErrAborted {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
-				logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
+				slog.Error("failed to add file to tar.gz", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
 			}
 			return addErr
 		}
@@ -327,7 +338,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 
 // ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
 // opts is optional - pass nil if callbacks are not needed.
-func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallbacks) error {
+func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallbacks, extractWorkers int) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -347,7 +358,7 @@ func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallback
 	lowerName := strings.ToLower(archivePath)
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		return extractZip(root, archivePath, destination, opts)
+		return extractZip(root, archivePath, destination, opts, extractWorkers)
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
 		return extractTarGz(root, archivePath, destination, opts)
 	default:
@@ -355,7 +366,7 @@ func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallback
 	}
 }
 
-func extractZip(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.OperationCallbacks) error {
+func extractZip(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.OperationCallbacks, extractWorkers int) error {
 	archiveFile, err := root.Root.Open(relPath(archivePath))
 	if err != nil {
 		return err
@@ -372,16 +383,76 @@ func extractZip(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.
 		return err
 	}
 
+	safeOpts := synchronizedOperationCallbacks(opts)
+	if err := extractZipDirectories(root, reader, destination, opts, safeOpts); err != nil {
+		return err
+	}
+	return extractZipFiles(root, reader, destination, opts, safeOpts, extractWorkers)
+}
+
+func synchronizedOperationCallbacks(opts *ipc.OperationCallbacks) *ipc.OperationCallbacks {
+	if opts != nil {
+		var mu sync.Mutex
+		return &ipc.OperationCallbacks{
+			Cancel: opts.Cancel,
+			Progress: func(n int64) {
+				mu.Lock()
+				defer mu.Unlock()
+				opts.ReportProgress(n)
+			},
+			OnComplete: func(path string) {
+				mu.Lock()
+				defer mu.Unlock()
+				opts.ReportComplete(path)
+			},
+		}
+	}
+	return nil
+}
+
+func extractZipDirectories(root *fsroot.FSRoot, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks) error {
 	for _, file := range reader.File {
 		if opts.IsCancelled() {
 			return ipc.ErrAborted
 		}
-		if err := extractZipEntry(root, file, destination, opts); err != nil {
-			return err
+		if file.FileInfo().IsDir() {
+			if err := extractZipEntry(root, file, destination, safeOpts); err != nil {
+				return err
+			}
 		}
 	}
-
 	return nil
+}
+
+func extractZipFiles(root *fsroot.FSRoot, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks, extractWorkers int) error {
+	if extractWorkers <= 0 {
+		extractWorkers = runtime.GOMAXPROCS(0)
+	}
+
+	g, groupCtx := errgroup.WithContext(context.Background())
+	sem := make(chan struct{}, extractWorkers)
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		if opts.IsCancelled() {
+			return ipc.ErrAborted
+		}
+		f := file
+		select {
+		case sem <- struct{}{}:
+		case <-groupCtx.Done():
+			return groupCtx.Err()
+		}
+		g.Go(func() error {
+			defer func() { <-sem }()
+			if opts.IsCancelled() {
+				return ipc.ErrAborted
+			}
+			return extractZipEntry(root, f, destination, safeOpts)
+		})
+	}
+	return g.Wait()
 }
 
 func extractZipEntry(root *fsroot.FSRoot, file *zip.File, destination string, opts *ipc.OperationCallbacks) error {
@@ -435,7 +506,11 @@ func extractTarGz(root *fsroot.FSRoot, archivePath, destination string, opts *ip
 	}
 	defer file.Close()
 
-	gzipReader, err := gzip.NewReader(file)
+	reader := io.Reader(file)
+	if opts != nil {
+		reader = &progressReader{reader: file, opts: opts}
+	}
+	gzipReader, err := gzip.NewReader(reader)
 	if err != nil {
 		return err
 	}
@@ -456,12 +531,35 @@ func extractTarGz(root *fsroot.FSRoot, archivePath, destination string, opts *ip
 			return err
 		}
 
-		if err := extractTarEntry(root, header, tarReader, destination, opts); err != nil {
+		if err := extractTarEntry(root, header, tarReader, destination, cancelOnlyCallbacks(opts)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+type progressReader struct {
+	reader io.Reader
+	opts   *ipc.OperationCallbacks
+}
+
+func (r *progressReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.opts.ReportProgress(int64(n))
+	}
+	return n, err
+}
+
+func cancelOnlyCallbacks(opts *ipc.OperationCallbacks) *ipc.OperationCallbacks {
+	if opts == nil {
+		return nil
+	}
+	return &ipc.OperationCallbacks{
+		Cancel:     opts.Cancel,
+		OnComplete: opts.OnComplete,
+	}
 }
 
 func extractTarEntry(root *fsroot.FSRoot, header *tar.Header, tarReader *tar.Reader, destination string, opts *ipc.OperationCallbacks) error {
@@ -684,7 +782,7 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 
 // copyWithCallbacks writes from src to dst using the provided callbacks.
 func copyWithCallbacks(dst io.Writer, src io.Reader, opts *ipc.OperationCallbacks) error {
-	buf := make([]byte, 8*1024)
+	buf := make([]byte, 256*1024)
 	for {
 		if opts.IsCancelled() {
 			return ipc.ErrAborted

@@ -3,9 +3,9 @@ package systemd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 type Client struct {
@@ -27,7 +27,7 @@ func (c *Client) Close() {
 		return
 	}
 	if err := c.conn.Close(); err != nil {
-		logger.Debugf("failed to close systemd D-Bus connection: %v", err)
+		slog.Debug("failed to close systemd D-Bus connection", "component", "dbus", "subsystem", "systemd", "error", err)
 	}
 }
 

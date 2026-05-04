@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import {
-  linuxio,
-  useStreamMux,
-  openDockerIndexerStream,
-  openDockerIndexerAttachStream,
-  type Stream,
-} from "@/api";
+import { linuxio, useStreamMux, openJobAttachStream, type Stream } from "@/api";
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
 import { useStreamResult } from "@/hooks/useStreamResult";
+
+const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
 
 interface DockerIndexerDialogProps {
   open: boolean;
@@ -32,21 +28,6 @@ interface IndexerResult {
   duration_ms: number;
 }
 
-const isIndexerConflictError = (error: unknown): boolean => {
-  const message =
-    error instanceof Error ? error.message.toLowerCase().trim() : "";
-  const code =
-    typeof error === "object" && error !== null && "code" in error
-      ? Number((error as { code?: unknown }).code)
-      : null;
-
-  return (
-    code === 409 ||
-    message.includes("already running") ||
-    message.includes("conflict")
-  );
-};
-
 const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
   open,
   onClose,
@@ -62,6 +43,8 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
   const [success, setSuccess] = useState(false);
   const [result, setResult] = useState<IndexerResult | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const jobIdRef = useRef<string | null>(null);
   const hasCompletedRef = useRef(false);
   const closedByUserRef = useRef(false);
   const { run: runStreamResult } = useStreamResult();
@@ -88,6 +71,8 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
       streamRef.current.close();
       streamRef.current = null;
     }
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
   }, []);
 
   // Reset state helper
@@ -100,6 +85,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
     setResult(null);
     hasCompletedRef.current = false;
     closedByUserRef.current = false;
+    jobIdRef.current = null;
   }, [closeStream]);
 
   // Cleanup stream when dialog closes
@@ -109,59 +95,6 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
     }
   }, [open, closeStream]);
 
-  // Bind stream result handlers and track completion
-  const bindStream = useCallback(
-    (stream: Stream) => {
-      const runBoundStream = (activeStream: Stream) => {
-        streamRef.current = activeStream;
-        closedByUserRef.current = false;
-
-        void runStreamResult<IndexerResult, IndexerProgress>({
-          open: () => activeStream,
-          onProgress: (progressData) => {
-            setProgress(progressData);
-          },
-          closeMessage: "Indexer stream closed unexpectedly",
-        })
-          .then((indexerResult) => {
-            hasCompletedRef.current = true;
-            setResult(indexerResult);
-            setSuccess(true);
-            onComplete?.();
-          })
-          .catch((err: unknown) => {
-            if (closedByUserRef.current) {
-              return;
-            }
-
-            if (isIndexerConflictError(err)) {
-              const attachStream = openDockerIndexerAttachStream();
-              if (attachStream) {
-                setError(null);
-                setIsRunning(true);
-                runBoundStream(attachStream);
-                return;
-              }
-            }
-
-            hasCompletedRef.current = true;
-            const errorMessage =
-              err instanceof Error ? err.message : "Indexing failed";
-            setError(errorMessage);
-          })
-          .finally(() => {
-            if (streamRef.current === activeStream) {
-              streamRef.current = null;
-              setIsRunning(false);
-            }
-          });
-      };
-
-      runBoundStream(stream);
-    },
-    [onComplete, runStreamResult],
-  );
-
   // Open stream when dialog opens.
   useEffect(() => {
     if (!open || !muxIsOpen) {
@@ -169,36 +102,67 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
     }
 
     // Don't create duplicate streams or recreate after completion
-    if (streamRef.current || hasCompletedRef.current) {
+    if (streamRef.current || jobIdRef.current || hasCompletedRef.current) {
       return;
     }
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     let cancelled = false;
 
-    const openStream = () => {
-      if (cancelled) return;
-
-      const stream = openDockerIndexerStream();
-      if (!stream) {
-        queueMicrotask(() => {
-          setError("Failed to start indexer operation");
-          setIsRunning(false);
+    void (async () => {
+      try {
+        const job = await linuxio.jobs.start.call(JOB_TYPE_DOCKER_INDEXER);
+        if (cancelled) {
+          void linuxio.jobs.cancel.call(job.id).catch(() => undefined);
+          return;
+        }
+        jobIdRef.current = job.id;
+        await runStreamResult<IndexerResult, IndexerProgress>({
+          open: () => openJobAttachStream(job.id),
+          signal: abortController.signal,
+          closeOnAbort: "none",
+          openErrorMessage: "Failed to attach indexer operation",
+          closeMessage: "Indexer stream closed unexpectedly",
+          onOpen: (stream) => {
+            streamRef.current = stream;
+            closedByUserRef.current = false;
+          },
+          onProgress: (progressData) => {
+            setProgress(progressData);
+          },
+          onSuccess: (indexerResult) => {
+            hasCompletedRef.current = true;
+            setResult(indexerResult);
+            setSuccess(true);
+            onComplete?.();
+          },
         });
-        return;
+      } catch (err: unknown) {
+        if (closedByUserRef.current) {
+          return;
+        }
+        hasCompletedRef.current = true;
+        const errorMessage =
+          err instanceof Error ? err.message : "Indexing failed";
+        setError(errorMessage);
+      } finally {
+        streamRef.current = null;
+        abortControllerRef.current = null;
+        setIsRunning(false);
       }
-
-      bindStream(stream);
-    };
-
-    openStream();
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [muxIsOpen, open, bindStream]);
+  }, [muxIsOpen, open, onComplete, runStreamResult]);
 
   const handleClose = () => {
     if (isRunning) {
+      if (jobIdRef.current) {
+        void linuxio.jobs.cancel.call(jobIdRef.current).catch(() => undefined);
+      }
       closeStream();
     }
     onClose();

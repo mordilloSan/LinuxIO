@@ -15,10 +15,6 @@ import {
   encodeString,
 } from "./StreamMultiplexer";
 
-function isSingleFileDownload(paths: string[]): boolean {
-  return paths.length === 1 && !paths[0].endsWith("/");
-}
-
 function openMuxStream(
   type: StreamType,
   initialPayload: Uint8Array,
@@ -213,27 +209,6 @@ export function openGeneralLogsStream(
   );
 }
 
-export function openDockerComposeStream(
-  action: "up" | "down" | "stop" | "restart",
-  projectName: string,
-  composePath?: string,
-): Stream | null {
-  const parts = ["docker-compose", action, projectName];
-  if (composePath) parts.push(composePath);
-  return openMuxStream("docker-compose", encodeString(parts.join("\0")));
-}
-
-export function openDockerIndexerStream(): Stream | null {
-  return openMuxStream("docker-indexer", encodeString("docker-indexer"));
-}
-
-export function openDockerIndexerAttachStream(): Stream | null {
-  return openMuxStream(
-    "docker-indexer-attach",
-    encodeString("docker-indexer-attach"),
-  );
-}
-
 export function openAppUpdateStream(
   runId: string,
   version?: string,
@@ -243,94 +218,23 @@ export function openAppUpdateStream(
   return openMuxStream("app-update", encodeString(parts.join("\0")));
 }
 
-export function openPackageUpdateStream(packages: string[]): Stream | null {
-  if (packages.length === 0) return null;
+export function openJobAttachStream(jobId: string): Stream | null {
   return openMuxStream(
-    "pkg-update",
-    encodeString(["pkg-update", ...packages].join("\0")),
+    "jobs-attach",
+    encodeString(["jobs-attach", jobId].join("\0")),
   );
 }
 
-export function openSmartTestStream(
-  device: string,
-  testType: string,
+export function openJobDataStream(
+  jobId: string,
+  offset: number = 0,
 ): Stream | null {
   return openMuxStream(
-    "smart-test",
-    encodeString(["smart-test", device, testType].join("\0")),
+    "jobs-data",
+    encodeString(["jobs-data", jobId, String(offset)].join("\0")),
   );
 }
 
-export function openFileUploadStream(
-  path: string,
-  size: number,
-  override: boolean = false,
-): Stream | null {
-  const parts = ["fb-upload", path, String(size)];
-  if (override) parts.push("true");
-  return openMuxStream("fb-upload", encodeString(parts.join("\0")));
-}
-
-export function openFileDownloadStream(paths: string[]): Stream | null {
-  if (paths.length === 0) return null;
-  if (isSingleFileDownload(paths)) {
-    return openMuxStream(
-      "fb-download",
-      encodeString(["fb-download", paths[0]].join("\0")),
-    );
-  }
-  return openMuxStream(
-    "fb-archive",
-    encodeString(["fb-archive", "zip", ...paths].join("\0")),
-  );
-}
-
-export function openFileCompressStream(
-  paths: string[],
-  destination: string,
-  format: string,
-): Stream | null {
-  return openMuxStream(
-    "fb-compress",
-    encodeString(["fb-compress", format, destination, ...paths].join("\0")),
-  );
-}
-
-export function openFileExtractStream(
-  archive: string,
-  destination?: string,
-): Stream | null {
-  const parts = ["fb-extract", archive];
-  if (destination) parts.push(destination);
-  return openMuxStream("fb-extract", encodeString(parts.join("\0")));
-}
-
-export function openFileIndexerStream(path?: string): Stream | null {
-  const parts = ["fb-reindex"];
-  if (path && path !== "/") parts.push(path);
-  return openMuxStream("fb-reindex", encodeString(parts.join("\0")));
-}
-
-export function openFileIndexerAttachStream(): Stream | null {
-  return openMuxStream("fb-indexer-attach", encodeString("fb-indexer-attach"));
-}
-
-export function openFileCopyStream(
-  source: string,
-  destination: string,
-): Stream | null {
-  return openMuxStream(
-    "fb-copy",
-    encodeString(["fb-copy", source, destination].join("\0")),
-  );
-}
-
-export function openFileMoveStream(
-  source: string,
-  destination: string,
-): Stream | null {
-  return openMuxStream(
-    "fb-move",
-    encodeString(["fb-move", source, destination].join("\0")),
-  );
+export function openJobEventsStream(): Stream | null {
+  return openMuxStream("jobs-events", encodeString("jobs-events"));
 }

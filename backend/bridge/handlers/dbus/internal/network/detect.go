@@ -1,11 +1,14 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+var ErrUnsupportedBackend = errors.New("unsupported network backend")
 
 func OpenBackend(env Environment, iface string) (Backend, error) {
 	if strings.TrimSpace(iface) == "" {
@@ -27,12 +30,15 @@ func OpenBackend(env Environment, iface string) (Backend, error) {
 	if backend, err := detectIfcfgBackend(env, iface); backend != nil || err != nil {
 		return backend, err
 	}
-	return nil, fmt.Errorf("unsupported network backend for interface %s", iface)
+	return nil, fmt.Errorf("%w for interface %s", ErrUnsupportedBackend, iface)
 }
 
 func ReadConfigBestEffort(env Environment, iface string) (InterfaceConfig, bool, error) {
 	backend, err := OpenBackend(env, iface)
 	if err != nil {
+		if errors.Is(err, ErrUnsupportedBackend) {
+			return InterfaceConfig{}, false, nil
+		}
 		return InterfaceConfig{}, false, err
 	}
 	config, err := backend.Read()

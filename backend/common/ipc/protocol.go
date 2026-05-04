@@ -42,6 +42,9 @@ const (
 const maxRelayPayloadSize = 16 * 1024 * 1024
 const relayFrameHeaderSize = 9
 
+// Shared journald field names. Keep in sync with backend/auth/linuxio_protocol.h.
+const JournalFieldSessionID = "LINUXIO_SESSION_ID"
+
 // StreamFrame represents a framed message for the relay protocol.
 // Format: [opcode:1][streamID:4][length:4][payload:N]
 type StreamFrame struct {

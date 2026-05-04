@@ -1,6 +1,7 @@
 package network
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,7 +54,18 @@ network:
 func TestOpenBackendReturnsUnsupportedWhenNoBackendMatches(t *testing.T) {
 	env, _, _ := testEnv(t)
 	_, err := OpenBackend(env, "eth9")
-	if err == nil || !strings.Contains(err.Error(), "unsupported network backend") {
+	if !errors.Is(err, ErrUnsupportedBackend) || !strings.Contains(err.Error(), "unsupported network backend") {
 		t.Fatalf("expected unsupported backend error, got %v", err)
+	}
+}
+
+func TestReadConfigBestEffortTreatsMissingBackendAsUnavailable(t *testing.T) {
+	env, _, _ := testEnv(t)
+	_, ok, err := ReadConfigBestEffort(env, "eth9")
+	if err != nil {
+		t.Fatalf("ReadConfigBestEffort returned error: %v", err)
+	}
+	if ok {
+		t.Fatal("ReadConfigBestEffort reported config for unsupported interface")
 	}
 }

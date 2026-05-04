@@ -10,6 +10,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
@@ -30,8 +31,9 @@ func GetStreamHandler(streamType string) (func(*session.Session, net.Conn, []str
 }
 
 func RegisterAllHandlers(sess *session.Session) {
-	// Register the universal bridge stream handler
-	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
+	// Register the universal RPC stream handler.
+	// Typed frontend calls like linuxio.storage.get_drive_info.call()
+	// open a "bridge" stream and dispatch through ipc.RegisterFunc handlers.
 	streamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
 		return generic.HandleBridgeStream(s, conn, args)
 	}
@@ -41,6 +43,7 @@ func RegisterAllHandlers(sess *session.Session) {
 	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
 	filebrowser.RegisterHandlers()
+	jobhandlers.RegisterHandlers()
 	config.RegisterHandlers(sess)
 	control.RegisterHandlers()
 	dbus.RegisterHandlers()
@@ -49,11 +52,9 @@ func RegisterAllHandlers(sess *session.Session) {
 	storage.RegisterHandlers()
 	shares.RegisterHandlers()
 
-	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
+	// Register stream handlers for yamux streams (terminal, jobs, logs, etc.)
 	control.RegisterStreamHandlers(streamHandlers)
 	terminal.RegisterStreamHandlers(streamHandlers)
-	filebrowser.RegisterStreamHandlers(streamHandlers)
-	dbus.RegisterStreamHandlers(streamHandlers)
-	docker.RegisterStreamHandlers(streamHandlers)
+	jobhandlers.RegisterStreamHandlers(streamHandlers)
 	logs.RegisterStreamHandlers(streamHandlers)
 }

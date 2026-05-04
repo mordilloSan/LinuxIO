@@ -3,6 +3,7 @@ package wireguard
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -20,17 +21,16 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // --- Handler Implementations ---
 func ListInterfaces([]string) (any, error) {
-	logger.Debugf("ListInterfaces: listing interfaces")
+	slog.Debug("ListInterfaces: listing interfaces")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		logger.Errorf("ListInterfaces: glob failed for %s: %v", pattern, err)
+		slog.Error("failed to list WireGuard interface configs", "path", pattern, "error", err)
 		return nil, fmt.Errorf("list interfaces: %w", err)
 	}
 
@@ -40,7 +40,7 @@ func ListInterfaces([]string) (any, error) {
 		name := strings.TrimSuffix(filepath.Base(f), configExt)
 		cfg, err := ParseWireGuardConfig(f)
 		if err != nil {
-			logger.Warnf("ListInterfaces: failed to parse %s: %v", name, err)
+			slog.Warn("failed to parse WireGuard interface config", "interface", name, "path", f, "error", err)
 			continue
 		}
 
@@ -58,8 +58,7 @@ func ListInterfaces([]string) (any, error) {
 			IsEnabled:   isInterfaceEnabled(name),
 		})
 	}
-
-	logger.Infof("ListInterfaces: found %d interfaces", len(interfaces))
+	slog.Info("listed WireGuard interfaces", "count", len(interfaces))
 	return interfaces, nil
 }
 
@@ -136,12 +135,12 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 func readInterfaceEndpointInfo(logPrefix, egressNic string) (string, string) {
 	publicIP, _ := utils.GetPublicIP()
 	if publicIP == "" {
-		logger.Warnf("%s: GetPublicIP returned empty string", logPrefix)
+		slog.Warn("public IP lookup returned empty string", "operation", logPrefix)
 	}
 
 	gatewayDNS, _ := getGatewayForInterfaceIPv4(egressNic)
 	if gatewayDNS == "" {
-		logger.Debugf("%s: no gateway DNS found for %s (optional - will use interface DNS if configured)", logPrefix, egressNic)
+		slog.Debug("no gateway DNS found for interface", "operation", logPrefix, "interface", egressNic)
 	}
 	return publicIP, gatewayDNS
 }
@@ -158,18 +157,20 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg InterfaceCo
 
 	for _, peer := range peers {
 		if len(peer.AllowedIPs) == 0 {
-			logger.Warnf("AddInterface: peer %s has no AllowedIPs, skipping export", peer.PublicKey)
+			slog.Warn("skipping peer export without allowed IPs", "peer", peer.PublicKey)
 			continue
 		}
 
 		peerOffset := ipMgr.extractHostOffset(peer.AllowedIPs[0])
 		if peerOffset < 0 {
-			logger.Warnf("AddInterface: peer %s has invalid AllowedIP %q, skipping export", peer.PublicKey, peer.AllowedIPs[0])
+			slog.Warn("skipping peer export with invalid allowed IP",
+				"peer", peer.PublicKey,
+				"path", peer.AllowedIPs[0])
 			continue
 		}
 
 		if _, err := ExportPeerConfig(name, peer, cfg, publicIP, peerOffset, gatewayDNS); err != nil {
-			logger.Warnf("AddInterface: failed to export config for peer %s: %v", peer.PublicKey, err)
+			slog.Warn("failed to export peer config", "interface", name, "peer", peer.PublicKey, "error", err)
 		}
 	}
 
@@ -184,13 +185,15 @@ func bringUpInterfaceWithNAT(name, egressNic, subnet string) error {
 	backendName, err := SetupNAT(name, egressNic, subnet)
 	if err != nil {
 		if _, downErr := DownInterface([]string{name}); downErr != nil {
-			logger.Warnf("AddInterface: failed to bring down %s after NAT failure: %v", name, downErr)
+			slog.Warn("failed to bring down interface after NAT failure",
+				"interface", name,
+				"error", downErr)
 		}
 		return fmt.Errorf("setup NAT: %w", err)
 	}
 
 	if err := SaveNATConfig(name, egressNic, subnet, backendName); err != nil {
-		logger.Warnf("AddInterface: failed to save NAT config for %s: %v", name, err)
+		slog.Warn("failed to save NAT config", "interface", name, "error", err)
 	}
 
 	return nil
@@ -228,12 +231,12 @@ func createNextPeer(cfg InterfaceConfig) (PeerConfig, string, error) {
 func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig) error {
 	publicIP, _ := utils.GetPublicIP()
 	if publicIP == "" {
-		logger.Warnf("AddPeer: GetPublicIP returned empty string")
+		slog.Warn("AddPeer: GetPublicIP returned empty string")
 	}
 
 	gatewayDNS, _ := getDefaultGatewayIPv4()
 	if gatewayDNS == "" {
-		logger.Debugf("AddPeer: no default gateway DNS found (optional - will use interface DNS if configured)")
+		slog.Debug("AddPeer: no default gateway DNS found (optional - will use interface DNS if configured)")
 	}
 
 	cfgWithPeer := cfg
@@ -250,7 +253,10 @@ func writePeerConfig(interfaceName string, cfg InterfaceConfig, peer PeerConfig)
 	cfg.Peers = append(cfg.Peers, peer)
 	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
 		if rmErr := os.Remove(peerConfigPath(interfaceName, peer.Name)); rmErr != nil {
-			logger.Warnf("AddPeer: rollback failed, could not remove peer config: %v", rmErr)
+			slog.Warn("rollback failed while removing peer config",
+				"interface", interfaceName,
+				"peer", peer.Name,
+				"error", rmErr)
 		}
 		return fmt.Errorf("write config: %w", err)
 	}
@@ -271,7 +277,7 @@ func applyPeerToRunningInterface(interfaceName string, peer PeerConfig) error {
 	for _, ipStr := range peer.AllowedIPs {
 		_, ipNet, parseErr := net.ParseCIDR(ipStr)
 		if parseErr != nil {
-			logger.Warnf("AddPeer: parse allowed IP %s failed: %v", ipStr, parseErr)
+			slog.Warn("failed to parse peer allowed IP", "interface", interfaceName, "path", ipStr, "error", parseErr)
 			continue
 		}
 		allowedIPs = append(allowedIPs, *ipNet)
@@ -339,13 +345,13 @@ func removePeerFromRunningInterface(interfaceName, removedPeerPubKey string) {
 
 	pubKey, err := wgtypes.ParseKey(removedPeerPubKey)
 	if err != nil {
-		logger.Warnf("RemovePeerByName: parse public key failed: %v", err)
+		slog.Warn("failed to parse removed peer public key", "interface", interfaceName, "error", err)
 		return
 	}
 
 	client, err := wgctrl.New()
 	if err != nil {
-		logger.Warnf("RemovePeerByName: wgctrl.New failed: %v", err)
+		slog.Warn("failed to create wgctrl client for peer removal", "interface", interfaceName, "error", err)
 		return
 	}
 	defer client.Close()
@@ -357,11 +363,10 @@ func removePeerFromRunningInterface(interfaceName, removedPeerPubKey string) {
 	if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{peerCfg},
 	}); err != nil {
-		logger.Warnf("RemovePeerByName: failed to remove peer from running interface: %v", err)
+		slog.Warn("failed to remove peer from running interface", "interface", interfaceName, "error", err)
 		return
 	}
-
-	logger.Infof("RemovePeerByName: removed peer from running interface %s", interfaceName)
+	slog.Info("removed peer from running interface", "interface", interfaceName)
 }
 
 func loadExportedPeers(interfaceName string) ([]PeerInfo, error) {
@@ -375,7 +380,7 @@ func loadExportedPeers(interfaceName string) ([]PeerInfo, error) {
 	for _, file := range files {
 		peer, err := loadExportedPeer(file)
 		if err != nil {
-			logger.Warnf("ListPeers: failed to parse %s: %v", file, err)
+			slog.Warn("failed to parse exported peer config", "path", file, "error", err)
 			continue
 		}
 		peers = append(peers, peer)
@@ -420,7 +425,7 @@ func loadExportedPeer(file string) (PeerInfo, error) {
 func mergeConfiguredPeerPublicKeys(interfaceName string, peers []PeerInfo) {
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {
-		logger.Warnf("ListPeers: could not parse main config for %s to map peer keys: %v", interfaceName, err)
+		slog.Warn("could not parse main interface config to map peer keys", "interface", interfaceName, "error", err)
 		return
 	}
 
@@ -506,42 +511,41 @@ func applyPeerRuntimeStats(peers []PeerInfo, statsByPub map[string]peerRuntimeSt
 func AddInterface(args []string) (any, error) {
 	req, err := parseAddInterfaceArgs(args)
 	if err != nil {
-		logger.Errorf("AddInterface: invalid arguments: %v", err)
+		slog.Error("invalid add interface arguments", "error", err)
 		return nil, err
 	}
 
 	peers, err := resolveInterfacePeers(req)
 	if err != nil {
-		logger.Errorf("AddInterface: generate peers failed: %v", err)
+		slog.Error("failed to generate interface peers", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("generate peers: %w", err)
 	}
 
 	privKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Errorf("AddInterface: generate private key failed: %v", err)
+		slog.Error("failed to generate WireGuard private key", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("generate private key: %w", err)
 	}
 
 	cfg := buildInterfaceConfig(req, privKey.String(), peers)
 	publicIP, gatewayDNS := readInterfaceEndpointInfo("AddInterface", req.egressNic)
 	if err := exportInterfacePeerConfigs(req.name, peers, cfg, req.addresses[0], publicIP, gatewayDNS); err != nil {
-		logger.Errorf("AddInterface: init IP manager for peer export failed: %v", err)
+		slog.Error("failed to export interface peer configs", "interface", req.name, "error", err)
 		return nil, err
 	}
 
 	// Write main config (without PostUp/PostDown - we manage NAT programmatically)
 	if err := WriteWireGuardConfig(configPath(req.name), cfg); err != nil {
-		logger.Errorf("AddInterface: write config failed for %s: %v", req.name, err)
+		slog.Error("failed to write WireGuard interface config", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 
 	subnet := req.addresses[0]
 	if err := bringUpInterfaceWithNAT(req.name, req.egressNic, subnet); err != nil {
-		logger.Errorf("AddInterface: failed to setup interface %s: %v", req.name, err)
+		slog.Error("failed to set up WireGuard interface", "interface", req.name, "error", err)
 		return nil, err
 	}
-
-	logger.Infof("AddInterface: interface %s created and brought up with NAT", req.name)
+	slog.Info("WireGuard interface created and brought up", "interface", req.name)
 
 	return map[string]any{
 		"status":      "created",
@@ -553,106 +557,105 @@ func AddInterface(args []string) (any, error) {
 
 func RemoveInterface(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("RemoveInterface: invalid arguments: %v", args)
+		slog.Error("invalid remove interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: remove_interface <name>")
 	}
 
 	name := args[0]
 	if err := validateInterfaceName(name); err != nil {
-		logger.Errorf("RemoveInterface: invalid interface name %q: %v", name, err)
+		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	logger.Infof("RemoveInterface: removing interface %s", name)
+	slog.Info("removing WireGuard interface", "interface", name)
 
 	// Cleanup NAT rules before bringing down the interface
 	if natCfg, err := LoadNATConfig(name); err != nil {
-		logger.Warnf("RemoveInterface: failed to load NAT config for %s: %v", name, err)
+		slog.Warn("failed to load NAT config", "interface", name, "error", err)
 	} else if natCfg != nil {
 		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
-			logger.Warnf("RemoveInterface: failed to cleanup NAT for %s: %v", name, err)
+			slog.Warn("failed to clean up NAT", "interface", name, "error", err)
 		}
 		if err := RemoveNATConfig(name); err != nil {
-			logger.Warnf("RemoveInterface: failed to remove NAT config for %s: %v", name, err)
+			slog.Warn("failed to remove NAT config", "interface", name, "error", err)
 		}
 	}
 
 	// Best-effort: bring it down, but don't abort on failure.
 	if _, err := DownInterface([]string{name}); err != nil {
-		logger.Warnf("RemoveInterface: failed to bring down %s; continuing with removal: %v", name, err)
+		slog.Warn("failed to bring down interface before removal", "interface", name, "error", err)
 	} else {
-		logger.Infof("RemoveInterface: interface %s brought down before removal", name)
+		slog.Info("interface brought down before removal", "interface", name)
 	}
 
 	// Remove config file
 	cfgPath := configPath(name)
 	if err := os.Remove(cfgPath); err != nil {
 		if os.IsNotExist(err) {
-			logger.Warnf("RemoveInterface: config file already missing for %s (%s)", name, cfgPath)
+			slog.Warn("interface config already missing", "interface", name, "path", cfgPath)
 		} else {
-			logger.Errorf("RemoveInterface: failed to remove config for %s (%s): %v", name, cfgPath, err)
+			slog.Error("failed to remove interface config", "interface", name, "path", cfgPath, "error", err)
 			return nil, fmt.Errorf("remove config: %w", err)
 		}
 	} else {
-		logger.Infof("RemoveInterface: removed config file for %s (%s)", name, cfgPath)
+		slog.Info("removed interface config file", "interface", name, "path", cfgPath)
 	}
 
 	// Remove peer directory (best-effort)
 	peerDir := peerDirPath(name)
 	if err := os.RemoveAll(peerDir); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("RemoveInterface: could not remove peer dir %s: %v", peerDir, err)
+		slog.Warn("failed to remove peer directory", "interface", name, "path", peerDir, "error", err)
 	} else {
-		logger.Infof("RemoveInterface: removed peer directory for %s (%s)", name, peerDir)
+		slog.Info("removed peer directory", "interface", name, "path", peerDir)
 	}
-
-	logger.Infof("RemoveInterface: interface %s removed", name)
+	slog.Info("WireGuard interface removed", "interface", name)
 	return "removed", nil
 }
 
 func AddPeer(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("AddPeer: invalid arguments: %v", args)
+		slog.Error("invalid add peer arguments", "args", args)
 		return nil, fmt.Errorf("usage: add_peer <interface>")
 	}
 
 	interfaceName := args[0]
 	if err := validateInterfaceName(interfaceName); err != nil {
-		logger.Errorf("AddPeer: invalid interface name %q: %v", interfaceName, err)
+		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	logger.Infof("AddPeer: adding peer to %s", interfaceName)
+	slog.Info("adding WireGuard peer", "interface", interfaceName)
 
 	// Read current config
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {
-		logger.Errorf("AddPeer: read config failed for %s: %v", interfaceName, err)
+		slog.Error("failed to read interface config", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
 	peer, nextIP, err := createNextPeer(cfg)
 	if err != nil {
-		logger.Errorf("AddPeer: create peer failed: %v", err)
+		slog.Error("failed to create WireGuard peer", "interface", interfaceName, "error", err)
 		return nil, err
 	}
 
 	if err := exportAddedPeer(interfaceName, peer, cfg); err != nil {
-		logger.Errorf("AddPeer: export peer config failed: %v", err)
+		slog.Error("failed to export added peer config", "interface", interfaceName, "peer", peer.Name, "error", err)
 		return nil, err
 	}
 
 	if err := writePeerConfig(interfaceName, cfg, peer); err != nil {
-		logger.Errorf("AddPeer: write config failed for %s: %v", interfaceName, err)
+		slog.Error("failed to write updated interface config", "interface", interfaceName, "error", err)
 		return nil, err
 	}
 
 	if err := applyPeerToRunningInterface(interfaceName, peer); err != nil {
-		logger.Errorf("AddPeer: failed to apply peer to running interface: %v", err)
+		slog.Error("failed to apply peer to running interface", "interface", interfaceName, "peer", peer.Name, "error", err)
 		return nil, err
 	}
 
 	if isInterfaceUp(interfaceName) {
-		logger.Infof("AddPeer: dynamically added %s with IP %s to %s", peer.Name, nextIP, interfaceName)
+		slog.Info("peer dynamically added to running interface", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
 	} else {
-		logger.Infof("AddPeer: added %s with IP %s to %s config (interface not running)", peer.Name, nextIP, interfaceName)
+		slog.Info("peer added to interface config", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
 	}
 	return map[string]any{
 		"peer_name":  peer.Name,
@@ -663,44 +666,44 @@ func AddPeer(args []string) (any, error) {
 
 func RemovePeerByName(args []string) (any, error) {
 	if len(args) < 2 {
-		logger.Errorf("RemovePeerByName: invalid arguments: %v", args)
+		slog.Error("invalid remove peer arguments", "args", args)
 		return nil, fmt.Errorf("usage: remove_peer <interface> <peer>")
 	}
 
 	interfaceName := args[0]
 	peerName := args[1]
 	if err := validateInterfaceName(interfaceName); err != nil {
-		logger.Errorf("RemovePeerByName: invalid interface name %q: %v", interfaceName, err)
+		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validateInterfaceName(peerName); err != nil {
-		logger.Errorf("RemovePeerByName: invalid peer name %q: %v", peerName, err)
+		slog.Error("invalid WireGuard peer name", "peer", peerName, "error", err)
 		return nil, fmt.Errorf("invalid peer name: %w", err)
 	}
-	logger.Infof("RemovePeerByName: removing peer %s from %s", peerName, interfaceName)
+	slog.Info("removing WireGuard peer", "interface", interfaceName, "peer", peerName)
 
 	peerPath, allowedIP, err := readPeerAllowedIP(interfaceName, peerName)
 	if err != nil {
-		logger.Errorf("RemovePeerByName: parse peer config %s failed: %v", peerPath, err)
+		slog.Error("failed to read peer config", "interface", interfaceName, "peer", peerName, "path", peerPath, "error", err)
 		return nil, err
 	}
 
 	// Read main config
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {
-		logger.Errorf("RemovePeerByName: read main config for %s failed: %v", interfaceName, err)
+		slog.Error("failed to read main interface config", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("read main config: %w", err)
 	}
 
 	cfg, removedPeerPubKey, found := removePeerFromConfig(cfg, allowedIP)
 	if !found {
-		logger.Errorf("RemovePeerByName: peer with IP %s not found in %s", allowedIP, interfaceName)
+		slog.Error("peer allowed IP not found in interface config", "interface", interfaceName, "path", allowedIP)
 		return nil, fmt.Errorf("peer not found with IP %s", allowedIP)
 	}
 
 	// Write updated config
 	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
-		logger.Errorf("RemovePeerByName: write updated config failed: %v", err)
+		slog.Error("failed to write updated interface config", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 
@@ -708,31 +711,30 @@ func RemovePeerByName(args []string) (any, error) {
 
 	// Remove peer config file
 	if err := os.Remove(peerPath); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("RemovePeerByName: could not remove peer config %s: %v", peerPath, err)
+		slog.Warn("failed to remove peer config file", "interface", interfaceName, "peer", peerName, "path", peerPath, "error", err)
 	} else {
-		logger.Infof("RemovePeerByName: removed peer config file %s", peerPath)
+		slog.Info("removed peer config file", "interface", interfaceName, "peer", peerName, "path", peerPath)
 	}
-
-	logger.Infof("RemovePeerByName: peer %s removed from %s", peerName, interfaceName)
+	slog.Info("WireGuard peer removed", "interface", interfaceName, "peer", peerName)
 	return "removed", nil
 }
 
 func ListPeers(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("ListPeers: invalid arguments: %v", args)
+		slog.Error("invalid list peers arguments", "args", args)
 		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
 	}
 
 	interfaceName := args[0]
 	if err := validateInterfaceName(interfaceName); err != nil {
-		logger.Errorf("ListPeers: invalid interface name %q: %v", interfaceName, err)
+		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	logger.Debugf("ListPeers: listing exported peers for %s", interfaceName)
+	slog.Debug("listing exported peers", "interface", interfaceName)
 
 	peers, err := loadExportedPeers(interfaceName)
 	if err != nil {
-		logger.Errorf("ListPeers: failed to read exported peers for %s: %v", interfaceName, err)
+		slog.Error("failed to read exported peers", "interface", interfaceName, "error", err)
 		return nil, err
 	}
 
@@ -740,24 +742,23 @@ func ListPeers(args []string) (any, error) {
 
 	statsByPub, err := loadPeerRuntimeStats(interfaceName)
 	if err != nil {
-		logger.Warnf("ListPeers: wgctrl.New failed (device may be down). Returning peers without stats: %v", err)
-		logger.Infof("ListPeers: found %d exported peers for %s", len(peers), interfaceName)
+		slog.Warn("failed to load runtime peer stats", "interface", interfaceName, "error", err)
+		slog.Info("listed exported peers", "interface", interfaceName, "count", len(peers))
 		return peers, nil
 	}
 	applyPeerRuntimeStats(peers, statsByPub)
-
-	logger.Infof("ListPeers: found %d exported peers for %s (with runtime stats + bps)", len(peers), interfaceName)
+	slog.Info("listed exported peers with runtime stats", "interface", interfaceName, "count", len(peers))
 	return peers, nil
 }
 
 func UpInterface(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("UpInterface: invalid arguments: %v", args)
+		slog.Error("invalid up interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: up_interface <name>")
 	}
 	name := args[0]
 	if err := validateInterfaceName(name); err != nil {
-		logger.Errorf("UpInterface: invalid interface name %q: %v", name, err)
+		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	wgQuickPath, err := exec.LookPath("wg-quick")
@@ -777,11 +778,10 @@ func UpInterface(args []string) (any, error) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("UpInterface: failed to bring up %s: %v (%s)", name, err, string(out))
+		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", string(out))
 		return nil, fmt.Errorf("bring up interface: %w", err)
 	}
-
-	logger.Infof("UpInterface: interface %s brought up", name)
+	slog.Info("WireGuard interface brought up", "interface", name)
 	return map[string]any{
 		"status": "on",
 		"output": string(out),
@@ -790,13 +790,13 @@ func UpInterface(args []string) (any, error) {
 
 func DownInterface(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("DownInterface: invalid arguments: %v", args)
+		slog.Error("invalid down interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: down_interface <name>")
 	}
 
 	name := args[0]
 	if err := validateInterfaceName(name); err != nil {
-		logger.Errorf("DownInterface: invalid interface name %q: %v", name, err)
+		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	wgQuickPath, err := exec.LookPath("wg-quick")
@@ -816,11 +816,10 @@ func DownInterface(args []string) (any, error) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("DownInterface: failed to bring down %s: %v (%s)", name, err, string(out))
+		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", string(out))
 		return nil, fmt.Errorf("bring down interface: %w", err)
 	}
-
-	logger.Infof("DownInterface: interface %s brought down", name)
+	slog.Info("WireGuard interface brought down", "interface", name)
 	return map[string]any{
 		"status": "off",
 		"output": string(out),
@@ -829,88 +828,86 @@ func DownInterface(args []string) (any, error) {
 
 func PeerQRCode(args []string) (any, error) {
 	if len(args) < 2 {
-		logger.Errorf("PeerQRCode: invalid arguments: %v", args)
+		slog.Error("invalid peer QR code arguments", "args", args)
 		return nil, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
 	}
 
 	if err := validateInterfaceName(args[0]); err != nil {
-		logger.Errorf("PeerQRCode: invalid interface name %q: %v", args[0], err)
+		slog.Error("invalid WireGuard interface name", "interface", args[0], "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validateInterfaceName(args[1]); err != nil {
-		logger.Errorf("PeerQRCode: invalid peer name %q: %v", args[1], err)
+		slog.Error("invalid WireGuard peer name", "peer", args[1], "error", err)
 		return nil, fmt.Errorf("invalid peer name: %w", err)
 	}
 
 	peerPath := peerConfigPath(args[0], args[1])
 	rawConfig, err := os.ReadFile(peerPath)
 	if err != nil {
-		logger.Errorf("PeerQRCode: read peer config %s failed: %v", peerPath, err)
+		slog.Error("failed to read peer config for QR code", "path", peerPath, "error", err)
 		return nil, fmt.Errorf("read peer config: %w", err)
 	}
 
 	// Generate QR code
 	png, err := qrcode.Encode(string(rawConfig), qrcode.Medium, 256)
 	if err != nil {
-		logger.Errorf("PeerQRCode: QR encode failed for %s: %v", peerPath, err)
+		slog.Error("failed to generate peer QR code", "path", peerPath, "error", err)
 		return nil, fmt.Errorf("generate QR code: %w", err)
 	}
 
 	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
-	logger.Infof("PeerQRCode: generated QR for %s", peerPath)
+	slog.Info("generated peer QR code", "path", peerPath)
 	return map[string]string{"qrcode": dataURI}, nil
 }
 
 func PeerConfigDownload(args []string) (any, error) {
 	if len(args) < 2 {
-		logger.Errorf("PeerConfigDownload: invalid arguments: %v", args)
+		slog.Error("invalid peer config download arguments", "args", args)
 		return nil, fmt.Errorf("usage: peer_config_download <interface> <peername>")
 	}
 
 	if err := validateInterfaceName(args[0]); err != nil {
-		logger.Errorf("PeerConfigDownload: invalid interface name %q: %v", args[0], err)
+		slog.Error("invalid WireGuard interface name", "interface", args[0], "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validateInterfaceName(args[1]); err != nil {
-		logger.Errorf("PeerConfigDownload: invalid peer name %q: %v", args[1], err)
+		slog.Error("invalid WireGuard peer name", "peer", args[1], "error", err)
 		return nil, fmt.Errorf("invalid peer name: %w", err)
 	}
 
 	peerPath := peerConfigPath(args[0], args[1])
 	data, err := os.ReadFile(peerPath)
 	if err != nil {
-		logger.Errorf("PeerConfigDownload: read peer config %s failed: %v", peerPath, err)
+		slog.Error("failed to read peer config for download", "path", peerPath, "error", err)
 		return nil, fmt.Errorf("read peer config: %w", err)
 	}
-
-	logger.Infof("PeerConfigDownload: served %d bytes from %s", len(data), peerPath)
+	slog.Info("served peer config download", "path", peerPath, "size", len(data))
 	return map[string]string{"config": string(data)}, nil
 }
 
 func GetKeys(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("GetKeys: invalid arguments: %v", args)
+		slog.Error("invalid get keys arguments", "args", args)
 		return nil, fmt.Errorf("usage: get_keys <interface>")
 	}
 
 	if err := validateInterfaceName(args[0]); err != nil {
-		logger.Errorf("GetKeys: invalid interface name %q: %v", args[0], err)
+		slog.Error("invalid WireGuard interface name", "interface", args[0], "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
 	cfg, err := ParseWireGuardConfig(configPath(args[0]))
 	if err != nil {
-		logger.Errorf("GetKeys: read config failed for %s: %v", args[0], err)
+		slog.Error("failed to read interface config for keys", "interface", args[0], "error", err)
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
 	key, err := wgtypes.ParseKey(cfg.PrivateKey)
 	if err != nil {
-		logger.Errorf("GetKeys: parse private key failed: %v", err)
+		slog.Error("failed to parse WireGuard private key", "interface", args[0], "error", err)
 		return nil, fmt.Errorf("parse key: %w", err)
 	}
-
-	logger.Infof("GetKeys: provided keys for %s", args[0])
+	slog.Info("provided interface keys", "interface", args[0])
 	return map[string]string{
 		"private_key": cfg.PrivateKey,
 		"public_key":  key.PublicKey().String(),
@@ -919,23 +916,22 @@ func GetKeys(args []string) (any, error) {
 
 func EnableInterface(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("EnableInterface: invalid arguments: %v", args)
+		slog.Error("invalid enable interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: enable_interface <name>")
 	}
 
 	name := args[0]
 	if err := validateInterfaceName(name); err != nil {
-		logger.Errorf("EnableInterface: invalid interface name %q: %v", name, err)
+		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
 	if err := systemd.EnableUnit(serviceName); err != nil {
-		logger.Errorf("EnableInterface: failed to enable %s: %v", serviceName, err)
+		slog.Error("failed to enable WireGuard interface", "interface", name, "service", serviceName, "error", err)
 		return nil, fmt.Errorf("enable interface: %w", err)
 	}
-
-	logger.Infof("EnableInterface: %s enabled for boot persistence", name)
+	slog.Info("enabled WireGuard interface for boot persistence", "interface", name, "service", serviceName)
 	return map[string]any{
 		"status": "enabled",
 		"output": "enabled via systemd D-Bus",
@@ -944,23 +940,22 @@ func EnableInterface(args []string) (any, error) {
 
 func DisableInterface(args []string) (any, error) {
 	if len(args) < 1 {
-		logger.Errorf("DisableInterface: invalid arguments: %v", args)
+		slog.Error("invalid disable interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: disable_interface <name>")
 	}
 
 	name := args[0]
 	if err := validateInterfaceName(name); err != nil {
-		logger.Errorf("DisableInterface: invalid interface name %q: %v", name, err)
+		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
 	if err := systemd.DisableUnit(serviceName); err != nil {
-		logger.Errorf("DisableInterface: failed to disable %s: %v", serviceName, err)
+		slog.Error("failed to disable WireGuard interface", "interface", name, "service", serviceName, "error", err)
 		return nil, fmt.Errorf("disable interface: %w", err)
 	}
-
-	logger.Infof("DisableInterface: %s disabled from boot persistence", name)
+	slog.Info("disabled WireGuard interface from boot persistence", "interface", name, "service", serviceName)
 	return map[string]any{
 		"status": "disabled",
 		"output": "disabled via systemd D-Bus",

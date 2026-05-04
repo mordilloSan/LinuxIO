@@ -80,6 +80,8 @@ body.dialog-open #root {
   flex-direction: column;
   max-height: inherit;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
   border-radius: 4px;
   background-color: var(--color-surface);
   color: var(--color-text);
@@ -87,6 +89,32 @@ body.dialog-open #root {
     0px 11px 15px -7px rgba(0, 0, 0, 0.2),
     0px 24px 38px 3px rgba(0, 0, 0, 0.14),
     0px 9px 46px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* scrollbar styling shared by paper and content */
+
+.app-dialog__paper::-webkit-scrollbar,
+.app-dialog-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.app-dialog__paper::-webkit-scrollbar-thumb,
+.app-dialog-content::-webkit-scrollbar-thumb {
+  background-color: rgba(127, 127, 127, 0.5);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.app-dialog__paper::-webkit-scrollbar-thumb:hover,
+.app-dialog-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(127, 127, 127, 0.7);
+}
+
+.app-dialog__paper::-webkit-scrollbar-track,
+.app-dialog-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ── title ─────────────────────────────────── */
@@ -107,6 +135,8 @@ body.dialog-open #root {
   padding: 20px 24px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
 }
 
 /* reduce top padding when preceded by title */

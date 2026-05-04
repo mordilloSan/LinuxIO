@@ -17,11 +17,12 @@ import {
   linuxio,
   CACHE_TTL_MS,
   isConnected,
-  openFileUploadStream,
+  openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
+import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
@@ -35,6 +36,7 @@ import SortBar, { SortField } from "@/components/filebrowser/SortBar";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import {
   ensureZipExtension,
+  ensureTarGzExtension,
   isArchiveFile,
   isEditableFile,
   stripArchiveExtension,
@@ -77,6 +79,7 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   card: <Icon icon="mdi:view-grid" width={20} height={20} />,
   list: <Icon icon="mdi:view-list" width={20} height={20} />,
 };
+const JOB_TYPE_FILE_UPLOAD = "file.upload";
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
@@ -149,6 +152,10 @@ const FileBrowser: React.FC = () => {
   } = useFileUpload();
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [compressFormatDialog, setCompressFormatDialog] = useState<{
+    paths: string[];
+    baseName: string;
+  } | null>(null);
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
@@ -163,6 +170,11 @@ const FileBrowser: React.FC = () => {
     .map((segment) => decodeURIComponent(segment))
     .join("/");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
+  const [prevNormalizedPath, setPrevNormalizedPath] = useState(normalizedPath);
+  if (normalizedPath !== prevNormalizedPath) {
+    setPrevNormalizedPath(normalizedPath);
+    setSearchQuery("");
+  }
   const {
     createFile,
     createFolder,
@@ -274,10 +286,6 @@ const FileBrowser: React.FC = () => {
     };
   }, [resource, searchQuery, searchResults, isSearchUnavailable]);
 
-  // Clear search when navigating to a different directory
-  useEffect(() => {
-    setSearchQuery("");
-  }, [normalizedPath]);
   const handleCloseContextMenu = useCallback(() => {
     setContextMenuPosition(null);
   }, [setContextMenuPosition]);
@@ -638,7 +646,7 @@ const FileBrowser: React.FC = () => {
     handleOpenDirectory,
     setSearchQuery,
   ]);
-  const handleCompressSelection = useCallback(async () => {
+  const handleCompressSelection = useCallback(() => {
     handleCloseContextMenu();
     const paths = Array.from(selectedPaths);
     if (!paths.length) return;
@@ -646,47 +654,51 @@ const FileBrowser: React.FC = () => {
       selectedItems.length === 1
         ? stripArchiveExtension(selectedItems[0].name)
         : "archive";
-    const pendingNames = pendingArchiveNamesRef.current;
-    const archiveName = getUniqueName(
-      ensureZipExtension(baseName || "archive"),
-      pendingNames,
-    );
-    pendingNames.add(archiveName);
-    try {
-      await compressItems({
-        paths,
-        archiveName,
-        destination: normalizedPath,
-      });
-    } catch (err: any) {
-      const isConflict = err?.response?.status === 409;
-      if (isConflict) {
-        const message =
-          err?.response?.data?.error || `${archiveName} already exists`;
-        toast.error(message);
-        pendingArchiveConflictNamesRef.current.add(archiveName);
-      } else if (
-        err?.name !== "CanceledError" &&
-        err?.name !== "AbortError" &&
-        err?.message !== "canceled"
-      ) {
-        const message =
-          err?.response?.data?.error ||
-          err?.message ||
-          "Failed to create archive";
-        toast.error(message);
+    setCompressFormatDialog({ paths, baseName: baseName || "archive" });
+  }, [handleCloseContextMenu, selectedItems, selectedPaths]);
+
+  const handleCompressConfirm = useCallback(
+    async (format: "zip" | "tar.gz") => {
+      if (!compressFormatDialog) return;
+      const { paths, baseName } = compressFormatDialog;
+      const pendingNames = pendingArchiveNamesRef.current;
+      const archiveName = getUniqueName(
+        format === "tar.gz"
+          ? ensureTarGzExtension(baseName)
+          : ensureZipExtension(baseName),
+        pendingNames,
+      );
+      pendingNames.add(archiveName);
+      try {
+        await compressItems({
+          paths,
+          archiveName,
+          destination: normalizedPath,
+        });
+      } catch (err: any) {
+        const isConflict = err?.response?.status === 409;
+        if (isConflict) {
+          const message =
+            err?.response?.data?.error || `${archiveName} already exists`;
+          toast.error(message);
+          pendingArchiveConflictNamesRef.current.add(archiveName);
+        } else if (
+          err?.name !== "CanceledError" &&
+          err?.name !== "AbortError" &&
+          err?.message !== "canceled"
+        ) {
+          const message =
+            err?.response?.data?.error ||
+            err?.message ||
+            "Failed to create archive";
+          toast.error(message);
+        }
+      } finally {
+        pendingArchiveNamesRef.current.delete(archiveName);
       }
-    } finally {
-      pendingArchiveNamesRef.current.delete(archiveName);
-    }
-  }, [
-    compressItems,
-    getUniqueName,
-    handleCloseContextMenu,
-    normalizedPath,
-    selectedItems,
-    selectedPaths,
-  ]);
+    },
+    [compressFormatDialog, compressItems, getUniqueName, normalizedPath],
+  );
   const handleExtractSelection = useCallback(async () => {
     handleCloseContextMenu();
     if (!archiveSelection) return;
@@ -749,8 +761,13 @@ const FileBrowser: React.FC = () => {
   );
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
+      const job = await linuxio.jobs.start.call(
+        JOB_TYPE_FILE_UPLOAD,
+        path,
+        String(contentBytes.length),
+      );
       await runChunkedStreamResult<void>({
-        open: () => openFileUploadStream(path, contentBytes.length),
+        open: () => openJobDataStream(job.id, 0),
         openErrorMessage: "Failed to open save stream",
         data: contentBytes,
         chunkSize: chunkSize,
@@ -1203,6 +1220,12 @@ const FileBrowser: React.FC = () => {
         canOpenContainingFolder={
           Boolean(searchQuery) && selectedPaths.size === 1
         }
+      />
+
+      <CompressFormatDialog
+        open={Boolean(compressFormatDialog)}
+        onClose={() => setCompressFormatDialog(null)}
+        onConfirm={handleCompressConfirm}
       />
 
       <FileBrowserDialog

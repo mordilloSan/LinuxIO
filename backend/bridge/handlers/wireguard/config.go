@@ -2,11 +2,10 @@ package wireguard
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"gopkg.in/ini.v1"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // --- Config Parsing ---
@@ -17,7 +16,7 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 		AllowNonUniqueSections: true,
 	}, path)
 	if err != nil {
-		logger.Errorf("ParseWireGuardConfig: failed to load %s: %v", path, err)
+		slog.Error("failed to load WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return cfg, fmt.Errorf("load config: %w", err)
 	}
 
@@ -68,7 +67,7 @@ func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
 	// Create Interface section
 	ifSec, err := iniFile.NewSection("Interface")
 	if err != nil {
-		logger.Errorf("WriteWireGuardConfig: create interface section failed for %s: %v", path, err)
+		slog.Error("failed to create WireGuard interface section", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return fmt.Errorf("create interface section: %w", err)
 	}
 
@@ -82,17 +81,16 @@ func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
 	// Create Peer sections
 	for _, peer := range cfg.Peers {
 		if err := addPeerSection(iniFile, peer); err != nil {
-			logger.Warnf("WriteWireGuardConfig: failed to add peer %s: %v", peer.PublicKey, err)
+			slog.Warn("failed to add WireGuard peer section", "component", "wireguard", "subsystem", "config", "path", path, "error", err, "peer", peer.PublicKey)
 			continue
 		}
 	}
 
 	// Save file
 	if err := iniFile.SaveTo(path); err != nil {
-		logger.Errorf("WriteWireGuardConfig: save to %s failed: %v", path, err)
+		slog.Error("failed to save WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return fmt.Errorf("save config: %w", err)
 	}
-
-	logger.Infof("WriteWireGuardConfig: wrote WireGuard config to %s", path)
+	slog.Info("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)
 	return nil
 }

@@ -7,20 +7,27 @@ import UpdateStatus from "./UpdateStatus";
 
 import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
+import { useCapability } from "@/hooks/useCapabilities";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { useAppTheme } from "@/theme";
 
 const Updates: React.FC = () => {
   const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { status: packageKitStatus, reason: packageKitReason } = useCapability(
+    "packageKitAvailable",
+  );
+  const packageKitUnavailable = packageKitStatus === "unavailable";
   const {
     data: rawUpdates,
     isPending: isLoading,
     refetch,
   } = linuxio.dbus.get_updates_basic.useQuery({
+    enabled: !packageKitUnavailable,
     refetchInterval: 50000,
   });
 
@@ -44,7 +51,12 @@ const Updates: React.FC = () => {
           {
             value: "updates",
             label: "Updates",
-            component: (
+            component: packageKitUnavailable ? (
+              <AppAlert severity="warning">
+                <AppAlertTitle>PackageKit unavailable</AppAlertTitle>
+                {packageKitReason}
+              </AppAlert>
+            ) : (
               <UpdateStatus
                 updates={updates}
                 isLoading={isLoading}
@@ -66,16 +78,18 @@ const Updates: React.FC = () => {
                   gap: theme.spacing(1),
                 }}
               >
-                <AppTooltip title="Update settings">
-                  <AppIconButton
-                    size="small"
-                    aria-label="Open update settings"
-                    onClick={() => setSettingsOpen(true)}
-                  >
-                    <Icon icon="mdi:cog" width={20} height={20} />
-                  </AppIconButton>
-                </AppTooltip>
-                {updates.length > 0 ? (
+                {!packageKitUnavailable ? (
+                  <AppTooltip title="Update settings">
+                    <AppIconButton
+                      size="small"
+                      aria-label="Open update settings"
+                      onClick={() => setSettingsOpen(true)}
+                    >
+                      <Icon icon="mdi:cog" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                ) : null}
+                {!packageKitUnavailable && updates.length > 0 ? (
                   <AppButton
                     variant="contained"
                     size="small"

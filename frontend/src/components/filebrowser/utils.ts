@@ -61,6 +61,14 @@ export const ensureZipExtension = (name: string) => {
   return `${name}.zip`;
 };
 
+export const ensureTarGzExtension = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".tar.gz")) {
+    return name;
+  }
+  return `${name}.tar.gz`;
+};
+
 // Text-based file extensions that can be edited
 const EDITABLE_EXTENSIONS = new Set([
   // Code

@@ -1,9 +1,11 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,8 +13,6 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
@@ -84,20 +84,20 @@ func MoveFile(src, dst string, overwrite bool) error {
 	// fallback
 	err = copyWithRoot(root, src, dst, overwrite)
 	if err != nil {
-		logger.Errorf("CopyFile failed %v %v %v ", src, dst, err)
+		slog.Error("copy fallback failed", "component", "filebrowser", "subsystem", "file_operations", "path", src, "destination", dst, "error", err)
 		return err
 	}
 
 	go func(removePath string) {
 		asyncRoot, openErr := fsroot.Open()
 		if openErr != nil {
-			logger.Errorf("open root failed during async remove %v", openErr)
+			slog.Error("failed to open root during async remove", "component", "filebrowser", "subsystem", "file_operations", "error", openErr)
 			return
 		}
 		defer asyncRoot.Close()
 
 		if removeErr := asyncRoot.Root.RemoveAll(relPath(removePath)); removeErr != nil {
-			logger.Errorf("Root.RemoveAll failed %v %v ", removePath, removeErr)
+			slog.Error("failed to remove source after fallback copy", "component", "filebrowser", "subsystem", "file_operations", "path", removePath, "error", removeErr)
 		}
 	}(src)
 
@@ -434,7 +434,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	}
 
 	if err := copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
-		logger.Errorf("CopyFileWithCallbacks failed %v %v %v ", src, dst, err)
+		slog.Error("copy with callbacks failed", "component", "filebrowser", "subsystem", "file_operations", "path", src, "destination", dst, "error", err)
 		return err
 	}
 
@@ -444,7 +444,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 
 	// Delete source after successful copy
 	if removeErr := root.Root.RemoveAll(relPath(src)); removeErr != nil {
-		logger.Errorf("Root.RemoveAll failed %v %v ", src, removeErr)
+		slog.Error("failed to remove source after copy", "component", "filebrowser", "subsystem", "file_operations", "path", src, "error", removeErr)
 		return fmt.Errorf("failed to remove source after copy: %w", removeErr)
 	}
 
@@ -458,7 +458,7 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCall
 
 	totalSize, sizeErr := ComputeCopySize(dst)
 	if sizeErr != nil {
-		logger.Debugf("failed to compute move size after rename for %s: %v", dst, sizeErr)
+		slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
 		return true, nil
 	}
 
@@ -721,6 +721,11 @@ func CommonPrefix(sep byte, paths ...string) string {
 // ChangePermissions changes the permissions of a file or directory
 // If recursive is true and the path is a directory, changes permissions recursively
 func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
+	return ChangePermissionsCtx(context.Background(), path, mode, recursive, nil)
+}
+
+// ChangePermissionsCtx changes permissions and reports processed entries when requested.
+func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, cb func(processed, total int64)) error {
 	path = cleanAbsPath(path)
 
 	root, err := fsroot.Open()
@@ -735,32 +740,25 @@ func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
 		return fmt.Errorf("failed to stat path: %w", err)
 	}
 
+	recursiveDir := info.IsDir() && recursive
+	total, err := countRecursiveEntries(ctx, root, path, recursiveDir)
+	if err != nil {
+		return err
+	}
+	report := progressReporter(total, cb)
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// Change permissions of the main path
 	if err := root.Root.Chmod(relPath(path), mode); err != nil {
 		return fmt.Errorf("failed to chmod %s: %w", path, err)
 	}
+	report()
 
-	// If it's a directory and recursive is true, walk through and change all nested items
-	if info.IsDir() && recursive {
-		return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				logger.Errorf("error walking path %s: %v", walkRel, walkErr)
-				return nil // Continue walking even if one item fails
-			}
-
-			// Skip the root path as we already changed it
-			if walkRel == "." || walkRel == relPath(path) {
-				return nil
-			}
-
-			if err := root.Root.Chmod(walkRel, mode); err != nil {
-				logger.Errorf("failed to chmod %s: %v", walkRel, err)
-				// Continue even if one item fails
-				return nil
-			}
-
-			return nil
-		})
+	if recursiveDir {
+		return changePermissionsRecursive(ctx, root, path, mode, report)
 	}
 
 	return nil
@@ -770,6 +768,11 @@ func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
 // If recursive is true and the path is a directory, changes ownership recursively.
 // Passing uid or gid as -1 will leave that field unchanged (POSIX semantics).
 func ChangeOwnership(path string, uid, gid int, recursive bool) error {
+	return ChangeOwnershipCtx(context.Background(), path, uid, gid, recursive, nil)
+}
+
+// ChangeOwnershipCtx changes ownership and reports processed entries when requested.
+func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, cb func(processed, total int64)) error {
 	path = cleanAbsPath(path)
 
 	root, err := fsroot.Open()
@@ -783,31 +786,106 @@ func ChangeOwnership(path string, uid, gid int, recursive bool) error {
 		return fmt.Errorf("failed to lstat path: %w", err)
 	}
 
+	recursiveDir := info.IsDir() && recursive
+	total, err := countRecursiveEntries(ctx, root, path, recursiveDir)
+	if err != nil {
+		return err
+	}
+	report := progressReporter(total, cb)
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if err := root.Root.Lchown(relPath(path), uid, gid); err != nil {
 		return fmt.Errorf("failed to chown %s: %w", path, err)
 	}
+	report()
 
-	if info.IsDir() && recursive {
-		return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				logger.Errorf("error walking path %s: %v", walkRel, walkErr)
-				return nil
-			}
-
-			// Skip root (already changed)
-			if walkRel == "." || walkRel == relPath(path) {
-				return nil
-			}
-
-			if err := root.Root.Lchown(walkRel, uid, gid); err != nil {
-				logger.Errorf("failed to chown %s: %v", walkRel, err)
-			}
-
-			return nil
-		})
+	if recursiveDir {
+		return changeOwnershipRecursive(ctx, root, path, uid, gid, report)
 	}
 
 	return nil
+}
+
+func progressReporter(total int64, cb func(processed, total int64)) func() {
+	var processed int64
+	return func() {
+		processed++
+		if cb != nil {
+			cb(processed, total)
+		}
+	}
+}
+
+func changePermissionsRecursive(ctx context.Context, root *fsroot.FSRoot, path string, mode os.FileMode, report func()) error {
+	rootRel := relPath(path)
+	return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil {
+			slog.Error("error walking path during chmod", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			return nil
+		}
+		if isRecursiveRoot(walkRel, rootRel) {
+			return nil
+		}
+		if err := root.Root.Chmod(walkRel, mode); err != nil {
+			slog.Error("failed to chmod path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
+			return nil
+		}
+		report()
+		return nil
+	})
+}
+
+func changeOwnershipRecursive(ctx context.Context, root *fsroot.FSRoot, path string, uid, gid int, report func()) error {
+	rootRel := relPath(path)
+	return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil {
+			slog.Error("error walking path during chown", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			return nil
+		}
+		if isRecursiveRoot(walkRel, rootRel) {
+			return nil
+		}
+		if err := root.Root.Lchown(walkRel, uid, gid); err != nil {
+			slog.Error("failed to chown path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
+		}
+		report()
+		return nil
+	})
+}
+
+func isRecursiveRoot(walkRel, rootRel string) bool {
+	return walkRel == "." || walkRel == rootRel
+}
+
+func countRecursiveEntries(ctx context.Context, root *fsroot.FSRoot, path string, recursive bool) (int64, error) {
+	total := int64(1)
+	if !recursive {
+		return total, nil
+	}
+	err := root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil {
+			slog.Error("error walking path during permission count", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			return nil
+		}
+		if walkRel == "." || walkRel == relPath(path) {
+			return nil
+		}
+		total++
+		return nil
+	})
+	return total, err
 }
 
 // validateMoveDestination validates that a move operation is safe

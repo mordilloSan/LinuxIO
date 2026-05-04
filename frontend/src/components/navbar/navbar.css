@@ -235,7 +235,10 @@
   }
 
   .app-navbar-panel {
-    right: -8px;
+    position: fixed;
+    top: 66px;
+    right: 8px;
+    left: auto;
     width: min(360px, calc(100vw - 16px));
   }
 }

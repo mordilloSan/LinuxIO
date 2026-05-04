@@ -2,12 +2,11 @@ package config
 
 import (
 	"errors"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/goccy/go-yaml"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // repairConfig loads cfgPath, validates keys/values, and rewrites only if needed.
@@ -40,10 +39,10 @@ func parseAndSanitizeConfig(raw []byte, cfgPath, base string, cfg *Settings) (bo
 	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
 		if permissiveErr := yaml.Unmarshal(raw, cfg); permissiveErr != nil {
 			logYAMLError(err, cfgPath)
-			logger.Warnf("config validation failed, rewriting defaults")
+			slog.Warn("config validation failed, rewriting defaults")
 			return false, writeConfig(cfgPath, base)
 		}
-		logger.Warnf("config contained unsupported fields; rewriting sanitized config")
+		slog.Warn("config contained unsupported fields; rewriting sanitized config")
 		return true, nil
 	}
 	return false, nil
@@ -54,7 +53,7 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 	if len(errs) == 0 {
 		return false
 	}
-	logger.Warnf("config validation issues: %s", strings.Join(errs, "; "))
+	slog.Warn("config validation issues detected", "component", "config", "error", strings.Join(errs, "; "))
 
 	changed := false
 	if cfg.AppSettings.Theme != ThemeLight && cfg.AppSettings.Theme != ThemeDark {
@@ -71,6 +70,15 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 	}
 	if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
 		cfg.Docker.Folder = defaults.Docker.Folder
+		changed = true
+	}
+	if cfg.Jobs.ProgressMinIntervalMs < 0 ||
+		cfg.Jobs.NotificationMinIntervalMs < 0 ||
+		cfg.Jobs.ProgressMinBytesMB < 0 ||
+		cfg.Jobs.HeavyArchiveConcurrency < 0 ||
+		cfg.Jobs.ArchiveCompressionWorkers < 0 ||
+		cfg.Jobs.ArchiveExtractWorkers < 0 {
+		cfg.Jobs = defaults.Jobs
 		changed = true
 	}
 	return changed
@@ -100,7 +108,7 @@ func repairDockerFolderPath(cfg *Settings, defaults *Settings) bool {
 	if err != nil || fi.IsDir() {
 		return false
 	}
-	logger.Warnf("docker.folder %q exists as file, resetting to default", cfg.Docker.Folder)
+	slog.Warn("docker.folder exists as a file; resetting to default", "component", "config", "path", string(cfg.Docker.Folder))
 	cfg.Docker.Folder = defaults.Docker.Folder
 	return true
 }
@@ -110,20 +118,15 @@ func logYAMLError(err error, path string) {
 	// Try to extract syntax error with position info
 	if syntaxErr, ok := errors.AsType[*yaml.SyntaxError](err); ok {
 		if tok := syntaxErr.GetToken(); tok != nil {
-			logger.Errorf("config error in %s at line %d, column %d: %s",
-				path,
-				tok.Position.Line,
-				tok.Position.Column,
-				syntaxErr.GetMessage())
+			slog.Error("config syntax error", "component", "config", "path", path, "line", tok.Position.Line, "column", tok.Position.Column, "detail", syntaxErr.GetMessage())
 			return
 		}
 		// SyntaxError without token
-		logger.Errorf("config error in %s: %s", path, syntaxErr.GetMessage())
+		slog.Error("config syntax error", "component", "config", "path", path, "detail", syntaxErr.GetMessage())
 		return
 	}
-
 	// Fallback to generic error
-	logger.Errorf("config error in %s: %v", path, err)
+	slog.Error("config parse error", "component", "config", "path", path, "error", err)
 }
 
 // ValidateConfig validates a Settings struct and returns detailed errors
@@ -160,6 +163,24 @@ func ValidateConfig(cfg *Settings) []string {
 	folder := strings.TrimSpace(string(cfg.Docker.Folder))
 	if folder == "" {
 		errs = append(errs, "docker.folder cannot be empty")
+	}
+	if cfg.Jobs.ProgressMinIntervalMs < 0 {
+		errs = append(errs, "jobs.progressMinIntervalMs must be >= 0")
+	}
+	if cfg.Jobs.NotificationMinIntervalMs < 0 {
+		errs = append(errs, "jobs.notificationMinIntervalMs must be >= 0")
+	}
+	if cfg.Jobs.ProgressMinBytesMB < 0 {
+		errs = append(errs, "jobs.progressMinBytesMB must be >= 0")
+	}
+	if cfg.Jobs.HeavyArchiveConcurrency < 0 {
+		errs = append(errs, "jobs.heavyArchiveConcurrency must be >= 0")
+	}
+	if cfg.Jobs.ArchiveCompressionWorkers < 0 {
+		errs = append(errs, "jobs.archiveCompressionWorkers must be >= 0")
+	}
+	if cfg.Jobs.ArchiveExtractWorkers < 0 {
+		errs = append(errs, "jobs.archiveExtractWorkers must be >= 0")
 	}
 
 	return errs

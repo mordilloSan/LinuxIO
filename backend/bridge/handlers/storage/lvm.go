@@ -3,12 +3,12 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/go-logger/logger"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
@@ -151,30 +151,29 @@ func ListLogicalVolumes() ([]LogicalVolume, error) {
 func CreateLogicalVolume(vgName, lvName, size string) (LogicalVolumeCreateResult, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
-		logger.Warnf("Invalid volume group name: %s", vgName)
+		slog.Warn("invalid volume group name", "volume_group", vgName)
 		return LogicalVolumeCreateResult{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
-		logger.Warnf("Invalid logical volume name: %s", lvName)
+		slog.Warn("invalid logical volume name", "name", lvName)
 		return LogicalVolumeCreateResult{}, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(size) {
-		logger.Warnf("Invalid size format: %s", size)
+		slog.Warn("invalid logical volume size", "size", size)
 		return LogicalVolumeCreateResult{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
-
-	logger.Infof("Creating logical volume: vg=%s lv=%s size=%s", vgName, lvName, size)
+	slog.Info("creating logical volume", "volume_group", vgName, "name", lvName, "size", size)
 	cmd := exec.Command("lvcreate", "-L", size, "-n", lvName, vgName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("lvcreate failed: %s", strings.TrimSpace(string(out)))
+		slog.Error("lvcreate failed", "volume_group", vgName, "name", lvName, "output", strings.TrimSpace(string(out)))
 		return LogicalVolumeCreateResult{}, fmt.Errorf("lvcreate failed: %s", strings.TrimSpace(string(out)))
 	}
-
-	logger.Infof("Created logical volume /dev/%s/%s with size %s", vgName, lvName, size)
+	path := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
+	slog.Info("logical volume created", "path", path, "size", size)
 	return LogicalVolumeCreateResult{
 		Success: true,
-		Path:    fmt.Sprintf("/dev/%s/%s", vgName, lvName),
+		Path:    path,
 	}, nil
 }
 
@@ -182,11 +181,11 @@ func CreateLogicalVolume(vgName, lvName, size string) (LogicalVolumeCreateResult
 func DeleteLogicalVolume(vgName, lvName string) (LogicalVolumeMutationResult, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
-		logger.Warnf("Invalid volume group name: %s", vgName)
+		slog.Warn("invalid volume group name", "volume_group", vgName)
 		return LogicalVolumeMutationResult{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
-		logger.Warnf("Invalid logical volume name: %s", lvName)
+		slog.Warn("invalid logical volume name", "name", lvName)
 		return LogicalVolumeMutationResult{}, fmt.Errorf("invalid logical volume name")
 	}
 
@@ -196,20 +195,18 @@ func DeleteLogicalVolume(vgName, lvName string) (LogicalVolumeMutationResult, er
 	partitions, _ := disk.Partitions(true)
 	for _, p := range partitions {
 		if p.Device == lvPath {
-			logger.Warnf("Cannot delete %s - mounted at %s", lvPath, p.Mountpoint)
+			slog.Warn("cannot delete mounted logical volume", "path", lvPath, "mountpoint", p.Mountpoint)
 			return LogicalVolumeMutationResult{}, fmt.Errorf("logical volume is mounted at %s - unmount first", p.Mountpoint)
 		}
 	}
-
-	logger.Infof("Deleting logical volume: %s", lvPath)
+	slog.Info("deleting logical volume", "path", lvPath)
 	cmd := exec.Command("lvremove", "-f", lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("lvremove failed: %s", strings.TrimSpace(string(out)))
+		slog.Error("lvremove failed", "path", lvPath, "output", strings.TrimSpace(string(out)))
 		return LogicalVolumeMutationResult{}, fmt.Errorf("lvremove failed: %s", strings.TrimSpace(string(out)))
 	}
-
-	logger.Infof("Deleted logical volume %s", lvPath)
+	slog.Info("logical volume deleted", "path", lvPath)
 	return LogicalVolumeMutationResult{Success: true}, nil
 }
 
@@ -217,30 +214,28 @@ func DeleteLogicalVolume(vgName, lvName string) (LogicalVolumeMutationResult, er
 func ResizeLogicalVolume(vgName, lvName, newSize string) (LogicalVolumeMutationResult, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
-		logger.Warnf("Invalid volume group name: %s", vgName)
+		slog.Warn("invalid volume group name", "volume_group", vgName)
 		return LogicalVolumeMutationResult{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
-		logger.Warnf("Invalid logical volume name: %s", lvName)
+		slog.Warn("invalid logical volume name", "name", lvName)
 		return LogicalVolumeMutationResult{}, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(newSize) {
-		logger.Warnf("Invalid size format: %s", newSize)
+		slog.Warn("invalid logical volume size", "size", newSize)
 		return LogicalVolumeMutationResult{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 
 	lvPath := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
-
-	// Use lvresize -r to also resize filesystem if present
-	logger.Infof("Resizing logical volume: %s -> %s", lvPath, newSize)
+	// Use lvresize -r to also resize filesystem if present.
+	slog.Info("resizing logical volume", "path", lvPath, "size", newSize)
 	cmd := exec.Command("lvresize", "-r", "-L", newSize, lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("lvresize failed: %s", strings.TrimSpace(string(out)))
+		slog.Error("lvresize failed", "path", lvPath, "output", strings.TrimSpace(string(out)))
 		return LogicalVolumeMutationResult{}, fmt.Errorf("lvresize failed: %s", strings.TrimSpace(string(out)))
 	}
-
-	logger.Infof("Resized logical volume %s to %s", lvPath, newSize)
+	slog.Info("logical volume resized", "path", lvPath, "size", newSize)
 	return LogicalVolumeMutationResult{Success: true}, nil
 }
 

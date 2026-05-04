@@ -3,12 +3,11 @@ package shares
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const exportsFile = "/etc/exports"
@@ -69,8 +68,7 @@ func CreateNFSShare(path string, clients []NFSClient) error {
 	if _, err := f.WriteString(line + "\n"); err != nil {
 		return fmt.Errorf("failed to write to %s: %w", exportsFile, err)
 	}
-
-	logger.Infof("Added NFS export: %s", line)
+	slog.Info("NFS export added", "path", path, "count", len(clients))
 	return applyNFSExports()
 }
 
@@ -111,8 +109,7 @@ func UpdateNFSShare(path string, clients []NFSClient) error {
 	if err := os.WriteFile(exportsFile, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
 	}
-
-	logger.Infof("Updated NFS export: %s", newLine)
+	slog.Info("NFS export updated", "path", path, "count", len(clients))
 	return applyNFSExports()
 }
 
@@ -145,8 +142,7 @@ func DeleteNFSShare(path string) error {
 	if err := os.WriteFile(exportsFile, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
 	}
-
-	logger.Infof("Removed NFS export for path: %s", path)
+	slog.Info("NFS export removed", "path", path)
 	return applyNFSExports()
 }
 
@@ -171,7 +167,7 @@ func parseExportsFile() ([]NFSExport, error) {
 
 		export, err := parseExportLine(line)
 		if err != nil {
-			logger.Warnf("Skipping malformed exports line: %s", line)
+			slog.Warn("skipping malformed exports line", "path", exportsFile, "line", line)
 			continue
 		}
 		exports = append(exports, export)
@@ -215,10 +211,15 @@ func getActiveExports() map[string]bool {
 
 	output, err := exec.Command("exportfs", "-v").CombinedOutput()
 	if err != nil {
-		logger.Debugf("exportfs -v failed: %v, output: %s", err, strings.TrimSpace(string(output)))
+		slog.Debug("exportfs inspection failed",
+			"command", "exportfs -v",
+			"error", err,
+			"output", strings.TrimSpace(string(output)))
 		return active
 	}
-	logger.Debugf("exportfs -v output: %s", strings.TrimSpace(string(output)))
+	slog.Debug("exportfs inspection completed",
+		"command", "exportfs -v",
+		"output", strings.TrimSpace(string(output)))
 
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
 	for scanner.Scan() {
@@ -255,6 +256,6 @@ func applyNFSExports() error {
 	if err != nil {
 		return fmt.Errorf("exportfs -ra failed: %s", strings.TrimSpace(string(out)))
 	}
-	logger.Infof("NFS exports applied successfully")
+	slog.Info("NFS exports applied successfully")
 	return nil
 }

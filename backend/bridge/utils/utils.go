@@ -3,11 +3,10 @@ package utils
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 func GetPublicIP() (string, error) {
@@ -20,7 +19,7 @@ func GetPublicIP() (string, error) {
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			logger.Warnf("failed to close response body: %v", cerr)
+			slog.Warn("failed to close response body", "error", cerr)
 		}
 	}()
 	body, err := io.ReadAll(resp.Body)

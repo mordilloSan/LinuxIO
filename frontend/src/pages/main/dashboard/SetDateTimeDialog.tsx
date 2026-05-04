@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
@@ -78,26 +78,38 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
   const [originalServers, setOriginalServers] = useState<string[]>([]);
   const [manualTime, setManualTime] = useState("");
 
-  useEffect(() => {
-    if (currentTimezone !== undefined) {
-      setTimezone(currentTimezone);
-      setOriginalTimezone(currentTimezone);
-    }
-  }, [currentTimezone]);
+  const [syncedTimezone, setSyncedTimezone] = useState<string | undefined>(
+    undefined,
+  );
+  if (currentTimezone !== undefined && currentTimezone !== syncedTimezone) {
+    setSyncedTimezone(currentTimezone);
+    setTimezone(currentTimezone);
+    setOriginalTimezone(currentTimezone);
+  }
 
-  useEffect(() => {
-    if (ntpStatus !== undefined && ntpServers !== undefined) {
-      const mode = deriveMode(ntpStatus, ntpServers);
-      setTimeMode(mode);
-      setOriginalMode(mode);
-      setCustomServers(ntpServers.length > 0 ? [...ntpServers] : [""]);
-      setOriginalServers([...ntpServers]);
-    }
-  }, [ntpStatus, ntpServers]);
+  const ntpKey =
+    ntpStatus !== undefined && ntpServers !== undefined
+      ? `${ntpStatus}:${ntpServers.join(",")}`
+      : undefined;
+  const [syncedNtpKey, setSyncedNtpKey] = useState<string | undefined>(
+    undefined,
+  );
+  if (ntpKey !== undefined && ntpKey !== syncedNtpKey) {
+    setSyncedNtpKey(ntpKey);
+    const mode = deriveMode(ntpStatus!, ntpServers!);
+    setTimeMode(mode);
+    setOriginalMode(mode);
+    setCustomServers(ntpServers!.length > 0 ? [...ntpServers!] : [""]);
+    setOriginalServers([...ntpServers!]);
+  }
 
-  useEffect(() => {
-    if (serverTime) setManualTime(toDatetimeLocal(serverTime));
-  }, [serverTime]);
+  const [syncedServerTime, setSyncedServerTime] = useState<string | undefined>(
+    undefined,
+  );
+  if (serverTime && serverTime !== syncedServerTime) {
+    setSyncedServerTime(serverTime);
+    setManualTime(toDatetimeLocal(serverTime));
+  }
 
   const { mutateAsync: setTz } = linuxio.dbus.set_timezone.useMutation({
     onError: (e: Error) =>

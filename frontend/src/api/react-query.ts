@@ -6,7 +6,7 @@
  *    linuxio.filebrowser.resource_get.useQuery()
  *
  * 2. STREAMING API (for progress tracking):
- *    openTerminalStream(), openFileDownloadStream(), etc. from @/api
+ *    openTerminalStream(), openJobDataStream(), etc. from @/api
  *
  * 3. IMPERATIVE API (contexts/effects/non-hook code):
  *    await linuxio.system.get_capabilities.call()

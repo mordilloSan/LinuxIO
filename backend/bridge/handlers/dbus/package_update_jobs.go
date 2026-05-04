@@ -2,25 +2,20 @@ package dbus
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net"
+	"log/slog"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
+	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 )
 
-// StreamTypePkgUpdate is the stream type for package update operations.
-const StreamTypePkgUpdate = "pkg-update"
+const JobTypePackageUpdate = "package.update"
 
-// RegisterStreamHandlers registers all dbus stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
-	handlers[StreamTypePkgUpdate] = HandlePackageUpdateStream
+func RegisterJobRunners() {
+	bridgejobs.RegisterRunner(JobTypePackageUpdate, runPackageUpdateJob)
 }
 
 // PkgUpdateProgress represents progress for package update operations.
@@ -36,17 +31,19 @@ type PkgUpdateProgress struct {
 	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
 }
 
-// writePkgUpdateProgress writes a package update progress frame to the stream.
-func writePkgUpdateProgress(w io.Writer, streamID uint32, p *PkgUpdateProgress) error {
-	payload, err := json.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("marshal pkg update progress: %w", err)
+type pkgUpdateReporter func(*PkgUpdateProgress) error
+
+func jobPkgUpdateReporter(job *bridgejobs.Job) pkgUpdateReporter {
+	return func(p *PkgUpdateProgress) error {
+		job.ReportProgress(*p)
+		return nil
 	}
-	return ipc.WriteRelayFrame(w, &ipc.StreamFrame{
-		Opcode:   ipc.OpStreamProgress,
-		StreamID: streamID,
-		Payload:  payload,
-	})
+}
+
+func reportPkgUpdateProgress(report pkgUpdateReporter, p *PkgUpdateProgress) {
+	if err := report(p); err != nil {
+		slog.Debug("failed to write progress frame", "component", "dbus", "subsystem", "packagekit", "error", err)
+	}
 }
 
 // PackageKit status enum values (from org.freedesktop.PackageKit documentation)
@@ -129,46 +126,29 @@ func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
 }
 
-// HandlePackageUpdateStream handles streaming package updates with real-time progress.
-// args: package IDs to update (null-byte separated in payload)
-func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
-	logger.Infof("Starting update stream with %d packages", len(args))
-
+func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 	if len(args) == 0 {
-		if err := ipc.WriteResultErrorAndClose(stream, 0, "no packages specified", 400); err != nil {
-			logger.Debugf("failed to write error+close frame: %v", err)
-		}
-		return fmt.Errorf("no packages specified")
+		return nil, bridgejobs.NewError("no packages specified", 400)
 	}
-
-	// Send initial progress
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	report := jobPkgUpdateReporter(job)
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Initializing",
 		Percentage: new(uint32(0)),
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 
-	err := updatePackagesWithProgress(stream, args)
-	if err != nil {
-		logger.Errorf("Error: %v", err)
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
-			logger.Debugf("failed to write error+close frame: %v", writeErr)
+	if err := updatePackagesWithProgress(ctx, args, report); err != nil {
+		if ctx.Err() != nil {
+			return nil, context.Canceled
 		}
-		return err
+		return nil, bridgejobs.NewError(err.Error(), 500)
 	}
 
-	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
-		"updated": len(args),
-	}); err != nil {
-		logger.Debugf("failed to write ok+close frame: %v", err)
-	}
-	logger.Infof("Completed update stream for %d packages", len(args))
-	return nil
+	result := map[string]any{"updated": len(args)}
+	return result, nil
 }
 
-func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
+func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 
@@ -178,14 +158,14 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "packagekit", "error", cerr)
 		}
 	}()
 
 	const (
-		pkBusName      = "org.freedesktop.PackageKit"
-		pkObjPath      = "/org/freedesktop/PackageKit"
-		transactionIfc = "org.freedesktop.PackageKit.Transaction"
+		pkBusName      = pkgkit.BusName
+		pkObjPath      = pkgkit.ObjectPath
+		transactionIfc = pkgkit.TransactionInterface
 	)
 
 	trans, transPath, err := createPackageKitTransaction(conn, pkBusName, pkObjPath)
@@ -195,17 +175,16 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	sigCh := subscribePackageKitSignals(conn, transPath, 100)
 	defer conn.RemoveSignal(sigCh)
 	defer removePackageKitSignalMatch(conn, transPath)
-
 	// Call UpdatePackages with all package IDs at once
 	// Flag 0 = no special flags (install normally)
-	logger.Infof("Calling UpdatePackages with %d packages", len(packageIDs))
+	slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(packageIDs)))
 	call := trans.Call(transactionIfc+".UpdatePackages", 0, uint64(0), packageIDs)
 	if call.Err != nil {
 		return fmt.Errorf("UpdatePackages failed: %w", call.Err)
 	}
 
 	// Process signals until Finished or error
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute) // Long timeout for large updates
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute) // Long timeout for large updates
 	defer cancel()
 	var lastWorkStatus uint32
 
@@ -215,7 +194,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 			if sig == nil {
 				continue
 			}
-			done, err := handlePackageUpdateSignal(stream, sig, transactionIfc, &lastWorkStatus)
+			done, err := handlePackageUpdateSignal(report, sig, transactionIfc, &lastWorkStatus)
 			if err != nil {
 				return err
 			}
@@ -235,7 +214,10 @@ func createPackageKitTransaction(
 ) (godbus.BusObject, godbus.ObjectPath, error) {
 	obj := conn.Object(busName, godbus.ObjectPath(objectPath))
 	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+		return nil, "", err
+	}
+	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
 		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 	return conn.Object(busName, transPath), transPath, nil
@@ -249,44 +231,44 @@ func subscribePackageKitSignals(
 	sigCh := make(chan *godbus.Signal, buffer)
 	conn.Signal(sigCh)
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Warnf("failed to add D-Bus match signal: %v", err)
+		slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 	return sigCh
 }
 
 func removePackageKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
 	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
 }
 
 func handlePackageUpdateSignal(
-	stream net.Conn,
+	report pkgUpdateReporter,
 	sig *godbus.Signal,
 	transactionIfc string,
 	lastWorkStatus *uint32,
 ) (bool, error) {
 	switch sig.Name {
 	case transactionIfc + ".ItemProgress":
-		handleItemProgressSignal(stream, sig, lastWorkStatus)
+		handleItemProgressSignal(report, sig, lastWorkStatus)
 	case transactionIfc + ".Package":
-		handlePackageSignal(stream, sig)
+		handlePackageSignal(report, sig)
 	case transactionIfc + ".Message":
-		handleMessageSignal(stream, sig)
+		handleMessageSignal(report, sig)
 	case transactionIfc + ".Percentage":
 		return false, nil
 	case transactionIfc + ".ErrorCode":
 		return false, packageUpdateSignalError(sig)
 	case transactionIfc + ".Finished":
-		handleFinishedSignal(stream)
+		handleFinishedSignal(report)
 		return true, nil
 	case "org.freedesktop.DBus.Properties.PropertiesChanged":
-		handlePropertiesChangedSignal(stream, sig, transactionIfc, lastWorkStatus)
+		handlePropertiesChangedSignal(report, sig, transactionIfc, lastWorkStatus)
 	}
 	return false, nil
 }
 
-func handleItemProgressSignal(stream net.Conn, sig *godbus.Signal, lastWorkStatus *uint32) {
+func handleItemProgressSignal(report pkgUpdateReporter, sig *godbus.Signal, lastWorkStatus *uint32) {
 	if len(sig.Body) < 3 {
 		return
 	}
@@ -298,18 +280,16 @@ func handleItemProgressSignal(stream net.Conn, sig *godbus.Signal, lastWorkStatu
 	}
 	*lastWorkStatus = status
 
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "item_progress",
 		PackageID:  pkgID,
 		Status:     packageStatusName(status),
 		StatusCode: new(status),
 		ItemPct:    new(pct),
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 }
 
-func handlePackageSignal(stream net.Conn, sig *godbus.Signal) {
+func handlePackageSignal(report pkgUpdateReporter, sig *godbus.Signal) {
 	if len(sig.Body) < 3 {
 		return
 	}
@@ -317,31 +297,27 @@ func handlePackageSignal(stream net.Conn, sig *godbus.Signal) {
 	pkgID, _ := sig.Body[1].(string)
 	summary, _ := sig.Body[2].(string)
 
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:           "package",
 		PackageID:      pkgID,
 		PackageSummary: summary,
 		Status:         packageInfoName(info),
 		InfoCode:       new(info),
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 }
 
-func handleMessageSignal(stream net.Conn, sig *godbus.Signal) {
+func handleMessageSignal(report pkgUpdateReporter, sig *godbus.Signal) {
 	if len(sig.Body) < 2 {
 		return
 	}
 	msgType, _ := sig.Body[0].(uint32)
 	details, _ := sig.Body[1].(string)
 
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:    "message",
 		Status:  fmt.Sprintf("Message %d", msgType),
 		Message: details,
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 }
 
 func packageUpdateSignalError(sig *godbus.Signal) error {
@@ -353,19 +329,17 @@ func packageUpdateSignalError(sig *godbus.Signal) error {
 	return fmt.Errorf("PackageKit error (unknown)")
 }
 
-func handleFinishedSignal(stream net.Conn) {
-	logger.Infof("Finished signal received")
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+func handleFinishedSignal(report pkgUpdateReporter) {
+	slog.Info("Finished signal received")
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Finished",
 		Percentage: new(uint32(100)),
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 }
 
 func handlePropertiesChangedSignal(
-	stream net.Conn,
+	report pkgUpdateReporter,
 	sig *godbus.Signal,
 	transactionIfc string,
 	lastWorkStatus *uint32,
@@ -377,8 +351,8 @@ func handlePropertiesChangedSignal(
 	if hasStatus && isRealWorkStatus(currentStatus) {
 		*lastWorkStatus = currentStatus
 	}
-	writePercentageProgress(stream, props, statusForPercentage)
-	writeStatusProgress(stream, currentStatus, hasStatus)
+	writePercentageProgress(report, props, statusForPercentage)
+	writeStatusProgress(report, currentStatus, hasStatus)
 }
 
 func parseTransactionProperties(
@@ -406,30 +380,26 @@ func parseTransactionProperties(
 	return props, statusForPercentage, currentStatus, hasStatus
 }
 
-func writePercentageProgress(stream net.Conn, props map[string]godbus.Variant, status uint32) {
+func writePercentageProgress(report pkgUpdateReporter, props map[string]godbus.Variant, status uint32) {
 	pct, ok := propertyUint32(props, "Percentage")
 	if !ok || !isRealWorkStatus(status) {
 		return
 	}
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "percentage",
 		Percentage: new(pct),
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 }
 
-func writeStatusProgress(stream net.Conn, currentStatus uint32, hasStatus bool) {
+func writeStatusProgress(report pkgUpdateReporter, currentStatus uint32, hasStatus bool) {
 	if !hasStatus || currentStatus == 0 || !isRealWorkStatus(currentStatus) {
 		return
 	}
-	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     packageStatusName(currentStatus),
 		StatusCode: new(currentStatus),
-	}); err != nil {
-		logger.Debugf("failed to write progress frame: %v", err)
-	}
+	})
 }
 
 func propertyUint32(props map[string]godbus.Variant, key string) (uint32, bool) {

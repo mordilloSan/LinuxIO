@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -165,11 +166,54 @@ func runStatus() {
 	fmt.Printf("\n\033[1m%d loaded units listed.\033[0m\n", len(units))
 }
 
+func isJournalGroup(name string) bool {
+	return name == "systemd-journal" || name == "adm"
+}
+
+// journalAccessState returns (hasAccess, pendingGroup).
+// hasAccess means this process already has journal access in its kernel group list.
+// pendingGroup is set when /etc/group grants access but this session predates it.
+func journalAccessState() (bool, string) {
+	if os.Geteuid() == 0 {
+		return true, ""
+	}
+
+	// Check actual process groups (what the kernel sees for this session).
+	if pgids, err := os.Getgroups(); err == nil {
+		for _, gid := range pgids {
+			if g, err := user.LookupGroupId(strconv.Itoa(gid)); err == nil && isJournalGroup(g.Name) {
+				return true, ""
+			}
+		}
+	}
+	// Check /etc/group to distinguish "never added" from "added but not yet active".
+	if u, err := user.Current(); err == nil {
+		if fgids, err := u.GroupIds(); err == nil {
+			for _, gid := range fgids {
+				if g, err := user.LookupGroupId(gid); err == nil && isJournalGroup(g.Name) {
+					return false, g.Name
+				}
+			}
+		}
+	}
+	return false, ""
+}
+
 func runLogs(args []string) {
+	hasAccess, pendingGroup := journalAccessState()
+	if !hasAccess && pendingGroup == "" {
+		username := "current"
+		if u, err := user.Current(); err == nil {
+			username = u.Username
+		}
+		fmt.Fprintf(os.Stderr, "Error: user %q cannot read the system journal.\n", username)
+		fmt.Fprintf(os.Stderr, "Fix: sudo usermod -aG systemd-journal $USER  (then run 'linuxio logs' again; reconnect later to refresh your shell)\n")
+		os.Exit(1)
+	}
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
-	cmd := exec.Command("journalctl", journalctlArgs...)
+	cmd := journalctlCommand(journalctlArgs, pendingGroup)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -187,6 +231,37 @@ func runLogs(args []string) {
 
 	streamFormattedJournal(stdout)
 	waitForJournalctl(cmd)
+}
+
+func journalctlCommand(args []string, pendingGroup string) *exec.Cmd {
+	if pendingGroup == "" {
+		return exec.Command("journalctl", args...)
+	}
+	return exec.Command("sg", pendingGroup, "-c", journalctlShellCommand(args))
+}
+
+func journalctlShellCommand(args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, "journalctl")
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	if strings.IndexFunc(arg, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			strings.ContainsRune("@%_+=:,./-", r))
+	}) == -1 {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
 }
 
 func parseLogsArgs(args []string) (string, int) {
@@ -211,6 +286,9 @@ func parseLogsArgs(args []string) (string, int) {
 
 func journalTermsForMode(mode string) []string {
 	journalTerms := []string{
+		"SYSLOG_IDENTIFIER=linuxio-webserver",
+		"SYSLOG_IDENTIFIER=linuxio-bridge",
+		"SYSLOG_IDENTIFIER=linuxio-auth",
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
 		"_SYSTEMD_UNIT=linuxio-webserver.socket",
@@ -219,27 +297,22 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-auth@.service",
 		"_SYSTEMD_UNIT=linuxio-issue.service",
 	}
-	includeAuthTag := true
 
 	switch mode {
 	case "webserver":
 		journalTerms = []string{
+			"SYSLOG_IDENTIFIER=linuxio-webserver",
 			"_SYSTEMD_UNIT=linuxio-webserver.service",
 			"_SYSTEMD_UNIT=linuxio-webserver.socket",
 		}
-		includeAuthTag = false
 	case "bridge":
-		journalTerms = []string{"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service"}
-		includeAuthTag = false
+		journalTerms = []string{"SYSLOG_IDENTIFIER=linuxio-bridge"}
 	case "auth":
 		journalTerms = []string{
+			"SYSLOG_IDENTIFIER=linuxio-auth",
 			"_SYSTEMD_UNIT=linuxio-auth.socket",
 			"_SYSTEMD_UNIT=linuxio-auth@.service",
 		}
-	}
-
-	if includeAuthTag {
-		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
 	}
 	return journalTerms
 }
@@ -271,13 +344,22 @@ type journalEntry struct {
 	SyslogPID string `json:"SYSLOG_PID"`
 	Priority  string `json:"PRIORITY"`
 	Message   string `json:"MESSAGE"`
+	Fields    map[string]string
+}
+
+var visibleJournalFields = map[string]struct{}{
+	"LINUXIO_GID":        {},
+	"LINUXIO_MODE":       {},
+	"LINUXIO_PRIVILEGED": {},
+	"LINUXIO_UID":        {},
+	"LINUXIO_USER":       {},
 }
 
 // formatJournalEntry parses a journalctl JSON line and formats it with colors
 // PRIORITY levels: 7=DEBUG(cyan), 6,5=INFO(green), 4=WARNING(yellow), 3,2,1,0=ERROR(red)
 func formatJournalEntry(jsonLine string) string {
-	var entry journalEntry
-	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
+	entry, err := parseJournalEntry(jsonLine)
+	if err != nil {
 		return ""
 	}
 
@@ -285,11 +367,38 @@ func formatJournalEntry(jsonLine string) string {
 	unit := journalUnit(entry)
 	pid := journalPID(entry)
 	level := journalPriorityLevel(entry)
+	message := journalMessage(entry)
 
 	if pid != "" {
-		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, entry.Message)
+		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
 	}
-	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, entry.Message)
+	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
+}
+
+func parseJournalEntry(jsonLine string) (journalEntry, error) {
+	var entry journalEntry
+	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
+		return journalEntry{}, err
+	}
+
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonLine), &rawFields); err != nil {
+		return journalEntry{}, err
+	}
+
+	fields := make(map[string]string)
+	for name, raw := range rawFields {
+		if !strings.HasPrefix(name, "LINUXIO_") {
+			continue
+		}
+		value := journalRawValue(raw)
+		if value == "" {
+			continue
+		}
+		fields[name] = value
+	}
+	entry.Fields = fields
+	return entry, nil
 }
 
 func journalTimestamp(entry journalEntry) string {
@@ -301,10 +410,10 @@ func journalTimestamp(entry journalEntry) string {
 
 func journalUnit(entry journalEntry) string {
 	unit := "unknown"
-	if entry.Unit != "" {
-		unit = entry.Unit
-	} else if entry.SyslogID != "" {
+	if entry.SyslogID != "" {
 		unit = entry.SyslogID
+	} else if entry.Unit != "" {
+		unit = entry.Unit
 	}
 	if at := strings.Index(unit, "@"); at >= 0 {
 		unit = unit[:at]
@@ -319,6 +428,69 @@ func journalPID(entry journalEntry) string {
 		return entry.PID
 	}
 	return entry.SyslogPID
+}
+
+func journalMessage(entry journalEntry) string {
+	keys := make([]string, 0, len(entry.Fields))
+	for name := range entry.Fields {
+		if _, ok := visibleJournalFields[name]; !ok {
+			continue
+		}
+		keys = append(keys, name)
+	}
+	if len(keys) == 0 {
+		return entry.Message
+	}
+
+	sort.Strings(keys)
+
+	var builder strings.Builder
+	builder.WriteString(entry.Message)
+	for _, name := range keys {
+		builder.WriteByte(' ')
+		builder.WriteString(strings.ToLower(strings.TrimPrefix(name, "LINUXIO_")))
+		builder.WriteByte('=')
+		builder.WriteString(journalFieldValue(entry.Fields[name]))
+	}
+	return builder.String()
+}
+
+func journalRawValue(raw json.RawMessage) string {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return journalAnyValue(value)
+}
+
+func journalAnyValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			part := journalAnyValue(item)
+			if part == "" {
+				continue
+			}
+			parts = append(parts, part)
+		}
+		return strings.Join(parts, ",")
+	default:
+		return fmt.Sprintf("%v", value)
+	}
+}
+
+func journalFieldValue(value string) string {
+	if strings.ContainsAny(value, " \t") {
+		return strconv.Quote(value)
+	}
+	return value
 }
 
 func journalPriorityLevel(entry journalEntry) string {

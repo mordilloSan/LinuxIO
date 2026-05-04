@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -12,12 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/go-logger/logger"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -29,18 +28,17 @@ import (
 func readBootstrap() *ipc.Bootstrap {
 	b, err := ipc.ReadBootstrap(os.Stdin)
 	if err != nil {
-		// Write to stderr because logger is not yet initiated (systemd captures to journal)
-		fmt.Fprintf(os.Stderr, "bridge bootstrap error: failed to read: %v\n", err)
+		slog.Error("failed to read bridge bootstrap", "error", err)
 		os.Exit(1)
 	}
 
 	if b.SessionID == "" {
-		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required session_id\n")
+		slog.Error("bridge bootstrap missing session_id")
 		os.Exit(1)
 	}
 
 	if b.Username == "" {
-		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required username\n")
+		slog.Error("bridge bootstrap missing username")
 		os.Exit(1)
 	}
 
@@ -61,29 +59,73 @@ var wg sync.WaitGroup
 var streamCounter atomic.Uint64
 
 func main() {
-	// Handle CLI arguments first
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "version", "--version", "-v":
-			printBridgeVersion()
-			return
-		default:
-			// Any other argument - show usage
-			printBridgeVersion()
-			fmt.Println("(to be spawned by auth daemon, not for direct use)")
-			return
-		}
+	if handledArgs := handleBridgeArgs(); handledArgs {
+		return
 	}
 
-	// If stdin is a terminal, user ran this directly - show version and exit
-	fileInfo, err := os.Stdin.Stat()
-	if err != nil || (fileInfo.Mode()&os.ModeCharDevice) != 0 {
+	if isDirectBridgeInvocation() {
 		fmt.Println("(to be spawned by auth daemon, not for direct use)")
 		return
 	}
 
-	// Read bootstrap from stdin (auth daemon pipes this)
+	if configureErr := logging.Configure("linuxio-bridge", false); configureErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", configureErr)
+		os.Exit(1)
+	}
+
+	initializeBridgeSession()
+	slog.Info("bridge boot",
+		"uid", os.Geteuid(),
+		"user", sess.User.Username,
+		"session_id", sess.SessionID,
+		"privileged", sess.Privileged,
+		"linuxio_uid", sess.User.UID,
+		"linuxio_gid", sess.User.GID,
+	)
+
+	syscall.Umask(0o077)
+	slog.Info("bridge starting", "uid", os.Geteuid())
+
+	clientConn := openClientConnection()
+	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
+
+	// Ensure per-user config exists and is valid
+	config.EnsureConfigReady(sess.User.Username)
+	slog.Debug("bridge config ready", "user", sess.User.Username)
+
+	runBridge(clientConn)
+	slog.Info("bridge stopped")
+}
+
+const clientConnFD = 3
+
+func handleBridgeArgs() bool {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "--version", "-v":
+			printBridgeVersion()
+		default:
+			printBridgeVersion()
+			fmt.Println("(to be spawned by auth daemon, not for direct use)")
+		}
+		return true
+	}
+	return false
+}
+
+func isDirectBridgeInvocation() bool {
+	fileInfo, err := os.Stdin.Stat()
+	return err != nil || (fileInfo.Mode()&os.ModeCharDevice) != 0
+}
+
+func initializeBridgeSession() {
 	bootCfg = readBootstrap()
+	if bootCfg.Verbose {
+		if configureErr := logging.Configure("linuxio-bridge", true); configureErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to reconfigure logger: %v\n", configureErr)
+			os.Exit(1)
+		}
+	}
 	sess = &session.Session{
 		SessionID:  bootCfg.SessionID,
 		Privileged: bootCfg.Privileged,
@@ -93,122 +135,94 @@ func main() {
 			GID:      bootCfg.GID,
 		},
 	}
+}
 
-	// Initialize logger (stdout/stderr → systemd journal)
-	// Configure log levels based on verbose flag
-	var levels []logger.Level
-	verbose := bootCfg.Verbose
-	if verbose {
-		levels = logger.AllLevels() // Includes DEBUG
-	} else {
-		levels = []logger.Level{logger.InfoLevel, logger.WarnLevel, logger.ErrorLevel}
-	}
-
-	logger.Init(logger.Config{
-		Levels:           levels,
-		IncludeCallerTag: true,
-	})
-
-	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
-		os.Geteuid(), sess.User.UID, sess.User.GID)
-
-	syscall.Umask(0o077)
-	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())
-
-	// Get the client connection from FD 3 (inherited from auth daemon)
-	const clientConnFD = 3
+func openClientConnection() net.Conn {
 	clientFile := os.NewFile(uintptr(clientConnFD), "client-conn")
 	if clientFile == nil {
-		logger.Errorf("failed to open client connection FD %d", clientConnFD)
+		slog.Error("failed to open client connection", "fd", clientConnFD)
 		os.Exit(1)
 	}
 	clientConn, err := net.FileConn(clientFile)
-	clientFile.Close() // Close our reference; the net.Conn now owns the FD
+	clientFile.Close()
 	if err != nil {
-		logger.Errorf("failed to create net.Conn from FD %d: %v", clientConnFD, err)
+		slog.Error("failed to create client connection", "fd", clientConnFD, "error", err)
 		os.Exit(1)
 	}
-	logger.Infof("[bridge] connected via inherited FD %d", clientConnFD)
+	return clientConn
+}
 
-	// Ensure per-user config exists and is valid
-	config.EnsureConfigReady(sess.User.Username)
-	logger.Debugf("[bridge] config ready")
-
-	// Ensure the shared linuxio-docker network exists (fails silently if Docker unavailable)
-	docker.EnsureLinuxIONetwork()
-
-	ShutdownChan := make(chan string, 1)
+func runBridge(clientConn net.Conn) {
+	shutdownCh := make(chan string, 1)
 	handlers.RegisterAllHandlers(sess)
+	startBridgeSignalHandler(shutdownCh)
 
-	// Handle Ctrl-C / kill properly → request shutdown once
+	closeClientConn := newClientConnCloser(clientConn)
+	startMainRequestLoop(clientConn, closeClientConn, shutdownCh)
+	<-startBridgeCleanup(shutdownCh, closeClientConn)
+}
+
+func startBridgeSignalHandler(shutdownCh chan<- string) {
 	sigc := make(chan os.Signal, 2)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		s := <-sigc
 		select {
-		case ShutdownChan <- "signal: " + s.String():
-		default: // already shutting down
+		case shutdownCh <- "signal: " + s.String():
+		default:
 		}
 	}()
+}
 
-	// Guard clientConn.Close() so it is safe to call from multiple goroutines.
+func newClientConnCloser(clientConn net.Conn) func() {
 	var closeOnce sync.Once
-	closeClientConn := func() {
+	return func() {
 		closeOnce.Do(func() {
 			if err := clientConn.Close(); err != nil {
-				logger.DebugKV("client conn close", "error", err)
+				slog.Debug("client conn close", "error", err)
 			}
 		})
 	}
+}
 
-	// Handle the single client connection (no accept loop needed)
-	connDone := make(chan struct{})
+func startMainRequestLoop(clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
 	wg.Go(func() {
 		handleMainRequest(clientConn, closeClientConn)
-		// Connection closed - trigger shutdown
 		select {
-		case ShutdownChan <- "client disconnected":
-		default: // already shutting down
+		case shutdownCh <- "client disconnected":
+		default:
 		}
-		close(connDone)
 	})
+}
 
+func startBridgeCleanup(shutdownCh <-chan string, closeClientConn func()) <-chan struct{} {
 	cleanupDone := make(chan struct{}, 1)
 	go func() {
-		reason := <-ShutdownChan
-
-		// Brief delay to allow the shutdown response to be written back
+		reason := <-shutdownCh
 		time.Sleep(50 * time.Millisecond)
-
-		// Signal all goroutines that shutdown started
 		close(bridgeClosing)
-
-		// Close the client connection to unblock any reads
 		closeClientConn()
-
-		// Bounded wait for in-flight requests; do not block forever
-		waitCh := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(waitCh)
-		}()
-		const grace = 5 * time.Second
-		select {
-		case <-waitCh:
-			logger.DebugKV("in-flight handlers drained", "grace_period", grace)
-		case <-time.After(grace):
-			logger.WarnKV("in-flight handlers exceeded grace", "grace_period", grace)
-		}
-
-		logger.Debugf("Shutdown initiated: %s (user=%s, session=%s)",
-			reason, sess.User.Username, sess.SessionID)
-
+		waitForInflightHandlers()
+		slog.Debug("shutdown initiated", "reason", reason, "user", sess.User.Username, "session_id", sess.SessionID)
 		cleanupDone <- struct{}{}
 	}()
+	return cleanupDone
+}
 
-	// Wait for cleanup to complete; then exit
-	<-cleanupDone
-	logger.InfoKV("bridge stopped")
+func waitForInflightHandlers() {
+	waitCh := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitCh)
+	}()
+
+	const grace = 5 * time.Second
+	select {
+	case <-waitCh:
+		slog.Debug("in-flight handlers drained", "grace_period", grace)
+	case <-time.After(grace):
+		slog.Warn("in-flight handlers exceeded grace", "grace_period", grace)
+	}
 }
 
 func printBridgeVersion() {
@@ -226,21 +240,14 @@ func handleMainRequest(conn net.Conn, closeConn func()) {
 func handleYamuxSession(conn net.Conn) {
 	ymuxSession, err := ipc.NewYamuxServer(conn)
 	if err != nil {
-		logger.ErrorKV("failed to create yamux session", "session_id", sess.SessionID, "error", err)
+		slog.Error("failed to create yamux session", "session_id", sess.SessionID, "error", err)
 		return
 	}
 	defer ymuxSession.Close()
-
-	logger.InfoKV("yamux session started", "session_id", sess.SessionID)
+	slog.Info("yamux session started", "session_id", sess.SessionID)
 
 	// Track active streams for graceful shutdown
 	var streamWg sync.WaitGroup
-
-	// Sync Watchtower on first incoming request (after capabilities checks have run).
-	// SyncWatchtowerStack involves multiple docker API calls and takes longer than the
-	// initial capabilities check, so starting it here ensures its log appears after
-	// the capabilities logs rather than during early bridge startup.
-	var watchtowerOnce sync.Once
 
 	// Accept streams until session closes or bridge shuts down.
 	// The loop exits when ymuxSession.Accept() returns an error
@@ -249,14 +256,12 @@ func handleYamuxSession(conn net.Conn) {
 		stream, err := ymuxSession.Accept()
 		if err != nil {
 			if ymuxSession.IsClosed() {
-				logger.DebugKV("yamux session closed", "session_id", sess.SessionID)
+				slog.Debug("yamux session closed", "session_id", sess.SessionID)
 			} else {
-				logger.WarnKV("yamux accept error", "session_id", sess.SessionID, "error", err)
+				slog.Warn("yamux accept error", "session_id", sess.SessionID, "error", err)
 			}
 			break
 		}
-
-		watchtowerOnce.Do(func() { go docker.SyncWatchtowerStack(sess.User.Username) })
 
 		streamID := strconv.FormatUint(streamCounter.Add(1), 10)
 		s := stream
@@ -270,7 +275,7 @@ func handleYamuxSession(conn net.Conn) {
 
 	// Wait for all streams to complete
 	streamWg.Wait()
-	logger.InfoKV("yamux session ended", "session_id", sess.SessionID)
+	slog.Info("yamux session ended", "session_id", sess.SessionID)
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
@@ -279,37 +284,67 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 	// Read the first frame to determine stream type
 	frame, err := ipc.ReadRelayFrame(stream)
 	if err != nil {
-		logger.WarnKV("failed to read stream open frame", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
+		slog.Warn("failed to read stream open frame", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
 		return
 	}
 
 	if frame.Opcode != ipc.OpStreamOpen {
-		logger.WarnKV("expected OpStreamOpen frame", "session_id", sess.SessionID, "stream_id", streamID, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
+		slog.Warn("expected OpStreamOpen frame", "session_id", sess.SessionID, "stream_id", streamID, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
 		return
 	}
 
 	// Parse stream type and args from payload
 	streamType, args := ipc.ParseStreamOpenPayload(frame.Payload)
-	logger.DebugKV("stream opened", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "args", args)
+	startedAt := time.Now()
+	if streamType != "bridge" {
+		slog.Debug("stream started: "+streamType,
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"stream_type", streamType,
+			"arg_count", len(args))
+	}
 
 	// Look up registered stream handler
 	handler, found := handlers.GetStreamHandler(streamType)
 	if !found {
-		logger.WarnKV("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
+		slog.Warn("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
 		// Send close frame
 		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 			Opcode:   ipc.OpStreamClose,
 			StreamID: frame.StreamID,
 		}); err != nil {
-			logger.DebugKV("failed to write close frame for unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+			slog.Debug("failed to write close frame for unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
 		}
 		return
 	}
 
 	// Execute stream handler
 	if err := handler(sess, stream, args); err != nil {
-		if !errors.Is(err, ipc.ErrAborted) {
-			logger.WarnKV("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		if streamType == "bridge" {
+			return
 		}
+		if errors.Is(err, ipc.ErrAborted) {
+			slog.Debug("stream aborted: "+streamType,
+				"session_id", sess.SessionID,
+				"stream_id", streamID,
+				"stream_type", streamType,
+				"duration", time.Since(startedAt))
+			return
+		}
+		slog.Warn("stream failed: "+streamType,
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"stream_type", streamType,
+			"duration", time.Since(startedAt),
+			"error", err)
+		return
+	}
+
+	if streamType != "bridge" {
+		slog.Debug("stream completed: "+streamType,
+			"session_id", sess.SessionID,
+			"stream_id", streamID,
+			"stream_type", streamType,
+			"duration", time.Since(startedAt))
 	}
 }

@@ -32,6 +32,8 @@ export interface AuthState {
   indexerAvailable: boolean | null;
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
+  packageKitAvailable: boolean | null;
+  nfsAvailable: boolean | null;
 }
 
 /**
@@ -46,6 +48,8 @@ export interface AuthContextType {
   indexerAvailable: boolean | null;
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
+  packageKitAvailable: boolean | null;
+  nfsAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -70,9 +74,6 @@ export const AUTH_ACTIONS = {
 
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
-
-  /** Dispatched after the bridge is connected to refresh capability flags. */
-  UPDATE_CAPABILITIES: "UPDATE_CAPABILITIES",
 } as const satisfies Record<string, string>;
 
 /**
@@ -88,6 +89,8 @@ export interface AuthActionTypes {
     indexerAvailable?: boolean | null;
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
+    packageKitAvailable?: boolean | null;
+    nfsAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
@@ -97,14 +100,10 @@ export interface AuthActionTypes {
     indexerAvailable?: boolean | null;
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
+    packageKitAvailable?: boolean | null;
+    nfsAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
-  [AUTH_ACTIONS.UPDATE_CAPABILITIES]: {
-    dockerAvailable: boolean;
-    indexerAvailable: boolean;
-    lmSensorsAvailable: boolean;
-    smartmontoolsAvailable: boolean;
-  };
 }
 
 export type AuthActions = ActionMap<AuthActionTypes>[keyof AuthActionTypes];
@@ -120,8 +119,12 @@ export interface LoginResponse {
   success: boolean;
   privileged: boolean;
   update?: UpdateInfo;
-  docker_available?: boolean;
-  indexer_available?: boolean;
+  docker_available: boolean;
+  indexer_available: boolean;
+  lm_sensors_available: boolean;
+  smartmontools_available: boolean;
+  packagekit_available: boolean;
+  nfs_available: boolean;
 }
 
 export type LoginErrorCode =

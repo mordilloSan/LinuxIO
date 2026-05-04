@@ -395,6 +395,20 @@ enable_services() {
     return 0
 }
 
+grant_journal_access() {
+    [[ -z "${SUDO_USER:-}" ]] && return 0
+
+    if ! id -nG "$SUDO_USER" | tr ' ' '\n' | grep -qxE "systemd-journal|adm"; then
+        Show 2 "Granting ${SUDO_USER} journal read access..."
+        usermod -aG systemd-journal "$SUDO_USER"
+        Show 0 "${SUDO_USER} added to systemd-journal group ${GREY}(re-login refreshes the shell session)${COLOUR_RESET}"
+    else
+        Show 0 "${SUDO_USER} already has journal read access"
+    fi
+
+    return 0
+}
+
 # ---------- Verification Functions ----------
 
 verify_installation() {
@@ -569,6 +583,7 @@ main() {
     if ! enable_services; then
         Show 3 "Some services may not be enabled"
     fi
+    grant_journal_access
 
     # Verification
     Header "Verification"

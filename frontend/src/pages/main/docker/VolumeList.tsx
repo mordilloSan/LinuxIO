@@ -136,7 +136,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
   viewMode = "table",
 }) => {
   const theme = useAppTheme();
-  const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
+  const { data: rawVolumes } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
   const [search, setSearch] = useState("");
@@ -144,7 +144,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Ensure volumes is an array (handle null/undefined from API)
-  const volumesList = Array.isArray(volumes) ? volumes : [];
+  const volumesList = Array.isArray(rawVolumes) ? rawVolumes : [];
 
   // Create volume handler
   const handleCreateVolume = useCallback(() => {

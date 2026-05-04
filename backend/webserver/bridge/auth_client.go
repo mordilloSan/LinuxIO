@@ -6,8 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/mordilloSan/go-logger/logger"
-
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -93,12 +91,8 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 		}
 	}
 
-	privileged := resp.IsPrivileged()
-	logger.InfoKV("auth daemon: bridge spawned",
-		"user", resp.User.Username,
-		"privileged", privileged)
-
 	// Clear deadlines for Yamux use
+	privileged := resp.IsPrivileged()
 	if err = conn.SetDeadline(time.Time{}); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to clear deadlines: %w", err)

@@ -1,6 +1,5 @@
 import React, {
   Suspense,
-  useCallback,
   useEffect,
   useEffectEvent,
   useRef,
@@ -62,15 +61,16 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
-  // Reset state when dialog opens/closes
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setStackName(initialStackName);
       setIsEditorDirty(false);
       setIsSaving(false);
       setValidation(null);
     }
-  }, [open, initialStackName]);
+  }
   const handleClose = () => {
     if (!readOnly && isEditorDirty) {
       setShowUnsavedDialog(true);
@@ -99,7 +99,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       setIsValidating(false);
     }
   };
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     if (!editorRef.current) return;
 
     // Validate stack name for create mode
@@ -158,7 +158,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       setIsSaving(false);
       setIsValidating(false);
     }
-  }, [mode, stackName, onValidate, onSave, filePath]);
+  };
 
   // Add Ctrl+S keyboard shortcut
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {

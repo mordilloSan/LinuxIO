@@ -2,15 +2,14 @@ package docker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/compose-spec/compose-go/v2/loader"
-	"github.com/compose-spec/compose-go/v2/types"
 )
 
 type composeLineEmitter func(msgType, message string)
@@ -124,17 +123,25 @@ func composeStopWithSDK(
 }
 
 func composeValidateContentWithSDK(ctx context.Context, content string) error {
-	configDetails := types.ConfigDetails{
-		WorkingDir: ".",
-		ConfigFiles: []types.ConfigFile{{
-			Filename: "compose.yml",
-			Content:  []byte(content),
-		}},
-		Environment: map[string]string{},
+	f, err := os.CreateTemp("", "linuxio-compose-*.yml")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 
-	_, err := loader.LoadWithContext(ctx, configDetails, func(opts *loader.Options) {
-		opts.SetProjectName("linuxio-validate", true)
-	})
-	return err
+	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", f.Name(), "config")
+	cmd.Stdout = nil
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
 }

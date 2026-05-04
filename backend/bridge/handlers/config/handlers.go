@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -21,6 +20,7 @@ type configRegistration struct {
 type configSetPayload struct {
 	AppSettings *configAppSettingsPayload `json:"appSettings"`
 	Docker      *configDockerPayload      `json:"docker"`
+	Jobs        *configJobSettingsPayload `json:"jobs"`
 }
 
 type configAppSettingsPayload struct {
@@ -51,6 +51,15 @@ type configDockerPayload struct {
 	AutoUpdateStacks []string `json:"autoUpdateStacks"`
 }
 
+type configJobSettingsPayload struct {
+	ProgressMinIntervalMs     *int `json:"progressMinIntervalMs"`
+	NotificationMinIntervalMs *int `json:"notificationMinIntervalMs"`
+	ProgressMinBytesMB        *int `json:"progressMinBytesMB"`
+	HeavyArchiveConcurrency   *int `json:"heavyArchiveConcurrency"`
+	ArchiveCompressionWorkers *int `json:"archiveCompressionWorkers"`
+	ArchiveExtractWorkers     *int `json:"archiveExtractWorkers"`
+}
+
 // RegisterHandlers registers config handlers with the new handler system
 func RegisterHandlers(sess *session.Session) {
 	username := sess.User.Username
@@ -72,7 +81,8 @@ func handleGetConfig(username string) ipc.HandlerFunc {
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		logger.Debugf("user=%q path=%s", username, cfgPath)
+		cfg.Jobs = EffectiveJobSettings(cfg.Jobs)
+		slog.Debug("loaded user config", "component", "config", "user", username, "path", cfgPath)
 		return emit.Result(cfg)
 	}
 }
@@ -83,7 +93,7 @@ func handleSetConfig(username string) ipc.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		logger.Infof("user=%q update requested", username)
+		slog.Info("config update requested", "component", "config", "user", username)
 
 		cfg, _, err := Load(username)
 		if err != nil {
@@ -98,8 +108,7 @@ func handleSetConfig(username string) ipc.HandlerFunc {
 		if err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
-
-		logger.Infof("user=%q updated config: path=%s", username, cfgPath)
+		slog.Info("user config updated", "component", "config", "user", username, "path", cfgPath)
 		return emit.Result(map[string]any{
 			"message": "config updated",
 			"path":    cfgPath,
@@ -126,6 +135,11 @@ func applyConfigPayload(cfg *Settings, payload *configSetPayload) error {
 	}
 	if payload.Docker != nil {
 		if err := applyDockerSettingsUpdate(&cfg.Docker, payload.Docker); err != nil {
+			return err
+		}
+	}
+	if payload.Jobs != nil {
+		if err := applyJobSettingsUpdate(&cfg.Jobs, payload.Jobs); err != nil {
 			return err
 		}
 	}
@@ -281,5 +295,46 @@ func applyDockerFolderSetting(docker *Docker, folderValue *string) error {
 		return fmt.Errorf("docker folder cannot be root")
 	}
 	docker.Folder = AbsolutePath(folder)
+	return nil
+}
+
+func applyJobSettingsUpdate(jobs *JobSettings, payload *configJobSettingsPayload) error {
+	if err := applyOptionalNonNegativeInt(&jobs.ProgressMinIntervalMs, payload.ProgressMinIntervalMs, "jobs.progressMinIntervalMs"); err != nil {
+		return err
+	}
+	if err := applyOptionalNonNegativeInt(&jobs.NotificationMinIntervalMs, payload.NotificationMinIntervalMs, "jobs.notificationMinIntervalMs"); err != nil {
+		return err
+	}
+	if err := applyOptionalNonNegativeInt(&jobs.ProgressMinBytesMB, payload.ProgressMinBytesMB, "jobs.progressMinBytesMB"); err != nil {
+		return err
+	}
+	if err := applyOptionalPositiveInt(&jobs.HeavyArchiveConcurrency, payload.HeavyArchiveConcurrency, "jobs.heavyArchiveConcurrency"); err != nil {
+		return err
+	}
+	if err := applyOptionalNonNegativeInt(&jobs.ArchiveCompressionWorkers, payload.ArchiveCompressionWorkers, "jobs.archiveCompressionWorkers"); err != nil {
+		return err
+	}
+	return applyOptionalNonNegativeInt(&jobs.ArchiveExtractWorkers, payload.ArchiveExtractWorkers, "jobs.archiveExtractWorkers")
+}
+
+func applyOptionalNonNegativeInt(dst *int, value *int, name string) error {
+	if value == nil {
+		return nil
+	}
+	if *value < 0 {
+		return fmt.Errorf("%s must be >= 0", name)
+	}
+	*dst = *value
+	return nil
+}
+
+func applyOptionalPositiveInt(dst *int, value *int, name string) error {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return fmt.Errorf("%s must be > 0", name)
+	}
+	*dst = *value
 	return nil
 }

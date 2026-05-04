@@ -6,13 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const (
@@ -171,7 +170,7 @@ func fetchDashboardIcon(name string) ([]byte, error) {
 	}
 
 	for _, url := range candidates {
-		logger.DebugKV("fetching dashboard icon", "name", name, "url", url)
+		slog.Debug("fetching dashboard icon", "name", name, "url", url)
 
 		resp, err := httpClient.Get(url)
 		if err != nil {
@@ -207,7 +206,7 @@ func fetchDashboardIcon(name string) ([]byte, error) {
 // fetchSimpleIcon downloads an icon from Simple Icons CDN
 func fetchSimpleIcon(name string) ([]byte, error) {
 	url := fmt.Sprintf("%s/%s", simpleIconsCDN, name)
-	logger.DebugKV("fetching simple icon", "name", name, "url", url)
+	slog.Debug("fetching simple icon", "name", name, "url", url)
 
 	resp, err := httpClient.Get(url)
 	if err != nil {
@@ -229,7 +228,7 @@ func fetchSimpleIcon(name string) ([]byte, error) {
 
 // fetchURLIcon downloads an icon from an arbitrary URL
 func fetchURLIcon(url string) ([]byte, error) {
-	logger.DebugKV("fetching icon from URL", "url", url)
+	slog.Debug("fetching icon from URL", "url", url)
 
 	resp, err := httpClient.Get(url)
 	if err != nil {
@@ -279,8 +278,7 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 	if err := os.WriteFile(cachePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write cache file: %w", err)
 	}
-
-	logger.DebugKV("cached icon", "type", iconType, "identifier", identifier, "path", cachePath)
+	slog.Debug("cached icon", "type", iconType, "identifier", identifier, "path", cachePath)
 	return nil
 }
 
@@ -308,7 +306,7 @@ func GetIcon(identifier string) ([]byte, error) {
 
 	// Initialize cache directories
 	if err := initIconCache(); err != nil {
-		logger.Warnf("failed to initialize icon cache: %v", err)
+		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", err)
 	}
 
 	// Parse identifier
@@ -326,7 +324,7 @@ func GetIcon(identifier string) ([]byte, error) {
 
 	// Cache the icon
 	if cacheErr := cacheIcon(iconType, value, data); cacheErr != nil {
-		logger.Warnf("failed to cache icon: %v", cacheErr)
+		slog.Warn("failed to cache icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", cacheErr)
 	}
 
 	return data, nil
@@ -340,11 +338,10 @@ func readCachedIcon(iconType IconType, value, identifier string) ([]byte, bool) 
 
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
-		logger.Warnf("failed to read cached icon: %v", err)
+		slog.Warn("failed to read cached icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "path", cachePath, "error", err)
 		return nil, false
 	}
-
-	logger.DebugKV("serving cached icon", "type", iconType, "identifier", identifier)
+	slog.Debug("serving cached icon", "type", iconType, "identifier", identifier)
 	return data, true
 }
 
@@ -371,8 +368,7 @@ func fetchDashboardIconWithFallback(value string) ([]byte, IconType, string, err
 	if err == nil {
 		return data, IconTypeDashboardIcon, value, nil
 	}
-
-	logger.DebugKV("dashboard icon not found, falling back to docker icon", "identifier", value)
+	slog.Debug("dashboard icon not found, falling back to docker icon", "identifier", value)
 	return fetchDockerFallback(err)
 }
 
@@ -381,8 +377,7 @@ func fetchSimpleIconWithFallback(value string) ([]byte, IconType, string, error)
 	if err == nil {
 		return data, IconTypeSimpleIcon, value, nil
 	}
-
-	logger.DebugKV("simple icon not found, falling back to docker icon", "identifier", value)
+	slog.Debug("simple icon not found, falling back to docker icon", "identifier", value)
 	return fetchDockerFallback(err)
 }
 
@@ -391,8 +386,7 @@ func fetchURLIconWithFallback(value string) ([]byte, IconType, string, error) {
 	if err == nil {
 		return data, IconTypeURL, value, nil
 	}
-
-	logger.DebugKV("url icon fetch failed, falling back to docker icon", "url", value, "error", err)
+	slog.Debug("url icon fetch failed, falling back to docker icon", "url", value, "error", err)
 	return fetchDockerFallback(err)
 }
 
@@ -401,14 +395,12 @@ func fetchDerivedIcon(value string) ([]byte, IconType, string, error) {
 	if err == nil {
 		return data, IconTypeDerived, value, nil
 	}
-
-	logger.DebugKV("dashboard icon not found, trying simple icons", "identifier", value)
+	slog.Debug("dashboard icon not found, trying simple icons", "identifier", value)
 	data, err = fetchSimpleIcon(value)
 	if err == nil {
 		return data, IconTypeSimpleIcon, value, nil
 	}
-
-	logger.DebugKV("simple icon not found, falling back to docker icon", "identifier", value)
+	slog.Debug("simple icon not found, falling back to docker icon", "identifier", value)
 	return fetchDockerFallback(err)
 }
 
@@ -456,7 +448,7 @@ func GetIconInfo(identifier string) IconInfo {
 
 // ClearIconCache removes all cached icons
 func ClearIconCache() error {
-	logger.InfoKV("clearing icon cache")
+	slog.Info("clearing icon cache")
 
 	dirs := []string{dashboardIconsCacheDir, simpleIconsCacheDir, urlCacheDir}
 	for _, dir := range dirs {

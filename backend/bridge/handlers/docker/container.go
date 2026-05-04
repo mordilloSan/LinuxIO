@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 type Metrics struct {
@@ -67,7 +67,7 @@ func ListContainers(ctx context.Context) (any, error) {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	var enriched []ContainerWithMetrics
+	enriched := make([]ContainerWithMetrics, 0, len(containers))
 
 	for _, ctr := range containers {
 		if err := ctx.Err(); err != nil {
@@ -96,7 +96,7 @@ func collectContainerMetrics(ctx context.Context, cli *client.Client, containerI
 	}
 	defer func() {
 		if cerr := statsResp.Body.Close(); cerr != nil {
-			logger.Warnf("failed to close container stats body: %v", cerr)
+			slog.Warn("failed to close container stats body", "component", "docker", "container", containerID, "error", cerr)
 		}
 	}()
 
@@ -259,7 +259,7 @@ func StartAllStopped(ctx context.Context) (any, error) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
-				logger.Warnf("failed to start container %s: %v", c.ID[:12], err)
+				slog.Warn("failed to start container", "component", "docker", "container", c.ID[:12], "error", err)
 				failed++
 			} else {
 				started++
@@ -293,7 +293,7 @@ func StopAllRunning(ctx context.Context) (any, error) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
-				logger.Warnf("failed to stop container %s: %v", c.ID[:12], err)
+				slog.Warn("failed to stop container", "component", "docker", "container", c.ID[:12], "error", err)
 				failed++
 			} else {
 				stopped++

@@ -7,8 +7,9 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import { linuxio } from "@/api";
+import { linuxio, openJobAttachStream } from "@/api";
 import { useFileTransfers } from "./useFileTransfers";
+import { useStreamResult } from "./useStreamResult";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface UseFileMutationsParams {
@@ -54,6 +55,7 @@ export const useFileMutations = ({
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
     useFileTransfers();
+  const { run: runStreamResult } = useStreamResult();
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
@@ -155,7 +157,30 @@ export const useFileMutations = ({
     },
   });
 
-  const chmodMutation = linuxio.filebrowser.chmod.useMutation({
+  const { mutateAsync: changePermissionsAsync } = useMutation({
+    mutationFn: async ({
+      path,
+      mode,
+      recursive,
+      owner,
+      group,
+    }: ChmodPayload) => {
+      if (!path) {
+        throw new Error("No path provided");
+      }
+      if (!mode) {
+        throw new Error("No mode provided");
+      }
+      const args = [path, mode, owner || "", group || ""];
+      if (recursive) {
+        args.push("true");
+      }
+      const job = await linuxio.jobs.start.call("file.chmod", ...args);
+      await runStreamResult({
+        open: () => openJobAttachStream(job.id),
+        closeMessage: "Permissions job stream closed before completion",
+      });
+    },
     onSuccess: () => {
       invalidateListing();
       toast.success("Permissions changed successfully");
@@ -168,21 +193,10 @@ export const useFileMutations = ({
   });
 
   const changePermissions = useCallback(
-    async ({ path, mode, recursive, owner, group }: ChmodPayload) => {
-      if (!path) {
-        throw new Error("No path provided");
-      }
-      if (!mode) {
-        throw new Error("No mode provided");
-      }
-      // Args: [path, mode, owner?, group?, recursive?]
-      const args = [path, mode, owner || "", group || ""];
-      if (recursive) {
-        args.push("true");
-      }
-      await chmodMutation.mutateAsync(args);
+    async (payload: ChmodPayload) => {
+      await changePermissionsAsync(payload);
     },
-    [chmodMutation],
+    [changePermissionsAsync],
   );
 
   const renameMutation = linuxio.filebrowser.resource_patch.useMutation({

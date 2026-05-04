@@ -185,10 +185,14 @@ export interface CapabilitiesResponse {
   indexer_available: boolean;
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
+  packagekit_available: boolean;
+  nfs_available: boolean;
   docker_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
   smartmontools_error?: string;
+  packagekit_error?: string;
+  nfs_error?: string;
 }
 
 export interface DistroInfo {
@@ -731,6 +735,51 @@ export interface DirectoryValidationResult {
   isDirectory: boolean;
 }
 
+export type JobState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export interface JobError {
+  message: string;
+  code?: number;
+}
+
+export interface JobSnapshot {
+  id: string;
+  type: string;
+  args?: string[];
+  owner?: {
+    session_id?: string;
+    username?: string;
+    uid?: number;
+  };
+  state: JobState;
+  progress?: unknown;
+  result?: unknown;
+  error?: JobError;
+  created_at: string;
+  started_at?: string;
+  updated_at: string;
+  finished_at?: string;
+}
+
+export interface JobEvent {
+  type:
+    | "job.snapshot"
+    | "job.started"
+    | "job.progress"
+    | "job.result"
+    | "job.error"
+    | "job.canceled";
+  job: JobSnapshot;
+  progress?: unknown;
+  result?: unknown;
+  error?: JobError;
+}
+
 // ============================================================================
 // API Schema Definition
 // ============================================================================
@@ -740,6 +789,14 @@ export interface DirectoryValidationResult {
  * Format: { handler: { command: { args: ArgsType, result: ResultType } } }
  */
 export interface LinuxIOSchema {
+  jobs: {
+    start: { args: [jobType: string, ...args: string[]]; result: JobSnapshot };
+    recover: { args: [jobType: string]; result: JobSnapshot | null };
+    list: { args: [status?: string]; result: JobSnapshot[] };
+    get: { args: [jobId: string]; result: JobSnapshot };
+    cancel: { args: [jobId: string]; result: JobSnapshot };
+  };
+
   system: {
     get_capabilities: { args: []; result: CapabilitiesResponse };
     get_cpu_info: { args: []; result: CPUInfoResponse };

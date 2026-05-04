@@ -1,6 +1,12 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import {
@@ -40,6 +46,10 @@ const TerminalDialog: React.FC<Props> = ({
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const { streamRef, openStream, closeStream } = useLiveStream();
+  const onCloseRef = useRef(onClose);
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose;
+  });
   const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
@@ -113,7 +123,7 @@ const TerminalDialog: React.FC<Props> = ({
     xterm.current.attachCustomKeyEventHandler((event) => {
       // Escape - close dialog
       if (event.key === "Escape" && event.type === "keydown") {
-        onClose();
+        onCloseRef.current();
         return false;
       }
 
@@ -216,7 +226,6 @@ const TerminalDialog: React.FC<Props> = ({
     closeStream,
     openStream,
     streamRef,
-    onClose,
   ]);
 
   // Shell picker handler

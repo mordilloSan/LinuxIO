@@ -3,9 +3,8 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
-
-	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -30,6 +29,18 @@ type LoginRequest struct {
 type loginErrorResponse struct {
 	Error string `json:"error"`
 	Code  string `json:"code,omitempty"`
+}
+
+type loginSuccessResponse struct {
+	Success                bool        `json:"success"`
+	Privileged             bool        `json:"privileged"`
+	DockerAvailable        bool        `json:"docker_available"`
+	IndexerAvailable       bool        `json:"indexer_available"`
+	LMSensorsAvailable     bool        `json:"lm_sensors_available"`
+	SmartmontoolsAvailable bool        `json:"smartmontools_available"`
+	PackageKitAvailable    bool        `json:"packagekit_available"`
+	NFSAvailable           bool        `json:"nfs_available"`
+	Update                 *UpdateInfo `json:"update,omitempty"`
 }
 
 func writeLoginError(w http.ResponseWriter, status int, code, message string) {
@@ -64,7 +75,11 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var authErr *bridge.AuthError
 		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
-			logger.Warnf("[auth.login] authentication failed for user %s: %v", req.Username, err)
+			slog.Warn("authentication failed",
+				"component", "auth",
+				"subsystem", "login",
+				"user", req.Username,
+				"error", err)
 			switch authErr.Code {
 			case ipc.ResultPasswordExpired, ipc.ResultAccessDenied:
 				msg := authErr.Message
@@ -78,23 +93,33 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-
-		logger.Errorf("[auth.login] failed to start bridge: %v", err)
+		slog.Error("failed to start bridge",
+			"component", "auth",
+			"subsystem", "login",
+			"user", req.Username,
+			"session_id", sessionID,
+			"error", err)
 		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
 		return
 	}
 
 	h.SM.WriteCookie(w, sess.SessionID)
 
-	response := map[string]any{
-		"success":    true,
-		"privileged": sess.Privileged,
+	response := loginSuccessResponse{
+		Success:                true,
+		Privileged:             sess.Privileged,
+		DockerAvailable:        sess.Capabilities.DockerAvailable,
+		IndexerAvailable:       sess.Capabilities.IndexerAvailable,
+		LMSensorsAvailable:     sess.Capabilities.LMSensorsAvailable,
+		SmartmontoolsAvailable: sess.Capabilities.SmartmontoolsAvailable,
+		PackageKitAvailable:    sess.Capabilities.PackageKitAvailable,
+		NFSAvailable:           sess.Capabilities.NFSAvailable,
 	}
 
 	// Only check for updates if user is privileged
 	if sess.Privileged {
 		if updateInfo := CheckForUpdate(); updateInfo != nil {
-			response["update"] = updateInfo
+			response.Update = updateInfo
 		}
 	}
 
@@ -110,9 +135,9 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 
 	h.SM.DeleteCookie(w)
 	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
-		logger.ErrorKV("session delete failed", "error", err)
+		slog.Error("session delete failed", "error", err)
 	}
-	logger.InfoKV("session logout", "cookie_cleared", true)
+	slog.Info("session logout", "cookie_cleared", true)
 	w.WriteHeader(http.StatusOK)
 }
 

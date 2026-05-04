@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 type sharesRegistration struct {
@@ -39,13 +39,13 @@ func registerSharesHandlers(registrations []sharesRegistration) {
 // --- NFS handlers ---
 
 func handleListNFSShares(ctx context.Context, args []string, emit ipc.Events) error {
-	logger.Debugf("Listing NFS shares")
+	slog.Debug("Listing NFS shares")
 	shares, err := ListNFSShares()
 	if err != nil {
-		logger.Errorf("Failed to list NFS shares: %v", err)
+		slog.Error("failed to list NFS shares", "error", err)
 		return err
 	}
-	logger.Debugf("Found %d NFS shares", len(shares))
+	slog.Debug("listed NFS shares", "count", len(shares))
 	return emit.Result(shares)
 }
 
@@ -58,10 +58,9 @@ func handleCreateNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 	if err := json.Unmarshal([]byte(args[1]), &clients); err != nil {
 		return fmt.Errorf("invalid clients JSON: %w", err)
 	}
-
-	logger.Infof("Creating NFS share: path=%s clients=%d", path, len(clients))
+	slog.Info("creating NFS share", "path", path, "count", len(clients))
 	if err := CreateNFSShare(path, clients); err != nil {
-		logger.Errorf("Failed to create NFS share %s: %v", path, err)
+		slog.Error("failed to create NFS share", "path", path, "error", err)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true, "path": path})
@@ -76,10 +75,9 @@ func handleUpdateNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 	if err := json.Unmarshal([]byte(args[1]), &clients); err != nil {
 		return fmt.Errorf("invalid clients JSON: %w", err)
 	}
-
-	logger.Infof("Updating NFS share: path=%s", path)
+	slog.Info("updating NFS share", "path", path)
 	if err := UpdateNFSShare(path, clients); err != nil {
-		logger.Errorf("Failed to update NFS share %s: %v", path, err)
+		slog.Error("failed to update NFS share", "path", path, "error", err)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true, "path": path})
@@ -90,9 +88,9 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 		return ipc.ErrInvalidArgs
 	}
 	path := args[0]
-	logger.Infof("Deleting NFS share: path=%s", path)
+	slog.Info("deleting NFS share", "path", path)
 	if err := DeleteNFSShare(path); err != nil {
-		logger.Errorf("Failed to delete NFS share %s: %v", path, err)
+		slog.Error("failed to delete NFS share", "path", path, "error", err)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true})
@@ -101,13 +99,13 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 // --- Samba handlers ---
 
 func handleListSambaShares(ctx context.Context, args []string, emit ipc.Events) error {
-	logger.Debugf("Listing Samba shares")
+	slog.Debug("Listing Samba shares")
 	shares, err := ListSambaShares()
 	if err != nil {
-		logger.Errorf("Failed to list Samba shares: %v", err)
+		slog.Error("failed to list Samba shares", "error", err)
 		return err
 	}
-	logger.Debugf("Found %d Samba shares", len(shares))
+	slog.Debug("listed Samba shares", "count", len(shares))
 	return emit.Result(shares)
 }
 
@@ -120,10 +118,9 @@ func handleCreateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 	if err := json.Unmarshal([]byte(args[1]), &properties); err != nil {
 		return fmt.Errorf("invalid properties JSON: %w", err)
 	}
-
-	logger.Infof("Creating Samba share: %s", name)
+	slog.Info("creating Samba share", "name", name, "path", properties["path"])
 	if err := CreateSambaShare(name, properties); err != nil {
-		logger.Errorf("Failed to create Samba share %s: %v", name, err)
+		slog.Error("failed to create Samba share", "name", name, "error", err)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true, "name": name})
@@ -144,10 +141,9 @@ func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 	if err := json.Unmarshal([]byte(args[propertiesArgIndex]), &properties); err != nil {
 		return fmt.Errorf("invalid properties JSON: %w", err)
 	}
-
-	logger.Infof("Updating Samba share: %s -> %s", oldName, newName)
+	slog.Info("updating Samba share", "name", oldName, "new_name", newName)
 	if err := UpdateSambaShare(oldName, newName, properties); err != nil {
-		logger.Errorf("Failed to update Samba share %s: %v", oldName, err)
+		slog.Error("failed to update Samba share", "name", oldName, "error", err)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true, "name": newName})
@@ -158,9 +154,9 @@ func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		return ipc.ErrInvalidArgs
 	}
 	name := args[0]
-	logger.Infof("Deleting Samba share: %s", name)
+	slog.Info("deleting Samba share", "name", name)
 	if err := DeleteSambaShare(name); err != nil {
-		logger.Errorf("Failed to delete Samba share %s: %v", name, err)
+		slog.Error("failed to delete Samba share", "name", name, "error", err)
 		return err
 	}
 	return emit.Result(map[string]any{"success": true})

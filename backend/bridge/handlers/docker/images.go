@@ -20,6 +20,9 @@ func ListImages() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list images: %w", err)
 	}
+	if images == nil {
+		images = []image.Summary{}
+	}
 
 	// Sort images by Created date (newest first)
 	sort.Slice(images, func(i, j int) bool {

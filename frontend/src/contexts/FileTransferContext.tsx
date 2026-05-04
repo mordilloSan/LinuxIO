@@ -5,72 +5,45 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useEffect,
 } from "react";
 import { toast } from "sonner";
 
 import {
   linuxio,
   bindStreamHandlers,
-  LinuxIOError,
   isConnected,
-  openFileUploadStream,
-  openFileDownloadStream,
-  openFileCompressStream,
-  openFileExtractStream,
-  openFileIndexerStream,
-  openFileIndexerAttachStream,
-  openFileCopyStream,
-  openFileMoveStream,
+  openJobAttachStream,
+  openJobDataStream,
+  openJobEventsStream,
+  useStreamMux,
   STREAM_MULTIPLEXER_CONFIG,
   type Stream,
   type ProgressFrame,
+  type JobSnapshot,
+  type JobEvent,
 } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
-const REMOTE_INDEXER_ID = "remote-indexer";
-
-const isIndexerConflictError = (error: unknown): boolean => {
-  const message =
-    error instanceof Error ? error.message.toLowerCase().trim() : "";
-  if (error instanceof LinuxIOError && Number(error.code) === 409) {
-    return true;
-  }
-
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = Number((error as { code?: unknown }).code);
-    if (code === 409) {
-      return true;
-    }
-  }
-
-  return message.includes("already running") || message.includes("conflict");
-};
-
-const isIndexerAttachUnavailableError = (error: unknown): boolean => {
-  const message =
-    error instanceof Error ? error.message.toLowerCase().trim() : "";
-  if (error instanceof LinuxIOError && Number(error.code) === 404) {
-    return true;
-  }
-
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = Number((error as { code?: unknown }).code);
-    if (code === 404) {
-      return true;
-    }
-  }
-
-  return (
-    message.includes("no active") ||
-    message.includes("not found") ||
-    message.includes("status stream error: 404")
-  );
-};
+const JOB_TYPE_FILE_COMPRESS = "file.compress";
+const JOB_TYPE_FILE_EXTRACT = "file.extract";
+const JOB_TYPE_FILE_COPY = "file.copy";
+const JOB_TYPE_FILE_MOVE = "file.move";
+const JOB_TYPE_FILE_INDEXER = "file.indexer";
+const JOB_TYPE_FILE_UPLOAD = "file.upload";
+const JOB_TYPE_FILE_DOWNLOAD = "file.download";
+const JOB_TYPE_FILE_ARCHIVE = "file.archive";
+const JOB_TYPE_FILE_CHMOD = "file.chmod";
+const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
+const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
+const JOB_TYPE_PACKAGE_UPDATE = "package.update";
+const JOB_TYPE_STORAGE_SMART_TEST = "storage.smart_test";
 
 interface Download {
   id: string;
   type: "download";
+  jobId?: string;
   paths: string[];
   progress: number;
   label: string;
@@ -84,6 +57,7 @@ interface Download {
 interface Upload {
   id: string;
   type: "upload";
+  jobId?: string;
   totalFiles: number;
   completedFiles: number;
   currentFile: string;
@@ -178,6 +152,16 @@ interface Move {
   stream?: Stream | null;
 }
 
+interface BackgroundJob {
+  id: string;
+  type: "job";
+  jobType: string;
+  progress: number;
+  label: string;
+  abortController: AbortController;
+  stream?: Stream | null;
+}
+
 type Transfer =
   | Download
   | Upload
@@ -185,7 +169,16 @@ type Transfer =
   | Extraction
   | ActiveIndexer
   | Copy
-  | Move;
+  | Move
+  | BackgroundJob;
+
+function jobIdentityKey(type: string, args: readonly string[] = []) {
+  return JSON.stringify([type, ...args]);
+}
+
+function isTerminalJobState(state: JobSnapshot["state"]) {
+  return state === "completed" || state === "failed" || state === "canceled";
+}
 
 function createProgressSpeedCalculator(minWindowMs = 500, alpha = 0.3) {
   let lastBytes = 0;
@@ -220,6 +213,7 @@ export interface FileTransferContextValue {
   indexers: ActiveIndexer[];
   copies: Copy[];
   moves: Move[];
+  backgroundJobs: BackgroundJob[];
   transfers: Transfer[];
   startDownload: (paths: string[]) => Promise<void>;
   cancelDownload: (id: string) => void;
@@ -258,6 +252,7 @@ export interface FileTransferContextValue {
     onComplete?: () => void;
   }) => Promise<void>;
   cancelMove: (id: string) => void;
+  cancelJob: (id: string) => void;
   startUpload: (
     entries: { file?: File; relativePath: string; isDirectory: boolean }[],
     targetPath: string,
@@ -280,6 +275,7 @@ export const FileTransferContext =
 export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const { status: streamMuxStatus } = useStreamMux();
   const configCtx = useContext(ConfigContext);
   const chunkSize =
     (configCtx?.config.chunkSizeMB ?? 0) > 0
@@ -300,13 +296,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [lastIndexerError, setLastIndexerError] = useState<string | null>(null);
   const [copies, setCopies] = useState<Copy[]>([]);
   const [moves, setMoves] = useState<Move[]>([]);
+  const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const activeIndexerIdsRef = useRef<Set<string>>(new Set());
-  const remoteIndexerActiveRef = useRef(false);
-  const attachedStreamRef = useRef(false);
   const activeCopyIdsRef = useRef<Set<string>>(new Set());
   const activeMoveIdsRef = useRef<Set<string>>(new Set());
+  const activeBackgroundJobIdsRef = useRef<Set<string>>(new Set());
+  const activeFileTransferJobIdsRef = useRef<Set<string>>(new Set());
+  const recoveringJobIdsRef = useRef<Set<string>>(new Set());
+  const pendingLocalJobKeysRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<
@@ -316,6 +315,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   // Store stream references synchronously for immediate cancellation access
   const streamRefsRef = useRef<Map<string, Stream>>(new Map());
   const TRANSFER_RATE_SAMPLE_MS = 1000;
+
+  const cancelBridgeJob = useCallback((id: string) => {
+    void linuxio.jobs.cancel.call(id).catch((error) => {
+      console.debug("Failed to cancel bridge job", error);
+    });
+  }, []);
 
   const recordTransferRate = useCallback(
     (id: string, bytesProcessed?: number) => {
@@ -407,8 +412,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       ...indexers,
       ...copies,
       ...moves,
+      ...backgroundJobs,
     ],
-    [downloads, uploads, compressions, extractions, indexers, copies, moves],
+    [
+      downloads,
+      uploads,
+      compressions,
+      extractions,
+      indexers,
+      copies,
+      moves,
+      backgroundJobs,
+    ],
   );
 
   const isIndexing = indexers.length > 0;
@@ -436,6 +451,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const removeDownload = useCallback(
     (id: string) => {
       setDownloads((prev) => prev.filter((d) => d.id !== id));
+      activeFileTransferJobIdsRef.current.delete(id);
       releaseDownloadLabelBase(id);
       transferRatesRef.current.delete(id);
       streamRefsRef.current.delete(id);
@@ -452,6 +468,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       paths: string[],
       reqId: string,
       _downloadLabelBase: string,
+      downloadJob: JobSnapshot,
       abortSignal: AbortSignal,
       formatDownloadLabel: (
         stage: string,
@@ -462,7 +479,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const chunks: Uint8Array[] = [];
       const getSpeed = createProgressSpeedCalculator();
       await runStreamResult({
-        open: () => openFileDownloadStream(paths),
+        open: () => openJobDataStream(downloadJob.id, 0),
         openErrorMessage: "Failed to open download stream",
         signal: abortSignal,
         onOpen: (stream) => {
@@ -515,7 +532,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     async (paths: string[]) => {
       if (!paths.length) return;
 
-      const reqId = crypto.randomUUID();
+      const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
+      let reqId: string = crypto.randomUUID();
       const abortController = new AbortController();
 
       const sanitizeLabelBase = (path: string) => {
@@ -528,7 +546,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       };
       const candidateLabelBase =
         paths.length === 1 ? sanitizeLabelBase(paths[0]) : "download.zip";
-      const downloadLabelBase = allocateDownloadLabelBase(
+      let downloadLabelBase = allocateDownloadLabelBase(
         candidateLabelBase,
         reqId,
       );
@@ -545,18 +563,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return base;
       };
 
-      const download: Download = {
-        id: reqId,
-        type: "download",
-        paths,
-        progress: 0,
-        label: formatDownloadLabel("Preparing", { percent: 0 }),
-        speed: undefined,
-        abortController,
-      };
-
-      setDownloads((prev) => [...prev, download]);
-
       if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeDownload(reqId);
@@ -564,11 +570,77 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       try {
+        const activeDownloadJob = await linuxio.jobs.start.call(
+          isSingleFile ? JOB_TYPE_FILE_DOWNLOAD : JOB_TYPE_FILE_ARCHIVE,
+          ...(isSingleFile ? [paths[0]] : ["zip", ...paths]),
+        );
+        activeFileTransferJobIdsRef.current.add(activeDownloadJob.id);
+        releaseDownloadLabelBase(reqId);
+        reqId = activeDownloadJob.id;
+        downloadLabelBase = allocateDownloadLabelBase(
+          candidateLabelBase,
+          reqId,
+        );
+
+        const download: Download = {
+          id: reqId,
+          type: "download",
+          jobId: activeDownloadJob.id,
+          paths,
+          progress: 0,
+          label: formatDownloadLabel("Preparing", { percent: 0 }),
+          speed: undefined,
+          abortController,
+        };
+
+        setDownloads((prev) => [...prev, download]);
+        const getJobSpeed = createProgressSpeedCalculator();
+        void runStreamResult<unknown, ProgressFrame>({
+          open: () => openJobAttachStream(activeDownloadJob.id),
+          signal: abortController.signal,
+          closeOnAbort: "none",
+          openErrorMessage: "Failed to attach download job",
+          closeMessage: "Download job stream closed unexpectedly",
+          onProgress: (progress) => {
+            const speed = getJobSpeed(progress.bytes);
+            let phaseLabel: string;
+            switch (progress.phase) {
+              case "preparing":
+                phaseLabel = "Preparing";
+                break;
+              case "compressing":
+                phaseLabel = "Downloading (compressing)";
+                break;
+              case "waiting_for_client":
+                phaseLabel = "Download waiting";
+                break;
+              case "streaming":
+              default:
+                phaseLabel = "Downloading";
+                break;
+            }
+            updateDownload(reqId, {
+              progress: progress.pct,
+              label: formatDownloadLabel(phaseLabel, {
+                percent: progress.pct,
+              }),
+              bytes: progress.bytes,
+              total: progress.total,
+              ...(speed !== undefined && { speed }),
+            });
+          },
+          onError: (error) => {
+            if (!abortController.signal.aborted) {
+              console.debug("Download job attachment failed", error);
+            }
+          },
+        });
         primeTransferRate(reqId, 0);
         const blob = await startStreamBasedDownload(
           paths,
           reqId,
           downloadLabelBase,
+          activeDownloadJob,
           abortController.signal,
           formatDownloadLabel,
         );
@@ -583,8 +655,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         recordTransferRate(reqId, undefined);
 
         // Trigger browser download
-        const fileName =
-          paths.length === 1 ? downloadLabelBase : `${downloadLabelBase}.zip`;
+        const fileName = downloadLabelBase;
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = blobUrl;
@@ -616,6 +687,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       allocateDownloadLabelBase,
       recordTransferRate,
       primeTransferRate,
+      releaseDownloadLabelBase,
+      runStreamResult,
       startStreamBasedDownload,
     ],
   );
@@ -632,11 +705,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           stream.abort(); // Use abort() instead of close() for immediate cancellation
           streamRefsRef.current.delete(id);
         }
+        if (download.jobId) {
+          cancelBridgeJob(download.jobId);
+        }
         toast.info("Download cancelled");
         removeDownload(id);
       }
     },
-    [downloads, removeDownload],
+    [downloads, cancelBridgeJob, removeDownload],
   );
 
   const removeCompression = useCallback(
@@ -667,7 +743,35 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }) => {
       if (!paths.length) return;
 
-      const id = crypto.randomUUID();
+      if (!isConnected()) {
+        toast.error("Stream connection not ready");
+        return;
+      }
+
+      const format = archiveName.toLowerCase().endsWith(".tar.gz")
+        ? "tar.gz"
+        : "zip";
+      const fullDestination = destination.endsWith("/")
+        ? `${destination}${archiveName}`
+        : `${destination}/${archiveName}`;
+      let job: JobSnapshot;
+      try {
+        job = await linuxio.jobs.start.call(
+          JOB_TYPE_FILE_COMPRESS,
+          format,
+          fullDestination,
+          ...paths,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to start compression",
+        );
+        return;
+      }
+
+      const id = job.id;
       const abortController = new AbortController();
       const candidateLabelBase = archiveName || "archive.zip";
       const labelBase = allocateDownloadLabelBase(candidateLabelBase, id);
@@ -689,21 +793,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setCompressions((prev) => [...prev, compression]);
       activeCompressionIdsRef.current.add(id);
 
-      if (!isConnected()) {
-        toast.error("Stream connection not ready");
-        removeCompression(id);
-        return;
-      }
-
-      const format = archiveName.toLowerCase().endsWith(".tar.gz")
-        ? "tar.gz"
-        : "zip";
-      const fullDestination = destination.endsWith("/")
-        ? `${destination}${archiveName}`
-        : `${destination}/${archiveName}`;
-
       void runStreamResult<void, ProgressFrame>({
-        open: () => openFileCompressStream(paths, fullDestination, format),
+        open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
         openErrorMessage: "Failed to open compression stream",
@@ -763,17 +854,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const compression = compressions.find((c) => c.id === id);
       if (compression) {
         // Abort stream if using stream-based compression
+        compression.abortController.abort();
         const stream = streamRefsRef.current.get(id) || compression.stream;
         if (stream) {
           stream.abort();
           streamRefsRef.current.delete(id);
         }
-        compression.abortController.abort();
+        cancelBridgeJob(id);
         toast.info("Compression cancelled");
         removeCompression(id);
       }
     },
-    [compressions, removeCompression],
+    [cancelBridgeJob, compressions, removeCompression],
   );
 
   const removeExtraction = useCallback(
@@ -806,7 +898,23 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error("No archive specified for extraction");
       }
 
-      const id = crypto.randomUUID();
+      if (!isConnected()) {
+        toast.error("Stream connection not ready");
+        return;
+      }
+
+      const jobArgs = destination ? [archivePath, destination] : [archivePath];
+      let job: JobSnapshot;
+      try {
+        job = await linuxio.jobs.start.call(JOB_TYPE_FILE_EXTRACT, ...jobArgs);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to start extraction",
+        );
+        return;
+      }
+
+      const id = job.id;
       const abortController = new AbortController();
       const deriveLabelBase = () => {
         const trimmed = archivePath.replace(/\/+$/, "");
@@ -842,14 +950,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setExtractions((prev) => [...prev, extraction]);
       activeExtractionIdsRef.current.add(id);
 
-      if (!isConnected()) {
-        toast.error("Stream connection not ready");
-        removeExtraction(id);
-        return;
-      }
-
       void runStreamResult<void, ProgressFrame>({
-        open: () => openFileExtractStream(archivePath, destination),
+        open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
         openErrorMessage: "Failed to open extraction stream",
@@ -909,17 +1011,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const extraction = extractions.find((item) => item.id === id);
       if (extraction) {
         // Abort stream if using stream-based extraction
+        extraction.abortController.abort();
         const stream = streamRefsRef.current.get(id) || extraction.stream;
         if (stream) {
           stream.abort();
           streamRefsRef.current.delete(id);
         }
-        extraction.abortController.abort();
+        cancelBridgeJob(id);
         toast.info("Extraction cancelled");
         removeExtraction(id);
       }
     },
-    [extractions, removeExtraction],
+    [cancelBridgeJob, extractions, removeExtraction],
   );
 
   const removeIndexer = useCallback((id: string) => {
@@ -927,144 +1030,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     activeIndexerIdsRef.current.delete(id);
-    if (id === REMOTE_INDEXER_ID) {
-      remoteIndexerActiveRef.current = false;
-    }
     setIndexers((prev) => prev.filter((r) => r.id !== id));
     streamRefsRef.current.delete(id);
   }, []);
-
-  const hasLocalIndexerInProgress = useCallback(() => {
-    for (const id of activeIndexerIdsRef.current) {
-      if (id !== REMOTE_INDEXER_ID) {
-        return true;
-      }
-    }
-    return false;
-  }, []);
-
-  const clearRemoteIndexer = useCallback(() => {
-    if (!remoteIndexerActiveRef.current) {
-      return;
-    }
-
-    remoteIndexerActiveRef.current = false;
-    activeIndexerIdsRef.current.delete(REMOTE_INDEXER_ID);
-    streamRefsRef.current.delete(REMOTE_INDEXER_ID);
-    setIndexers((prev) =>
-      prev.filter((transfer) => transfer.id !== REMOTE_INDEXER_ID),
-    );
-  }, []);
-
-  const attachToRunningIndexer = useCallback(
-    ({ force = false }: { force?: boolean } = {}) => {
-      if (
-        attachedStreamRef.current ||
-        (!force && hasLocalIndexerInProgress()) ||
-        !isConnected()
-      ) {
-        return false;
-      }
-
-      const stream = openFileIndexerAttachStream();
-      if (!stream) {
-        return false;
-      }
-
-      attachedStreamRef.current = true;
-
-      void runStreamResult<
-        | {
-            files_indexed?: number;
-            dirs_indexed?: number;
-            total_size?: number;
-            duration_ms?: number;
-          }
-        | undefined,
-        ProgressFrame
-      >({
-        open: () => stream,
-        signal: new AbortController().signal,
-        closeOnAbort: "none",
-        onProgress: (progress) => {
-          const progressData = progress as ProgressFrame & {
-            files_indexed?: number;
-            dirs_indexed?: number;
-            current_path?: string;
-            phase?: string;
-          };
-
-          const filesIndexed = Math.max(0, progressData.files_indexed ?? 0);
-          const dirsIndexed = Math.max(0, progressData.dirs_indexed ?? 0);
-          const currentPath = progressData.current_path ?? "";
-          const phase = progressData.phase ?? "indexing";
-          const label =
-            filesIndexed > 0 || dirsIndexed > 0
-              ? `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`
-              : "Indexing in progress...";
-
-          setIndexers((prev) => {
-            const existing = prev.find((item) => item.id === REMOTE_INDEXER_ID);
-            const remoteTransfer: ActiveIndexer = {
-              id: REMOTE_INDEXER_ID,
-              type: "indexer",
-              path: "/",
-              filesIndexed: Math.max(existing?.filesIndexed ?? 0, filesIndexed),
-              dirsIndexed: Math.max(existing?.dirsIndexed ?? 0, dirsIndexed),
-              totalSize: 0,
-              durationMs: 0,
-              currentPath,
-              phase,
-              progress: existing?.progress ?? 0,
-              label,
-              abortController:
-                existing?.abortController ?? new AbortController(),
-              stream: null,
-            };
-
-            if (existing) {
-              return prev.map((item) =>
-                item.id === REMOTE_INDEXER_ID ? remoteTransfer : item,
-              );
-            }
-            return [...prev, remoteTransfer];
-          });
-
-          activeIndexerIdsRef.current.add(REMOTE_INDEXER_ID);
-          remoteIndexerActiveRef.current = true;
-        },
-        onSuccess: (result) => {
-          const summary = {
-            path: "/",
-            filesIndexed: result?.files_indexed ?? 0,
-            dirsIndexed: result?.dirs_indexed ?? 0,
-            totalSize: result?.total_size ?? 0,
-            durationMs: result?.duration_ms ?? 0,
-          };
-          clearRemoteIndexer();
-          setLastIndexerResult(summary);
-          setLastIndexerError(null);
-        },
-        onError: (error: unknown) => {
-          clearRemoteIndexer();
-          if (isIndexerAttachUnavailableError(error)) {
-            return;
-          }
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to attach to running indexer";
-          setLastIndexerError(message);
-        },
-        onFinally: () => {
-          attachedStreamRef.current = false;
-        },
-      });
-
-      return true;
-    },
-    [clearRemoteIndexer, hasLocalIndexerInProgress, runStreamResult],
-  );
 
   const removeCopy = useCallback((id: string) => {
     if (!activeCopyIdsRef.current.has(id)) {
@@ -1081,6 +1049,15 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     activeMoveIdsRef.current.delete(id);
     setMoves((prev) => prev.filter((m) => m.id !== id));
+    streamRefsRef.current.delete(id);
+  }, []);
+
+  const removeBackgroundJob = useCallback((id: string) => {
+    if (!activeBackgroundJobIdsRef.current.has(id)) {
+      return;
+    }
+    activeBackgroundJobIdsRef.current.delete(id);
+    setBackgroundJobs((prev) => prev.filter((job) => job.id !== id));
     streamRefsRef.current.delete(id);
   }, []);
 
@@ -1109,7 +1086,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setLastIndexerResult(null);
       setLastIndexerError(null);
 
-      const id = crypto.randomUUID();
+      let job: JobSnapshot;
+      try {
+        const jobArgs = path && path !== "/" ? [path] : [];
+        job = await linuxio.jobs.start.call(JOB_TYPE_FILE_INDEXER, ...jobArgs);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to start indexer";
+        setLastIndexerError(message);
+        toast.error(message);
+        return;
+      }
+
+      const id = job.id;
       const abortController = new AbortController();
 
       const indexerTask: ActiveIndexer = {
@@ -1140,7 +1129,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         | undefined,
         ProgressFrame
       >({
-        open: () => openFileIndexerStream(path),
+        open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
         openErrorMessage: "Failed to open indexer stream",
@@ -1200,18 +1189,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (abortController.signal.aborted) {
             return;
           }
-          if (isIndexerConflictError(error)) {
-            setLastIndexerError(null);
-            setIsIndexerDialogOpen(true);
-            if (!attachToRunningIndexer({ force: true })) {
-              const message =
-                error instanceof Error
-                  ? error.message
-                  : "Another indexing operation is already running";
-              setLastIndexerError(message);
-            }
-            return;
-          }
           const message =
             error instanceof Error ? error.message : "Indexing failed";
           setLastIndexerError(message);
@@ -1227,7 +1204,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         },
       });
     },
-    [attachToRunningIndexer, removeIndexer, runStreamResult],
+    [removeIndexer, runStreamResult],
   );
 
   const updateUpload = useCallback(
@@ -1249,8 +1226,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   /**
-   * Stream-based single file upload implementation.
-   * Sends file directly to bridge via yamux stream - no temp files on server.
+   * Job-backed single file upload implementation.
+   * The job owns progress and the server-side partial file; this stream only
+   * attaches browser-owned bytes while the frontend is connected.
    */
   const uploadFileViaStream = useCallback(
     async (
@@ -1264,8 +1242,28 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return { success: false, error: "Stream connection not ready" };
       }
 
-      const stream = openFileUploadStream(targetPath, file.size);
+      let job: JobSnapshot;
+      try {
+        job = await linuxio.jobs.start.call(
+          JOB_TYPE_FILE_UPLOAD,
+          targetPath,
+          String(file.size),
+        );
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Failed to start upload",
+        };
+      }
+
+      updateUpload(uploadId, { jobId: job.id });
+      activeFileTransferJobIdsRef.current.add(job.id);
+
+      const stream = openJobDataStream(job.id, 0);
       if (!stream) {
+        activeFileTransferJobIdsRef.current.delete(job.id);
+        cancelBridgeJob(job.id);
         return { success: false, error: "Failed to open upload stream" };
       }
 
@@ -1296,8 +1294,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           settled = true;
           unbind();
           streamRefsRef.current.delete(uploadId);
+          activeFileTransferJobIdsRef.current.delete(job.id);
           setUploads((prev) =>
-            prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
+            prev.map((u) =>
+              u.id === uploadId ? { ...u, stream: null, jobId: undefined } : u,
+            ),
           );
           resolve(result);
         };
@@ -1392,7 +1393,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         sendNextChunk();
       });
     },
-    [chunkSize, uploadWindowSize],
+    [cancelBridgeJob, chunkSize, updateUpload, uploadWindowSize],
   );
 
   const startUpload = useCallback(
@@ -1671,12 +1672,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           stream.abort(); // RST for immediate cancellation
           streamRefsRef.current.delete(id);
         }
+        if (upload.jobId) {
+          activeFileTransferJobIdsRef.current.delete(upload.jobId);
+          cancelBridgeJob(upload.jobId);
+        }
         upload.abortController.abort();
         toast.info("Upload cancelled");
         removeUpload(id);
       }
     },
-    [uploads, removeUpload],
+    [uploads, cancelBridgeJob, removeUpload],
   );
 
   const startCopy = useCallback(
@@ -1693,7 +1698,33 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error("Invalid copy parameters");
       }
 
-      const id = crypto.randomUUID();
+      if (!isConnected()) {
+        toast.error("Stream connection not ready");
+        return;
+      }
+
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_COPY, [
+        source,
+        destination,
+      ]);
+      pendingLocalJobKeysRef.current.add(pendingKey);
+
+      let job: JobSnapshot;
+      try {
+        job = await linuxio.jobs.start.call(
+          JOB_TYPE_FILE_COPY,
+          source,
+          destination,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to start copy",
+        );
+        pendingLocalJobKeysRef.current.delete(pendingKey);
+        return;
+      }
+
+      const id = job.id;
       const abortController = new AbortController();
 
       const deriveLabelBase = () => {
@@ -1714,19 +1745,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         abortController,
       };
 
-      setCopies((prev) => [...prev, copy]);
       activeCopyIdsRef.current.add(id);
-
-      if (!isConnected()) {
-        toast.error("Stream connection not ready");
-        removeCopy(id);
-        return;
-      }
+      pendingLocalJobKeysRef.current.delete(pendingKey);
+      setCopies((prev) =>
+        prev.some((item) => item.id === id) ? prev : [...prev, copy],
+      );
 
       const getSpeed = createProgressSpeedCalculator();
 
       void runStreamResult<void, ProgressFrame>({
-        open: () => openFileCopyStream(source, destination),
+        open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
         openErrorMessage: "Failed to open copy stream",
@@ -1785,17 +1813,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     (id: string) => {
       const copy = copies.find((c) => c.id === id);
       if (copy) {
+        copy.abortController.abort();
         const stream = streamRefsRef.current.get(id) || copy.stream;
         if (stream) {
           stream.abort();
           streamRefsRef.current.delete(id);
         }
-        copy.abortController.abort();
+        cancelBridgeJob(id);
         toast.info("Copy cancelled");
         removeCopy(id);
       }
     },
-    [copies, removeCopy],
+    [cancelBridgeJob, copies, removeCopy],
   );
 
   const startMove = useCallback(
@@ -1812,7 +1841,33 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error("Invalid move parameters");
       }
 
-      const id = crypto.randomUUID();
+      if (!isConnected()) {
+        toast.error("Stream connection not ready");
+        return;
+      }
+
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_MOVE, [
+        source,
+        destination,
+      ]);
+      pendingLocalJobKeysRef.current.add(pendingKey);
+
+      let job: JobSnapshot;
+      try {
+        job = await linuxio.jobs.start.call(
+          JOB_TYPE_FILE_MOVE,
+          source,
+          destination,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to start move",
+        );
+        pendingLocalJobKeysRef.current.delete(pendingKey);
+        return;
+      }
+
+      const id = job.id;
       const abortController = new AbortController();
 
       const deriveLabelBase = () => {
@@ -1833,19 +1888,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         abortController,
       };
 
-      setMoves((prev) => [...prev, move]);
       activeMoveIdsRef.current.add(id);
-
-      if (!isConnected()) {
-        toast.error("Stream connection not ready");
-        removeMove(id);
-        return;
-      }
+      pendingLocalJobKeysRef.current.delete(pendingKey);
+      setMoves((prev) =>
+        prev.some((item) => item.id === id) ? prev : [...prev, move],
+      );
 
       const getSpeed = createProgressSpeedCalculator();
 
       void runStreamResult<void, ProgressFrame>({
-        open: () => openFileMoveStream(source, destination),
+        open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
         openErrorMessage: "Failed to open move stream",
@@ -1904,18 +1956,550 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     (id: string) => {
       const move = moves.find((m) => m.id === id);
       if (move) {
+        move.abortController.abort();
         const stream = streamRefsRef.current.get(id) || move.stream;
         if (stream) {
           stream.abort();
           streamRefsRef.current.delete(id);
         }
-        move.abortController.abort();
+        cancelBridgeJob(id);
         toast.info("Move cancelled");
         removeMove(id);
       }
     },
-    [moves, removeMove],
+    [cancelBridgeJob, moves, removeMove],
   );
+
+  const cancelJob = useCallback(
+    (id: string) => {
+      const job = backgroundJobs.find((item) => item.id === id);
+      if (!job) return;
+      job.abortController.abort();
+      const stream = streamRefsRef.current.get(id) || job.stream;
+      if (stream) {
+        stream.abort();
+        streamRefsRef.current.delete(id);
+      }
+      cancelBridgeJob(id);
+      toast.info("Job cancelled");
+      removeBackgroundJob(id);
+    },
+    [backgroundJobs, cancelBridgeJob, removeBackgroundJob],
+  );
+
+  const attachRecoveredJob = useCallback(
+    (job: JobSnapshot) => {
+      if (recoveringJobIdsRef.current.has(job.id)) {
+        return;
+      }
+      if (isTerminalJobState(job.state)) {
+        return;
+      }
+      if (
+        pendingLocalJobKeysRef.current.has(jobIdentityKey(job.type, job.args))
+      ) {
+        return;
+      }
+
+      const progress = job.progress as ProgressFrame | undefined;
+      const initialPct = Math.min(99, progress?.pct ?? 0);
+      const getName = (path: string | undefined, fallback: string) => {
+        const trimmed = (path ?? "").replace(/\/+$/, "");
+        if (!trimmed) return fallback;
+        const parts = trimmed.split("/");
+        return parts[parts.length - 1] || fallback;
+      };
+      const getSpeed = createProgressSpeedCalculator();
+      const abortController = new AbortController();
+      const args = job.args ?? [];
+      const genericProgressPct = (value: unknown) => {
+        const data = value as
+          | { pct?: number; percentage?: number; item_pct?: number }
+          | undefined;
+        return Math.min(
+          99,
+          data?.pct ?? data?.percentage ?? data?.item_pct ?? 0,
+        );
+      };
+      const genericLabel = (value: unknown) => {
+        const data = value as
+          | {
+              type?: string;
+              message?: string;
+              status?: string;
+              package_id?: string;
+              files_indexed?: number;
+              dirs_indexed?: number;
+              phase?: string;
+              pct?: number;
+            }
+          | undefined;
+        switch (job.type) {
+          case JOB_TYPE_FILE_UPLOAD: {
+            const name = getName(args[0], "file");
+            return data?.phase === "waiting_for_client"
+              ? `Upload waiting: ${name}`
+              : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          }
+          case JOB_TYPE_FILE_DOWNLOAD: {
+            const name = getName(args[0], "file");
+            return data?.phase === "waiting_for_client"
+              ? `Download waiting: ${name}`
+              : `Downloading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          }
+          case JOB_TYPE_FILE_ARCHIVE:
+            return data?.phase === "waiting_for_client"
+              ? "Archive download waiting"
+              : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          case JOB_TYPE_FILE_CHMOD:
+            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          case JOB_TYPE_DOCKER_COMPOSE:
+            return data?.message ?? `Docker compose ${args[0] ?? "operation"}`;
+          case JOB_TYPE_DOCKER_INDEXER:
+            return data?.files_indexed !== undefined ||
+              data?.dirs_indexed !== undefined
+              ? `Indexing Docker folder: ${data.files_indexed ?? 0} files, ${data.dirs_indexed ?? 0} dirs`
+              : "Indexing Docker folder";
+          case JOB_TYPE_PACKAGE_UPDATE:
+            return data?.package_id
+              ? `Updating ${String(data.package_id).split(";")[0]}`
+              : data?.status
+                ? `Updating packages: ${data.status}`
+                : "Updating packages";
+          case JOB_TYPE_STORAGE_SMART_TEST:
+            return data?.message ?? "Running SMART self-test";
+          default:
+            return "Running job";
+        }
+      };
+
+      const attach = ({
+        onProgress,
+        onSuccess,
+        onError,
+        onFinally,
+      }: {
+        onProgress: (progress: ProgressFrame) => void;
+        onSuccess: (result: unknown) => void;
+        onError: (error: unknown) => void;
+        onFinally: () => void;
+      }) => {
+        recoveringJobIdsRef.current.add(job.id);
+        void runStreamResult<unknown, ProgressFrame>({
+          open: () => openJobAttachStream(job.id),
+          signal: abortController.signal,
+          closeOnAbort: "none",
+          openErrorMessage: "Failed to attach to running job",
+          closeMessage: "Job stream closed unexpectedly",
+          onOpen: (stream) => {
+            streamRefsRef.current.set(job.id, stream);
+          },
+          onProgress,
+          onSuccess,
+          onError,
+          onFinally: () => {
+            streamRefsRef.current.delete(job.id);
+            recoveringJobIdsRef.current.delete(job.id);
+            onFinally();
+          },
+        });
+      };
+
+      switch (job.type) {
+        case JOB_TYPE_FILE_COMPRESS: {
+          if (activeCompressionIdsRef.current.has(job.id)) return;
+          const destination = args[1] ?? "";
+          const labelBase = allocateDownloadLabelBase(
+            getName(destination, "archive"),
+            job.id,
+          );
+          activeCompressionIdsRef.current.add(job.id);
+          setCompressions((prev) => [
+            ...prev,
+            {
+              id: job.id,
+              type: "compression",
+              archiveName: labelBase,
+              destination,
+              paths: args.slice(2),
+              progress: initialPct,
+              label: `Compressing ${labelBase} (${initialPct}%)`,
+              bytes: progress?.bytes,
+              total: progress?.total,
+              abortController,
+            },
+          ]);
+          attach({
+            onProgress: (nextProgress) => {
+              const speed = getSpeed(nextProgress.bytes);
+              const pct = Math.min(99, nextProgress.pct);
+              setCompressions((prev) =>
+                prev.map((item) =>
+                  item.id === job.id
+                    ? {
+                        ...item,
+                        progress: Math.max(item.progress, pct),
+                        label: `Compressing ${labelBase} (${Math.max(item.progress, pct)}%)`,
+                        bytes: nextProgress.bytes,
+                        total: nextProgress.total,
+                        ...(speed !== undefined && { speed }),
+                      }
+                    : item,
+                ),
+              );
+            },
+            onSuccess: () => toast.success(`Created ${labelBase}`),
+            onError: (error) => {
+              if (!abortController.signal.aborted) {
+                toast.error(
+                  error instanceof Error ? error.message : "Compression failed",
+                );
+              }
+            },
+            onFinally: () => removeCompression(job.id),
+          });
+          break;
+        }
+        case JOB_TYPE_FILE_EXTRACT: {
+          if (activeExtractionIdsRef.current.has(job.id)) return;
+          const archivePath = args[0] ?? "";
+          const labelBase = allocateDownloadLabelBase(
+            getName(archivePath, "archive"),
+            job.id,
+          );
+          activeExtractionIdsRef.current.add(job.id);
+          setExtractions((prev) => [
+            ...prev,
+            {
+              id: job.id,
+              type: "extraction",
+              archivePath,
+              destination: args[1] ?? "",
+              progress: initialPct,
+              label: `Extracting ${labelBase} (${initialPct}%)`,
+              bytes: progress?.bytes,
+              total: progress?.total,
+              abortController,
+            },
+          ]);
+          attach({
+            onProgress: (nextProgress) => {
+              const speed = getSpeed(nextProgress.bytes);
+              const pct = Math.min(99, nextProgress.pct);
+              setExtractions((prev) =>
+                prev.map((item) =>
+                  item.id === job.id
+                    ? {
+                        ...item,
+                        progress: Math.max(item.progress, pct),
+                        label: `Extracting ${labelBase} (${Math.max(item.progress, pct)}%)`,
+                        bytes: nextProgress.bytes,
+                        total: nextProgress.total,
+                        ...(speed !== undefined && { speed }),
+                      }
+                    : item,
+                ),
+              );
+            },
+            onSuccess: () => toast.success(`Extracted ${labelBase}`),
+            onError: (error) => {
+              if (!abortController.signal.aborted) {
+                toast.error(
+                  error instanceof Error ? error.message : "Extraction failed",
+                );
+              }
+            },
+            onFinally: () => removeExtraction(job.id),
+          });
+          break;
+        }
+        case JOB_TYPE_FILE_COPY:
+        case JOB_TYPE_FILE_MOVE: {
+          const isMove = job.type === JOB_TYPE_FILE_MOVE;
+          const activeIds = isMove ? activeMoveIdsRef : activeCopyIdsRef;
+          if (activeIds.current.has(job.id)) return;
+          const source = args[0] ?? "";
+          const destination = args[1] ?? "";
+          const labelBase = getName(source, "item");
+          activeIds.current.add(job.id);
+          if (isMove) {
+            setMoves((prev) => [
+              ...prev,
+              {
+                id: job.id,
+                type: "move",
+                source,
+                destination,
+                progress: initialPct,
+                label: `Moving ${labelBase} (${initialPct}%)`,
+                bytes: progress?.bytes,
+                total: progress?.total,
+                abortController,
+              },
+            ]);
+          } else {
+            setCopies((prev) => [
+              ...prev,
+              {
+                id: job.id,
+                type: "copy",
+                source,
+                destination,
+                progress: initialPct,
+                label: `Copying ${labelBase} (${initialPct}%)`,
+                bytes: progress?.bytes,
+                total: progress?.total,
+                abortController,
+              },
+            ]);
+          }
+          attach({
+            onProgress: (nextProgress) => {
+              const speed = getSpeed(nextProgress.bytes);
+              const pct = Math.min(99, nextProgress.pct);
+              const update = (item: Copy | Move) => ({
+                ...item,
+                progress: Math.max(item.progress, pct),
+                label: `${isMove ? "Moving" : "Copying"} ${labelBase} (${Math.max(item.progress, pct)}%)`,
+                bytes: nextProgress.bytes,
+                total: nextProgress.total,
+                ...(speed !== undefined && { speed }),
+              });
+              if (isMove) {
+                setMoves((prev) =>
+                  prev.map((item) =>
+                    item.id === job.id ? (update(item) as Move) : item,
+                  ),
+                );
+              } else {
+                setCopies((prev) =>
+                  prev.map((item) =>
+                    item.id === job.id ? (update(item) as Copy) : item,
+                  ),
+                );
+              }
+            },
+            onSuccess: () =>
+              toast.success(`${isMove ? "Moved" : "Copied"} ${labelBase}`),
+            onError: (error) => {
+              if (!abortController.signal.aborted) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : `${isMove ? "Move" : "Copy"} failed`,
+                );
+              }
+            },
+            onFinally: () => (isMove ? removeMove(job.id) : removeCopy(job.id)),
+          });
+          break;
+        }
+        case JOB_TYPE_FILE_INDEXER: {
+          if (activeIndexerIdsRef.current.has(job.id)) return;
+          activeIndexerIdsRef.current.add(job.id);
+          setIsIndexerDialogOpen(true);
+          setIndexers((prev) => [
+            ...prev,
+            {
+              id: job.id,
+              type: "indexer",
+              path: args[0] ?? "/",
+              filesIndexed: 0,
+              dirsIndexed: 0,
+              totalSize: 0,
+              durationMs: 0,
+              currentPath: "",
+              phase: "connecting",
+              progress: 0,
+              label: "Indexing in progress...",
+              abortController,
+            },
+          ]);
+          attach({
+            onProgress: (nextProgress) => {
+              const indexProgress = nextProgress as ProgressFrame & {
+                files_indexed?: number;
+                dirs_indexed?: number;
+                current_path?: string;
+                phase?: string;
+              };
+              setIndexers((prev) =>
+                prev.map((item) => {
+                  if (item.id !== job.id) return item;
+                  const filesIndexed =
+                    indexProgress.files_indexed ?? item.filesIndexed;
+                  const dirsIndexed =
+                    indexProgress.dirs_indexed ?? item.dirsIndexed;
+                  const phase = indexProgress.phase ?? item.phase;
+                  return {
+                    ...item,
+                    filesIndexed,
+                    dirsIndexed,
+                    currentPath: indexProgress.current_path ?? item.currentPath,
+                    phase,
+                    label:
+                      phase === "connecting"
+                        ? "Connecting to indexer..."
+                        : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
+                  };
+                }),
+              );
+            },
+            onSuccess: (result) => {
+              const summaryResult = result as
+                | {
+                    files_indexed?: number;
+                    dirs_indexed?: number;
+                    total_size?: number;
+                    duration_ms?: number;
+                  }
+                | undefined;
+              setLastIndexerResult({
+                path: args[0] ?? "/",
+                filesIndexed: summaryResult?.files_indexed ?? 0,
+                dirsIndexed: summaryResult?.dirs_indexed ?? 0,
+                totalSize: summaryResult?.total_size ?? 0,
+                durationMs: summaryResult?.duration_ms ?? 0,
+              });
+              setLastIndexerError(null);
+            },
+            onError: (error) => {
+              if (!abortController.signal.aborted) {
+                setLastIndexerError(
+                  error instanceof Error ? error.message : "Indexing failed",
+                );
+              }
+            },
+            onFinally: () => removeIndexer(job.id),
+          });
+          break;
+        }
+        case JOB_TYPE_DOCKER_COMPOSE:
+        case JOB_TYPE_DOCKER_INDEXER:
+        case JOB_TYPE_PACKAGE_UPDATE:
+        case JOB_TYPE_STORAGE_SMART_TEST:
+        case JOB_TYPE_FILE_UPLOAD:
+        case JOB_TYPE_FILE_DOWNLOAD:
+        case JOB_TYPE_FILE_ARCHIVE:
+        case JOB_TYPE_FILE_CHMOD: {
+          if (activeFileTransferJobIdsRef.current.has(job.id)) {
+            return;
+          }
+          if (activeBackgroundJobIdsRef.current.has(job.id)) return;
+          const initialProgress = genericProgressPct(job.progress);
+          activeBackgroundJobIdsRef.current.add(job.id);
+          setBackgroundJobs((prev) => [
+            ...prev,
+            {
+              id: job.id,
+              type: "job",
+              jobType: job.type,
+              progress: initialProgress,
+              label: genericLabel(job.progress),
+              abortController,
+            },
+          ]);
+          attach({
+            onProgress: (nextProgress) => {
+              setBackgroundJobs((prev) =>
+                prev.map((item) =>
+                  item.id === job.id
+                    ? {
+                        ...item,
+                        progress: Math.max(
+                          item.progress,
+                          genericProgressPct(nextProgress),
+                        ),
+                        label: genericLabel(nextProgress),
+                      }
+                    : item,
+                ),
+              );
+            },
+            onSuccess: () => {
+              setBackgroundJobs((prev) =>
+                prev.map((item) =>
+                  item.id === job.id ? { ...item, progress: 100 } : item,
+                ),
+              );
+            },
+            onError: (error) => {
+              if (!abortController.signal.aborted) {
+                toast.error(
+                  error instanceof Error ? error.message : "Job failed",
+                );
+              }
+            },
+            onFinally: () => removeBackgroundJob(job.id),
+          });
+          break;
+        }
+      }
+    },
+    [
+      allocateDownloadLabelBase,
+      removeCompression,
+      removeExtraction,
+      removeCopy,
+      removeMove,
+      removeIndexer,
+      removeBackgroundJob,
+      runStreamResult,
+    ],
+  );
+
+  useEffect(() => {
+    if (streamMuxStatus !== "open") {
+      return;
+    }
+
+    let cancelled = false;
+    let cleanupEvents: (() => void) | undefined;
+    let eventStream: Stream | null = null;
+    let externalIndexerRecoveryAttempted = false;
+
+    const recoverExternalIndexerJob = async () => {
+      if (externalIndexerRecoveryAttempted) {
+        return;
+      }
+      externalIndexerRecoveryAttempted = true;
+      try {
+        const indexerJob = await linuxio.jobs.recover.call(
+          JOB_TYPE_FILE_INDEXER,
+        );
+        if (!cancelled && indexerJob) {
+          attachRecoveredJob(indexerJob);
+        }
+      } catch (error) {
+        console.debug("Failed to recover external indexer job", error);
+      }
+    };
+
+    eventStream = openJobEventsStream();
+    if (eventStream) {
+      cleanupEvents = bindStreamHandlers<JobEvent>(eventStream, {
+        onProgress: (event) => {
+          if (!event?.job || cancelled) return;
+          attachRecoveredJob(event.job);
+        },
+        onClose: () => {
+          if (!cancelled) {
+            console.debug("Job events stream closed");
+          }
+        },
+      });
+    } else {
+      console.debug("Failed to open job events stream");
+    }
+
+    void recoverExternalIndexerJob();
+
+    return () => {
+      cancelled = true;
+      cleanupEvents?.();
+      eventStream?.close();
+    };
+  }, [attachRecoveredJob, streamMuxStatus]);
 
   const contextValue = useMemo(
     () => ({
@@ -1926,6 +2510,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       indexers,
       copies,
       moves,
+      backgroundJobs,
       transfers,
       startDownload,
       cancelDownload,
@@ -1944,6 +2529,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       cancelCopy,
       startMove,
       cancelMove,
+      cancelJob,
       startUpload,
       cancelUpload,
     }),
@@ -1955,6 +2541,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       indexers,
       copies,
       moves,
+      backgroundJobs,
       transfers,
       startDownload,
       cancelDownload,
@@ -1973,6 +2560,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       cancelCopy,
       startMove,
       cancelMove,
+      cancelJob,
       startUpload,
       cancelUpload,
     ],

@@ -3,11 +3,11 @@ package docker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 const linuxIONetworkName = "linuxio-docker"
@@ -18,7 +18,7 @@ const linuxIONetworkName = "linuxio-docker"
 func EnsureLinuxIONetwork() {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("cannot ensure %s network: %v", linuxIONetworkName, err)
+		slog.Debug("cannot ensure docker network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
 		return
 	}
 	defer releaseClient(cli)
@@ -29,14 +29,14 @@ func EnsureLinuxIONetwork() {
 		Filters: filters.NewArgs(filters.Arg("name", linuxIONetworkName)),
 	})
 	if err != nil {
-		logger.Warnf("failed to list networks while checking %s: %v", linuxIONetworkName, err)
+		slog.Warn("failed to list docker networks", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
 		return
 	}
 
 	// NetworkList filter is a substring match — verify exact name.
 	for _, nw := range networks {
 		if nw.Name == linuxIONetworkName {
-			logger.Debugf("%s network already exists", linuxIONetworkName)
+			slog.Debug("docker network already exists", "component", "docker", "subsystem", "network", "network", linuxIONetworkName)
 			return
 		}
 	}
@@ -48,17 +48,16 @@ func EnsureLinuxIONetwork() {
 		},
 	})
 	if err != nil {
-		logger.Warnf("failed to create %s network: %v", linuxIONetworkName, err)
+		slog.Warn("failed to create docker network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
 		return
 	}
-
-	logger.Infof("created %s bridge network", linuxIONetworkName)
+	slog.Info("created docker bridge network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName)
 }
 
 func connectToProxyNetwork(ctx context.Context, containerID string) {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("ConnectToProxyNetwork: client error: %v", err)
+		slog.Debug("failed to get docker client for proxy network connect", "component", "docker", "subsystem", "network", "container", containerID, "error", err)
 		return
 	}
 	defer releaseClient(cli)
@@ -66,7 +65,7 @@ func connectToProxyNetwork(ctx context.Context, containerID string) {
 	err = cli.NetworkConnect(ctx, linuxIONetworkName, containerID, nil)
 	if err != nil {
 		// "already connected" is expected and harmless
-		logger.Debugf("ConnectToProxyNetwork %s: %v", containerID[:12], err)
+		slog.Debug("docker proxy network connect returned error", "component", "docker", "subsystem", "network", "container", containerID, "network", linuxIONetworkName, "error", err)
 	}
 }
 
@@ -90,13 +89,14 @@ func ListDockerNetworks() (any, error) {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
 
-	var results []map[string]any
+	results := make([]map[string]any, 0, len(networks))
 
 	for _, nw := range networks {
 		inspect, err := cli.NetworkInspect(context.Background(), nw.ID, network.InspectOptions{})
 		if err != nil {
-			// Log warning but continue
-			logger.Warnf("failed to inspect network %s: %v", nw.Name, err)
+			slog.
+				// Log warning but continue
+				Warn("failed to inspect network", "network", nw.Name, "error", err)
 			continue
 		}
 

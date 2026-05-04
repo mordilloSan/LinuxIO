@@ -2,9 +2,8 @@ package web
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
-
-	"github.com/mordilloSan/go-logger/logger"
 )
 
 // WriteJSON writes a JSON response with the given status code.
@@ -12,7 +11,7 @@ func WriteJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		logger.Warnf("failed to encode JSON response: %v", err)
+		slog.Warn("failed to encode JSON response", "error", err)
 	}
 }
 

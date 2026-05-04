@@ -20,6 +20,9 @@ func ListVolumes() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list volumes: %w", err)
 	}
+	if volumesResp.Volumes == nil {
+		volumesResp.Volumes = []*volume.Volume{}
+	}
 
 	// Sort volumes by Name alphabetically
 	sort.Slice(volumesResp.Volumes, func(i, j int) bool {

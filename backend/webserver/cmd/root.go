@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -15,9 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-systemd/activation"
-	"github.com/mordilloSan/go-logger/logger"
-
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
@@ -25,8 +24,11 @@ import (
 )
 
 func RunServer(cfg ServerConfig) {
-	initServerLogger(cfg.Verbose)
-	logger.InfoKV("server starting", "verbose", cfg.Verbose)
+	if err := logging.Configure("linuxio-webserver", cfg.Verbose); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	slog.Info("server starting", "verbose", cfg.Verbose)
 
 	sm := newSessionManager()
 	srv, inFlight, lastHit := newHTTPServer(cfg, sm)
@@ -36,20 +38,7 @@ func RunServer(cfg ServerConfig) {
 	shutdownHTTPServer(srv)
 	closeBridgeSessions(sm)
 	sm.Close()
-	logger.Infof("Server stopped.")
-}
-
-func initServerLogger(verbose bool) {
-	var levels []logger.Level
-	if verbose {
-		levels = logger.AllLevels()
-	} else {
-		levels = []logger.Level{logger.InfoLevel, logger.WarnLevel, logger.ErrorLevel}
-	}
-	logger.Init(logger.Config{
-		Levels:           levels,
-		IncludeCallerTag: true,
-	})
+	slog.Info("server stopped")
 }
 
 func newSessionManager() *session.Manager {
@@ -70,7 +59,7 @@ func newSessionManager() *session.Manager {
 func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic.Int64, *atomic.Int64) {
 	ui, err := web.UI()
 	if err != nil {
-		logger.Errorf("failed to mount embedded frontend: %v", err)
+		slog.Error("failed to mount embedded frontend", "error", err)
 		os.Exit(1)
 	}
 
@@ -129,9 +118,9 @@ func serveWithSocketActivation(
 	lastHit *atomic.Int64,
 	done chan struct{},
 ) bool {
-	listeners, err := activation.Listeners()
+	listeners, err := systemdListeners()
 	if err != nil {
-		logger.Warnf("activation.Listeners error: %v", err)
+		slog.Warn("socket activation listener lookup failed", "error", err)
 	}
 	if len(listeners) == 0 {
 		return false
@@ -146,12 +135,10 @@ func serveWithSocketActivation(
 	for _, listener := range listeners {
 		go serveTLSListener(srv, web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port), stop, "server error (TLS)")
 	}
-
-	logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
+	slog.Info("socket-activated HTTPS server listening")
 	startSocketIdleExitWatcher(
 		srv, sm, inFlight, lastHit,
 		90*time.Second, 15*time.Second,
-		func(msg string, args ...any) { logger.Infof(msg, args...) },
 	)
 
 	<-servStopped
@@ -164,14 +151,13 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server, done chan struct{}) {
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
-		logger.Errorf("listen error: %v", err)
+		slog.Error("listen failed", "address", srv.Addr, "error", err)
 		os.Exit(1)
 	}
 	tlsListener := web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
-
-	logger.Infof("HTTPS server (self-bound) at https://localhost:%d", cfg.Port)
+	slog.Info("HTTPS server listening", "address", fmt.Sprintf("https://localhost:%d", cfg.Port))
 	if err := srv.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
-		logger.Errorf("server error: %v", err)
+		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
 	close(done)
@@ -180,7 +166,7 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server, done chan struct{}) {
 func configureServerTLS(srv *http.Server) {
 	cert, err := web.GenerateSelfSignedCert()
 	if err != nil {
-		logger.Errorf("Failed to generate cert: %v", err)
+		slog.Error("failed to generate certificate", "error", err)
 		os.Exit(1)
 	}
 	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
@@ -188,7 +174,7 @@ func configureServerTLS(srv *http.Server) {
 
 func serveTLSListener(srv *http.Server, listener net.Listener, stop func(), errorPrefix string) {
 	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
-		logger.Errorf("%s: %v", errorPrefix, err)
+		slog.Error(errorPrefix, "error", err)
 		os.Exit(1)
 	}
 	stop()
@@ -197,9 +183,9 @@ func serveTLSListener(srv *http.Server, listener net.Listener, stop func(), erro
 func waitForServerShutdown(quit <-chan os.Signal, done <-chan struct{}) {
 	select {
 	case <-quit:
-		logger.Infof(" Shutdown signal received")
+		slog.Info("shutdown signal received")
 	case <-done:
-		logger.Infof("HTTP server stopped, beginning shutdown...")
+		slog.Info("HTTP server stopped, beginning shutdown")
 	}
 }
 
@@ -211,16 +197,16 @@ func shutdownHTTPServer(srv *http.Server) {
 
 	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		if errors.Is(err, context.DeadlineExceeded) {
-			logger.Warnf("Graceful HTTP shutdown timed out; forcing close of remaining connections.")
+			slog.Warn("graceful HTTP shutdown timed out; forcing close")
 			if cerr := srv.Close(); cerr != nil && !errors.Is(cerr, http.ErrServerClosed) {
-				logger.Warnf("HTTP server force-close error: %v", cerr)
+				slog.Warn("HTTP server force-close failed", "error", cerr)
 			}
 			return
 		}
-		logger.Warnf("HTTP server shutdown error: %v", err)
+		slog.Warn("HTTP server shutdown failed", "error", err)
 		return
 	}
-	logger.Infof("HTTP server closed")
+	slog.Info("HTTP server closed")
 }
 
 func closeBridgeSessions(sm *session.Manager) {
@@ -240,7 +226,6 @@ func startSocketIdleExitWatcher(
 	lastHit *atomic.Int64,
 	idleGrace time.Duration,
 	checkEvery time.Duration,
-	logf func(string, ...any),
 ) {
 	if idleGrace <= 0 || checkEvery <= 0 {
 		return
@@ -266,10 +251,10 @@ func startSocketIdleExitWatcher(
 				continue
 			}
 
-			logf("Idle for %v and no active sessions — exiting (socket will keep the port open)", idleGrace)
+			slog.Info("socket idle exit triggered", "idle_grace", idleGrace)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if err := srv.Shutdown(ctx); err != nil {
-				logf("Idle shutdown failed: %v", err)
+				slog.Warn("idle shutdown failed", "idle_grace", idleGrace, "error", err)
 			}
 			cancel()
 			return

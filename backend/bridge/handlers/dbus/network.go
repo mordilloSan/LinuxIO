@@ -2,6 +2,7 @@ package dbus
 
 import (
 	"fmt"
+	"log/slog"
 	stdnet "net"
 	"os"
 	"sort"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/network"
-	"github.com/mordilloSan/go-logger/logger"
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/vishvananda/netlink"
 )
@@ -59,7 +59,7 @@ func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
 		if cfg, ok, err := network.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
 			mergeConfiguredState(&info, cfg)
 		} else if err != nil {
-			logger.Debugf("network config unavailable for %s: %v", iface.Name, err)
+			slog.Debug("network config unavailable", "component", "dbus", "subsystem", "network", "interface", iface.Name, "error", err)
 		}
 		results = append(results, info)
 	}
