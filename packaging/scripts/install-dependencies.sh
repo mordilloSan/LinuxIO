@@ -186,7 +186,8 @@ install_smartmontools() {
 }
 
 install_nfs() {
-    install_pkg "NFS utilities" "nfs-common" "nfs-utils"
+    install_pkg "NFS client utilities" "nfs-common" "nfs-utils"
+    install_pkg "NFS server utilities" "nfs-kernel-server" "nfs-utils"
 }
 
 install_docker() {
@@ -240,7 +241,7 @@ prompt_optional() {
     echo -e " ${BOLD}Optional dependencies enable extra features:${COLOUR_RESET}"
     echo -e "${BULLET} lm-sensors       ${GREY}hardware temperature/voltage monitoring${COLOUR_RESET}"
     echo -e "${BULLET} smartmontools    ${GREY}disk SMART health data${COLOUR_RESET}"
-    echo -e "${BULLET} NFS utilities    ${GREY}mount/browse NFS shares${COLOUR_RESET}"
+    echo -e "${BULLET} NFS utilities    ${GREY}mount/browse and export NFS shares${COLOUR_RESET}"
     echo -e "${BULLET} Docker           ${GREY}container management${COLOUR_RESET}"
     echo -e "${BULLET} Indexer          ${GREY}file search and directory size indexing${COLOUR_RESET}"
 
@@ -310,7 +311,7 @@ Mandatory (installed automatically):
 Optional (prompted interactively, or use --all):
   - lm-sensors       (hardware temperature/voltage monitoring)
   - smartmontools    (disk SMART health data)
-  - NFS utilities    (mount/browse NFS shares)
+  - NFS utilities    (mount/browse and export NFS shares)
   - Docker           (container management)
   - Indexer          (file search and directory size indexing)
 

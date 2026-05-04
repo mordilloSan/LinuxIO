@@ -2,12 +2,14 @@
 
 2 - Notifications!!!! See notifications.md
 
-3 - Fix NFS distro dependecy
+3 - Fix NFS distro dependency - DONE
 
 4 - Implement monitoring
 
 5 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `eslint-plugin-react`
+
+6 - user config to match config in UI. Make a global config?
 
 Review bridge and server logging - Done
 Remove func StartSimpleNetInfoSampler() - Done
