@@ -33,10 +33,24 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onClose();
   };
 
+  const handleKeyDown: React.KeyboardEventHandler<HTMLFormElement> = (
+    event,
+  ) => {
+    if (event.key !== "Enter" || event.defaultPrevented || event.repeat) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onConfirm();
+    onClose();
+  };
+
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <form
         onSubmit={handleConfirm}
+        onKeyDown={handleKeyDown}
         style={{
           padding: theme.spacing(4),
           display: "flex",
