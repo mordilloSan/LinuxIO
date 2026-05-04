@@ -80,7 +80,7 @@ Access the dashboard at `https://localhost:8090`.
 | PAM, PolicyKit, PackageKit | Auth, authorization, system updates | Mandatory |
 | lm-sensors | Hardware temperature/voltage monitoring | Optional |
 | smartmontools | Disk SMART health data | Optional |
-| NFS utilities | Mount/browse NFS shares | Optional |
+| NFS utilities | Mount/browse and export NFS shares (`nfs-common` + `nfs-kernel-server` on Debian/Ubuntu, `nfs-utils` on Fedora/RHEL) | Optional |
 | Docker | Container management | Optional |
 
 </details>

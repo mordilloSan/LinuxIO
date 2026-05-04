@@ -33,7 +33,7 @@ const (
 
 var managedNFSMountsPath = "/var/lib/linuxio/nfs-mounts.json"
 
-var requiredNFSCommands = []string{"showmount", "mount.nfs"}
+var requiredNFSCommands = []string{"showmount", "mount.nfs", "exportfs"}
 
 // fstabEntry contains info parsed from an fstab line
 type fstabEntry struct {
@@ -94,10 +94,17 @@ func isNFSFSType(fstype string) bool {
 func CheckNFSAvailability() (bool, error) {
 	for _, command := range requiredNFSCommands {
 		if _, err := exec.LookPath(command); err != nil {
-			return false, fmt.Errorf("%s not found (install nfs-common or nfs-utils)", command)
+			return false, fmt.Errorf("%s not found (install %s)", command, nfsCommandInstallHint(command))
 		}
 	}
 	return true, nil
+}
+
+func nfsCommandInstallHint(command string) string {
+	if command == "exportfs" {
+		return "nfs-kernel-server or nfs-utils"
+	}
+	return "nfs-common or nfs-utils"
 }
 
 func requireNFSAvailability() error {
