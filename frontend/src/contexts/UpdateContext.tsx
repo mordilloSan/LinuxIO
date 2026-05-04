@@ -321,10 +321,12 @@ const useUpdateController = (): UpdateContextValue => {
 
         if (updateStatus.status === "error") {
           const exitCode = updateStatus.exit_code;
-          const message =
+          const detail = updateStatus.message?.trim() || fallbackError?.trim();
+          const prefix =
             exitCode !== undefined
               ? `Update failed (exit code ${exitCode})`
               : "Update failed";
+          const message = detail ? `${prefix}: ${detail}` : prefix;
           failUpdate(message);
           return;
         }

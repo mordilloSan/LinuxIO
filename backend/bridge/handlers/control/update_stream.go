@@ -27,6 +27,7 @@ type updateStatus struct {
 	ID         string `json:"id"`
 	Status     string `json:"status"`
 	ExitCode   *int   `json:"exit_code,omitempty"`
+	Error      string `json:"error,omitempty"`
 	StartedAt  int64  `json:"started_at"`
 	FinishedAt int64  `json:"finished_at,omitempty"`
 }
@@ -67,7 +68,7 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 	startedAt := time.Now().Unix()
 
 	// Write initial status file
-	if err := writeStatusFile(runID, "running", nil, startedAt, 0); err != nil {
+	if err := writeStatusFile(runID, "running", nil, "", startedAt, 0); err != nil {
 		slog.Warn("failed to write initial update status file", "component", "control", "subsystem", "app_update", "stream_id", runID, "path", updateStatusPath, "error", err)
 	}
 
@@ -82,9 +83,15 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 
 	finishedAt := time.Now().Unix()
 	exitCode := 0
+	errMsg := ""
 	if err != nil {
 		exitCode = 1
-		slog.Error("app update install script failed", "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version, "error", err)
+		errMsg = err.Error()
+		// Embed the error in the MESSAGE field so it shows up under `journalctl -o cat`,
+		// and keep the structured `error=` field for verbose/JSON consumers.
+		slog.Error(fmt.Sprintf("app update install script failed: %v", err), "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version, "error", err)
+		// Surface the error to the UI dialog (the relay drives the "Installation Output" panel).
+		_, _ = fmt.Fprintf(relay, "ERROR: %s\n", errMsg)
 	}
 
 	// Write final status file
@@ -92,7 +99,7 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 	if exitCode != 0 {
 		status = "error"
 	}
-	if writeErr := writeStatusFile(runID, status, &exitCode, startedAt, finishedAt); writeErr != nil {
+	if writeErr := writeStatusFile(runID, status, &exitCode, errMsg, startedAt, finishedAt); writeErr != nil {
 		slog.Warn("failed to write final update status file", "component", "control", "subsystem", "app_update", "stream_id", runID, "path", updateStatusPath, "error", writeErr)
 	}
 
@@ -103,7 +110,7 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 			slog.Debug("failed to write ok+close frame", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", writeErr)
 		}
 	} else {
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("update failed: %v", err), exitCode); writeErr != nil {
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("update failed: %s", errMsg), exitCode); writeErr != nil {
 			slog.Debug("failed to write error+close frame", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", writeErr)
 		}
 		return nil
@@ -143,10 +150,11 @@ func (r *streamRelay) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func writeStatusFile(runID, status string, exitCode *int, startedAt, finishedAt int64) error {
+func writeStatusFile(runID, status string, exitCode *int, errMsg string, startedAt, finishedAt int64) error {
 	s := updateStatus{
 		ID:        runID,
 		Status:    status,
+		Error:     errMsg,
 		StartedAt: startedAt,
 	}
 	if exitCode != nil {
