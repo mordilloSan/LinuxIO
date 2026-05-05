@@ -35,7 +35,8 @@ export interface AuthState {
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
-  nfsAvailable: boolean | null;
+  nfsClientAvailable: boolean | null;
+  nfsServerAvailable: boolean | null;
   tunedAvailable: boolean | null;
 }
 
@@ -52,7 +53,8 @@ export interface AuthContextType {
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
-  nfsAvailable: boolean | null;
+  nfsClientAvailable: boolean | null;
+  nfsServerAvailable: boolean | null;
   tunedAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
@@ -98,7 +100,8 @@ export interface AuthActionTypes {
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
-    nfsAvailable?: boolean | null;
+    nfsClientAvailable?: boolean | null;
+    nfsServerAvailable?: boolean | null;
     tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
@@ -110,7 +113,8 @@ export interface AuthActionTypes {
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
-    nfsAvailable?: boolean | null;
+    nfsClientAvailable?: boolean | null;
+    nfsServerAvailable?: boolean | null;
     tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.REFRESH_CAPABILITIES]: {
@@ -119,7 +123,8 @@ export interface AuthActionTypes {
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
-    nfsAvailable?: boolean | null;
+    nfsClientAvailable?: boolean | null;
+    nfsServerAvailable?: boolean | null;
     tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
@@ -143,7 +148,8 @@ export interface LoginResponse {
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
   packagekit_available: boolean;
-  nfs_available: boolean;
+  nfs_client_available: boolean;
+  nfs_server_available: boolean;
   tuned_available: boolean;
 }
 

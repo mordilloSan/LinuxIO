@@ -10,6 +10,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
+	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -20,14 +21,16 @@ type capabilitiesResponse struct {
 	LMSensorsAvailable     bool   `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool   `json:"smartmontools_available"`
 	PackageKitAvailable    bool   `json:"packagekit_available"`
-	NFSAvailable           bool   `json:"nfs_available"`
+	NFSClientAvailable     bool   `json:"nfs_client_available"`
+	NFSServerAvailable     bool   `json:"nfs_server_available"`
 	TunedAvailable         bool   `json:"tuned_available"`
 	DockerError            string `json:"docker_error,omitempty"`
 	IndexerError           string `json:"indexer_error,omitempty"`
 	LMSensorsError         string `json:"lm_sensors_error,omitempty"`
 	SmartmontoolsError     string `json:"smartmontools_error,omitempty"`
 	PackageKitError        string `json:"packagekit_error,omitempty"`
-	NFSError               string `json:"nfs_error,omitempty"`
+	NFSClientError         string `json:"nfs_client_error,omitempty"`
+	NFSServerError         string `json:"nfs_server_error,omitempty"`
 	TunedError             string `json:"tuned_error,omitempty"`
 }
 
@@ -73,7 +76,8 @@ func buildCapabilitiesResponse() capabilitiesResponse {
 	out.LMSensorsAvailable, out.LMSensorsError = commandCapability("sensors", "lm-sensors")
 	out.SmartmontoolsAvailable, out.SmartmontoolsError = commandCapability("smartctl", "smartmontools")
 	out.PackageKitAvailable, out.PackageKitError = checkedCapability(pkgkit.Available, pkgkit.ErrUnavailable)
-	out.NFSAvailable, out.NFSError = checkedCapability(storage.CheckNFSAvailability, nil)
+	out.NFSClientAvailable, out.NFSClientError = checkedCapability(storage.CheckNFSClientAvailability, nil)
+	out.NFSServerAvailable, out.NFSServerError = checkedCapability(nfsshares.CheckNFSServerAvailability, nil)
 	out.TunedAvailable, out.TunedError = checkedCapability(power.Available, power.ErrUnavailable)
 
 	return out

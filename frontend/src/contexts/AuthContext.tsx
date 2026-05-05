@@ -37,7 +37,8 @@ type StoredCapabilities = Pick<
   | "lmSensorsAvailable"
   | "smartmontoolsAvailable"
   | "packageKitAvailable"
-  | "nfsAvailable"
+  | "nfsClientAvailable"
+  | "nfsServerAvailable"
   | "tunedAvailable"
 >;
 
@@ -47,7 +48,8 @@ const emptyCapabilities: StoredCapabilities = {
   lmSensorsAvailable: null,
   smartmontoolsAvailable: null,
   packageKitAvailable: null,
-  nfsAvailable: null,
+  nfsClientAvailable: null,
+  nfsServerAvailable: null,
   tunedAvailable: null,
 };
 
@@ -59,7 +61,8 @@ const capabilitiesFromLoginResponse = (
     | "lm_sensors_available"
     | "smartmontools_available"
     | "packagekit_available"
-    | "nfs_available"
+    | "nfs_client_available"
+    | "nfs_server_available"
     | "tuned_available"
   >,
 ): StoredCapabilities => ({
@@ -68,7 +71,8 @@ const capabilitiesFromLoginResponse = (
   lmSensorsAvailable: data.lm_sensors_available,
   smartmontoolsAvailable: data.smartmontools_available,
   packageKitAvailable: data.packagekit_available,
-  nfsAvailable: data.nfs_available,
+  nfsClientAvailable: data.nfs_client_available,
+  nfsServerAvailable: data.nfs_server_available,
   tunedAvailable: data.tuned_available,
 });
 
@@ -101,8 +105,14 @@ const readStoredCapabilities = (): StoredCapabilities => {
         typeof parsed.packageKitAvailable === "boolean"
           ? parsed.packageKitAvailable
           : null,
-      nfsAvailable:
-        typeof parsed.nfsAvailable === "boolean" ? parsed.nfsAvailable : null,
+      nfsClientAvailable:
+        typeof parsed.nfsClientAvailable === "boolean"
+          ? parsed.nfsClientAvailable
+          : null,
+      nfsServerAvailable:
+        typeof parsed.nfsServerAvailable === "boolean"
+          ? parsed.nfsServerAvailable
+          : null,
       tunedAvailable:
         typeof parsed.tunedAvailable === "boolean"
           ? parsed.tunedAvailable
@@ -151,7 +161,8 @@ const initialState: AuthState = {
   lmSensorsAvailable: null,
   smartmontoolsAvailable: null,
   packageKitAvailable: null,
-  nfsAvailable: null,
+  nfsClientAvailable: null,
+  nfsServerAvailable: null,
   tunedAvailable: null,
 };
 
@@ -171,7 +182,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
-        nfsAvailable: action.payload.nfsAvailable ?? null,
+        nfsClientAvailable: action.payload.nfsClientAvailable ?? null,
+        nfsServerAvailable: action.payload.nfsServerAvailable ?? null,
         tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
@@ -186,7 +198,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
         packageKitAvailable: null,
-        nfsAvailable: null,
+        nfsClientAvailable: null,
+        nfsServerAvailable: null,
         tunedAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
@@ -200,7 +213,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
-        nfsAvailable: action.payload.nfsAvailable ?? null,
+        nfsClientAvailable: action.payload.nfsClientAvailable ?? null,
+        nfsServerAvailable: action.payload.nfsServerAvailable ?? null,
         tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.REFRESH_CAPABILITIES:
@@ -211,7 +225,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
-        nfsAvailable: action.payload.nfsAvailable ?? null,
+        nfsClientAvailable: action.payload.nfsClientAvailable ?? null,
+        nfsServerAvailable: action.payload.nfsServerAvailable ?? null,
         tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
@@ -225,7 +240,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
         packageKitAvailable: null,
-        nfsAvailable: null,
+        nfsClientAvailable: null,
+        nfsServerAvailable: null,
         tunedAvailable: null,
       };
     default: {
@@ -259,14 +275,12 @@ function AuthProvider({ children }: AuthProviderProps) {
     [],
   );
 
-  const refreshCapabilities = useCallback(
-    async (): Promise<CapabilitiesResponse> => {
+  const refreshCapabilities =
+    useCallback(async (): Promise<CapabilitiesResponse> => {
       const data = await linuxio.system.get_capabilities.call();
       applyCapabilities(data);
       return data;
-    },
-    [applyCapabilities],
-  );
+    }, [applyCapabilities]);
 
   const initialize = useCallback(async () => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });

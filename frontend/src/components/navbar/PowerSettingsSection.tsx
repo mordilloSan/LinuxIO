@@ -37,7 +37,6 @@ const preferredProfile = (status: PowerStatus) => {
   return status.profiles[0]?.name ?? "";
 };
 
-
 const PowerBadge: React.FC<{
   label: string;
   tone: "info" | "success" | "warning" | "error";
@@ -249,44 +248,54 @@ const PowerSettingsSection: React.FC = () => {
           <h3 className="power-settings__section-title">Profile</h3>
         </div>
         <div className="power-settings__profile-control">
-          <span className="power-settings__label power-settings__label--span">Available profiles</span>
+          <span className="power-settings__label power-settings__label--span">
+            Available profiles
+          </span>
           <AppSelect
-              fullWidth
-              size="small"
-              value={resolvedProfile}
-              disabled={busy || status.profiles.length === 0}
-              onChange={(event) => setSelectedProfile(event.target.value)}
-              renderOption={(value) => {
-                const profile = status.profiles.find((p) => p.name === value);
-                return (
-                  <>
-                    <span>{value}</span>
-                    {profile?.active && <PowerBadge label="Active" tone="success" />}
-                    {profile?.recommended && <PowerBadge label="Recommended" tone="info" />}
-                  </>
-                );
-              }}
-              renderValue={(value) => {
-                const profile = status.profiles.find((p) => p.name === value);
-                return (
-                  <>
-                    <span>{value}</span>
-                    {profile?.active && <PowerBadge label="Active" tone="success" />}
-                    {profile?.recommended && <PowerBadge label="Recommended" tone="info" />}
-                  </>
-                );
-              }}
-            >
-              {status.profiles.length === 0 ? (
-                <option value="">No profiles reported</option>
-              ) : (
-                status.profiles.map((profile) => (
-                  <option key={profile.name} value={profile.name}>
-                    {profile.name}
-                  </option>
-                ))
-              )}
-            </AppSelect>
+            fullWidth
+            size="small"
+            value={resolvedProfile}
+            disabled={busy || status.profiles.length === 0}
+            onChange={(event) => setSelectedProfile(event.target.value)}
+            renderOption={(value) => {
+              const profile = status.profiles.find((p) => p.name === value);
+              return (
+                <>
+                  <span>{value}</span>
+                  {profile?.active && (
+                    <PowerBadge label="Active" tone="success" />
+                  )}
+                  {profile?.recommended && (
+                    <PowerBadge label="Recommended" tone="info" />
+                  )}
+                </>
+              );
+            }}
+            renderValue={(value) => {
+              const profile = status.profiles.find((p) => p.name === value);
+              return (
+                <>
+                  <span>{value}</span>
+                  {profile?.active && (
+                    <PowerBadge label="Active" tone="success" />
+                  )}
+                  {profile?.recommended && (
+                    <PowerBadge label="Recommended" tone="info" />
+                  )}
+                </>
+              );
+            }}
+          >
+            {status.profiles.length === 0 ? (
+              <option value="">No profiles reported</option>
+            ) : (
+              status.profiles.map((profile) => (
+                <option key={profile.name} value={profile.name}>
+                  {profile.name}
+                </option>
+              ))
+            )}
+          </AppSelect>
           <AppButton
             size="small"
             variant={selectedIsActive ? "text" : "contained"}

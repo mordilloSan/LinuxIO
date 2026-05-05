@@ -57,7 +57,8 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 		LMSensorsAvailable:     false,
 		SmartmontoolsAvailable: true,
 		PackageKitAvailable:    true,
-		NFSAvailable:           true,
+		NFSClientAvailable:     true,
+		NFSServerAvailable:     true,
 		TunedAvailable:         true,
 	}
 	if err := m.SetCapabilities(s.SessionID, caps); err != nil {

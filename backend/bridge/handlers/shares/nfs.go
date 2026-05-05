@@ -6,17 +6,54 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 const exportsFile = "/etc/exports"
 
+const nfsServerInstallHint = "nfs-kernel-server or nfs-utils"
+
+var nfsServerCommandFallbackDirs = []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"}
+
 var (
 	validExportPath = regexp.MustCompile(`^/[a-zA-Z0-9/_.-]*$`)
 	exportLineRegex = regexp.MustCompile(`^(\S+)\s+(.+)$`)
 	clientRegex     = regexp.MustCompile(`(\S+?)(\([^)]*\))?\s*`)
 )
+
+func findNFSServerCommand(command string) (string, error) {
+	if path, err := exec.LookPath(command); err == nil {
+		return path, nil
+	}
+	for _, dir := range nfsServerCommandFallbackDirs {
+		path := filepath.Join(dir, command)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return path, nil
+		}
+	}
+	return "", exec.ErrNotFound
+}
+
+func CheckNFSServerAvailability() (bool, error) {
+	_, err := findNFSServerCommand("exportfs")
+	if err != nil {
+		return false, fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
+	}
+	return true, nil
+}
+
+func requireNFSServerAvailability() error {
+	ok, err := CheckNFSServerAvailability()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("NFS server utilities are unavailable")
+	}
+	return nil
+}
 
 // ListNFSShares reads /etc/exports and returns all configured exports
 // with their active status from exportfs -v
@@ -39,6 +76,10 @@ func ListNFSShares() ([]NFSExport, error) {
 
 // CreateNFSShare adds a new export to /etc/exports and applies it
 func CreateNFSShare(path string, clients []NFSClient) error {
+	if err := requireNFSServerAvailability(); err != nil {
+		return err
+	}
+
 	if !validExportPath.MatchString(path) {
 		return fmt.Errorf("invalid export path: %s", path)
 	}
@@ -74,6 +115,10 @@ func CreateNFSShare(path string, clients []NFSClient) error {
 
 // UpdateNFSShare modifies an existing export's clients in /etc/exports
 func UpdateNFSShare(path string, clients []NFSClient) error {
+	if err := requireNFSServerAvailability(); err != nil {
+		return err
+	}
+
 	if !validExportPath.MatchString(path) {
 		return fmt.Errorf("invalid export path: %s", path)
 	}
@@ -115,6 +160,10 @@ func UpdateNFSShare(path string, clients []NFSClient) error {
 
 // DeleteNFSShare removes an export from /etc/exports and applies changes
 func DeleteNFSShare(path string) error {
+	if err := requireNFSServerAvailability(); err != nil {
+		return err
+	}
+
 	content, err := os.ReadFile(exportsFile)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", exportsFile, err)
@@ -209,7 +258,13 @@ func parseExportLine(line string) (NFSExport, error) {
 func getActiveExports() map[string]bool {
 	active := make(map[string]bool)
 
-	output, err := exec.Command("exportfs", "-v").CombinedOutput()
+	exportfs, findErr := findNFSServerCommand("exportfs")
+	if findErr != nil {
+		slog.Debug("exportfs inspection skipped", "error", findErr)
+		return active
+	}
+
+	output, err := exec.Command(exportfs, "-v").CombinedOutput()
 	if err != nil {
 		slog.Debug("exportfs inspection failed",
 			"command", "exportfs -v",
@@ -252,7 +307,12 @@ func formatExportLine(path string, clients []NFSClient) string {
 
 // applyNFSExports runs exportfs -ra to apply changes
 func applyNFSExports() error {
-	out, err := exec.Command("exportfs", "-ra").CombinedOutput()
+	exportfs, findErr := findNFSServerCommand("exportfs")
+	if findErr != nil {
+		return fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
+	}
+
+	out, err := exec.Command(exportfs, "-ra").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("exportfs -ra failed: %s", strings.TrimSpace(string(out)))
 	}

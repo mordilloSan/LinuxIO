@@ -188,9 +188,9 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
             onKeyDown={onKeyDown}
           >
             {current
-              ? (renderValue
-                  ? renderValue(current.value, current.label)
-                  : current.label)
+              ? renderValue
+                ? renderValue(current.value, current.label)
+                : current.label
               : ""}
           </div>
           <span
@@ -234,7 +234,9 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => select(opt)}
                   >
-                    {renderOption ? renderOption(opt.value, opt.label) : opt.label}
+                    {renderOption
+                      ? renderOption(opt.value, opt.label)
+                      : opt.label}
                   </li>
                 ))}
             </ul>,

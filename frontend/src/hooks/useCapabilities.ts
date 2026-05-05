@@ -8,7 +8,8 @@ export type CapabilityKey =
   | "lmSensorsAvailable"
   | "smartmontoolsAvailable"
   | "packageKitAvailable"
-  | "nfsAvailable"
+  | "nfsClientAvailable"
+  | "nfsServerAvailable"
   | "tunedAvailable";
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
@@ -19,7 +20,8 @@ export interface AccessContext {
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
-  nfsAvailable: boolean | null;
+  nfsClientAvailable: boolean | null;
+  nfsServerAvailable: boolean | null;
   tunedAvailable: boolean | null;
 }
 
@@ -70,10 +72,16 @@ export const getCapabilityReason = (
       : "PackageKit D-Bus service is unavailable.";
   }
 
-  if (capability === "nfsAvailable") {
+  if (capability === "nfsClientAvailable") {
     return status === "unknown"
-      ? "NFS utilities availability is still being checked."
-      : "NFS utilities are unavailable.";
+      ? "NFS client utilities availability is still being checked."
+      : "NFS client utilities are unavailable.";
+  }
+
+  if (capability === "nfsServerAvailable") {
+    return status === "unknown"
+      ? "NFS server utilities availability is still being checked."
+      : "NFS server utilities are unavailable.";
   }
 
   if (capability === "tunedAvailable") {
@@ -111,7 +119,8 @@ export const useAccessContext = (): AccessContext => {
     lmSensorsAvailable,
     smartmontoolsAvailable,
     packageKitAvailable,
-    nfsAvailable,
+    nfsClientAvailable,
+    nfsServerAvailable,
     tunedAvailable,
   } = useAuth();
 
@@ -123,7 +132,8 @@ export const useAccessContext = (): AccessContext => {
       lmSensorsAvailable,
       smartmontoolsAvailable,
       packageKitAvailable,
-      nfsAvailable,
+      nfsClientAvailable,
+      nfsServerAvailable,
       tunedAvailable,
     }),
     [
@@ -133,7 +143,8 @@ export const useAccessContext = (): AccessContext => {
       lmSensorsAvailable,
       smartmontoolsAvailable,
       packageKitAvailable,
-      nfsAvailable,
+      nfsClientAvailable,
+      nfsServerAvailable,
       tunedAvailable,
     ],
   );

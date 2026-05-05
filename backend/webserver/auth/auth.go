@@ -39,7 +39,8 @@ type loginSuccessResponse struct {
 	LMSensorsAvailable     bool        `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool        `json:"smartmontools_available"`
 	PackageKitAvailable    bool        `json:"packagekit_available"`
-	NFSAvailable           bool        `json:"nfs_available"`
+	NFSClientAvailable     bool        `json:"nfs_client_available"`
+	NFSServerAvailable     bool        `json:"nfs_server_available"`
 	TunedAvailable         bool        `json:"tuned_available"`
 	Update                 *UpdateInfo `json:"update,omitempty"`
 }
@@ -114,7 +115,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		LMSensorsAvailable:     sess.Capabilities.LMSensorsAvailable,
 		SmartmontoolsAvailable: sess.Capabilities.SmartmontoolsAvailable,
 		PackageKitAvailable:    sess.Capabilities.PackageKitAvailable,
-		NFSAvailable:           sess.Capabilities.NFSAvailable,
+		NFSClientAvailable:     sess.Capabilities.NFSClientAvailable,
+		NFSServerAvailable:     sess.Capabilities.NFSServerAvailable,
 		TunedAvailable:         sess.Capabilities.TunedAvailable,
 	}
 

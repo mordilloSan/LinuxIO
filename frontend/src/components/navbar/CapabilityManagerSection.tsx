@@ -15,13 +15,13 @@ import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import {
   type CapabilityKey,
   type CapabilityStatus,
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
-import useAuth from "@/hooks/useAuth";
 
 type CapabilityValueKey =
   | "docker_available"
@@ -29,7 +29,8 @@ type CapabilityValueKey =
   | "lm_sensors_available"
   | "smartmontools_available"
   | "packagekit_available"
-  | "nfs_available"
+  | "nfs_client_available"
+  | "nfs_server_available"
   | "tuned_available";
 
 type CapabilityErrorKey =
@@ -38,7 +39,8 @@ type CapabilityErrorKey =
   | "lm_sensors_error"
   | "smartmontools_error"
   | "packagekit_error"
-  | "nfs_error"
+  | "nfs_client_error"
+  | "nfs_server_error"
   | "tuned_error";
 
 interface CapabilityItem {
@@ -104,14 +106,24 @@ const CAPABILITY_ITEMS: CapabilityItem[] = [
     icon: "mdi:package-variant-closed",
   },
   {
-    authKey: "nfsAvailable",
-    valueKey: "nfs_available",
-    errorKey: "nfs_error",
-    label: "NFS",
-    description: "NFS share and mount management",
-    readyText: "NFS utilities are available.",
+    authKey: "nfsClientAvailable",
+    valueKey: "nfs_client_available",
+    errorKey: "nfs_client_error",
+    label: "NFS client",
+    description: "Mount external NFS exports",
+    readyText: "NFS client utilities are available.",
     dependency: "nfs utilities",
     icon: "mdi:folder-network-outline",
+  },
+  {
+    authKey: "nfsServerAvailable",
+    valueKey: "nfs_server_available",
+    errorKey: "nfs_server_error",
+    label: "NFS server",
+    description: "Create and manage exported NFS shares",
+    readyText: "NFS server utilities are available.",
+    dependency: "exportfs",
+    icon: "mdi:server-network",
   },
   {
     authKey: "tunedAvailable",
@@ -150,14 +162,15 @@ const CapabilityManagerSection: React.FC = () => {
     lmSensorsAvailable,
     smartmontoolsAvailable,
     packageKitAvailable,
-    nfsAvailable,
+    nfsClientAvailable,
+    nfsServerAvailable,
     tunedAvailable,
     refreshCapabilities,
   } = useAuth();
 
   const [latest, setLatest] = useState<CapabilitiesResponse | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -170,7 +183,8 @@ const CapabilityManagerSection: React.FC = () => {
           lmSensorsAvailable,
           smartmontoolsAvailable,
           packageKitAvailable,
-          nfsAvailable,
+          nfsClientAvailable,
+          nfsServerAvailable,
           tunedAvailable,
         }[item.authKey];
         const value = latest?.[item.valueKey] ?? authValue;
@@ -193,7 +207,8 @@ const CapabilityManagerSection: React.FC = () => {
       lmSensorsAvailable,
       smartmontoolsAvailable,
       packageKitAvailable,
-      nfsAvailable,
+      nfsClientAvailable,
+      nfsServerAvailable,
       tunedAvailable,
       latest,
     ],
@@ -239,8 +254,28 @@ const CapabilityManagerSection: React.FC = () => {
   );
 
   useEffect(() => {
-    void handleRefresh(false);
-  }, [handleRefresh]);
+    let cancelled = false;
+    refreshCapabilities()
+      .then((data) => {
+        if (cancelled || !mountedRef.current) return;
+        setLatest(data);
+        setLastChecked(new Date());
+      })
+      .catch((error: unknown) => {
+        if (cancelled || !mountedRef.current) return;
+        setErrorText(
+          error instanceof Error
+            ? error.message
+            : "Failed to refresh capabilities",
+        );
+      })
+      .finally(() => {
+        if (!cancelled && mountedRef.current) setIsRefreshing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshCapabilities]);
 
   return (
     <div className="capability-manager" aria-busy={isRefreshing}>

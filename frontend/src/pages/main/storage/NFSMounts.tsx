@@ -80,7 +80,7 @@ const MountEntryActions: React.FC<{
   onMount: (mount: NFSMount) => void;
   onUnmount: (mount: NFSMount) => void;
   onRemove: (mount: NFSMount) => void;
-  nfsAvailable: boolean;
+  nfsClientAvailable: boolean;
   nfsReason: string;
   stopPropagation?: boolean;
 }> = ({
@@ -90,7 +90,7 @@ const MountEntryActions: React.FC<{
   onMount,
   onUnmount,
   onRemove,
-  nfsAvailable,
+  nfsClientAvailable,
   nfsReason,
   stopPropagation = false,
 }) => {
@@ -107,7 +107,7 @@ const MountEntryActions: React.FC<{
   const mountActionColor = mount.mounted
     ? "var(--color-success)"
     : "var(--color-text-secondary)";
-  const mountActionDisabled = !mount.mounted && !nfsAvailable;
+  const mountActionDisabled = !mount.mounted && !nfsClientAvailable;
   const mountActionLabel = mount.mounted ? "Unmount entry" : "Mount entry";
   const mountActionTitle = mountActionDisabled
     ? nfsReason
@@ -672,7 +672,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   viewMode = "table",
 }) => {
   const { reason: nfsReason, status: nfsStatus } =
-    useCapability("nfsAvailable");
+    useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
   const [search] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
@@ -830,7 +830,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       onMount={handleMountExisting}
                       onUnmount={handleUnmount}
                       onRemove={handleRemove}
-                      nfsAvailable={!nfsUnavailable}
+                      nfsClientAvailable={!nfsUnavailable}
                       nfsReason={nfsReason}
                     />
                   }
@@ -933,7 +933,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                   onMount={handleMountExisting}
                   onUnmount={handleUnmount}
                   onRemove={handleRemove}
-                  nfsAvailable={!nfsUnavailable}
+                  nfsClientAvailable={!nfsUnavailable}
                   nfsReason={nfsReason}
                   stopPropagation
                 />

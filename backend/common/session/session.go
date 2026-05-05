@@ -95,7 +95,8 @@ type Capabilities struct {
 	LMSensorsAvailable     bool `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool `json:"smartmontools_available"`
 	PackageKitAvailable    bool `json:"packagekit_available"`
-	NFSAvailable           bool `json:"nfs_available"`
+	NFSClientAvailable     bool `json:"nfs_client_available"`
+	NFSServerAvailable     bool `json:"nfs_server_available"`
 	TunedAvailable         bool `json:"tuned_available"`
 }
 

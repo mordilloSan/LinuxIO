@@ -55,6 +55,15 @@ func extractCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *htt
 	return nil
 }
 
+func assertResponseFields(t *testing.T, resp map[string]any, fields map[string]any) {
+	t.Helper()
+	for key, want := range fields {
+		if got := resp[key]; got != want {
+			t.Fatalf("expected %s=%v, got %v", key, want, resp)
+		}
+	}
+}
+
 // --- tests -----------------------------------------------------------------
 
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
@@ -75,7 +84,8 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 			LMSensorsAvailable:     true,
 			SmartmontoolsAvailable: false,
 			PackageKitAvailable:    true,
-			NFSAvailable:           true,
+			NFSClientAvailable:     true,
+			NFSServerAvailable:     true,
 			TunedAvailable:         true,
 		}
 		sess.Capabilities = caps
@@ -107,33 +117,18 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal login response: %v", err)
 	}
-	if resp["success"] != true {
-		t.Fatalf("expected success=true, got %v", resp)
-	}
-	if resp["privileged"] != true {
-		t.Fatalf("expected privileged=true, got %v", resp)
-	}
-	if resp["docker_available"] != true {
-		t.Fatalf("expected docker_available=true, got %v", resp)
-	}
-	if resp["indexer_available"] != false {
-		t.Fatalf("expected indexer_available=false, got %v", resp)
-	}
-	if resp["lm_sensors_available"] != true {
-		t.Fatalf("expected lm_sensors_available=true, got %v", resp)
-	}
-	if resp["smartmontools_available"] != false {
-		t.Fatalf("expected smartmontools_available=false, got %v", resp)
-	}
-	if resp["packagekit_available"] != true {
-		t.Fatalf("expected packagekit_available=true, got %v", resp)
-	}
-	if resp["nfs_available"] != true {
-		t.Fatalf("expected nfs_available=true, got %v", resp)
-	}
-	if resp["tuned_available"] != true {
-		t.Fatalf("expected tuned_available=true, got %v", resp)
-	}
+	assertResponseFields(t, resp, map[string]any{
+		"success":                 true,
+		"privileged":              true,
+		"docker_available":        true,
+		"indexer_available":       false,
+		"lm_sensors_available":    true,
+		"smartmontools_available": false,
+		"packagekit_available":    true,
+		"nfs_client_available":    true,
+		"nfs_server_available":    true,
+		"tuned_available":         true,
+	})
 
 	// Session exists and is marked privileged (validated later by websocket)
 	sess, err := sm.GetSession(c.Value)
@@ -143,7 +138,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if !sess.Privileged {
 		t.Fatalf("expected session privileged=true, got %v", sess.Privileged)
 	}
-	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable || !sess.Capabilities.NFSAvailable || !sess.Capabilities.TunedAvailable {
+	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable || !sess.Capabilities.NFSClientAvailable || !sess.Capabilities.NFSServerAvailable || !sess.Capabilities.TunedAvailable {
 		t.Fatalf("expected session capabilities to persist, got %+v", sess.Capabilities)
 	}
 }
@@ -174,27 +169,16 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal login response: %v", err)
 	}
-	if resp["docker_available"] != false {
-		t.Fatalf("expected docker_available=false, got %v", resp)
-	}
-	if resp["indexer_available"] != false {
-		t.Fatalf("expected indexer_available=false, got %v", resp)
-	}
-	if resp["lm_sensors_available"] != false {
-		t.Fatalf("expected lm_sensors_available=false, got %v", resp)
-	}
-	if resp["smartmontools_available"] != false {
-		t.Fatalf("expected smartmontools_available=false, got %v", resp)
-	}
-	if resp["packagekit_available"] != false {
-		t.Fatalf("expected packagekit_available=false, got %v", resp)
-	}
-	if resp["nfs_available"] != false {
-		t.Fatalf("expected nfs_available=false, got %v", resp)
-	}
-	if resp["tuned_available"] != false {
-		t.Fatalf("expected tuned_available=false, got %v", resp)
-	}
+	assertResponseFields(t, resp, map[string]any{
+		"docker_available":        false,
+		"indexer_available":       false,
+		"lm_sensors_available":    false,
+		"smartmontools_available": false,
+		"packagekit_available":    false,
+		"nfs_client_available":    false,
+		"nfs_server_available":    false,
+		"tuned_available":         false,
+	})
 }
 
 func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {

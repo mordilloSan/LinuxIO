@@ -35,24 +35,24 @@ type HardwareSections struct {
 
 // ThemeColors holds optional per-field color overrides for the UI theme
 type ThemeColors struct {
-	BackgroundDefault              *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
-	BackgroundPaper                *CSSColor `json:"backgroundPaper,omitempty" yaml:"backgroundPaper,omitempty"`
-	HeaderBackground               *CSSColor `json:"headerBackground,omitempty" yaml:"headerBackground,omitempty"`
-	FooterBackground               *CSSColor `json:"footerBackground,omitempty" yaml:"footerBackground,omitempty"`
-	SidebarBackground              *CSSColor `json:"sidebarBackground,omitempty" yaml:"sidebarBackground,omitempty"`
-	CardBackground                 *CSSColor `json:"cardBackground,omitempty" yaml:"cardBackground,omitempty"`
-	DialogBorder                   *CSSColor `json:"dialogBorder,omitempty" yaml:"dialogBorder,omitempty"`
-	DialogGlow                     *CSSColor `json:"dialogGlow,omitempty" yaml:"dialogGlow,omitempty"`
-	DialogBackdrop                 *CSSColor `json:"dialogBackdrop,omitempty" yaml:"dialogBackdrop,omitempty"`
-	CodeBackground                 *CSSColor `json:"codeBackground,omitempty" yaml:"codeBackground,omitempty"`
-	CodeText                       *CSSColor `json:"codeText,omitempty" yaml:"codeText,omitempty"`
-	ChartRx                        *CSSColor `json:"chartRx,omitempty" yaml:"chartRx,omitempty"`
-	ChartTx                        *CSSColor `json:"chartTx,omitempty" yaml:"chartTx,omitempty"`
-	ChartNeutral                   *CSSColor `json:"chartNeutral,omitempty" yaml:"chartNeutral,omitempty"`
-	FileBrowserSurface             *CSSColor `json:"fileBrowserSurface,omitempty" yaml:"fileBrowserSurface,omitempty"`
-	FileBrowserChrome              *CSSColor `json:"fileBrowserChrome,omitempty" yaml:"fileBrowserChrome,omitempty"`
+	BackgroundDefault               *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
+	BackgroundPaper                 *CSSColor `json:"backgroundPaper,omitempty" yaml:"backgroundPaper,omitempty"`
+	HeaderBackground                *CSSColor `json:"headerBackground,omitempty" yaml:"headerBackground,omitempty"`
+	FooterBackground                *CSSColor `json:"footerBackground,omitempty" yaml:"footerBackground,omitempty"`
+	SidebarBackground               *CSSColor `json:"sidebarBackground,omitempty" yaml:"sidebarBackground,omitempty"`
+	CardBackground                  *CSSColor `json:"cardBackground,omitempty" yaml:"cardBackground,omitempty"`
+	DialogBorder                    *CSSColor `json:"dialogBorder,omitempty" yaml:"dialogBorder,omitempty"`
+	DialogGlow                      *CSSColor `json:"dialogGlow,omitempty" yaml:"dialogGlow,omitempty"`
+	DialogBackdrop                  *CSSColor `json:"dialogBackdrop,omitempty" yaml:"dialogBackdrop,omitempty"`
+	CodeBackground                  *CSSColor `json:"codeBackground,omitempty" yaml:"codeBackground,omitempty"`
+	CodeText                        *CSSColor `json:"codeText,omitempty" yaml:"codeText,omitempty"`
+	ChartRx                         *CSSColor `json:"chartRx,omitempty" yaml:"chartRx,omitempty"`
+	ChartTx                         *CSSColor `json:"chartTx,omitempty" yaml:"chartTx,omitempty"`
+	ChartNeutral                    *CSSColor `json:"chartNeutral,omitempty" yaml:"chartNeutral,omitempty"`
+	FileBrowserSurface              *CSSColor `json:"fileBrowserSurface,omitempty" yaml:"fileBrowserSurface,omitempty"`
+	FileBrowserChrome               *CSSColor `json:"fileBrowserChrome,omitempty" yaml:"fileBrowserChrome,omitempty"`
 	FileBrowserBreadcrumbBackground *CSSColor `json:"fileBrowserBreadcrumbBackground,omitempty" yaml:"fileBrowserBreadcrumbBackground,omitempty"`
-	FileBrowserBreadcrumbText      *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
+	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
 }
 
 // AppSettings holds UI-related settings

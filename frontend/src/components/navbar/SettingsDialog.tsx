@@ -15,12 +15,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab =
-  | "general"
-  | "theme"
-  | "capabilities"
-  | "docker"
-  | "power";
+type SettingsTab = "general" | "theme" | "capabilities" | "docker" | "power";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
@@ -62,7 +57,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             position: "relative",
           }}
         >
-          <AppTypography variant="h3" style={{ marginTop: 8 }}>Settings</AppTypography>
+          <AppTypography variant="h3" style={{ marginTop: 8 }}>
+            Settings
+          </AppTypography>
           <AppIconButton
             size="small"
             onClick={handleClose}
@@ -130,9 +127,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           </div>
         ) : null}
         {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
-        {effectiveTab === "capabilities" ? (
-          <CapabilityManagerSection />
-        ) : null}
+        {effectiveTab === "capabilities" ? <CapabilityManagerSection /> : null}
         {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
         {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>
