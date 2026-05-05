@@ -187,12 +187,14 @@ export interface CapabilitiesResponse {
   smartmontools_available: boolean;
   packagekit_available: boolean;
   nfs_available: boolean;
+  tuned_available: boolean;
   docker_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
   smartmontools_error?: string;
   packagekit_error?: string;
   nfs_error?: string;
+  tuned_error?: string;
 }
 
 export interface DistroInfo {
@@ -469,6 +471,35 @@ export interface UpgradeItem {
 export interface UpdateHistoryRow {
   date: string;
   upgrades: UpgradeItem[];
+}
+
+// ============================================================================
+// Power Types
+// ============================================================================
+
+export interface TunedProfile {
+  name: string;
+  description?: string;
+  active: boolean;
+  recommended: boolean;
+}
+
+export interface PowerStatus {
+  backend: string;
+  tuned_available: boolean;
+  tuned_active: boolean;
+  tuned_activatable: boolean;
+  tuned_startable: boolean;
+  tuned_unit_available: boolean;
+  tuned_unit_file_state: string;
+  power_profiles_daemon_active: boolean;
+  package_name: string;
+  install_command: string;
+  active_profile: string;
+  recommended_profile: string;
+  profiles: TunedProfile[];
+  notes?: string[];
+  error?: string;
 }
 
 // ============================================================================
@@ -1013,6 +1044,13 @@ export interface LinuxIOSchema {
 
   control: {
     version: { args: []; result: VersionResponse };
+  };
+
+  power: {
+    get_status: { args: []; result: PowerStatus };
+    start: { args: []; result: PowerStatus };
+    set_profile: { args: [profile: string]; result: PowerStatus };
+    disable: { args: []; result: PowerStatus };
   };
 
   wireguard: {

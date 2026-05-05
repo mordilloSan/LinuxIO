@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
@@ -46,6 +47,7 @@ func RegisterAllHandlers(sess *session.Session) {
 	jobhandlers.RegisterHandlers()
 	config.RegisterHandlers(sess)
 	control.RegisterHandlers()
+	power.RegisterHandlers(sess)
 	dbus.RegisterHandlers()
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()

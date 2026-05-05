@@ -8,7 +8,8 @@ export type CapabilityKey =
   | "lmSensorsAvailable"
   | "smartmontoolsAvailable"
   | "packageKitAvailable"
-  | "nfsAvailable";
+  | "nfsAvailable"
+  | "tunedAvailable";
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
 export interface AccessContext {
@@ -19,6 +20,7 @@ export interface AccessContext {
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
   nfsAvailable: boolean | null;
+  tunedAvailable: boolean | null;
 }
 
 export interface AccessPolicy {
@@ -74,6 +76,12 @@ export const getCapabilityReason = (
       : "NFS utilities are unavailable.";
   }
 
+  if (capability === "tunedAvailable") {
+    return status === "unknown"
+      ? "TuneD availability is still being checked."
+      : "TuneD D-Bus service is unavailable.";
+  }
+
   return status === "unknown"
     ? "Docker availability is still being checked."
     : "Docker service is unavailable.";
@@ -104,6 +112,7 @@ export const useAccessContext = (): AccessContext => {
     smartmontoolsAvailable,
     packageKitAvailable,
     nfsAvailable,
+    tunedAvailable,
   } = useAuth();
 
   return useMemo(
@@ -115,6 +124,7 @@ export const useAccessContext = (): AccessContext => {
       smartmontoolsAvailable,
       packageKitAvailable,
       nfsAvailable,
+      tunedAvailable,
     }),
     [
       privileged,
@@ -124,6 +134,7 @@ export const useAccessContext = (): AccessContext => {
       smartmontoolsAvailable,
       packageKitAvailable,
       nfsAvailable,
+      tunedAvailable,
     ],
   );
 };

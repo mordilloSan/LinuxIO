@@ -32,6 +32,7 @@ type StoredCapabilities = Pick<
   | "smartmontoolsAvailable"
   | "packageKitAvailable"
   | "nfsAvailable"
+  | "tunedAvailable"
 >;
 
 const emptyCapabilities: StoredCapabilities = {
@@ -41,6 +42,7 @@ const emptyCapabilities: StoredCapabilities = {
   smartmontoolsAvailable: null,
   packageKitAvailable: null,
   nfsAvailable: null,
+  tunedAvailable: null,
 };
 
 const capabilitiesFromLoginResponse = (
@@ -52,6 +54,7 @@ const capabilitiesFromLoginResponse = (
     | "smartmontools_available"
     | "packagekit_available"
     | "nfs_available"
+    | "tuned_available"
   >,
 ): StoredCapabilities => ({
   dockerAvailable: data.docker_available,
@@ -60,6 +63,7 @@ const capabilitiesFromLoginResponse = (
   smartmontoolsAvailable: data.smartmontools_available,
   packageKitAvailable: data.packagekit_available,
   nfsAvailable: data.nfs_available,
+  tunedAvailable: data.tuned_available,
 });
 
 const readStoredCapabilities = (): StoredCapabilities => {
@@ -93,6 +97,10 @@ const readStoredCapabilities = (): StoredCapabilities => {
           : null,
       nfsAvailable:
         typeof parsed.nfsAvailable === "boolean" ? parsed.nfsAvailable : null,
+      tunedAvailable:
+        typeof parsed.tunedAvailable === "boolean"
+          ? parsed.tunedAvailable
+          : null,
     };
   } catch {
     return emptyCapabilities;
@@ -134,6 +142,7 @@ const initialState: AuthState = {
   smartmontoolsAvailable: null,
   packageKitAvailable: null,
   nfsAvailable: null,
+  tunedAvailable: null,
 };
 
 const reducer = (state: AuthState, action: AuthActions): AuthState => {
@@ -153,6 +162,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
         nfsAvailable: action.payload.nfsAvailable ?? null,
+        tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
       return {
@@ -167,6 +177,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         smartmontoolsAvailable: null,
         packageKitAvailable: null,
         nfsAvailable: null,
+        tunedAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
       return {
@@ -180,6 +191,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
         nfsAvailable: action.payload.nfsAvailable ?? null,
+        tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
       return {
@@ -193,6 +205,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         smartmontoolsAvailable: null,
         packageKitAvailable: null,
         nfsAvailable: null,
+        tunedAvailable: null,
       };
     default: {
       const exhaustiveCheck: never = action;

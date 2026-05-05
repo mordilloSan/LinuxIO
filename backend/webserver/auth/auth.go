@@ -40,6 +40,7 @@ type loginSuccessResponse struct {
 	SmartmontoolsAvailable bool        `json:"smartmontools_available"`
 	PackageKitAvailable    bool        `json:"packagekit_available"`
 	NFSAvailable           bool        `json:"nfs_available"`
+	TunedAvailable         bool        `json:"tuned_available"`
 	Update                 *UpdateInfo `json:"update,omitempty"`
 }
 
@@ -114,6 +115,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		SmartmontoolsAvailable: sess.Capabilities.SmartmontoolsAvailable,
 		PackageKitAvailable:    sess.Capabilities.PackageKitAvailable,
 		NFSAvailable:           sess.Capabilities.NFSAvailable,
+		TunedAvailable:         sess.Capabilities.TunedAvailable,
 	}
 
 	// Only check for updates if user is privileged

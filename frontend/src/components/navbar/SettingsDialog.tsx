@@ -3,6 +3,7 @@ import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
+import PowerSettingsSection from "./PowerSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -10,16 +11,26 @@ import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab = "general" | "docker";
+type SettingsTab = "general" | "docker" | "power";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useAppTheme();
+  const { privileged } = useAuth();
   const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const effectiveTab =
+    !privileged && activeTab === "power" ? "general" : activeTab;
+  const tabs = [
+    { value: "general", label: "General" },
+    { value: "docker", label: "Docker" },
+    ...(privileged ? [{ value: "power", label: "Power" }] : []),
+  ];
+
   const handleClose = () => {
     setActiveTab("general");
     onClose();
@@ -29,7 +40,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
       <AppDialogTitle
         style={{
           backgroundColor: theme.palette.background.paper,
-          borderBottom: `1px solid ${theme.palette.divider}`,
           paddingTop: 6,
           paddingBottom: 6,
           paddingLeft: 8,
@@ -40,21 +50,16 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: theme.spacing(1),
+            justifyContent: "center",
+            position: "relative",
           }}
         >
-          <AppTypography
-            variant="h6"
-            style={{
-              flexGrow: 1,
-            }}
-          >
-            Settings
-          </AppTypography>
+          <AppTypography variant="h5">Settings</AppTypography>
           <AppIconButton
             size="small"
             onClick={handleClose}
             aria-label="Close settings"
+            style={{ position: "absolute", right: 0 }}
           >
             <Icon icon="mdi:close" width={18} height={18} />
           </AppIconButton>
@@ -65,16 +70,12 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         style={{
           paddingLeft: 8,
           paddingRight: 8,
-          borderBottom: "1px solid var(--color-divider)",
         }}
       >
         <TabSelector
-          value={activeTab}
+          value={effectiveTab}
           onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
-          options={[
-            { value: "general", label: "General" },
-            { value: "docker", label: "Docker" },
-          ]}
+          options={tabs}
           style={{ marginBottom: 0 }}
         />
       </div>
@@ -87,7 +88,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           paddingBottom: 12,
         }}
       >
-        {activeTab === "general" ? (
+        {effectiveTab === "general" ? (
           <div
             style={{
               paddingTop: theme.spacing(1),
@@ -124,9 +125,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
             <ThemeColorsSection />
           </div>
-        ) : (
-          <DockerFolderSettingsSection />
-        )}
+        ) : null}
+        {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
+        {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>
     </GeneralDialog>
   );

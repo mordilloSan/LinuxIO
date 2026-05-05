@@ -22,6 +22,7 @@ const GeneralDialog: React.FC<GeneralDialogProps> = ({
       paperStyle={{
         backgroundColor: theme.palette.background.paper,
         borderRadius: 16,
+        overflow: "hidden",
         border: `1px solid ${alpha(theme.dialog.border, 0.2)}`,
         boxShadow: `0 0 10px ${alpha(theme.dialog.glow, 0.5)}, 0 0 20px ${alpha(theme.dialog.glow, 0.3)}, inset 0 0 20px ${alpha(theme.dialog.glow, 0.1)}`,
         ...paperStyle,

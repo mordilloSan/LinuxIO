@@ -96,6 +96,7 @@ type Capabilities struct {
 	SmartmontoolsAvailable bool `json:"smartmontools_available"`
 	PackageKitAvailable    bool `json:"packagekit_available"`
 	NFSAvailable           bool `json:"nfs_available"`
+	TunedAvailable         bool `json:"tuned_available"`
 }
 
 type Session struct {

@@ -34,6 +34,7 @@ export interface AuthState {
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
   nfsAvailable: boolean | null;
+  tunedAvailable: boolean | null;
 }
 
 /**
@@ -50,6 +51,7 @@ export interface AuthContextType {
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
   nfsAvailable: boolean | null;
+  tunedAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -91,6 +93,7 @@ export interface AuthActionTypes {
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
     nfsAvailable?: boolean | null;
+    tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
@@ -102,6 +105,7 @@ export interface AuthActionTypes {
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
     nfsAvailable?: boolean | null;
+    tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
@@ -125,6 +129,7 @@ export interface LoginResponse {
   smartmontools_available: boolean;
   packagekit_available: boolean;
   nfs_available: boolean;
+  tuned_available: boolean;
 }
 
 export type LoginErrorCode =

@@ -190,6 +190,10 @@ install_nfs() {
     install_pkg "NFS server utilities" "nfs-kernel-server" "nfs-utils"
 }
 
+install_tuned() {
+    install_pkg "TuneD" "tuned" "tuned"
+}
+
 install_docker() {
     if command -v docker &>/dev/null; then
         Show 0 "Docker ${GREY}already installed ($(docker --version 2>/dev/null | sed 's/Docker version //'))${COLOUR_RESET}"
@@ -231,6 +235,7 @@ install_all_optional() {
     install_lm_sensors
     install_smartmontools
     install_nfs
+    install_tuned
     install_docker
     install_indexer
 }
@@ -242,6 +247,7 @@ prompt_optional() {
     echo -e "${BULLET} lm-sensors       ${GREY}hardware temperature/voltage monitoring${COLOUR_RESET}"
     echo -e "${BULLET} smartmontools    ${GREY}disk SMART health data${COLOUR_RESET}"
     echo -e "${BULLET} NFS utilities    ${GREY}mount/browse and export NFS shares${COLOUR_RESET}"
+    echo -e "${BULLET} TuneD            ${GREY}power and performance profile management${COLOUR_RESET}"
     echo -e "${BULLET} Docker           ${GREY}container management${COLOUR_RESET}"
     echo -e "${BULLET} Indexer          ${GREY}file search and directory size indexing${COLOUR_RESET}"
 
@@ -312,6 +318,7 @@ Optional (prompted interactively, or use --all):
   - lm-sensors       (hardware temperature/voltage monitoring)
   - smartmontools    (disk SMART health data)
   - NFS utilities    (mount/browse and export NFS shares)
+  - TuneD            (power and performance profile management)
   - Docker           (container management)
   - Indexer          (file search and directory size indexing)
 

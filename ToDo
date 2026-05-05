@@ -1,16 +1,16 @@
-1 - Implement power managment 
+1 - Notifications!!!! See notifications.md
 
-2 - Notifications!!!! See notifications.md
+2 - Implement monitoring
 
-3 - Fix NFS distro dependency - DONE
-
-4 - Implement monitoring
-
-5 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
+3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `eslint-plugin-react`
 
-6 - user config to match config in UI. Make a global config?
+4 - user config to match config in UI.
 
+5 - Make a global config?
+
+Fix NFS distro dependency - DONE
+Implement power management - DONE
 Review bridge and server logging - Done
 Remove func StartSimpleNetInfoSampler() - Done
 ChunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts - DONE
