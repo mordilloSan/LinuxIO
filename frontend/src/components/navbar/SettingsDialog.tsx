@@ -73,8 +73,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
       <div
         style={{
-          paddingLeft: 0,
-          paddingRight: 0,
+          paddingLeft: 12,
+          paddingRight: 12,
         }}
       >
         <TabSelector
@@ -83,7 +83,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           options={tabs}
           style={{ marginBottom: 0 }}
         />
-        <AppDivider style={{ marginLeft: 12, marginRight: 12 }} />
+        <AppDivider />
       </div>
 
       <AppDialogContent
