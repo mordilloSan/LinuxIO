@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useRef } from "react";
 
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -27,7 +28,6 @@ interface ColorEntry {
 
 function ThemeColorsSection() {
   const theme = useAppTheme();
-  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
   const entries: ColorEntry[] = [
@@ -194,15 +194,25 @@ function ThemeColorsSection() {
       {entries.map(({ key, label, description, effectiveColor }) => {
         const isOverridden = themeColors?.[key] != null;
         return (
-          <div
+          <FrostedCard
             key={key}
+            hoverLift
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.closest("button, input")) return;
+              (e.currentTarget as HTMLElement)
+                .querySelector<HTMLInputElement>('input[type="color"]')
+                ?.click();
+            }}
             style={{
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               padding: theme.spacing(1.5),
-              borderRadius: `${baseBorderRadius * 1.5}px`,
-              border: `1px solid ${isOverridden ? theme.palette.primary.main : theme.palette.divider}`,
+              ...(isOverridden && {
+                border: `1px solid ${theme.palette.primary.main}`,
+              }),
             }}
           >
             <div>
@@ -238,7 +248,7 @@ function ThemeColorsSection() {
                 label={label}
               />
             </div>
-          </div>
+          </FrostedCard>
         );
       })}
     </div>
@@ -257,30 +267,15 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
   const normalized = toInputColor(color);
 
   return (
-    <div
-      style={{
-        position: "relative",
-        flexShrink: 0,
-        display: "flex",
-        alignItems: "center",
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        aria-label={`Pick color for ${label}`}
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <div
+        aria-label={`Current color for ${label}`}
         style={{
-          display: "block",
           width: 28,
           height: 28,
           borderRadius: theme.shape.borderRadius,
           backgroundColor: normalized,
-          cursor: "pointer",
-          padding: 0,
-          margin: 0,
-          lineHeight: 0,
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
-          appearance: "none",
           boxSizing: "border-box",
         }}
       />
@@ -290,7 +285,9 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         value={normalized}
         onChange={(e) => onChange(e.target.value)}
         style={{
-          position: "absolute",
+          position: "fixed",
+          left: "50%",
+          top: "50%",
           opacity: 0,
           width: 0,
           height: 0,

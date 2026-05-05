@@ -7,6 +7,7 @@ import NavbarCustomizer from "./NavbarCustomizer";
 import PowerSettingsSection from "./PowerSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
 
+import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
@@ -23,7 +24,6 @@ interface SettingsDialogProps {
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
-  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const effectiveTab =
     !privileged && activeTab === "power" ? "general" : activeTab;
@@ -40,7 +40,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
     onClose();
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <GeneralDialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="md"
+      fullWidth
+      style={{ alignSelf: "flex-start" }}
+    >
       <AppDialogTitle
         style={{
           paddingTop: 6,
@@ -101,17 +107,24 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               paddingBottom: theme.spacing(1),
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(2),
+              gap: theme.spacing(1),
             }}
           >
-            <div
+            <FrostedCard
+              hoverLift
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest("button, input")) return;
+                (e.currentTarget as HTMLElement)
+                  .querySelector<HTMLButtonElement>("button")
+                  ?.click();
+              }}
               style={{
+                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: theme.spacing(1.5),
-                borderRadius: `${baseBorderRadius * 1.5}px`,
-                border: `1px solid ${theme.palette.divider}`,
               }}
             >
               <div>
@@ -123,7 +136,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
                 </AppTypography>
               </div>
               <NavbarCustomizer />
-            </div>
+            </FrostedCard>
           </div>
         ) : null}
         {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
