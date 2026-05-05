@@ -1,3 +1,4 @@
+import { Icon } from "@iconify/react";
 import React, {
   useCallback,
   useEffect,
@@ -8,11 +9,11 @@ import React, {
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import AppDivider from "@/components/ui/AppDivider";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -198,31 +199,61 @@ const DockerFolderSettingsSection: React.FC = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(2),
+          gap: theme.spacing(1.5),
         }}
       >
-        <AppTypography variant="body1" fontWeight={600}>
-          Docker Folder
-        </AppTypography>
-        <AppTypography variant="body2" color="text.secondary">
-          Set the directory scanned for Docker Compose stacks.
-        </AppTypography>
+        <div>
+          <AppTypography variant="body1" fontWeight={600}>
+            Docker Folder
+          </AppTypography>
+          <AppTypography variant="caption" color="text.secondary">
+            Directory scanned for Docker Compose stacks.
+          </AppTypography>
+        </div>
 
-        <AppTextField
-          label="Docker folder"
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            if (errorText) setErrorText(null);
-          }}
-          placeholder="/home/user/docker"
-          fullWidth
-          error={Boolean(errorText)}
-          helperText={
-            errorText || "Absolute path only. Root (/) is not allowed."
-          }
-          disabled={isSaving}
-        />
+        <FrostedCard style={{ padding: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: theme.spacing(1.5),
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: theme.palette.action.hover,
+                color: theme.palette.primary.main,
+              }}
+            >
+              <Icon icon="mdi:folder-open-outline" width={22} height={22} />
+            </div>
+
+            <AppTextField
+              label="Path"
+              size="small"
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                if (errorText) setErrorText(null);
+              }}
+              placeholder="/home/user/docker"
+              fullWidth
+              error={Boolean(errorText)}
+              helperText={
+                errorText || "Absolute path only. Root (/) is not allowed."
+              }
+              disabled={isSaving}
+              style={{ flex: 1 }}
+            />
+          </div>
+        </FrostedCard>
 
         {!indexerEnabled && (
           <AppAlert severity="info">
@@ -232,13 +263,12 @@ const DockerFolderSettingsSection: React.FC = () => {
           </AppAlert>
         )}
 
-        <AppDivider />
-
         <div
           style={{
             display: "flex",
             justifyContent: "flex-end",
             gap: theme.spacing(1.5),
+            paddingTop: theme.spacing(0.5),
           }}
         >
           <AppButton onClick={handleReset} disabled={!isDirty || isSaving}>

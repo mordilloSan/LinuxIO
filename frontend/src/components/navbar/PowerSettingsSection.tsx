@@ -12,6 +12,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const setPowerStatusCache = (
@@ -122,22 +123,50 @@ const PowerSettingsSection: React.FC = () => {
     [resolvedProfile, status?.profiles],
   );
 
+  const powerHeader = (
+    <div className="power-settings__header">
+      <AppTypography variant="body1" fontWeight={600}>
+        Power
+      </AppTypography>
+      <AppTypography variant="caption" color="text.secondary">
+        Manage TuneD status and power profiles.
+      </AppTypography>
+    </div>
+  );
+
   if (isPending) {
     return (
-      <div className="power-settings__loading">
-        <ComponentLoader />
+      <div className="power-settings" aria-busy>
+        {powerHeader}
+        <div className="power-settings__loading">
+          <ComponentLoader />
+        </div>
       </div>
     );
   }
 
   if (error || !status) {
     return (
-      <AppAlert severity="error">
-        <AppAlertTitle>Power status unavailable</AppAlertTitle>
-        {error?.message || "LinuxIO could not read power management status."}
-      </AppAlert>
+      <div className="power-settings">
+        {powerHeader}
+        <AppAlert severity="error">
+          <AppAlertTitle>Power status unavailable</AppAlertTitle>
+          {error?.message || "LinuxIO could not read power management status."}
+        </AppAlert>
+      </div>
     );
   }
+
+  const renderProfileOption = (value: string) => {
+    const profile = status.profiles.find((p) => p.name === value);
+    return (
+      <>
+        <span>{value}</span>
+        {profile?.active && <PowerBadge label="Active" tone="success" />}
+        {profile?.recommended && <PowerBadge label="Recommended" tone="info" />}
+      </>
+    );
+  };
 
   const busy =
     startMutation.isPending ||
@@ -158,6 +187,8 @@ const PowerSettingsSection: React.FC = () => {
 
   return (
     <div className="power-settings" aria-busy={busy}>
+      {powerHeader}
+
       {!status.tuned_available ? (
         <AppAlert severity="warning">
           <AppAlertTitle>TuneD unavailable</AppAlertTitle>
@@ -257,34 +288,8 @@ const PowerSettingsSection: React.FC = () => {
             value={resolvedProfile}
             disabled={busy || status.profiles.length === 0}
             onChange={(event) => setSelectedProfile(event.target.value)}
-            renderOption={(value) => {
-              const profile = status.profiles.find((p) => p.name === value);
-              return (
-                <>
-                  <span>{value}</span>
-                  {profile?.active && (
-                    <PowerBadge label="Active" tone="success" />
-                  )}
-                  {profile?.recommended && (
-                    <PowerBadge label="Recommended" tone="info" />
-                  )}
-                </>
-              );
-            }}
-            renderValue={(value) => {
-              const profile = status.profiles.find((p) => p.name === value);
-              return (
-                <>
-                  <span>{value}</span>
-                  {profile?.active && (
-                    <PowerBadge label="Active" tone="success" />
-                  )}
-                  {profile?.recommended && (
-                    <PowerBadge label="Recommended" tone="info" />
-                  )}
-                </>
-              );
-            }}
+            renderOption={renderProfileOption}
+            renderValue={renderProfileOption}
           >
             {status.profiles.length === 0 ? (
               <option value="">No profiles reported</option>
@@ -307,17 +312,13 @@ const PowerSettingsSection: React.FC = () => {
           </AppButton>
         </div>
 
-        {selectedProfileDetails ? (
-          <div className="power-settings__profile-details">
-            {selectedProfileDetails.description ? (
-              <p className="power-settings__muted">
-                {selectedProfileDetails.description}
-              </p>
-            ) : null}
-          </div>
-        ) : (
+        {selectedProfileDetails?.description ? (
+          <p className="power-settings__muted">
+            {selectedProfileDetails.description}
+          </p>
+        ) : !selectedProfileDetails ? (
           <p className="power-settings__muted">No TuneD profiles reported.</p>
-        )}
+        ) : null}
       </section>
     </div>
   );

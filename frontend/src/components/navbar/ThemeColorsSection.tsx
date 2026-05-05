@@ -44,7 +44,7 @@ function ThemeColorsSection() {
     [editMode, config.primaryColor, themeColors],
   );
 
-  const entries: ColorEntry[] = [
+  const entries: ColorEntry[] = useMemo(() => [
     {
       key: "backgroundDefault",
       label: "Background",
@@ -153,7 +153,7 @@ function ThemeColorsSection() {
       description: "Filebrowser breadcrumb text",
       effectiveColor: editTheme.fileBrowser.breadcrumbText,
     },
-  ];
+  ], [editTheme]);
 
   const handleChange = (key: keyof ThemeColors, value: string) => {
     setThemeColors((prev) => ({
@@ -187,15 +187,20 @@ function ThemeColorsSection() {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(1),
+        gap: theme.spacing(1.5),
       }}
     >
       <div
         style={{ display: "flex", alignItems: "center", gap: theme.spacing(1) }}
       >
-        <AppTypography variant="body1" fontWeight={600} style={{ flexGrow: 1 }}>
-          Colors
-        </AppTypography>
+        <div style={{ flexGrow: 1 }}>
+          <AppTypography variant="body1" fontWeight={600}>
+            Colors
+          </AppTypography>
+          <AppTypography variant="caption" color="text.secondary">
+            Customize light and dark theme colors.
+          </AppTypography>
+        </div>
 
         <div style={{ display: "flex", gap: 2 }}>
           {(["light", "dark"] as const).map((m) => (
@@ -245,66 +250,74 @@ function ThemeColorsSection() {
         </AppTooltip>
       </div>
 
-      {entries.map(({ key, label, description, effectiveColor }) => {
-        const isOverridden = themeColors?.[editMode]?.[key] != null;
-        return (
-          <FrostedCard
-            key={key}
-            hoverLift
-            onClick={(e) => {
-              const target = e.target as HTMLElement;
-              if (target.closest("button, input")) return;
-              (e.currentTarget as HTMLElement)
-                .querySelector<HTMLInputElement>('input[type="color"]')
-                ?.click();
-            }}
-            style={{
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: theme.spacing(1.5),
-              ...(isOverridden && {
-                border: `1px solid ${theme.palette.primary.main}`,
-              }),
-            }}
-          >
-            <div>
-              <AppTypography variant="body2" fontWeight={600}>
-                {label}
-              </AppTypography>
-              <AppTypography variant="caption" color="text.secondary">
-                {description}
-              </AppTypography>
-            </div>
-
-            <div
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(1),
+        }}
+      >
+        {entries.map(({ key, label, description, effectiveColor }) => {
+          const isOverridden = themeColors?.[editMode]?.[key] != null;
+          return (
+            <FrostedCard
+              key={key}
+              hoverLift
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest("button, input")) return;
+                (e.currentTarget as HTMLElement)
+                  .querySelector<HTMLInputElement>('input[type="color"]')
+                  ?.click();
+              }}
               style={{
+                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(0.5),
+                justifyContent: "space-between",
+                padding: theme.spacing(1.5),
+                ...(isOverridden && {
+                  border: `1px solid ${theme.palette.primary.main}`,
+                }),
               }}
             >
-              {isOverridden && (
-                <AppTooltip title="Reset to default">
-                  <AppIconButton
-                    size="small"
-                    onClick={() => handleReset(key)}
-                    aria-label={`Reset ${label} to default`}
-                  >
-                    <Icon icon="mdi:refresh" width={14} height={14} />
-                  </AppIconButton>
-                </AppTooltip>
-              )}
-              <ColorSwatch
-                color={effectiveColor}
-                onChange={(val) => handleChange(key, val)}
-                label={label}
-              />
-            </div>
-          </FrostedCard>
-        );
-      })}
+              <div>
+                <AppTypography variant="body2" fontWeight={600}>
+                  {label}
+                </AppTypography>
+                <AppTypography variant="caption" color="text.secondary">
+                  {description}
+                </AppTypography>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.spacing(0.5),
+                }}
+              >
+                {isOverridden && (
+                  <AppTooltip title="Reset to default">
+                    <AppIconButton
+                      size="small"
+                      onClick={() => handleReset(key)}
+                      aria-label={`Reset ${label} to default`}
+                    >
+                      <Icon icon="mdi:refresh" width={14} height={14} />
+                    </AppIconButton>
+                  </AppTooltip>
+                )}
+                <ColorSwatch
+                  color={effectiveColor}
+                  onChange={(val) => handleChange(key, val)}
+                  label={label}
+                />
+              </div>
+            </FrostedCard>
+          );
+        })}
+      </div>
     </div>
   );
 }

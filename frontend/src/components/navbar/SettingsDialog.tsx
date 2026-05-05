@@ -103,13 +103,20 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         {effectiveTab === "general" ? (
           <div
             style={{
-              paddingTop: theme.spacing(1),
-              paddingBottom: theme.spacing(1),
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(1),
+              gap: theme.spacing(1.5),
             }}
           >
+            <div>
+              <AppTypography variant="body1" fontWeight={600}>
+                General
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary">
+                Common app preferences.
+              </AppTypography>
+            </div>
+
             <FrostedCard
               hoverLift
               onClick={(e) => {

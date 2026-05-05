@@ -1,6 +1,6 @@
 .power-settings {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .power-settings__loading {
@@ -10,6 +10,7 @@
   min-height: 260px;
 }
 
+.power-settings__header,
 .power-settings__section-header,
 .power-settings__badges {
   display: flex;
@@ -46,12 +47,17 @@
   border-top: 1px solid var(--app-palette-divider);
 }
 
-.power-settings__section:first-child {
+.power-settings__section:first-of-type {
   padding-top: 0;
   border-top: none;
 }
 
 .power-settings__section-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.power-settings__header {
   justify-content: space-between;
   gap: 12px;
 }
