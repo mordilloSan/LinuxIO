@@ -35,9 +35,8 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 		version.BinDir,
 		"/etc/linuxio",
 		"/etc/pam.d",
-		"/etc/pam.d/linuxio",
 		"/etc/systemd/system",
-		"/etc/motd.d",
+		"-/etc/motd.d",
 		"/usr/lib/tmpfiles.d",
 		"/usr/share/linuxio",
 		"/var/lib/linuxIO",
@@ -49,6 +48,12 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 	}
 	if strings.Contains(" "+readWritePaths+" ", " /etc ") {
 		t.Fatalf("ReadWritePaths should use explicit subpaths, got %q", readWritePaths)
+	}
+	if strings.Contains(" "+readWritePaths+" ", " /etc/motd.d ") {
+		t.Fatalf("ReadWritePaths should mark /etc/motd.d optional, got %q", readWritePaths)
+	}
+	if strings.Contains(" "+readWritePaths+" ", " /etc/pam.d/linuxio ") {
+		t.Fatalf("ReadWritePaths should not require the PAM file to already exist, got %q", readWritePaths)
 	}
 }
 

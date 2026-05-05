@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -124,19 +125,49 @@ func getVersionInfo() (VersionInfo, error) {
 	return info, nil
 }
 
-func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
-	writablePaths := []string{
-		version.BinDir,
-		"/etc/linuxio",
-		"/etc/pam.d",
-		"/etc/pam.d/linuxio",
-		"/etc/systemd/system",
-		"/etc/motd.d",
-		"/usr/lib/tmpfiles.d",
-		"/usr/share/linuxio",
-		"/var/lib/linuxIO",
-	}
+type updaterWritablePath struct {
+	path     string
+	optional bool
+}
 
+func updaterWritablePaths() []updaterWritablePath {
+	return []updaterWritablePath{
+		{path: version.BinDir},
+		{path: "/etc/linuxio"},
+		{path: "/etc/pam.d"},
+		{path: "/etc/systemd/system"},
+		{path: "/etc/motd.d", optional: true},
+		{path: "/usr/lib/tmpfiles.d"},
+		{path: "/usr/share/linuxio"},
+		{path: "/var/lib/linuxIO"},
+	}
+}
+
+func systemdReadWritePathsProperty() string {
+	paths := make([]string, 0, len(updaterWritablePaths()))
+	for _, entry := range updaterWritablePaths() {
+		path := entry.path
+		if entry.optional {
+			path = "-" + path
+		}
+		paths = append(paths, path)
+	}
+	return strings.Join(paths, " ")
+}
+
+func ensureUpdaterWritablePathDirs() error {
+	for _, entry := range updaterWritablePaths() {
+		if entry.optional {
+			continue
+		}
+		if err := os.MkdirAll(entry.path, 0o755); err != nil {
+			return fmt.Errorf("create updater writable path %s: %w", entry.path, err)
+		}
+	}
+	return nil
+}
+
+func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 	args := []string{
 		"--unit=" + unit,
 		"--property=Description=LinuxIO updater",
@@ -150,7 +181,7 @@ func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 		"--setenv=LC_ALL=C.UTF-8",
 		"-p", "Type=exec",
 		"-p", "ProtectSystem=full",
-		"-p", "ReadWritePaths=" + strings.Join(writablePaths, " "),
+		"-p", "ReadWritePaths=" + systemdReadWritePathsProperty(),
 		"-p", "PrivateTmp=false",
 		"-p", "NoNewPrivileges=no",
 		"/bin/bash", "-s", "--",
@@ -199,6 +230,10 @@ func runInstallScript(ver string, relay io.Writer) error {
 	slog.Info("checksum verified successfully")
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
+	if err := ensureUpdaterWritablePathDirs(); err != nil {
+		return err
+	}
+
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
 	systemdRunArgs := buildInstallCommandArgs(unit, scriptArgs(ver)...)
 	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
@@ -233,6 +268,13 @@ func runInstallScript(ver string, relay io.Writer) error {
 
 	if err != nil {
 		captured := tail.String()
+		journal := systemdUnitJournalTail(unit)
+		if journal != "" {
+			if captured != "" {
+				captured += "\n"
+			}
+			captured += "systemd journal:\n" + journal
+		}
 		if captured == "" {
 			return fmt.Errorf("installer failed (unit=%s, no script output captured): %w", unit, err)
 		}
@@ -240,6 +282,18 @@ func runInstallScript(ver string, relay io.Writer) error {
 	}
 
 	return nil
+}
+
+func systemdUnitJournalTail(unit string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, "journalctl", "-u", unit, "-n", "80", "--no-pager", "--output=cat").CombinedOutput()
+	if err != nil && len(output) == 0 {
+		slog.Debug("failed to read updater unit journal", "component", "control", "subsystem", "app_update", "unit", unit, "error", err)
+		return ""
+	}
+	return strings.TrimSpace(ansiRE.ReplaceAllString(string(output), ""))
 }
 
 func scriptArgs(ver string) []string {
