@@ -26,6 +26,15 @@ type ComposeJobMessage struct {
 	Code    int    `json:"code,omitempty"`
 }
 
+type DockerIndexerJobResult struct {
+	Path         string                  `json:"path"`
+	FilesIndexed int64                   `json:"files_indexed"`
+	DirsIndexed  int64                   `json:"dirs_indexed"`
+	TotalSize    int64                   `json:"total_size"`
+	DurationMs   int64                   `json:"duration_ms"`
+	Folders      []indexer.IndexerResult `json:"folders"`
+}
+
 func RegisterJobRunners(username string) {
 	bridgejobs.RegisterRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runDockerComposeJob(ctx, job, username, args)
@@ -104,8 +113,9 @@ func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username stri
 		return nil, bridgejobs.NewError("failed to load user config", 500)
 	}
 
-	aggregate := indexer.IndexerResult{
-		Path: strings.Join(dockerFolders, ", "),
+	aggregate := DockerIndexerJobResult{
+		Path:    strings.Join(dockerFolders, ", "),
+		Folders: make([]indexer.IndexerResult, 0, len(dockerFolders)),
 	}
 	if len(dockerFolders) > 1 {
 		aggregate.Path = fmt.Sprintf("%d Docker folders", len(dockerFolders))
@@ -122,6 +132,7 @@ func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username stri
 			aggregate.DirsIndexed += indexResult.DirsIndexed
 			aggregate.TotalSize += indexResult.TotalSize
 			aggregate.DurationMs += indexResult.DurationMs
+			aggregate.Folders = append(aggregate.Folders, indexResult)
 		}
 	}
 

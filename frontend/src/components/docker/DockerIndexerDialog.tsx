@@ -1,12 +1,51 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import { linuxio, useStreamMux, openJobAttachStream, type Stream } from "@/api";
+import {
+  linuxio,
+  useStreamMux,
+  openJobAttachStream,
+  type ComposeProject,
+  type Stream,
+} from "@/api";
 import IndexerStatusDialog, {
   type IndexerStat,
+  type IndexerStatSection,
 } from "@/components/dialog/IndexerStatusDialog";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
+
+const normalizeIndexedPath = (path: string) => {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.replace(/\/+$/, "") || "/";
+};
+
+const isPathInsideFolder = (path: string, folder: string) => {
+  const normalizedPath = normalizeIndexedPath(path);
+  const normalizedFolder = normalizeIndexedPath(folder);
+
+  if (!normalizedPath || !normalizedFolder) {
+    return false;
+  }
+
+  if (normalizedFolder === "/") {
+    return normalizedPath.startsWith("/");
+  }
+
+  return (
+    normalizedPath === normalizedFolder ||
+    normalizedPath.startsWith(`${normalizedFolder}/`)
+  );
+};
+
+const getComposeProjectPaths = (project: ComposeProject) => [
+  project.working_dir,
+  ...project.config_files,
+];
 
 interface DockerIndexerDialogProps {
   open: boolean;
@@ -21,11 +60,16 @@ interface IndexerProgress {
   phase?: string;
 }
 
-interface IndexerResult {
+interface FolderIndexerResult {
   path: string;
   files_indexed: number;
   dirs_indexed: number;
-  duration_ms: number;
+  duration_ms?: number;
+  total_size?: number;
+}
+
+interface IndexerResult extends FolderIndexerResult {
+  folders?: FolderIndexerResult[];
 }
 
 const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
@@ -51,18 +95,10 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
-  const { data: composeProjects = [] } =
+  const { data: composeProjects = [], isPending: composeProjectsPending } =
     linuxio.docker.list_compose_projects.useQuery({
       enabled: open && success,
     });
-
-  const stacksSummary = success
-    ? {
-        total: composeProjects.length,
-        running: composeProjects.filter((p) => p.status === "running").length,
-        stopped: composeProjects.filter((p) => p.status === "stopped").length,
-      }
-    : null;
 
   // Close stream helper
   const closeStream = useCallback(() => {
@@ -179,46 +215,75 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
     }
   };
 
+  const displayedFilesIndexed =
+    success && result ? result.files_indexed : progress.files_indexed;
+  const displayedDirsIndexed =
+    success && result ? result.dirs_indexed : progress.dirs_indexed;
+
   const progressStats: IndexerStat[] = [
     {
-      value: progress.files_indexed.toLocaleString(),
+      value: displayedFilesIndexed.toLocaleString(),
       label: "Files indexed",
       valueColor: "primary.main",
       valueVariant: "h4",
     },
     {
-      value: progress.dirs_indexed.toLocaleString(),
+      value: displayedDirsIndexed.toLocaleString(),
       label: "Directories indexed",
       valueColor: "primary.main",
       valueVariant: "h4",
     },
   ];
 
-  const summaryStats: IndexerStat[] = stacksSummary
-    ? [
-        {
-          value: stacksSummary.total,
-          label: "Total stacks",
-          valueColor: "primary.main",
-          valueVariant: "h5",
-        },
-        {
-          value: stacksSummary.running,
-          label: "Running",
-          valueColor: "success.main",
-          valueVariant: "h5",
-        },
-        {
-          value: stacksSummary.stopped,
-          label: "Stopped",
-          valueColor: "text.secondary",
-          valueVariant: "h5",
-        },
-      ]
-    : [];
+  const folderResults =
+    result?.folders && result.folders.length > 0
+      ? result.folders
+      : result
+        ? [result]
+        : [];
+
+  const folderDetailSections: IndexerStatSection[] = folderResults.map(
+    (folder, index) => {
+      const stacksDiscovered = composeProjects.filter((project) =>
+        getComposeProjectPaths(project).some((path) =>
+          isPathInsideFolder(path, folder.path),
+        ),
+      ).length;
+
+      return {
+        title:
+          folderResults.length > 1
+            ? `Docker Folder ${index + 1}`
+            : "Docker Folder",
+        subtitle: folder.path,
+        stats: [
+          {
+            value: folder.files_indexed.toLocaleString(),
+            label: "Files indexed",
+            valueColor: "primary.main",
+            valueVariant: "h5",
+          },
+          {
+            value: folder.dirs_indexed.toLocaleString(),
+            label: "Directories indexed",
+            valueColor: "primary.main",
+            valueVariant: "h5",
+          },
+          {
+            value: composeProjectsPending
+              ? "..."
+              : stacksDiscovered.toLocaleString(),
+            label: "Stacks discovered",
+            valueColor: "primary.main",
+            valueVariant: "h5",
+          },
+        ],
+      };
+    },
+  );
 
   const successDescription = result
-    ? `Indexed ${result.files_indexed.toLocaleString()} files and ${result.dirs_indexed.toLocaleString()} directories in ${(result.duration_ms / 1000).toFixed(2)}s`
+    ? `Indexed ${result.files_indexed.toLocaleString()} files and ${result.dirs_indexed.toLocaleString()} directories in ${((result.duration_ms ?? 0) / 1000).toFixed(2)}s`
     : undefined;
 
   return (
@@ -232,10 +297,12 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
       error={error}
       phaseLabel={getPhaseLabel()}
       progressStats={progressStats}
-      showProgressStats={progress.phase === "indexing"}
+      showProgressStats={success || progress.phase === "indexing"}
       successDescription={successDescription}
-      summaryTitle={stacksSummary ? "Docker Compose Stacks Found:" : undefined}
-      summaryStats={summaryStats}
+      detailTitle={
+        folderDetailSections.length > 1 ? "Docker Folder Results:" : undefined
+      }
+      detailSections={folderDetailSections}
     />
   );
 };
