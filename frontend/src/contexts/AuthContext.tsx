@@ -8,7 +8,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { initStreamMux, closeStreamMux, type MuxStatus } from "@/api";
+import {
+  initStreamMux,
+  closeStreamMux,
+  linuxio,
+  type CapabilitiesResponse,
+  type MuxStatus,
+} from "@/api";
 import {
   AuthContextType,
   AuthState,
@@ -107,6 +113,10 @@ const readStoredCapabilities = (): StoredCapabilities => {
   }
 };
 
+const persistCapabilities = (capabilities: StoredCapabilities) => {
+  localStorage.setItem(AUTH_CAPABILITIES_KEY, JSON.stringify(capabilities));
+};
+
 const loginErrorMessage = (
   code?: LoginErrorCode,
   fallback?: string,
@@ -193,6 +203,17 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         nfsAvailable: action.payload.nfsAvailable ?? null,
         tunedAvailable: action.payload.tunedAvailable ?? null,
       };
+    case AUTH_ACTIONS.REFRESH_CAPABILITIES:
+      return {
+        ...state,
+        dockerAvailable: action.payload.dockerAvailable ?? null,
+        indexerAvailable: action.payload.indexerAvailable ?? null,
+        lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
+        smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
+        packageKitAvailable: action.payload.packageKitAvailable ?? null,
+        nfsAvailable: action.payload.nfsAvailable ?? null,
+        tunedAvailable: action.payload.tunedAvailable ?? null,
+      };
     case AUTH_ACTIONS.SIGN_OUT:
       return {
         ...state,
@@ -220,6 +241,32 @@ AuthContext.displayName = "AuthContext";
 
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  const applyCapabilities = useCallback(
+    (data: Parameters<typeof capabilitiesFromLoginResponse>[0]) => {
+      const capabilities = capabilitiesFromLoginResponse(data);
+      try {
+        persistCapabilities(capabilities);
+      } catch (error) {
+        console.error("Failed to store capability info:", error);
+      }
+      dispatch({
+        type: AUTH_ACTIONS.REFRESH_CAPABILITIES,
+        payload: capabilities,
+      });
+      return capabilities;
+    },
+    [],
+  );
+
+  const refreshCapabilities = useCallback(
+    async (): Promise<CapabilitiesResponse> => {
+      const data = await linuxio.system.get_capabilities.call();
+      applyCapabilities(data);
+      return data;
+    },
+    [applyCapabilities],
+  );
 
   const initialize = useCallback(async () => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });
@@ -343,7 +390,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     try {
       localStorage.setItem("auth_username", username);
       localStorage.setItem("auth_privileged", String(data.privileged));
-      localStorage.setItem(AUTH_CAPABILITIES_KEY, JSON.stringify(capabilities));
+      persistCapabilities(capabilities);
     } catch (error) {
       console.error("Failed to store user info:", error);
     }
@@ -381,8 +428,9 @@ function AuthProvider({ children }: AuthProviderProps) {
       method: "session" as const,
       signIn,
       signOut,
+      refreshCapabilities,
     }),
-    [state, signIn, signOut],
+    [state, signIn, signOut, refreshCapabilities],
   );
 
   return (

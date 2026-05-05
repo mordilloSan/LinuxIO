@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
+import CapabilityManagerSection from "./CapabilityManagerSection";
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
 import PowerSettingsSection from "./PowerSettingsSection";
@@ -14,7 +15,12 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab = "general" | "theme" | "docker" | "power";
+type SettingsTab =
+  | "general"
+  | "theme"
+  | "capabilities"
+  | "docker"
+  | "power";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
@@ -29,6 +35,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const tabs = [
     { value: "general", label: "General" },
     { value: "theme", label: "Theme" },
+    { value: "capabilities", label: "Capabilities" },
     { value: "docker", label: "Docker" },
     ...(privileged ? [{ value: "power", label: "Power" }] : []),
   ];
@@ -123,6 +130,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           </div>
         ) : null}
         {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
+        {effectiveTab === "capabilities" ? (
+          <CapabilityManagerSection />
+        ) : null}
         {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
         {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>

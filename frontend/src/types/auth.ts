@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
 
+import type { CapabilitiesResponse } from "@/api/linuxio-types";
+
 /**
  * Generic utility for creating discriminated union action types.
  * Used to define reducer-safe actions with optional payloads.
@@ -55,6 +57,7 @@ export interface AuthContextType {
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshCapabilities: () => Promise<CapabilitiesResponse>;
 }
 
 /**
@@ -73,6 +76,9 @@ export const AUTH_ACTIONS = {
 
   /** Dispatched after a successful login. */
   SIGN_IN: "SIGN_IN",
+
+  /** Dispatched when system capability checks are refreshed. */
+  REFRESH_CAPABILITIES: "REFRESH_CAPABILITIES",
 
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
@@ -99,6 +105,15 @@ export interface AuthActionTypes {
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
+    dockerAvailable?: boolean | null;
+    indexerAvailable?: boolean | null;
+    lmSensorsAvailable?: boolean | null;
+    smartmontoolsAvailable?: boolean | null;
+    packageKitAvailable?: boolean | null;
+    nfsAvailable?: boolean | null;
+    tunedAvailable?: boolean | null;
+  };
+  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: {
     dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
     lmSensorsAvailable?: boolean | null;

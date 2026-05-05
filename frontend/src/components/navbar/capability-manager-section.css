@@ -1,0 +1,109 @@
+.capability-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.capability-manager__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.capability-manager__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.capability-manager__row {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: 8px;
+}
+
+.capability-manager__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--app-palette-action-hover);
+  color: var(--app-palette-primary-main);
+}
+
+.capability-manager__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.capability-manager__row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.capability-manager__title-block {
+  min-width: 0;
+}
+
+.capability-manager__title-block .app-typo {
+  margin: 0;
+}
+
+.capability-manager__detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--app-palette-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.capability-manager__dependency {
+  flex: 0 0 auto;
+  max-width: 42%;
+  overflow: hidden;
+  padding: 2px 7px;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: 999px;
+  color: var(--app-palette-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capability-manager__spin {
+  animation: capability-manager-spin 900ms linear infinite;
+}
+
+@keyframes capability-manager-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 599px) {
+  .capability-manager__header,
+  .capability-manager__row-header,
+  .capability-manager__detail {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .capability-manager__dependency {
+    max-width: 100%;
+  }
+}
