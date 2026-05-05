@@ -84,20 +84,47 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 	return changed
 }
 
-func themeColorsNeedReset(themeColors *ThemeColors) bool {
-	if themeColors == nil {
+func validateThemeColorMode(modeName string, tc *ThemeColors) []string {
+	if tc == nil {
+		return nil
+	}
+	prefix := "appSettings.themeColors." + modeName + "."
+	fields := map[string]*CSSColor{
+		"backgroundDefault": tc.BackgroundDefault,
+		"backgroundPaper":   tc.BackgroundPaper,
+		"headerBackground":  tc.HeaderBackground,
+		"footerBackground":  tc.FooterBackground,
+		"sidebarBackground": tc.SidebarBackground,
+		"cardBackground":    tc.CardBackground,
+	}
+	var errs []string
+	for key, ptr := range fields {
+		if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+			errs = append(errs, prefix+key+" must be a valid CSS color")
+		}
+	}
+	return errs
+}
+
+func themeColorsNeedReset(byMode *ThemeColorsByMode) bool {
+	if byMode == nil {
 		return false
 	}
-	for _, ptr := range []*CSSColor{
-		themeColors.BackgroundDefault,
-		themeColors.BackgroundPaper,
-		themeColors.HeaderBackground,
-		themeColors.FooterBackground,
-		themeColors.SidebarBackground,
-		themeColors.CardBackground,
-	} {
-		if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-			return true
+	for _, tc := range []*ThemeColors{byMode.Light, byMode.Dark} {
+		if tc == nil {
+			continue
+		}
+		for _, ptr := range []*CSSColor{
+			tc.BackgroundDefault,
+			tc.BackgroundPaper,
+			tc.HeaderBackground,
+			tc.FooterBackground,
+			tc.SidebarBackground,
+			tc.CardBackground,
+		} {
+			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+				return true
+			}
 		}
 	}
 	return false
@@ -144,19 +171,9 @@ func ValidateConfig(cfg *Settings) []string {
 	}
 
 	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
-	if tc := cfg.AppSettings.ThemeColors; tc != nil {
-		for key, ptr := range map[string]*CSSColor{
-			"backgroundDefault": tc.BackgroundDefault,
-			"backgroundPaper":   tc.BackgroundPaper,
-			"headerBackground":  tc.HeaderBackground,
-			"footerBackground":  tc.FooterBackground,
-			"sidebarBackground": tc.SidebarBackground,
-			"cardBackground":    tc.CardBackground,
-		} {
-			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-				errs = append(errs, "appSettings.themeColors."+key+" must be a valid CSS color")
-			}
-		}
+	if byMode := cfg.AppSettings.ThemeColors; byMode != nil {
+		errs = append(errs, validateThemeColorMode("light", byMode.Light)...)
+		errs = append(errs, validateThemeColorMode("dark", byMode.Dark)...)
 	}
 
 	// Docker.Folder validation

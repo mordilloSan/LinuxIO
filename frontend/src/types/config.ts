@@ -22,12 +22,17 @@ export interface ThemeColors {
   fileBrowserBreadcrumbText?: string;
 }
 
+export interface ThemeColorsByMode {
+  light?: ThemeColors;
+  dark?: ThemeColors;
+}
+
 // Backend Settings structure
 export interface BackendSettings {
   appSettings: {
     theme: string;
     primaryColor: string;
-    themeColors?: ThemeColors;
+    themeColors?: ThemeColorsByMode;
     sidebarCollapsed: boolean;
     showHiddenFiles: boolean;
     dashboardOrder?: string[];
@@ -69,7 +74,7 @@ export interface JobSettings {
 export interface AppConfig {
   theme: string;
   primaryColor: string;
-  themeColors?: ThemeColors;
+  themeColors?: ThemeColorsByMode;
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;

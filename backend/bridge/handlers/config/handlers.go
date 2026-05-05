@@ -24,18 +24,23 @@ type configSetPayload struct {
 }
 
 type configAppSettingsPayload struct {
-	Theme                   *string                   `json:"theme"`
-	PrimaryColor            *string                   `json:"primaryColor"`
-	ThemeColors             *configThemeColorsPayload `json:"themeColors"`
-	SidebarCollapsed        *bool                     `json:"sidebarCollapsed"`
-	ShowHiddenFiles         *bool                     `json:"showHiddenFiles"`
-	DashboardOrder          []string                  `json:"dashboardOrder"`
-	HiddenCards             []string                  `json:"hiddenCards"`
-	ContainerOrder          []string                  `json:"containerOrder"`
-	DockerDashboardSections *DockerDashboardSections  `json:"dockerDashboardSections"`
-	HardwareSections        *HardwareSections         `json:"hardwareSections"`
-	ViewModes               map[string]string         `json:"viewModes"`
-	ChunkSizeMB             *int                      `json:"chunkSizeMB"`
+	Theme                   *string                         `json:"theme"`
+	PrimaryColor            *string                         `json:"primaryColor"`
+	ThemeColors             *configThemeColorsByModePayload `json:"themeColors"`
+	SidebarCollapsed        *bool                           `json:"sidebarCollapsed"`
+	ShowHiddenFiles         *bool                           `json:"showHiddenFiles"`
+	DashboardOrder          []string                        `json:"dashboardOrder"`
+	HiddenCards             []string                        `json:"hiddenCards"`
+	ContainerOrder          []string                        `json:"containerOrder"`
+	DockerDashboardSections *DockerDashboardSections        `json:"dockerDashboardSections"`
+	HardwareSections        *HardwareSections               `json:"hardwareSections"`
+	ViewModes               map[string]string               `json:"viewModes"`
+	ChunkSizeMB             *int                            `json:"chunkSizeMB"`
+}
+
+type configThemeColorsByModePayload struct {
+	Light *configThemeColorsPayload `json:"light"`
+	Dark  *configThemeColorsPayload `json:"dark"`
 }
 
 type configThemeColorsPayload struct {
@@ -203,11 +208,32 @@ func applyPrimaryColorSetting(app *AppSettings, primaryColor *string) error {
 	return nil
 }
 
-func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsPayload) error {
+func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
+	light, err := buildThemeColors(payload.Light, "light")
+	if err != nil {
+		return err
+	}
+	dark, err := buildThemeColors(payload.Dark, "dark")
+	if err != nil {
+		return err
+	}
+	if light == nil && dark == nil {
+		app.ThemeColors = nil
+	} else {
+		app.ThemeColors = &ThemeColorsByMode{Light: light, Dark: dark}
+	}
+	return nil
+}
+
+func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*ThemeColors, error) {
+	if payload == nil {
+		return nil, nil
+	}
 	colors := &ThemeColors{}
+	hasAny := false
 	fields := []struct {
 		src *string
 		dst **CSSColor
@@ -237,13 +263,16 @@ func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsPayloa
 			continue
 		}
 		if !IsValidCSSColor(*field.src) {
-			return fmt.Errorf("invalid themeColors.%s", field.key)
+			return nil, fmt.Errorf("invalid themeColors.%s.%s", modePrefix, field.key)
 		}
 		value := CSSColor(*field.src)
 		*field.dst = &value
+		hasAny = true
 	}
-	app.ThemeColors = colors
-	return nil
+	if !hasAny {
+		return nil, nil
+	}
+	return colors, nil
 }
 
 func applyOptionalBool(dst *bool, value *bool) {

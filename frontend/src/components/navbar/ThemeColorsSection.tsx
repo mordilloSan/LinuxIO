@@ -1,16 +1,15 @@
 import { Icon } from "@iconify/react";
-import { useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useConfigValue } from "@/hooks/useConfig";
-import { useAppTheme } from "@/theme";
-import { ThemeColors } from "@/types/config";
+import { useConfig, useConfigValue } from "@/hooks/useConfig";
+import { buildAppTheme, useAppTheme } from "@/theme";
+import { ThemeColors, ThemeColorsByMode } from "@/types/config";
 import { alpha } from "@/utils/color";
 
-// Expand shorthand hex so native <input type="color"> always gets #rrggbb
 function toInputColor(color: string): string {
   const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(color);
   if (short) {
@@ -28,136 +27,160 @@ interface ColorEntry {
 
 function ThemeColorsSection() {
   const theme = useAppTheme();
+  const { config } = useConfig();
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
+
+  const [editMode, setEditMode] = useState<"light" | "dark">(
+    config.theme === "DARK" ? "dark" : "light",
+  );
+
+  const editTheme = useMemo(
+    () =>
+      buildAppTheme(
+        editMode === "dark" ? "DARK" : "LIGHT",
+        config.primaryColor,
+        themeColors,
+      ),
+    [editMode, config.primaryColor, themeColors],
+  );
 
   const entries: ColorEntry[] = [
     {
       key: "backgroundDefault",
       label: "Background",
       description: "Main page background",
-      effectiveColor: theme.palette.background.default,
+      effectiveColor: editTheme.palette.background.default,
     },
     {
       key: "backgroundPaper",
       label: "Surface",
       description: "Dialogs and panels",
-      effectiveColor: theme.palette.background.paper,
+      effectiveColor: editTheme.palette.background.paper,
     },
     {
       key: "headerBackground",
       label: "Header",
       description: "Top navigation bar",
-      effectiveColor: theme.header.background,
+      effectiveColor: editTheme.header.background,
     },
     {
       key: "footerBackground",
       label: "Footer",
       description: "Bottom status bar",
-      effectiveColor: theme.footer.background,
+      effectiveColor: editTheme.footer.background,
     },
     {
       key: "sidebarBackground",
       label: "Sidebar",
       description: "Navigation sidebar",
-      effectiveColor: theme.sidebar.background,
+      effectiveColor: editTheme.sidebar.background,
     },
     {
       key: "cardBackground",
       label: "Card",
       description: "Frosted glass card tint",
-      effectiveColor: theme.card.background,
+      effectiveColor: editTheme.card.background,
     },
     {
       key: "dialogBorder",
       label: "Dialog border",
       description: "Modal border glow color",
-      effectiveColor: theme.dialog.border,
+      effectiveColor: editTheme.dialog.border,
     },
     {
       key: "dialogGlow",
       label: "Dialog glow",
       description: "Modal glow highlight color",
-      effectiveColor: theme.dialog.glow,
+      effectiveColor: editTheme.dialog.glow,
     },
     {
       key: "dialogBackdrop",
       label: "Dialog backdrop",
       description: "Modal backdrop tint",
-      effectiveColor: theme.dialog.backdrop,
+      effectiveColor: editTheme.dialog.backdrop,
     },
     {
       key: "codeBackground",
       label: "Code background",
       description: "Logs, terminal output, and code blocks",
-      effectiveColor: theme.codeBlock.background,
+      effectiveColor: editTheme.codeBlock.background,
     },
     {
       key: "codeText",
       label: "Code text",
       description: "Logs, terminal output, and code text",
-      effectiveColor: theme.codeBlock.color,
+      effectiveColor: editTheme.codeBlock.color,
     },
     {
       key: "chartRx",
       label: "Chart RX",
       description: "Receive traffic chart color",
-      effectiveColor: theme.chart.rx,
+      effectiveColor: editTheme.chart.rx,
     },
     {
       key: "chartTx",
       label: "Chart TX",
       description: "Transmit traffic chart color",
-      effectiveColor: theme.chart.tx,
+      effectiveColor: editTheme.chart.tx,
     },
     {
       key: "chartNeutral",
       label: "Chart neutral",
       description: "Chart gridlines and neutral graph accents",
-      effectiveColor: theme.chart.neutral,
+      effectiveColor: editTheme.chart.neutral,
     },
     {
       key: "fileBrowserSurface",
       label: "File surface",
       description: "File cards and list surfaces",
-      effectiveColor: theme.fileBrowser.surface,
+      effectiveColor: editTheme.fileBrowser.surface,
     },
     {
       key: "fileBrowserChrome",
       label: "File chrome",
       description: "Quick actions and filebrowser chrome",
-      effectiveColor: theme.fileBrowser.chrome,
+      effectiveColor: editTheme.fileBrowser.chrome,
     },
     {
       key: "fileBrowserBreadcrumbBackground",
       label: "Breadcrumb bg",
       description: "Filebrowser breadcrumb background",
-      effectiveColor: theme.fileBrowser.breadcrumbBackground,
+      effectiveColor: editTheme.fileBrowser.breadcrumbBackground,
     },
     {
       key: "fileBrowserBreadcrumbText",
       label: "Breadcrumb text",
       description: "Filebrowser breadcrumb text",
-      effectiveColor: theme.fileBrowser.breadcrumbText,
+      effectiveColor: editTheme.fileBrowser.breadcrumbText,
     },
   ];
 
   const handleChange = (key: keyof ThemeColors, value: string) => {
-    setThemeColors((prev) => ({ ...(prev ?? {}), [key]: value }));
+    setThemeColors((prev) => ({
+      ...prev,
+      [editMode]: { ...(prev?.[editMode] ?? {}), [key]: value },
+    }));
   };
 
   const handleReset = (key: keyof ThemeColors) => {
     setThemeColors((prev) => {
-      if (!prev) return prev;
+      const modeColors = prev?.[editMode];
+      if (!modeColors) return prev;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [key]: _, ...rest } = prev;
-      return Object.values(rest).some((v) => v != null)
+      const { [key]: _, ...rest } = modeColors;
+      const newModeColors = Object.values(rest).some((v) => v != null)
         ? (rest as ThemeColors)
         : undefined;
+      const next: ThemeColorsByMode = { ...prev, [editMode]: newModeColors };
+      if (!next.light && !next.dark) return undefined;
+      return next;
     });
   };
 
   const hasAnyOverride =
-    themeColors != null && Object.values(themeColors).some((v) => v != null);
+    themeColors != null &&
+    (Object.values(themeColors.light ?? {}).some((v) => v != null) ||
+      Object.values(themeColors.dark ?? {}).some((v) => v != null));
 
   return (
     <div
@@ -167,10 +190,41 @@ function ThemeColorsSection() {
         gap: theme.spacing(1),
       }}
     >
-      <div style={{ display: "flex", alignItems: "center" }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: theme.spacing(1) }}
+      >
         <AppTypography variant="body1" fontWeight={600} style={{ flexGrow: 1 }}>
           Colors
         </AppTypography>
+
+        <div style={{ display: "flex", gap: 2 }}>
+          {(["light", "dark"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setEditMode(m)}
+              style={{
+                padding: "2px 10px",
+                borderRadius: 999,
+                border: "none",
+                background:
+                  editMode === m ? theme.palette.primary.main : "transparent",
+                color:
+                  editMode === m
+                    ? theme.palette.primary.contrastText
+                    : theme.palette.text.secondary,
+                cursor: "pointer",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                fontFamily: "inherit",
+                transition: "background 120ms ease, color 120ms ease",
+              }}
+            >
+              {m === "light" ? "Light" : "Dark"}
+            </button>
+          ))}
+        </div>
+
         <AppTooltip
           title={
             hasAnyOverride
@@ -192,7 +246,7 @@ function ThemeColorsSection() {
       </div>
 
       {entries.map(({ key, label, description, effectiveColor }) => {
-        const isOverridden = themeColors?.[key] != null;
+        const isOverridden = themeColors?.[editMode]?.[key] != null;
         return (
           <FrostedCard
             key={key}

@@ -33,6 +33,12 @@ type HardwareSections struct {
 	MemoryModules bool `json:"memoryModules" yaml:"memoryModules"`
 }
 
+// ThemeColorsByMode holds separate color overrides for light and dark mode
+type ThemeColorsByMode struct {
+	Light *ThemeColors `json:"light,omitempty" yaml:"light,omitempty"`
+	Dark  *ThemeColors `json:"dark,omitempty" yaml:"dark,omitempty"`
+}
+
 // ThemeColors holds optional per-field color overrides for the UI theme
 type ThemeColors struct {
 	BackgroundDefault               *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
@@ -59,7 +65,7 @@ type ThemeColors struct {
 type AppSettings struct {
 	Theme                   Theme                    `json:"theme" yaml:"theme"`
 	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
-	ThemeColors             *ThemeColors             `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
+	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	DashboardOrder          []string                 `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`
