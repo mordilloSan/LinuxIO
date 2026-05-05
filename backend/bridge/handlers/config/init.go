@@ -61,7 +61,7 @@ func Initialize(username string) error {
 		slog.Debug("existing config ready", "user", username, "path", cfgPath)
 		return nil
 	}
-	// Create new with defaults (Docker.Folder = <base>/docker).
+	// Create new with defaults (Docker.Folders = [<base>/docker]).
 	slog.Info("new user detected, generating default config", "user", username)
 	if err := writeConfig(cfgPath, base); err != nil {
 		slog.Error("write default config failed", "path", cfgPath, "error", err)

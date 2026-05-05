@@ -750,7 +750,7 @@ export interface ConfigSettings {
     showHiddenFiles: boolean;
   };
   docker: {
-    folder: string;
+    folders: string[];
   };
 }
 
@@ -881,7 +881,7 @@ export interface LinuxIOSchema {
       args: [projectName: string, deleteFile: string, deleteDirectory: string];
       result: DeleteStackResult;
     };
-    get_docker_folder: { args: []; result: { folder: string } };
+    get_docker_folders: { args: []; result: { folders: string[] } };
     validate_compose: {
       args: [content: string];
       result: {

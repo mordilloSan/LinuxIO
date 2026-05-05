@@ -13,7 +13,7 @@ func DefaultAppSettings() AppSettings {
 // DefaultDocker returns Docker defaults based on the chosen base directory.
 func DefaultDocker(base string) Docker {
 	return Docker{
-		Folder: AbsolutePath(filepathJoinClean(base, "docker")),
+		Folders: []AbsolutePath{AbsolutePath(filepathJoinClean(base, "docker"))},
 	}
 }
 
@@ -148,7 +148,7 @@ func ExampleDefaults() Settings {
 		},
 		Docker: Docker{
 			// Use a neutral path that makes sense in docs. Avoid per-user paths.
-			Folder: "/var/lib/linuxio/docker",
+			Folders: []AbsolutePath{"/var/lib/linuxio/docker"},
 		},
 		Jobs: DefaultJobSettings(),
 	}

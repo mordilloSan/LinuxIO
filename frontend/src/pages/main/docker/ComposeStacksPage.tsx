@@ -533,7 +533,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           open={setupDialogOpen}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
-          defaultWorkingDir={config.dockerFolder}
+          defaultWorkingDir={config.dockerFolders?.[0]}
         />
 
         <ComposeOperationDialog

@@ -65,7 +65,7 @@ type configThemeColorsPayload struct {
 }
 
 type configDockerPayload struct {
-	Folder           *string  `json:"folder"`
+	Folders          []string `json:"folders"`
 	AutoUpdateStacks []string `json:"autoUpdateStacks"`
 }
 
@@ -331,7 +331,7 @@ func applyChunkSizeSetting(app *AppSettings, chunkSize *int) error {
 }
 
 func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) error {
-	if err := applyDockerFolderSetting(docker, payload.Folder); err != nil {
+	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
 	if payload.AutoUpdateStacks != nil {
@@ -340,22 +340,36 @@ func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) err
 	return nil
 }
 
-func applyDockerFolderSetting(docker *Docker, folderValue *string) error {
-	if folderValue == nil {
+func applyDockerFoldersSetting(docker *Docker, folderValues []string) error {
+	if folderValues == nil {
 		return nil
 	}
-	folderInput := strings.TrimSpace(*folderValue)
-	if folderInput == "" {
-		return fmt.Errorf("docker folder cannot be empty")
+	if len(folderValues) == 0 {
+		return fmt.Errorf("docker folders cannot be empty")
 	}
-	folder := filepath.Clean(folderInput)
-	if !filepath.IsAbs(folder) {
-		return fmt.Errorf("docker folder must be an absolute path")
+
+	folders := make([]AbsolutePath, 0, len(folderValues))
+	seen := make(map[string]struct{}, len(folderValues))
+	for _, folderValue := range folderValues {
+		folderInput := strings.TrimSpace(folderValue)
+		if folderInput == "" {
+			return fmt.Errorf("docker folders cannot include an empty path")
+		}
+		folder := filepath.Clean(folderInput)
+		if !filepath.IsAbs(folder) {
+			return fmt.Errorf("docker folder must be an absolute path")
+		}
+		if folder == string(filepath.Separator) {
+			return fmt.Errorf("docker folder cannot be root")
+		}
+		if _, exists := seen[folder]; exists {
+			return fmt.Errorf("docker folders cannot include duplicates")
+		}
+		seen[folder] = struct{}{}
+		folders = append(folders, AbsolutePath(folder))
 	}
-	if folder == string(filepath.Separator) {
-		return fmt.Errorf("docker folder cannot be root")
-	}
-	docker.Folder = AbsolutePath(folder)
+
+	docker.Folders = folders
 	return nil
 }
 

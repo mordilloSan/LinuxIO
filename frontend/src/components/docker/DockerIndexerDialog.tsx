@@ -173,7 +173,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
       case "connecting":
         return "Connecting to indexer...";
       case "indexing":
-        return "Indexing Docker folder...";
+        return "Indexing Docker folders...";
       default:
         return "Processing...";
     }
@@ -226,7 +226,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
       open={open}
       onClose={handleClose}
       onExited={resetState}
-      title="Indexing Docker Folder"
+      title="Indexing Docker Folders"
       isRunning={isRunning}
       success={success}
       error={error}

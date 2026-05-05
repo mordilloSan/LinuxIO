@@ -44,116 +44,119 @@ function ThemeColorsSection() {
     [editMode, config.primaryColor, themeColors],
   );
 
-  const entries: ColorEntry[] = useMemo(() => [
-    {
-      key: "backgroundDefault",
-      label: "Background",
-      description: "Main page background",
-      effectiveColor: editTheme.palette.background.default,
-    },
-    {
-      key: "backgroundPaper",
-      label: "Surface",
-      description: "Dialogs and panels",
-      effectiveColor: editTheme.palette.background.paper,
-    },
-    {
-      key: "headerBackground",
-      label: "Header",
-      description: "Top navigation bar",
-      effectiveColor: editTheme.header.background,
-    },
-    {
-      key: "footerBackground",
-      label: "Footer",
-      description: "Bottom status bar",
-      effectiveColor: editTheme.footer.background,
-    },
-    {
-      key: "sidebarBackground",
-      label: "Sidebar",
-      description: "Navigation sidebar",
-      effectiveColor: editTheme.sidebar.background,
-    },
-    {
-      key: "cardBackground",
-      label: "Card",
-      description: "Frosted glass card tint",
-      effectiveColor: editTheme.card.background,
-    },
-    {
-      key: "dialogBorder",
-      label: "Dialog border",
-      description: "Modal border glow color",
-      effectiveColor: editTheme.dialog.border,
-    },
-    {
-      key: "dialogGlow",
-      label: "Dialog glow",
-      description: "Modal glow highlight color",
-      effectiveColor: editTheme.dialog.glow,
-    },
-    {
-      key: "dialogBackdrop",
-      label: "Dialog backdrop",
-      description: "Modal backdrop tint",
-      effectiveColor: editTheme.dialog.backdrop,
-    },
-    {
-      key: "codeBackground",
-      label: "Code background",
-      description: "Logs, terminal output, and code blocks",
-      effectiveColor: editTheme.codeBlock.background,
-    },
-    {
-      key: "codeText",
-      label: "Code text",
-      description: "Logs, terminal output, and code text",
-      effectiveColor: editTheme.codeBlock.color,
-    },
-    {
-      key: "chartRx",
-      label: "Chart RX",
-      description: "Receive traffic chart color",
-      effectiveColor: editTheme.chart.rx,
-    },
-    {
-      key: "chartTx",
-      label: "Chart TX",
-      description: "Transmit traffic chart color",
-      effectiveColor: editTheme.chart.tx,
-    },
-    {
-      key: "chartNeutral",
-      label: "Chart neutral",
-      description: "Chart gridlines and neutral graph accents",
-      effectiveColor: editTheme.chart.neutral,
-    },
-    {
-      key: "fileBrowserSurface",
-      label: "File surface",
-      description: "File cards and list surfaces",
-      effectiveColor: editTheme.fileBrowser.surface,
-    },
-    {
-      key: "fileBrowserChrome",
-      label: "File chrome",
-      description: "Quick actions and filebrowser chrome",
-      effectiveColor: editTheme.fileBrowser.chrome,
-    },
-    {
-      key: "fileBrowserBreadcrumbBackground",
-      label: "Breadcrumb bg",
-      description: "Filebrowser breadcrumb background",
-      effectiveColor: editTheme.fileBrowser.breadcrumbBackground,
-    },
-    {
-      key: "fileBrowserBreadcrumbText",
-      label: "Breadcrumb text",
-      description: "Filebrowser breadcrumb text",
-      effectiveColor: editTheme.fileBrowser.breadcrumbText,
-    },
-  ], [editTheme]);
+  const entries: ColorEntry[] = useMemo(
+    () => [
+      {
+        key: "backgroundDefault",
+        label: "Background",
+        description: "Main page background",
+        effectiveColor: editTheme.palette.background.default,
+      },
+      {
+        key: "backgroundPaper",
+        label: "Surface",
+        description: "Dialogs and panels",
+        effectiveColor: editTheme.palette.background.paper,
+      },
+      {
+        key: "headerBackground",
+        label: "Header",
+        description: "Top navigation bar",
+        effectiveColor: editTheme.header.background,
+      },
+      {
+        key: "footerBackground",
+        label: "Footer",
+        description: "Bottom status bar",
+        effectiveColor: editTheme.footer.background,
+      },
+      {
+        key: "sidebarBackground",
+        label: "Sidebar",
+        description: "Navigation sidebar",
+        effectiveColor: editTheme.sidebar.background,
+      },
+      {
+        key: "cardBackground",
+        label: "Card",
+        description: "Frosted glass card tint",
+        effectiveColor: editTheme.card.background,
+      },
+      {
+        key: "dialogBorder",
+        label: "Dialog border",
+        description: "Modal border glow color",
+        effectiveColor: editTheme.dialog.border,
+      },
+      {
+        key: "dialogGlow",
+        label: "Dialog glow",
+        description: "Modal glow highlight color",
+        effectiveColor: editTheme.dialog.glow,
+      },
+      {
+        key: "dialogBackdrop",
+        label: "Dialog backdrop",
+        description: "Modal backdrop tint",
+        effectiveColor: editTheme.dialog.backdrop,
+      },
+      {
+        key: "codeBackground",
+        label: "Code background",
+        description: "Logs, terminal output, and code blocks",
+        effectiveColor: editTheme.codeBlock.background,
+      },
+      {
+        key: "codeText",
+        label: "Code text",
+        description: "Logs, terminal output, and code text",
+        effectiveColor: editTheme.codeBlock.color,
+      },
+      {
+        key: "chartRx",
+        label: "Chart RX",
+        description: "Receive traffic chart color",
+        effectiveColor: editTheme.chart.rx,
+      },
+      {
+        key: "chartTx",
+        label: "Chart TX",
+        description: "Transmit traffic chart color",
+        effectiveColor: editTheme.chart.tx,
+      },
+      {
+        key: "chartNeutral",
+        label: "Chart neutral",
+        description: "Chart gridlines and neutral graph accents",
+        effectiveColor: editTheme.chart.neutral,
+      },
+      {
+        key: "fileBrowserSurface",
+        label: "File surface",
+        description: "File cards and list surfaces",
+        effectiveColor: editTheme.fileBrowser.surface,
+      },
+      {
+        key: "fileBrowserChrome",
+        label: "File chrome",
+        description: "Quick actions and filebrowser chrome",
+        effectiveColor: editTheme.fileBrowser.chrome,
+      },
+      {
+        key: "fileBrowserBreadcrumbBackground",
+        label: "Breadcrumb bg",
+        description: "Filebrowser breadcrumb background",
+        effectiveColor: editTheme.fileBrowser.breadcrumbBackground,
+      },
+      {
+        key: "fileBrowserBreadcrumbText",
+        label: "Breadcrumb text",
+        description: "Filebrowser breadcrumb text",
+        effectiveColor: editTheme.fileBrowser.breadcrumbText,
+      },
+    ],
+    [editTheme],
+  );
 
   const handleChange = (key: keyof ThemeColors, value: string) => {
     setThemeColors((prev) => ({

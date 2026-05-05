@@ -56,7 +56,7 @@ export interface BackendSettings {
     chunkSizeMB?: number;
   };
   docker: {
-    folder: string;
+    folders: string[];
   };
   jobs?: JobSettings;
 }
@@ -77,7 +77,7 @@ export interface AppConfig {
   themeColors?: ThemeColorsByMode;
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
-  dockerFolder?: string;
+  dockerFolders?: string[];
   dashboardOrder?: string[];
   hiddenCards?: string[];
   containerOrder?: string[];
