@@ -20,9 +20,11 @@ func (m *mockSender) Send(fields []Field) error {
 func TestHandlerMapsLevelIdentifierAndAppFields(t *testing.T) {
 	sender := &mockSender{}
 	handler, err := NewHandler(Options{
-		Identifier: "linuxio-bridge",
-		Level:      slog.LevelDebug,
-		Sender:     sender,
+		Identifier:     "linuxio-bridge",
+		Level:          slog.LevelDebug,
+		FieldPrefix:    "LINUXIO",
+		SuppressFields: []string{"SESSION_ID"},
+		Sender:         sender,
 	})
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
@@ -46,6 +48,75 @@ func TestHandlerMapsLevelIdentifierAndAppFields(t *testing.T) {
 	}
 	if got["LINUXIO_PRIVILEGED"] != "true" {
 		t.Fatalf("privileged field = %q", got["LINUXIO_PRIVILEGED"])
+	}
+}
+
+func TestHandlerDefaultsToUnprefixedAppFields(t *testing.T) {
+	sender := &mockSender{}
+	handler, err := NewHandler(Options{
+		Identifier: "generic-service",
+		Level:      slog.LevelDebug,
+		Sender:     sender,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+
+	slog.New(handler).Info("request complete", "user", "miguelmariz")
+
+	got := fieldMap(sender.fields)
+	if got["USER"] != "miguelmariz" {
+		t.Fatalf("USER = %q", got["USER"])
+	}
+	if _, ok := got["LINUXIO_USER"]; ok {
+		t.Fatalf("LINUXIO_USER unexpectedly present: %q", got["LINUXIO_USER"])
+	}
+}
+
+func TestHandlerSuppressesFieldsIndependentOfPrefix(t *testing.T) {
+	tests := []struct {
+		name          string
+		fieldPrefix   string
+		suppressedKey string
+		visibleKey    string
+	}{
+		{
+			name:          "unprefixed",
+			suppressedKey: "SESSION_ID",
+			visibleKey:    "USER",
+		},
+		{
+			name:          "prefixed",
+			fieldPrefix:   "LINUXIO",
+			suppressedKey: "LINUXIO_SESSION_ID",
+			visibleKey:    "LINUXIO_USER",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sender := &mockSender{}
+			handler, err := NewHandler(Options{
+				Identifier:     "linuxio-bridge",
+				Level:          slog.LevelDebug,
+				FieldPrefix:    tt.fieldPrefix,
+				SuppressFields: []string{"SESSION_ID"},
+				Sender:         sender,
+			})
+			if err != nil {
+				t.Fatalf("NewHandler: %v", err)
+			}
+
+			slog.New(handler).Info("bridge start timeout", "session_id", "abc", "user", "miguelmariz")
+
+			got := fieldMap(sender.fields)
+			if _, ok := got[tt.suppressedKey]; ok {
+				t.Fatalf("%s unexpectedly present: %q", tt.suppressedKey, got[tt.suppressedKey])
+			}
+			if got[tt.visibleKey] != "miguelmariz" {
+				t.Fatalf("%s = %q", tt.visibleKey, got[tt.visibleKey])
+			}
+		})
 	}
 }
 
@@ -77,9 +148,10 @@ func TestHandlerAddsSourceFields(t *testing.T) {
 func TestHandlerFlattensGroupsAndEncodesComplexValues(t *testing.T) {
 	sender := &mockSender{}
 	handler, err := NewHandler(Options{
-		Identifier: "linuxio-webserver",
-		Level:      slog.LevelDebug,
-		Sender:     sender,
+		Identifier:  "linuxio-webserver",
+		Level:       slog.LevelDebug,
+		FieldPrefix: "LINUXIO",
+		Sender:      sender,
 	})
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
@@ -103,10 +175,11 @@ func TestHandlerFlattensGroupsAndEncodesComplexValues(t *testing.T) {
 func TestHandlerAllowsStandardFieldPassthroughAndLastWriteWins(t *testing.T) {
 	sender := &mockSender{}
 	handler, err := NewHandler(Options{
-		Identifier: "linuxio-auth",
-		Level:      slog.LevelDebug,
-		AddSource:  true,
-		Sender:     sender,
+		Identifier:  "linuxio-auth",
+		Level:       slog.LevelDebug,
+		AddSource:   true,
+		FieldPrefix: "LINUXIO",
+		Sender:      sender,
 	})
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
@@ -132,6 +205,42 @@ func TestHandlerAllowsStandardFieldPassthroughAndLastWriteWins(t *testing.T) {
 	}
 	if got["LINUXIO_USER"] != "second" {
 		t.Fatalf("LINUXIO_USER = %q", got["LINUXIO_USER"])
+	}
+}
+
+func TestHandlerBridgeBootFieldNamesAreUnprefixedAtCallSite(t *testing.T) {
+	sender := &mockSender{}
+	handler, err := NewHandler(Options{
+		Identifier:  "linuxio-bridge",
+		Level:       slog.LevelDebug,
+		FieldPrefix: "LINUXIO",
+		Sender:      sender,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+
+	slog.New(handler).Info("bridge boot",
+		"effective_uid", 0,
+		"uid", 1000,
+		"gid", 1000,
+	)
+
+	got := fieldMap(sender.fields)
+	if got["LINUXIO_EFFECTIVE_UID"] != "0" {
+		t.Fatalf("LINUXIO_EFFECTIVE_UID = %q", got["LINUXIO_EFFECTIVE_UID"])
+	}
+	if got["LINUXIO_UID"] != "1000" {
+		t.Fatalf("LINUXIO_UID = %q", got["LINUXIO_UID"])
+	}
+	if got["LINUXIO_GID"] != "1000" {
+		t.Fatalf("LINUXIO_GID = %q", got["LINUXIO_GID"])
+	}
+	if _, ok := got["LINUXIO_LINUXIO_UID"]; ok {
+		t.Fatalf("LINUXIO_LINUXIO_UID unexpectedly present: %q", got["LINUXIO_LINUXIO_UID"])
+	}
+	if _, ok := got["LINUXIO_LINUXIO_GID"]; ok {
+		t.Fatalf("LINUXIO_LINUXIO_GID unexpectedly present: %q", got["LINUXIO_LINUXIO_GID"])
 	}
 }
 

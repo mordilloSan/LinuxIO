@@ -15,9 +15,11 @@ func Configure(identifier string, verbose bool) error {
 	}
 
 	handler, err := journald.NewHandler(journald.Options{
-		Identifier: identifier,
-		Level:      level,
-		AddSource:  true,
+		Identifier:     identifier,
+		Level:          level,
+		AddSource:      true,
+		FieldPrefix:    "LINUXIO",
+		SuppressFields: []string{"SESSION_ID"},
 	})
 	if err != nil {
 		return err

@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 var standardPassthroughFields = map[string]struct{}{
@@ -28,27 +26,28 @@ var standardPassthroughFields = map[string]struct{}{
 
 var normalizedFieldComponentCache sync.Map
 
-var suppressedLinuxIOFields = map[string]struct{}{
-	ipc.JournalFieldSessionID: {},
-}
-
 // Options configures the native journald slog handler.
 type Options struct {
-	Identifier string
-	Level      slog.Leveler
-	AddSource  bool
-	Sender     Sender
+	Identifier     string
+	Level          slog.Leveler
+	AddSource      bool
+	Sender         Sender
+	FieldPrefix    string
+	SuppressFields []string
 }
 
 // Handler writes slog records to the native journald socket.
 type Handler struct {
-	identifier string
-	level      slog.Leveler
-	addSource  bool
-	sender     Sender
-	attrs      []slog.Attr
-	groups     []string
-	statePool  *sync.Pool
+	identifier     string
+	level          slog.Leveler
+	addSource      bool
+	sender         Sender
+	fieldPrefix    string
+	suppressFields map[string]struct{}
+	fieldNameCache *sync.Map
+	attrs          []slog.Attr
+	groups         []string
+	statePool      *sync.Pool
 }
 
 type handlerState struct {
@@ -77,6 +76,14 @@ func NewHandler(opts Options) (*Handler, error) {
 		}
 	}
 
+	fieldPrefix := normalizeFieldComponent(opts.FieldPrefix)
+	suppressFields := make(map[string]struct{}, len(opts.SuppressFields))
+	for _, field := range opts.SuppressFields {
+		if normalized := normalizeFieldComponent(field); normalized != "" {
+			suppressFields[normalized] = struct{}{}
+		}
+	}
+
 	statePool := &sync.Pool{
 		New: func() any {
 			return &handlerState{
@@ -88,11 +95,14 @@ func NewHandler(opts Options) (*Handler, error) {
 	}
 
 	return &Handler{
-		identifier: opts.Identifier,
-		level:      level,
-		addSource:  opts.AddSource,
-		sender:     sender,
-		statePool:  statePool,
+		identifier:     opts.Identifier,
+		level:          level,
+		addSource:      opts.AddSource,
+		sender:         sender,
+		fieldPrefix:    fieldPrefix,
+		suppressFields: suppressFields,
+		fieldNameCache: &sync.Map{},
+		statePool:      statePool,
 	}, nil
 }
 
@@ -113,11 +123,11 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 	}
 
 	for _, attr := range h.attrs {
-		addAttr(state, state.groups, attr)
+		h.addAttr(state, state.groups, attr)
 	}
 
 	record.Attrs(func(attr slog.Attr) bool {
-		addAttr(state, state.groups, attr)
+		h.addAttr(state, state.groups, attr)
 		return true
 	})
 
@@ -192,7 +202,7 @@ func addSourceFields(state *handlerState, pc uintptr) {
 	}
 }
 
-func addAttr(state *handlerState, groups []string, attr slog.Attr) {
+func (h *Handler) addAttr(state *handlerState, groups []string, attr slog.Attr) {
 	attr.Value = attr.Value.Resolve()
 	if attr.Equal(slog.Attr{}) {
 		return
@@ -204,12 +214,12 @@ func addAttr(state *handlerState, groups []string, attr slog.Attr) {
 			nextGroups = append(nextGroups, attr.Key)
 		}
 		for _, child := range attr.Value.Group() {
-			addAttr(state, nextGroups, child)
+			h.addAttr(state, nextGroups, child)
 		}
 		return
 	}
 
-	fieldName := fieldNameForAttr(groups, attr.Key)
+	fieldName := h.fieldNameForAttr(groups, attr.Key)
 	if fieldName == "" {
 		return
 	}
@@ -221,7 +231,11 @@ func addAttr(state *handlerState, groups []string, attr slog.Attr) {
 	state.set(fieldName, fieldValue)
 }
 
-func fieldNameForAttr(groups []string, key string) string {
+func (h *Handler) fieldNameForAttr(groups []string, key string) string {
+	if len(groups) == 0 {
+		return h.ungroupedFieldName(key)
+	}
+
 	var builder strings.Builder
 	hasPart := false
 	appendPart := func(part string) {
@@ -243,21 +257,38 @@ func fieldNameForAttr(groups []string, key string) string {
 		return ""
 	}
 
-	name := builder.String()
+	return h.finalFieldName(builder.String())
+}
+
+func (h *Handler) ungroupedFieldName(key string) string {
+	if cached, ok := h.fieldNameCache.Load(key); ok {
+		if name, ok := cached.(string); ok {
+			return name
+		}
+	}
+
+	name := h.finalFieldName(normalizeFieldComponent(key))
+	actual, _ := h.fieldNameCache.LoadOrStore(key, name)
+	if cachedName, ok := actual.(string); ok {
+		return cachedName
+	}
+	return name
+}
+
+func (h *Handler) finalFieldName(name string) string {
+	if name == "" {
+		return ""
+	}
+	if _, ok := h.suppressFields[name]; ok {
+		return ""
+	}
 	if _, ok := standardPassthroughFields[name]; ok {
 		return name
 	}
-	if strings.HasPrefix(name, "LINUXIO_") {
-		if _, ok := suppressedLinuxIOFields[name]; ok {
-			return ""
-		}
+	if h.fieldPrefix == "" {
 		return name
 	}
-	name = "LINUXIO_" + name
-	if _, ok := suppressedLinuxIOFields[name]; ok {
-		return ""
-	}
-	return name
+	return h.fieldPrefix + "_" + name
 }
 
 func normalizeFieldComponent(component string) string {
