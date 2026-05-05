@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import "./capability-manager-section.css";
 
 import type { CapabilitiesResponse } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -317,7 +318,11 @@ const CapabilityManagerSection: React.FC = () => {
         {rows.map((row) => {
           const status = STATUS_DETAILS[row.status];
           return (
-            <section className="capability-manager__row" key={row.authKey}>
+            <FrostedCard
+              key={row.authKey}
+              className="capability-manager__row"
+              hoverLift
+            >
               <div className="capability-manager__icon">
                 <Icon icon={row.icon} width={22} height={22} />
               </div>
@@ -349,7 +354,7 @@ const CapabilityManagerSection: React.FC = () => {
                   <span>{row.detail}</span>
                 </div>
               </div>
-            </section>
+            </FrostedCard>
           );
         })}
       </div>

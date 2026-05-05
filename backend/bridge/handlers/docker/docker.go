@@ -97,7 +97,6 @@ func releaseClient(_ *client.Client) {
 func CheckDockerAvailability() (bool, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		slog.Info("docker service not available")
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
 	defer cli.Close()
@@ -105,9 +104,7 @@ func CheckDockerAvailability() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if _, err := cli.Ping(ctx); err != nil {
-		slog.Info("docker service not available")
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
-	slog.Info("docker service available")
 	return true, nil
 }

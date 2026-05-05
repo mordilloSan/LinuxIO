@@ -23,8 +23,6 @@
   min-width: 0;
   margin: 0;
   padding: 12px;
-  border: 1px solid var(--app-palette-divider);
-  border-radius: 8px;
 }
 
 .capability-manager__icon {
