@@ -266,6 +266,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      - name: Regenerate config_generated.yaml on main
+        if: success()
+        run: |
+          git checkout main
+          cd backend
+          go generate ./bridge/handlers/config/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet bridge/handlers/config/config_generated.yaml; then
+            git add bridge/handlers/config/config_generated.yaml
+            git commit -m "chore: regenerate config for ${{ steps.tag.outputs.tag }} [skip ci]"
+            git push origin main
+          fi
+
       - name: Refresh Go Report Card
         if: success()
         run: |
