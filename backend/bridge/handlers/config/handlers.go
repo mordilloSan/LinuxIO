@@ -33,17 +33,30 @@ type configAppSettingsPayload struct {
 	HiddenCards             []string                  `json:"hiddenCards"`
 	ContainerOrder          []string                  `json:"containerOrder"`
 	DockerDashboardSections *DockerDashboardSections  `json:"dockerDashboardSections"`
+	HardwareSections        *HardwareSections         `json:"hardwareSections"`
 	ViewModes               map[string]string         `json:"viewModes"`
 	ChunkSizeMB             *int                      `json:"chunkSizeMB"`
 }
 
 type configThemeColorsPayload struct {
-	BackgroundDefault *string `json:"backgroundDefault"`
-	BackgroundPaper   *string `json:"backgroundPaper"`
-	HeaderBackground  *string `json:"headerBackground"`
-	FooterBackground  *string `json:"footerBackground"`
-	SidebarBackground *string `json:"sidebarBackground"`
-	CardBackground    *string `json:"cardBackground"`
+	BackgroundDefault               *string `json:"backgroundDefault"`
+	BackgroundPaper                 *string `json:"backgroundPaper"`
+	HeaderBackground                *string `json:"headerBackground"`
+	FooterBackground                *string `json:"footerBackground"`
+	SidebarBackground               *string `json:"sidebarBackground"`
+	CardBackground                  *string `json:"cardBackground"`
+	DialogBorder                    *string `json:"dialogBorder"`
+	DialogGlow                      *string `json:"dialogGlow"`
+	DialogBackdrop                  *string `json:"dialogBackdrop"`
+	CodeBackground                  *string `json:"codeBackground"`
+	CodeText                        *string `json:"codeText"`
+	ChartRx                         *string `json:"chartRx"`
+	ChartTx                         *string `json:"chartTx"`
+	ChartNeutral                    *string `json:"chartNeutral"`
+	FileBrowserSurface              *string `json:"fileBrowserSurface"`
+	FileBrowserChrome               *string `json:"fileBrowserChrome"`
+	FileBrowserBreadcrumbBackground *string `json:"fileBrowserBreadcrumbBackground"`
+	FileBrowserBreadcrumbText       *string `json:"fileBrowserBreadcrumbText"`
 }
 
 type configDockerPayload struct {
@@ -162,6 +175,7 @@ func applyAppSettingsUpdate(app *AppSettings, payload *configAppSettingsPayload)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
 	applyOptionalStringSlice(&app.ContainerOrder, payload.ContainerOrder)
 	applyOptionalDockerDashboardSections(app, payload.DockerDashboardSections)
+	applyOptionalHardwareSections(app, payload.HardwareSections)
 	applyViewModes(app, payload.ViewModes)
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
@@ -205,6 +219,18 @@ func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsPayloa
 		{src: payload.FooterBackground, dst: &colors.FooterBackground, key: "footerBackground"},
 		{src: payload.SidebarBackground, dst: &colors.SidebarBackground, key: "sidebarBackground"},
 		{src: payload.CardBackground, dst: &colors.CardBackground, key: "cardBackground"},
+		{src: payload.DialogBorder, dst: &colors.DialogBorder, key: "dialogBorder"},
+		{src: payload.DialogGlow, dst: &colors.DialogGlow, key: "dialogGlow"},
+		{src: payload.DialogBackdrop, dst: &colors.DialogBackdrop, key: "dialogBackdrop"},
+		{src: payload.CodeBackground, dst: &colors.CodeBackground, key: "codeBackground"},
+		{src: payload.CodeText, dst: &colors.CodeText, key: "codeText"},
+		{src: payload.ChartRx, dst: &colors.ChartRx, key: "chartRx"},
+		{src: payload.ChartTx, dst: &colors.ChartTx, key: "chartTx"},
+		{src: payload.ChartNeutral, dst: &colors.ChartNeutral, key: "chartNeutral"},
+		{src: payload.FileBrowserSurface, dst: &colors.FileBrowserSurface, key: "fileBrowserSurface"},
+		{src: payload.FileBrowserChrome, dst: &colors.FileBrowserChrome, key: "fileBrowserChrome"},
+		{src: payload.FileBrowserBreadcrumbBackground, dst: &colors.FileBrowserBreadcrumbBackground, key: "fileBrowserBreadcrumbBackground"},
+		{src: payload.FileBrowserBreadcrumbText, dst: &colors.FileBrowserBreadcrumbText, key: "fileBrowserBreadcrumbText"},
 	}
 	for _, field := range fields {
 		if field.src == nil {
@@ -235,6 +261,12 @@ func applyOptionalStringSlice(dst *[]string, value []string) {
 func applyOptionalDockerDashboardSections(app *AppSettings, sections *DockerDashboardSections) {
 	if sections != nil {
 		app.DockerDashboardSections = sections
+	}
+}
+
+func applyOptionalHardwareSections(app *AppSettings, sections *HardwareSections) {
+	if sections != nil {
+		app.HardwareSections = sections
 	}
 }
 
