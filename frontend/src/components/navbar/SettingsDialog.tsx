@@ -39,7 +39,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
     <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <AppDialogTitle
         style={{
-          backgroundColor: theme.palette.background.paper,
           paddingTop: 6,
           paddingBottom: 6,
           paddingLeft: 8,
@@ -68,8 +67,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
       <div
         style={{
-          paddingLeft: 8,
-          paddingRight: 8,
+          paddingLeft: 0,
+          paddingRight: 0,
         }}
       >
         <TabSelector
