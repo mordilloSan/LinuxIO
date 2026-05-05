@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import "./power-settings.css";
 
 import { linuxio, type PowerStatus } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -210,48 +211,60 @@ const PowerSettingsSection: React.FC = () => {
         </AppAlert>
       ) : null}
 
-      <section className="power-settings__section">
-        <div className="power-settings__section-header">
-          <div className="power-settings__status-left">
-            <h3 className="power-settings__section-title">Status</h3>
-            <StatusBadge status={status} />
+      <FrostedCard className="power-settings__card">
+        <div className="power-settings__card-header">
+          <div className="power-settings__card-title">
+            <div className="power-settings__card-icon">
+              <Icon icon="mdi:tune-variant" width={22} height={22} />
+            </div>
+            <div className="power-settings__title-block">
+              <AppTypography variant="body2" fontWeight={600} component="h3">
+                TuneD Status
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary">
+                System power tuning service.
+              </AppTypography>
+            </div>
           </div>
-          <AppTooltip
-            title={
-              !status.tuned_available
-                ? ""
-                : status.tuned_active
-                  ? "Turn Off"
-                  : status.tuned_startable
-                    ? "Start TuneD"
-                    : "TuneD cannot be started automatically"
-            }
-          >
-            <AppIconButton
-              style={{
-                color: status.tuned_active
-                  ? "var(--app-palette-success-main)"
-                  : status.tuned_available && status.tuned_startable
-                    ? "var(--app-palette-error-main)"
-                    : "var(--app-palette-text-disabled)",
-              }}
-              disabled={
-                busy ||
-                !status.tuned_available ||
-                (!status.tuned_active && !status.tuned_startable)
-              }
-              aria-label={
-                status.tuned_active ? "Turn Off TuneD" : "Start TuneD"
-              }
-              onClick={() =>
-                status.tuned_active
-                  ? disableMutation.mutate([])
-                  : startMutation.mutate([])
+          <div className="power-settings__card-actions">
+            <StatusBadge status={status} />
+            <AppTooltip
+              title={
+                !status.tuned_available
+                  ? ""
+                  : status.tuned_active
+                    ? "Turn Off"
+                    : status.tuned_startable
+                      ? "Start TuneD"
+                      : "TuneD cannot be started automatically"
               }
             >
-              <Icon icon="mdi:power" width={22} height={22} />
-            </AppIconButton>
-          </AppTooltip>
+              <AppIconButton
+                style={{
+                  color: status.tuned_active
+                    ? "var(--app-palette-success-main)"
+                    : status.tuned_available && status.tuned_startable
+                      ? "var(--app-palette-error-main)"
+                      : "var(--app-palette-text-disabled)",
+                }}
+                disabled={
+                  busy ||
+                  !status.tuned_available ||
+                  (!status.tuned_active && !status.tuned_startable)
+                }
+                aria-label={
+                  status.tuned_active ? "Turn Off TuneD" : "Start TuneD"
+                }
+                onClick={() =>
+                  status.tuned_active
+                    ? disableMutation.mutate([])
+                    : startMutation.mutate([])
+                }
+              >
+                <Icon icon="mdi:power" width={22} height={22} />
+              </AppIconButton>
+            </AppTooltip>
+          </div>
         </div>
         <div className="power-settings__metrics">
           <InfoMetric
@@ -272,11 +285,23 @@ const PowerSettingsSection: React.FC = () => {
           />
           <InfoMetric label="Profiles" value={String(status.profiles.length)} />
         </div>
-      </section>
+      </FrostedCard>
 
-      <section className="power-settings__section">
-        <div className="power-settings__section-header">
-          <h3 className="power-settings__section-title">Profile</h3>
+      <FrostedCard className="power-settings__card">
+        <div className="power-settings__card-header">
+          <div className="power-settings__card-title">
+            <div className="power-settings__card-icon">
+              <Icon icon="mdi:speedometer" width={22} height={22} />
+            </div>
+            <div className="power-settings__title-block">
+              <AppTypography variant="body2" fontWeight={600} component="h3">
+                Profile
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary">
+                Available TuneD profiles.
+              </AppTypography>
+            </div>
+          </div>
         </div>
         <div className="power-settings__profile-control">
           <span className="power-settings__label power-settings__label--span">
@@ -319,7 +344,7 @@ const PowerSettingsSection: React.FC = () => {
         ) : !selectedProfileDetails ? (
           <p className="power-settings__muted">No TuneD profiles reported.</p>
         ) : null}
-      </section>
+      </FrostedCard>
     </div>
   );
 };

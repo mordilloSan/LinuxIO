@@ -13,8 +13,9 @@ import "./capability-manager-section.css";
 import type { CapabilitiesResponse } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import {
@@ -289,22 +290,24 @@ const CapabilityManagerSection: React.FC = () => {
             Last check: {formatLastChecked(lastChecked)}
           </AppTypography>
         </div>
-        <AppButton
-          size="small"
-          variant="outlined"
-          startIcon={
+        <AppTooltip title={isRefreshing ? "Checking" : "Refresh"}>
+          <AppIconButton
+            size="small"
+            color="default"
+            disabled={isRefreshing}
+            onClick={() => void handleRefresh()}
+            aria-label={
+              isRefreshing ? "Checking capabilities" : "Refresh capabilities"
+            }
+          >
             <Icon
               icon={isRefreshing ? "mdi:loading" : "mdi:refresh"}
-              width={16}
-              height={16}
+              width={18}
+              height={18}
               className={isRefreshing ? "capability-manager__spin" : undefined}
             />
-          }
-          disabled={isRefreshing}
-          onClick={() => void handleRefresh()}
-        >
-          {isRefreshing ? "Checking" : "Refresh"}
-        </AppButton>
+          </AppIconButton>
+        </AppTooltip>
       </div>
 
       {errorText ? (
