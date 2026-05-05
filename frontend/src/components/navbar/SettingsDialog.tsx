@@ -14,7 +14,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab = "general" | "docker" | "power";
+type SettingsTab = "general" | "theme" | "docker" | "power";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
@@ -28,6 +28,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
     !privileged && activeTab === "power" ? "general" : activeTab;
   const tabs = [
     { value: "general", label: "General" },
+    { value: "theme", label: "Theme" },
     { value: "docker", label: "Docker" },
     ...(privileged ? [{ value: "power", label: "Power" }] : []),
   ];
@@ -99,10 +100,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               gap: theme.spacing(2),
             }}
           >
-            <AppTypography variant="body1" fontWeight={600}>
-              Appearance
-            </AppTypography>
-
             <div
               style={{
                 display: "flex",
@@ -123,10 +120,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               </div>
               <NavbarCustomizer />
             </div>
-
-            <ThemeColorsSection />
           </div>
         ) : null}
+        {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
         {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
         {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>

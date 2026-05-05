@@ -1,8 +1,64 @@
 appSettings:
   theme: DARK
   primaryColor: "#2196f3"
+  themeColors:
+    backgroundDefault: "#1B2635"
+    backgroundPaper: "#233044"
+    headerBackground: "#1B2635"
+    footerBackground: "#1B2635"
+    sidebarBackground: "#1B2635"
+    cardBackground: "#11192A"
+    dialogBorder: "#FFFFFF"
+    dialogGlow: "#FFFFFF"
+    dialogBackdrop: "#000000"
+    codeBackground: "#1E1E1E"
+    codeText: "#D4D4D4"
+    chartRx: "#8884D8"
+    chartTx: "#82CA9D"
+    chartNeutral: "#808080"
+    fileBrowserSurface: "#20292F"
+    fileBrowserChrome: "#253137"
+    fileBrowserBreadcrumbBackground: "#283136"
+    fileBrowserBreadcrumbText: "#FFFFFF"
   sidebarCollapsed: false
-  showHiddenFiles: false
+  showHiddenFiles: true
+  dashboardOrder:
+  - overview
+  - system
+  - cpu
+  - memory
+  - docker
+  - nic
+  - fs
+  - mb
+  - gpu
+  - drive
+  dockerDashboardSections:
+    overview: true
+    daemon: true
+    resources: true
+  hardwareSections:
+    overview: true
+    hardware: true
+    sensors: true
+    systemInfo: true
+    gpu: true
+    pciDevices: true
+    memoryModules: true
+  viewModes:
+    accounts.groups: card
+    accounts.users: card
+    docker.containers: card
+    docker.images: card
+    docker.networks: card
+    docker.stacks: card
+    docker.volumes: card
+    services.list: card
+    shares: card
+    shares.mounts: card
+    sockets.list: card
+    timers.list: card
+  chunkSizeMB: 1
 docker:
   folder: /var/lib/linuxio/docker
 jobs:

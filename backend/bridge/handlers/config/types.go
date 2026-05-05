@@ -15,21 +15,44 @@ type Settings struct {
 	Jobs        JobSettings `json:"jobs" yaml:"jobs"`
 }
 
-// DockerDashboardSections holds the collapsed state of each dashboard section
+// DockerDashboardSections holds the collapsed state of each Docker dashboard section
 type DockerDashboardSections struct {
 	Overview  bool `json:"overview" yaml:"overview"`
 	Daemon    bool `json:"daemon" yaml:"daemon"`
 	Resources bool `json:"resources" yaml:"resources"`
 }
 
+// HardwareSections holds the visibility state of each hardware dashboard section
+type HardwareSections struct {
+	Overview      bool `json:"overview" yaml:"overview"`
+	Hardware      bool `json:"hardware" yaml:"hardware"`
+	Sensors       bool `json:"sensors" yaml:"sensors"`
+	SystemInfo    bool `json:"systemInfo" yaml:"systemInfo"`
+	GPU           bool `json:"gpu" yaml:"gpu"`
+	PCIDevices    bool `json:"pciDevices" yaml:"pciDevices"`
+	MemoryModules bool `json:"memoryModules" yaml:"memoryModules"`
+}
+
 // ThemeColors holds optional per-field color overrides for the UI theme
 type ThemeColors struct {
-	BackgroundDefault *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
-	BackgroundPaper   *CSSColor `json:"backgroundPaper,omitempty" yaml:"backgroundPaper,omitempty"`
-	HeaderBackground  *CSSColor `json:"headerBackground,omitempty" yaml:"headerBackground,omitempty"`
-	FooterBackground  *CSSColor `json:"footerBackground,omitempty" yaml:"footerBackground,omitempty"`
-	SidebarBackground *CSSColor `json:"sidebarBackground,omitempty" yaml:"sidebarBackground,omitempty"`
-	CardBackground    *CSSColor `json:"cardBackground,omitempty" yaml:"cardBackground,omitempty"`
+	BackgroundDefault              *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
+	BackgroundPaper                *CSSColor `json:"backgroundPaper,omitempty" yaml:"backgroundPaper,omitempty"`
+	HeaderBackground               *CSSColor `json:"headerBackground,omitempty" yaml:"headerBackground,omitempty"`
+	FooterBackground               *CSSColor `json:"footerBackground,omitempty" yaml:"footerBackground,omitempty"`
+	SidebarBackground              *CSSColor `json:"sidebarBackground,omitempty" yaml:"sidebarBackground,omitempty"`
+	CardBackground                 *CSSColor `json:"cardBackground,omitempty" yaml:"cardBackground,omitempty"`
+	DialogBorder                   *CSSColor `json:"dialogBorder,omitempty" yaml:"dialogBorder,omitempty"`
+	DialogGlow                     *CSSColor `json:"dialogGlow,omitempty" yaml:"dialogGlow,omitempty"`
+	DialogBackdrop                 *CSSColor `json:"dialogBackdrop,omitempty" yaml:"dialogBackdrop,omitempty"`
+	CodeBackground                 *CSSColor `json:"codeBackground,omitempty" yaml:"codeBackground,omitempty"`
+	CodeText                       *CSSColor `json:"codeText,omitempty" yaml:"codeText,omitempty"`
+	ChartRx                        *CSSColor `json:"chartRx,omitempty" yaml:"chartRx,omitempty"`
+	ChartTx                        *CSSColor `json:"chartTx,omitempty" yaml:"chartTx,omitempty"`
+	ChartNeutral                   *CSSColor `json:"chartNeutral,omitempty" yaml:"chartNeutral,omitempty"`
+	FileBrowserSurface             *CSSColor `json:"fileBrowserSurface,omitempty" yaml:"fileBrowserSurface,omitempty"`
+	FileBrowserChrome              *CSSColor `json:"fileBrowserChrome,omitempty" yaml:"fileBrowserChrome,omitempty"`
+	FileBrowserBreadcrumbBackground *CSSColor `json:"fileBrowserBreadcrumbBackground,omitempty" yaml:"fileBrowserBreadcrumbBackground,omitempty"`
+	FileBrowserBreadcrumbText      *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
 }
 
 // AppSettings holds UI-related settings
@@ -43,6 +66,7 @@ type AppSettings struct {
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 	ContainerOrder          []string                 `json:"containerOrder,omitempty" yaml:"containerOrder,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
+	HardwareSections        *HardwareSections        `json:"hardwareSections,omitempty" yaml:"hardwareSections,omitempty"`
 	ViewModes               map[string]string        `json:"viewModes,omitempty" yaml:"viewModes,omitempty"`
 	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB,omitempty" yaml:"chunkSizeMB,omitempty"`

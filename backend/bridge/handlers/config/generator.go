@@ -9,7 +9,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	config "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
 
 func main() {

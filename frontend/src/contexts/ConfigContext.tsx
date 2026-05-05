@@ -115,7 +115,7 @@ const defaultConfig: AppConfig = {
   primaryColor: "#2196f3",
   themeColors: undefined,
   sidebarCollapsed: false,
-  showHiddenFiles: false,
+  showHiddenFiles: true,
   dockerFolder: undefined,
   dashboardOrder: undefined,
   hiddenCards: undefined,
