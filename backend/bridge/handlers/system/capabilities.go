@@ -52,39 +52,64 @@ func checkedCapability(check func() (bool, error), unavailable error) (bool, str
 	return ok, ""
 }
 
-func loggedCapability(name string, check func() (bool, error), unavailable error) (bool, string) {
-	ok, message := checkedCapability(check, unavailable)
-	if ok {
-		slog.Info(name + " available")
-		return ok, message
-	}
-	if message != "" {
-		slog.Info(name+" unavailable", "error", message)
-	} else {
-		slog.Info(name + " unavailable")
-	}
-	return ok, message
-}
-
 func dependencyCommandCheck(command, dependencyName string) func() (bool, error) {
 	return func() (bool, error) {
 		return checkDependencyCommand(command, dependencyName)
 	}
 }
 
+func capabilityStatus(ok bool) string {
+	if ok {
+		return "ok"
+	}
+	return "missing"
+}
+
+func logUnavailableCapability(name, message string) {
+	if message == "" {
+		return
+	}
+	slog.Info(name+" unavailable.", "error", message)
+}
+
+func logCapabilitiesSummary(out capabilitiesResponse) {
+	slog.Info(fmt.Sprintf(
+		"Capabilities: docker=%s indexer=%s sensors=%s smart=%s packagekit=%s nfs-client=%s nfs-server=%s tuned=%s.",
+		capabilityStatus(out.DockerAvailable),
+		capabilityStatus(out.IndexerAvailable),
+		capabilityStatus(out.LMSensorsAvailable),
+		capabilityStatus(out.SmartmontoolsAvailable),
+		capabilityStatus(out.PackageKitAvailable),
+		capabilityStatus(out.NFSClientAvailable),
+		capabilityStatus(out.NFSServerAvailable),
+		capabilityStatus(out.TunedAvailable),
+	))
+
+	logUnavailableCapability("Docker service", out.DockerError)
+	logUnavailableCapability("Indexer service", out.IndexerError)
+	logUnavailableCapability("lm-sensors", out.LMSensorsError)
+	logUnavailableCapability("smartmontools", out.SmartmontoolsError)
+	logUnavailableCapability("PackageKit", out.PackageKitError)
+	logUnavailableCapability("NFS client", out.NFSClientError)
+	logUnavailableCapability("NFS server", out.NFSServerError)
+	logUnavailableCapability("TuneD", out.TunedError)
+}
+
 func buildCapabilitiesResponse() capabilitiesResponse {
-	slog.Info("checking system capabilities")
+	slog.Info("Checking system capabilities.")
 
 	var out capabilitiesResponse
 
-	out.DockerAvailable, out.DockerError = loggedCapability("docker service", docker.CheckDockerAvailability, nil)
-	out.IndexerAvailable, out.IndexerError = loggedCapability("indexer service", filebrowser.CheckIndexerAvailability, nil)
-	out.LMSensorsAvailable, out.LMSensorsError = loggedCapability("lm-sensors", dependencyCommandCheck("sensors", "lm-sensors"), nil)
-	out.SmartmontoolsAvailable, out.SmartmontoolsError = loggedCapability("smartmontools", dependencyCommandCheck("smartctl", "smartmontools"), nil)
-	out.PackageKitAvailable, out.PackageKitError = loggedCapability("PackageKit", pkgkit.Available, pkgkit.ErrUnavailable)
-	out.NFSClientAvailable, out.NFSClientError = loggedCapability("NFS client", storage.CheckNFSClientAvailability, nil)
-	out.NFSServerAvailable, out.NFSServerError = loggedCapability("NFS server", nfsshares.CheckNFSServerAvailability, nil)
-	out.TunedAvailable, out.TunedError = loggedCapability("TuneD", power.Available, power.ErrUnavailable)
+	out.DockerAvailable, out.DockerError = checkedCapability(docker.CheckDockerAvailability, nil)
+	out.IndexerAvailable, out.IndexerError = checkedCapability(filebrowser.CheckIndexerAvailability, nil)
+	out.LMSensorsAvailable, out.LMSensorsError = checkedCapability(dependencyCommandCheck("sensors", "lm-sensors"), nil)
+	out.SmartmontoolsAvailable, out.SmartmontoolsError = checkedCapability(dependencyCommandCheck("smartctl", "smartmontools"), nil)
+	out.PackageKitAvailable, out.PackageKitError = checkedCapability(pkgkit.Available, pkgkit.ErrUnavailable)
+	out.NFSClientAvailable, out.NFSClientError = checkedCapability(storage.CheckNFSClientAvailability, nil)
+	out.NFSServerAvailable, out.NFSServerError = checkedCapability(nfsshares.CheckNFSServerAvailability, nil)
+	out.TunedAvailable, out.TunedError = checkedCapability(power.Available, power.ErrUnavailable)
+
+	logCapabilitiesSummary(out)
 
 	return out
 }

@@ -89,7 +89,7 @@ func TestFormatJournalEntryUsesSyslogIdentifier(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := "linuxio-bridge[4321]:"; !containsSubstring(got, want) {
+	if want := "2023/11/14 22:13:20 \033[32m[INFO]\033[0m bridge bridge started"; !containsSubstring(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }
@@ -99,33 +99,43 @@ func TestFormatJournalEntryPrefersSyslogIdentifierOverUnit(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := "linuxio-bridge[4321]:"; !containsSubstring(got, want) {
+	if want := "\033[32m[INFO]\033[0m bridge bridge started"; !containsSubstring(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
-	if containsSubstring(got, "linuxio-auth[4321]:") {
+	if containsSubstring(got, "\033[32m[INFO]\033[0m auth bridge started") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly used systemd unit", got)
 	}
 }
 
 func TestFormatJournalEntryIncludesLinuxIOFields(t *testing.T) {
-	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-webserver","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"auth daemon: bridge spawned","LINUXIO_USER":"miguelmariz","LINUXIO_PRIVILEGED":"true"}`)
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-webserver","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"auth daemon: bridge spawned","LINUXIO_USER":"miguelmariz","LINUXIO_PRIVILEGED":"true","LINUXIO_VERBOSE":"false"}`)
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := "auth daemon: bridge spawned privileged=true user=miguelmariz"; !containsSubstring(got, want) {
+	if want := "auth daemon: bridge spawned [privileged=true user=miguelmariz verbose=false]"; !containsSubstring(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	}
+}
+
+func TestFormatJournalEntryIncludesErrorField(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"NFS server unavailable","LINUXIO_ERROR":"exportfs not found (install nfs-kernel-server or nfs-utils)"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	if want := `NFS server unavailable [error="exportfs not found (install nfs-kernel-server or nfs-utils)"]`; !containsSubstring(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }
 
 func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
-	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-auth","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"bridge exec failed","LINUXIO_ERROR":"permission denied","LINUXIO_SESSION_ID":"abc123","LINUXIO_COMPONENT":"auth"}`)
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-auth","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"bridge exec failed","LINUXIO_SESSION_ID":"abc123","LINUXIO_COMPONENT":"auth"}`)
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
 	if !containsSubstring(got, "bridge exec failed") {
 		t.Fatalf("formatJournalEntry() = %q, want message preserved", got)
 	}
-	if containsSubstring(got, "permission denied") || containsSubstring(got, "abc123") || containsSubstring(got, "component=") {
+	if containsSubstring(got, "abc123") || containsSubstring(got, "component=") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly included hidden fields", got)
 	}
 }
