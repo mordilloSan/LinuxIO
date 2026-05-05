@@ -230,8 +230,8 @@ func runInstallScript(ver string, relay io.Writer) error {
 	slog.Info("checksum verified successfully")
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
-	if err := ensureUpdaterWritablePathDirs(); err != nil {
-		return err
+	if tempUnitTestErr := ensureUpdaterWritablePathDirs(); tempUnitTestErr != nil {
+		return tempUnitTestErr
 	}
 
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
