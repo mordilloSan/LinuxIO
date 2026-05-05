@@ -9,6 +9,7 @@ import ThemeColorsSection from "./ThemeColorsSection";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
@@ -53,7 +54,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             position: "relative",
           }}
         >
-          <AppTypography variant="h5">Settings</AppTypography>
+          <AppTypography variant="h3" style={{ marginTop: 8 }}>Settings</AppTypography>
           <AppIconButton
             size="small"
             onClick={handleClose}
@@ -77,6 +78,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           options={tabs}
           style={{ marginBottom: 0 }}
         />
+        <AppDivider style={{ marginLeft: 12, marginRight: 12 }} />
       </div>
 
       <AppDialogContent
