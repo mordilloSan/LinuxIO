@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -143,14 +144,50 @@ const getPriorityIcon = (priority: LogPriority) => {
   }
 };
 
+const resolveUnitTarget = (
+  log: LogEntry,
+): { section: string; param: string; unit: string } | null => {
+  const raw = log.rawJson;
+  const systemdUnit =
+    typeof raw?._SYSTEMD_UNIT === "string" && raw._SYSTEMD_UNIT
+      ? (raw._SYSTEMD_UNIT as string)
+      : typeof raw?.UNIT === "string" && raw.UNIT
+        ? (raw.UNIT as string)
+        : null;
+
+  let unit = systemdUnit;
+  if (!unit) {
+    const ident = log.identifier?.trim();
+    if (!ident || ident === "system") return null;
+    unit = ident.includes(".") ? ident : `${ident}.service`;
+  }
+
+  if (unit.endsWith(".timer")) {
+    return { section: "timers", param: "timer", unit };
+  }
+  if (unit.endsWith(".socket")) {
+    return { section: "sockets", param: "socket", unit };
+  }
+  if (unit.endsWith(".service")) {
+    return { section: "services", param: "service", unit };
+  }
+  return null;
+};
+
 const GeneralLogsPage: React.FC = () => {
   const theme = useAppTheme();
+  const navigate = useNavigate();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
   const [timePeriod, setTimePeriod] = useState("24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [identifierFilter, setIdentifierFilter] = useState("all");
+  const [identifierIsExact, setIdentifierIsExact] = useState(true);
+  // identifierInput tracks the live autocomplete input value (every keystroke).
+  // identifierFilter / identifierIsExact are the *applied* values, updated after
+  // a debounce so we don't re-stream on every keystroke.
+  const [identifierInput, setIdentifierInput] = useState("");
   const [fieldFilters, setFieldFilters] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -310,12 +347,6 @@ const GeneralLogsPage: React.FC = () => {
     [muxIsOpen, parseLogEntry, openStream],
   );
 
-  const isExactIdentifier = useMemo(() => {
-    return (
-      identifierFilter === "all" || uniqueIdentifiers.includes(identifierFilter)
-    );
-  }, [identifierFilter, uniqueIdentifiers]);
-
   // Open stream on mount and when filters change
   useEffect(() => {
     if (!muxIsOpen || !liveMode || streamRef.current) {
@@ -326,7 +357,7 @@ const GeneralLogsPage: React.FC = () => {
     const backendIdentifier =
       identifierFilter === "all"
         ? ""
-        : isExactIdentifier
+        : identifierIsExact
           ? identifierFilter
           : "";
     if (
@@ -347,7 +378,7 @@ const GeneralLogsPage: React.FC = () => {
     timePeriod,
     priorityFilter,
     identifierFilter,
-    isExactIdentifier,
+    identifierIsExact,
     fieldFilters,
     openLogsStream,
   ]);
@@ -382,12 +413,49 @@ const GeneralLogsPage: React.FC = () => {
     setPriorityFilter(value);
   };
 
-  const handleIdentifierFilterChange = (value: string) => {
-    closeStream();
-    setLogs([]);
-    hasOpenedOnce.current = false;
-    setIdentifierFilter(value);
-  };
+  // Apply an identifier value as the active filter. Re-streams the backend
+  // only when the journalctl `-t` argument actually changes (substring->exact,
+  // exact->different exact, or to/from "all"); plain substring tweaks just
+  // re-filter the existing buffer.
+  const applyIdentifierFilter = useCallback(
+    (rawValue: string) => {
+      const trimmed = rawValue.trim();
+      const newValue = trimmed === "" ? "all" : trimmed;
+      const isExact =
+        newValue === "all" || uniqueIdentifiers.includes(newValue);
+
+      const oldBackend =
+        identifierFilter === "all"
+          ? ""
+          : identifierIsExact
+            ? identifierFilter
+            : "";
+      const newBackend = newValue === "all" ? "" : isExact ? newValue : "";
+
+      if (oldBackend !== newBackend) {
+        closeStream();
+        setLogs([]);
+        hasOpenedOnce.current = false;
+      }
+
+      setIdentifierIsExact(isExact);
+      setIdentifierFilter(newValue);
+    },
+    [identifierFilter, identifierIsExact, uniqueIdentifiers, closeStream],
+  );
+
+  // Debounce: when the autocomplete input settles, apply it.
+  useEffect(() => {
+    const trimmed = identifierInput.trim();
+    const intended = trimmed === "" ? "all" : trimmed;
+    if (intended === identifierFilter) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      applyIdentifierFilter(identifierInput);
+    }, 150);
+    return () => clearTimeout(handle);
+  }, [identifierInput, identifierFilter, applyIdentifierFilter]);
 
   const addFieldFilter = useCallback(
     (filter: string) => {
@@ -428,8 +496,14 @@ const GeneralLogsPage: React.FC = () => {
   const filteredLogs = useMemo(() => {
     let filtered = logs;
 
-    if (identifierFilter !== "all" && !isExactIdentifier) {
-      const pattern = identifierFilter.toLowerCase();
+    // Use the live input for substring matching so typing reflects immediately.
+    // Run unconditionally: when applied filter is exact and matches the live
+    // input, this is idempotent. When the user is mid-edit over an exact
+    // value, this narrows the visible set right away instead of waiting for
+    // the debounce + re-stream.
+    const liveTrimmed = identifierInput.trim();
+    if (liveTrimmed) {
+      const pattern = liveTrimmed.toLowerCase();
       filtered = filtered.filter((log) =>
         log.identifier.toLowerCase().includes(pattern),
       );
@@ -446,7 +520,7 @@ const GeneralLogsPage: React.FC = () => {
     }
 
     return filtered;
-  }, [logs, search, identifierFilter, isExactIdentifier]);
+  }, [logs, search, identifierInput]);
 
   const handleCopy = () => {
     if (filteredLogs.length === 0) return;
@@ -491,51 +565,89 @@ const GeneralLogsPage: React.FC = () => {
     );
   }, []);
 
+  const handleIdentifierClick = useCallback(
+    (log: LogEntry, event: React.MouseEvent) => {
+      event.stopPropagation();
+      const target = resolveUnitTarget(log);
+      if (!target) return;
+      const params = new URLSearchParams({
+        section: target.section,
+        [target.param]: target.unit,
+      });
+      navigate(`/services?${params.toString()}`);
+    },
+    [navigate],
+  );
+
   // Render main row content (without icon - icon goes in first cell)
-  const renderMainRow = useCallback((log: LogEntry) => {
-    return (
-      <>
-        <AppTableCell
-          className="app-table-hide-below-sm"
-          style={{ width: "1%" }}
-        >
-          <Chip
-            label={getPriorityLabel(log.priority)}
-            size="small"
-            color={getPriorityColor(log.priority) as any}
-            variant="soft"
-            style={{ fontSize: "0.7rem" }}
-          />
-        </AppTableCell>
-        <AppTableCell style={{ width: "1%" }}>
-          <AppTypography
-            variant="body2"
-            style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+  const renderMainRow = useCallback(
+    (log: LogEntry) => {
+      const target = resolveUnitTarget(log);
+      const isLinkable = target !== null;
+      return (
+        <>
+          <AppTableCell
+            className="app-table-hide-below-sm"
+            style={{ width: "1%" }}
           >
-            {log.identifier}
-          </AppTypography>
-        </AppTableCell>
-        <AppTableCell style={{ width: "1%" }}>
-          <AppTypography
-            variant="body2"
-            style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
-          >
-            {log.timestamp}
-          </AppTypography>
-        </AppTableCell>
-        <AppTableCell style={{ maxWidth: 0 }}>
-          <AppTypography
-            variant="body2"
-            color="text.secondary"
-            noWrap
-            style={{ fontSize: "0.75rem" }}
-          >
-            {log.message}
-          </AppTypography>
-        </AppTableCell>
-      </>
-    );
-  }, []);
+            <Chip
+              label={getPriorityLabel(log.priority)}
+              size="small"
+              color={getPriorityColor(log.priority) as any}
+              variant="soft"
+              style={{ fontSize: "0.7rem" }}
+            />
+          </AppTableCell>
+          <AppTableCell style={{ width: "1%" }}>
+            {isLinkable ? (
+              <AppTooltip title={`Open ${target!.unit} in services`}>
+                <AppTypography
+                  variant="body2"
+                  role="link"
+                  tabIndex={0}
+                  className="log-identifier-link"
+                  onClick={(e) => handleIdentifierClick(log, e)}
+                  style={{
+                    fontSize: "0.85rem",
+                    whiteSpace: "nowrap",
+                    display: "inline-block",
+                  }}
+                >
+                  {log.identifier}
+                </AppTypography>
+              </AppTooltip>
+            ) : (
+              <AppTypography
+                variant="body2"
+                style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+              >
+                {log.identifier}
+              </AppTypography>
+            )}
+          </AppTableCell>
+          <AppTableCell style={{ width: "1%" }}>
+            <AppTypography
+              variant="body2"
+              style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
+            >
+              {log.timestamp}
+            </AppTypography>
+          </AppTableCell>
+          <AppTableCell style={{ maxWidth: 0 }}>
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              noWrap
+              style={{ fontSize: "0.75rem" }}
+            >
+              {log.message}
+            </AppTypography>
+          </AppTableCell>
+        </>
+      );
+    },
+    [handleIdentifierClick],
+  );
 
   // Render expanded content
   const renderExpandedContent = useCallback(
@@ -678,9 +790,12 @@ const GeneralLogsPage: React.FC = () => {
           size="small"
           freeSolo
           options={uniqueIdentifiers}
-          value={identifierFilter === "all" ? "" : identifierFilter}
+          value={identifierInput}
+          onInputChange={(value) => setIdentifierInput(value)}
           onChange={(value) => {
-            handleIdentifierFilterChange(value || "all");
+            const next = value || "";
+            setIdentifierInput(next);
+            applyIdentifierFilter(next);
           }}
           filterOptions={(options, { inputValue }) => {
             if (!inputValue) return options;
