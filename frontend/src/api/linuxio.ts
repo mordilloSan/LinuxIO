@@ -200,11 +200,19 @@ export function openGeneralLogsStream(
   timePeriod: string = "",
   priority: string = "",
   identifier: string = "",
+  fieldFilters: string[] = [],
 ): Stream | null {
   return openMuxStream(
     "general-logs",
     encodeString(
-      ["general-logs", lines, timePeriod, priority, identifier].join("\0"),
+      [
+        "general-logs",
+        lines,
+        timePeriod,
+        priority,
+        identifier,
+        ...fieldFilters,
+      ].join("\0"),
     ),
   );
 }

@@ -26,7 +26,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
 import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 
 const DEFAULT_TAIL = "200";
 
@@ -94,6 +93,37 @@ const getPriorityColor = (priority: LogPriority): string => {
   }
 };
 
+// Standard journald keys worth surfacing as clickable filters in addition to
+// any LINUXIO_* user fields.
+const FILTERABLE_STANDARD_KEYS = new Set([
+  "SYSLOG_IDENTIFIER",
+  "_SYSTEMD_UNIT",
+  "PRIORITY",
+  "CODE_FUNC",
+]);
+
+const FIELD_VALUE_MAX_LEN = 200;
+
+const collectFilterableFields = (
+  rawJson: Record<string, unknown> | undefined,
+  active: string[],
+): Array<{ key: string; value: string }> => {
+  if (!rawJson) return [];
+  const seen = new Set(active);
+  const result: Array<{ key: string; value: string }> = [];
+  for (const [key, raw] of Object.entries(rawJson)) {
+    if (typeof raw !== "string" || raw === "") continue;
+    if (raw.length > FIELD_VALUE_MAX_LEN) continue;
+    if (!key.startsWith("LINUXIO_") && !FILTERABLE_STANDARD_KEYS.has(key)) {
+      continue;
+    }
+    const filter = `${key}=${raw}`;
+    if (seen.has(filter)) continue;
+    result.push({ key, value: raw });
+  }
+  return result;
+};
+
 const getPriorityIcon = (priority: LogPriority) => {
   switch (priority) {
     case LogPriority.EMERGENCY:
@@ -121,6 +151,7 @@ const GeneralLogsPage: React.FC = () => {
   const [timePeriod, setTimePeriod] = useState("24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [identifierFilter, setIdentifierFilter] = useState("all");
+  const [fieldFilters, setFieldFilters] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
@@ -236,6 +267,7 @@ const GeneralLogsPage: React.FC = () => {
       timePeriod: string,
       priority: string,
       identifier: string,
+      fields: string[],
     ) => {
       if (!muxIsOpen) return false;
 
@@ -243,7 +275,13 @@ const GeneralLogsPage: React.FC = () => {
 
       return openStream({
         open: () =>
-          openGeneralLogsStream(lines, timePeriod, priority, identifier),
+          openGeneralLogsStream(
+            lines,
+            timePeriod,
+            priority,
+            identifier,
+            fields,
+          ),
         onOpenError: () => {
           queueMicrotask(() => {
             setError("Failed to connect to log stream");
@@ -297,6 +335,7 @@ const GeneralLogsPage: React.FC = () => {
         timePeriod,
         priorityFilter === "all" ? "" : priorityFilter,
         backendIdentifier,
+        fieldFilters,
       )
     ) {
       hasOpenedOnce.current = true;
@@ -309,6 +348,7 @@ const GeneralLogsPage: React.FC = () => {
     priorityFilter,
     identifierFilter,
     isExactIdentifier,
+    fieldFilters,
     openLogsStream,
   ]);
 
@@ -348,6 +388,35 @@ const GeneralLogsPage: React.FC = () => {
     hasOpenedOnce.current = false;
     setIdentifierFilter(value);
   };
+
+  const addFieldFilter = useCallback(
+    (filter: string) => {
+      closeStream();
+      setLogs([]);
+      hasOpenedOnce.current = false;
+      setFieldFilters((prev) =>
+        prev.includes(filter) ? prev : [...prev, filter],
+      );
+    },
+    [closeStream],
+  );
+
+  const removeFieldFilter = useCallback(
+    (filter: string) => {
+      closeStream();
+      setLogs([]);
+      hasOpenedOnce.current = false;
+      setFieldFilters((prev) => prev.filter((f) => f !== filter));
+    },
+    [closeStream],
+  );
+
+  const clearFieldFilters = useCallback(() => {
+    closeStream();
+    setLogs([]);
+    hasOpenedOnce.current = false;
+    setFieldFilters([]);
+  }, [closeStream]);
 
   // Cleanup stream
   useEffect(() => {
@@ -471,8 +540,40 @@ const GeneralLogsPage: React.FC = () => {
   // Render expanded content
   const renderExpandedContent = useCallback(
     (log: LogEntry) => {
+      const filterableEntries = collectFilterableFields(
+        log.rawJson,
+        fieldFilters,
+      );
       return (
         <>
+          {filterableEntries.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: theme.spacing(0.75),
+                marginTop: theme.spacing(-1),
+                marginBottom: theme.spacing(3.5),
+              }}
+            >
+              {filterableEntries.map(({ key, value }) => {
+                const filter = `${key}=${value}`;
+                return (
+                  <Chip
+                    key={filter}
+                    label={`${key}=${value}`}
+                    size="small"
+                    variant="soft"
+                    color="primary"
+                    onClick={() => addFieldFilter(filter)}
+                    title={`Filter to entries where ${key}=${value}`}
+                    style={{ fontSize: "0.7rem", maxWidth: 360 }}
+                  />
+                );
+              })}
+            </div>
+          )}
           <AppTypography variant="subtitle2" gutterBottom>
             <b>Full Message:</b>
           </AppTypography>
@@ -480,10 +581,7 @@ const GeneralLogsPage: React.FC = () => {
             style={{
               padding: 8,
               marginBottom: 8,
-              backgroundColor: alpha(
-                theme.palette.common.black,
-                theme.palette.mode === "dark" ? 0.3 : 0.02,
-              ),
+              backgroundColor: theme.codeBlock.background,
               fontFamily: "monospace",
               fontSize: "0.85rem",
               whiteSpace: "pre-wrap",
@@ -504,10 +602,7 @@ const GeneralLogsPage: React.FC = () => {
                 className="custom-scrollbar"
                 style={{
                   padding: 8,
-                  backgroundColor: alpha(
-                    theme.palette.common.black,
-                    theme.palette.mode === "dark" ? 0.3 : 0.02,
-                  ),
+                  backgroundColor: theme.codeBlock.background,
                   fontFamily: "monospace",
                   fontSize: "0.75rem",
                   maxHeight: 300,
@@ -532,7 +627,7 @@ const GeneralLogsPage: React.FC = () => {
         </>
       );
     },
-    [theme.palette.common.black, theme.palette.mode],
+    [theme, fieldFilters, addFieldFilter],
   );
 
   return (
@@ -645,6 +740,42 @@ const GeneralLogsPage: React.FC = () => {
           {filteredLogs.length} shown
         </AppTypography>
       </div>
+
+      {fieldFilters.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: theme.spacing(1),
+            marginBottom: theme.spacing(2),
+          }}
+        >
+          <AppTypography
+            variant="body2"
+            color="text.secondary"
+            style={{ fontSize: "0.8rem" }}
+          >
+            Field filters:
+          </AppTypography>
+          {fieldFilters.map((filter) => (
+            <Chip
+              key={filter}
+              label={filter}
+              size="small"
+              variant="soft"
+              color="primary"
+              onDelete={() => removeFieldFilter(filter)}
+              style={{ fontSize: "0.7rem", maxWidth: 360 }}
+            />
+          ))}
+          <AppTooltip title="Clear all field filters">
+            <AppIconButton onClick={clearFieldFilters} size="small">
+              <Icon icon="mdi:filter-remove" width={18} height={18} />
+            </AppIconButton>
+          </AppTooltip>
+        </div>
+      )}
 
       {isLoading && <PageLoader />}
 

@@ -1,4 +1,5 @@
 import { GREY_TOKENS as grey } from "@/theme/colors";
+import { alpha } from "@/utils/color";
 
 const customBlue = {
   50: "#e9f0fb",
@@ -24,7 +25,7 @@ const defaultVariant: VariantType = {
     backdrop: "#000000",
   },
   codeBlock: {
-    background: "#F5F5F5",
+    background: alpha("#000000", 0.02),
     color: "#333333",
   },
   chart: {
@@ -100,7 +101,7 @@ const darkVariant: VariantType = {
     backdrop: "#000000",
   },
   codeBlock: {
-    background: "#1E1E1E",
+    background: alpha("#000000", 0.3),
     color: "#D4D4D4",
   },
   chart: {
