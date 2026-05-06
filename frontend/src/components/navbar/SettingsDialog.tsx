@@ -3,6 +3,7 @@ import React, { useState } from "react";
 
 import CapabilityManagerSection from "./CapabilityManagerSection";
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
+import IndexerSettingsSection from "./IndexerSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
 import PowerSettingsSection from "./PowerSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
@@ -16,7 +17,13 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab = "general" | "theme" | "capabilities" | "docker" | "power";
+type SettingsTab =
+  | "general"
+  | "theme"
+  | "capabilities"
+  | "docker"
+  | "indexer"
+  | "power";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
@@ -26,12 +33,15 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const { privileged } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const effectiveTab =
-    !privileged && activeTab === "power" ? "general" : activeTab;
+    !privileged && (activeTab === "power" || activeTab === "indexer")
+      ? "general"
+      : activeTab;
   const tabs = [
     { value: "general", label: "General" },
     { value: "theme", label: "Theme" },
     { value: "capabilities", label: "Capabilities" },
     { value: "docker", label: "Docker" },
+    ...(privileged ? [{ value: "indexer", label: "Indexer" }] : []),
     ...(privileged ? [{ value: "power", label: "Power" }] : []),
   ];
 
@@ -149,6 +159,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
         {effectiveTab === "capabilities" ? <CapabilityManagerSection /> : null}
         {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
+        {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
         {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>
     </GeneralDialog>

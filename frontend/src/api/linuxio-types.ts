@@ -759,6 +759,47 @@ export interface ConfigSetResult {
   path: string;
 }
 
+export interface IndexerConfig {
+  index_path: string;
+  index_name: string;
+  include_hidden: boolean;
+  include_network_mounts: boolean;
+  fresh_index: boolean;
+  keep_indexes: number;
+  db_path: string;
+  db_busy_timeout: string;
+  db_journal_mode: string;
+  db_synchronous: string;
+  db_auto_vacuum: string;
+  db_max_open_conns: number;
+  db_max_idle_conns: number;
+  db_conn_max_idle_time: string;
+  socket_path: string;
+  listen_addr: string;
+  interval: string;
+}
+
+export interface IndexerConfigSetResult {
+  config: IndexerConfig;
+  restart_required: boolean;
+}
+
+export interface IndexerDaemonStatus {
+  running: boolean;
+  status: string;
+  num_dirs: number;
+  num_files: number;
+  total_size: number;
+  last_indexed?: string;
+  total_indexes: number;
+  total_entries: number;
+  database_size: number;
+  wal_size: number;
+  shm_size: number;
+  total_on_disk: number;
+  warning?: string;
+}
+
 export interface DirectoryValidationResult {
   valid: boolean;
   exists: boolean;
@@ -1042,6 +1083,15 @@ export interface LinuxIOSchema {
   config: {
     get: { args: []; result: ConfigSettings };
     set: { args: [payload: string]; result: ConfigSetResult };
+  };
+
+  indexer: {
+    get_config: { args: []; result: IndexerConfig };
+    get_status: { args: []; result: IndexerDaemonStatus };
+    set_config: {
+      args: [payload: Partial<IndexerConfig>];
+      result: IndexerConfigSetResult;
+    };
   };
 
   control: {

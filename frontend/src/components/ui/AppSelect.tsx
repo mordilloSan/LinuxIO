@@ -90,7 +90,9 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
     const updatePosition = useCallback(() => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const cs = getComputedStyle(containerRef.current);
+      const trigger =
+        containerRef.current.querySelector<HTMLElement>(".app-select__input");
+      const cs = getComputedStyle(trigger ?? containerRef.current);
       setDropdownPos({
         top: rect.bottom + 2,
         left: rect.left,
