@@ -64,7 +64,7 @@
 /* ── Size: small ────────────────────────────────── */
 
 .app-select--small .app-select__input {
-  font-size: var(--app-select-input-font-size, 0.875rem);
+  font-size: var(--app-select-input-font-size, 0.8125rem);
   padding: 8.5px 36px 8.5px 14px;
 }
 

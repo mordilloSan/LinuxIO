@@ -68,8 +68,7 @@ const RESTART_FIELDS: DraftKey[] = [
   "listen_addr",
 ];
 
-const GO_DURATION_PART_PATTERN =
-  /(-?\d+(?:\.\d+)?)(ns|us|µs|μs|ms|s|m|h)/g;
+const GO_DURATION_PART_PATTERN = /(-?\d+(?:\.\d+)?)(ns|us|µs|μs|ms|s|m|h)/g;
 
 const compactGoDuration = (value: string) => {
   const trimmed = value.trim();
@@ -361,7 +360,8 @@ const IndexerSettingsSection: React.FC = () => {
     refetch: refetchStatus,
     isFetching: isStatusFetching,
   } = linuxio.indexer.get_status.useQuery({
-    enabled: indexerEnabled,
+    args: [config?.db_path ?? ""],
+    enabled: indexerEnabled && Boolean(config?.db_path),
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
 
@@ -457,7 +457,7 @@ const IndexerSettingsSection: React.FC = () => {
       className="indexer-status-grid"
       style={{
         display: "grid",
-        gap: theme.spacing(1.5),
+        rowGap: theme.spacing(1.5),
       }}
     >
       {children}
