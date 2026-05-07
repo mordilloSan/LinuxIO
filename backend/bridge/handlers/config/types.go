@@ -13,6 +13,14 @@ type Settings struct {
 	AppSettings AppSettings `json:"appSettings" yaml:"appSettings"`
 	Docker      Docker      `json:"docker" yaml:"docker"`
 	Jobs        JobSettings `json:"jobs" yaml:"jobs"`
+	Dismissals  *Dismissals `json:"dismissals,omitempty" yaml:"dismissals,omitempty"`
+}
+
+// Dismissals records per-user acknowledgements of one-shot health signals.
+// The identifier is matched against the live signal — a new event produces a
+// different identifier and re-flags automatically.
+type Dismissals struct {
+	UncleanShutdownBootID string `json:"uncleanShutdownBootId,omitempty" yaml:"uncleanShutdownBootId,omitempty"`
 }
 
 // DockerDashboardSections holds the collapsed state of each Docker dashboard section

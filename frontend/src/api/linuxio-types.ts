@@ -160,6 +160,7 @@ export interface SystemHealthSummary {
   updatesAvailable: number;
   upToDate: boolean;
   uncleanShutdown: boolean;
+  uncleanShutdownBootId?: string;
   lastLogin?: SystemLastLogin | null;
 }
 
@@ -889,6 +890,10 @@ export interface LinuxIOSchema {
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
     get_health_summary: { args: []; result: SystemHealthSummary };
+    dismiss_unclean_shutdown: {
+      args: [bootId: string];
+      result: { message: string };
+    };
     get_server_time: { args: []; result: string };
     get_timezones: { args: []; result: string[] };
   };

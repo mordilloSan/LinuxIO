@@ -2,8 +2,12 @@ package system
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -36,6 +40,7 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
 		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
+		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess)},
 		{command: "get_server_time", handler: handleGetServerTime},
 		{command: "get_timezones", handler: handleGetTimezones},
 	})
@@ -130,8 +135,76 @@ func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) err
 func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged)
+		if err == nil && result != nil {
+			applyUncleanShutdownDismissal(sess.User.Username, result)
+		}
 		return emitSystemResult(emit, result, err)
 	}
+}
+
+// applyUncleanShutdownDismissal suppresses the unclean-shutdown flag when the
+// caller has already acknowledged the current event. Any error reading the
+// user's settings is treated as "not dismissed" so the warning still surfaces.
+func applyUncleanShutdownDismissal(username string, summary *SystemHealthSummary) {
+	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
+		return
+	}
+	cfg, _, err := config.Load(username)
+	if err != nil {
+		slog.Debug("unclean-shutdown dismissal: settings unavailable, keeping warning", "user", username, "error", err)
+		return
+	}
+	if cfg.Dismissals == nil {
+		return
+	}
+	if cfg.Dismissals.UncleanShutdownBootID != summary.UncleanShutdownBootID {
+		return
+	}
+	summary.UncleanShutdown = false
+	summary.UncleanShutdownBootID = ""
+}
+
+func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
+	username := sess.User.Username
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		bootID := strings.TrimSpace(args[0])
+		if !isValidBootID(bootID) {
+			return ipc.ErrInvalidArgs
+		}
+
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		if cfg.Dismissals == nil {
+			cfg.Dismissals = &config.Dismissals{}
+		}
+		cfg.Dismissals.UncleanShutdownBootID = bootID
+
+		if _, err := config.Save(username, cfg); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+		slog.Info("dismissed unclean shutdown", "user", username, "bootId", bootID)
+		return emit.Result(map[string]any{"message": "dismissed"})
+	}
+}
+
+// isValidBootID guards against an unbounded write to the user's settings file.
+// Real boot IDs are short unix-epoch seconds strings (≤ 11 digits); allow up
+// to 32 digits for headroom.
+func isValidBootID(s string) bool {
+	if s == "" || len(s) > 32 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseIncludeAllArg(args []string) bool {

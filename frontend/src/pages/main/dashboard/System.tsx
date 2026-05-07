@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -17,6 +18,11 @@ interface HealthItem {
   detail?: string;
   spaceBefore?: boolean;
   iconStyle?: React.CSSProperties;
+  secondaryAction?: {
+    label: string;
+    onClick: (event: React.MouseEvent) => void;
+    disabled?: boolean;
+  };
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -26,6 +32,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 const SystemHealth = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const {
     data: health,
@@ -36,6 +43,15 @@ const SystemHealth = () => {
   const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
     refetchInterval: 50000,
   });
+
+  const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
+    linuxio.system.dismiss_unclean_shutdown.useMutation({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: linuxio.system.get_health_summary.queryKey(),
+        });
+      },
+    });
 
   const items: HealthItem[] = [];
 
@@ -93,11 +109,22 @@ const SystemHealth = () => {
   }
 
   if (health?.uncleanShutdown) {
+    const bootId = health.uncleanShutdownBootId;
     items.push({
       icon: "mdi:alert-outline",
       color: theme.palette.warning.main,
       text: "Unclean shutdown",
       to: "/logs",
+      secondaryAction: bootId
+        ? {
+            label: "Dismiss",
+            disabled: dismissingUnclean,
+            onClick: (event) => {
+              event.stopPropagation();
+              dismissUncleanShutdown([bootId]);
+            },
+          }
+        : undefined,
     });
   }
 
@@ -203,6 +230,28 @@ const SystemHealth = () => {
             </AppTypography>
           ) : null}
         </div>
+        {item.secondaryAction ? (
+          <span
+            role="button"
+            aria-disabled={item.secondaryAction.disabled || undefined}
+            onClick={
+              item.secondaryAction.disabled
+                ? undefined
+                : item.secondaryAction.onClick
+            }
+            style={{
+              marginLeft: theme.spacing(1),
+              cursor: item.secondaryAction.disabled ? "default" : "pointer",
+              opacity: item.secondaryAction.disabled ? 0.5 : 1,
+              color: theme.palette.text.secondary,
+              fontSize: "0.75rem",
+              textDecoration: "underline",
+              userSelect: "none",
+            }}
+          >
+            {item.secondaryAction.label}
+          </span>
+        ) : null}
       </div>
     );
 
