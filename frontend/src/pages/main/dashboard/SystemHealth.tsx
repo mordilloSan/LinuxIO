@@ -83,8 +83,10 @@ const SystemHealth = () => {
     items.push({
       icon: "mdi:account-alert-outline",
       color: theme.palette.warning.main,
-      text: `${pluralize(health.failedLoginAttempts, "failed login attempt", "failed login attempts")} before this session`,
+      text: `${pluralize(health.failedLoginAttempts, "failed login attempt", "failed login attempts")}\nbefore this session`,
       to: "/logs",
+      spaceBefore: true,
+      iconStyle: { transform: "translateY(-6px)" },
     });
   }
 
@@ -128,7 +130,7 @@ const SystemHealth = () => {
     });
   }
 
-  if (health?.lastLogin?.time) {
+  if (health?.lastLogin?.time && !health.failedLoginAttempts) {
     const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const timeParts = health.lastLogin.time.split(" ");
     let displaySource = health.lastLogin.source;
@@ -141,7 +143,7 @@ const SystemHealth = () => {
       /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\w+)\s+(\d+)\s+(\d{2}):(\d{2}):\d{2}/,
     );
     const displayTime = timeMatch
-      ? `${timeMatch[1]} ${timeMatch[2]}, ${timeMatch[3]}:${timeMatch[4]}}`
+      ? `${timeMatch[1]} ${timeMatch[2]}, ${timeMatch[3]}:${timeMatch[4]}`
       : timeStr;
     const terminal =
       health.lastLogin.terminal === "web"
@@ -216,6 +218,7 @@ const SystemHealth = () => {
                 item.color === theme.palette.text.secondary
                   ? undefined
                   : item.color,
+              whiteSpace: "pre-line",
             }}
           >
             {item.text}
@@ -293,11 +296,13 @@ const SystemHealth = () => {
   const updatesItem = items.find(
     (i) => i.icon === "mdi:package-up" || i.icon === "mdi:check-circle",
   );
-  const lastLoginItem = items.find(
-    (i) => i.icon === "mdi:account-clock-outline",
+  const bottomItem = items.find(
+    (i) =>
+      i.icon === "mdi:account-clock-outline" ||
+      i.icon === "mdi:account-alert-outline",
   );
   const alertItems = items.filter(
-    (i) => i !== servicesItem && i !== updatesItem && i !== lastLoginItem,
+    (i) => i !== servicesItem && i !== updatesItem && i !== bottomItem,
   );
 
   const stats = (
@@ -316,8 +321,8 @@ const SystemHealth = () => {
       {updatesItem
         ? renderItem(updatesItem)
         : skeletonRow("s-updates", "16ch", true)}
-      {lastLoginItem
-        ? renderItem(lastLoginItem)
+      {bottomItem
+        ? renderItem(bottomItem)
         : health?.lastLogin?.time === undefined &&
             (loadingHealth || fetchingHealth)
           ? skeletonRow("s-lastlogin", "18ch", true)

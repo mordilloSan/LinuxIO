@@ -8,21 +8,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseLastlogOutput(t *testing.T) {
-	login := parseLastlogOutput("miguel", `Username         Port     From             Latest
-miguel           pts/0    172.18.0.7       Tue Apr  1 15:04:00 +0000 2026
+func TestParseLastOutputRemote(t *testing.T) {
+	login := parseLastOutput("miguel", `miguel   pts/0        172.18.0.7       Tue Apr  1 15:04:00 2026 - still logged in
+
+wtmp begins Tue Mar  1 10:00:00 2026
 `)
 
 	require.NotNil(t, login)
 	require.Equal(t, "miguel", login.Username)
 	require.Equal(t, "pts/0", login.Terminal)
 	require.Equal(t, "172.18.0.7", login.Source)
-	require.Equal(t, "Tue Apr 1 15:04:00 +0000 2026", login.Time)
+	require.Equal(t, "Tue Apr 1 15:04:00 2026", login.Time)
 }
 
-func TestParseLastlogOutputNeverLoggedIn(t *testing.T) {
-	login := parseLastlogOutput("miguel", `Username         Port     From             Latest
-miguel                                      **Never logged in**
+func TestParseLastOutputLocal(t *testing.T) {
+	login := parseLastOutput("miguel", `miguel   tty1                          Tue Apr  1 15:04:00 2026 - still logged in
+
+wtmp begins Tue Mar  1 10:00:00 2026
+`)
+
+	require.NotNil(t, login)
+	require.Equal(t, "miguel", login.Username)
+	require.Equal(t, "tty1", login.Terminal)
+	require.Empty(t, login.Source)
+	require.Equal(t, "Tue Apr 1 15:04:00 2026", login.Time)
+}
+
+func TestParseLastOutputCompletedSession(t *testing.T) {
+	login := parseLastOutput("miguel", `miguel   pts/0        172.18.0.7       Tue Apr  1 15:04:00 2026 - Tue Apr  1 16:04:00 2026  (01:00)
+
+wtmp begins Tue Mar  1 10:00:00 2026
+`)
+
+	require.NotNil(t, login)
+	require.Equal(t, "Tue Apr 1 15:04:00 2026", login.Time)
+}
+
+func TestParseLastOutputNoEntries(t *testing.T) {
+	login := parseLastOutput("miguel", `
+wtmp begins Tue Mar  1 10:00:00 2026
 `)
 
 	require.Nil(t, login)

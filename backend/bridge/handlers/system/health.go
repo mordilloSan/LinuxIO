@@ -83,12 +83,12 @@ func FetchLastSuccessfulLogin(username string) (*SystemLastLogin, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	output, err := healthRunCommand(ctx, "lastlog", "-u", username)
+	output, err := healthRunCommand(ctx, "last", "-F", "-w", "-n", "1", username)
 	if err != nil {
 		return nil, err
 	}
 
-	return parseLastlogOutput(username, string(output)), nil
+	return parseLastOutput(username, string(output)), nil
 }
 
 func FetchFailedLoginAttempts(username string, privileged bool) (int, error) {
@@ -121,32 +121,46 @@ func DetectUncleanShutdown() (bool, string, error) {
 	return unclean, bootID, nil
 }
 
-func parseLastlogOutput(username, output string) *SystemLastLogin {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines[1:] {
+var weekdayTokens = map[string]bool{
+	"Mon": true, "Tue": true, "Wed": true,
+	"Thu": true, "Fri": true, "Sat": true, "Sun": true,
+}
+
+func parseLastOutput(username, output string) *SystemLastLogin {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Username") {
+		if line == "" ||
+			strings.HasPrefix(line, "wtmp ") ||
+			strings.HasPrefix(line, "btmp ") {
 			continue
-		}
-		if strings.Contains(line, "**Never logged in**") {
-			return nil
 		}
 
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			return nil
+		if len(fields) < 7 || fields[0] != username {
+			continue
 		}
 
-		timeStart := 3
-		if fields[0] != username && len(fields) >= 6 {
-			timeStart = 4
+		timeStart := -1
+		for i := 2; i < len(fields); i++ {
+			if weekdayTokens[fields[i]] {
+				timeStart = i
+				break
+			}
+		}
+		if timeStart < 0 || len(fields) < timeStart+5 {
+			continue
+		}
+
+		source := ""
+		if timeStart > 2 {
+			source = fields[2]
 		}
 
 		return &SystemLastLogin{
 			Username: username,
 			Terminal: fields[1],
-			Source:   fields[2],
-			Time:     strings.Join(fields[timeStart:], " "),
+			Source:   source,
+			Time:     strings.Join(fields[timeStart:timeStart+5], " "),
 		}
 	}
 
