@@ -1661,19 +1661,39 @@ static int handle_client(int input_fd, int output_fd)
 
   int exitcode = 1;
   if (WIFEXITED(status))
-    exitcode = WEXITSTATUS(status);
-  else if (WIFSIGNALED(status))
-    exitcode = 128 + WTERMSIG(status);
-
-  if (exitcode != 0)
   {
+    exitcode = WEXITSTATUS(status);
+    if (exitcode != 0)
+    {
+      char exit_buf[32];
+      char pid_buf[32];
+      (void)safe_snprintf(exit_buf, sizeof(exit_buf), "%d", exitcode);
+      (void)safe_snprintf(pid_buf, sizeof(pid_buf), "%ld", (long)child);
+      const struct journal_field fields[] = {
+          {"LINUXIO_USER", auth_user.name},
+          {"LINUXIO_STATUS", exit_buf},
+          {"LINUXIO_CHILD_PID", pid_buf},
+      };
+      journal_error_fieldsf(fields, 3, "bridge pid %ld exited with status %d", (long)child, exitcode);
+    }
+  }
+  else if (WIFSIGNALED(status))
+  {
+    int sig = WTERMSIG(status);
+    exitcode = 128 + WTERMSIG(status);
     char exit_buf[32];
+    char signal_buf[32];
+    char pid_buf[32];
     (void)safe_snprintf(exit_buf, sizeof(exit_buf), "%d", exitcode);
+    (void)safe_snprintf(signal_buf, sizeof(signal_buf), "%d", sig);
+    (void)safe_snprintf(pid_buf, sizeof(pid_buf), "%ld", (long)child);
     const struct journal_field fields[] = {
         {"LINUXIO_USER", auth_user.name},
         {"LINUXIO_STATUS", exit_buf},
+        {"LINUXIO_SIGNAL", signal_buf},
+        {"LINUXIO_CHILD_PID", pid_buf},
     };
-    journal_error_fieldsf(fields, 2, "bridge exited with status %d", exitcode);
+    journal_error_fieldsf(fields, 4, "bridge pid %ld killed by signal %d", (long)child, sig);
   }
 
   pam_close_session(pamh, 0);
