@@ -592,6 +592,14 @@ export interface AccountUser {
   lastLogin: string;
 }
 
+export interface AccountUserLogin {
+  username: string;
+  terminal: string;
+  source: string;
+  time: string;
+  startedAt?: string;
+}
+
 export interface AccountGroup {
   name: string;
   gid: number;
@@ -1144,6 +1152,7 @@ export interface LinuxIOSchema {
   accounts: {
     // User management
     list_users: { args: []; result: AccountUser[] };
+    list_user_logins: { args: [username: string]; result: AccountUserLogin[] };
     create_user: { args: [request: string]; result: void };
     delete_user: { args: [username: string]; result: void };
     modify_user: { args: [request: string]; result: void };

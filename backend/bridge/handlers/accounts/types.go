@@ -15,6 +15,15 @@ type User struct {
 	LastLogin    string   `json:"lastLogin"`
 }
 
+// UserLogin represents one successful login session for a user account.
+type UserLogin struct {
+	Username  string `json:"username"`
+	Terminal  string `json:"terminal"`
+	Source    string `json:"source"`
+	Time      string `json:"time"`
+	StartedAt string `json:"startedAt,omitempty"`
+}
+
 // Group represents a system group
 type Group struct {
 	Name     string   `json:"name"`

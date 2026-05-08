@@ -17,6 +17,7 @@ type accountRegistration struct {
 func RegisterHandlers() {
 	registerAccountHandlers([]accountRegistration{
 		{command: "list_users", handler: handleListUsers},
+		{command: "list_user_logins", handler: handleListUserLogins},
 		{command: "create_user", handler: handleCreateUser},
 		{command: "delete_user", handler: handleDeleteUser},
 		{command: "modify_user", handler: handleModifyUser},
@@ -39,6 +40,14 @@ func registerAccountHandlers(registrations []accountRegistration) {
 
 func handleListUsers(ctx context.Context, args []string, emit ipc.Events) error {
 	return emitAccountCall(emit, ListUsers)
+}
+
+func handleListUserLogins(ctx context.Context, args []string, emit ipc.Events) error {
+	if err := requireAccountArgs(args, 1); err != nil {
+		return err
+	}
+	result, err := ListUserLogins(ctx, args[0], 12)
+	return emitAccountResult(emit, result, err)
 }
 
 func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error {

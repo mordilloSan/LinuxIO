@@ -1,14 +1,21 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useState,
+} from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import CreateUserDialog from "./components/CreateUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
+import { UserDetailsStack } from "./components/UserAccountDetails";
+import UserCardsView from "./components/UserCardsView";
 
 import { linuxio, type AccountUser } from "@/api";
-import UserCard from "@/components/cards/UserCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -25,10 +32,12 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
+  setViewMode?: (next: "table" | "card") => void;
 }
 const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
+  setViewMode,
 }) => {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -39,8 +48,51 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<AccountUser | null>(null);
+  const [dialogUser, setDialogUser] = useState<AccountUser | null>(null);
+  const [returnToTable, setReturnToTable] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedUsername = searchParams.get("user");
   const usersList = Array.isArray(users) ? users : [];
+
+  const setSelectedUsername = useCallback(
+    (username: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (username === null) {
+            next.delete("user");
+          } else {
+            next.set("user", username);
+          }
+          return next;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setSelectedUsername(null);
+      if (returnToTable) {
+        setViewMode?.("table");
+        setReturnToTable(false);
+      }
+    }
+  });
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleEscapeKey);
+    return () => window.removeEventListener("keydown", handleEscapeKey);
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "table") {
+      setReturnToTable(false);
+    }
+  }, [viewMode]);
+
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
@@ -55,12 +107,27 @@ const UsersTab: React.FC<UsersTabProps> = ({
       user.gecos.toLowerCase().includes(search.toLowerCase()) ||
       user.primaryGroup.toLowerCase().includes(search.toLowerCase()),
   );
+  const detailUser = selectedUsername
+    ? (filtered.find((user) => user.username === selectedUsername) ?? null)
+    : null;
+  const handleCardSelect = (username: string | null) => {
+    setSelectedUsername(username);
+    if (username === null && returnToTable) {
+      setViewMode?.("table");
+      setReturnToTable(false);
+    }
+  };
+  const handleOpenCardView = (user: AccountUser) => {
+    setViewMode?.("card");
+    setSelectedUsername(user.username);
+    setReturnToTable(Boolean(setViewMode));
+  };
   const handleEditUser = (user: AccountUser) => {
-    setSelectedUser(user);
+    setDialogUser(user);
     setEditDialogOpen(true);
   };
   const handleChangePassword = (user: AccountUser) => {
-    setSelectedUser(user);
+    setDialogUser(user);
     setPasswordDialogOpen(true);
   };
   const { mutate: lockUser, isPending: isLocking } =
@@ -183,267 +250,271 @@ const UsersTab: React.FC<UsersTabProps> = ({
         </span>
       </div>
       {viewMode === "card" ? (
-        filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((user) => (
-              <AppGrid
-                key={user.username}
-                size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-              >
-                <UserCard
-                  user={user}
-                  currentUsername={currentUser?.name}
-                  isLocking={isLocking}
-                  isUnlocking={isUnlocking}
-                  onEdit={() => handleEditUser(user)}
-                  onChangePassword={() => handleChangePassword(user)}
-                  onToggleLock={() => handleToggleLock(user)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
-        ) : (
-          <div
-            style={{
-              textAlign: "center",
-              paddingBlock: 16,
-            }}
-          >
-            <AppTypography variant="body2" color="text.secondary">
-              No users found.
-            </AppTypography>
-          </div>
-        )
+        <UserCardsView
+          users={filtered}
+          selectedUser={detailUser}
+          currentUsername={currentUser?.name}
+          isLocking={isLocking}
+          isUnlocking={isUnlocking}
+          onSelect={handleCardSelect}
+          onEdit={handleEditUser}
+          onChangePassword={handleChangePassword}
+          onToggleLock={handleToggleLock}
+        />
       ) : (
-        <UnifiedCollapsibleTable
-          data={filtered}
-          columns={columns}
-          getRowKey={(user) => user.username}
-          renderMainRow={(user) => (
-            <>
-              <AppTableCell>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexWrap: "wrap",
-                  }}
-                >
+        <AppGrid container spacing={3} alignItems="flex-start">
+          <AppGrid size={{ xs: 12, md: detailUser ? 7 : 12 }}>
+            <UnifiedCollapsibleTable
+              data={filtered}
+              columns={columns}
+              getRowKey={(user) => user.username}
+              selectedKey={selectedUsername}
+              onRowClick={(user) =>
+                setSelectedUsername(
+                  selectedUsername === user.username ? null : user.username,
+                )
+              }
+              onRowDoubleClick={handleOpenCardView}
+              renderMainRow={(user) => (
+                <>
+                  <AppTableCell>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <AppTypography
+                        variant="body2"
+                        fontWeight={500}
+                        style={responsiveTextStyles}
+                      >
+                        {user.username}
+                      </AppTypography>
+                      {user.username === currentUser?.name && (
+                        <Chip
+                          label="Your account"
+                          size="small"
+                          color="primary"
+                          variant="soft"
+                          style={{
+                            fontSize: "0.65rem",
+                            height: 20,
+                          }}
+                        />
+                      )}
+                      {user.isLocked && (
+                        <Chip
+                          label="locked"
+                          size="small"
+                          color="warning"
+                          variant="soft"
+                          style={{
+                            fontSize: "0.65rem",
+                            height: 20,
+                          }}
+                        />
+                      )}
+                    </div>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-sm">
+                    <AppTypography variant="body2" style={responsiveTextStyles}>
+                      {user.gecos || "-"}
+                    </AppTypography>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-md">
+                    <AppTypography variant="body2" style={responsiveTextStyles}>
+                      {user.uid}
+                    </AppTypography>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-lg">
+                    <AppTypography
+                      variant="body2"
+                      color={
+                        user.username === currentUser?.name
+                          ? "success"
+                          : "text.secondary"
+                      }
+                      style={responsiveTextStyles}
+                    >
+                      {formatLastLogin(user.lastLogin, user.username)}
+                    </AppTypography>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-xl">
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 2,
+                      }}
+                    >
+                      {getAllGroups(user)
+                        .slice(0, 3)
+                        .map((group, idx) => (
+                          <Chip
+                            key={group}
+                            label={
+                              idx === 0
+                                ? `${group} (${user.primaryGroup === group ? "primary" : ""})`.replace(
+                                    " ()",
+                                    "",
+                                  )
+                                : group
+                            }
+                            size="small"
+                            variant="soft"
+                            style={{
+                              fontSize: "0.65rem",
+                              height: 20,
+                            }}
+                          />
+                        ))}
+                      {getAllGroups(user).length > 3 && (
+                        <Chip
+                          label={`+${getAllGroups(user).length - 3}`}
+                          size="small"
+                          variant="soft"
+                          style={{
+                            fontSize: "0.65rem",
+                            height: 20,
+                          }}
+                        />
+                      )}
+                    </div>
+                  </AppTableCell>
+                  <AppTableCell align="right">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: 2,
+                      }}
+                    >
+                      <AppTooltip title="Edit">
+                        <AppIconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditUser(user);
+                          }}
+                          disabled={user.username === "root"}
+                        >
+                          <Icon icon="mdi:pencil" width={20} height={20} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title="Change Password">
+                        <AppIconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleChangePassword(user);
+                          }}
+                        >
+                          <Icon
+                            icon="mdi:form-textbox-password"
+                            width={20}
+                            height={20}
+                          />
+                        </AppIconButton>
+                      </AppTooltip>
+                      <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
+                        <AppIconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleLock(user);
+                          }}
+                          disabled={
+                            user.username === "root" ||
+                            user.username === currentUser?.name ||
+                            isLocking ||
+                            isUnlocking
+                          }
+                        >
+                          {user.isLocked ? (
+                            <Icon
+                              icon="mdi:lock-open"
+                              width={20}
+                              height={20}
+                            />
+                          ) : (
+                            <Icon icon="mdi:lock" width={20} height={20} />
+                          )}
+                        </AppIconButton>
+                      </AppTooltip>
+                    </div>
+                  </AppTableCell>
+                </>
+              )}
+              renderExpandedContent={(user) => (
+                <>
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <b>Home Directory:</b>
+                  </AppTypography>
                   <AppTypography
                     variant="body2"
-                    fontWeight={500}
-                    style={responsiveTextStyles}
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: "0.85rem",
+                      marginBottom: 8,
+                    }}
                   >
-                    {user.username}
+                    {user.homeDir}
                   </AppTypography>
-                  {user.username === currentUser?.name && (
-                    <Chip
-                      label="Your account"
-                      size="small"
-                      color="primary"
-                      variant="soft"
-                      style={{
-                        fontSize: "0.65rem",
-                        height: 20,
-                      }}
-                    />
-                  )}
-                  {user.isLocked && (
-                    <Chip
-                      label="locked"
-                      size="small"
-                      color="warning"
-                      variant="soft"
-                      style={{
-                        fontSize: "0.65rem",
-                        height: 20,
-                      }}
-                    />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
-                  {user.gecos || "-"}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
-                  {user.uid}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-lg">
-                <AppTypography
-                  variant="body2"
-                  color={
-                    user.username === currentUser?.name
-                      ? "success.main"
-                      : "text.secondary"
-                  }
-                  style={responsiveTextStyles}
-                >
-                  {formatLastLogin(user.lastLogin, user.username)}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-xl">
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 2,
-                  }}
-                >
-                  {getAllGroups(user)
-                    .slice(0, 3)
-                    .map((group, idx) => (
+
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <b>Shell:</b>
+                  </AppTypography>
+                  <AppTypography
+                    variant="body2"
+                    style={{
+                      marginBottom: 8,
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    {user.shell}
+                  </AppTypography>
+
+                  <AppTypography variant="subtitle2" gutterBottom>
+                    <b>All Groups:</b>
+                  </AppTypography>
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      display: "flex",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {getAllGroups(user).map((group, idx) => (
                       <Chip
                         key={group}
-                        label={
-                          idx === 0
-                            ? `${group} (${user.primaryGroup === group ? "primary" : ""})`.replace(
-                                " ()",
-                                "",
-                              )
-                            : group
-                        }
+                        label={idx === 0 ? `${group} (primary)` : group}
                         size="small"
                         variant="soft"
                         style={{
-                          fontSize: "0.65rem",
-                          height: 20,
+                          marginRight: 4,
+                          marginBottom: 4,
                         }}
                       />
                     ))}
-                  {getAllGroups(user).length > 3 && (
-                    <Chip
-                      label={`+${getAllGroups(user).length - 3}`}
-                      size="small"
-                      variant="soft"
-                      style={{
-                        fontSize: "0.65rem",
-                        height: 20,
-                      }}
-                    />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell align="right">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 2,
-                  }}
-                >
-                  <AppTooltip title="Edit">
-                    <AppIconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditUser(user);
-                      }}
-                      disabled={user.username === "root"}
-                    >
-                      <Icon icon="mdi:pencil" width={20} height={20} />
-                    </AppIconButton>
-                  </AppTooltip>
-                  <AppTooltip title="Change Password">
-                    <AppIconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleChangePassword(user);
-                      }}
-                    >
-                      <Icon
-                        icon="mdi:form-textbox-password"
-                        width={20}
-                        height={20}
-                      />
-                    </AppIconButton>
-                  </AppTooltip>
-                  <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                    <AppIconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleLock(user);
-                      }}
-                      disabled={
-                        user.username === "root" ||
-                        user.username === currentUser?.name ||
-                        isLocking ||
-                        isUnlocking
-                      }
-                    >
-                      {user.isLocked ? (
-                        <Icon icon="mdi:lock-open" width={20} height={20} />
-                      ) : (
-                        <Icon icon="mdi:lock" width={20} height={20} />
-                      )}
-                    </AppIconButton>
-                  </AppTooltip>
-                </div>
-              </AppTableCell>
-            </>
+                  </div>
+                </>
+              )}
+              emptyMessage="No users found."
+            />
+          </AppGrid>
+          {detailUser && (
+            <AppGrid size={{ xs: 12, md: 5 }}>
+              <UserDetailsStack
+                user={detailUser}
+                currentUsername={currentUser?.name}
+                onClose={() => setSelectedUsername(null)}
+              />
+            </AppGrid>
           )}
-          renderExpandedContent={(user) => (
-            <>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>Home Directory:</b>
-              </AppTypography>
-              <AppTypography
-                variant="body2"
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                }}
-              >
-                {user.homeDir}
-              </AppTypography>
-
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>Shell:</b>
-              </AppTypography>
-              <AppTypography
-                variant="body2"
-                style={{
-                  marginBottom: 8,
-                  fontSize: "0.85rem",
-                }}
-              >
-                {user.shell}
-              </AppTypography>
-
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>All Groups:</b>
-              </AppTypography>
-              <div
-                style={{
-                  marginBottom: 8,
-                  display: "flex",
-                  flexWrap: "wrap",
-                }}
-              >
-                {getAllGroups(user).map((group, idx) => (
-                  <Chip
-                    key={group}
-                    label={idx === 0 ? `${group} (primary)` : group}
-                    size="small"
-                    variant="soft"
-                    style={{
-                      marginRight: 4,
-                      marginBottom: 4,
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-          emptyMessage="No users found."
-        />
+        </AppGrid>
       )}
 
       <CreateUserDialog
@@ -451,23 +522,23 @@ const UsersTab: React.FC<UsersTabProps> = ({
         onClose={() => setCreateDialogOpen(false)}
       />
 
-      {selectedUser && (
+      {dialogUser && (
         <>
           <EditUserDialog
             open={editDialogOpen}
             onClose={() => {
               setEditDialogOpen(false);
-              setSelectedUser(null);
+              setDialogUser(null);
             }}
-            user={selectedUser}
+            user={dialogUser}
           />
           <ChangePasswordDialog
             open={passwordDialogOpen}
             onClose={() => {
               setPasswordDialogOpen(false);
-              setSelectedUser(null);
+              setDialogUser(null);
             }}
-            username={selectedUser.username}
+            username={dialogUser.username}
           />
         </>
       )}

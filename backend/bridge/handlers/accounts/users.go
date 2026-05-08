@@ -137,6 +137,38 @@ func GetUser(username string) (*User, error) {
 	return nil, fmt.Errorf("user not found: %s", username)
 }
 
+// ListUserLogins returns the most recent successful login sessions for a user.
+func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogin, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, fmt.Errorf("username is required")
+	}
+	if limit <= 0 {
+		limit = 12
+	}
+
+	logins, err := loginhistory.FetchRecent(ctx, username, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]UserLogin, 0, len(logins))
+	for _, login := range logins {
+		startedAt := ""
+		if !login.StartedAt.IsZero() {
+			startedAt = login.StartedAt.Format(time.RFC3339)
+		}
+		result = append(result, UserLogin{
+			Username:  login.Username,
+			Terminal:  login.Terminal,
+			Source:    login.Source,
+			Time:      login.Time,
+			StartedAt: startedAt,
+		})
+	}
+	return result, nil
+}
+
 // CreateUser creates a new system user
 func CreateUser(req CreateUserRequest) error {
 	if req.Username == "" {
