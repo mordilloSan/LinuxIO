@@ -9,6 +9,8 @@
 
 5 - Make a global config?
 
+6 - session-activity-timeout-plan.md
+
 Fix NFS distro dependency - DONE
 Implement power management - DONE
 Review bridge and server logging - Done
