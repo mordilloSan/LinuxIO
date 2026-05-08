@@ -2,7 +2,10 @@ package loginhistory
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -21,10 +24,25 @@ var runCommand = func(ctx context.Context, name string, args ...string) ([]byte,
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
+var readFile = os.ReadFile
+
 var weekdayTokens = map[string]bool{
 	"Mon": true, "Tue": true, "Wed": true,
 	"Thu": true, "Fri": true, "Sat": true, "Sun": true,
 }
+
+const (
+	// /var/log/btmp uses the Linux glibc utmp record layout.
+	btmpPath         = "/var/log/btmp"
+	btmpRecordSize   = 384
+	btmpTypeOffset   = 0
+	btmpUserOffset   = 44
+	btmpUserSize     = 32
+	btmpTimeOffset   = 340
+	utmpLoginProcess = 6
+	utmpUserProcess  = 7
+	currentLoginSkew = 2 * time.Second
+)
 
 func FetchLast(ctx context.Context, username string) (*Login, error) {
 	logins, err := FetchRecent(ctx, username, 1)
@@ -67,6 +85,36 @@ func FetchByUser(ctx context.Context) (map[string]Login, error) {
 		logins = ParseLastOutput("", string(output))
 	}
 	return firstLoginByUser(logins), nil
+}
+
+func FetchFailedAttempts(ctx context.Context, username string, sessionStartedAt time.Time) (int, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return 0, nil
+	}
+
+	logins, err := FetchRecent(ctx, username, 50)
+	if err != nil {
+		return 0, err
+	}
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return 0, ctxErr
+	}
+
+	data, err := readFile(btmpPath)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	since := previousSuccessfulLoginUnixBefore(logins, sessionStartedAt)
+	if sessionStartedAt.IsZero() {
+		return countBtmpFailuresBetween(username, data, since, 0), nil
+	}
+	return countBtmpFailuresBetween(username, data, since, sessionStartedAt.Unix()+1), nil
 }
 
 func ParseLastOutput(username, output string) []Login {
@@ -187,6 +235,71 @@ func firstLoginByUser(logins []Login) map[string]Login {
 		byUser[login.Username] = login
 	}
 	return byUser
+}
+
+func previousSuccessfulLoginUnix(logins []Login) int64 {
+	if len(logins) < 2 || logins[1].StartedAt.IsZero() {
+		return 0
+	}
+	return logins[1].StartedAt.Unix()
+}
+
+func previousSuccessfulLoginUnixBefore(logins []Login, sessionStartedAt time.Time) int64 {
+	if sessionStartedAt.IsZero() {
+		return previousSuccessfulLoginUnix(logins)
+	}
+
+	cutoff := sessionStartedAt.Add(-currentLoginSkew)
+	for _, login := range logins {
+		if login.StartedAt.IsZero() || !login.StartedAt.Before(cutoff) {
+			continue
+		}
+		return login.StartedAt.Unix()
+	}
+	return 0
+}
+
+func countBtmpFailuresSince(username string, data []byte, since int64) int {
+	return countBtmpFailuresBetween(username, data, since, 0)
+}
+
+func countBtmpFailuresBetween(username string, data []byte, since, until int64) int {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return 0
+	}
+
+	count := 0
+	for len(data) >= btmpRecordSize {
+		record := data[:btmpRecordSize]
+		data = data[btmpRecordSize:]
+
+		recordType := binary.LittleEndian.Uint16(record[btmpTypeOffset:])
+		if recordType != utmpLoginProcess && recordType != utmpUserProcess {
+			continue
+		}
+		if fixedCString(record[btmpUserOffset:btmpUserOffset+btmpUserSize]) != username {
+			continue
+		}
+		recordTime := int64(binary.LittleEndian.Uint32(record[btmpTimeOffset:]))
+		if recordTime <= since {
+			continue
+		}
+		if until > 0 && recordTime > until {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func fixedCString(value []byte) string {
+	for i, b := range value {
+		if b == 0 {
+			return string(value[:i])
+		}
+	}
+	return string(value)
 }
 
 func splitTerminalAndSource(fields []string) (terminal string, source string) {

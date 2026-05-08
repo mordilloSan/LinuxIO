@@ -34,7 +34,7 @@ var healthRunCommand = func(ctx context.Context, name string, args ...string) ([
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
-func FetchSystemHealthSummary(username string, privileged bool) (*SystemHealthSummary, error) {
+func FetchSystemHealthSummary(username string, privileged bool, sessionStartedAt time.Time) (*SystemHealthSummary, error) {
 	summary := &SystemHealthSummary{
 		UpToDate: true,
 	}
@@ -58,6 +58,13 @@ func FetchSystemHealthSummary(username string, privileged bool) (*SystemHealthSu
 
 	if login, err := FetchLastSuccessfulLogin(username); err == nil {
 		summary.LastLogin = login
+	}
+
+	if privileged {
+		attempts, err := FetchFailedLoginAttempts(username, sessionStartedAt)
+		if err == nil {
+			summary.FailedLoginAttempts = attempts
+		}
 	}
 
 	if unclean, bootID, err := DetectUncleanShutdown(); err == nil {
@@ -88,6 +95,18 @@ func FetchLastSuccessfulLogin(username string) (*SystemLastLogin, error) {
 		Source:   login.Source,
 		Time:     login.Time,
 	}, nil
+}
+
+func FetchFailedLoginAttempts(username string, sessionStartedAt time.Time) (int, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return 0, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	return loginhistory.FetchFailedAttempts(ctx, username, sessionStartedAt)
 }
 
 func DetectUncleanShutdown() (bool, string, error) {

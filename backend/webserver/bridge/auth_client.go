@@ -106,11 +106,12 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 }
 
 // BuildRequest creates a Request from auth parameters.
-func BuildRequest(username, sessionID, password string, verbose bool) *ipc.AuthRequest {
+func BuildRequest(username, sessionID, password, remoteHost string, verbose bool) *ipc.AuthRequest {
 	return &ipc.AuthRequest{
-		User:      username,
-		Password:  password,
-		SessionID: sessionID,
-		Verbose:   verbose,
+		User:       username,
+		Password:   password,
+		SessionID:  sessionID,
+		RemoteHost: remoteHost,
+		Verbose:    verbose,
 	}
 }

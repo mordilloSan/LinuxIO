@@ -134,7 +134,7 @@ func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) err
 
 func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged)
+		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged, sess.Timing.CreatedAt)
 		if err == nil && result != nil {
 			applyUncleanShutdownDismissal(sess.User.Username, result)
 		}

@@ -129,6 +129,9 @@ func initializeBridgeSession() {
 	sess = &session.Session{
 		SessionID:  bootCfg.SessionID,
 		Privileged: bootCfg.Privileged,
+		Timing: session.Timing{
+			CreatedAt: time.Now(),
+		},
 		User: session.User{
 			Username: bootCfg.Username,
 			UID:      bootCfg.UID,

@@ -73,7 +73,9 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		startBridge = oldStart
 	}()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+	var gotRemoteHost string
+	startBridge = func(sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
+		gotRemoteHost = remoteHost
 		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
 			return nil, err
@@ -138,8 +140,86 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if !sess.Privileged {
 		t.Fatalf("expected session privileged=true, got %v", sess.Privileged)
 	}
+	if gotRemoteHost != "192.0.2.1" {
+		t.Fatalf("remote host = %q, want %q", gotRemoteHost, "192.0.2.1")
+	}
 	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable || !sess.Capabilities.NFSClientAvailable || !sess.Capabilities.NFSServerAvailable || !sess.Capabilities.TunedAvailable {
 		t.Fatalf("expected session capabilities to persist, got %+v", sess.Capabilities)
+	}
+}
+
+func TestClientRemoteHost_UsesForwardedForFromTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "172.18.0.4:49832"
+	req.Header.Set("X-Forwarded-For", "203.0.113.9, 172.18.0.4")
+
+	if got := clientRemoteHost(req); got != "203.0.113.9" {
+		t.Fatalf("remote host = %q, want %q", got, "203.0.113.9")
+	}
+}
+
+func TestClientRemoteHost_UsesRightmostUntrustedForwardedFor(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "127.0.0.1:49832"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1, 192.168.1.239")
+
+	if got := clientRemoteHost(req); got != "192.168.1.239" {
+		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
+	}
+}
+
+func TestClientRemoteHost_FallsBackToRealIPWhenForwardedForOnlyHasTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "127.0.0.1:49832"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1")
+	req.Header.Set("X-Real-IP", "192.168.1.239")
+
+	if got := clientRemoteHost(req); got != "192.168.1.239" {
+		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
+	}
+}
+
+func TestClientRemoteHost_IgnoresForwardedForFromUntrustedPeer(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "203.0.113.10:49832"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+
+	if got := clientRemoteHost(req); got != "203.0.113.10" {
+		t.Fatalf("remote host = %q, want %q", got, "203.0.113.10")
+	}
+}
+
+func TestClientRemoteHost_UsesCustomTrustedProxyCIDR(t *testing.T) {
+	t.Setenv(trustedProxyCIDRsEnv, "10.10.0.0/16")
+
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "10.10.1.20:49832"
+	req.Header.Set("X-Real-IP", "198.51.100.7")
+
+	if got := clientRemoteHost(req); got != "198.51.100.7" {
+		t.Fatalf("remote host = %q, want %q", got, "198.51.100.7")
+	}
+}
+
+func TestClientRemoteHost_ParsesRFCForwardedHeader(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "172.18.0.4:49832"
+	req.Header.Set("Forwarded", `for="[2001:db8::1]:443";proto=https`)
+
+	if got := clientRemoteHost(req); got != "2001:db8::1" {
+		t.Fatalf("remote host = %q, want %q", got, "2001:db8::1")
+	}
+}
+
+func TestClientRemoteHost_FallsBackToForwardedWhenEarlierHeadersOnlyHaveTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "127.0.0.1:49832"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1")
+	req.Header.Set("X-Real-IP", "127.0.0.1")
+	req.Header.Set("Forwarded", `for=127.0.0.1, for=192.168.1.239`)
+
+	if got := clientRemoteHost(req); got != "192.168.1.239" {
+		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
 	}
 }
 
@@ -147,7 +227,7 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
@@ -185,7 +265,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
 			Code:    ipc.ResultAuthFailed,
 			Message: "authentication failed",
@@ -221,7 +301,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
 			Code:    ipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
@@ -255,7 +335,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 
 	// Bridge blocks forever — holds the semaphore slot
 	block := make(chan struct{})
-	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		<-block
 		return nil, fmt.Errorf("cancelled")
 	}
@@ -309,7 +389,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie

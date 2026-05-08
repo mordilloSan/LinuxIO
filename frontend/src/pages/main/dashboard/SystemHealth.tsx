@@ -149,15 +149,17 @@ const SystemHealth = () => {
       health.lastLogin.terminal === "web"
         ? "web console"
         : health.lastLogin.terminal;
-    const detailParts = [displaySource, terminal].filter(Boolean);
+    const detailLines = [
+      displaySource ? `from ${displaySource}` : "",
+      terminal ? `on ${terminal}` : "",
+    ].filter(Boolean);
     items.push({
       icon: "mdi:account-clock-outline",
       color: health.failedLoginAttempts
         ? theme.palette.warning.main
         : theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
-      detail:
-        detailParts.length > 0 ? `from ${detailParts.join(" on ")}` : undefined,
+      detail: detailLines.length > 0 ? detailLines.join("\n") : undefined,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
     });
@@ -227,7 +229,12 @@ const SystemHealth = () => {
             <AppTypography
               variant="caption"
               color="text.secondary"
-              style={{ display: "block", marginTop: -2 }}
+              style={{
+                display: "block",
+                marginTop: -2,
+                lineHeight: 1.2,
+                whiteSpace: "pre-line",
+              }}
             >
               {item.detail}
             </AppTypography>

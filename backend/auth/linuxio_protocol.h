@@ -18,7 +18,7 @@
 #define PROTO_MAGIC_0            'L'
 #define PROTO_MAGIC_1            'I'
 #define PROTO_MAGIC_2            'O'
-#define PROTO_VERSION            2
+#define PROTO_VERSION            3
 
 /* ==========================================================================
  * Auth Request Protocol (Server -> Auth via Unix socket)
@@ -28,6 +28,7 @@
  *   [len:2][user]
  *   [len:2][password]
  *   [len:2][session_id]
+ *   [len:2][remote_host]
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
@@ -91,6 +92,7 @@
 #define PROTO_MAX_USERNAME           256
 #define PROTO_MAX_PASSWORD           2048
 #define PROTO_MAX_SESSION_ID         64
+#define PROTO_MAX_REMOTE_HOST        256
 #define PROTO_MAX_ERROR              256
 
 /* ==========================================================================

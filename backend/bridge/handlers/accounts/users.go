@@ -38,64 +38,9 @@ func ListUsers() ([]User, error) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		if user, ok := parsePasswdLine(scanner.Text(), lockedUsers, userGroups, gidToGroup, lastLogins); ok {
+			users = append(users, user)
 		}
-
-		parts := strings.Split(line, ":")
-		if len(parts) < 7 {
-			continue
-		}
-
-		uid, err := strconv.Atoi(parts[2])
-		if err != nil {
-			continue
-		}
-
-		gid, err := strconv.Atoi(parts[3])
-		if err != nil {
-			continue
-		}
-
-		shell := parts[6]
-
-		// Filter: only show root OR users with UID >= 1000 that have a login shell
-		if uid != 0 && uid < systemUID {
-			continue // Skip system users (except root)
-		}
-
-		// Skip users with nologin or false shells (service accounts)
-		if uid != 0 && isNonLoginShell(shell) {
-			continue
-		}
-
-		username := parts[0]
-		primaryGroup := gidToGroup[gid]
-		if primaryGroup == "" {
-			primaryGroup = strconv.Itoa(gid)
-		}
-
-		lastLogin := lastLogins[username]
-		if lastLogin == "" {
-			lastLogin = "Never"
-		}
-
-		user := User{
-			Username:     username,
-			UID:          uid,
-			GID:          gid,
-			Gecos:        parts[4],
-			HomeDir:      parts[5],
-			Shell:        shell,
-			PrimaryGroup: primaryGroup,
-			IsSystem:     uid < systemUID,
-			IsLocked:     lockedUsers[username],
-			Groups:       userGroups[username],
-			LastLogin:    lastLogin,
-		}
-
-		users = append(users, user)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -103,6 +48,66 @@ func ListUsers() ([]User, error) {
 	}
 
 	return users, nil
+}
+
+func parsePasswdLine(
+	line string,
+	lockedUsers map[string]bool,
+	userGroups map[string][]string,
+	gidToGroup map[int]string,
+	lastLogins map[string]string,
+) (User, bool) {
+	if line == "" || strings.HasPrefix(line, "#") {
+		return User{}, false
+	}
+
+	parts := strings.Split(line, ":")
+	if len(parts) < 7 {
+		return User{}, false
+	}
+
+	uid, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return User{}, false
+	}
+
+	gid, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return User{}, false
+	}
+
+	shell := parts[6]
+	if uid != 0 && uid < systemUID {
+		return User{}, false
+	}
+	if uid != 0 && isNonLoginShell(shell) {
+		return User{}, false
+	}
+
+	username := parts[0]
+	primaryGroup := gidToGroup[gid]
+	if primaryGroup == "" {
+		primaryGroup = strconv.Itoa(gid)
+	}
+
+	lastLogin := lastLogins[username]
+	if lastLogin == "" {
+		lastLogin = "Never"
+	}
+
+	return User{
+		Username:     username,
+		UID:          uid,
+		GID:          gid,
+		Gecos:        parts[4],
+		HomeDir:      parts[5],
+		Shell:        shell,
+		PrimaryGroup: primaryGroup,
+		IsSystem:     uid < systemUID,
+		IsLocked:     lockedUsers[username],
+		Groups:       userGroups[username],
+		LastLogin:    lastLogin,
+	}, true
 }
 
 // isNonLoginShell checks if a shell prevents interactive login

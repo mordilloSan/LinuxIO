@@ -45,6 +45,43 @@ func TestReadAuthResponse_DecodesSuccessUser(t *testing.T) {
 	}
 }
 
+func TestWriteAuthRequest_EncodesRemoteHost(t *testing.T) {
+	var buf bytes.Buffer
+	req := &AuthRequest{
+		Verbose:    true,
+		User:       "miguel",
+		Password:   "pw",
+		SessionID:  "session-1",
+		RemoteHost: "192.168.1.239",
+	}
+
+	if err := WriteAuthRequest(&buf, req); err != nil {
+		t.Fatalf("WriteAuthRequest: %v", err)
+	}
+
+	header := buf.Next(AuthReqHeaderSize)
+	if len(header) != AuthReqHeaderSize {
+		t.Fatalf("header len = %d, want %d", len(header), AuthReqHeaderSize)
+	}
+	if header[0] != ProtoMagic0 || header[1] != ProtoMagic1 || header[2] != ProtoMagic2 || header[3] != ProtoVersion {
+		t.Fatalf("bad header: %v", header)
+	}
+	if header[4]&ReqFlagVerbose == 0 {
+		t.Fatalf("verbose flag not set: %v", header)
+	}
+
+	fields := []string{"miguel", "pw", "session-1", "192.168.1.239"}
+	for _, want := range fields {
+		got, err := readLenStr(&buf)
+		if err != nil {
+			t.Fatalf("readLenStr: %v", err)
+		}
+		if got != want {
+			t.Fatalf("field = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestReadAuthResponse_DecodesStructuredResultCode(t *testing.T) {
 	var buf bytes.Buffer
 	buf.Write([]byte{

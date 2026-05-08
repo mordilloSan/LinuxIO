@@ -73,7 +73,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, h.Verbose)
+	remoteHost := clientRemoteHost(r)
+	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
 	if err != nil {
 		var authErr *bridge.AuthError
 		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
@@ -81,6 +82,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 				"component", "auth",
 				"subsystem", "login",
 				"user", req.Username,
+				"remote_host", remoteHost,
 				"error", err)
 			switch authErr.Code {
 			case ipc.ResultPasswordExpired, ipc.ResultAccessDenied:
@@ -99,6 +101,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			"component", "auth",
 			"subsystem", "login",
 			"user", req.Username,
+			"remote_host", remoteHost,
 			"session_id", sessionID,
 			"error", err)
 		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
@@ -106,6 +109,11 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.SM.WriteCookie(w, sess.SessionID)
+	slog.Info("authentication succeeded",
+		"component", "auth",
+		"subsystem", "login",
+		"user", sess.User.Username,
+		"remote_host", remoteHost)
 
 	response := loginSuccessResponse{
 		Success:                true,

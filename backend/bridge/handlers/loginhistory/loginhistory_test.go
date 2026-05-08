@@ -1,7 +1,11 @@
 package loginhistory
 
 import (
+	"context"
+	"encoding/binary"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -96,4 +100,175 @@ func TestParseWtmpdbOutput(t *testing.T) {
 	require.Equal(t, "192.168.1.239", logins[0].Source)
 	require.Equal(t, "Mon May 4 19:11:47 2026", logins[0].Time)
 	require.False(t, logins[0].StartedAt.IsZero())
+}
+
+func TestCountBtmpFailuresSince(t *testing.T) {
+	data := appendBtmpRecord(nil, "miguel", 100)
+	data = appendBtmpRecord(data, "other", 110)
+	data = appendBtmpRecord(data, "miguel", 120)
+	data = append(data, []byte("partial")...)
+
+	require.Equal(t, 1, countBtmpFailuresSince("miguel", data, 110))
+}
+
+func TestCountBtmpFailuresAcceptsUserProcess(t *testing.T) {
+	record := make([]byte, btmpRecordSize)
+	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], utmpUserProcess)
+	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
+	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], 120)
+
+	require.Equal(t, 1, countBtmpFailuresSince("miguel", record, 0))
+}
+
+func TestCountBtmpFailuresSkipsDeadProcess(t *testing.T) {
+	record := make([]byte, btmpRecordSize)
+	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], 8)
+	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
+	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], 120)
+
+	require.Zero(t, countBtmpFailuresSince("miguel", record, 0))
+}
+
+func TestPreviousSuccessfulLoginUnix(t *testing.T) {
+	current := time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC)
+	previous := time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC)
+
+	require.Equal(t, previous.Unix(), previousSuccessfulLoginUnix([]Login{
+		{StartedAt: current},
+		{StartedAt: previous},
+	}))
+}
+
+func TestPreviousSuccessfulLoginUnixBeforeSkipsCurrentAndLaterLogins(t *testing.T) {
+	later := time.Date(2026, time.May, 8, 12, 5, 0, 0, time.UTC)
+	current := time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC)
+	previous := time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC)
+
+	require.Equal(t, previous.Unix(), previousSuccessfulLoginUnixBefore([]Login{
+		{StartedAt: later},
+		{StartedAt: current},
+		{StartedAt: previous},
+	}, current.Add(500*time.Millisecond)))
+}
+
+func TestFetchFailedAttemptsCountsSincePreviousSuccess(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return []byte(`{
+  "entries": [
+    {
+      "user": "miguel",
+      "tty": "web console",
+      "hostname": "192.168.1.239",
+      "login": "Fri May  8 12:00:00 2026"
+    },
+    {
+      "user": "miguel",
+      "tty": "pts/0",
+      "hostname": "192.168.1.239",
+      "login": "Thu May  7 12:00:00 2026"
+    }
+  ]
+}`), nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, btmpPath, path)
+		previous := uint32(time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC).Unix())
+		data := appendBtmpRecord(nil, "miguel", previous-1)
+		data = appendBtmpRecord(data, "miguel", previous+1)
+		return data, nil
+	}
+
+	count, err := FetchFailedAttempts(context.Background(), "miguel", time.Time{})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
+func TestFetchFailedAttemptsCountsBeforeCurrentSession(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	sessionStartedAt := time.Date(2026, time.May, 8, 12, 0, 0, 500, time.UTC)
+	previous := time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC)
+
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return []byte(`{
+  "entries": [
+    {
+      "user": "miguel",
+      "tty": "web console",
+      "hostname": "192.168.1.239",
+      "login": "Fri May  8 12:05:00 2026"
+    },
+    {
+      "user": "miguel",
+      "tty": "web console",
+      "hostname": "192.168.1.239",
+      "login": "Fri May  8 12:00:00 2026"
+    },
+    {
+      "user": "miguel",
+      "tty": "pts/0",
+      "hostname": "192.168.1.239",
+      "login": "Thu May  7 12:00:00 2026"
+    }
+  ]
+}`), nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, btmpPath, path)
+		data := appendBtmpRecord(nil, "miguel", uint32(previous.Unix()-1))
+		data = appendBtmpRecord(data, "miguel", uint32(previous.Unix()+1))
+		data = appendBtmpRecord(data, "miguel", uint32(sessionStartedAt.Unix()+30))
+		return data, nil
+	}
+
+	count, err := FetchFailedAttempts(context.Background(), "miguel", sessionStartedAt)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
+func TestFetchFailedAttemptsReturnsZeroWhenBtmpPermissionDenied(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return []byte(`{"entries":[]}`), nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, btmpPath, path)
+		return nil, &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
+	}
+
+	count, err := FetchFailedAttempts(context.Background(), "miguel", time.Time{})
+
+	require.NoError(t, err)
+	require.Zero(t, count)
+}
+
+func appendBtmpRecord(data []byte, username string, sec uint32) []byte {
+	record := make([]byte, btmpRecordSize)
+	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], utmpLoginProcess)
+	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], username)
+	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], sec)
+	return append(data, record...)
 }
