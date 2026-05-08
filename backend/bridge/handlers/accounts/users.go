@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,6 +10,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
 )
 
 const (
@@ -72,6 +76,11 @@ func ListUsers() ([]User, error) {
 			primaryGroup = strconv.Itoa(gid)
 		}
 
+		lastLogin := lastLogins[username]
+		if lastLogin == "" {
+			lastLogin = "Never"
+		}
+
 		user := User{
 			Username:     username,
 			UID:          uid,
@@ -83,7 +92,7 @@ func ListUsers() ([]User, error) {
 			IsSystem:     uid < systemUID,
 			IsLocked:     lockedUsers[username],
 			Groups:       userGroups[username],
-			LastLogin:    lastLogins[username],
+			LastLogin:    lastLogin,
 		}
 
 		users = append(users, user)
@@ -439,53 +448,17 @@ func parseGroupFile() (map[string][]string, map[int]string) {
 func getLastLogins() map[string]string {
 	lastLogins := make(map[string]string)
 
-	// Use lastlog command to get last login times
-	cmd := exec.Command("lastlog")
-	output, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	logins, err := loginhistory.FetchByUser(ctx)
 	if err != nil {
 		return lastLogins
 	}
 
-	lines := strings.Split(string(output), "\n")
-	latestColumn := -1
-	if len(lines) > 0 {
-		latestColumn = strings.Index(lines[0], "Latest")
-	}
-
-	for _, line := range lines[1:] {
-		username, lastLogin, ok := parseLastlogEntry(line, latestColumn)
-		if ok {
-			lastLogins[username] = lastLogin
-		}
+	for username, login := range logins {
+		lastLogins[username] = login.Time
 	}
 
 	return lastLogins
-}
-
-func parseLastlogEntry(line string, latestColumn int) (username, lastLogin string, ok bool) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" || strings.HasPrefix(trimmed, "Username") {
-		return "", "", false
-	}
-
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
-		return "", "", false
-	}
-	username = fields[0]
-
-	if strings.Contains(line, "**Never logged in**") {
-		return username, "Never", true
-	}
-
-	if latestColumn <= 0 || len(line) < latestColumn {
-		return "", "", false
-	}
-
-	lastLogin = strings.TrimSpace(line[latestColumn:])
-	if lastLogin == "" {
-		return "", "", false
-	}
-
-	return username, lastLogin, true
 }
