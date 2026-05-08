@@ -96,19 +96,10 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <StatusDot color={statusColor} />
             <AppTypography variant="subtitle2" fontWeight={700} noWrap>
               Account details
             </AppTypography>
           </div>
-          <AppTypography
-            variant="caption"
-            color="text.secondary"
-            noWrap
-            style={{ display: "block", marginTop: 2 }}
-          >
-            {user.username}
-          </AppTypography>
         </div>
 
         <AppTooltip title="Close details">

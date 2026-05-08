@@ -226,29 +226,31 @@ const UsersTab: React.FC<UsersTabProps> = ({
   ];
   return (
     <div>
-      <div
-        style={{
-          marginBottom: 8,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          flexWrap: "wrap",
-        }}
-      >
-        <AppSearchField
-          placeholder="Search users…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 320 }}
-        />
-        <span
+      {!detailUser && (
+        <div
           style={{
-            fontWeight: "bold",
+            marginBottom: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
           }}
         >
-          {filtered.length} shown
-        </span>
-      </div>
+          <AppSearchField
+            placeholder="Search users…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 320 }}
+          />
+          <span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {filtered.length} shown
+          </span>
+        </div>
+      )}
       {viewMode === "card" ? (
         <UserCardsView
           users={filtered}
