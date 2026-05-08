@@ -11,7 +11,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
-import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {
@@ -25,7 +24,6 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   onClose,
   username,
 }) => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -73,8 +71,8 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: theme.spacing(2),
-            marginTop: theme.spacing(1),
+            gap: 8,
+            marginTop: 4,
           }}
         >
           <AppTextField

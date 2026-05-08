@@ -1,11 +1,10 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import CreateUserDialog from "./components/CreateUserDialog";
-import DeleteUserDialog from "./components/DeleteUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
 
 import { linuxio, type AccountUser } from "@/api";
@@ -13,8 +12,6 @@ import UserCard from "@/components/cards/UserCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
-import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -39,9 +36,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
     refetchInterval: 10000,
   });
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AccountUser | null>(null);
@@ -60,47 +55,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       user.gecos.toLowerCase().includes(search.toLowerCase()) ||
       user.primaryGroup.toLowerCase().includes(search.toLowerCase()),
   );
-  const effectiveSelected = useMemo(() => {
-    const filteredNames = new Set(filtered.map((u) => u.username));
-    const result = new Set<string>();
-    selected.forEach((name) => {
-      if (filteredNames.has(name)) {
-        result.add(name);
-      }
-    });
-    return result;
-  }, [selected, filtered]);
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      // Don't allow selecting root or current user
-      setSelected(
-        new Set(
-          filtered
-            .filter(
-              (u) => u.username !== "root" && u.username !== currentUser?.name,
-            )
-            .map((u) => u.username),
-        ),
-      );
-    } else {
-      setSelected(new Set());
-    }
-  };
-  const handleSelectOne = (username: string, checked: boolean) => {
-    if (username === "root" || username === currentUser?.name) return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(username);
-      } else {
-        next.delete(username);
-      }
-      return next;
-    });
-  };
-  const handleDeleteSuccess = () => {
-    setSelected(new Set());
-  };
   const handleEditUser = (user: AccountUser) => {
     setSelectedUser(user);
     setEditDialogOpen(true);
@@ -141,18 +95,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       lockUser([user.username]);
     }
   };
-  const selectedUsers = filtered.filter((u) =>
-    effectiveSelected.has(u.username),
-  );
-  const selectableUsers = filtered.filter(
-    (u) => u.username !== "root" && u.username !== currentUser?.name,
-  );
-  const allSelected =
-    selectableUsers.length > 0 &&
-    effectiveSelected.size === selectableUsers.length;
-  const someSelected =
-    effectiveSelected.size > 0 &&
-    effectiveSelected.size < selectableUsers.length;
 
   // Format last login for display
   const formatLastLogin = (lastLogin: string, username: string): string => {
@@ -239,17 +181,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
         >
           {filtered.length} shown
         </span>
-        {effectiveSelected.size > 0 && (
-          <AppButton
-            variant="contained"
-            color="error"
-            size="small"
-            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            Delete ({effectiveSelected.size})
-          </AppButton>
-        )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
@@ -262,12 +193,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                 <UserCard
                   user={user}
                   currentUsername={currentUser?.name}
-                  selected={effectiveSelected.has(user.username)}
                   isLocking={isLocking}
                   isUnlocking={isUnlocking}
-                  onSelect={(checked) =>
-                    handleSelectOne(user.username, checked)
-                  }
                   onEdit={() => handleEditUser(user)}
                   onChangePassword={() => handleChangePassword(user)}
                   onToggleLock={() => handleToggleLock(user)}
@@ -292,25 +219,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
           data={filtered}
           columns={columns}
           getRowKey={(user) => user.username}
-          renderFirstCell={(user) => (
-            <AppCheckbox
-              size="small"
-              checked={effectiveSelected.has(user.username)}
-              onChange={(e) => handleSelectOne(user.username, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              disabled={
-                user.username === "root" || user.username === currentUser?.name
-              }
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              size="small"
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-            />
-          )}
           renderMainRow={(user) => (
             <>
               <AppTableCell>
@@ -541,13 +449,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
       <CreateUserDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
-      />
-
-      <DeleteUserDialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        usernames={selectedUsers.map((u) => u.username)}
-        onSuccess={handleDeleteSuccess}
       />
 
       {selectedUser && (

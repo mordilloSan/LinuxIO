@@ -3,20 +3,26 @@ import React from "react";
 
 import { type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import {
+  SummaryRowsList,
+  type SummaryRow,
+} from "@/components/cards/HardwareCard";
 import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { responsiveTextStyles } from "@/theme/tableStyles";
+import StatusDot from "@/components/ui/StatusDot";
+import { useAppTheme } from "@/theme";
+import { GAP_SM } from "@/theme/constants";
 
 function formatLastLogin(
   lastLogin: string,
   username: string,
   currentUsername: string | undefined,
 ): string {
-  if (!lastLogin || lastLogin === "Never") return "Never logged in";
-  if (username === currentUsername) return "Logged in";
+  if (!lastLogin || lastLogin === "Never") return "Never";
+  if (username === currentUsername) return "Now";
   return lastLogin;
 }
 
@@ -28,13 +34,17 @@ function getAllGroups(user: AccountUser): string[] {
   return groups;
 }
 
+function getUserIcon(user: AccountUser): string {
+  if (user.username === "root") return "mdi:shield-crown";
+  if (user.isLocked) return "mdi:account-lock";
+  return "mdi:account-circle";
+}
+
 export interface UserCardProps {
   user: AccountUser;
   currentUsername: string | undefined;
-  selected: boolean;
   isLocking: boolean;
   isUnlocking: boolean;
-  onSelect: (checked: boolean) => void;
   onEdit: () => void;
   onChangePassword: () => void;
   onToggleLock: () => void;
@@ -43,121 +53,227 @@ export interface UserCardProps {
 const UserCard: React.FC<UserCardProps> = ({
   user,
   currentUsername,
-  selected,
   isLocking,
   isUnlocking,
-  onSelect,
   onEdit,
   onChangePassword,
   onToggleLock,
 }) => {
+  const theme = useAppTheme();
   const isCurrentUser = user.username === currentUsername;
   const isProtected = user.username === "root" || isCurrentUser;
 
+  const accentColor = user.isLocked
+    ? theme.palette.warning.main
+    : theme.palette.primary.main;
+
+  const statusColor = user.isLocked
+    ? theme.palette.warning.main
+    : isCurrentUser
+      ? theme.palette.success.main
+      : theme.palette.text.disabled;
+
+  const statusTooltip = user.isLocked
+    ? "Locked"
+    : isCurrentUser
+      ? "Active session"
+      : "Active";
+
+  const rows: SummaryRow[] = [
+    { label: "UID", value: String(user.uid) },
+    {
+      label: "Last Active",
+      value: formatLastLogin(user.lastLogin, user.username, currentUsername),
+    },
+    { label: "Shell", value: user.shell || "—" },
+    { label: "Home", value: user.homeDir || "—" },
+  ];
+
+  const groups = getAllGroups(user);
+  const visibleGroups = groups.slice(0, 5);
+  const overflow = groups.length - visibleGroups.length;
+
   return (
-    <FrostedCard style={{ padding: 8 }}>
-      {/* Header: checkbox + username + actions */}
+    <FrostedCard
+      hoverLift
+      style={{
+        padding: 10,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        position: "relative",
+      }}
+    >
+      <StatusDot color={statusColor} tooltip={statusTooltip} absolute />
+
+      {/* Header */}
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          gap: 4,
-          marginBottom: 4,
+          justifyContent: "space-between",
+          gap: GAP_SM,
+          paddingRight: 18,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <AppCheckbox
-            size="small"
-            checked={selected}
-            onChange={(e) => onSelect(e.target.checked)}
-            disabled={isProtected}
-          />
-          <AppTypography variant="body2" fontWeight={700} noWrap>
-            {user.username}
-          </AppTypography>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: GAP_SM,
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon
+              icon={getUserIcon(user)}
+              width={32}
+              height={32}
+              color={accentColor}
+            />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <AppTypography
+              variant="subtitle1"
+              fontWeight={700}
+              noWrap
+              style={{ lineHeight: 1.2 }}
+            >
+              {user.username}
+            </AppTypography>
+            <AppTypography
+              variant="caption"
+              color="text.secondary"
+              noWrap
+              style={{ display: "block" }}
+            >
+              {user.gecos || "No full name"}
+            </AppTypography>
+          </div>
+          {(isCurrentUser || user.isLocked || user.isSystem) && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 4,
+                flexShrink: 0,
+              }}
+            >
+              {isCurrentUser && (
+                <Chip
+                  label="Your account"
+                  size="small"
+                  color="primary"
+                  variant="soft"
+                  style={{ fontSize: "0.65rem", height: 20 }}
+                />
+              )}
+              {user.isLocked && (
+                <Chip
+                  label="Locked"
+                  size="small"
+                  color="warning"
+                  variant="soft"
+                  style={{ fontSize: "0.65rem", height: 20 }}
+                />
+              )}
+              {user.isSystem && !isCurrentUser && (
+                <Chip
+                  label="System"
+                  size="small"
+                  variant="soft"
+                  style={{ fontSize: "0.65rem", height: 20 }}
+                />
+              )}
+            </div>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 2 }}>
+        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
           <AppTooltip title="Edit">
-            <AppIconButton
-              size="small"
-              onClick={onEdit}
-              disabled={user.username === "root"}
-            >
-              <Icon icon="mdi:pencil" width={20} height={20} />
-            </AppIconButton>
+            <span>
+              <AppIconButton
+                size="small"
+                onClick={onEdit}
+                disabled={user.username === "root"}
+              >
+                <Icon icon="mdi:pencil" width={18} height={18} />
+              </AppIconButton>
+            </span>
           </AppTooltip>
           <AppTooltip title="Change Password">
             <AppIconButton size="small" onClick={onChangePassword}>
-              <Icon icon="mdi:form-textbox-password" width={20} height={20} />
+              <Icon icon="mdi:form-textbox-password" width={18} height={18} />
             </AppIconButton>
           </AppTooltip>
           <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-            <AppIconButton
-              size="small"
-              onClick={onToggleLock}
-              disabled={isProtected || isLocking || isUnlocking}
-            >
-              {user.isLocked ? (
-                <Icon icon="mdi:lock-open" width={20} height={20} />
-              ) : (
-                <Icon icon="mdi:lock" width={20} height={20} />
-              )}
-            </AppIconButton>
+            <span>
+              <AppIconButton
+                size="small"
+                onClick={onToggleLock}
+                disabled={isProtected || isLocking || isUnlocking}
+              >
+                {user.isLocked ? (
+                  <Icon icon="mdi:lock-open" width={18} height={18} />
+                ) : (
+                  <Icon icon="mdi:lock" width={18} height={18} />
+                )}
+              </AppIconButton>
+            </span>
           </AppTooltip>
         </div>
       </div>
 
-      {/* Status chips */}
-      <div
-        style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 4 }}
-      >
-        {isCurrentUser && (
-          <Chip
-            label="Your account"
-            size="small"
-            color="primary"
-            variant="soft"
-          />
-        )}
-        {user.isLocked && (
-          <Chip label="Locked" size="small" color="warning" variant="soft" />
-        )}
+      {/* Summary rows */}
+      <div style={{ marginTop: 8 }}>
+        <SummaryRowsList rows={rows} />
       </div>
 
-      {/* Details */}
-      <AppTypography variant="body2" style={responsiveTextStyles}>
-        Full name: {user.gecos || "-"}
-      </AppTypography>
-      <AppTypography variant="body2" style={responsiveTextStyles}>
-        UID: {user.uid}
-      </AppTypography>
-      <AppTypography variant="body2" style={responsiveTextStyles}>
-        Last active:{" "}
-        {formatLastLogin(user.lastLogin, user.username, currentUsername)}
-      </AppTypography>
-      <AppTypography variant="body2" style={responsiveTextStyles}>
-        Shell: {user.shell}
-      </AppTypography>
-      <AppTypography
-        variant="body2"
-        style={{ fontFamily: "monospace", ...responsiveTextStyles }}
-      >
-        Home: {user.homeDir}
-      </AppTypography>
-
-      {/* Groups */}
-      <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 2 }}>
-        {getAllGroups(user).map((group, idx) => (
-          <Chip
-            key={`${user.username}-${group}`}
-            label={idx === 0 ? `${group} (primary)` : group}
-            size="small"
-            variant="soft"
-            style={{ fontSize: "0.7rem" }}
-          />
-        ))}
+      {/* Groups footer */}
+      <div style={{ marginTop: 8 }}>
+        <AppDivider style={{ marginBottom: 6 }} />
+        <AppTypography
+          variant="caption"
+          color="text.secondary"
+          style={{
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            fontSize: "0.62rem",
+            display: "block",
+            marginBottom: 4,
+          }}
+        >
+          Groups ({groups.length})
+        </AppTypography>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+          {visibleGroups.map((group, idx) => (
+            <Chip
+              key={`${user.username}-${group}`}
+              label={group}
+              size="small"
+              variant="soft"
+              color={idx === 0 ? "primary" : "default"}
+              style={{ fontSize: "0.65rem", height: 20 }}
+            />
+          ))}
+          {overflow > 0 && (
+            <Chip
+              label={`+${overflow}`}
+              size="small"
+              variant="soft"
+              style={{ fontSize: "0.65rem", height: 20 }}
+            />
+          )}
+        </div>
       </div>
     </FrostedCard>
   );

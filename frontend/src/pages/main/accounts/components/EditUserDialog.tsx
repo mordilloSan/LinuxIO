@@ -1,6 +1,9 @@
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
+
+import DeleteUserDialog from "./DeleteUserDialog";
 
 import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -13,7 +16,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
-import { useAppTheme } from "@/theme";
+import useAuth from "@/hooks/useAuth";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditUserDialogProps {
@@ -27,14 +30,18 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onClose,
   user,
 }) => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [fullName, setFullName] = useState(user.gecos);
   const [homeDir, setHomeDir] = useState(user.homeDir);
   const [shell, setShell] = useState(user.shell);
   const [selectedGroups, setSelectedGroups] = useState<string[]>(
     user.groups || [],
   );
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const isProtected =
+    user.username === "root" || user.username === currentUser?.name;
 
   const { data: shells = [] } = linuxio.accounts.list_shells.useQuery();
   const { data: groups = [] } = linuxio.accounts.list_groups.useQuery();
@@ -91,8 +98,8 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: theme.spacing(2),
-            marginTop: theme.spacing(1),
+            gap: 8,
+            marginTop: 4,
           }}
         >
           <AppTextField
@@ -124,30 +131,54 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           />
           <AppAutocomplete
             multiple
-            options={groupsList.map((g) => g.name)}
-            value={selectedGroups}
-            onChange={setSelectedGroups}
+            options={groupsList
+              .map((g) => g.name)
+              .filter((g) => !selectedGroups.includes(g))}
+            value={[]}
+            onChange={(values) => {
+              const added = values[0];
+              if (added && !selectedGroups.includes(added)) {
+                setSelectedGroups([...selectedGroups, added]);
+              }
+            }}
             label="Secondary Groups"
             fullWidth
-            renderValue={(value, getItemProps) =>
-              value.map((option, index) => {
-                const itemProps = getItemProps({ index });
-                const { key, ...chipProps } = itemProps;
-                return (
-                  <Chip
-                    key={key}
-                    label={option}
-                    size="small"
-                    variant="soft"
-                    {...chipProps}
-                  />
-                );
-              })
-            }
           />
+          {selectedGroups.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+              }}
+            >
+              {selectedGroups.map((group) => (
+                <Chip
+                  key={group}
+                  label={group}
+                  size="small"
+                  variant="soft"
+                  onDelete={() =>
+                    setSelectedGroups(
+                      selectedGroups.filter((g) => g !== group),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>
+        <AppButton
+          onClick={() => setDeleteDialogOpen(true)}
+          color="error"
+          disabled={isPending || isProtected}
+          startIcon={<Icon icon="mdi:delete" width={18} height={18} />}
+          style={{ marginRight: "auto" }}
+        >
+          Delete
+        </AppButton>
         <AppButton onClick={onClose} disabled={isPending}>
           Cancel
         </AppButton>
@@ -159,6 +190,13 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           {isPending ? "Saving..." : "Save"}
         </AppButton>
       </AppDialogActions>
+
+      <DeleteUserDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        usernames={[user.username]}
+        onSuccess={onClose}
+      />
     </GeneralDialog>
   );
 };
