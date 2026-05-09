@@ -113,7 +113,27 @@ function loginStatusColor(login: AccountUserLogin) {
   return login.status === "failed" ? failedLoginStatusColor : "success";
 }
 
-const loginStatusChipStyle: React.CSSProperties = {
+function isSessionActive(idle: string | undefined): boolean {
+  return !idle || idle === "." || idle === "";
+}
+
+function sessionIdleLabel(idle: string | undefined): string {
+  return isSessionActive(idle) ? "Active" : "Idle";
+}
+
+function sessionIdleColor(
+  idle: string | undefined,
+): "success" | "warning" {
+  return isSessionActive(idle) ? "success" : "warning";
+}
+
+function sessionIdleTooltip(idle: string | undefined): string {
+  if (isSessionActive(idle)) return "Active session";
+  if (idle === "old") return "Idle for over 24 hours";
+  return `Idle for ${idle}`;
+}
+
+const activityChipStyle: React.CSSProperties = {
   fontSize: "0.65rem",
   height: 20,
   width: 65,
@@ -155,6 +175,60 @@ const topCardHeaderStyle: React.CSSProperties = {
   minHeight: 40,
   marginBottom: 12,
 };
+
+const TopCardHeader: React.FC<{
+  icon: string;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+  right?: React.ReactNode;
+}> = ({ icon, iconColor, title, subtitle, right }) => (
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 8,
+      ...topCardHeaderStyle,
+    }}
+  >
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        minWidth: 0,
+        flex: 1,
+      }}
+    >
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon icon={icon} width={30} height={30} color={iconColor} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <AppTypography variant="subtitle2" fontWeight={700} noWrap>
+          {title}
+        </AppTypography>
+        <AppTypography
+          variant="caption"
+          color="text.secondary"
+          style={{ display: "block", marginTop: 2 }}
+        >
+          {subtitle}
+        </AppTypography>
+      </div>
+    </div>
+    {right && <div style={{ flexShrink: 0 }}>{right}</div>}
+  </div>
+);
 
 const DetailText: React.FC<{
   children: React.ReactNode;
@@ -280,6 +354,9 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
   const adminColor = details?.admin.isAdmin
     ? theme.palette.warning.main
     : theme.palette.text.secondary;
+  const securityIconColor = details?.admin.isAdmin
+    ? theme.palette.warning.main
+    : theme.palette.primary.main;
 
   return (
     <FrostedCard
@@ -291,38 +368,23 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
         flexDirection: "column",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 8,
-          ...topCardHeaderStyle,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <AppTypography variant="subtitle2" fontWeight={700} noWrap>
-            Access & security
-          </AppTypography>
-          <AppTypography
-            variant="caption"
-            color="text.secondary"
-            style={{ display: "block", marginTop: 2 }}
-          >
-            Admin privileges, password status, and elevated groups
-          </AppTypography>
-        </div>
-
-        <AppTooltip title="Close details">
-          <AppIconButton
-            size="small"
-            onClick={onClose}
-            style={{ flexShrink: 0 }}
-          >
-            <Icon icon="mdi:close" width={20} height={20} />
-          </AppIconButton>
-        </AppTooltip>
-      </div>
+      <TopCardHeader
+        icon="mdi:shield-account"
+        iconColor={securityIconColor}
+        title="Access & security"
+        subtitle="Admin privileges, password status, and elevated groups"
+        right={
+          <AppTooltip title="Close details">
+            <AppIconButton
+              size="small"
+              onClick={onClose}
+              style={{ flexShrink: 0 }}
+            >
+              <Icon icon="mdi:close" width={20} height={20} />
+            </AppIconButton>
+          </AppTooltip>
+        }
+      />
 
       {isPending ? (
         <LoadingRows />
@@ -511,11 +573,12 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
         title="Active sessions"
         subtitle="Current authenticated sessions"
         headers={[
-          { label: "Terminal" },
-          { label: "Source", hiddenXs: true },
           { label: "Started" },
+          { label: "Terminal", hiddenXs: true },
+          { label: "Source", hiddenXs: true },
+          { label: "Status" },
         ]}
-        gridClassName="account-sessions-grid"
+        gridClassName="account-events-grid"
         metaText={
           detailsPending || !details
             ? "Checking sessions"
@@ -541,8 +604,16 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
         ) : (
           sessions.map((session, index) => (
             <React.Fragment key={`${session.terminal}-${session.startedAt}`}>
-              <div className="account-sessions-grid account-activity-row">
-                <AppTypography variant="body2" fontWeight={600} noWrap>
+              <div className="account-events-grid account-activity-row">
+                <AppTypography variant="body2" fontWeight={500} noWrap>
+                  {session.startedAt || "-"}
+                </AppTypography>
+                <AppTypography
+                  variant="caption"
+                  color="text.secondary"
+                  noWrap
+                  className="account-hidden-xs"
+                >
                   {session.terminal || "-"}
                 </AppTypography>
                 <AppTypography
@@ -553,9 +624,17 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                 >
                   {sessionLocation(session)}
                 </AppTypography>
-                <AppTypography variant="caption" color="text.secondary" noWrap>
-                  {session.startedAt || "-"}
-                </AppTypography>
+                <AppTooltip title={sessionIdleTooltip(session.idle)}>
+                  <div>
+                    <Chip
+                      label={sessionIdleLabel(session.idle)}
+                      size="small"
+                      variant="soft"
+                      color={sessionIdleColor(session.idle)}
+                      style={activityChipStyle}
+                    />
+                  </div>
+                </AppTooltip>
               </div>
               {index < sessions.length - 1 && <AppDivider />}
             </React.Fragment>
@@ -573,7 +652,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           { label: "Source", hiddenXs: true },
           { label: "Result" },
         ]}
-        gridClassName="account-logins-grid"
+        gridClassName="account-events-grid"
         metaText={
           loginsPending
             ? "Loading login history"
@@ -602,7 +681,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                   loginRowRefs.current[loginEventKey(login)] = node;
                 }}
                 className={[
-                  "account-logins-grid",
+                  "account-events-grid",
                   "account-activity-row",
                   flashingLoginKey === loginEventKey(login)
                     ? "account-activity-row--flash"
@@ -636,7 +715,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                     size="small"
                     variant="soft"
                     color={loginStatusColor(login)}
-                    style={loginStatusChipStyle}
+                    style={activityChipStyle}
                   />
                 </div>
               </div>
@@ -668,53 +747,53 @@ function sshStatus(ssh: AccountSSHAccess | undefined): string {
 
 const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
-}) => (
-  <FrostedCard style={{ padding: 12, height: "100%", width: "100%" }}>
-    <div style={topCardHeaderStyle}>
-      <AppTypography variant="subtitle2" fontWeight={700}>
-        Home & SSH access
-      </AppTypography>
-      <AppTypography
-        variant="caption"
-        color="text.secondary"
-        style={{ display: "block", marginTop: 2 }}
-      >
-        Directory ownership, permissions, and authorized keys
-      </AppTypography>
-    </div>
+}) => {
+  const theme = useAppTheme();
 
-    <DetailRow label="Home" noBorder>
-      <DetailText>{homeStatus(details.home)}</DetailText>
-    </DetailRow>
-    <DetailRow label="Owner">
-      <DetailText>
-        {details.home.exists
-          ? details.home.ownerMatches
-            ? `UID ${details.home.ownerUid}`
-            : `UID ${details.home.ownerUid} mismatch`
-          : "-"}
-      </DetailText>
-    </DetailRow>
-    <DetailRow label="Group">
-      <DetailText>
-        {details.home.groupName ||
-          (details.home.groupGid !== undefined ? details.home.groupGid : "-")}
-      </DetailText>
-    </DetailRow>
-    <DetailRow label="Mode">
-      <DetailText>{details.home.mode || "-"}</DetailText>
-    </DetailRow>
-    <DetailRow label="SSH">
-      <DetailText>{sshStatus(details.ssh)}</DetailText>
-    </DetailRow>
-    <DetailRow label=".ssh mode">
-      <DetailText>{details.ssh.sshDirMode || "-"}</DetailText>
-    </DetailRow>
-    <DetailRow label="Keys mode">
-      <DetailText>{details.ssh.authorizedKeysMode || "-"}</DetailText>
-    </DetailRow>
-  </FrostedCard>
-);
+  return (
+    <FrostedCard style={{ padding: 12, height: "100%", width: "100%" }}>
+      <TopCardHeader
+        icon="mdi:home-lock"
+        iconColor={theme.palette.primary.main}
+        title="Home & SSH access"
+        subtitle="Directory ownership, permissions, and authorized keys"
+      />
+
+      <DetailRow label="Home" noBorder>
+        <DetailText>{homeStatus(details.home)}</DetailText>
+      </DetailRow>
+      <DetailRow label="Owner">
+        <DetailText>
+          {details.home.exists
+            ? details.home.ownerMatches
+              ? `UID ${details.home.ownerUid}`
+              : `UID ${details.home.ownerUid} mismatch`
+            : "-"}
+        </DetailText>
+      </DetailRow>
+      <DetailRow label="Group">
+        <DetailText>
+          {details.home.groupName ||
+            (details.home.groupGid !== undefined
+              ? details.home.groupGid
+              : "-")}
+        </DetailText>
+      </DetailRow>
+      <DetailRow label="Mode">
+        <DetailText>{details.home.mode || "-"}</DetailText>
+      </DetailRow>
+      <DetailRow label="SSH">
+        <DetailText>{sshStatus(details.ssh)}</DetailText>
+      </DetailRow>
+      <DetailRow label=".ssh mode">
+        <DetailText>{details.ssh.sshDirMode || "-"}</DetailText>
+      </DetailRow>
+      <DetailRow label="Keys mode">
+        <DetailText>{details.ssh.authorizedKeysMode || "-"}</DetailText>
+      </DetailRow>
+    </FrostedCard>
+  );
+};
 
 type ProcessSortField = "pid" | "command" | "cpu" | "memory";
 type SortDirection = "asc" | "desc";

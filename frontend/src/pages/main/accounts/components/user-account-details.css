@@ -62,14 +62,14 @@
   animation: account-login-row-flash 1.4s ease-in-out;
 }
 
-.account-sessions-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(116px, max-content);
-}
-
-.account-logins-grid {
+.account-events-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px;
+}
+
+.account-events-grid > :last-child {
+  justify-self: center;
+  text-align: center;
 }
 
 .account-processes-grid {
@@ -83,11 +83,7 @@
 }
 
 @media (min-width: 770px) {
-  .account-sessions-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(110px, 0.7fr) minmax(132px, 0.9fr);
-  }
-
-  .account-logins-grid {
+  .account-events-grid {
     grid-template-columns: minmax(180px, 1.4fr) minmax(100px, 0.75fr) minmax(120px, 0.85fr) 82px;
   }
 
