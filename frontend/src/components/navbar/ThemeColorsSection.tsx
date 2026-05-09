@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -348,24 +348,21 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
   const colorInputRef = useRef<HTMLInputElement>(null);
   const normalized = toInputColor(color);
 
-  const [draft, setDraft] = useState(normalized);
-  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
 
-  useEffect(() => {
-    if (!focused) setDraft(normalized);
-  }, [normalized, focused]);
-
-  const draftValid = parseHexInput(draft) != null;
+  const focused = draft !== null;
+  const displayValue = focused ? draft : normalized;
+  const draftValid = focused ? parseHexInput(draft) != null : true;
   const showAffordance = hovered || focused;
 
   const commitDraft = () => {
+    if (draft == null) return;
     const parsed = parseHexInput(draft);
     if (parsed && parsed !== normalized) {
       onChange(parsed);
-    } else {
-      setDraft(normalized);
     }
+    setDraft(null);
   };
 
   const borderColor = !draftValid
@@ -389,23 +386,20 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
     >
       <input
         type="text"
-        value={draft}
+        value={displayValue}
         onChange={(e) => setDraft(e.target.value)}
         onFocus={(e) => {
-          setFocused(true);
+          setDraft(normalized);
           e.target.select();
         }}
-        onBlur={() => {
-          setFocused(false);
-          commitDraft();
-        }}
+        onBlur={commitDraft}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
             (e.target as HTMLInputElement).blur();
           } else if (e.key === "Escape") {
             e.preventDefault();
-            setDraft(normalized);
+            setDraft(null);
             (e.target as HTMLInputElement).blur();
           }
         }}
