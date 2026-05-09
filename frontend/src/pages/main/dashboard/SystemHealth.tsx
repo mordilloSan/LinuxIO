@@ -30,11 +30,20 @@ function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function userDetailsPath(username: string | undefined | null): string {
+function userDetailsPath(
+  username: string | undefined | null,
+  focusLogin?: { status: "success" | "failed"; startedAt?: string },
+): string {
   const user = username?.trim();
   const params = new URLSearchParams({ accountsTab: "users" });
   if (user) {
     params.set("user", user);
+  }
+  if (focusLogin) {
+    params.set("focusLoginStatus", focusLogin.status);
+    if (focusLogin.startedAt) {
+      params.set("focusLoginStartedAt", focusLogin.startedAt);
+    }
   }
   return `/accounts?${params.toString()}`;
 }
@@ -65,7 +74,9 @@ const SystemHealth = () => {
     });
 
   const items: HealthItem[] = [];
-  const currentUserDetailsPath = userDetailsPath(currentUser?.name);
+  const failedLoginDetailsPath = userDetailsPath(currentUser?.name, {
+    status: "failed",
+  });
 
   if (health !== undefined) {
     items.push({
@@ -96,7 +107,7 @@ const SystemHealth = () => {
       icon: "mdi:account-alert-outline",
       color: theme.palette.warning.main,
       text: `${pluralize(health.failedLoginAttempts, "failed login attempt", "failed login attempts")}\nbefore this session`,
-      to: currentUserDetailsPath,
+      to: failedLoginDetailsPath,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
     });
@@ -171,7 +182,9 @@ const SystemHealth = () => {
         ? theme.palette.warning.main
         : theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
-      to: userDetailsPath(health.lastLogin.username || currentUser?.name),
+      to: userDetailsPath(health.lastLogin.username || currentUser?.name, {
+        status: "success",
+      }),
       detail: detailLines.length > 0 ? detailLines.join("\n") : undefined,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
@@ -189,7 +202,7 @@ const SystemHealth = () => {
   } else if (health?.failedLoginAttempts) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";
-    iconLink = currentUserDetailsPath;
+    iconLink = failedLoginDetailsPath;
   } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";

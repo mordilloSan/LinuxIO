@@ -52,6 +52,12 @@
   column-gap: 12px;
   min-height: 32px;
   padding: 4px 0;
+  scroll-margin-block: 18px;
+}
+
+.account-activity-row--flash {
+  border-radius: 6px;
+  animation: account-login-row-flash 1.4s ease-in-out;
 }
 
 .account-sessions-grid {
@@ -89,5 +95,23 @@
 
   .account-hidden-xs {
     display: block;
+  }
+}
+
+@keyframes account-login-row-flash {
+  0%,
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+
+  14%,
+  72% {
+    background-color: color-mix(
+      in srgb,
+      var(--app-palette-warning-main) 20%,
+      transparent
+    );
+    box-shadow: inset 3px 0 0 var(--app-palette-warning-main);
   }
 }

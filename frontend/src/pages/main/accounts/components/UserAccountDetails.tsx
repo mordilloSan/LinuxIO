@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   linuxio,
@@ -105,6 +106,15 @@ function loginStatusLabel(login: AccountUserLogin): string {
 
 function loginStatusColor(login: AccountUserLogin): "success" | "error" {
   return login.status === "failed" ? "error" : "success";
+}
+
+function loginEventKey(login: AccountUserLogin): string {
+  return [
+    login.status,
+    login.startedAt || login.time,
+    login.terminal,
+    login.source,
+  ].join("|");
 }
 
 const LoadingRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
@@ -398,6 +408,7 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
 export const UserActivityCard: React.FC<{ username: string }> = ({
   username,
 }) => {
+  const [searchParams] = useSearchParams();
   const {
     data: details,
     isPending: detailsPending,
@@ -414,6 +425,51 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
     refetchInterval: 30000,
   });
   const sessions = details?.activeSessions ?? [];
+  const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [flashingLoginKey, setFlashingLoginKey] = useState("");
+  const focusLoginStatus = searchParams.get("focusLoginStatus");
+  const focusLoginStartedAt = searchParams.get("focusLoginStartedAt");
+  const focusedLoginKey = useMemo(() => {
+    if (focusLoginStatus !== "success" && focusLoginStatus !== "failed") {
+      return "";
+    }
+
+    const focusedLogin =
+      logins.find(
+        (login) =>
+          login.status === focusLoginStatus &&
+          focusLoginStartedAt &&
+          login.startedAt === focusLoginStartedAt,
+      ) ?? logins.find((login) => login.status === focusLoginStatus);
+
+    return focusedLogin ? loginEventKey(focusedLogin) : "";
+  }, [focusLoginStartedAt, focusLoginStatus, logins]);
+
+  useEffect(() => {
+    if (!focusedLoginKey) {
+      return;
+    }
+
+    const row = loginRowRefs.current[focusedLoginKey];
+    if (!row) {
+      return;
+    }
+
+    row.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+    setFlashingLoginKey(focusedLoginKey);
+
+    const timeout = window.setTimeout(() => {
+      setFlashingLoginKey((current) =>
+        current === focusedLoginKey ? "" : current,
+      );
+    }, 2400);
+
+    return () => window.clearTimeout(timeout);
+  }, [focusedLoginKey]);
 
   return (
     <div className="account-activity-stack">
@@ -507,10 +563,21 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           <ActivityEmpty>No login history found.</ActivityEmpty>
         ) : (
           logins.map((login, index) => (
-            <React.Fragment
-              key={`${login.status}-${login.startedAt || login.time}-${login.terminal}-${login.source}`}
-            >
-              <div className="account-logins-grid account-activity-row">
+            <React.Fragment key={loginEventKey(login)}>
+              <div
+                ref={(node) => {
+                  loginRowRefs.current[loginEventKey(login)] = node;
+                }}
+                className={[
+                  "account-logins-grid",
+                  "account-activity-row",
+                  flashingLoginKey === loginEventKey(login)
+                    ? "account-activity-row--flash"
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <AppTypography variant="body2" fontWeight={500} noWrap>
                   {login.time || "-"}
                 </AppTypography>
