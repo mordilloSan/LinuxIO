@@ -219,7 +219,7 @@ func getActiveSessions(ctx context.Context, username string) []UserActiveSession
 
 	output, err := exec.CommandContext(cmdCtx, "who", "-u").Output()
 	if err != nil {
-		return nil
+		return []UserActiveSession{}
 	}
 
 	sessions := make([]UserActiveSession, 0)
@@ -404,6 +404,7 @@ func getProcessSummary(ctx context.Context, username string) UserProcessSummary 
 	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
+	summary := UserProcessSummary{Top: []UserProcess{}}
 	output, err := exec.CommandContext(
 		cmdCtx,
 		"ps",
@@ -414,10 +415,13 @@ func getProcessSummary(ctx context.Context, username string) UserProcessSummary 
 		"--sort=-pcpu",
 	).Output()
 	if err != nil {
-		return UserProcessSummary{Error: err.Error()}
+		if isEmptyProcessListExit(output, err) {
+			return summary
+		}
+		summary.Error = processSummaryError(err)
+		return summary
 	}
 
-	summary := UserProcessSummary{Top: []UserProcess{}}
 	for line := range strings.SplitSeq(string(output), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 4 {
@@ -438,6 +442,23 @@ func getProcessSummary(ctx context.Context, username string) UserProcessSummary 
 		})
 	}
 	return summary
+}
+
+func isEmptyProcessListExit(output []byte, err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) &&
+		strings.TrimSpace(string(output)) == "" &&
+		strings.TrimSpace(string(exitErr.Stderr)) == ""
+}
+
+func processSummaryError(err error) string {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
+			return stderr
+		}
+	}
+	return err.Error()
 }
 
 func countAuthorizedKeys(path string) (int, error) {

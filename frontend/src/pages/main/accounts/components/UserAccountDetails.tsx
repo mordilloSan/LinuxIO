@@ -12,6 +12,7 @@ import {
   type AccountUser,
   type AccountUserDetails,
   type AccountUserLogin,
+  type AccountUserProcess,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
@@ -725,6 +726,8 @@ const PROCESS_DEFAULT_DIRECTION: Record<ProcessSortField, SortDirection> = {
   memory: "desc",
 };
 
+const EMPTY_PROCESS_TOP: AccountUserProcess[] = [];
+
 const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
 }) => {
@@ -742,9 +745,16 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
     }
   };
 
+  const processTop = Array.isArray(details.processes.top)
+    ? details.processes.top
+    : EMPTY_PROCESS_TOP;
+  const processCount = Number.isFinite(details.processes.count)
+    ? details.processes.count
+    : processTop.length;
+
   const processes = React.useMemo(() => {
     const factor = sortDirection === "asc" ? 1 : -1;
-    return [...details.processes.top].sort((a, b) => {
+    return [...processTop].sort((a, b) => {
       switch (sortField) {
         case "pid":
           return (a.pid - b.pid) * factor;
@@ -756,11 +766,11 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
           return (a.memory - b.memory) * factor;
       }
     });
-  }, [details.processes.top, sortField, sortDirection]);
+  }, [processTop, sortField, sortDirection]);
 
   const metaText = details.processes.error
     ? "Unavailable"
-    : `${details.processes.count} ${details.processes.count === 1 ? "process" : "processes"}`;
+    : `${processCount} ${processCount === 1 ? "process" : "processes"}`;
 
   const headerFor = (label: string, field: ProcessSortField) => ({
     label,
@@ -788,7 +798,7 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
           <InlineError message={details.processes.error} />
         </div>
       ) : processes.length === 0 ? (
-        <ActivityEmpty>No running processes.</ActivityEmpty>
+        <ActivityEmpty>No processes running.</ActivityEmpty>
       ) : (
         processes.map((process, index) => (
           <React.Fragment key={process.pid}>
