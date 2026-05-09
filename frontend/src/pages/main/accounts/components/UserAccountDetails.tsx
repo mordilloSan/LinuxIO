@@ -533,7 +533,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
       <ActivitySection
         className="account-activity-card--logins"
         title="Login history"
-        subtitle="Recent successful and failed login events"
+        subtitle="Recent login events"
         headers={[
           { label: "Time" },
           { label: "Terminal", hiddenXs: true },
@@ -741,7 +741,7 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
     <ActivitySection
       className="account-activity-card--processes"
       title="Owned processes"
-      subtitle="Current process count and busiest commands"
+      subtitle="Current process's resource usage"
       headers={[
         headerFor("PID", "pid"),
         headerFor("Command", "command"),

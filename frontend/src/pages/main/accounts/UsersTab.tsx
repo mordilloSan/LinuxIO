@@ -30,7 +30,6 @@ interface UsersTabProps {
 const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
-  setViewMode,
 }) => {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -42,7 +41,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [dialogUser, setDialogUser] = useState<AccountUser | null>(null);
-  const [returnToTable, setReturnToTable] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedUsername = searchParams.get("user");
   const usersList = Array.isArray(users) ? users : [];
@@ -65,25 +63,11 @@ const UsersTab: React.FC<UsersTabProps> = ({
     [setSearchParams],
   );
 
-  const selectUser = useCallback(
-    (username: string | null) => {
-      if (username !== null) {
-        if (viewMode === "table" && setViewMode) {
-          setReturnToTable(true);
-          setViewMode("card");
-        }
-      } else if (returnToTable && setViewMode) {
-        setViewMode("table");
-        setReturnToTable(false);
-      }
-      setSelectedUsername(username);
-    },
-    [returnToTable, setSelectedUsername, setViewMode, viewMode],
-  );
+  const effectiveViewMode = selectedUsername ? "card" : viewMode;
 
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
     if (event.key === "Escape") {
-      selectUser(null);
+      setSelectedUsername(null);
     }
   });
 
@@ -91,13 +75,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
     window.addEventListener("keydown", handleEscapeKey);
     return () => window.removeEventListener("keydown", handleEscapeKey);
   }, []);
-
-  useEffect(() => {
-    if (selectedUsername && viewMode === "table" && setViewMode) {
-      setReturnToTable(true);
-      setViewMode("card");
-    }
-  }, [selectedUsername, setViewMode, viewMode]);
 
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
@@ -245,14 +222,14 @@ const UsersTab: React.FC<UsersTabProps> = ({
           </span>
         </div>
       )}
-      {viewMode === "card" ? (
+      {effectiveViewMode === "card" ? (
         <UserCardsView
           users={filtered}
           selectedUser={detailUser}
           currentUsername={currentUser?.name}
           isLocking={isLocking}
           isUnlocking={isUnlocking}
-          onSelect={selectUser}
+          onSelect={setSelectedUsername}
           onEdit={handleEditUser}
           onChangePassword={handleChangePassword}
           onToggleLock={handleToggleLock}
@@ -263,7 +240,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           columns={columns}
           getRowKey={(user) => user.username}
           selectedKey={selectedUsername}
-          onRowClick={(user) => selectUser(user.username)}
+          onRowClick={(user) => setSelectedUsername(user.username)}
           renderMainRow={(user) => (
             <>
               <AppTableCell>

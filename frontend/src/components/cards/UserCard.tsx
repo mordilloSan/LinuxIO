@@ -8,7 +8,6 @@ import {
   type SummaryRow,
 } from "@/components/cards/HardwareCard";
 import Chip from "@/components/ui/AppChip";
-import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -70,19 +69,8 @@ const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
         }}
       >
         <span style={selectedRowLabelStyle}>{label}</span>
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            textAlign: "right",
-            fontSize: "0.75rem",
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {value}
+        <div style={{ flex: 1, minWidth: 0, textAlign: "right" }}>
+          <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{value}</span>
         </div>
       </div>
     ))}
@@ -324,7 +312,7 @@ const UserCard: React.FC<UserCardProps> = ({
       </div>
 
       {/* Summary rows */}
-      <div style={{ marginTop: isSelected ? 12 : 8 }}>
+      <div style={{ marginTop: 8 }}>
         {isSelected ? (
           <SelectedSummaryRows rows={rows} />
         ) : (
@@ -333,13 +321,11 @@ const UserCard: React.FC<UserCardProps> = ({
       </div>
 
       {/* Groups footer */}
-      <div style={{ marginTop: 8 }}>
-        <AppDivider style={{ marginBottom: 6 }} />
+      <div style={{ marginTop: "auto", paddingTop: 8 }}>
         <AppTypography
           variant="caption"
           color="text.secondary"
           style={{
-            textTransform: "uppercase",
             letterSpacing: "0.06em",
             fontSize: "0.62rem",
             display: "block",
@@ -348,7 +334,17 @@ const UserCard: React.FC<UserCardProps> = ({
         >
           Groups ({groups.length})
         </AppTypography>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+        <div
+          className="custom-scrollbar"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 3,
+            maxHeight: 43,
+            overflowY: "auto",
+            scrollbarGutter: "stable",
+          }}
+        >
           {groups.map((group, idx) => (
             <Chip
               key={`${user.username}-${group}`}

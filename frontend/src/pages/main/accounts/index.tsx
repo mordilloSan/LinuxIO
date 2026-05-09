@@ -35,7 +35,6 @@ const AccountsPage: React.FC = () => {
                 setCreateUserHandler(() => handler)
               }
               viewMode={usersView}
-              setViewMode={setUsersView}
             />
           ),
           rightContent: isUserDetailOpen ? null : (
