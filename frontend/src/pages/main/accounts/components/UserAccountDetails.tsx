@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -109,12 +110,15 @@ function loginStatusColor(login: AccountUserLogin): "success" | "error" {
 }
 
 function loginEventKey(login: AccountUserLogin): string {
-  return [
-    login.status,
-    login.startedAt || login.time,
-    login.terminal,
-    login.source,
-  ].join("|");
+  return (
+    login.id ||
+    [
+      login.status,
+      login.startedAt || login.time,
+      login.terminal,
+      login.source,
+    ].join("|")
+  );
 }
 
 const LoadingRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
@@ -408,6 +412,7 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
 export const UserActivityCard: React.FC<{ username: string }> = ({
   username,
 }) => {
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const {
     data: details,
@@ -426,24 +431,28 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
   });
   const sessions = details?.activeSessions ?? [];
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
-  const focusLoginStatus = searchParams.get("focusLoginStatus");
-  const focusLoginStartedAt = searchParams.get("focusLoginStartedAt");
+  const focusLoginEventId = searchParams.get("focusLoginEventId");
+  const failedLoginAlertId = searchParams.get("failedLoginAlertId");
+  const autoDismissFailedLoginAlert =
+    searchParams.get("autoDismissFailedLoginAlert") === "1";
+  const { mutate: dismissFailedLoginAlert } =
+    linuxio.system.dismiss_failed_login_alert.useMutation({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: linuxio.system.get_health_summary.queryKey(),
+        });
+      },
+    });
   const focusedLoginKey = useMemo(() => {
-    if (focusLoginStatus !== "success" && focusLoginStatus !== "failed") {
+    if (!focusLoginEventId) {
       return "";
     }
 
-    const focusedLogin =
-      logins.find(
-        (login) =>
-          login.status === focusLoginStatus &&
-          focusLoginStartedAt &&
-          login.startedAt === focusLoginStartedAt,
-      ) ?? logins.find((login) => login.status === focusLoginStatus);
-
+    const focusedLogin = logins.find((login) => login.id === focusLoginEventId);
     return focusedLogin ? loginEventKey(focusedLogin) : "";
-  }, [focusLoginStartedAt, focusLoginStatus, logins]);
+  }, [focusLoginEventId, logins]);
 
   useEffect(() => {
     if (!focusedLoginKey) {
@@ -461,6 +470,14 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
       inline: "nearest",
     });
     setFlashingLoginKey(focusedLoginKey);
+    if (
+      autoDismissFailedLoginAlert &&
+      failedLoginAlertId &&
+      dismissedAlertRef.current !== failedLoginAlertId
+    ) {
+      dismissedAlertRef.current = failedLoginAlertId;
+      dismissFailedLoginAlert([failedLoginAlertId]);
+    }
 
     const timeout = window.setTimeout(() => {
       setFlashingLoginKey((current) =>
@@ -469,7 +486,12 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
     }, 2400);
 
     return () => window.clearTimeout(timeout);
-  }, [focusedLoginKey]);
+  }, [
+    autoDismissFailedLoginAlert,
+    dismissFailedLoginAlert,
+    failedLoginAlertId,
+    focusedLoginKey,
+  ]);
 
   return (
     <div className="account-activity-stack">

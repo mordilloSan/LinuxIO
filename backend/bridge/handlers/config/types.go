@@ -21,6 +21,7 @@ type Settings struct {
 // different identifier and re-flags automatically.
 type Dismissals struct {
 	UncleanShutdownBootID string `json:"uncleanShutdownBootId,omitempty" yaml:"uncleanShutdownBootId,omitempty"`
+	FailedLoginAlertID    string `json:"failedLoginAlertId,omitempty" yaml:"failedLoginAlertId,omitempty"`
 }
 
 // DockerDashboardSections holds the collapsed state of each Docker dashboard section

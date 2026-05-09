@@ -17,6 +17,7 @@ type User struct {
 
 // UserLogin represents one login event for a user account.
 type UserLogin struct {
+	ID        string `json:"id"`
 	Username  string `json:"username"`
 	Terminal  string `json:"terminal"`
 	Source    string `json:"source"`

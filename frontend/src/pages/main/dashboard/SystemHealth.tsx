@@ -32,7 +32,11 @@ function pluralize(count: number, singular: string, plural: string): string {
 
 function userDetailsPath(
   username: string | undefined | null,
-  focusLogin?: { status: "success" | "failed"; startedAt?: string },
+  focusLogin?: {
+    eventId?: string;
+    failedLoginAlertId?: string;
+    autoDismissFailedLoginAlert?: boolean;
+  },
 ): string {
   const user = username?.trim();
   const params = new URLSearchParams({ accountsTab: "users" });
@@ -40,9 +44,14 @@ function userDetailsPath(
     params.set("user", user);
   }
   if (focusLogin) {
-    params.set("focusLoginStatus", focusLogin.status);
-    if (focusLogin.startedAt) {
-      params.set("focusLoginStartedAt", focusLogin.startedAt);
+    if (focusLogin.eventId) {
+      params.set("focusLoginEventId", focusLogin.eventId);
+    }
+    if (focusLogin.failedLoginAlertId) {
+      params.set("failedLoginAlertId", focusLogin.failedLoginAlertId);
+    }
+    if (focusLogin.autoDismissFailedLoginAlert) {
+      params.set("autoDismissFailedLoginAlert", "1");
     }
   }
   return `/accounts?${params.toString()}`;
@@ -74,9 +83,17 @@ const SystemHealth = () => {
     });
 
   const items: HealthItem[] = [];
-  const failedLoginDetailsPath = userDetailsPath(currentUser?.name, {
-    status: "failed",
-  });
+  const failedLoginAlert = health?.failedLoginAlert;
+  const failedLoginDetailsPath = userDetailsPath(
+    failedLoginAlert?.username || currentUser?.name,
+    failedLoginAlert
+      ? {
+          eventId: failedLoginAlert.latestEventId,
+          failedLoginAlertId: failedLoginAlert.id,
+          autoDismissFailedLoginAlert: true,
+        }
+      : undefined,
+  );
 
   if (health !== undefined) {
     items.push({
@@ -102,11 +119,11 @@ const SystemHealth = () => {
     });
   }
 
-  if (health?.failedLoginAttempts) {
+  if (failedLoginAlert) {
     items.push({
       icon: "mdi:account-alert-outline",
       color: theme.palette.warning.main,
-      text: `${pluralize(health.failedLoginAttempts, "failed login attempt", "failed login attempts")}\nbefore this session`,
+      text: `${pluralize(failedLoginAlert.count, "failed login attempt", "failed login attempts")}\nbefore this session`,
       to: failedLoginDetailsPath,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
@@ -153,7 +170,7 @@ const SystemHealth = () => {
     });
   }
 
-  if (health?.lastLogin?.time && !health.failedLoginAttempts) {
+  if (health?.lastLogin?.time && !failedLoginAlert) {
     const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const timeParts = health.lastLogin.time.split(" ");
     let displaySource = health.lastLogin.source;
@@ -178,13 +195,9 @@ const SystemHealth = () => {
     ].filter(Boolean);
     items.push({
       icon: "mdi:account-clock-outline",
-      color: health.failedLoginAttempts
-        ? theme.palette.warning.main
-        : theme.palette.text.primary,
+      color: theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
-      to: userDetailsPath(health.lastLogin.username || currentUser?.name, {
-        status: "success",
-      }),
+      to: userDetailsPath(health.lastLogin.username || currentUser?.name),
       detail: detailLines.length > 0 ? detailLines.join("\n") : undefined,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
@@ -199,7 +212,7 @@ const SystemHealth = () => {
     statusColor = theme.palette.error.main;
     iconName = "mdi:shield-alert-outline";
     iconLink = "/services";
-  } else if (health?.failedLoginAttempts) {
+  } else if (failedLoginAlert) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";
     iconLink = failedLoginDetailsPath;

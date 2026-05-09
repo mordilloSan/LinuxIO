@@ -22,6 +22,7 @@ wtmp begins Tue Mar  1 10:00:00 2026
 	require.Equal(t, "172.18.0.7", logins[0].Source)
 	require.Equal(t, "Tue Apr 1 15:04:00 2026", logins[0].Time)
 	require.False(t, logins[0].StartedAt.IsZero())
+	require.NotEmpty(t, logins[0].ID)
 }
 
 func TestParseLastOutputLocal(t *testing.T) {
@@ -101,6 +102,7 @@ func TestParseWtmpdbOutput(t *testing.T) {
 	require.Equal(t, "Mon May 4 19:11:47 2026", logins[0].Time)
 	require.False(t, logins[0].StartedAt.IsZero())
 	require.Equal(t, LoginStatusSuccess, logins[0].Status)
+	require.NotEmpty(t, logins[0].ID)
 }
 
 func TestParseBtmpFailures(t *testing.T) {
@@ -118,6 +120,37 @@ func TestParseBtmpFailures(t *testing.T) {
 	require.Equal(t, "192.168.1.30", logins[0].Source)
 	require.Equal(t, LoginStatusFailed, logins[0].Status)
 	require.Equal(t, time.Unix(int64(newer), 0), logins[0].StartedAt)
+	require.NotEmpty(t, logins[0].ID)
+}
+
+func TestStableLoginIDDifferentForEventIdentityFields(t *testing.T) {
+	base := Login{
+		Username:  "miguel",
+		Terminal:  "web console",
+		Source:    "192.168.1.239",
+		StartedAt: time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC),
+		Status:    LoginStatusFailed,
+	}
+
+	require.Equal(t, StableLoginID(base), StableLoginID(base))
+
+	changedStatus := base
+	changedStatus.Status = LoginStatusSuccess
+	changedTime := base
+	changedTime.StartedAt = changedTime.StartedAt.Add(time.Second)
+	changedTerminal := base
+	changedTerminal.Terminal = "pts/1"
+	changedSource := base
+	changedSource.Source = "127.0.0.1"
+
+	ids := map[string]bool{
+		StableLoginID(base):            true,
+		StableLoginID(changedStatus):   true,
+		StableLoginID(changedTime):     true,
+		StableLoginID(changedTerminal): true,
+		StableLoginID(changedSource):   true,
+	}
+	require.Len(t, ids, 5)
 }
 
 func TestFetchRecentEventsMergesSuccessesAndFailures(t *testing.T) {
@@ -167,18 +200,18 @@ func TestCountBtmpFailuresSince(t *testing.T) {
 
 func TestCountBtmpFailuresAcceptsUserProcess(t *testing.T) {
 	record := make([]byte, btmpRecordSize)
-	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], utmpUserProcess)
+	putUtmpType(record, utmpUserProcess)
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
-	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], 120)
+	putUtmpTime(record, 120)
 
 	require.Equal(t, 1, countBtmpFailuresSince("miguel", record, 0))
 }
 
 func TestCountBtmpFailuresSkipsDeadProcess(t *testing.T) {
 	record := make([]byte, btmpRecordSize)
-	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], 8)
+	putUtmpType(record, 8)
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
-	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], 120)
+	putUtmpTime(record, 120)
 
 	require.Zero(t, countBtmpFailuresSince("miguel", record, 0))
 }
@@ -296,6 +329,58 @@ func TestFetchFailedAttemptsCountsBeforeCurrentSession(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+func TestFetchFailedAttemptBatchReturnsLatestFailedEventInWindow(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	sessionStartedAt := time.Date(2026, time.May, 8, 12, 0, 0, 500, time.UTC)
+	previous := time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC)
+	firstFailed := previous.Add(time.Minute)
+	latestFailed := sessionStartedAt.Add(-time.Minute)
+
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return []byte(`{
+  "entries": [
+    {
+      "user": "miguel",
+      "tty": "web console",
+      "hostname": "192.168.1.239",
+      "login": "Fri May  8 12:00:00 2026"
+    },
+    {
+      "user": "miguel",
+      "tty": "pts/0",
+      "hostname": "192.168.1.239",
+      "login": "Thu May  7 12:00:00 2026"
+    }
+  ]
+}`), nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, btmpPath, path)
+		data := appendBtmpRecordWithDetails(nil, "miguel", uint32(previous.Unix()-1), "ssh:notty", "192.168.1.10")
+		data = appendBtmpRecordWithDetails(data, "miguel", uint32(firstFailed.Unix()), "ssh:notty", "192.168.1.20")
+		data = appendBtmpRecordWithDetails(data, "miguel", uint32(latestFailed.Unix()), "ssh:notty", "192.168.1.30")
+		data = appendBtmpRecordWithDetails(data, "miguel", uint32(sessionStartedAt.Unix()+30), "ssh:notty", "192.168.1.40")
+		return data, nil
+	}
+
+	batch, err := FetchFailedAttemptBatch(context.Background(), "miguel", sessionStartedAt)
+
+	require.NoError(t, err)
+	require.NotNil(t, batch)
+	require.Equal(t, previous.Unix(), batch.SinceUnix)
+	require.Equal(t, sessionStartedAt.Unix()+1, batch.UntilUnix)
+	require.Equal(t, 2, batch.Count)
+	require.Equal(t, "192.168.1.30", batch.Latest.Source)
+	require.Equal(t, StableLoginID(batch.Latest), batch.Latest.ID)
+}
+
 func TestFetchFailedAttemptsReturnsZeroWhenBtmpPermissionDenied(t *testing.T) {
 	originalRunCommand := runCommand
 	originalReadFile := readFile
@@ -325,10 +410,38 @@ func appendBtmpRecord(data []byte, username string, sec uint32) []byte {
 
 func appendBtmpRecordWithDetails(data []byte, username string, sec uint32, line, host string) []byte {
 	record := make([]byte, btmpRecordSize)
-	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], utmpLoginProcess)
+	putUtmpType(record, utmpLoginProcess)
 	copy(record[btmpLineOffset:btmpLineOffset+btmpLineSize], line)
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], username)
 	copy(record[btmpHostOffset:btmpHostOffset+btmpHostSize], host)
-	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], sec)
+	putUtmpTime(record, sec)
 	return append(data, record...)
+}
+
+func putUtmpType(record []byte, value int) {
+	field := record[btmpTypeOffset:]
+	switch btmpTypeSize {
+	case 1:
+		field[0] = byte(value)
+	case 2:
+		binary.NativeEndian.PutUint16(field, uint16(value))
+	case 4:
+		binary.NativeEndian.PutUint32(field, uint32(value))
+	case 8:
+		binary.NativeEndian.PutUint64(field, uint64(value))
+	}
+}
+
+func putUtmpTime(record []byte, sec uint32) {
+	field := record[btmpTimeOffset:]
+	switch btmpTimeSize {
+	case 1:
+		field[0] = byte(sec)
+	case 2:
+		binary.NativeEndian.PutUint16(field, uint16(sec))
+	case 4:
+		binary.NativeEndian.PutUint32(field, sec)
+	case 8:
+		binary.NativeEndian.PutUint64(field, uint64(sec))
+	}
 }

@@ -162,6 +162,7 @@ func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogi
 			startedAt = login.StartedAt.Format(time.RFC3339)
 		}
 		result = append(result, UserLogin{
+			ID:        login.ID,
 			Username:  login.Username,
 			Terminal:  login.Terminal,
 			Source:    login.Source,

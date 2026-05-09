@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,4 +61,55 @@ wtmp begins Tue Apr  1 15:04:00 2026
 
 	require.False(t, unclean)
 	require.Empty(t, bootID)
+}
+
+func TestFailedLoginAlertIDStableAndChanges(t *testing.T) {
+	id := failedLoginAlertID("miguel", "login_abc")
+
+	require.Equal(t, id, failedLoginAlertID("miguel", "login_abc"))
+	require.NotEqual(t, id, failedLoginAlertID("other", "login_abc"))
+	require.NotEqual(t, id, failedLoginAlertID("miguel", "login_def"))
+	require.True(t, isValidFailedLoginAlertID(id))
+}
+
+func TestFailedLoginAlertIDSurvivesSessionWindowChanges(t *testing.T) {
+	id := failedLoginAlertID("miguel", "login_abc")
+
+	// The alert ID intentionally excludes the current session boundary. Once the
+	// user dismisses an exact failed-login event, logging out and back in must not
+	// create a different alert ID for the same latest failed row.
+	require.Equal(t, id, failedLoginAlertID("miguel", "login_abc"))
+}
+
+func TestApplyFailedLoginAlertDismissal(t *testing.T) {
+	alertID := failedLoginAlertID("miguel", "login_abc")
+	summary := &SystemHealthSummary{
+		FailedLoginAlert: &FailedLoginAlert{
+			ID:            alertID,
+			Username:      "miguel",
+			Count:         2,
+			LatestEventID: "login_abc",
+		},
+	}
+
+	applyFailedLoginAlertDismissal(summary, &config.Dismissals{FailedLoginAlertID: alertID})
+
+	require.Nil(t, summary.FailedLoginAlert)
+}
+
+func TestApplyFailedLoginAlertDismissalKeepsNewAlert(t *testing.T) {
+	alertID := failedLoginAlertID("miguel", "login_abc")
+	summary := &SystemHealthSummary{
+		FailedLoginAlert: &FailedLoginAlert{
+			ID:            alertID,
+			Username:      "miguel",
+			Count:         2,
+			LatestEventID: "login_abc",
+		},
+	}
+
+	applyFailedLoginAlertDismissal(summary, &config.Dismissals{FailedLoginAlertID: failedLoginAlertID("miguel", "login_def")})
+
+	require.NotNil(t, summary.FailedLoginAlert)
+	require.Equal(t, alertID, summary.FailedLoginAlert.ID)
 }

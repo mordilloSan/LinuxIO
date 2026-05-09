@@ -2,6 +2,8 @@ package system
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -12,15 +14,15 @@ import (
 )
 
 type SystemHealthSummary struct {
-	FailedServicesCount   int              `json:"failedServicesCount"`
-	FailedServices        []string         `json:"failedServices,omitempty"`
-	RunningServicesCount  int              `json:"runningServicesCount"`
-	FailedLoginAttempts   int              `json:"failedLoginAttempts"`
-	UpdatesAvailable      int              `json:"updatesAvailable"`
-	UpToDate              bool             `json:"upToDate"`
-	UncleanShutdown       bool             `json:"uncleanShutdown"`
-	UncleanShutdownBootID string           `json:"uncleanShutdownBootId,omitempty"`
-	LastLogin             *SystemLastLogin `json:"lastLogin,omitempty"`
+	FailedServicesCount   int               `json:"failedServicesCount"`
+	FailedServices        []string          `json:"failedServices,omitempty"`
+	RunningServicesCount  int               `json:"runningServicesCount"`
+	FailedLoginAlert      *FailedLoginAlert `json:"failedLoginAlert,omitempty"`
+	UpdatesAvailable      int               `json:"updatesAvailable"`
+	UpToDate              bool              `json:"upToDate"`
+	UncleanShutdown       bool              `json:"uncleanShutdown"`
+	UncleanShutdownBootID string            `json:"uncleanShutdownBootId,omitempty"`
+	LastLogin             *SystemLastLogin  `json:"lastLogin,omitempty"`
 }
 
 type SystemLastLogin struct {
@@ -28,6 +30,24 @@ type SystemLastLogin struct {
 	Terminal string `json:"terminal,omitempty"`
 	Source   string `json:"source,omitempty"`
 	Time     string `json:"time"`
+}
+
+type FailedLoginAlert struct {
+	ID            string           `json:"id"`
+	Username      string           `json:"username"`
+	Count         int              `json:"count"`
+	LatestEventID string           `json:"latestEventId"`
+	LatestEvent   SystemLoginEvent `json:"latestEvent"`
+}
+
+type SystemLoginEvent struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Terminal  string `json:"terminal"`
+	Source    string `json:"source"`
+	Time      string `json:"time"`
+	StartedAt string `json:"startedAt,omitempty"`
+	Status    string `json:"status"`
 }
 
 var healthRunCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -61,9 +81,9 @@ func FetchSystemHealthSummary(username string, privileged bool, sessionStartedAt
 	}
 
 	if privileged {
-		attempts, err := FetchFailedLoginAttempts(username, sessionStartedAt)
+		alert, err := FetchFailedLoginAlert(username, sessionStartedAt)
 		if err == nil {
-			summary.FailedLoginAttempts = attempts
+			summary.FailedLoginAlert = alert
 		}
 	}
 
@@ -107,6 +127,56 @@ func FetchFailedLoginAttempts(username string, sessionStartedAt time.Time) (int,
 	defer cancel()
 
 	return loginhistory.FetchFailedAttempts(ctx, username, sessionStartedAt)
+}
+
+func FetchFailedLoginAlert(username string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	batch, err := loginhistory.FetchFailedAttemptBatch(ctx, username, sessionStartedAt)
+	if err != nil || batch == nil {
+		return nil, err
+	}
+
+	latestEvent := systemLoginEventFromLogin(batch.Latest)
+	alert := &FailedLoginAlert{
+		ID:            failedLoginAlertID(username, batch.Latest.ID),
+		Username:      username,
+		Count:         batch.Count,
+		LatestEventID: batch.Latest.ID,
+		LatestEvent:   latestEvent,
+	}
+	return alert, nil
+}
+
+func systemLoginEventFromLogin(login loginhistory.Login) SystemLoginEvent {
+	startedAt := ""
+	if !login.StartedAt.IsZero() {
+		startedAt = login.StartedAt.Format(time.RFC3339)
+	}
+	return SystemLoginEvent{
+		ID:        login.ID,
+		Username:  login.Username,
+		Terminal:  login.Terminal,
+		Source:    login.Source,
+		Time:      login.Time,
+		StartedAt: startedAt,
+		Status:    login.Status,
+	}
+}
+
+func failedLoginAlertID(username, latestEventID string) string {
+	payload := strings.Join([]string{
+		strings.TrimSpace(username),
+		strings.TrimSpace(latestEventID),
+	}, "\x1f")
+	sum := sha256.Sum256([]byte(payload))
+	return "failed_login_" + hex.EncodeToString(sum[:])
 }
 
 func DetectUncleanShutdown() (bool, string, error) {

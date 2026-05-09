@@ -152,11 +152,19 @@ export interface SystemLastLogin {
   time: string;
 }
 
+export interface SystemFailedLoginAlert {
+  id: string;
+  username: string;
+  count: number;
+  latestEventId: string;
+  latestEvent: AccountUserLogin;
+}
+
 export interface SystemHealthSummary {
   failedServicesCount: number;
   failedServices?: string[];
   runningServicesCount: number;
-  failedLoginAttempts: number;
+  failedLoginAlert?: SystemFailedLoginAlert | null;
   updatesAvailable: number;
   upToDate: boolean;
   uncleanShutdown: boolean;
@@ -593,6 +601,7 @@ export interface AccountUser {
 }
 
 export interface AccountUserLogin {
+  id: string;
   username: string;
   terminal: string;
   source: string;
@@ -972,6 +981,10 @@ export interface LinuxIOSchema {
     get_health_summary: { args: []; result: SystemHealthSummary };
     dismiss_unclean_shutdown: {
       args: [bootId: string];
+      result: { message: string };
+    };
+    dismiss_failed_login_alert: {
+      args: [alertId: string];
       result: { message: string };
     };
     get_server_time: { args: []; result: string };

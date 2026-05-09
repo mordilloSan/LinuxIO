@@ -262,16 +262,13 @@ const UserCard: React.FC<UserCardProps> = ({
           : `color-mix(in srgb, ${accentColor}, transparent 70%)`,
       }}
     >
-      <StatusDot color={statusColor} tooltip={statusTooltip} absolute />
-
       {/* Header */}
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "space-between",
           gap: GAP_SM,
-          paddingRight: 18,
           minHeight: isSelected ? 46 : undefined,
         }}
       >
@@ -358,38 +355,46 @@ const UserCard: React.FC<UserCardProps> = ({
         </div>
 
         <div
-          style={{ display: "flex", gap: 2, flexShrink: 0 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            flexShrink: 0,
+          }}
           onClick={(event) => event.stopPropagation()}
         >
           <AppTooltip title="Edit">
             <span>
               <AppIconButton
                 size="small"
+                style={{ padding: 4 }}
                 onClick={(event) => {
                   event.stopPropagation();
                   onEdit();
                 }}
                 disabled={user.username === "root"}
               >
-                <Icon icon="mdi:pencil" width={18} height={18} />
+                <Icon icon="mdi:pencil" width={14} height={14} />
               </AppIconButton>
             </span>
           </AppTooltip>
           <AppTooltip title="Change Password">
             <AppIconButton
               size="small"
+              style={{ padding: 4 }}
               onClick={(event) => {
                 event.stopPropagation();
                 onChangePassword();
               }}
             >
-              <Icon icon="mdi:form-textbox-password" width={18} height={18} />
+              <Icon icon="mdi:form-textbox-password" width={14} height={14} />
             </AppIconButton>
           </AppTooltip>
           <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
             <span>
               <AppIconButton
                 size="small"
+                style={{ padding: 4 }}
                 onClick={(event) => {
                   event.stopPropagation();
                   onToggleLock();
@@ -397,13 +402,19 @@ const UserCard: React.FC<UserCardProps> = ({
                 disabled={isProtected || isLocking || isUnlocking}
               >
                 {user.isLocked ? (
-                  <Icon icon="mdi:lock-open" width={18} height={18} />
+                  <Icon icon="mdi:lock-open" width={14} height={14} />
                 ) : (
-                  <Icon icon="mdi:lock" width={18} height={18} />
+                  <Icon icon="mdi:lock" width={14} height={14} />
                 )}
               </AppIconButton>
             </span>
           </AppTooltip>
+          <StatusDot
+            color={statusColor}
+            tooltip={statusTooltip}
+            size={8}
+            style={{ marginLeft: 4 }}
+          />
         </div>
       </div>
 

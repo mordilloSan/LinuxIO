@@ -41,6 +41,7 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
 		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
 		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess)},
+		{command: "dismiss_failed_login_alert", handler: makeDismissFailedLoginAlertHandler(sess)},
 		{command: "get_server_time", handler: handleGetServerTime},
 		{command: "get_timezones", handler: handleGetTimezones},
 	})
@@ -136,32 +137,53 @@ func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged, sess.Timing.CreatedAt)
 		if err == nil && result != nil {
-			applyUncleanShutdownDismissal(sess.User.Username, result)
+			applyHealthDismissals(sess.User.Username, result)
 		}
 		return emitSystemResult(emit, result, err)
 	}
 }
 
-// applyUncleanShutdownDismissal suppresses the unclean-shutdown flag when the
-// caller has already acknowledged the current event. Any error reading the
-// user's settings is treated as "not dismissed" so the warning still surfaces.
-func applyUncleanShutdownDismissal(username string, summary *SystemHealthSummary) {
-	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
+// applyHealthDismissals suppresses acknowledged one-shot health signals. Any
+// error reading the user's settings is treated as "not dismissed" so warnings
+// still surface.
+func applyHealthDismissals(username string, summary *SystemHealthSummary) {
+	if !hasDismissibleHealthSignal(summary) {
 		return
 	}
 	cfg, _, err := config.Load(username)
 	if err != nil {
-		slog.Debug("unclean-shutdown dismissal: settings unavailable, keeping warning", "user", username, "error", err)
+		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
 		return
 	}
 	if cfg.Dismissals == nil {
 		return
 	}
-	if cfg.Dismissals.UncleanShutdownBootID != summary.UncleanShutdownBootID {
+	applyUncleanShutdownDismissal(summary, cfg.Dismissals)
+	applyFailedLoginAlertDismissal(summary, cfg.Dismissals)
+}
+
+func hasDismissibleHealthSignal(summary *SystemHealthSummary) bool {
+	return (summary.UncleanShutdown && summary.UncleanShutdownBootID != "") ||
+		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
+}
+
+func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
+	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
 		return
 	}
-	summary.UncleanShutdown = false
-	summary.UncleanShutdownBootID = ""
+	if dismissals.UncleanShutdownBootID == summary.UncleanShutdownBootID {
+		summary.UncleanShutdown = false
+		summary.UncleanShutdownBootID = ""
+	}
+}
+
+func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
+	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
+		return
+	}
+	if dismissals.FailedLoginAlertID == summary.FailedLoginAlert.ID {
+		summary.FailedLoginAlert = nil
+	}
 }
 
 func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
@@ -192,6 +214,34 @@ func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
 	}
 }
 
+func makeDismissFailedLoginAlertHandler(sess *session.Session) ipc.HandlerFunc {
+	username := sess.User.Username
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		alertID := strings.TrimSpace(args[0])
+		if !isValidFailedLoginAlertID(alertID) {
+			return ipc.ErrInvalidArgs
+		}
+
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		if cfg.Dismissals == nil {
+			cfg.Dismissals = &config.Dismissals{}
+		}
+		cfg.Dismissals.FailedLoginAlertID = alertID
+
+		if _, err := config.Save(username, cfg); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+		slog.Info("dismissed failed login alert", "user", username, "alertId", alertID)
+		return emit.Result(map[string]any{"message": "dismissed"})
+	}
+}
+
 // isValidBootID guards against an unbounded write to the user's settings file.
 // Real boot IDs are short unix-epoch seconds strings (≤ 11 digits); allow up
 // to 32 digits for headroom.
@@ -201,6 +251,19 @@ func isValidBootID(s string) bool {
 	}
 	for _, r := range s {
 		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidFailedLoginAlertID(s string) bool {
+	const prefix = "failed_login_"
+	if !strings.HasPrefix(s, prefix) || len(s) != len(prefix)+64 {
+		return false
+	}
+	for _, r := range s[len(prefix):] {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			return false
 		}
 	}
