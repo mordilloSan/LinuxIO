@@ -40,6 +40,56 @@ function getUserIcon(user: AccountUser): string {
   return "mdi:account-circle";
 }
 
+const selectedRowLabelStyle: React.CSSProperties = {
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  fontSize: "0.6rem",
+  color: "var(--app-palette-text-secondary)",
+  flexShrink: 0,
+  width: 90,
+  paddingTop: 3,
+};
+
+const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      alignSelf: "stretch",
+      width: "100%",
+    }}
+  >
+    {rows.map(({ label, value }, index) => (
+      <div
+        key={label}
+        style={{
+          display: "flex",
+          padding: "3px 0",
+          borderTop:
+            index === 0 ? undefined : "1px solid var(--app-palette-divider)",
+          alignItems: "flex-start",
+        }}
+      >
+        <span style={selectedRowLabelStyle}>{label}</span>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            textAlign: "right",
+            fontSize: "0.75rem",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 export interface UserCardProps {
   user: AccountUser;
   currentUsername: string | undefined;
@@ -94,8 +144,6 @@ const UserCard: React.FC<UserCardProps> = ({
   ];
 
   const groups = getAllGroups(user);
-  const visibleGroups = groups.slice(0, 5);
-  const overflow = groups.length - visibleGroups.length;
 
   return (
     <FrostedCard
@@ -115,7 +163,7 @@ const UserCard: React.FC<UserCardProps> = ({
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
       style={{
-        padding: 10,
+        padding: isSelected ? 12 : 10,
         display: "flex",
         flexDirection: "column",
         height: "100%",
@@ -141,6 +189,7 @@ const UserCard: React.FC<UserCardProps> = ({
           justifyContent: "space-between",
           gap: GAP_SM,
           paddingRight: 18,
+          minHeight: isSelected ? 46 : undefined,
         }}
       >
         <div
@@ -276,8 +325,12 @@ const UserCard: React.FC<UserCardProps> = ({
       </div>
 
       {/* Summary rows */}
-      <div style={{ marginTop: 8 }}>
-        <SummaryRowsList rows={rows} />
+      <div style={{ marginTop: isSelected ? 12 : 8 }}>
+        {isSelected ? (
+          <SelectedSummaryRows rows={rows} />
+        ) : (
+          <SummaryRowsList rows={rows} />
+        )}
       </div>
 
       {/* Groups footer */}
@@ -297,7 +350,7 @@ const UserCard: React.FC<UserCardProps> = ({
           Groups ({groups.length})
         </AppTypography>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-          {visibleGroups.map((group, idx) => (
+          {groups.map((group, idx) => (
             <Chip
               key={`${user.username}-${group}`}
               label={group}
@@ -307,14 +360,6 @@ const UserCard: React.FC<UserCardProps> = ({
               style={{ fontSize: "0.65rem", height: 20 }}
             />
           ))}
-          {overflow > 0 && (
-            <Chip
-              label={`+${overflow}`}
-              size="small"
-              variant="soft"
-              style={{ fontSize: "0.65rem", height: 20 }}
-            />
-          )}
         </div>
       </div>
     </FrostedCard>

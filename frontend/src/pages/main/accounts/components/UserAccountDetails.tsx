@@ -123,6 +123,11 @@ const InlineError: React.FC<{ message: string }> = ({ message }) => (
   <AppAlert severity="warning">{message}</AppAlert>
 );
 
+const topCardHeaderStyle: React.CSSProperties = {
+  minHeight: 40,
+  marginBottom: 12,
+};
+
 const DetailText: React.FC<{
   children: React.ReactNode;
   color?: string;
@@ -168,13 +173,20 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: 12,
           gap: 8,
+          ...topCardHeaderStyle,
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <AppTypography variant="subtitle2" fontWeight={700} noWrap>
             Access & security
+          </AppTypography>
+          <AppTypography
+            variant="caption"
+            color="text.secondary"
+            style={{ display: "block", marginTop: 2 }}
+          >
+            Admin privileges, password status, and elevated groups
           </AppTypography>
         </div>
 
@@ -285,7 +297,9 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
   );
 };
 
-const UserActivityCard: React.FC<{ username: string }> = ({ username }) => {
+export const UserActivityCard: React.FC<{ username: string }> = ({
+  username,
+}) => {
   const {
     data: details,
     isPending: detailsPending,
@@ -454,8 +468,8 @@ function sshStatus(ssh: AccountSSHAccess | undefined): string {
 const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
 }) => (
-  <FrostedCard style={{ padding: 12, height: "100%" }}>
-    <div style={{ marginBottom: 12 }}>
+  <FrostedCard style={{ padding: 12, height: "100%", width: "100%" }}>
+    <div style={topCardHeaderStyle}>
       <AppTypography variant="subtitle2" fontWeight={700}>
         Home & SSH access
       </AppTypography>
@@ -573,6 +587,68 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
     )}
   </FrostedCard>
 );
+
+export const UserHomeSSHPanel: React.FC<{ username: string }> = ({
+  username,
+}) => {
+  const { data: details, isPending, isError, error } =
+    useAccountDetails(username);
+
+  if (isError) {
+    return (
+      <FrostedCard style={{ padding: 12, height: "100%" }}>
+        <InlineError
+          message={
+            error instanceof Error
+              ? error.message
+              : "Account detail is unavailable"
+          }
+        />
+      </FrostedCard>
+    );
+  }
+
+  if (isPending || !details) {
+    return (
+      <FrostedCard style={{ padding: 12, height: "100%" }}>
+        <LoadingRows />
+      </FrostedCard>
+    );
+  }
+
+  return <HomeAndSSHCard details={details} />;
+};
+
+export const UserProcessPanel: React.FC<{ username: string }> = ({
+  username,
+}) => {
+  const { data: details, isPending, isError, error } =
+    useAccountDetails(username);
+
+  if (isError) {
+    return (
+      <FrostedCard style={{ padding: 12, height: "100%" }}>
+        <InlineError
+          message={
+            error instanceof Error
+              ? error.message
+              : "Account detail is unavailable"
+          }
+        />
+      </FrostedCard>
+    );
+  }
+
+  if (isPending || !details) {
+    return (
+      <FrostedCard style={{ padding: 12, height: "100%" }}>
+        <LoadingRows />
+      </FrostedCard>
+    );
+  }
+
+  return <ProcessCard details={details} />;
+};
 
 export const UserSupplementalCards: React.FC<{ username: string }> = ({
   username,

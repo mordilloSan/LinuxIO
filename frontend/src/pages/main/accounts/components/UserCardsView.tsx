@@ -2,8 +2,10 @@ import { motion } from "framer-motion";
 import React from "react";
 
 import {
+  UserActivityCard,
   UserDetailsPanel,
-  UserSupplementalCards,
+  UserHomeSSHPanel,
+  UserProcessPanel,
 } from "./UserAccountDetails";
 
 import type { AccountUser } from "@/api";
@@ -37,6 +39,11 @@ const UserCardsView: React.FC<UserCardsViewProps> = ({
 }) => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const enterFromSide = {
+    opacity: 0,
+    x: isCompactLayout ? 0 : 40,
+    y: isCompactLayout ? 20 : 0,
+  };
 
   if (users.length === 0) {
     return (
@@ -70,69 +77,63 @@ const UserCardsView: React.FC<UserCardsViewProps> = ({
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: theme.spacing(3),
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: isCompactLayout ? "column" : "row",
-          alignItems: "stretch",
-          gap: theme.spacing(2.5),
-        }}
+    <AppGrid container spacing={2.5} alignItems="stretch">
+      <AppGrid size={{ xs: 12, lg: 4 }} style={{ display: "flex" }}>
+        <UserCard
+          user={selectedUser}
+          currentUsername={currentUsername}
+          isLocking={isLocking}
+          isUnlocking={isUnlocking}
+          isSelected
+          onOpen={() => onSelect(null)}
+          onEdit={() => onEdit(selectedUser)}
+          onChangePassword={() => onChangePassword(selectedUser)}
+          onToggleLock={() => onToggleLock(selectedUser)}
+        />
+      </AppGrid>
+      <AppGrid
+        component={motion.div}
+        size={{ xs: 12, md: 6, lg: 4 }}
+        style={{ display: "flex" }}
+        initial={enterFromSide}
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.05 }}
       >
-        <div
-          style={{
-            flex: isCompactLayout ? "0 0 auto" : 1,
-            width: isCompactLayout ? "100%" : undefined,
-            display: "flex",
-          }}
-        >
-          <UserCard
-            user={selectedUser}
-            currentUsername={currentUsername}
-            isLocking={isLocking}
-            isUnlocking={isUnlocking}
-            isSelected
-            onOpen={() => onSelect(null)}
-            onEdit={() => onEdit(selectedUser)}
-            onChangePassword={() => onChangePassword(selectedUser)}
-            onToggleLock={() => onToggleLock(selectedUser)}
-          />
-        </div>
-        <motion.div
-          style={{
-            width: isCompactLayout ? "100%" : "33.33%",
-            flexShrink: 0,
-            display: "flex",
-          }}
-          initial={{
-            opacity: 0,
-            x: isCompactLayout ? 0 : 40,
-            y: isCompactLayout ? 20 : 0,
-          }}
-          animate={{ opacity: 1, x: 0, y: 0 }}
-          transition={{ duration: 0.25, delay: 0.05 }}
-        >
-          <UserDetailsPanel
-            user={selectedUser}
-            currentUsername={currentUsername}
-            onClose={() => onSelect(null)}
-          />
-        </motion.div>
-      </div>
-      <motion.div
+        <UserHomeSSHPanel username={selectedUser.username} />
+      </AppGrid>
+      <AppGrid
+        component={motion.div}
+        size={{ xs: 12, md: 6, lg: 4 }}
+        style={{ display: "flex" }}
+        initial={enterFromSide}
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.08 }}
+      >
+        <UserDetailsPanel
+          user={selectedUser}
+          currentUsername={currentUsername}
+          onClose={() => onSelect(null)}
+        />
+      </AppGrid>
+      <AppGrid
+        component={motion.div}
+        size={{ xs: 12, lg: 8 }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.1 }}
       >
-        <UserSupplementalCards username={selectedUser.username} />
-      </motion.div>
-    </div>
+        <UserActivityCard username={selectedUser.username} />
+      </AppGrid>
+      <AppGrid
+        component={motion.div}
+        size={{ xs: 12, lg: 4 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.12 }}
+      >
+        <UserProcessPanel username={selectedUser.username} />
+      </AppGrid>
+    </AppGrid>
   );
 };
 
