@@ -47,7 +47,6 @@ const selectedRowLabelStyle: React.CSSProperties = {
   color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
-  paddingTop: 3,
 };
 
 const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
@@ -67,7 +66,7 @@ const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
           padding: "3px 0",
           borderTop:
             index === 0 ? undefined : "1px solid var(--app-palette-divider)",
-          alignItems: "flex-start",
+          alignItems: "baseline",
         }}
       >
         <span style={selectedRowLabelStyle}>{label}</span>

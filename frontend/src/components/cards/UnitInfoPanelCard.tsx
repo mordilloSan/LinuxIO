@@ -29,7 +29,6 @@ const labelStyle: React.CSSProperties = {
   color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
-  paddingTop: 3,
 };
 
 export const DetailRow: React.FC<{
@@ -43,7 +42,7 @@ export const DetailRow: React.FC<{
       display: "flex",
       padding: "3px 0",
       borderTop: noBorder ? undefined : "1px solid var(--app-palette-divider)",
-      alignItems: "flex-start",
+      alignItems: "baseline",
     }}
   >
     <span style={labelStyle}>{label}</span>
