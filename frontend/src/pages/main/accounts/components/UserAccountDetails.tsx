@@ -153,6 +153,7 @@ interface ActivityHeader {
   hiddenXs?: boolean;
   onClick?: () => void;
   active?: boolean;
+  direction?: "asc" | "desc";
 }
 
 const ActivitySection: React.FC<{
@@ -201,14 +202,8 @@ const ActivitySection: React.FC<{
         <AppTypography
           key={header.label}
           variant="overline"
-          color={header.active ? "text.primary" : "text.secondary"}
-          className={[
-            header.hiddenXs ? "account-hidden-xs" : "",
-            header.onClick ? "account-activity-column-sortable" : "",
-            header.active ? "account-activity-column-sort-active" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
+          color="text.secondary"
+          className={header.hiddenXs ? "account-hidden-xs" : undefined}
           style={{
             fontSize: "0.65rem",
             cursor: header.onClick ? "pointer" : undefined,
@@ -217,7 +212,7 @@ const ActivitySection: React.FC<{
           onClick={header.onClick}
         >
           {header.label}
-          {header.active && " ↓"}
+          {header.active ? (header.direction === "asc" ? " ↑" : " ↓") : ""}
         </AppTypography>
       ))}
     </div>
@@ -621,20 +616,59 @@ const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
   </FrostedCard>
 );
 
+type ProcessSortField = "pid" | "command" | "cpu" | "memory";
+type SortDirection = "asc" | "desc";
+
+const PROCESS_DEFAULT_DIRECTION: Record<ProcessSortField, SortDirection> = {
+  pid: "asc",
+  command: "asc",
+  cpu: "desc",
+  memory: "desc",
+};
+
 const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
 }) => {
-  const [sortBy, setSortBy] = React.useState<"cpu" | "memory">("cpu");
+  const [sortField, setSortField] = React.useState<ProcessSortField>("cpu");
+  const [sortDirection, setSortDirection] = React.useState<SortDirection>(
+    PROCESS_DEFAULT_DIRECTION.cpu,
+  );
+
+  const handleSort = (field: ProcessSortField) => {
+    if (field === sortField) {
+      setSortDirection((dir) => (dir === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection(PROCESS_DEFAULT_DIRECTION[field]);
+    }
+  };
 
   const processes = React.useMemo(() => {
-    return [...details.processes.top].sort((a, b) =>
-      sortBy === "cpu" ? b.cpu - a.cpu : b.memory - a.memory,
-    );
-  }, [details.processes.top, sortBy]);
+    const factor = sortDirection === "asc" ? 1 : -1;
+    return [...details.processes.top].sort((a, b) => {
+      switch (sortField) {
+        case "pid":
+          return (a.pid - b.pid) * factor;
+        case "command":
+          return a.command.localeCompare(b.command) * factor;
+        case "cpu":
+          return (a.cpu - b.cpu) * factor;
+        case "memory":
+          return (a.memory - b.memory) * factor;
+      }
+    });
+  }, [details.processes.top, sortField, sortDirection]);
 
   const metaText = details.processes.error
     ? "Unavailable"
     : `${details.processes.count} ${details.processes.count === 1 ? "process" : "processes"}`;
+
+  const headerFor = (label: string, field: ProcessSortField) => ({
+    label,
+    onClick: () => handleSort(field),
+    active: sortField === field,
+    direction: sortField === field ? sortDirection : undefined,
+  });
 
   return (
     <ActivitySection
@@ -642,18 +676,10 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
       title="Owned processes"
       subtitle="Current process count and busiest commands"
       headers={[
-        { label: "PID" },
-        { label: "Command" },
-        {
-          label: "CPU",
-          onClick: () => setSortBy("cpu"),
-          active: sortBy === "cpu",
-        },
-        {
-          label: "MEM",
-          onClick: () => setSortBy("memory"),
-          active: sortBy === "memory",
-        },
+        headerFor("PID", "pid"),
+        headerFor("Command", "command"),
+        headerFor("CPU", "cpu"),
+        headerFor("MEM", "memory"),
       ]}
       gridClassName="account-processes-grid"
       metaText={metaText}
@@ -674,18 +700,10 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
               <AppTypography variant="body2" noWrap>
                 {process.command}
               </AppTypography>
-              <AppTypography
-                variant="caption"
-                color={sortBy === "cpu" ? "text.primary" : "text.secondary"}
-                noWrap
-              >
+              <AppTypography variant="caption" color="text.secondary" noWrap>
                 {process.cpu.toFixed(1)}%
               </AppTypography>
-              <AppTypography
-                variant="caption"
-                color={sortBy === "memory" ? "text.primary" : "text.secondary"}
-                noWrap
-              >
+              <AppTypography variant="caption" color="text.secondary" noWrap>
                 {process.memory.toFixed(1)}%
               </AppTypography>
             </div>
