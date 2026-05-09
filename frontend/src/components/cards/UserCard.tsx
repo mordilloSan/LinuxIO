@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 
 import { type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -46,6 +46,102 @@ const selectedRowLabelStyle: React.CSSProperties = {
   color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
+};
+
+const CompactGroupChips: React.FC<{
+  username: string;
+  groups: string[];
+}> = ({ username, groups }) => {
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [firstRowCount, setFirstRowCount] = useState(groups.length);
+
+  useLayoutEffect(() => {
+    const node = measureRef.current;
+    if (!node) return;
+
+    const measure = () => {
+      const children = Array.from(node.children) as HTMLElement[];
+      if (children.length === 0) {
+        setFirstRowCount(0);
+        return;
+      }
+      const firstTop = children[0].offsetTop;
+      let count = 0;
+      for (const child of children) {
+        if (child.offsetTop !== firstTop) break;
+        count++;
+      }
+      setFirstRowCount(count);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [groups]);
+
+  const overflowing = firstRowCount < groups.length;
+  const visible = overflowing
+    ? groups.slice(0, Math.max(1, firstRowCount - 1))
+    : groups;
+  const hiddenCount = groups.length - visible.length;
+
+  return (
+    <div style={{ position: "relative", minHeight: 20 }}>
+      <div
+        ref={measureRef}
+        aria-hidden
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 3,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      >
+        {groups.map((group) => (
+          <Chip
+            key={`measure-${username}-${group}`}
+            label={group}
+            size="small"
+            variant="soft"
+            style={{ fontSize: "0.65rem", height: 20 }}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "nowrap",
+          gap: 3,
+          overflow: "hidden",
+        }}
+      >
+        {visible.map((group, idx) => (
+          <Chip
+            key={`${username}-${group}`}
+            label={group}
+            size="small"
+            variant="soft"
+            color={idx === 0 ? "primary" : "default"}
+            style={{ fontSize: "0.65rem", height: 20, flexShrink: 0 }}
+          />
+        ))}
+        {hiddenCount > 0 && (
+          <Chip
+            label={`+${hiddenCount}`}
+            size="small"
+            variant="soft"
+            style={{ fontSize: "0.65rem", height: 20, flexShrink: 0 }}
+          />
+        )}
+      </div>
+    </div>
+  );
 };
 
 const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
@@ -334,28 +430,32 @@ const UserCard: React.FC<UserCardProps> = ({
         >
           Groups ({groups.length})
         </AppTypography>
-        <div
-          className="custom-scrollbar"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 3,
-            maxHeight: 43,
-            overflowY: "auto",
-            scrollbarGutter: "stable",
-          }}
-        >
-          {groups.map((group, idx) => (
-            <Chip
-              key={`${user.username}-${group}`}
-              label={group}
-              size="small"
-              variant="soft"
-              color={idx === 0 ? "primary" : "default"}
-              style={{ fontSize: "0.65rem", height: 20 }}
-            />
-          ))}
-        </div>
+        {isSelected ? (
+          <div
+            className="custom-scrollbar"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 3,
+              maxHeight: 43,
+              overflowY: "auto",
+              scrollbarGutter: "stable",
+            }}
+          >
+            {groups.map((group, idx) => (
+              <Chip
+                key={`${user.username}-${group}`}
+                label={group}
+                size="small"
+                variant="soft"
+                color={idx === 0 ? "primary" : "default"}
+                style={{ fontSize: "0.65rem", height: 20 }}
+              />
+            ))}
+          </div>
+        ) : (
+          <CompactGroupChips username={user.username} groups={groups} />
+        )}
       </div>
     </FrostedCard>
   );
