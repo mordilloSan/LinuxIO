@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
 		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
+		{command: "list_failed_login_events", handler: makeListFailedLoginEventsHandler(sess), privileged: true},
 		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess)},
 		{command: "dismiss_failed_login_alert", handler: makeDismissFailedLoginAlertHandler(sess)},
 		{command: "get_server_time", handler: handleGetServerTime},
@@ -139,6 +141,17 @@ func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
 		if err == nil && result != nil {
 			applyHealthDismissals(sess.User.Username, result)
 		}
+		return emitSystemResult(emit, result, err)
+	}
+}
+
+func makeListFailedLoginEventsHandler(sess *session.Session) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		limit := parsePositiveLimitArg(args, 24, 100)
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+
+		result, err := FetchFailedLoginEvents(ctx, sess.User.Username, sess.Timing.CreatedAt, limit)
 		return emitSystemResult(emit, result, err)
 	}
 }
@@ -280,6 +293,26 @@ func parseIncludeAllArg(args []string) bool {
 	default:
 		return false
 	}
+}
+
+func parsePositiveLimitArg(args []string, fallback, max int) int {
+	if fallback <= 0 {
+		fallback = 24
+	}
+	if max <= 0 {
+		max = fallback
+	}
+	if len(args) == 0 {
+		return fallback
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(args[0]))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func emitSystemResult(emit ipc.Events, result any, err error) error {

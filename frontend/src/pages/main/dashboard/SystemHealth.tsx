@@ -3,8 +3,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
-import { linuxio } from "@/api";
+import { linuxio, type AccountUserLogin } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
+import AppDivider from "@/components/ui/AppDivider";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import SkeletonText from "@/components/ui/SkeletonText";
@@ -16,11 +27,16 @@ interface HealthItem {
   color: string;
   text: string;
   to?: string;
+  onClick?: () => void;
   detail?: string;
+  textColor?: string;
+  detailColor?: string;
   spaceBefore?: boolean;
   iconStyle?: React.CSSProperties;
   secondaryAction?: {
     label: string;
+    icon?: string;
+    ariaLabel?: string;
     onClick: (event: React.MouseEvent) => void;
     disabled?: boolean;
   };
@@ -57,11 +73,36 @@ function userDetailsPath(
   return `/accounts?${params.toString()}`;
 }
 
+function loginAttemptLocation(login: AccountUserLogin): string {
+  if (login.source) {
+    return login.source;
+  }
+  if (login.terminal?.startsWith("tty")) {
+    return "Local console";
+  }
+  return "Local";
+}
+
+function failedLoginDetail(
+  login: AccountUserLogin | undefined,
+): string | undefined {
+  if (!login) {
+    return undefined;
+  }
+
+  const username = login.username?.trim() || "unknown user";
+  const location = loginAttemptLocation(login);
+  return [`Latest: ${username}`, location ? `from ${location}` : ""]
+    .filter(Boolean)
+    .join("\n");
+}
+
 const SystemHealth = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  const [failedLoginsOpen, setFailedLoginsOpen] = React.useState(false);
 
   const {
     data: health,
@@ -73,6 +114,17 @@ const SystemHealth = () => {
     refetchInterval: 50000,
   });
 
+  const {
+    data: failedLoginEvents = [],
+    isPending: failedLoginEventsPending,
+    isError: failedLoginEventsError,
+    error: failedLoginEventsErrorValue,
+  } = linuxio.system.list_failed_login_events.useQuery({
+    args: ["24"],
+    enabled: failedLoginsOpen,
+    refetchInterval: failedLoginsOpen ? 30000 : false,
+  });
+
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
     linuxio.system.dismiss_unclean_shutdown.useMutation({
       onSuccess: () => {
@@ -82,18 +134,19 @@ const SystemHealth = () => {
       },
     });
 
+  const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
+    linuxio.system.dismiss_failed_login_alert.useMutation({
+      onSuccess: () => {
+        setFailedLoginsOpen(false);
+        queryClient.invalidateQueries({
+          queryKey: linuxio.system.get_health_summary.queryKey(),
+        });
+      },
+    });
+
   const items: HealthItem[] = [];
   const failedLoginAlert = health?.failedLoginAlert;
-  const failedLoginDetailsPath = userDetailsPath(
-    failedLoginAlert?.username || currentUser?.name,
-    failedLoginAlert
-      ? {
-          eventId: failedLoginAlert.latestEventId,
-          failedLoginAlertId: failedLoginAlert.id,
-          autoDismissFailedLoginAlert: true,
-        }
-      : undefined,
-  );
+  const openFailedLogins = () => setFailedLoginsOpen(true);
 
   if (health !== undefined) {
     items.push({
@@ -122,11 +175,24 @@ const SystemHealth = () => {
   if (failedLoginAlert) {
     items.push({
       icon: "mdi:account-alert-outline",
-      color: theme.palette.warning.main,
+      color: theme.palette.error.main,
       text: `${pluralize(failedLoginAlert.count, "failed login attempt", "failed login attempts")}\nbefore this session`,
-      to: failedLoginDetailsPath,
+      onClick: openFailedLogins,
+      detail: failedLoginDetail(failedLoginAlert.latestEvent),
+      textColor: "#fff",
+      detailColor: "rgba(255, 255, 255, 0.72)",
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
+      secondaryAction: {
+        label: "Dismiss",
+        icon: "mdi:close",
+        ariaLabel: "Dismiss failed login alert",
+        disabled: dismissingFailedLogin,
+        onClick: (event) => {
+          event.stopPropagation();
+          dismissFailedLoginAlert([failedLoginAlert.id]);
+        },
+      },
     });
   }
 
@@ -160,6 +226,8 @@ const SystemHealth = () => {
       secondaryAction: bootId
         ? {
             label: "Dismiss",
+            icon: "mdi:close",
+            ariaLabel: "Dismiss unclean shutdown alert",
             disabled: dismissingUnclean,
             onClick: (event) => {
               event.stopPropagation();
@@ -215,19 +283,26 @@ const SystemHealth = () => {
   } else if (failedLoginAlert) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";
-    iconLink = failedLoginDetailsPath;
   } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";
     iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
   }
 
+  const handleStatusIconClick = () => {
+    if (failedLoginAlert) {
+      openFailedLogins();
+      return;
+    }
+    navigate(iconLink);
+  };
+
   const stats2 = (
     <div>
       {!health && (loadingHealth || fetchingHealth) ? (
         <AppSkeleton variant="circular" width={100} height={100} />
       ) : (
-        <div onClick={() => navigate(iconLink)} style={{ cursor: "pointer" }}>
+        <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
           <Icon icon={iconName} width={100} height={100} color={statusColor} />
         </div>
       )}
@@ -256,9 +331,10 @@ const SystemHealth = () => {
             fontWeight={500}
             style={{
               color:
-                item.color === theme.palette.text.secondary
+                item.textColor ??
+                (item.color === theme.palette.text.secondary
                   ? undefined
-                  : item.color,
+                  : item.color),
               whiteSpace: "pre-line",
             }}
           >
@@ -267,8 +343,8 @@ const SystemHealth = () => {
           {item.detail ? (
             <AppTypography
               variant="caption"
-              color="text.secondary"
               style={{
+                color: item.detailColor ?? theme.palette.text.secondary,
                 display: "block",
                 marginTop: -2,
                 lineHeight: 1.2,
@@ -279,7 +355,25 @@ const SystemHealth = () => {
             </AppTypography>
           ) : null}
         </div>
-        {item.secondaryAction ? (
+        {item.secondaryAction?.icon ? (
+          <AppIconButton
+            size="small"
+            color="inherit"
+            aria-label={
+              item.secondaryAction.ariaLabel ?? item.secondaryAction.label
+            }
+            disabled={item.secondaryAction.disabled}
+            onClick={item.secondaryAction.onClick}
+            style={{
+              marginLeft: theme.spacing(0.5),
+              color: "#fff",
+              opacity: item.secondaryAction.disabled ? 0.5 : 0.85,
+              flexShrink: 0,
+            }}
+          >
+            <Icon icon={item.secondaryAction.icon} width={18} height={18} />
+          </AppIconButton>
+        ) : item.secondaryAction ? (
           <span
             role="button"
             aria-disabled={item.secondaryAction.disabled || undefined}
@@ -307,11 +401,13 @@ const SystemHealth = () => {
     const spacing = item.spaceBefore
       ? { marginTop: theme.spacing(1) }
       : undefined;
+    const clickHandler =
+      item.onClick ?? (item.to ? () => navigate(item.to!) : undefined);
 
-    return item.to ? (
+    return clickHandler ? (
       <div
         key={item.text}
-        onClick={() => navigate(item.to!)}
+        onClick={clickHandler}
         style={{ cursor: "pointer", ...spacing }}
       >
         {content}
@@ -375,15 +471,140 @@ const SystemHealth = () => {
           : null}
     </div>
   );
+  const failedLoginGridColumns =
+    "minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto";
 
   return (
-    <DashboardCard
-      title="System Health"
-      stats={stats}
-      stats2={stats2}
-      avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
-      contentLayout={[1.5, 1]}
-    />
+    <>
+      <DashboardCard
+        title="System Health"
+        stats={stats}
+        stats2={stats2}
+        avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
+        contentLayout={[1.5, 1]}
+      />
+
+      <GeneralDialog
+        open={failedLoginsOpen}
+        onClose={() => setFailedLoginsOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <AppDialogTitle
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Icon
+            icon="mdi:account-alert-outline"
+            width={22}
+            height={22}
+            color={theme.palette.warning.main}
+          />
+          <AppTypography variant="h6">Failed logins</AppTypography>
+        </AppDialogTitle>
+        <AppDialogContent style={{ paddingTop: 12 }}>
+          {failedLoginEventsPending ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {skeletonRow("failed-login-1", "28ch")}
+              {skeletonRow("failed-login-2", "24ch")}
+              {skeletonRow("failed-login-3", "22ch")}
+            </div>
+          ) : failedLoginEventsError ? (
+            <AppAlert severity="error">
+              {failedLoginEventsErrorValue instanceof Error
+                ? failedLoginEventsErrorValue.message
+                : "Failed login history unavailable"}
+            </AppAlert>
+          ) : failedLoginEvents.length === 0 ? (
+            <AppTypography variant="body2" color="text.secondary">
+              No failed login attempts found before this session.
+            </AppTypography>
+          ) : (
+            <div style={{ display: "grid", gap: 0 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: failedLoginGridColumns,
+                  gap: 12,
+                  padding: "0 0 8px",
+                }}
+              >
+                {["Time", "Username", "Source", "Result"].map((label) => (
+                  <AppTypography
+                    key={label}
+                    variant="overline"
+                    color="text.secondary"
+                    style={{ fontSize: "0.65rem" }}
+                  >
+                    {label}
+                  </AppTypography>
+                ))}
+              </div>
+              {failedLoginEvents.map((login, index) => (
+                <React.Fragment key={login.id || `${login.username}-${index}`}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: failedLoginGridColumns,
+                      gap: 12,
+                      alignItems: "center",
+                      padding: "8px 0",
+                    }}
+                  >
+                    <AppTypography variant="body2" fontWeight={500} noWrap>
+                      {login.time || "-"}
+                    </AppTypography>
+                    <AppTypography variant="body2" fontWeight={500} noWrap>
+                      {login.username || "unknown"}
+                    </AppTypography>
+                    <AppTypography
+                      variant="body2"
+                      color="text.secondary"
+                      noWrap
+                    >
+                      {loginAttemptLocation(login)}
+                    </AppTypography>
+                    <Chip
+                      label="Failed"
+                      size="small"
+                      variant="soft"
+                      color="error"
+                      style={{ fontSize: "0.7rem" }}
+                    />
+                  </div>
+                  {index < failedLoginEvents.length - 1 ? <AppDivider /> : null}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </AppDialogContent>
+        <AppDialogActions
+          style={{
+            padding: 8,
+            borderTop: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <AppButton onClick={() => setFailedLoginsOpen(false)} color="inherit">
+            Close
+          </AppButton>
+          {failedLoginAlert?.id ? (
+            <AppButton
+              onClick={() => dismissFailedLoginAlert([failedLoginAlert.id])}
+              disabled={dismissingFailedLogin}
+              variant="contained"
+              color="warning"
+              startIcon={<Icon icon="mdi:check" width={18} height={18} />}
+            >
+              {dismissingFailedLogin ? "Dismissing..." : "Dismiss alert"}
+            </AppButton>
+          ) : null}
+        </AppDialogActions>
+      </GeneralDialog>
+    </>
   );
 };
 

@@ -136,35 +136,10 @@ func FetchRecentFailures(ctx context.Context, username string, limit int) ([]Log
 }
 
 func FetchFailedAttemptBatch(ctx context.Context, username string, sessionStartedAt time.Time) (*FailedAttemptBatch, error) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return nil, nil
-	}
-
-	logins, err := FetchRecent(ctx, username, 50)
+	failures, since, until, err := fetchFailedAttemptEvents(ctx, username, username, sessionStartedAt, 0)
 	if err != nil {
 		return nil, err
 	}
-
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, ctxErr
-	}
-
-	data, err := readFile(btmpPath)
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	since := previousSuccessfulLoginUnixBefore(logins, sessionStartedAt)
-	until := int64(0)
-	if !sessionStartedAt.IsZero() {
-		until = sessionStartedAt.Unix() + 1
-	}
-
-	failures := parseBtmpFailuresBetween(username, data, since, until, 0)
 	if len(failures) == 0 {
 		return nil, nil
 	}
@@ -175,6 +150,28 @@ func FetchFailedAttemptBatch(ctx context.Context, username string, sessionStarte
 		Count:     len(failures),
 		Latest:    failures[0],
 	}, nil
+}
+
+func FetchFailedAttemptBatchForAllUsers(ctx context.Context, boundaryUsername string, sessionStartedAt time.Time) (*FailedAttemptBatch, error) {
+	failures, since, until, err := fetchFailedAttemptEvents(ctx, boundaryUsername, "", sessionStartedAt, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(failures) == 0 {
+		return nil, nil
+	}
+
+	return &FailedAttemptBatch{
+		SinceUnix: since,
+		UntilUnix: until,
+		Count:     len(failures),
+		Latest:    failures[0],
+	}, nil
+}
+
+func FetchFailedAttemptEventsForAllUsers(ctx context.Context, boundaryUsername string, sessionStartedAt time.Time, limit int) ([]Login, error) {
+	failures, _, _, err := fetchFailedAttemptEvents(ctx, boundaryUsername, "", sessionStartedAt, limit)
+	return failures, err
 }
 
 func FetchFailedAttempts(ctx context.Context, username string, sessionStartedAt time.Time) (int, error) {
@@ -195,6 +192,39 @@ func FetchByUser(ctx context.Context) (map[string]Login, error) {
 		logins = ParseLastOutput("", string(output))
 	}
 	return firstLoginByUser(logins), nil
+}
+
+func fetchFailedAttemptEvents(ctx context.Context, boundaryUsername, failedUsername string, sessionStartedAt time.Time, limit int) ([]Login, int64, int64, error) {
+	boundaryUsername = strings.TrimSpace(boundaryUsername)
+	if boundaryUsername == "" {
+		return nil, 0, 0, nil
+	}
+
+	failedUsername = strings.TrimSpace(failedUsername)
+	logins, err := FetchRecent(ctx, boundaryUsername, 50)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, 0, 0, ctxErr
+	}
+
+	data, err := readFile(btmpPath)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
+		return nil, 0, 0, nil
+	}
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	since := previousSuccessfulLoginUnixBefore(logins, sessionStartedAt)
+	until := int64(0)
+	if !sessionStartedAt.IsZero() {
+		until = sessionStartedAt.Unix() + 1
+	}
+
+	return parseBtmpFailuresBetween(failedUsername, data, since, until, limit), since, until, nil
 }
 
 func ParseLastOutput(username, output string) []Login {
@@ -318,9 +348,6 @@ func parseBtmpFailures(username string, data []byte, limit int) []Login {
 
 func parseBtmpFailuresBetween(username string, data []byte, since, until int64, limit int) []Login {
 	username = strings.TrimSpace(username)
-	if username == "" {
-		return nil
-	}
 
 	recordCount := len(data) / btmpRecordSize
 	failures := make([]Login, 0)
@@ -333,7 +360,7 @@ func parseBtmpFailuresBetween(username string, data []byte, since, until int64, 
 		}
 
 		recordUser := strings.TrimSpace(fixedCString(record[btmpUserOffset : btmpUserOffset+btmpUserSize]))
-		if recordUser != username || !isLoginUser(recordUser) {
+		if !matchesLoginUser(recordUser, username) {
 			continue
 		}
 
@@ -437,9 +464,6 @@ func countBtmpFailuresSince(username string, data []byte, since int64) int {
 
 func countBtmpFailuresBetween(username string, data []byte, since, until int64) int {
 	username = strings.TrimSpace(username)
-	if username == "" {
-		return 0
-	}
 
 	count := 0
 	for len(data) >= btmpRecordSize {
@@ -450,7 +474,8 @@ func countBtmpFailuresBetween(username string, data []byte, since, until int64) 
 		if recordType != utmpLoginProcess && recordType != utmpUserProcess {
 			continue
 		}
-		if fixedCString(record[btmpUserOffset:btmpUserOffset+btmpUserSize]) != username {
+		recordUser := strings.TrimSpace(fixedCString(record[btmpUserOffset : btmpUserOffset+btmpUserSize]))
+		if !matchesLoginUser(recordUser, username) {
 			continue
 		}
 		recordTime := utmpRecordTime(record)
@@ -463,6 +488,14 @@ func countBtmpFailuresBetween(username string, data []byte, since, until int64) 
 		count++
 	}
 	return count
+}
+
+func matchesLoginUser(recordUser, username string) bool {
+	recordUser = strings.TrimSpace(recordUser)
+	if !isLoginUser(recordUser) {
+		return false
+	}
+	return username == "" || recordUser == username
 }
 
 func utmpRecordType(record []byte) uint16 {

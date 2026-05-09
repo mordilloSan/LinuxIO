@@ -34,6 +34,7 @@ type SystemLastLogin struct {
 
 type FailedLoginAlert struct {
 	ID            string           `json:"id"`
+	Scope         string           `json:"scope"`
 	Username      string           `json:"username"`
 	Count         int              `json:"count"`
 	LatestEventID string           `json:"latestEventId"`
@@ -81,7 +82,7 @@ func FetchSystemHealthSummary(username string, privileged bool, sessionStartedAt
 	}
 
 	if privileged {
-		alert, err := FetchFailedLoginAlert(username, sessionStartedAt)
+		alert, err := FetchSystemFailedLoginAlert(username, sessionStartedAt)
 		if err == nil {
 			summary.FailedLoginAlert = alert
 		}
@@ -145,13 +146,61 @@ func FetchFailedLoginAlert(username string, sessionStartedAt time.Time) (*Failed
 
 	latestEvent := systemLoginEventFromLogin(batch.Latest)
 	alert := &FailedLoginAlert{
-		ID:            failedLoginAlertID(username, batch.Latest.ID),
+		ID:            failedLoginAlertID("user", username, batch.Latest.ID),
+		Scope:         "user",
 		Username:      username,
 		Count:         batch.Count,
 		LatestEventID: batch.Latest.ID,
 		LatestEvent:   latestEvent,
 	}
 	return alert, nil
+}
+
+func FetchSystemFailedLoginAlert(boundaryUsername string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
+	boundaryUsername = strings.TrimSpace(boundaryUsername)
+	if boundaryUsername == "" {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	batch, err := loginhistory.FetchFailedAttemptBatchForAllUsers(ctx, boundaryUsername, sessionStartedAt)
+	if err != nil || batch == nil {
+		return nil, err
+	}
+
+	latestEvent := systemLoginEventFromLogin(batch.Latest)
+	alert := &FailedLoginAlert{
+		ID:            failedLoginAlertID("system", boundaryUsername, batch.Latest.ID),
+		Scope:         "system",
+		Username:      batch.Latest.Username,
+		Count:         batch.Count,
+		LatestEventID: batch.Latest.ID,
+		LatestEvent:   latestEvent,
+	}
+	return alert, nil
+}
+
+func FetchFailedLoginEvents(ctx context.Context, boundaryUsername string, sessionStartedAt time.Time, limit int) ([]SystemLoginEvent, error) {
+	boundaryUsername = strings.TrimSpace(boundaryUsername)
+	if boundaryUsername == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 24
+	}
+
+	logins, err := loginhistory.FetchFailedAttemptEventsForAllUsers(ctx, boundaryUsername, sessionStartedAt, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]SystemLoginEvent, 0, len(logins))
+	for _, login := range logins {
+		events = append(events, systemLoginEventFromLogin(login))
+	}
+	return events, nil
 }
 
 func systemLoginEventFromLogin(login loginhistory.Login) SystemLoginEvent {
@@ -170,8 +219,9 @@ func systemLoginEventFromLogin(login loginhistory.Login) SystemLoginEvent {
 	}
 }
 
-func failedLoginAlertID(username, latestEventID string) string {
+func failedLoginAlertID(scope, username, latestEventID string) string {
 	payload := strings.Join([]string{
+		strings.TrimSpace(scope),
 		strings.TrimSpace(username),
 		strings.TrimSpace(latestEventID),
 	}, "\x1f")

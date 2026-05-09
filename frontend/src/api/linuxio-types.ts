@@ -154,6 +154,7 @@ export interface SystemLastLogin {
 
 export interface SystemFailedLoginAlert {
   id: string;
+  scope?: "user" | "system";
   username: string;
   count: number;
   latestEventId: string;
@@ -980,6 +981,10 @@ export interface LinuxIOSchema {
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
     get_health_summary: { args: []; result: SystemHealthSummary };
+    list_failed_login_events: {
+      args: [limit?: string];
+      result: AccountUserLogin[];
+    };
     dismiss_unclean_shutdown: {
       args: [bootId: string];
       result: { message: string };

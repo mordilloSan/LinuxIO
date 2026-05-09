@@ -123,6 +123,20 @@ func TestParseBtmpFailures(t *testing.T) {
 	require.NotEmpty(t, logins[0].ID)
 }
 
+func TestParseBtmpFailuresWithoutUsernameIncludesAllLoginUsers(t *testing.T) {
+	older := uint32(time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC).Unix())
+	newer := uint32(time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC).Unix())
+	data := appendBtmpRecordWithDetails(nil, "miguel", older, "ssh:notty", "192.168.1.10")
+	data = appendBtmpRecordWithDetails(data, "badname", newer, "web", "192.168.1.20")
+	data = appendBtmpRecordWithDetails(data, "reboot", newer+1, "system boot", "")
+
+	logins := parseBtmpFailures("", data, 10)
+
+	require.Len(t, logins, 2)
+	require.Equal(t, "badname", logins[0].Username)
+	require.Equal(t, "miguel", logins[1].Username)
+}
+
 func TestStableLoginIDDifferentForEventIdentityFields(t *testing.T) {
 	base := Login{
 		Username:  "miguel",
@@ -379,6 +393,54 @@ func TestFetchFailedAttemptBatchReturnsLatestFailedEventInWindow(t *testing.T) {
 	require.Equal(t, 2, batch.Count)
 	require.Equal(t, "192.168.1.30", batch.Latest.Source)
 	require.Equal(t, StableLoginID(batch.Latest), batch.Latest.ID)
+}
+
+func TestFetchFailedAttemptBatchForAllUsersCountsOtherAndUnknownUsers(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	sessionStartedAt := time.Date(2026, time.May, 8, 12, 0, 0, 500, time.UTC)
+	previous := time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC)
+
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return []byte(`{
+  "entries": [
+    {
+      "user": "admin",
+      "tty": "web console",
+      "hostname": "192.168.1.239",
+      "login": "Fri May  8 12:00:00 2026"
+    },
+    {
+      "user": "admin",
+      "tty": "pts/0",
+      "hostname": "192.168.1.239",
+      "login": "Thu May  7 12:00:00 2026"
+    }
+  ]
+}`), nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, btmpPath, path)
+		data := appendBtmpRecordWithDetails(nil, "admin", uint32(previous.Unix()-1), "web", "192.168.1.10")
+		data = appendBtmpRecordWithDetails(data, "other", uint32(previous.Unix()+1), "ssh:notty", "192.168.1.20")
+		data = appendBtmpRecordWithDetails(data, "wrongname", uint32(sessionStartedAt.Unix()-30), "web", "192.168.1.30")
+		data = appendBtmpRecordWithDetails(data, "admin", uint32(sessionStartedAt.Unix()+30), "web", "192.168.1.40")
+		return data, nil
+	}
+
+	batch, err := FetchFailedAttemptBatchForAllUsers(context.Background(), "admin", sessionStartedAt)
+
+	require.NoError(t, err)
+	require.NotNil(t, batch)
+	require.Equal(t, 2, batch.Count)
+	require.Equal(t, "wrongname", batch.Latest.Username)
+	require.Equal(t, "192.168.1.30", batch.Latest.Source)
 }
 
 func TestFetchFailedAttemptsReturnsZeroWhenBtmpPermissionDenied(t *testing.T) {
