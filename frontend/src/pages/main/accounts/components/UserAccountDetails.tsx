@@ -23,6 +23,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
 import "./user-account-details.css";
 
@@ -105,9 +106,18 @@ function loginStatusLabel(login: AccountUserLogin): string {
   return login.status === "failed" ? "Failed" : "Success";
 }
 
-function loginStatusColor(login: AccountUserLogin): "success" | "error" {
-  return login.status === "failed" ? "error" : "success";
+const failedLoginStatusColor = SEMANTIC_STATUS_COLORS.error;
+
+function loginStatusColor(login: AccountUserLogin) {
+  return login.status === "failed" ? failedLoginStatusColor : "success";
 }
+
+const loginStatusChipStyle: React.CSSProperties = {
+  fontSize: "0.65rem",
+  height: 20,
+  width: 65,
+  minWidth: 65,
+};
 
 function loginEventKey(login: AccountUserLogin): string {
   return (
@@ -625,7 +635,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                     size="small"
                     variant="soft"
                     color={loginStatusColor(login)}
-                    style={{ fontSize: "0.65rem", height: 20 }}
+                    style={loginStatusChipStyle}
                   />
                 </div>
               </div>
