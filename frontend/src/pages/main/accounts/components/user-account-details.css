@@ -23,12 +23,14 @@
 
 .account-activity-column-header {
   padding-block: 4px;
+  padding-right: 8px;
 }
 
 .account-activity-section-body {
   max-height: 180px;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .account-activity-card--sessions .account-activity-section-body {
