@@ -699,7 +699,6 @@ func CheckIndexerAvailability() (bool, error) {
 	}
 
 	setIndexerAvailability(true)
-	slog.Info("indexer service available")
 
 	return true, nil
 }

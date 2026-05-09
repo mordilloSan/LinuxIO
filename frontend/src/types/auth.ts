@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
 
+import type { CapabilitiesResponse } from "@/api/linuxio-types";
+
 /**
  * Generic utility for creating discriminated union action types.
  * Used to define reducer-safe actions with optional payloads.
@@ -33,7 +35,9 @@ export interface AuthState {
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
-  nfsAvailable: boolean | null;
+  nfsClientAvailable: boolean | null;
+  nfsServerAvailable: boolean | null;
+  tunedAvailable: boolean | null;
 }
 
 /**
@@ -49,10 +53,13 @@ export interface AuthContextType {
   lmSensorsAvailable: boolean | null;
   smartmontoolsAvailable: boolean | null;
   packageKitAvailable: boolean | null;
-  nfsAvailable: boolean | null;
+  nfsClientAvailable: boolean | null;
+  nfsServerAvailable: boolean | null;
+  tunedAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshCapabilities: () => Promise<CapabilitiesResponse>;
 }
 
 /**
@@ -72,6 +79,9 @@ export const AUTH_ACTIONS = {
   /** Dispatched after a successful login. */
   SIGN_IN: "SIGN_IN",
 
+  /** Dispatched when system capability checks are refreshed. */
+  REFRESH_CAPABILITIES: "REFRESH_CAPABILITIES",
+
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
 } as const satisfies Record<string, string>;
@@ -90,7 +100,9 @@ export interface AuthActionTypes {
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
-    nfsAvailable?: boolean | null;
+    nfsClientAvailable?: boolean | null;
+    nfsServerAvailable?: boolean | null;
+    tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
@@ -101,7 +113,19 @@ export interface AuthActionTypes {
     lmSensorsAvailable?: boolean | null;
     smartmontoolsAvailable?: boolean | null;
     packageKitAvailable?: boolean | null;
-    nfsAvailable?: boolean | null;
+    nfsClientAvailable?: boolean | null;
+    nfsServerAvailable?: boolean | null;
+    tunedAvailable?: boolean | null;
+  };
+  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: {
+    dockerAvailable?: boolean | null;
+    indexerAvailable?: boolean | null;
+    lmSensorsAvailable?: boolean | null;
+    smartmontoolsAvailable?: boolean | null;
+    packageKitAvailable?: boolean | null;
+    nfsClientAvailable?: boolean | null;
+    nfsServerAvailable?: boolean | null;
+    tunedAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
@@ -124,7 +148,9 @@ export interface LoginResponse {
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
   packagekit_available: boolean;
-  nfs_available: boolean;
+  nfs_client_available: boolean;
+  nfs_server_available: boolean;
+  tuned_available: boolean;
 }
 
 export type LoginErrorCode =

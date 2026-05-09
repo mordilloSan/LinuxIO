@@ -140,13 +140,13 @@ func fetchSessionCapabilities(sessionID string) (session.Capabilities, error) {
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.
-func StartBridge(sm *session.Manager, sessionID, username, password string, verbose bool) (*session.Session, error) {
+func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 	slog.Debug("Auth daemon available, using socket-based auth")
-	req := BuildRequest(username, sessionID, password, verbose)
+	req := BuildRequest(username, sessionID, password, remoteHost, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
 		return nil, fmt.Errorf("auth daemon failed: %w", err)

@@ -50,7 +50,7 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   hardwareSections: settings.appSettings.hardwareSections,
   viewModes: normalizeViewModes(settings.appSettings.viewModes),
   chunkSizeMB: settings.appSettings.chunkSizeMB,
-  dockerFolder: settings.docker.folder,
+  dockerFolders: settings.docker.folders,
   jobs: settings.jobs,
 });
 
@@ -100,8 +100,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
       payload.appSettings.chunkSizeMB = config.chunkSizeMB;
   }
 
-  if (config.dockerFolder !== undefined) {
-    payload.docker = { folder: config.dockerFolder };
+  if (config.dockerFolders !== undefined) {
+    payload.docker = { folders: config.dockerFolders };
   }
   if (config.jobs !== undefined) {
     payload.jobs = config.jobs;
@@ -115,8 +115,8 @@ const defaultConfig: AppConfig = {
   primaryColor: "#2196f3",
   themeColors: undefined,
   sidebarCollapsed: false,
-  showHiddenFiles: false,
-  dockerFolder: undefined,
+  showHiddenFiles: true,
+  dockerFolders: undefined,
   dashboardOrder: undefined,
   hiddenCards: undefined,
   containerOrder: undefined,
@@ -144,7 +144,7 @@ const applyDefaults = (
   viewModes: cfg?.viewModes ?? defaultConfig.viewModes,
   chunkSizeMB: cfg?.chunkSizeMB ?? defaultConfig.chunkSizeMB,
   jobs: cfg?.jobs ?? defaultConfig.jobs,
-  dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
+  dockerFolders: cfg?.dockerFolders ?? defaultConfig.dockerFolders,
 });
 
 export const ConfigContext = createContext<ConfigContextType | undefined>(

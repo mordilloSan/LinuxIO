@@ -16,5 +16,6 @@ session    required     pam_loginuid.so
 session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open env_params
 session    optional     pam_keyinit.so force revoke
 session    include      common-session-noninteractive
+session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_wtmpdb.so
 session    required     pam_env.so
 session    required     pam_env.so envfile=/etc/default/locale

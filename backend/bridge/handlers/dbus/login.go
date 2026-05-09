@@ -8,6 +8,12 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 )
 
+const (
+	login1BusName      = "org.freedesktop.login1"
+	login1ObjectPath   = godbus.ObjectPath("/org/freedesktop/login1")
+	login1ManagerIface = "org.freedesktop.login1.Manager"
+)
+
 // Login1Manager abstracts the org.freedesktop.login1.Manager interface.
 type Login1Manager struct {
 	conn *godbus.Conn
@@ -21,7 +27,7 @@ func NewLogin1Manager(context.Context) (*Login1Manager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	obj := conn.Object("org.freedesktop.login1", "/org/freedesktop/login1")
+	obj := conn.Object(login1BusName, login1ObjectPath)
 	return &Login1Manager{conn: conn, obj: obj}, nil
 }
 
@@ -48,11 +54,34 @@ func CallLogin1Action(action string) error {
 	})
 }
 
+// TerminateLogin1Session calls org.freedesktop.login1.Manager.TerminateSession.
+func TerminateLogin1Session(ctx context.Context, sessionID string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+	return RetryOnceIfClosed(nil, func() error {
+		manager, err := NewLogin1Manager(ctx)
+		if err != nil {
+			return err
+		}
+		defer manager.Close()
+		return manager.TerminateSession(ctx, sessionID)
+	})
+}
+
 // call runs a generic login1 method.
 func (m *Login1Manager) call(ctx context.Context, method string) error {
-	call := m.obj.CallWithContext(ctx, "org.freedesktop.login1.Manager."+method, 0, false)
+	call := m.obj.CallWithContext(ctx, login1ManagerIface+"."+method, 0, false)
 	if call.Err != nil {
 		return fmt.Errorf("failed to call %s: %w", method, call.Err)
+	}
+	return nil
+}
+
+// TerminateSession ends the given systemd-logind session.
+func (m *Login1Manager) TerminateSession(ctx context.Context, sessionID string) error {
+	call := m.obj.CallWithContext(ctx, login1ManagerIface+".TerminateSession", 0, sessionID)
+	if call.Err != nil {
+		return fmt.Errorf("failed to call TerminateSession: %w", call.Err)
 	}
 	return nil
 }

@@ -55,6 +55,15 @@ func extractCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *htt
 	return nil
 }
 
+func assertResponseFields(t *testing.T, resp map[string]any, fields map[string]any) {
+	t.Helper()
+	for key, want := range fields {
+		if got := resp[key]; got != want {
+			t.Fatalf("expected %s=%v, got %v", key, want, resp)
+		}
+	}
+}
+
 // --- tests -----------------------------------------------------------------
 
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
@@ -64,7 +73,9 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		startBridge = oldStart
 	}()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+	var gotRemoteHost string
+	startBridge = func(sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
+		gotRemoteHost = remoteHost
 		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
 			return nil, err
@@ -75,7 +86,9 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 			LMSensorsAvailable:     true,
 			SmartmontoolsAvailable: false,
 			PackageKitAvailable:    true,
-			NFSAvailable:           true,
+			NFSClientAvailable:     true,
+			NFSServerAvailable:     true,
+			TunedAvailable:         true,
 		}
 		sess.Capabilities = caps
 		if err := sm.SetCapabilities(sessionID, caps); err != nil {
@@ -106,30 +119,18 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal login response: %v", err)
 	}
-	if resp["success"] != true {
-		t.Fatalf("expected success=true, got %v", resp)
-	}
-	if resp["privileged"] != true {
-		t.Fatalf("expected privileged=true, got %v", resp)
-	}
-	if resp["docker_available"] != true {
-		t.Fatalf("expected docker_available=true, got %v", resp)
-	}
-	if resp["indexer_available"] != false {
-		t.Fatalf("expected indexer_available=false, got %v", resp)
-	}
-	if resp["lm_sensors_available"] != true {
-		t.Fatalf("expected lm_sensors_available=true, got %v", resp)
-	}
-	if resp["smartmontools_available"] != false {
-		t.Fatalf("expected smartmontools_available=false, got %v", resp)
-	}
-	if resp["packagekit_available"] != true {
-		t.Fatalf("expected packagekit_available=true, got %v", resp)
-	}
-	if resp["nfs_available"] != true {
-		t.Fatalf("expected nfs_available=true, got %v", resp)
-	}
+	assertResponseFields(t, resp, map[string]any{
+		"success":                 true,
+		"privileged":              true,
+		"docker_available":        true,
+		"indexer_available":       false,
+		"lm_sensors_available":    true,
+		"smartmontools_available": false,
+		"packagekit_available":    true,
+		"nfs_client_available":    true,
+		"nfs_server_available":    true,
+		"tuned_available":         true,
+	})
 
 	// Session exists and is marked privileged (validated later by websocket)
 	sess, err := sm.GetSession(c.Value)
@@ -139,8 +140,86 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if !sess.Privileged {
 		t.Fatalf("expected session privileged=true, got %v", sess.Privileged)
 	}
-	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable || !sess.Capabilities.NFSAvailable {
+	if gotRemoteHost != "192.0.2.1" {
+		t.Fatalf("remote host = %q, want %q", gotRemoteHost, "192.0.2.1")
+	}
+	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable || !sess.Capabilities.NFSClientAvailable || !sess.Capabilities.NFSServerAvailable || !sess.Capabilities.TunedAvailable {
 		t.Fatalf("expected session capabilities to persist, got %+v", sess.Capabilities)
+	}
+}
+
+func TestClientRemoteHost_UsesForwardedForFromTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "172.18.0.4:49832"
+	req.Header.Set("X-Forwarded-For", "203.0.113.9, 172.18.0.4")
+
+	if got := clientRemoteHost(req); got != "203.0.113.9" {
+		t.Fatalf("remote host = %q, want %q", got, "203.0.113.9")
+	}
+}
+
+func TestClientRemoteHost_UsesRightmostUntrustedForwardedFor(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "127.0.0.1:49832"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1, 192.168.1.239")
+
+	if got := clientRemoteHost(req); got != "192.168.1.239" {
+		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
+	}
+}
+
+func TestClientRemoteHost_FallsBackToRealIPWhenForwardedForOnlyHasTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "127.0.0.1:49832"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1")
+	req.Header.Set("X-Real-IP", "192.168.1.239")
+
+	if got := clientRemoteHost(req); got != "192.168.1.239" {
+		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
+	}
+}
+
+func TestClientRemoteHost_IgnoresForwardedForFromUntrustedPeer(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "203.0.113.10:49832"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+
+	if got := clientRemoteHost(req); got != "203.0.113.10" {
+		t.Fatalf("remote host = %q, want %q", got, "203.0.113.10")
+	}
+}
+
+func TestClientRemoteHost_UsesCustomTrustedProxyCIDR(t *testing.T) {
+	t.Setenv(trustedProxyCIDRsEnv, "10.10.0.0/16")
+
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "10.10.1.20:49832"
+	req.Header.Set("X-Real-IP", "198.51.100.7")
+
+	if got := clientRemoteHost(req); got != "198.51.100.7" {
+		t.Fatalf("remote host = %q, want %q", got, "198.51.100.7")
+	}
+}
+
+func TestClientRemoteHost_ParsesRFCForwardedHeader(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "172.18.0.4:49832"
+	req.Header.Set("Forwarded", `for="[2001:db8::1]:443";proto=https`)
+
+	if got := clientRemoteHost(req); got != "2001:db8::1" {
+		t.Fatalf("remote host = %q, want %q", got, "2001:db8::1")
+	}
+}
+
+func TestClientRemoteHost_FallsBackToForwardedWhenEarlierHeadersOnlyHaveTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = "127.0.0.1:49832"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1")
+	req.Header.Set("X-Real-IP", "127.0.0.1")
+	req.Header.Set("Forwarded", `for=127.0.0.1, for=192.168.1.239`)
+
+	if got := clientRemoteHost(req); got != "192.168.1.239" {
+		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
 	}
 }
 
@@ -148,7 +227,7 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
@@ -170,31 +249,23 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal login response: %v", err)
 	}
-	if resp["docker_available"] != false {
-		t.Fatalf("expected docker_available=false, got %v", resp)
-	}
-	if resp["indexer_available"] != false {
-		t.Fatalf("expected indexer_available=false, got %v", resp)
-	}
-	if resp["lm_sensors_available"] != false {
-		t.Fatalf("expected lm_sensors_available=false, got %v", resp)
-	}
-	if resp["smartmontools_available"] != false {
-		t.Fatalf("expected smartmontools_available=false, got %v", resp)
-	}
-	if resp["packagekit_available"] != false {
-		t.Fatalf("expected packagekit_available=false, got %v", resp)
-	}
-	if resp["nfs_available"] != false {
-		t.Fatalf("expected nfs_available=false, got %v", resp)
-	}
+	assertResponseFields(t, resp, map[string]any{
+		"docker_available":        false,
+		"indexer_available":       false,
+		"lm_sensors_available":    false,
+		"smartmontools_available": false,
+		"packagekit_available":    false,
+		"nfs_client_available":    false,
+		"nfs_server_available":    false,
+		"tuned_available":         false,
+	})
 }
 
 func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
 			Code:    ipc.ResultAuthFailed,
 			Message: "authentication failed",
@@ -230,7 +301,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
 			Code:    ipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
@@ -264,7 +335,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 
 	// Bridge blocks forever — holds the semaphore slot
 	block := make(chan struct{})
-	startBridge = func(_ *session.Manager, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		<-block
 		return nil, fmt.Errorf("cancelled")
 	}
@@ -318,7 +389,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie

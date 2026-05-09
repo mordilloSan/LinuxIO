@@ -13,10 +13,11 @@ import (
 
 // Max lengths for fields (used for validation)
 const (
-	MaxUsername  = 256
-	MaxPassword  = 8192
-	MaxSessionID = 64
-	MaxError     = 256
+	MaxUsername   = 256
+	MaxPassword   = 2048
+	MaxSessionID  = 64
+	MaxRemoteHost = 256
+	MaxError      = 256
 )
 
 type AuthResultCode uint8
@@ -49,10 +50,11 @@ const (
 
 // AuthRequest is the binary request sent to the auth daemon (Server -> Auth)
 type AuthRequest struct {
-	Verbose   bool
-	User      string
-	Password  string
-	SessionID string
+	Verbose    bool
+	User       string
+	Password   string
+	SessionID  string
+	RemoteHost string
 }
 
 // AuthResponse is the binary response from the auth daemon (Auth -> Server)
@@ -95,6 +97,9 @@ func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
 	}
 	if err := writeLenStr(w, req.SessionID); err != nil {
 		return fmt.Errorf("write session_id: %w", err)
+	}
+	if err := writeLenStr(w, req.RemoteHost); err != nil {
+		return fmt.Errorf("write remote_host: %w", err)
 	}
 
 	return nil

@@ -26,10 +26,11 @@ func YamuxConfig() *yamux.Config {
 // YamuxSession wraps a yamux session with connection tracking
 type YamuxSession struct {
 	*yamux.Session
-	conn    net.Conn
-	mu      sync.Mutex
-	closed  bool
-	onClose func()
+	conn           net.Conn
+	mu             sync.Mutex
+	closed         bool
+	onClose        func()
+	onCloseInvoked bool
 }
 
 // NewYamuxServer creates a server-side yamux session
@@ -39,10 +40,12 @@ func NewYamuxServer(conn net.Conn) (*YamuxSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &YamuxSession{
+	ys := &YamuxSession{
 		Session: session,
 		conn:    conn,
-	}, nil
+	}
+	ys.watchClose()
+	return ys, nil
 }
 
 // NewYamuxClient creates a client-side yamux session
@@ -52,32 +55,41 @@ func NewYamuxClient(conn net.Conn) (*YamuxSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &YamuxSession{
+	ys := &YamuxSession{
 		Session: session,
 		conn:    conn,
-	}, nil
+	}
+	ys.watchClose()
+	return ys, nil
 }
 
 // SetOnClose sets a callback to be called when the session closes
 func (s *YamuxSession) SetOnClose(fn func()) {
+	var callNow func()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.onClose = fn
+	if s.closed && !s.onCloseInvoked && fn != nil {
+		s.onCloseInvoked = true
+		callNow = fn
+	}
+	s.mu.Unlock()
+
+	if callNow != nil {
+		callNow()
+	}
 }
 
 // Close closes the yamux session and underlying connection
 func (s *YamuxSession) Close() error {
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
+	onClose := s.markClosed()
+	if onClose == nil && s.Session.IsClosed() {
 		return nil
 	}
-	s.closed = true
-	onClose := s.onClose
-	s.mu.Unlock()
 
 	err := s.Session.Close()
-
+	if onClose == nil {
+		onClose = s.closeCallback()
+	}
 	if onClose != nil {
 		onClose()
 	}
@@ -86,7 +98,46 @@ func (s *YamuxSession) Close() error {
 
 // IsClosed returns true if the session has been closed
 func (s *YamuxSession) IsClosed() bool {
+	if s.Session.IsClosed() {
+		if onClose := s.markClosed(); onClose != nil {
+			onClose()
+		}
+		return true
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.closed || s.Session.IsClosed()
+	return s.closed
+}
+
+func (s *YamuxSession) watchClose() {
+	go func() {
+		<-s.CloseChan()
+		if onClose := s.markClosed(); onClose != nil {
+			onClose()
+		}
+	}()
+}
+
+func (s *YamuxSession) markClosed() func() {
+	s.mu.Lock()
+	s.closed = true
+	onClose := s.closeCallbackLocked()
+	s.mu.Unlock()
+	return onClose
+}
+
+func (s *YamuxSession) closeCallback() func() {
+	s.mu.Lock()
+	onClose := s.closeCallbackLocked()
+	s.mu.Unlock()
+	return onClose
+}
+
+func (s *YamuxSession) closeCallbackLocked() func() {
+	if s.onCloseInvoked || s.onClose == nil {
+		return nil
+	}
+	s.onCloseInvoked = true
+	return s.onClose
 }

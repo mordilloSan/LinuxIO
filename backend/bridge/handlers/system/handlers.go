@@ -2,8 +2,13 @@ package system
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -36,6 +41,9 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
 		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
+		{command: "list_failed_login_events", handler: makeListFailedLoginEventsHandler(sess), privileged: true},
+		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess)},
+		{command: "dismiss_failed_login_alert", handler: makeDismissFailedLoginAlertHandler(sess)},
 		{command: "get_server_time", handler: handleGetServerTime},
 		{command: "get_timezones", handler: handleGetTimezones},
 	})
@@ -129,9 +137,150 @@ func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) err
 
 func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged)
+		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged, sess.Timing.CreatedAt)
+		if err == nil && result != nil {
+			applyHealthDismissals(sess.User.Username, result)
+		}
 		return emitSystemResult(emit, result, err)
 	}
+}
+
+func makeListFailedLoginEventsHandler(sess *session.Session) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		limit := parsePositiveLimitArg(args, 24, 100)
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+
+		result, err := FetchFailedLoginEvents(ctx, sess.User.Username, sess.Timing.CreatedAt, limit)
+		return emitSystemResult(emit, result, err)
+	}
+}
+
+// applyHealthDismissals suppresses acknowledged one-shot health signals. Any
+// error reading the user's settings is treated as "not dismissed" so warnings
+// still surface.
+func applyHealthDismissals(username string, summary *SystemHealthSummary) {
+	if !hasDismissibleHealthSignal(summary) {
+		return
+	}
+	cfg, _, err := config.Load(username)
+	if err != nil {
+		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
+		return
+	}
+	if cfg.Dismissals == nil {
+		return
+	}
+	applyUncleanShutdownDismissal(summary, cfg.Dismissals)
+	applyFailedLoginAlertDismissal(summary, cfg.Dismissals)
+}
+
+func hasDismissibleHealthSignal(summary *SystemHealthSummary) bool {
+	return (summary.UncleanShutdown && summary.UncleanShutdownBootID != "") ||
+		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
+}
+
+func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
+	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
+		return
+	}
+	if dismissals.UncleanShutdownBootID == summary.UncleanShutdownBootID {
+		summary.UncleanShutdown = false
+		summary.UncleanShutdownBootID = ""
+	}
+}
+
+func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
+	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
+		return
+	}
+	if dismissals.FailedLoginAlertID == summary.FailedLoginAlert.ID {
+		summary.FailedLoginAlert = nil
+	}
+}
+
+func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
+	username := sess.User.Username
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		bootID := strings.TrimSpace(args[0])
+		if !isValidBootID(bootID) {
+			return ipc.ErrInvalidArgs
+		}
+
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		if cfg.Dismissals == nil {
+			cfg.Dismissals = &config.Dismissals{}
+		}
+		cfg.Dismissals.UncleanShutdownBootID = bootID
+
+		if _, err := config.Save(username, cfg); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+		slog.Info("dismissed unclean shutdown", "user", username, "bootId", bootID)
+		return emit.Result(map[string]any{"message": "dismissed"})
+	}
+}
+
+func makeDismissFailedLoginAlertHandler(sess *session.Session) ipc.HandlerFunc {
+	username := sess.User.Username
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		alertID := strings.TrimSpace(args[0])
+		if !isValidFailedLoginAlertID(alertID) {
+			return ipc.ErrInvalidArgs
+		}
+
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		if cfg.Dismissals == nil {
+			cfg.Dismissals = &config.Dismissals{}
+		}
+		cfg.Dismissals.FailedLoginAlertID = alertID
+
+		if _, err := config.Save(username, cfg); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+		slog.Info("dismissed failed login alert", "user", username, "alertId", alertID)
+		return emit.Result(map[string]any{"message": "dismissed"})
+	}
+}
+
+// isValidBootID guards against an unbounded write to the user's settings file.
+// Real boot IDs are short unix-epoch seconds strings (≤ 11 digits); allow up
+// to 32 digits for headroom.
+func isValidBootID(s string) bool {
+	if s == "" || len(s) > 32 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidFailedLoginAlertID(s string) bool {
+	const prefix = "failed_login_"
+	if !strings.HasPrefix(s, prefix) || len(s) != len(prefix)+64 {
+		return false
+	}
+	for _, r := range s[len(prefix):] {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func parseIncludeAllArg(args []string) bool {
@@ -144,6 +293,26 @@ func parseIncludeAllArg(args []string) bool {
 	default:
 		return false
 	}
+}
+
+func parsePositiveLimitArg(args []string, fallback, max int) int {
+	if fallback <= 0 {
+		fallback = 24
+	}
+	if max <= 0 {
+		max = fallback
+	}
+	if len(args) == 0 {
+		return fallback
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(args[0]))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func emitSystemResult(emit ipc.Events, result any, err error) error {

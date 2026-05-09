@@ -16,7 +16,6 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -30,7 +29,6 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   onClose,
   group,
 }) => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,
@@ -79,46 +77,73 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <AppDialogTitle>Edit Group Members: {group.name}</AppDialogTitle>
-      <AppDialogContent>
+      <AppDialogTitle
+        style={{
+          fontSize: "1rem",
+          fontWeight: 600,
+          padding: "12px 20px",
+          lineHeight: 1.4,
+        }}
+      >
+        Edit Group Members: {group.name}
+      </AppDialogTitle>
+      <AppDialogContent style={{ padding: "12px 20px", fontSize: "0.85rem" }}>
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: theme.spacing(2),
-            marginTop: theme.spacing(1),
+            gap: 8,
+            marginTop: 4,
           }}
         >
           <AppAutocomplete
             multiple
-            options={usersList.map((u) => u.username)}
-            value={selectedMembers}
-            onChange={setSelectedMembers}
+            size="small"
+            options={usersList
+              .map((u) => u.username)
+              .filter((u) => !selectedMembers.includes(u))}
+            value={[]}
+            onChange={(values) => {
+              const added = values[0];
+              if (added && !selectedMembers.includes(added)) {
+                setSelectedMembers([...selectedMembers, added]);
+              }
+            }}
             label="Members"
             fullWidth
-            renderValue={(value, getItemProps) =>
-              value.map((option, index) => {
-                const itemProps = getItemProps({ index });
-                const { key, ...chipProps } = itemProps;
-                return (
-                  <Chip
-                    key={key}
-                    label={option}
-                    size="small"
-                    variant="soft"
-                    {...chipProps}
-                  />
-                );
-              })
-            }
           />
+          {selectedMembers.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+              }}
+            >
+              {selectedMembers.map((member) => (
+                <Chip
+                  key={member}
+                  label={member}
+                  size="small"
+                  variant="soft"
+                  style={{ fontSize: "0.7rem", height: 22 }}
+                  onDelete={() =>
+                    setSelectedMembers(
+                      selectedMembers.filter((m) => m !== member),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isPending}>
+        <AppButton size="small" onClick={onClose} disabled={isPending}>
           Cancel
         </AppButton>
         <AppButton
+          size="small"
           onClick={handleSubmit}
           variant="contained"
           disabled={isPending}

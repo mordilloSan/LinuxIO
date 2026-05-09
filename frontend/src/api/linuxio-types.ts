@@ -152,14 +152,24 @@ export interface SystemLastLogin {
   time: string;
 }
 
+export interface SystemFailedLoginAlert {
+  id: string;
+  scope?: "user" | "system";
+  username: string;
+  count: number;
+  latestEventId: string;
+  latestEvent: AccountUserLogin;
+}
+
 export interface SystemHealthSummary {
   failedServicesCount: number;
   failedServices?: string[];
   runningServicesCount: number;
-  failedLoginAttempts: number;
+  failedLoginAlert?: SystemFailedLoginAlert | null;
   updatesAvailable: number;
   upToDate: boolean;
   uncleanShutdown: boolean;
+  uncleanShutdownBootId?: string;
   lastLogin?: SystemLastLogin | null;
 }
 
@@ -186,13 +196,17 @@ export interface CapabilitiesResponse {
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
   packagekit_available: boolean;
-  nfs_available: boolean;
+  nfs_client_available: boolean;
+  nfs_server_available: boolean;
+  tuned_available: boolean;
   docker_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
   smartmontools_error?: string;
   packagekit_error?: string;
-  nfs_error?: string;
+  nfs_client_error?: string;
+  nfs_server_error?: string;
+  tuned_error?: string;
 }
 
 export interface DistroInfo {
@@ -472,6 +486,35 @@ export interface UpdateHistoryRow {
 }
 
 // ============================================================================
+// Power Types
+// ============================================================================
+
+export interface TunedProfile {
+  name: string;
+  description?: string;
+  active: boolean;
+  recommended: boolean;
+}
+
+export interface PowerStatus {
+  backend: string;
+  tuned_available: boolean;
+  tuned_active: boolean;
+  tuned_activatable: boolean;
+  tuned_startable: boolean;
+  tuned_unit_available: boolean;
+  tuned_unit_file_state: string;
+  power_profiles_daemon_active: boolean;
+  package_name: string;
+  install_command: string;
+  active_profile: string;
+  recommended_profile: string;
+  profiles: TunedProfile[];
+  notes?: string[];
+  error?: string;
+}
+
+// ============================================================================
 // Filebrowser Types
 // ============================================================================
 
@@ -556,6 +599,88 @@ export interface AccountUser {
   isSystem: boolean;
   isLocked: boolean;
   lastLogin: string;
+}
+
+export interface AccountUserLogin {
+  id: string;
+  username: string;
+  terminal: string;
+  source: string;
+  time: string;
+  startedAt?: string;
+  status: "success" | "failed";
+}
+
+export interface AccountActiveSession {
+  terminal: string;
+  startedAt: string;
+  idle?: string;
+  pid?: number;
+  sessionId?: string;
+  source?: string;
+}
+
+export interface AccountPasswordState {
+  locked: boolean;
+  hasPassword: boolean;
+  lastChanged?: string;
+  expires?: string;
+  expiresInDays?: number;
+  maxDays?: number;
+  warningDays?: number;
+  error?: string;
+}
+
+export interface AccountAdminAccess {
+  isAdmin: boolean;
+  groups: string[];
+}
+
+export interface AccountHomeHealth {
+  exists: boolean;
+  isDirectory: boolean;
+  ownerUid?: number;
+  groupGid?: number;
+  groupName?: string;
+  ownerMatches: boolean;
+  mode?: string;
+  error?: string;
+}
+
+export interface AccountSSHAccess {
+  sshDirExists: boolean;
+  authorizedKeysExists: boolean;
+  authorizedKeysCount: number;
+  sshDirMode?: string;
+  authorizedKeysMode?: string;
+  authorizedKeysOwnerMatches: boolean;
+  error?: string;
+}
+
+export interface AccountUserProcess {
+  pid: number;
+  command: string;
+  cpu: number;
+  memory: number;
+}
+
+export interface AccountProcessSummary {
+  count: number;
+  top: AccountUserProcess[];
+  error?: string;
+}
+
+export interface AccountUserDetails {
+  username: string;
+  activeSessions: AccountActiveSession[];
+  failedLoginAttempts: number;
+  failedLoginAttemptsAvailable: boolean;
+  failedLoginAttemptsError?: string;
+  password: AccountPasswordState;
+  admin: AccountAdminAccess;
+  home: AccountHomeHealth;
+  ssh: AccountSSHAccess;
+  processes: AccountProcessSummary;
 }
 
 export interface AccountGroup {
@@ -717,13 +842,54 @@ export interface ConfigSettings {
     showHiddenFiles: boolean;
   };
   docker: {
-    folder: string;
+    folders: string[];
   };
 }
 
 export interface ConfigSetResult {
   message: string;
   path: string;
+}
+
+export interface IndexerConfig {
+  index_path: string;
+  index_name: string;
+  include_hidden: boolean;
+  include_network_mounts: boolean;
+  fresh_index: boolean;
+  keep_indexes: number;
+  db_path: string;
+  db_busy_timeout: string;
+  db_journal_mode: string;
+  db_synchronous: string;
+  db_auto_vacuum: string;
+  db_max_open_conns: number;
+  db_max_idle_conns: number;
+  db_conn_max_idle_time: string;
+  socket_path: string;
+  listen_addr: string;
+  interval: string;
+}
+
+export interface IndexerConfigSetResult {
+  config: IndexerConfig;
+  restart_required: boolean;
+}
+
+export interface IndexerDaemonStatus {
+  running: boolean;
+  status: string;
+  num_dirs: number;
+  num_files: number;
+  total_size: number;
+  last_indexed?: string;
+  total_indexes: number;
+  total_entries: number;
+  database_size: number;
+  wal_size: number;
+  shm_size: number;
+  total_on_disk: number;
+  warning?: string;
 }
 
 export interface DirectoryValidationResult {
@@ -815,6 +981,18 @@ export interface LinuxIOSchema {
     get_pci_devices: { args: []; result: PCIDevice[] };
     get_memory_modules: { args: []; result: MemoryModule[] };
     get_health_summary: { args: []; result: SystemHealthSummary };
+    list_failed_login_events: {
+      args: [limit?: string];
+      result: AccountUserLogin[];
+    };
+    dismiss_unclean_shutdown: {
+      args: [bootId: string];
+      result: { message: string };
+    };
+    dismiss_failed_login_alert: {
+      args: [alertId: string];
+      result: { message: string };
+    };
     get_server_time: { args: []; result: string };
     get_timezones: { args: []; result: string[] };
   };
@@ -848,7 +1026,7 @@ export interface LinuxIOSchema {
       args: [projectName: string, deleteFile: string, deleteDirectory: string];
       result: DeleteStackResult;
     };
-    get_docker_folder: { args: []; result: { folder: string } };
+    get_docker_folders: { args: []; result: { folders: string[] } };
     validate_compose: {
       args: [content: string];
       result: {
@@ -1011,8 +1189,24 @@ export interface LinuxIOSchema {
     set: { args: [payload: string]; result: ConfigSetResult };
   };
 
+  indexer: {
+    get_config: { args: []; result: IndexerConfig };
+    get_status: { args: []; result: IndexerDaemonStatus };
+    set_config: {
+      args: [payload: Partial<IndexerConfig>];
+      result: IndexerConfigSetResult;
+    };
+  };
+
   control: {
     version: { args: []; result: VersionResponse };
+  };
+
+  power: {
+    get_status: { args: []; result: PowerStatus };
+    start: { args: []; result: PowerStatus };
+    set_profile: { args: [profile: string]; result: PowerStatus };
+    disable: { args: []; result: PowerStatus };
   };
 
   wireguard: {
@@ -1049,6 +1243,12 @@ export interface LinuxIOSchema {
   accounts: {
     // User management
     list_users: { args: []; result: AccountUser[] };
+    get_user_details: { args: [username: string]; result: AccountUserDetails };
+    list_user_logins: { args: [username: string]; result: AccountUserLogin[] };
+    terminate_session: {
+      args: [sessionId: string, pid: string];
+      result: void;
+    };
     create_user: { args: [request: string]; result: void };
     delete_user: { args: [username: string]; result: void };
     modify_user: { args: [request: string]; result: void };

@@ -97,6 +97,16 @@ a {
   opacity: 1;
 }
 
+.log-identifier-link {
+  cursor: pointer;
+}
+
+.log-identifier-link:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--app-palette-text-secondary);
+  text-underline-offset: 3px;
+}
+
 /* App-owned side effects. */
 
 .xterm-helper-textarea,

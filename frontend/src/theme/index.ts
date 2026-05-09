@@ -16,7 +16,7 @@ import {
 } from "@/theme/colors";
 import variants from "@/theme/variants";
 import { useConfig } from "@/hooks/useConfig";
-import type { AppConfig, ThemeColors } from "@/types/config";
+import type { AppConfig, ThemeColorsByMode } from "@/types/config";
 import { alpha, darken, lighten } from "@/utils/color";
 
 type BreakpointKey = keyof typeof breakpoints.values;
@@ -362,7 +362,7 @@ function toColorChannel(color: string) {
 function resolveVariantTheme(
   variantName: string,
   primaryColorToken?: string,
-  themeColors?: ThemeColors,
+  themeColorsByMode?: ThemeColorsByMode,
 ) {
   let themeConfig = variants.find((variant) => variant.name === variantName);
 
@@ -383,6 +383,8 @@ function resolveVariantTheme(
   );
 
   const mode = themeConfig.palette.mode;
+  const themeColors =
+    mode === "dark" ? themeColorsByMode?.dark : themeColorsByMode?.light;
   const palette = {
     mode,
     common: {
@@ -499,7 +501,7 @@ export function buildAppTheme(
     | Pick<AppConfig, "theme" | "primaryColor" | "themeColors">
     | string,
   primaryColorToken?: string,
-  themeColors?: ThemeColors,
+  themeColors?: ThemeColorsByMode,
 ): AppTheme {
   const config =
     typeof configOrTheme === "string"

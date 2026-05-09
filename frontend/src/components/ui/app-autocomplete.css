@@ -6,11 +6,15 @@
   width: 100%;
 }
 
+.app-autocomplete__field {
+  width: 100%;
+}
+
 .app-autocomplete__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 6px;
+  margin-top: 6px;
 }
 
 .app-autocomplete__tag {

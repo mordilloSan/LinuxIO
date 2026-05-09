@@ -28,7 +28,7 @@ func RunServer(cfg ServerConfig) {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	slog.Info("server starting", "verbose", cfg.Verbose)
+	slog.Info("LinuxIO starting", "verbose", cfg.Verbose)
 
 	sm := newSessionManager()
 	srv, inFlight, lastHit := newHTTPServer(cfg, sm)

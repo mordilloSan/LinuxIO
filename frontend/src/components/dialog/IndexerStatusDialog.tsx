@@ -15,6 +15,13 @@ export interface IndexerStat {
   valueColor?: string;
   valueVariant?: AppTypographyProps["variant"];
 }
+
+export interface IndexerStatSection {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  stats: IndexerStat[];
+}
+
 interface IndexerStatusDialogProps {
   open: boolean;
   onClose: () => void;
@@ -28,6 +35,8 @@ interface IndexerStatusDialogProps {
   showProgressStats?: boolean;
   successMessage?: string;
   successDescription?: React.ReactNode;
+  detailTitle?: string;
+  detailSections?: IndexerStatSection[];
   summaryTitle?: string;
   summaryStats?: IndexerStat[];
 }
@@ -44,12 +53,15 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   showProgressStats = true,
   successMessage = "Indexing completed successfully!",
   successDescription,
+  detailTitle,
+  detailSections = [],
   summaryTitle,
   summaryStats = [],
 }) => {
   const theme = useAppTheme();
   const sectionBackground = theme.codeBlock.background;
   const hasProgressStats = showProgressStats && progressStats.length > 0;
+  const hasDetails = detailSections.length > 0;
   const hasSummary = Boolean(summaryTitle) && summaryStats.length > 0;
   return (
     <GeneralDialog
@@ -176,6 +188,86 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
                 >
                   {successDescription}
                 </AppTypography>
+              )}
+
+              {hasDetails && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    marginTop: 8,
+                  }}
+                >
+                  {detailTitle && (
+                    <AppTypography variant="subtitle2" color="text.primary">
+                      {detailTitle}
+                    </AppTypography>
+                  )}
+                  {detailSections.map((section, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: 8,
+                        backgroundColor: sectionBackground,
+                        borderRadius: 4,
+                      }}
+                    >
+                      <AppTypography variant="subtitle2" color="text.primary">
+                        {section.title}
+                      </AppTypography>
+                      {section.subtitle && (
+                        <AppTypography
+                          variant="caption"
+                          color="text.secondary"
+                          title={
+                            typeof section.subtitle === "string"
+                              ? section.subtitle
+                              : undefined
+                          }
+                          style={{
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {section.subtitle}
+                        </AppTypography>
+                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          marginTop: 4,
+                        }}
+                      >
+                        {section.stats.map((stat) => (
+                          <div key={stat.label}>
+                            <AppTypography
+                              variant={stat.valueVariant ?? "h5"}
+                              style={
+                                stat.valueColor
+                                  ? {
+                                      color: stat.valueColor,
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {stat.value}
+                            </AppTypography>
+                            <AppTypography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {stat.label}
+                            </AppTypography>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               {hasSummary && (

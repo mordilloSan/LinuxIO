@@ -3,6 +3,11 @@
 #define __STDC_WANT_LIB_EXT1__ 1
 #define _GNU_SOURCE
 #include <security/pam_appl.h>
+#include <paths.h>
+#include <stdint.h>
+#include <time.h>
+#include <utmp.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <pwd.h>
@@ -46,9 +51,22 @@
 #define SOCKET_READ_TIMEOUT 30
 #define SOCKET_WRITE_TIMEOUT 10
 #define BRIDGE_START_TIMEOUT_MS 5000
+#define LINUXIO_WEB_TTY "web console"
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
+#endif
+#ifndef _PATH_BTMP
+#define _PATH_BTMP "/var/log/btmp"
+#endif
+#ifndef _PATH_LASTLOG
+#define _PATH_LASTLOG "/var/log/lastlog"
+#endif
+#ifndef _PATH_UTMP
+#define _PATH_UTMP "/var/run/utmp"
+#endif
+#ifndef _PATH_WTMP
+#define _PATH_WTMP "/var/log/wtmp"
 #endif
 extern char **environ;
 
@@ -330,6 +348,215 @@ static int copy_auth_user(const struct passwd *pw, struct auth_user *auth_user)
   return 0;
 }
 
+static void copy_fixed_field(char *dst, size_t dstsz, const char *src)
+{
+  size_t len;
+
+  if (!dst || dstsz == 0)
+    return;
+
+  memset(dst, 0, dstsz);
+  if (!src)
+    return;
+
+  len = strlen(src);
+  if (len > dstsz)
+    len = dstsz;
+  if (len > 0)
+    memcpy(dst, src, len);
+}
+
+static int valid_remote_host(const char *remote_host)
+{
+  if (!remote_host || !remote_host[0])
+    return 0;
+
+  size_t len = strlen(remote_host);
+  if (len >= PROTO_MAX_REMOTE_HOST)
+    return 0;
+
+  for (size_t i = 0; i < len; i++)
+  {
+    unsigned char ch = (unsigned char)remote_host[i];
+    if (ch <= ' ' || ch == 0x7f)
+      return 0;
+  }
+
+  return 1;
+}
+
+static uint32_t clamp_time_to_u32(time_t value)
+{
+  if (value <= (time_t)0)
+    return 0;
+  if ((uintmax_t)value > UINT32_MAX)
+    return UINT32_MAX;
+  return (uint32_t)value;
+}
+
+static int32_t clamp_suseconds_to_i32(suseconds_t value)
+{
+  if (value <= (suseconds_t)0)
+    return 0;
+  if (value > (suseconds_t)INT32_MAX)
+    return INT32_MAX;
+  return (int32_t)value;
+}
+
+static int update_lastlog(uid_t uid, const struct timeval *tv, const char *remote_host)
+{
+  struct lastlog entry;
+  off_t offset;
+  ssize_t nwritten;
+  int fd;
+  int locked = 0;
+  int ret = -1;
+
+  fd = open(_PATH_LASTLOG, O_RDWR | O_CLOEXEC);
+  if (fd < 0)
+  {
+    if (errno != ENOENT)
+      journal_errorf("failed to open %s: %m", _PATH_LASTLOG);
+    return -1;
+  }
+
+  if (flock(fd, LOCK_EX) != 0)
+  {
+    journal_errorf("failed to lock %s for uid=%u: %m", _PATH_LASTLOG, (unsigned)uid);
+    goto out;
+  }
+  locked = 1;
+
+  offset = (off_t)uid * (off_t)sizeof(entry);
+  memset(&entry, 0, sizeof(entry));
+  entry.ll_time = clamp_time_to_u32(tv->tv_sec);
+  copy_fixed_field(entry.ll_host, sizeof(entry.ll_host), remote_host);
+  copy_fixed_field(entry.ll_line, sizeof(entry.ll_line), LINUXIO_WEB_TTY);
+
+  nwritten = pwrite(fd, &entry, sizeof(entry), offset);
+  if (nwritten != (ssize_t)sizeof(entry))
+  {
+    if (nwritten < 0)
+      journal_errorf("failed to write %s for uid=%u: %m", _PATH_LASTLOG, (unsigned)uid);
+    else
+      journal_errorf("partial write to %s for uid=%u", _PATH_LASTLOG, (unsigned)uid);
+    goto out;
+  }
+
+  ret = 0;
+
+out:
+  if (locked)
+    (void)flock(fd, LOCK_UN);
+  close(fd);
+  return ret;
+}
+
+static int utmp_file_exists(void)
+{
+  struct stat st;
+  return stat(_PATH_UTMP, &st) == 0;
+}
+
+static void btmp_log(const char *username, const char *remote_host)
+{
+  struct timeval tv;
+  struct utmp entry;
+  int fd;
+  ssize_t nwritten;
+
+  gettimeofday(&tv, NULL);
+  memset(&entry, 0, sizeof(entry));
+  copy_fixed_field(entry.ut_line, sizeof(entry.ut_line), LINUXIO_WEB_TTY);
+  copy_fixed_field(entry.ut_host, sizeof(entry.ut_host), remote_host);
+  copy_fixed_field(entry.ut_user, sizeof(entry.ut_user), username);
+  entry.ut_pid = getpid();
+  entry.ut_tv.tv_sec = clamp_time_to_u32(tv.tv_sec);
+  entry.ut_tv.tv_usec = clamp_suseconds_to_i32(tv.tv_usec);
+  entry.ut_type = LOGIN_PROCESS;
+
+  fd = open(_PATH_BTMP, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0660);
+  if (fd < 0)
+  {
+    if (errno != ENOENT)
+      journal_errorf("failed to open %s: %m", _PATH_BTMP);
+    return;
+  }
+
+  nwritten = write(fd, &entry, sizeof(entry));
+  if (nwritten != (ssize_t)sizeof(entry))
+  {
+    if (nwritten < 0)
+      journal_errorf("failed to write %s: %m", _PATH_BTMP);
+    else
+      journal_errorf("partial write to %s", _PATH_BTMP);
+  }
+
+  close(fd);
+}
+
+static void record_login_start(const struct auth_user *auth_user, const char *remote_host)
+{
+  struct timeval tv;
+  struct utmp ut;
+  char id[32];
+
+  gettimeofday(&tv, NULL);
+  (void)safe_snprintf(id, sizeof(id), "%ld", (long)getpid());
+
+  utmpname(_PATH_UTMP);
+
+  memset(&ut, 0, sizeof(ut));
+  copy_fixed_field(ut.ut_id, sizeof(ut.ut_id), id);
+  copy_fixed_field(ut.ut_line, sizeof(ut.ut_line), LINUXIO_WEB_TTY);
+  copy_fixed_field(ut.ut_user, sizeof(ut.ut_user), auth_user->name);
+  copy_fixed_field(ut.ut_host, sizeof(ut.ut_host), remote_host);
+  ut.ut_pid = getpid();
+  ut.ut_tv.tv_sec = clamp_time_to_u32(tv.tv_sec);
+  ut.ut_tv.tv_usec = clamp_suseconds_to_i32(tv.tv_usec);
+  ut.ut_type = USER_PROCESS;
+
+  if (utmp_file_exists())
+  {
+    setutent();
+    if (!pututline(&ut))
+      journal_errorf("failed to write %s: %m", _PATH_UTMP);
+    endutent();
+  }
+  updwtmp(_PATH_WTMP, &ut);
+
+  (void)update_lastlog(auth_user->uid, &tv, remote_host);
+}
+
+static void record_login_end(void)
+{
+  struct timeval tv;
+  struct utmp ut;
+  char id[32];
+
+  gettimeofday(&tv, NULL);
+  (void)safe_snprintf(id, sizeof(id), "%ld", (long)getpid());
+
+  utmpname(_PATH_UTMP);
+
+  memset(&ut, 0, sizeof(ut));
+  copy_fixed_field(ut.ut_id, sizeof(ut.ut_id), id);
+  copy_fixed_field(ut.ut_line, sizeof(ut.ut_line), LINUXIO_WEB_TTY);
+  ut.ut_pid = getpid();
+  ut.ut_tv.tv_sec = clamp_time_to_u32(tv.tv_sec);
+  ut.ut_tv.tv_usec = clamp_suseconds_to_i32(tv.tv_usec);
+  ut.ut_type = DEAD_PROCESS;
+
+  if (utmp_file_exists())
+  {
+    setutent();
+    if (!pututline(&ut))
+      journal_errorf("failed to update %s: %m", _PATH_UTMP);
+    endutent();
+  }
+  updwtmp(_PATH_WTMP, &ut);
+}
+
 static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, const void *appdata_ptr)
 {
   const struct pam_appdata *appdata = (const struct pam_appdata *)appdata_ptr;
@@ -596,7 +823,7 @@ static int write_bootstrap_binary(
     flags |= PROTO_FLAG_VERBOSE;
   if (privileged)
     flags |= PROTO_FLAG_PRIVILEGED;
-  header[pos++] = flags;
+  header[pos] = flags;
 
   // Write fixed header
   if (write_all(fd, header, PROTO_HEADER_SIZE) != 0)
@@ -733,6 +960,8 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
 
 static void drop_to_user(const struct auth_user *auth_user)
 {
+  if (!auth_user)
+    _exit(127);
   if (setgroups(0, NULL) != 0)
     _exit(127);
   if (initgroups(auth_user->name, auth_user->gid) != 0)
@@ -936,7 +1165,8 @@ static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_c
     write_u32_be(ids + 4, (uint32_t)gid);
     if (write_all(fd, ids, sizeof(ids)) != 0)
       return;
-    (void)write_lenstr(fd, username);
+    if (write_lenstr(fd, username) != 0)
+      return;
     return;
   }
 
@@ -1306,10 +1536,12 @@ static int handle_client(int input_fd, int output_fd)
   char user[PROTO_MAX_USERNAME] = "";
   char password[PROTO_MAX_PASSWORD] = "";
   char session_id[PROTO_MAX_SESSION_ID] = "";
+  char remote_host[PROTO_MAX_REMOTE_HOST] = "";
 
   if (read_lenstr(input_fd, user, sizeof(user)) != 0 ||
       read_lenstr(input_fd, password, sizeof(password)) != 0 ||
-      read_lenstr(input_fd, session_id, sizeof(session_id)) != 0)
+      read_lenstr(input_fd, session_id, sizeof(session_id)) != 0 ||
+      read_lenstr(input_fd, remote_host, sizeof(remote_host)) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "failed to read request fields");
     secure_bzero(password, sizeof(password));
@@ -1332,6 +1564,13 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
+  if (!valid_remote_host(remote_host))
+  {
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "invalid remote_host format");
+    secure_bzero(password, sizeof(password));
+    return 1;
+  }
+
   // PAM authentication
   struct pam_appdata appdata = {
       .username = user,
@@ -1341,6 +1580,7 @@ static int handle_client(int input_fd, int output_fd)
       &appdata};
   pam_handle_t *pamh = NULL;
   int rc = pam_start("linuxio", user, &conv, &pamh);
+  int auth_rc;
   if (rc != PAM_SUCCESS)
   {
     send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, pam_strerror(NULL, rc));
@@ -1348,8 +1588,18 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
-  (void)pam_set_item(pamh, PAM_RHOST, "web");
-  rc = pam_authenticate(pamh, 0);
+  rc = pam_set_item(pamh, PAM_RHOST, remote_host);
+  if (rc == PAM_SUCCESS)
+    rc = pam_set_item(pamh, PAM_TTY, LINUXIO_WEB_TTY);
+  if (rc != PAM_SUCCESS)
+  {
+    send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, pam_strerror(pamh, rc));
+    pam_end(pamh, rc);
+    secure_bzero(password, sizeof(password));
+    return 1;
+  }
+  auth_rc = pam_authenticate(pamh, 0);
+  rc = auth_rc;
   if (rc == PAM_SUCCESS)
     rc = pam_acct_mgmt(pamh, 0);
 
@@ -1373,6 +1623,8 @@ static int handle_client(int input_fd, int output_fd)
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
+    if (auth_rc != PAM_SUCCESS)
+      btmp_log(user, remote_host);
     send_error_response(output_fd, classify_pam_result(rc), err);
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
@@ -1455,7 +1707,6 @@ static int handle_client(int input_fd, int output_fd)
     pam_end(pamh, 0);
     return 1;
   }
-
   // Create exec-status pipe with CLOEXEC on write end
   // - On successful exec, CLOEXEC closes the write end -> parent sees EOF
   // - On exec failure, child writes error byte -> parent sees data
@@ -1633,6 +1884,7 @@ static int handle_client(int input_fd, int output_fd)
 
   // Now we know bridge exec'd successfully - send OK response
   // Bridge inherits the connection via FD 3, server continues Yamux on same connection
+  record_login_start(&auth_user, remote_host);
   send_ok_response(output_fd, mode, auth_user.name, auth_user.uid, auth_user.gid);
 
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
@@ -1661,21 +1913,42 @@ static int handle_client(int input_fd, int output_fd)
 
   int exitcode = 1;
   if (WIFEXITED(status))
-    exitcode = WEXITSTATUS(status);
-  else if (WIFSIGNALED(status))
-    exitcode = 128 + WTERMSIG(status);
-
-  if (exitcode != 0)
   {
+    exitcode = WEXITSTATUS(status);
+    if (exitcode != 0)
+    {
+      char exit_buf[32];
+      char pid_buf[32];
+      (void)safe_snprintf(exit_buf, sizeof(exit_buf), "%d", exitcode);
+      (void)safe_snprintf(pid_buf, sizeof(pid_buf), "%ld", (long)child);
+      const struct journal_field fields[] = {
+          {"LINUXIO_USER", auth_user.name},
+          {"LINUXIO_STATUS", exit_buf},
+          {"LINUXIO_CHILD_PID", pid_buf},
+      };
+      journal_error_fieldsf(fields, 3, "bridge pid %ld exited with status %d", (long)child, exitcode);
+    }
+  }
+  else if (WIFSIGNALED(status))
+  {
+    int sig = WTERMSIG(status);
+    exitcode = 128 + WTERMSIG(status);
     char exit_buf[32];
+    char signal_buf[32];
+    char pid_buf[32];
     (void)safe_snprintf(exit_buf, sizeof(exit_buf), "%d", exitcode);
+    (void)safe_snprintf(signal_buf, sizeof(signal_buf), "%d", sig);
+    (void)safe_snprintf(pid_buf, sizeof(pid_buf), "%ld", (long)child);
     const struct journal_field fields[] = {
         {"LINUXIO_USER", auth_user.name},
         {"LINUXIO_STATUS", exit_buf},
+        {"LINUXIO_SIGNAL", signal_buf},
+        {"LINUXIO_CHILD_PID", pid_buf},
     };
-    journal_error_fieldsf(fields, 2, "bridge exited with status %d", exitcode);
+    journal_error_fieldsf(fields, 4, "bridge pid %ld killed by signal %d", (long)child, sig);
   }
 
+  record_login_end();
   pam_close_session(pamh, 0);
   pam_setcred(pamh, PAM_DELETE_CRED);
   pam_end(pamh, 0);

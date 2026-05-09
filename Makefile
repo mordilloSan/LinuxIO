@@ -4,6 +4,8 @@ default: help
 # Include private release automation
 -include release.mk
 
+REPO_ROOT := $(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
+
 # Main flags
 VITE_DEV_PORT = 3000
 DEV_LOG_LINES ?= 25
@@ -15,8 +17,8 @@ VERBOSE      ?= true
 
 # --- Go project root autodetection ---
 BACKEND_DIR := $(shell \
-  if [ -f backend/go.mod ]; then echo backend; \
-  elif [ -f go.mod ]; then echo .; \
+  if [ -f "$(REPO_ROOT)/backend/go.mod" ]; then echo "$(REPO_ROOT)/backend"; \
+  elif [ -f "$(REPO_ROOT)/go.mod" ]; then echo "$(REPO_ROOT)"; \
   else echo ""; fi )
 ifeq ($(BACKEND_DIR),)
 $(error Could not find go.mod in backend/ or project root)

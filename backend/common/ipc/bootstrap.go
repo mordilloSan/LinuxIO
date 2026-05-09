@@ -15,7 +15,7 @@ const (
 	ProtoMagic0  = 'L'
 	ProtoMagic1  = 'I'
 	ProtoMagic2  = 'O'
-	ProtoVersion = 2
+	ProtoVersion = 3
 
 	// Fixed header size: magic(4) + uid(4) + gid(4) + flags(1) = 13
 	ProtoHeaderSize = 13

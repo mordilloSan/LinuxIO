@@ -8,27 +8,36 @@ import (
 	"log/slog"
 	"net"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
+// journaldFieldMatch matches journald-style KEY=VALUE operands. The key must
+// start with an uppercase letter or underscore and contain only uppercase
+// letters, digits, and underscores. Anything else is rejected to keep
+// untrusted UI input from being passed straight to journalctl.
+var journaldFieldMatch = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=.*$`)
+
 const StreamTypeGeneralLogs = "general-logs"
 
 type generalLogsRequest struct {
-	lines      string
-	timePeriod string
-	priority   string
-	identifier string
+	lines        string
+	timePeriod   string
+	priority     string
+	identifier   string
+	fieldFilters []string
 }
 
 // HandleGeneralLogsStream streams general journal logs in real-time.
-// Args: [lines, timePeriod, priority, identifier]
+// Args: [lines, timePeriod, priority, identifier, fieldMatches...]
 // - lines: number of initial lines (default "100")
 // - timePeriod: time range like "1h", "24h", "7d" (optional)
 // - priority: max priority level 0-7 (optional, empty = all)
 // - identifier: filter by SYSLOG_IDENTIFIER (optional, empty = all)
+// - fieldMatches: optional KEY=VALUE journald match operands (ANDed)
 func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	req := parseGeneralLogsRequest(args)
 	slog.Debug("starting general log stream",
@@ -37,7 +46,8 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 		"lines", req.lines,
 		"time_period", req.timePeriod,
 		"priority", req.priority,
-		"identifier", req.identifier)
+		"identifier", req.identifier,
+		"field_filters", strings.Join(req.fieldFilters, " "))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,6 +92,13 @@ func parseGeneralLogsRequest(args []string) generalLogsRequest {
 	if len(args) >= 4 && strings.TrimSpace(args[3]) != "" {
 		req.identifier = strings.TrimSpace(args[3])
 	}
+	for _, raw := range args[min(4, len(args)):] {
+		f := strings.TrimSpace(raw)
+		if f == "" || !journaldFieldMatch.MatchString(f) {
+			continue
+		}
+		req.fieldFilters = append(req.fieldFilters, f)
+	}
 	return req
 }
 
@@ -96,6 +113,7 @@ func startGeneralLogsCommand(ctx context.Context, req generalLogsRequest) (*exec
 	if req.identifier != "" {
 		cmdArgs = append(cmdArgs, "-t", req.identifier)
 	}
+	cmdArgs = append(cmdArgs, req.fieldFilters...)
 	cmd := exec.CommandContext(ctx, "journalctl", cmdArgs...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

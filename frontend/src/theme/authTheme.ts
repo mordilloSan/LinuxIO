@@ -4,12 +4,14 @@ const authThemeBase = buildAppTheme({
   theme: "DARK",
   primaryColor: "#407AD6",
   themeColors: {
-    backgroundDefault: "#1B2635",
-    backgroundPaper: "#233044",
-    footerBackground: "#1B2635",
-    headerBackground: "#1B2635",
-    sidebarBackground: "#1B2635",
-    cardBackground: "#233044",
+    dark: {
+      backgroundDefault: "#1B2635",
+      backgroundPaper: "#233044",
+      footerBackground: "#1B2635",
+      headerBackground: "#1B2635",
+      sidebarBackground: "#1B2635",
+      cardBackground: "#233044",
+    },
   },
 });
 

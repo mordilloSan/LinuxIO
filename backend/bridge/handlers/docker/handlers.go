@@ -49,12 +49,12 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "compose_stop", handler: dockerUserOneArgCall(username, ComposeStop)},
 		{command: "compose_restart", handler: dockerUserOneArgCall(username, ComposeRestart)},
 		{command: "delete_stack", handler: deleteStackHandler(username)},
-		{command: "get_docker_folder", handler: dockerUserCall(username, GetDockerFolder)},
+		{command: "get_docker_folders", handler: dockerUserCall(username, GetDockerFolders)},
 		{command: "validate_compose", handler: dockerOneArgCall(nil, ValidateComposeFile)},
 		{command: "normalize_compose", handler: normalizeComposeHandler()},
 		{command: "get_compose_file_path", handler: dockerUserOneArgCall(username, GetComposeFilePath)},
 		{command: "validate_stack_directory", handler: dockerOneArgCall(nil, ValidateStackDirectory)},
-		{command: "reindex_docker_folder", handler: reindexDockerFolderHandler(username)},
+		{command: "reindex_docker_folders", handler: reindexDockerFoldersHandler(username)},
 		{command: "delete_compose_stack", handler: deleteComposeStackHandler(username)},
 		{command: "get_docker_info", handler: dockerNoArgCall(GetDockerInfo)},
 		{command: "get_icon_uri", handler: getIconURIHandler()},
@@ -194,10 +194,10 @@ func normalizeComposeHandler() ipc.HandlerFunc {
 	}
 }
 
-func reindexDockerFolderHandler(username string) ipc.HandlerFunc {
+func reindexDockerFoldersHandler(username string) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		slog.Info("reindex_docker_folder requested")
-		result, err := IndexDockerFolder(username)
+		slog.Info("reindex_docker_folders requested")
+		result, err := IndexDockerFolders(username)
 		return emitDockerResult(emit, result, err)
 	}
 }

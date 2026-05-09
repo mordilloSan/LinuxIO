@@ -397,7 +397,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   onSuccess,
 }) => {
   const { reason: nfsReason, status: nfsStatus } =
-    useCapability("nfsAvailable");
+    useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
   const [path, setPath] = useState("");
   const [sambaEnabled, setSambaEnabled] = useState(true);
@@ -646,7 +646,7 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   group,
 }) => {
   const { reason: nfsReason, status: nfsStatus } =
-    useCapability("nfsAvailable");
+    useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
   const [sambaEnabled, setSambaEnabled] = useState(Boolean(group?.samba));
   const [nfsEnabled, setNFSEnabled] = useState(Boolean(group?.nfs));
@@ -1090,7 +1090,7 @@ function renderExpandedContent(
 
 const SharesPage: React.FC = () => {
   const { reason: nfsReason, status: nfsStatus } =
-    useCapability("nfsAvailable");
+    useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
   const [viewMode, setViewMode] = useViewMode("shares", "table");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);

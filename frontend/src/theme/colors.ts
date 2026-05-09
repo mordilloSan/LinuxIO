@@ -3,7 +3,7 @@
 export const SEMANTIC_STATUS_COLORS = {
   success: "#00E676",
   warning: "#FFC107",
-  error: "#F44336",
+  error: "#f54b3f",
   danger: "#FF5252",
   info: "#2196F3",
   neutral: "#BDBDBD",

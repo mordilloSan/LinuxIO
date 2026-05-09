@@ -9,8 +9,6 @@ import { createPortal } from "react-dom";
 
 import "./app-select.css";
 
-// Frozen compatibility wrapper: do not introduce new usages.
-
 interface AppSelectProps extends Omit<
   React.SelectHTMLAttributes<HTMLSelectElement>,
   "size"
@@ -20,6 +18,8 @@ interface AppSelectProps extends Omit<
   disableUnderline?: boolean;
   fullWidth?: boolean;
   label?: string;
+  renderOption?: (value: string, label: string) => React.ReactNode;
+  renderValue?: (value: string, label: string) => React.ReactNode;
 }
 
 interface OptionData {
@@ -62,6 +62,8 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
       disableUnderline,
       fullWidth,
       label,
+      renderOption,
+      renderValue,
       className,
       style,
       children,
@@ -88,7 +90,9 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
     const updatePosition = useCallback(() => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const cs = getComputedStyle(containerRef.current);
+      const trigger =
+        containerRef.current.querySelector<HTMLElement>(".app-select__input");
+      const cs = getComputedStyle(trigger ?? containerRef.current);
       setDropdownPos({
         top: rect.bottom + 2,
         left: rect.left,
@@ -185,7 +189,11 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
             onClick={toggle}
             onKeyDown={onKeyDown}
           >
-            {current?.label ?? ""}
+            {current
+              ? renderValue
+                ? renderValue(current.value, current.label)
+                : current.label
+              : ""}
           </div>
           <span
             className={`app-select__arrow${open ? " app-select__arrow--open" : ""}`}
@@ -201,7 +209,7 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
           createPortal(
             <ul
               ref={dropdownRef}
-              className="app-select__dropdown app-select__dropdown--portal"
+              className="app-select__dropdown app-select__dropdown--portal custom-scrollbar"
               role="listbox"
               style={{
                 top: dropdownPos.top,
@@ -228,7 +236,9 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => select(opt)}
                   >
-                    {opt.label}
+                    {renderOption
+                      ? renderOption(opt.value, opt.label)
+                      : opt.label}
                   </li>
                 ))}
             </ul>,

@@ -25,7 +25,7 @@ func repairConfig(cfgPath, base string) error {
 		return err
 	}
 	changed = repairInvalidConfigValues(&cfg, defaults) || changed
-	changed = repairDockerFolderPath(&cfg, defaults) || changed
+	changed = repairDockerFolderPaths(&cfg, defaults) || changed
 
 	if changed {
 		return writeConfigFrom(cfgPath, cfg)
@@ -68,8 +68,8 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 		cfg.AppSettings.ThemeColors = nil
 		changed = true
 	}
-	if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
-		cfg.Docker.Folder = defaults.Docker.Folder
+	if folders, repaired := repairDockerFolderValues(cfg.Docker.Folders, defaults.Docker.Folders); repaired {
+		cfg.Docker.Folders = folders
 		changed = true
 	}
 	if cfg.Jobs.ProgressMinIntervalMs < 0 ||
@@ -84,33 +84,101 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 	return changed
 }
 
-func themeColorsNeedReset(themeColors *ThemeColors) bool {
-	if themeColors == nil {
+func repairDockerFolderValues(folders, defaults []AbsolutePath) ([]AbsolutePath, bool) {
+	if len(folders) == 0 {
+		return defaults, true
+	}
+
+	repaired := make([]AbsolutePath, 0, len(folders))
+	seen := make(map[string]struct{}, len(folders))
+	changed := false
+	for _, folderValue := range folders {
+		folder := strings.TrimSpace(string(folderValue))
+		if folder == "" || folder == string(os.PathSeparator) {
+			changed = true
+			continue
+		}
+		if _, exists := seen[folder]; exists {
+			changed = true
+			continue
+		}
+		seen[folder] = struct{}{}
+		repaired = append(repaired, AbsolutePath(folder))
+	}
+
+	if len(repaired) == 0 {
+		return defaults, true
+	}
+	return repaired, changed
+}
+
+func validateThemeColorMode(modeName string, tc *ThemeColors) []string {
+	if tc == nil {
+		return nil
+	}
+	prefix := "appSettings.themeColors." + modeName + "."
+	fields := map[string]*CSSColor{
+		"backgroundDefault": tc.BackgroundDefault,
+		"backgroundPaper":   tc.BackgroundPaper,
+		"headerBackground":  tc.HeaderBackground,
+		"footerBackground":  tc.FooterBackground,
+		"sidebarBackground": tc.SidebarBackground,
+		"cardBackground":    tc.CardBackground,
+	}
+	var errs []string
+	for key, ptr := range fields {
+		if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+			errs = append(errs, prefix+key+" must be a valid CSS color")
+		}
+	}
+	return errs
+}
+
+func themeColorsNeedReset(byMode *ThemeColorsByMode) bool {
+	if byMode == nil {
 		return false
 	}
-	for _, ptr := range []*CSSColor{
-		themeColors.BackgroundDefault,
-		themeColors.BackgroundPaper,
-		themeColors.HeaderBackground,
-		themeColors.FooterBackground,
-		themeColors.SidebarBackground,
-		themeColors.CardBackground,
-	} {
-		if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-			return true
+	for _, tc := range []*ThemeColors{byMode.Light, byMode.Dark} {
+		if tc == nil {
+			continue
+		}
+		for _, ptr := range []*CSSColor{
+			tc.BackgroundDefault,
+			tc.BackgroundPaper,
+			tc.HeaderBackground,
+			tc.FooterBackground,
+			tc.SidebarBackground,
+			tc.CardBackground,
+		} {
+			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-func repairDockerFolderPath(cfg *Settings, defaults *Settings) bool {
-	fi, err := os.Stat(string(cfg.Docker.Folder))
-	if err != nil || fi.IsDir() {
-		return false
+func repairDockerFolderPaths(cfg *Settings, defaults *Settings) bool {
+	validFolders := make([]AbsolutePath, 0, len(cfg.Docker.Folders))
+	changed := false
+
+	for _, folder := range cfg.Docker.Folders {
+		fi, err := os.Stat(string(folder))
+		if err != nil || fi.IsDir() {
+			validFolders = append(validFolders, folder)
+			continue
+		}
+		slog.Warn("docker folder exists as a file; removing from config", "component", "config", "path", string(folder))
+		changed = true
 	}
-	slog.Warn("docker.folder exists as a file; resetting to default", "component", "config", "path", string(cfg.Docker.Folder))
-	cfg.Docker.Folder = defaults.Docker.Folder
-	return true
+
+	if len(validFolders) == 0 {
+		cfg.Docker.Folders = defaults.Docker.Folders
+		return true
+	}
+
+	cfg.Docker.Folders = validFolders
+	return changed
 }
 
 // logYAMLError extracts and logs detailed error information from goccy/go-yaml
@@ -144,25 +212,31 @@ func ValidateConfig(cfg *Settings) []string {
 	}
 
 	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
-	if tc := cfg.AppSettings.ThemeColors; tc != nil {
-		for key, ptr := range map[string]*CSSColor{
-			"backgroundDefault": tc.BackgroundDefault,
-			"backgroundPaper":   tc.BackgroundPaper,
-			"headerBackground":  tc.HeaderBackground,
-			"footerBackground":  tc.FooterBackground,
-			"sidebarBackground": tc.SidebarBackground,
-			"cardBackground":    tc.CardBackground,
-		} {
-			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-				errs = append(errs, "appSettings.themeColors."+key+" must be a valid CSS color")
-			}
-		}
+	if byMode := cfg.AppSettings.ThemeColors; byMode != nil {
+		errs = append(errs, validateThemeColorMode("light", byMode.Light)...)
+		errs = append(errs, validateThemeColorMode("dark", byMode.Dark)...)
 	}
 
-	// Docker.Folder validation
-	folder := strings.TrimSpace(string(cfg.Docker.Folder))
-	if folder == "" {
-		errs = append(errs, "docker.folder cannot be empty")
+	// Docker.Folders validation
+	if len(cfg.Docker.Folders) == 0 {
+		errs = append(errs, "docker.folders cannot be empty")
+	}
+	seenFolders := make(map[string]struct{}, len(cfg.Docker.Folders))
+	for _, folderValue := range cfg.Docker.Folders {
+		folder := strings.TrimSpace(string(folderValue))
+		if folder == "" {
+			errs = append(errs, "docker.folders cannot include an empty path")
+			continue
+		}
+		if folder == string(os.PathSeparator) {
+			errs = append(errs, "docker.folders cannot include root")
+			continue
+		}
+		if _, exists := seenFolders[folder]; exists {
+			errs = append(errs, "docker.folders cannot include duplicates")
+			continue
+		}
+		seenFolders[folder] = struct{}{}
 	}
 	if cfg.Jobs.ProgressMinIntervalMs < 0 {
 		errs = append(errs, "jobs.progressMinIntervalMs must be >= 0")

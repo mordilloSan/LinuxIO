@@ -2058,8 +2058,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           case JOB_TYPE_DOCKER_INDEXER:
             return data?.files_indexed !== undefined ||
               data?.dirs_indexed !== undefined
-              ? `Indexing Docker folder: ${data.files_indexed ?? 0} files, ${data.dirs_indexed ?? 0} dirs`
-              : "Indexing Docker folder";
+              ? `Indexing Docker folders: ${data.files_indexed ?? 0} files, ${data.dirs_indexed ?? 0} dirs`
+              : "Indexing Docker folders";
           case JOB_TYPE_PACKAGE_UPDATE:
             return data?.package_id
               ? `Updating ${String(data.package_id).split(";")[0]}`

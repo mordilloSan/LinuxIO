@@ -308,13 +308,21 @@ const FileBrowser: React.FC = () => {
   });
   // Add keyboard shortcuts for copy/cut/paste operations
   const handleClipboardKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    // Only handle shortcuts when not editing, renaming, or typing in any input
+    // Only handle shortcuts when the file browser owns the interaction.
     const active = document.activeElement;
+    const target = e.target;
     if (
       editingPath ||
       renamingPath ||
+      document.querySelector(".app-dialog-root") ||
       active instanceof HTMLInputElement ||
-      active instanceof HTMLTextAreaElement
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement ||
+      (active instanceof HTMLElement && active.isContentEditable) ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
     )
       return;
 

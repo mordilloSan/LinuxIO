@@ -101,6 +101,9 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
 
   const setContainerNode = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node;
+  }, []);
+
+  const setFieldAnchorNode = useCallback((node: HTMLDivElement | null) => {
     setAnchorEl(node);
   }, []);
 
@@ -289,40 +292,42 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
         .join(" ")}
       style={style}
     >
+      <div ref={setFieldAnchorNode} className="app-autocomplete__field">
+        <AppTextField
+          ref={inputRef}
+          label={label}
+          value={inputValue}
+          placeholder={placeholder}
+          size={size}
+          fullWidth={fullWidth}
+          disabled={disabled}
+          helperText={helperText}
+          shrinkLabel={shrinkLabel || (isMultiple && selectedValues.length > 0)}
+          autoFocus={autoFocus}
+          endAdornment={
+            <div className="app-autocomplete__end">
+              {endAdornment}
+              <Icon icon="mdi:chevron-down" width={18} height={18} />
+            </div>
+          }
+          onFocus={() => setOpen(true)}
+          onBlur={handleInputBlur}
+          onClick={() => setOpen(true)}
+          onKeyDown={handleInputKeyDown}
+          onChange={(event) => {
+            updateInputValue(event.target.value);
+            setOpen(true);
+          }}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={open ? listboxId : undefined}
+          aria-autocomplete="list"
+        />
+      </div>
+
       {isMultiple && selectedValues.length > 0 ? (
         <div className="app-autocomplete__tags">{renderedValue}</div>
       ) : null}
-
-      <AppTextField
-        ref={inputRef}
-        label={label}
-        value={inputValue}
-        placeholder={placeholder}
-        size={size}
-        fullWidth={fullWidth}
-        disabled={disabled}
-        helperText={helperText}
-        shrinkLabel={shrinkLabel || (isMultiple && selectedValues.length > 0)}
-        autoFocus={autoFocus}
-        endAdornment={
-          <div className="app-autocomplete__end">
-            {endAdornment}
-            <Icon icon="mdi:chevron-down" width={18} height={18} />
-          </div>
-        }
-        onFocus={() => setOpen(true)}
-        onBlur={handleInputBlur}
-        onClick={() => setOpen(true)}
-        onKeyDown={handleInputKeyDown}
-        onChange={(event) => {
-          updateInputValue(event.target.value);
-          setOpen(true);
-        }}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={open ? listboxId : undefined}
-        aria-autocomplete="list"
-      />
 
       <AppPopover
         open={open && !disabled && (loading || filteredOptions.length > 0)}

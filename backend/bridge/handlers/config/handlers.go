@@ -24,30 +24,48 @@ type configSetPayload struct {
 }
 
 type configAppSettingsPayload struct {
-	Theme                   *string                   `json:"theme"`
-	PrimaryColor            *string                   `json:"primaryColor"`
-	ThemeColors             *configThemeColorsPayload `json:"themeColors"`
-	SidebarCollapsed        *bool                     `json:"sidebarCollapsed"`
-	ShowHiddenFiles         *bool                     `json:"showHiddenFiles"`
-	DashboardOrder          []string                  `json:"dashboardOrder"`
-	HiddenCards             []string                  `json:"hiddenCards"`
-	ContainerOrder          []string                  `json:"containerOrder"`
-	DockerDashboardSections *DockerDashboardSections  `json:"dockerDashboardSections"`
-	ViewModes               map[string]string         `json:"viewModes"`
-	ChunkSizeMB             *int                      `json:"chunkSizeMB"`
+	Theme                   *string                         `json:"theme"`
+	PrimaryColor            *string                         `json:"primaryColor"`
+	ThemeColors             *configThemeColorsByModePayload `json:"themeColors"`
+	SidebarCollapsed        *bool                           `json:"sidebarCollapsed"`
+	ShowHiddenFiles         *bool                           `json:"showHiddenFiles"`
+	DashboardOrder          []string                        `json:"dashboardOrder"`
+	HiddenCards             []string                        `json:"hiddenCards"`
+	ContainerOrder          []string                        `json:"containerOrder"`
+	DockerDashboardSections *DockerDashboardSections        `json:"dockerDashboardSections"`
+	HardwareSections        *HardwareSections               `json:"hardwareSections"`
+	ViewModes               map[string]string               `json:"viewModes"`
+	ChunkSizeMB             *int                            `json:"chunkSizeMB"`
+}
+
+type configThemeColorsByModePayload struct {
+	Light *configThemeColorsPayload `json:"light"`
+	Dark  *configThemeColorsPayload `json:"dark"`
 }
 
 type configThemeColorsPayload struct {
-	BackgroundDefault *string `json:"backgroundDefault"`
-	BackgroundPaper   *string `json:"backgroundPaper"`
-	HeaderBackground  *string `json:"headerBackground"`
-	FooterBackground  *string `json:"footerBackground"`
-	SidebarBackground *string `json:"sidebarBackground"`
-	CardBackground    *string `json:"cardBackground"`
+	BackgroundDefault               *string `json:"backgroundDefault"`
+	BackgroundPaper                 *string `json:"backgroundPaper"`
+	HeaderBackground                *string `json:"headerBackground"`
+	FooterBackground                *string `json:"footerBackground"`
+	SidebarBackground               *string `json:"sidebarBackground"`
+	CardBackground                  *string `json:"cardBackground"`
+	DialogBorder                    *string `json:"dialogBorder"`
+	DialogGlow                      *string `json:"dialogGlow"`
+	DialogBackdrop                  *string `json:"dialogBackdrop"`
+	CodeBackground                  *string `json:"codeBackground"`
+	CodeText                        *string `json:"codeText"`
+	ChartRx                         *string `json:"chartRx"`
+	ChartTx                         *string `json:"chartTx"`
+	ChartNeutral                    *string `json:"chartNeutral"`
+	FileBrowserSurface              *string `json:"fileBrowserSurface"`
+	FileBrowserChrome               *string `json:"fileBrowserChrome"`
+	FileBrowserBreadcrumbBackground *string `json:"fileBrowserBreadcrumbBackground"`
+	FileBrowserBreadcrumbText       *string `json:"fileBrowserBreadcrumbText"`
 }
 
 type configDockerPayload struct {
-	Folder           *string  `json:"folder"`
+	Folders          []string `json:"folders"`
 	AutoUpdateStacks []string `json:"autoUpdateStacks"`
 }
 
@@ -162,6 +180,7 @@ func applyAppSettingsUpdate(app *AppSettings, payload *configAppSettingsPayload)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
 	applyOptionalStringSlice(&app.ContainerOrder, payload.ContainerOrder)
 	applyOptionalDockerDashboardSections(app, payload.DockerDashboardSections)
+	applyOptionalHardwareSections(app, payload.HardwareSections)
 	applyViewModes(app, payload.ViewModes)
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
@@ -189,11 +208,32 @@ func applyPrimaryColorSetting(app *AppSettings, primaryColor *string) error {
 	return nil
 }
 
-func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsPayload) error {
+func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
+	light, err := buildThemeColors(payload.Light, "light")
+	if err != nil {
+		return err
+	}
+	dark, err := buildThemeColors(payload.Dark, "dark")
+	if err != nil {
+		return err
+	}
+	if light == nil && dark == nil {
+		app.ThemeColors = nil
+	} else {
+		app.ThemeColors = &ThemeColorsByMode{Light: light, Dark: dark}
+	}
+	return nil
+}
+
+func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*ThemeColors, error) {
+	if payload == nil {
+		return nil, nil
+	}
 	colors := &ThemeColors{}
+	hasAny := false
 	fields := []struct {
 		src *string
 		dst **CSSColor
@@ -205,19 +245,34 @@ func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsPayloa
 		{src: payload.FooterBackground, dst: &colors.FooterBackground, key: "footerBackground"},
 		{src: payload.SidebarBackground, dst: &colors.SidebarBackground, key: "sidebarBackground"},
 		{src: payload.CardBackground, dst: &colors.CardBackground, key: "cardBackground"},
+		{src: payload.DialogBorder, dst: &colors.DialogBorder, key: "dialogBorder"},
+		{src: payload.DialogGlow, dst: &colors.DialogGlow, key: "dialogGlow"},
+		{src: payload.DialogBackdrop, dst: &colors.DialogBackdrop, key: "dialogBackdrop"},
+		{src: payload.CodeBackground, dst: &colors.CodeBackground, key: "codeBackground"},
+		{src: payload.CodeText, dst: &colors.CodeText, key: "codeText"},
+		{src: payload.ChartRx, dst: &colors.ChartRx, key: "chartRx"},
+		{src: payload.ChartTx, dst: &colors.ChartTx, key: "chartTx"},
+		{src: payload.ChartNeutral, dst: &colors.ChartNeutral, key: "chartNeutral"},
+		{src: payload.FileBrowserSurface, dst: &colors.FileBrowserSurface, key: "fileBrowserSurface"},
+		{src: payload.FileBrowserChrome, dst: &colors.FileBrowserChrome, key: "fileBrowserChrome"},
+		{src: payload.FileBrowserBreadcrumbBackground, dst: &colors.FileBrowserBreadcrumbBackground, key: "fileBrowserBreadcrumbBackground"},
+		{src: payload.FileBrowserBreadcrumbText, dst: &colors.FileBrowserBreadcrumbText, key: "fileBrowserBreadcrumbText"},
 	}
 	for _, field := range fields {
 		if field.src == nil {
 			continue
 		}
 		if !IsValidCSSColor(*field.src) {
-			return fmt.Errorf("invalid themeColors.%s", field.key)
+			return nil, fmt.Errorf("invalid themeColors.%s.%s", modePrefix, field.key)
 		}
 		value := CSSColor(*field.src)
 		*field.dst = &value
+		hasAny = true
 	}
-	app.ThemeColors = colors
-	return nil
+	if !hasAny {
+		return nil, nil
+	}
+	return colors, nil
 }
 
 func applyOptionalBool(dst *bool, value *bool) {
@@ -235,6 +290,12 @@ func applyOptionalStringSlice(dst *[]string, value []string) {
 func applyOptionalDockerDashboardSections(app *AppSettings, sections *DockerDashboardSections) {
 	if sections != nil {
 		app.DockerDashboardSections = sections
+	}
+}
+
+func applyOptionalHardwareSections(app *AppSettings, sections *HardwareSections) {
+	if sections != nil {
+		app.HardwareSections = sections
 	}
 }
 
@@ -270,7 +331,7 @@ func applyChunkSizeSetting(app *AppSettings, chunkSize *int) error {
 }
 
 func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) error {
-	if err := applyDockerFolderSetting(docker, payload.Folder); err != nil {
+	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
 	if payload.AutoUpdateStacks != nil {
@@ -279,22 +340,36 @@ func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) err
 	return nil
 }
 
-func applyDockerFolderSetting(docker *Docker, folderValue *string) error {
-	if folderValue == nil {
+func applyDockerFoldersSetting(docker *Docker, folderValues []string) error {
+	if folderValues == nil {
 		return nil
 	}
-	folderInput := strings.TrimSpace(*folderValue)
-	if folderInput == "" {
-		return fmt.Errorf("docker folder cannot be empty")
+	if len(folderValues) == 0 {
+		return fmt.Errorf("docker folders cannot be empty")
 	}
-	folder := filepath.Clean(folderInput)
-	if !filepath.IsAbs(folder) {
-		return fmt.Errorf("docker folder must be an absolute path")
+
+	folders := make([]AbsolutePath, 0, len(folderValues))
+	seen := make(map[string]struct{}, len(folderValues))
+	for _, folderValue := range folderValues {
+		folderInput := strings.TrimSpace(folderValue)
+		if folderInput == "" {
+			return fmt.Errorf("docker folders cannot include an empty path")
+		}
+		folder := filepath.Clean(folderInput)
+		if !filepath.IsAbs(folder) {
+			return fmt.Errorf("docker folder must be an absolute path")
+		}
+		if folder == string(filepath.Separator) {
+			return fmt.Errorf("docker folder cannot be root")
+		}
+		if _, exists := seen[folder]; exists {
+			return fmt.Errorf("docker folders cannot include duplicates")
+		}
+		seen[folder] = struct{}{}
+		folders = append(folders, AbsolutePath(folder))
 	}
-	if folder == string(filepath.Separator) {
-		return fmt.Errorf("docker folder cannot be root")
-	}
-	docker.Folder = AbsolutePath(folder)
+
+	docker.Folders = folders
 	return nil
 }
 

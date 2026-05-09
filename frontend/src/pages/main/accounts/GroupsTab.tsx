@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
 import DeleteGroupDialog from "./components/DeleteGroupDialog";
@@ -10,8 +10,6 @@ import GroupCard from "@/components/cards/GroupCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
-import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -35,11 +33,11 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
   });
 
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editMembersDialogOpen, setEditMembersDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AccountGroup | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<AccountGroup | null>(null);
 
   const groupsList = Array.isArray(groups) ? groups : [];
 
@@ -59,58 +57,15 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
       group.members.some((m) => m.toLowerCase().includes(search.toLowerCase())),
   );
 
-  const effectiveSelected = useMemo(() => {
-    const filteredNames = new Set(filtered.map((g) => g.name));
-    const result = new Set<string>();
-    selected.forEach((name) => {
-      if (filteredNames.has(name)) {
-        result.add(name);
-      }
-    });
-    return result;
-  }, [selected, filtered]);
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      // Don't allow selecting root
-      setSelected(
-        new Set(filtered.filter((g) => g.name !== "root").map((g) => g.name)),
-      );
-    } else {
-      setSelected(new Set());
-    }
-  };
-
-  const handleSelectOne = (name: string, checked: boolean) => {
-    if (name === "root") return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(name);
-      } else {
-        next.delete(name);
-      }
-      return next;
-    });
-  };
-
-  const handleDeleteSuccess = () => {
-    setSelected(new Set());
-  };
-
   const handleEditMembers = (group: AccountGroup) => {
     setSelectedGroup(group);
     setEditMembersDialogOpen(true);
   };
 
-  const selectedGroups = filtered.filter((g) => effectiveSelected.has(g.name));
-  const selectableGroups = filtered.filter((g) => g.name !== "root");
-  const allSelected =
-    selectableGroups.length > 0 &&
-    effectiveSelected.size === selectableGroups.length;
-  const someSelected =
-    effectiveSelected.size > 0 &&
-    effectiveSelected.size < selectableGroups.length;
+  const handleDelete = (group: AccountGroup) => {
+    setGroupToDelete(group);
+    setDeleteDialogOpen(true);
+  };
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Group Name", align: "left" },
@@ -152,17 +107,6 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           style={{ width: 320 }}
         />
         <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
-        {effectiveSelected.size > 0 && (
-          <AppButton
-            variant="contained"
-            color="error"
-            size="small"
-            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            Delete ({effectiveSelected.size})
-          </AppButton>
-        )}
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
@@ -171,9 +115,8 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
               <AppGrid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <GroupCard
                   group={group}
-                  selected={effectiveSelected.has(group.name)}
-                  onSelect={(checked) => handleSelectOne(group.name, checked)}
                   onEditMembers={() => handleEditMembers(group)}
+                  onDelete={() => handleDelete(group)}
                 />
               </AppGrid>
             ))}
@@ -190,23 +133,6 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           data={filtered}
           columns={columns}
           getRowKey={(group) => group.name}
-          renderFirstCell={(group) => (
-            <AppCheckbox
-              size="small"
-              checked={effectiveSelected.has(group.name)}
-              onChange={(e) => handleSelectOne(group.name, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              disabled={group.name === "root"}
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              size="small"
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-            />
-          )}
           renderMainRow={(group) => (
             <>
               <AppTableCell>
@@ -282,6 +208,18 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       <Icon icon="mdi:pencil" width={20} height={20} />
                     </AppIconButton>
                   </AppTooltip>
+                  <AppTooltip title="Delete Group">
+                    <AppIconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(group);
+                      }}
+                      disabled={group.name === "root" || group.isSystem}
+                    >
+                      <Icon icon="mdi:delete" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
                 </div>
               </AppTableCell>
             </>
@@ -321,13 +259,6 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
         onClose={() => setCreateDialogOpen(false)}
       />
 
-      <DeleteGroupDialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        groupNames={selectedGroups.map((g) => g.name)}
-        onSuccess={handleDeleteSuccess}
-      />
-
       {selectedGroup && (
         <EditGroupMembersDialog
           open={editMembersDialogOpen}
@@ -336,6 +267,21 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             setSelectedGroup(null);
           }}
           group={selectedGroup}
+        />
+      )}
+
+      {groupToDelete && (
+        <DeleteGroupDialog
+          open={deleteDialogOpen}
+          onClose={() => {
+            setDeleteDialogOpen(false);
+            setGroupToDelete(null);
+          }}
+          groupNames={[groupToDelete.name]}
+          onSuccess={() => {
+            setDeleteDialogOpen(false);
+            setGroupToDelete(null);
+          }}
         />
       )}
     </div>

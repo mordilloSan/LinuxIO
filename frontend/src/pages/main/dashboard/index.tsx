@@ -23,7 +23,7 @@ import Memory from "./Memory";
 import MotherBoardInfo from "./MotherBoard";
 import Network from "./Network";
 import Processor from "./Processor";
-import SystemHealth from "./System";
+import SystemHealth from "./SystemHealth";
 import SystemOverview from "./SystemOverview";
 
 import SortableCard from "@/components/cards/SortableCard";

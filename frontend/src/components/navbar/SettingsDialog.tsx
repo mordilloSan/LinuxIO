@@ -1,35 +1,64 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
+import CapabilityManagerSection from "./CapabilityManagerSection";
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
+import IndexerSettingsSection from "./IndexerSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
+import PowerSettingsSection from "./PowerSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
 
+import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
-type SettingsTab = "general" | "docker";
+type SettingsTab =
+  | "general"
+  | "theme"
+  | "capabilities"
+  | "docker"
+  | "indexer"
+  | "power";
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useAppTheme();
-  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
+  const { privileged } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const effectiveTab =
+    !privileged && (activeTab === "power" || activeTab === "indexer")
+      ? "general"
+      : activeTab;
+  const tabs = [
+    { value: "general", label: "General" },
+    { value: "theme", label: "Theme" },
+    { value: "capabilities", label: "Capabilities" },
+    { value: "docker", label: "Docker" },
+    ...(privileged ? [{ value: "indexer", label: "Indexer" }] : []),
+    ...(privileged ? [{ value: "power", label: "Power" }] : []),
+  ];
+
   const handleClose = () => {
     setActiveTab("general");
     onClose();
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <GeneralDialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="md"
+      fullWidth
+      style={{ alignSelf: "flex-start" }}
+    >
       <AppDialogTitle
         style={{
-          backgroundColor: theme.palette.background.paper,
-          borderBottom: `1px solid ${theme.palette.divider}`,
           paddingTop: 6,
           paddingBottom: 6,
           paddingLeft: 8,
@@ -40,21 +69,18 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: theme.spacing(1),
+            justifyContent: "center",
+            position: "relative",
           }}
         >
-          <AppTypography
-            variant="h6"
-            style={{
-              flexGrow: 1,
-            }}
-          >
+          <AppTypography variant="h3" style={{ marginTop: 8 }}>
             Settings
           </AppTypography>
           <AppIconButton
             size="small"
             onClick={handleClose}
             aria-label="Close settings"
+            style={{ position: "absolute", right: 0 }}
           >
             <Icon icon="mdi:close" width={18} height={18} />
           </AppIconButton>
@@ -63,20 +89,17 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
       <div
         style={{
-          paddingLeft: 8,
-          paddingRight: 8,
-          borderBottom: "1px solid var(--color-divider)",
+          paddingLeft: 12,
+          paddingRight: 12,
         }}
       >
         <TabSelector
-          value={activeTab}
+          value={effectiveTab}
           onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
-          options={[
-            { value: "general", label: "General" },
-            { value: "docker", label: "Docker" },
-          ]}
+          options={tabs}
           style={{ marginBottom: 0 }}
         />
+        <AppDivider />
       </div>
 
       <AppDialogContent
@@ -87,28 +110,38 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           paddingBottom: 12,
         }}
       >
-        {activeTab === "general" ? (
+        {effectiveTab === "general" ? (
           <div
             style={{
-              paddingTop: theme.spacing(1),
-              paddingBottom: theme.spacing(1),
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(2),
+              gap: theme.spacing(1.5),
             }}
           >
-            <AppTypography variant="body1" fontWeight={600}>
-              Appearance
-            </AppTypography>
+            <div>
+              <AppTypography variant="body1" fontWeight={600}>
+                General
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary">
+                Common app preferences.
+              </AppTypography>
+            </div>
 
-            <div
+            <FrostedCard
+              hoverLift
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest("button, input")) return;
+                (e.currentTarget as HTMLElement)
+                  .querySelector<HTMLButtonElement>("button")
+                  ?.click();
+              }}
               style={{
+                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: theme.spacing(1.5),
-                borderRadius: `${baseBorderRadius * 1.5}px`,
-                border: `1px solid ${theme.palette.divider}`,
               }}
             >
               <div>
@@ -120,13 +153,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
                 </AppTypography>
               </div>
               <NavbarCustomizer />
-            </div>
-
-            <ThemeColorsSection />
+            </FrostedCard>
           </div>
-        ) : (
-          <DockerFolderSettingsSection />
-        )}
+        ) : null}
+        {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
+        {effectiveTab === "capabilities" ? <CapabilityManagerSection /> : null}
+        {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
+        {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
+        {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>
     </GeneralDialog>
   );

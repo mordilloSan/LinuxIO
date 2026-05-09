@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -170,38 +169,16 @@ type indexerStatusSnapshot struct {
 }
 
 func fetchIndexerStatus(ctx context.Context) (indexerStatusSnapshot, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/status", nil)
+	status, err := FetchStatus(ctx)
 	if err != nil {
-		return indexerStatusSnapshot{}, fmt.Errorf("create status request: %w", err)
+		return indexerStatusSnapshot{}, err
 	}
-
-	resp, err := indexerClient.Do(req)
-	if err != nil {
-		return indexerStatusSnapshot{}, fmt.Errorf("indexer status request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return indexerStatusSnapshot{}, fmt.Errorf("indexer status: %s", resp.Status)
-	}
-
-	var raw struct {
-		Status    string `json:"status"`
-		NumDirs   int64  `json:"num_dirs"`
-		NumFiles  int64  `json:"num_files"`
-		TotalSize int64  `json:"total_size"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return indexerStatusSnapshot{}, fmt.Errorf("decode indexer status: %w", err)
-	}
-
-	status := strings.ToLower(strings.TrimSpace(raw.Status))
 	return indexerStatusSnapshot{
-		Running:      status == "running" || status == "indexing",
-		Status:       status,
-		FilesIndexed: raw.NumFiles,
-		DirsIndexed:  raw.NumDirs,
-		TotalSize:    raw.TotalSize,
+		Running:      status.Running,
+		Status:       status.Status,
+		FilesIndexed: status.NumFiles,
+		DirsIndexed:  status.NumDirs,
+		TotalSize:    status.TotalSize,
 	}, nil
 }
 

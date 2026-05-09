@@ -41,28 +41,36 @@ const AuthContent: React.FC = () => {
         aria-hidden
         style={{
           position: "absolute",
-          top: -140,
-          right: -180,
-          width: 420,
-          height: 420,
-          borderRadius: "50%",
-          background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.primary.main, 0.35)}, ${alpha(theme.palette.primary.main, 0)} 70%)`,
-          opacity: 0.9,
+          inset: 0,
+          overflow: "hidden",
+          pointerEvents: "none",
         }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          bottom: -180,
-          left: -160,
-          width: 460,
-          height: 460,
-          borderRadius: "50%",
-          background: `radial-gradient(circle at 70% 40%, ${alpha(theme.palette.primary.dark, 0.3)}, ${alpha(theme.palette.primary.dark, 0)} 70%)`,
-          opacity: 0.8,
-        }}
-      />
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: -140,
+            right: -180,
+            width: 420,
+            height: 420,
+            borderRadius: "50%",
+            background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.primary.main, 0.35)}, ${alpha(theme.palette.primary.main, 0)} 70%)`,
+            opacity: 0.9,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: -180,
+            left: -160,
+            width: 460,
+            height: 460,
+            borderRadius: "50%",
+            background: `radial-gradient(circle at 70% 40%, ${alpha(theme.palette.primary.dark, 0.3)}, ${alpha(theme.palette.primary.dark, 0)} 70%)`,
+            opacity: 0.8,
+          }}
+        />
+      </div>
       <div
         style={{
           position: "relative",

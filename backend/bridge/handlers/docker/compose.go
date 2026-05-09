@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,6 +20,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 )
 
 var validNetworkMode = regexp.MustCompile(`^(none|host|bridge|service:.+|container:.+)$`)
@@ -296,16 +296,18 @@ func findComposeFile(username, projectName string) (string, string, error) {
 	// Common compose file names
 	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 
-	// Try to get user's docker folder from config
-	cfg, _, err := config.Load(username)
-	if err == nil && cfg.Docker.Folder != "" {
+	// Try to get user's Docker folders from config
+	dockerFolders, err := configuredDockerFolders(username)
+	if err == nil {
 		sanitized := sanitizeStackName(projectName)
-		stackDir := filepath.Join(string(cfg.Docker.Folder), sanitized)
+		for _, dockerFolder := range dockerFolders {
+			stackDir := filepath.Join(dockerFolder, sanitized)
 
-		for _, fileName := range composeFileNames {
-			composePath := filepath.Join(stackDir, fileName)
-			if _, err := os.Stat(composePath); err == nil {
-				return composePath, stackDir, nil
+			for _, fileName := range composeFileNames {
+				composePath := filepath.Join(stackDir, fileName)
+				if _, err := os.Stat(composePath); err == nil {
+					return composePath, stackDir, nil
+				}
 			}
 		}
 	}
@@ -1008,15 +1010,38 @@ func populateNormalizedComposeContent(content string, result *ValidationResult) 
 	result.NormalizedContent = normalized
 }
 
-// GetDockerFolder returns the configured Docker folder path from user config
-func GetDockerFolder(username string) (any, error) {
+func configuredDockerFolders(username string) ([]string, error) {
 	cfg, _, err := config.Load(username)
+	if err != nil {
+		return nil, err
+	}
+	folders := dockerFoldersFromConfig(cfg)
+	if len(folders) == 0 {
+		return nil, fmt.Errorf("docker folders not configured for user")
+	}
+	return folders, nil
+}
+
+func dockerFoldersFromConfig(cfg *config.Settings) []string {
+	folders := make([]string, 0, len(cfg.Docker.Folders))
+	for _, folder := range cfg.Docker.Folders {
+		path := strings.TrimSpace(string(folder))
+		if path != "" {
+			folders = append(folders, path)
+		}
+	}
+	return folders
+}
+
+// GetDockerFolders returns the configured Docker folder paths from user config.
+func GetDockerFolders(username string) (any, error) {
+	folders, err := configuredDockerFolders(username)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	return map[string]string{
-		"folder": string(cfg.Docker.Folder),
+	return map[string][]string{
+		"folders": folders,
 	}, nil
 }
 
@@ -1033,8 +1058,13 @@ func GetComposeFilePath(username, stackName string) (any, error) {
 		return nil, fmt.Errorf("invalid stack name")
 	}
 
-	// Build path: {Docker.Folder}/{stack-name}/docker-compose.yml
-	stackDir := filepath.Join(string(cfg.Docker.Folder), sanitized)
+	dockerFolders := dockerFoldersFromConfig(cfg)
+	if len(dockerFolders) == 0 {
+		return nil, fmt.Errorf("docker folders not configured")
+	}
+
+	// Build path in the first configured folder: {Docker.Folders[0]}/{stack-name}/docker-compose.yml
+	stackDir := filepath.Join(dockerFolders[0], sanitized)
 	composePath := filepath.Join(stackDir, "docker-compose.yml")
 
 	// Check if file exists
@@ -1435,50 +1465,32 @@ func getProjectNameFromComposePath(composePath string) string {
 	return filepath.Base(dir)
 }
 
-// indexDockerFolder triggers indexing of the user's docker folder in the indexer
-func indexDockerFolder(username string) error {
-	// Get the user's docker folder from config
-	cfg, _, err := config.Load(username)
-	if err != nil {
-		return fmt.Errorf("failed to load user config: %w", err)
-	}
-
-	if cfg.Docker.Folder == "" {
-		return fmt.Errorf("docker folder not configured for user")
-	}
-
-	dockerFolder := string(cfg.Docker.Folder)
-
-	// Trigger indexing of the docker folder
-	indexURL := fmt.Sprintf("http://unix/reindex?path=%s", url.QueryEscape(dockerFolder))
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, indexURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to build indexer request: %w", err)
-	}
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
+func indexDockerFolderPath(username, dockerFolder string) error {
+	if err := indexer.StreamIndexer(context.Background(), dockerFolder, indexer.IndexerCallbacks{}); err != nil {
 		return fmt.Errorf("indexer request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("indexer returned status %s", resp.Status)
 	}
 	slog.Info("triggered indexing of docker folder", "path", dockerFolder, "user", username)
 
 	return nil
 }
 
-// IndexDockerFolder is the handler function for indexing the docker folder
-func IndexDockerFolder(username string) (any, error) {
-	if err := indexDockerFolder(username); err != nil {
-		return nil, err
+// IndexDockerFolders is the handler function for indexing all configured Docker folders.
+func IndexDockerFolders(username string) (any, error) {
+	dockerFolders, err := configuredDockerFolders(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load user config: %w", err)
+	}
+
+	for _, dockerFolder := range dockerFolders {
+		if err := indexDockerFolderPath(username, dockerFolder); err != nil {
+			return nil, err
+		}
 	}
 
 	return map[string]any{
 		"message": "Indexing started",
 		"status":  "running",
+		"folders": dockerFolders,
 	}, nil
 }
 
@@ -1512,27 +1524,30 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 		return fmt.Errorf("failed to load user config: %w", err)
 	}
 
-	if cfg.Docker.Folder == "" {
-		slog.Debug("no docker folder configured; skipping offline stack discovery", "component", "docker", "subsystem", "compose", "user", username)
+	dockerFolders := dockerFoldersFromConfig(cfg)
+	if len(dockerFolders) == 0 {
+		slog.Debug("no docker folders configured; skipping offline stack discovery", "component", "docker", "subsystem", "compose", "user", username)
 		return nil
 	}
 
-	yamlFiles, err := searchIndexerForYAML(string(cfg.Docker.Folder))
-	if err != nil {
-		return fmt.Errorf("failed to search indexer: %w", err)
-	}
-	slog.Debug("found YAML files in docker folder via indexer", "component", "docker", "subsystem", "compose", "user", username, "file_count", len(yamlFiles))
+	for _, dockerFolder := range dockerFolders {
+		yamlFiles, err := searchIndexerForYAML(dockerFolder)
+		if err != nil {
+			return fmt.Errorf("failed to search indexer: %w", err)
+		}
+		slog.Debug("found YAML files in docker folder via indexer", "component", "docker", "subsystem", "compose", "user", username, "path", dockerFolder, "file_count", len(yamlFiles))
 
-	for _, yamlFile := range yamlFiles {
-		if !isValidComposeFile(yamlFile.Path) {
-			continue
+		for _, yamlFile := range yamlFiles {
+			if !isValidComposeFile(yamlFile.Path) {
+				continue
+			}
+			existingProject := findOfflineComposeProjectMatch(projects, yamlFile.Path)
+			if existingProject != nil {
+				mergeOfflineComposeFile(existingProject, yamlFile.Path)
+				continue
+			}
+			addOfflineComposeProject(projects, yamlFile.Path)
 		}
-		existingProject := findOfflineComposeProjectMatch(projects, yamlFile.Path)
-		if existingProject != nil {
-			mergeOfflineComposeFile(existingProject, yamlFile.Path)
-			continue
-		}
-		addOfflineComposeProject(projects, yamlFile.Path)
 	}
 
 	return nil

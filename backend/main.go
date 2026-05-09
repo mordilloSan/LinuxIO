@@ -348,11 +348,13 @@ type journalEntry struct {
 }
 
 var visibleJournalFields = map[string]struct{}{
+	"LINUXIO_ERROR":      {},
 	"LINUXIO_GID":        {},
 	"LINUXIO_MODE":       {},
 	"LINUXIO_PRIVILEGED": {},
 	"LINUXIO_UID":        {},
 	"LINUXIO_USER":       {},
+	"LINUXIO_VERBOSE":    {},
 }
 
 // formatJournalEntry parses a journalctl JSON line and formats it with colors
@@ -364,15 +366,11 @@ func formatJournalEntry(jsonLine string) string {
 	}
 
 	timestamp := journalTimestamp(entry)
-	unit := journalUnit(entry)
-	pid := journalPID(entry)
+	source := journalSource(entry)
 	level := journalPriorityLevel(entry)
 	message := journalMessage(entry)
 
-	if pid != "" {
-		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
-	}
-	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
+	return fmt.Sprintf("%s %s %s %s", timestamp, level, source, message)
 }
 
 func parseJournalEntry(jsonLine string) (journalEntry, error) {
@@ -403,12 +401,12 @@ func parseJournalEntry(jsonLine string) (journalEntry, error) {
 
 func journalTimestamp(entry journalEntry) string {
 	if usec, err := strconv.ParseInt(entry.Timestamp, 10, 64); err == nil {
-		return time.Unix(0, usec*1000).Format("Jan 02 15:04:05")
+		return time.Unix(0, usec*1000).Format("2006/01/02 15:04:05")
 	}
-	return time.Now().Format("Jan 02 15:04:05")
+	return time.Now().Format("2006/01/02 15:04:05")
 }
 
-func journalUnit(entry journalEntry) string {
+func journalSource(entry journalEntry) string {
 	unit := "unknown"
 	if entry.SyslogID != "" {
 		unit = entry.SyslogID
@@ -420,14 +418,16 @@ func journalUnit(entry journalEntry) string {
 	}
 	unit = strings.TrimSuffix(unit, ".service")
 	unit = strings.TrimSuffix(unit, ".socket")
-	return unit
-}
+	unit = strings.TrimPrefix(unit, "linuxio-")
 
-func journalPID(entry journalEntry) string {
-	if entry.PID != "" {
-		return entry.PID
+	switch unit {
+	case "webserver":
+		return "web"
+	case "":
+		return "unknown"
+	default:
+		return unit
 	}
-	return entry.SyslogPID
 }
 
 func journalMessage(entry journalEntry) string {
@@ -446,12 +446,16 @@ func journalMessage(entry journalEntry) string {
 
 	var builder strings.Builder
 	builder.WriteString(entry.Message)
-	for _, name := range keys {
-		builder.WriteByte(' ')
+	builder.WriteString(" [")
+	for i, name := range keys {
+		if i > 0 {
+			builder.WriteByte(' ')
+		}
 		builder.WriteString(strings.ToLower(strings.TrimPrefix(name, "LINUXIO_")))
 		builder.WriteByte('=')
 		builder.WriteString(journalFieldValue(entry.Fields[name]))
 	}
+	builder.WriteByte(']')
 	return builder.String()
 }
 
@@ -500,11 +504,11 @@ func journalPriorityLevel(entry journalEntry) string {
 	case "6", "5":
 		return "\033[32m[INFO]\033[0m"
 	case "4":
-		return "\033[33m[WARNING]\033[0m"
+		return "\033[33m[WARN]\033[0m"
 	case "3", "2", "1", "0":
 		return "\033[31m[ERROR]\033[0m"
 	default:
-		return ""
+		return "\033[32m[INFO]\033[0m"
 	}
 }
 

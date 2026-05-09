@@ -75,12 +75,12 @@ func main() {
 
 	initializeBridgeSession()
 	slog.Info("bridge boot",
-		"uid", os.Geteuid(),
+		"effective_uid", os.Geteuid(),
 		"user", sess.User.Username,
 		"session_id", sess.SessionID,
 		"privileged", sess.Privileged,
-		"linuxio_uid", sess.User.UID,
-		"linuxio_gid", sess.User.GID,
+		"uid", sess.User.UID,
+		"gid", sess.User.GID,
 	)
 
 	syscall.Umask(0o077)
@@ -129,6 +129,9 @@ func initializeBridgeSession() {
 	sess = &session.Session{
 		SessionID:  bootCfg.SessionID,
 		Privileged: bootCfg.Privileged,
+		Timing: session.Timing{
+			CreatedAt: time.Now(),
+		},
 		User: session.User{
 			Username: bootCfg.Username,
 			UID:      bootCfg.UID,

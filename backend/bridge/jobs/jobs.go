@@ -536,8 +536,7 @@ func (j *Job) run(ctx context.Context, runner Runner) {
 			j.markCanceled()
 			return
 		}
-		var jobErr *Error
-		if errors.As(err, &jobErr) {
+		if jobErr, ok := errors.AsType[*Error](err); ok {
 			j.markFailed(jobErr)
 			return
 		}

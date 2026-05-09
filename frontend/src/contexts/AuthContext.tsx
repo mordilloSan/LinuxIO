@@ -8,7 +8,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { initStreamMux, closeStreamMux, type MuxStatus } from "@/api";
+import {
+  initStreamMux,
+  closeStreamMux,
+  linuxio,
+  type CapabilitiesResponse,
+  type MuxStatus,
+} from "@/api";
 import {
   AuthContextType,
   AuthState,
@@ -31,7 +37,9 @@ type StoredCapabilities = Pick<
   | "lmSensorsAvailable"
   | "smartmontoolsAvailable"
   | "packageKitAvailable"
-  | "nfsAvailable"
+  | "nfsClientAvailable"
+  | "nfsServerAvailable"
+  | "tunedAvailable"
 >;
 
 const emptyCapabilities: StoredCapabilities = {
@@ -40,7 +48,9 @@ const emptyCapabilities: StoredCapabilities = {
   lmSensorsAvailable: null,
   smartmontoolsAvailable: null,
   packageKitAvailable: null,
-  nfsAvailable: null,
+  nfsClientAvailable: null,
+  nfsServerAvailable: null,
+  tunedAvailable: null,
 };
 
 const capabilitiesFromLoginResponse = (
@@ -51,7 +61,9 @@ const capabilitiesFromLoginResponse = (
     | "lm_sensors_available"
     | "smartmontools_available"
     | "packagekit_available"
-    | "nfs_available"
+    | "nfs_client_available"
+    | "nfs_server_available"
+    | "tuned_available"
   >,
 ): StoredCapabilities => ({
   dockerAvailable: data.docker_available,
@@ -59,7 +71,9 @@ const capabilitiesFromLoginResponse = (
   lmSensorsAvailable: data.lm_sensors_available,
   smartmontoolsAvailable: data.smartmontools_available,
   packageKitAvailable: data.packagekit_available,
-  nfsAvailable: data.nfs_available,
+  nfsClientAvailable: data.nfs_client_available,
+  nfsServerAvailable: data.nfs_server_available,
+  tunedAvailable: data.tuned_available,
 });
 
 const readStoredCapabilities = (): StoredCapabilities => {
@@ -91,12 +105,26 @@ const readStoredCapabilities = (): StoredCapabilities => {
         typeof parsed.packageKitAvailable === "boolean"
           ? parsed.packageKitAvailable
           : null,
-      nfsAvailable:
-        typeof parsed.nfsAvailable === "boolean" ? parsed.nfsAvailable : null,
+      nfsClientAvailable:
+        typeof parsed.nfsClientAvailable === "boolean"
+          ? parsed.nfsClientAvailable
+          : null,
+      nfsServerAvailable:
+        typeof parsed.nfsServerAvailable === "boolean"
+          ? parsed.nfsServerAvailable
+          : null,
+      tunedAvailable:
+        typeof parsed.tunedAvailable === "boolean"
+          ? parsed.tunedAvailable
+          : null,
     };
   } catch {
     return emptyCapabilities;
   }
+};
+
+const persistCapabilities = (capabilities: StoredCapabilities) => {
+  localStorage.setItem(AUTH_CAPABILITIES_KEY, JSON.stringify(capabilities));
 };
 
 const loginErrorMessage = (
@@ -133,7 +161,9 @@ const initialState: AuthState = {
   lmSensorsAvailable: null,
   smartmontoolsAvailable: null,
   packageKitAvailable: null,
-  nfsAvailable: null,
+  nfsClientAvailable: null,
+  nfsServerAvailable: null,
+  tunedAvailable: null,
 };
 
 const reducer = (state: AuthState, action: AuthActions): AuthState => {
@@ -152,7 +182,9 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
-        nfsAvailable: action.payload.nfsAvailable ?? null,
+        nfsClientAvailable: action.payload.nfsClientAvailable ?? null,
+        nfsServerAvailable: action.payload.nfsServerAvailable ?? null,
+        tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
       return {
@@ -166,7 +198,9 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
         packageKitAvailable: null,
-        nfsAvailable: null,
+        nfsClientAvailable: null,
+        nfsServerAvailable: null,
+        tunedAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
       return {
@@ -179,7 +213,21 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
         smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
         packageKitAvailable: action.payload.packageKitAvailable ?? null,
-        nfsAvailable: action.payload.nfsAvailable ?? null,
+        nfsClientAvailable: action.payload.nfsClientAvailable ?? null,
+        nfsServerAvailable: action.payload.nfsServerAvailable ?? null,
+        tunedAvailable: action.payload.tunedAvailable ?? null,
+      };
+    case AUTH_ACTIONS.REFRESH_CAPABILITIES:
+      return {
+        ...state,
+        dockerAvailable: action.payload.dockerAvailable ?? null,
+        indexerAvailable: action.payload.indexerAvailable ?? null,
+        lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
+        smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
+        packageKitAvailable: action.payload.packageKitAvailable ?? null,
+        nfsClientAvailable: action.payload.nfsClientAvailable ?? null,
+        nfsServerAvailable: action.payload.nfsServerAvailable ?? null,
+        tunedAvailable: action.payload.tunedAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
       return {
@@ -192,7 +240,9 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         lmSensorsAvailable: null,
         smartmontoolsAvailable: null,
         packageKitAvailable: null,
-        nfsAvailable: null,
+        nfsClientAvailable: null,
+        nfsServerAvailable: null,
+        tunedAvailable: null,
       };
     default: {
       const exhaustiveCheck: never = action;
@@ -207,6 +257,30 @@ AuthContext.displayName = "AuthContext";
 
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  const applyCapabilities = useCallback(
+    (data: Parameters<typeof capabilitiesFromLoginResponse>[0]) => {
+      const capabilities = capabilitiesFromLoginResponse(data);
+      try {
+        persistCapabilities(capabilities);
+      } catch (error) {
+        console.error("Failed to store capability info:", error);
+      }
+      dispatch({
+        type: AUTH_ACTIONS.REFRESH_CAPABILITIES,
+        payload: capabilities,
+      });
+      return capabilities;
+    },
+    [],
+  );
+
+  const refreshCapabilities =
+    useCallback(async (): Promise<CapabilitiesResponse> => {
+      const data = await linuxio.system.get_capabilities.call();
+      applyCapabilities(data);
+      return data;
+    }, [applyCapabilities]);
 
   const initialize = useCallback(async () => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });
@@ -330,7 +404,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     try {
       localStorage.setItem("auth_username", username);
       localStorage.setItem("auth_privileged", String(data.privileged));
-      localStorage.setItem(AUTH_CAPABILITIES_KEY, JSON.stringify(capabilities));
+      persistCapabilities(capabilities);
     } catch (error) {
       console.error("Failed to store user info:", error);
     }
@@ -368,8 +442,9 @@ function AuthProvider({ children }: AuthProviderProps) {
       method: "session" as const,
       signIn,
       signOut,
+      refreshCapabilities,
     }),
-    [state, signIn, signOut],
+    [state, signIn, signOut, refreshCapabilities],
   );
 
   return (

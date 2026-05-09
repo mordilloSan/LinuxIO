@@ -7,7 +7,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/logging/journald"
 )
 
-// Configure installs the default slog logger for LinuxIO daemons.
 func Configure(identifier string, verbose bool) error {
 	level := slog.LevelInfo
 	if verbose {
@@ -15,9 +14,11 @@ func Configure(identifier string, verbose bool) error {
 	}
 
 	handler, err := journald.NewHandler(journald.Options{
-		Identifier: identifier,
-		Level:      level,
-		AddSource:  true,
+		Identifier:     identifier,
+		Level:          level,
+		AddSource:      true,
+		FieldPrefix:    "LINUXIO",
+		SuppressFields: []string{"SESSION_ID"},
 	})
 	if err != nil {
 		return err

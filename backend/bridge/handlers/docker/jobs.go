@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -25,6 +24,15 @@ type ComposeJobMessage struct {
 	Type    string `json:"type"`    // "stdout", "stderr", "error", "complete"
 	Message string `json:"message"` // The actual message content
 	Code    int    `json:"code,omitempty"`
+}
+
+type DockerIndexerJobResult struct {
+	Path         string                  `json:"path"`
+	FilesIndexed int64                   `json:"files_indexed"`
+	DirsIndexed  int64                   `json:"dirs_indexed"`
+	TotalSize    int64                   `json:"total_size"`
+	DurationMs   int64                   `json:"duration_ms"`
+	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
 func RegisterJobRunners(username string) {
@@ -100,15 +108,35 @@ func resolveComposeJobPaths(username, projectName, composePath string) (string, 
 }
 
 func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string) (any, error) {
-	cfg, _, err := config.Load(username)
+	dockerFolders, err := configuredDockerFolders(username)
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to load user config", 500)
 	}
-	if cfg.Docker.Folder == "" {
-		return nil, bridgejobs.NewError("docker folder not configured", 400)
+
+	aggregate := DockerIndexerJobResult{
+		Path:    strings.Join(dockerFolders, ", "),
+		Folders: make([]indexer.IndexerResult, 0, len(dockerFolders)),
+	}
+	if len(dockerFolders) > 1 {
+		aggregate.Path = fmt.Sprintf("%d Docker folders", len(dockerFolders))
 	}
 
-	return runDockerIndexerOperation(ctx, job, string(cfg.Docker.Folder), false)
+	for _, dockerFolder := range dockerFolders {
+		result, err := runDockerIndexerOperation(ctx, job, dockerFolder, false)
+		if err != nil {
+			return nil, err
+		}
+
+		if indexResult, ok := result.(indexer.IndexerResult); ok {
+			aggregate.FilesIndexed += indexResult.FilesIndexed
+			aggregate.DirsIndexed += indexResult.DirsIndexed
+			aggregate.TotalSize += indexResult.TotalSize
+			aggregate.DurationMs += indexResult.DurationMs
+			aggregate.Folders = append(aggregate.Folders, indexResult)
+		}
+	}
+
+	return aggregate, nil
 }
 
 func runDockerIndexerOperation(ctx context.Context, job *bridgejobs.Job, path string, attachOnly bool) (any, error) {

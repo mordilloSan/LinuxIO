@@ -161,27 +161,40 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
           />
           <AppAutocomplete
             multiple
-            options={groupsList.map((g) => g.name)}
-            value={selectedGroups}
-            onChange={setSelectedGroups}
+            options={groupsList
+              .map((g) => g.name)
+              .filter((g) => !selectedGroups.includes(g))}
+            value={[]}
+            onChange={(values) => {
+              const added = values[0];
+              if (added && !selectedGroups.includes(added)) {
+                setSelectedGroups([...selectedGroups, added]);
+              }
+            }}
             label="Secondary Groups"
             fullWidth
-            renderValue={(value, getItemProps) =>
-              value.map((option, index) => {
-                const itemProps = getItemProps({ index });
-                const { key, ...chipProps } = itemProps;
-                return (
-                  <Chip
-                    key={key}
-                    label={option}
-                    size="small"
-                    variant="soft"
-                    {...chipProps}
-                  />
-                );
-              })
-            }
           />
+          {selectedGroups.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+              }}
+            >
+              {selectedGroups.map((group) => (
+                <Chip
+                  key={group}
+                  label={group}
+                  size="small"
+                  variant="soft"
+                  onDelete={() =>
+                    setSelectedGroups(selectedGroups.filter((g) => g !== group))
+                  }
+                />
+              ))}
+            </div>
+          )}
           <AppFormControlLabel
             control={
               <AppCheckbox

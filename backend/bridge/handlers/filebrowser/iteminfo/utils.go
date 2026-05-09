@@ -13,8 +13,8 @@ import (
 
 func (info *FileInfo) SortItems() {
 	sort.Slice(info.Folders, func(i, j int) bool {
-		nameWithoutExt := strings.Split(info.Folders[i].Name, ".")[0]
-		nameWithoutExt2 := strings.Split(info.Folders[j].Name, ".")[0]
+		nameWithoutExt, _, _ := strings.Cut(info.Folders[i].Name, ".")
+		nameWithoutExt2, _, _ := strings.Cut(info.Folders[j].Name, ".")
 		// Convert strings to integers for numeric sorting if both are numeric
 		numI, errI := strconv.Atoi(nameWithoutExt)
 		numJ, errJ := strconv.Atoi(nameWithoutExt2)
@@ -25,8 +25,8 @@ func (info *FileInfo) SortItems() {
 		return strings.ToLower(info.Folders[i].Name) < strings.ToLower(info.Folders[j].Name)
 	})
 	sort.Slice(info.Files, func(i, j int) bool {
-		nameWithoutExt := strings.Split(info.Files[i].Name, ".")[0]
-		nameWithoutExt2 := strings.Split(info.Files[j].Name, ".")[0]
+		nameWithoutExt, _, _ := strings.Cut(info.Files[i].Name, ".")
+		nameWithoutExt2, _, _ := strings.Cut(info.Files[j].Name, ".")
 		// Convert strings to integers for numeric sorting if both are numeric
 		numI, errI := strconv.Atoi(nameWithoutExt)
 		numJ, errJ := strconv.Atoi(nameWithoutExt2)
