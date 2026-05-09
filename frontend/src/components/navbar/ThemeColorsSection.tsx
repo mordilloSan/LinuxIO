@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -16,6 +16,18 @@ function toInputColor(color: string): string {
     return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
   }
   return color;
+}
+
+function parseHexInput(raw: string): string | null {
+  const trimmed = raw.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(trimmed)) {
+    const [r, g, b] = trimmed;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(trimmed)) {
+    return `#${trimmed.toLowerCase()}`;
+  }
+  return null;
 }
 
 interface ColorEntry {
@@ -333,38 +345,138 @@ interface ColorSwatchProps {
 
 function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
   const theme = useAppTheme();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const colorInputRef = useRef<HTMLInputElement>(null);
   const normalized = toInputColor(color);
 
+  const [draft, setDraft] = useState(normalized);
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(normalized);
+  }, [normalized, focused]);
+
+  const draftValid = parseHexInput(draft) != null;
+  const showAffordance = hovered || focused;
+
+  const commitDraft = () => {
+    const parsed = parseHexInput(draft);
+    if (parsed && parsed !== normalized) {
+      onChange(parsed);
+    } else {
+      setDraft(normalized);
+    }
+  };
+
+  const borderColor = !draftValid
+    ? alpha(theme.palette.error.main, 0.6)
+    : focused
+      ? alpha(theme.palette.primary.main, 0.6)
+      : showAffordance
+        ? alpha(theme.palette.text.secondary, 0.25)
+        : "transparent";
+
   return (
-    <div style={{ position: "relative", flexShrink: 0 }}>
-      <div
-        aria-label={`Current color for ${label}`}
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: theme.shape.borderRadius,
-          backgroundColor: normalized,
-          border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
-          boxSizing: "border-box",
-        }}
-      />
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(0.75),
+        flexShrink: 0,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <input
-        ref={inputRef}
-        type="color"
-        value={normalized}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          position: "fixed",
-          left: "50%",
-          top: "50%",
-          opacity: 0,
-          width: 0,
-          height: 0,
-          pointerEvents: "none",
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={(e) => {
+          setFocused(true);
+          e.target.select();
         }}
-        aria-hidden="true"
+        onBlur={() => {
+          setFocused(false);
+          commitDraft();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDraft(normalized);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        spellCheck={false}
+        autoComplete="off"
+        aria-label={`Hex color for ${label}`}
+        style={{
+          width: 78,
+          padding: "3px 6px",
+          fontFamily:
+            'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+          fontSize: "0.7rem",
+          letterSpacing: "0.01em",
+          color: focused
+            ? theme.palette.text.primary
+            : theme.palette.text.secondary,
+          background: focused
+            ? alpha(theme.palette.text.primary, 0.04)
+            : "transparent",
+          border: `1px solid ${borderColor}`,
+          borderRadius: theme.shape.borderRadius,
+          outline: "none",
+          textTransform: "lowercase",
+          textAlign: "center",
+          boxSizing: "border-box",
+          transition:
+            "border-color 120ms ease, background 120ms ease, color 120ms ease",
+        }}
       />
+      <div style={{ position: "relative" }}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={`Pick color for ${label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            colorInputRef.current?.click();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              colorInputRef.current?.click();
+            }
+          }}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: theme.shape.borderRadius,
+            backgroundColor: normalized,
+            border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
+            boxSizing: "border-box",
+            cursor: "pointer",
+          }}
+        />
+        <input
+          ref={colorInputRef}
+          type="color"
+          value={normalized}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            opacity: 0,
+            width: 0,
+            height: 0,
+            pointerEvents: "none",
+          }}
+          aria-hidden="true"
+        />
+      </div>
     </div>
   );
 }

@@ -25,7 +25,7 @@ export const getFrostedCardStyles = (theme: AppTheme) => ({
   backgroundImage:
     theme.palette.mode === "dark"
       ? `linear-gradient(180deg, ${alpha(theme.palette.common.white, 0.18)} 0%, ${alpha(theme.palette.common.white, 0.14)} 18%, ${alpha(theme.palette.common.white, 0.11)} 38%, ${alpha(theme.palette.common.white, 0.09)} 62%, ${alpha(theme.palette.common.white, 0.08)} 100%)`
-      : `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.72)} 0%, ${alpha(theme.palette.common.white, 0.82)} 18%, ${alpha(theme.palette.common.white, 0.9)} 40%, ${alpha(theme.palette.common.white, 0.95)} 70%, ${alpha(theme.palette.common.white, 0.98)} 100%)`,
+      : `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.72)} 0%, ${alpha(theme.palette.background.paper, 0.82)} 18%, ${alpha(theme.palette.background.paper, 0.9)} 40%, ${alpha(theme.palette.background.paper, 0.95)} 70%, ${alpha(theme.palette.background.paper, 0.98)} 100%)`,
   border: "1px solid transparent",
   backdropFilter: theme.palette.mode === "dark" ? "blur(20px)" : "blur(16px)",
   boxShadow: getFrostedCardShadow(theme),
