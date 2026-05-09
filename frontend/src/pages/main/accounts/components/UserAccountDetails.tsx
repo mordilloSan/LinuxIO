@@ -154,7 +154,8 @@ function sessionStatusTooltip(idle: string | undefined): string {
   if (isSessionActive(idle)) return "Active session";
   const value = idle?.trim();
   if (value === "?") return "Active session. Terminal idle is unavailable.";
-  if (value === "old") return "Active session. Terminal idle for over 24 hours.";
+  if (value === "old")
+    return "Active session. Terminal idle for over 24 hours.";
   return `Active session. Terminal idle for ${formatSessionIdle(value || "")}.`;
 }
 
@@ -702,19 +703,11 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                 </AppTypography>
                 <div className="account-session-terminal">
                   <div className="account-session-terminal-info">
-                    <AppTypography
-                      variant="body2"
-                      fontWeight={500}
-                      noWrap
-                    >
+                    <AppTypography variant="body2" fontWeight={500} noWrap>
                       {session.terminal || "-"}
                     </AppTypography>
                     {session.pid ? (
-                      <AppTypography
-                        variant="body2"
-                        fontWeight={500}
-                        noWrap
-                      >
+                      <AppTypography variant="body2" fontWeight={500} noWrap>
                         (PID {session.pid})
                       </AppTypography>
                     ) : null}
@@ -831,11 +824,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                 >
                   {login.terminal || "-"}
                 </AppTypography>
-                <AppTypography
-                  variant="body2"
-                  fontWeight={500}
-                  noWrap
-                >
+                <AppTypography variant="body2" fontWeight={500} noWrap>
                   {getLoginLocation(login)}
                 </AppTypography>
                 <div>
