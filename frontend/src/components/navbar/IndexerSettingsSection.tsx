@@ -360,8 +360,7 @@ const IndexerSettingsSection: React.FC = () => {
     refetch: refetchStatus,
     isFetching: isStatusFetching,
   } = linuxio.indexer.get_status.useQuery({
-    args: [config?.db_path ?? ""],
-    enabled: indexerEnabled && Boolean(config?.db_path),
+    enabled: indexerEnabled,
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
 
