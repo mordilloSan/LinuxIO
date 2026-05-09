@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -19,6 +20,7 @@ func RegisterHandlers() {
 		{command: "list_users", handler: handleListUsers},
 		{command: "get_user_details", handler: handleGetUserDetails},
 		{command: "list_user_logins", handler: handleListUserLogins},
+		{command: "terminate_session", handler: handleTerminateSession},
 		{command: "create_user", handler: handleCreateUser},
 		{command: "delete_user", handler: handleDeleteUser},
 		{command: "modify_user", handler: handleModifyUser},
@@ -57,6 +59,19 @@ func handleListUserLogins(ctx context.Context, args []string, emit ipc.Events) e
 	}
 	result, err := ListUserLogins(ctx, args[0], 24)
 	return emitAccountResult(emit, result, err)
+}
+
+func handleTerminateSession(ctx context.Context, args []string, emit ipc.Events) error {
+	if err := requireAccountArgs(args, 2); err != nil {
+		return err
+	}
+	sessionID := args[0]
+	pid, _ := strconv.Atoi(args[1])
+	slog.Info("terminate session requested", "sessionID", sessionID, "pid", pid)
+	if err := TerminateSession(ctx, sessionID, pid); err != nil {
+		return err
+	}
+	return emit.Result(nil)
 }
 
 func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error {

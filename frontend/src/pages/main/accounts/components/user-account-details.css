@@ -21,6 +21,15 @@
   padding-bottom: 8px;
 }
 
+.account-activity-section-header > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-activity-section-header > :last-child {
+  flex-shrink: 0;
+}
+
 .account-activity-column-header {
   padding-block: 4px;
   padding-right: 8px;
@@ -62,9 +71,55 @@
   animation: account-login-row-flash 1.4s ease-in-out;
 }
 
+.account-session-terminal {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.account-session-terminal-info {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.account-session-terminal-info > .app-typo {
+  min-width: 0;
+}
+
+.account-session-kill.app-icon-btn {
+  color: var(--app-palette-text-disabled);
+  flex-shrink: 0;
+  opacity: 1;
+  transition:
+    background-color 120ms ease-in-out,
+    color 120ms ease-in-out;
+}
+
+.account-session-kill.app-icon-btn:hover,
+.account-session-kill.app-icon-btn:focus-visible {
+  color: var(--app-palette-error-main);
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-error-main) 8%,
+    transparent
+  );
+}
+
 .account-events-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  column-gap: 12px;
+  width: 100%;
+}
+
+.account-events-grid > * {
+  min-width: 0;
 }
 
 .account-events-grid > :last-child {
@@ -82,6 +137,10 @@
   display: none;
 }
 
+.account-session-terminal.account-hidden-xs {
+  display: none;
+}
+
 @media (min-width: 770px) {
   .account-events-grid {
     grid-template-columns: minmax(180px, 1.4fr) minmax(100px, 0.75fr) minmax(120px, 0.85fr) 82px;
@@ -93,6 +152,10 @@
 
   .account-hidden-xs {
     display: block;
+  }
+
+  .account-session-terminal.account-hidden-xs {
+    display: flex;
   }
 }
 

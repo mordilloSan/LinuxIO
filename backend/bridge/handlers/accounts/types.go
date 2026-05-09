@@ -32,6 +32,7 @@ type UserActiveSession struct {
 	StartedAt string `json:"startedAt"`
 	Idle      string `json:"idle,omitempty"`
 	PID       int    `json:"pid,omitempty"`
+	SessionID string `json:"sessionId,omitempty"`
 	Source    string `json:"source,omitempty"`
 }
 

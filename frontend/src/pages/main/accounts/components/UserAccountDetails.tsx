@@ -16,8 +16,15 @@ import {
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -121,9 +128,7 @@ function sessionIdleLabel(idle: string | undefined): string {
   return isSessionActive(idle) ? "Active" : "Idle";
 }
 
-function sessionIdleColor(
-  idle: string | undefined,
-): "success" | "warning" {
+function sessionIdleColor(idle: string | undefined): "success" | "warning" {
   return isSessionActive(idle) ? "success" : "warning";
 }
 
@@ -258,6 +263,8 @@ interface ActivityHeader {
 const ActivitySection: React.FC<{
   title: string;
   subtitle: string;
+  icon?: string;
+  iconColor?: string;
   headers: ActivityHeader[];
   gridClassName: string;
   metaText: string;
@@ -266,6 +273,8 @@ const ActivitySection: React.FC<{
 }> = ({
   title,
   subtitle,
+  icon,
+  iconColor,
   headers,
   gridClassName,
   metaText,
@@ -277,19 +286,42 @@ const ActivitySection: React.FC<{
     style={{ padding: 12 }}
   >
     <div className="account-activity-section-header">
-      <div style={{ minWidth: 0 }}>
-        <AppTypography variant="subtitle2" fontWeight={700} noWrap>
-          {title}
-        </AppTypography>
-        {subtitle && (
-          <AppTypography
-            variant="caption"
-            color="text.secondary"
-            style={{ display: "block", marginTop: 2 }}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minWidth: 0,
+        }}
+      >
+        {icon && (
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
           >
-            {subtitle}
-          </AppTypography>
+            <Icon icon={icon} width={26} height={26} color={iconColor} />
+          </div>
         )}
+        <div style={{ minWidth: 0 }}>
+          <AppTypography variant="subtitle2" fontWeight={700} noWrap>
+            {title}
+          </AppTypography>
+          {subtitle && (
+            <AppTypography
+              variant="caption"
+              color="text.secondary"
+              style={{ display: "block", marginTop: 2 }}
+            >
+              {subtitle}
+            </AppTypography>
+          )}
+        </div>
       </div>
       <AppTypography variant="caption" color="text.secondary" noWrap>
         {metaText}
@@ -485,6 +517,7 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
 export const UserActivityCard: React.FC<{ username: string }> = ({
   username,
 }) => {
+  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const {
@@ -518,6 +551,38 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
         });
       },
     });
+  const [pendingKillSession, setPendingKillSession] =
+    useState<AccountActiveSession | null>(null);
+  const [killError, setKillError] = useState<string>("");
+  const { mutate: terminateSession, isPending: terminateIsPending } =
+    linuxio.accounts.terminate_session.useMutation({
+      onSuccess: () => {
+        setPendingKillSession(null);
+        setKillError("");
+        queryClient.invalidateQueries({
+          queryKey: linuxio.accounts.get_user_details.queryKey(username),
+        });
+      },
+      onError: (error) => {
+        setKillError(
+          error instanceof Error
+            ? error.message
+            : "Failed to terminate session",
+        );
+      },
+    });
+  const cancelKill = () => {
+    if (terminateIsPending) return;
+    setPendingKillSession(null);
+    setKillError("");
+  };
+  const confirmKill = () => {
+    if (!pendingKillSession) return;
+    terminateSession([
+      pendingKillSession.sessionId ?? "",
+      String(pendingKillSession.pid ?? 0),
+    ]);
+  };
   const focusedLoginKey = useMemo(() => {
     if (!focusLoginEventId) {
       return "";
@@ -572,9 +637,11 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
         className="account-activity-card--sessions"
         title="Active sessions"
         subtitle="Current authenticated sessions"
+        icon="mdi:account-clock"
+        iconColor={theme.palette.primary.main}
         headers={[
-          { label: "Started" },
-          { label: "Terminal", hiddenXs: true },
+          { label: "Started", hiddenXs: true },
+          { label: "Terminal" },
           { label: "Source", hiddenXs: true },
           { label: "Status" },
         ]}
@@ -605,20 +672,56 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           sessions.map((session, index) => (
             <React.Fragment key={`${session.terminal}-${session.startedAt}`}>
               <div className="account-events-grid account-activity-row">
-                <AppTypography variant="body2" fontWeight={500} noWrap>
-                  {session.startedAt || "-"}
-                </AppTypography>
                 <AppTypography
-                  variant="caption"
-                  color="text.secondary"
+                  variant="body2"
+                  fontWeight={500}
                   noWrap
                   className="account-hidden-xs"
                 >
-                  {session.terminal || "-"}
+                  {session.startedAt || "-"}
                 </AppTypography>
+                <div className="account-session-terminal">
+                  <div className="account-session-terminal-info">
+                    <AppTypography
+                      variant="body2"
+                      fontWeight={500}
+                      noWrap
+                    >
+                      {session.terminal || "-"}
+                    </AppTypography>
+                    {session.pid ? (
+                      <AppTypography
+                        variant="body2"
+                        fontWeight={500}
+                        noWrap
+                      >
+                        (PID {session.pid})
+                      </AppTypography>
+                    ) : null}
+                  </div>
+                  {session.pid || session.sessionId ? (
+                    <AppTooltip title="Terminate session">
+                      <AppIconButton
+                        size="small"
+                        className="account-session-kill"
+                        aria-label={`Terminate session ${session.terminal}`}
+                        onClick={() => {
+                          setKillError("");
+                          setPendingKillSession(session);
+                        }}
+                      >
+                        <Icon
+                          icon="mdi:trash-can-outline"
+                          width={16}
+                          height={16}
+                        />
+                      </AppIconButton>
+                    </AppTooltip>
+                  ) : null}
+                </div>
                 <AppTypography
-                  variant="caption"
-                  color="text.secondary"
+                  variant="body2"
+                  fontWeight={500}
                   noWrap
                   className="account-hidden-xs"
                 >
@@ -646,10 +749,12 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
         className="account-activity-card--logins"
         title="Login history"
         subtitle="Recent login events"
+        icon="mdi:history"
+        iconColor={theme.palette.primary.main}
         headers={[
-          { label: "Time" },
+          { label: "Time", hiddenXs: true },
           { label: "Terminal", hiddenXs: true },
-          { label: "Source", hiddenXs: true },
+          { label: "Source" },
           { label: "Result" },
         ]}
         gridClassName="account-events-grid"
@@ -690,22 +795,26 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                   .filter(Boolean)
                   .join(" ")}
               >
-                <AppTypography variant="body2" fontWeight={500} noWrap>
+                <AppTypography
+                  variant="body2"
+                  fontWeight={500}
+                  noWrap
+                  className="account-hidden-xs"
+                >
                   {login.time || "-"}
                 </AppTypography>
                 <AppTypography
-                  variant="caption"
-                  color="text.secondary"
+                  variant="body2"
+                  fontWeight={500}
                   noWrap
                   className="account-hidden-xs"
                 >
                   {login.terminal || "-"}
                 </AppTypography>
                 <AppTypography
-                  variant="caption"
-                  color="text.secondary"
+                  variant="body2"
+                  fontWeight={500}
                   noWrap
-                  className="account-hidden-xs"
                 >
                   {getLoginLocation(login)}
                 </AppTypography>
@@ -724,6 +833,87 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           ))
         )}
       </ActivitySection>
+
+      <GeneralDialog
+        open={pendingKillSession !== null}
+        onClose={cancelKill}
+        maxWidth="xs"
+        fullWidth
+      >
+        <AppDialogTitle
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Icon
+            icon="mdi:close-octagon"
+            width={22}
+            height={22}
+            color={theme.palette.error.main}
+          />
+          <AppTypography variant="h6">Terminate session</AppTypography>
+        </AppDialogTitle>
+        <AppDialogContent style={{ paddingTop: 12 }}>
+          <AppTypography variant="body2" color="text.secondary">
+            End the active session for{" "}
+            <strong>{pendingKillSession?.terminal || "this session"}</strong>
+            {pendingKillSession?.source
+              ? ` from ${pendingKillSession.source}`
+              : ""}
+            ? Any unsaved work in that session will be lost.
+          </AppTypography>
+          {pendingKillSession?.sessionId ? (
+            <AppTypography
+              variant="caption"
+              color="text.disabled"
+              style={{ display: "block", marginTop: 8 }}
+            >
+              loginctl session {pendingKillSession.sessionId}
+              {pendingKillSession.pid ? ` · PID ${pendingKillSession.pid}` : ""}
+            </AppTypography>
+          ) : pendingKillSession?.pid ? (
+            <AppTypography
+              variant="caption"
+              color="text.disabled"
+              style={{ display: "block", marginTop: 8 }}
+            >
+              PID {pendingKillSession.pid} (no logind session — will SIGHUP the
+              leader)
+            </AppTypography>
+          ) : null}
+          {killError ? (
+            <AppAlert severity="error" style={{ marginTop: 12 }}>
+              {killError}
+            </AppAlert>
+          ) : null}
+        </AppDialogContent>
+        <AppDialogActions
+          style={{
+            padding: 8,
+            borderTop: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <AppButton
+            onClick={cancelKill}
+            disabled={terminateIsPending}
+            color="inherit"
+          >
+            Cancel
+          </AppButton>
+          <AppButton
+            onClick={confirmKill}
+            disabled={terminateIsPending}
+            variant="contained"
+            color="error"
+            startIcon={<Icon icon="mdi:close" width={18} height={18} />}
+          >
+            {terminateIsPending ? "Terminating..." : "Terminate"}
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
     </div>
   );
 };
@@ -774,9 +964,7 @@ const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
       <DetailRow label="Group">
         <DetailText>
           {details.home.groupName ||
-            (details.home.groupGid !== undefined
-              ? details.home.groupGid
-              : "-")}
+            (details.home.groupGid !== undefined ? details.home.groupGid : "-")}
         </DetailText>
       </DetailRow>
       <DetailRow label="Mode">
@@ -810,6 +998,7 @@ const EMPTY_PROCESS_TOP: AccountUserProcess[] = [];
 const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
 }) => {
+  const theme = useAppTheme();
   const [sortField, setSortField] = React.useState<ProcessSortField>("cpu");
   const [sortDirection, setSortDirection] = React.useState<SortDirection>(
     PROCESS_DEFAULT_DIRECTION.cpu,
@@ -863,6 +1052,8 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
       className="account-activity-card--processes"
       title="Owned processes"
       subtitle="Current process's resource usage"
+      icon="mdi:application-cog"
+      iconColor={theme.palette.primary.main}
       headers={[
         headerFor("PID", "pid"),
         headerFor("Command", "command"),
@@ -888,10 +1079,10 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
               <AppTypography variant="body2" noWrap>
                 {process.command}
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary" noWrap>
+              <AppTypography variant="body2" noWrap>
                 {process.cpu.toFixed(1)}%
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary" noWrap>
+              <AppTypography variant="body2" noWrap>
                 {process.memory.toFixed(1)}%
               </AppTypography>
             </div>

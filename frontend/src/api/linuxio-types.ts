@@ -615,6 +615,7 @@ export interface AccountActiveSession {
   startedAt: string;
   idle?: string;
   pid?: number;
+  sessionId?: string;
   source?: string;
 }
 
@@ -1239,6 +1240,10 @@ export interface LinuxIOSchema {
     list_users: { args: []; result: AccountUser[] };
     get_user_details: { args: [username: string]; result: AccountUserDetails };
     list_user_logins: { args: [username: string]; result: AccountUserLogin[] };
+    terminate_session: {
+      args: [sessionId: string, pid: string];
+      result: void;
+    };
     create_user: { args: [request: string]; result: void };
     delete_user: { args: [username: string]; result: void };
     modify_user: { args: [request: string]; result: void };

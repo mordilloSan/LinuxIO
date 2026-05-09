@@ -9,12 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	logindbus "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
 )
 
@@ -242,9 +244,58 @@ func getActiveSessions(ctx context.Context, username string) []UserActiveSession
 		if len(fields) >= 7 {
 			session.Source = strings.Trim(strings.Join(fields[6:], " "), "()")
 		}
+		if session.PID > 0 {
+			session.SessionID = logindSessionFromPID(session.PID)
+		}
 		sessions = append(sessions, session)
 	}
 	return sessions
+}
+
+var logindSessionRegex = regexp.MustCompile(`session-([^.]+)\.scope`)
+
+// logindSessionFromPID returns the systemd-logind session ID for a PID by
+// reading /proc/<pid>/cgroup. Returns "" if no session scope is found
+// (e.g. processes outside logind, or kernel-managed sessions).
+func logindSessionFromPID(pid int) string {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
+	if err != nil {
+		return ""
+	}
+	match := logindSessionRegex.FindStringSubmatch(string(data))
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+// TerminateSession ends an active login session. Prefers systemd-logind when a
+// systemd session ID is provided (cleans up scopes/cgroups), falls back to
+// kill -HUP on the session leader PID.
+func TerminateSession(ctx context.Context, sessionID string, pid int) error {
+	if sessionID == "" && pid <= 0 {
+		return errors.New("session identifier required")
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if sessionID != "" {
+		if err := logindbus.TerminateLogin1Session(cmdCtx, sessionID); err != nil {
+			slog.Warn("login1 TerminateSession failed, falling back to kill",
+				"sessionID", sessionID, "pid", pid, "err", err)
+		} else {
+			return nil
+		}
+	}
+
+	if pid <= 0 {
+		return fmt.Errorf("failed to terminate session %q and no PID available", sessionID)
+	}
+	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
+		return fmt.Errorf("failed to send SIGHUP to pid %d: %w", pid, err)
+	}
+	return nil
 }
 
 func getPasswordState(username string) UserPasswordState {
@@ -452,8 +503,7 @@ func isEmptyProcessListExit(output []byte, err error) bool {
 }
 
 func processSummaryError(err error) string {
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
 			return stderr
 		}
