@@ -92,6 +92,13 @@ const UsersTab: React.FC<UsersTabProps> = ({
     return () => window.removeEventListener("keydown", handleEscapeKey);
   }, []);
 
+  useEffect(() => {
+    if (selectedUsername && viewMode === "table" && setViewMode) {
+      setReturnToTable(true);
+      setViewMode("card");
+    }
+  }, [selectedUsername, setViewMode, viewMode]);
+
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);

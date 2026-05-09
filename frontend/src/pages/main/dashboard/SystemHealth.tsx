@@ -8,6 +8,7 @@ import DashboardCard from "@/components/cards/DashboardCard";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import SkeletonText from "@/components/ui/SkeletonText";
+import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
 interface HealthItem {
@@ -29,10 +30,20 @@ function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function userDetailsPath(username: string | undefined | null): string {
+  const user = username?.trim();
+  const params = new URLSearchParams({ accountsTab: "users" });
+  if (user) {
+    params.set("user", user);
+  }
+  return `/accounts?${params.toString()}`;
+}
+
 const SystemHealth = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
 
   const {
     data: health,
@@ -54,6 +65,7 @@ const SystemHealth = () => {
     });
 
   const items: HealthItem[] = [];
+  const currentUserDetailsPath = userDetailsPath(currentUser?.name);
 
   if (health !== undefined) {
     items.push({
@@ -84,7 +96,7 @@ const SystemHealth = () => {
       icon: "mdi:account-alert-outline",
       color: theme.palette.warning.main,
       text: `${pluralize(health.failedLoginAttempts, "failed login attempt", "failed login attempts")}\nbefore this session`,
-      to: "/logs",
+      to: currentUserDetailsPath,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
     });
@@ -159,6 +171,7 @@ const SystemHealth = () => {
         ? theme.palette.warning.main
         : theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
+      to: userDetailsPath(health.lastLogin.username || currentUser?.name),
       detail: detailLines.length > 0 ? detailLines.join("\n") : undefined,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
@@ -176,7 +189,7 @@ const SystemHealth = () => {
   } else if (health?.failedLoginAttempts) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";
-    iconLink = "/logs";
+    iconLink = currentUserDetailsPath;
   } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
     statusColor = theme.palette.warning.main;
     iconName = "mdi:shield-alert-outline";

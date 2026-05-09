@@ -118,6 +118,7 @@ const UserCardsView: React.FC<UserCardsViewProps> = ({
       <AppGrid
         component={motion.div}
         size={{ xs: 12, lg: 8 }}
+        style={{ display: "flex" }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.1 }}
@@ -127,6 +128,7 @@ const UserCardsView: React.FC<UserCardsViewProps> = ({
       <AppGrid
         component={motion.div}
         size={{ xs: 12, lg: 4 }}
+        style={{ display: "flex" }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.12 }}

@@ -148,10 +148,17 @@ const DetailText: React.FC<{
   </span>
 );
 
+interface ActivityHeader {
+  label: string;
+  hiddenXs?: boolean;
+  onClick?: () => void;
+  active?: boolean;
+}
+
 const ActivitySection: React.FC<{
   title: string;
   subtitle: string;
-  headers: { label: string; hiddenXs?: boolean }[];
+  headers: ActivityHeader[];
   gridClassName: string;
   metaText: string;
   className?: string;
@@ -194,11 +201,23 @@ const ActivitySection: React.FC<{
         <AppTypography
           key={header.label}
           variant="overline"
-          color="text.secondary"
-          className={header.hiddenXs ? "account-hidden-xs" : undefined}
-          style={{ fontSize: "0.65rem" }}
+          color={header.active ? "text.primary" : "text.secondary"}
+          className={[
+            header.hiddenXs ? "account-hidden-xs" : "",
+            header.onClick ? "account-activity-column-sortable" : "",
+            header.active ? "account-activity-column-sort-active" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={{
+            fontSize: "0.65rem",
+            cursor: header.onClick ? "pointer" : undefined,
+            userSelect: header.onClick ? "none" : undefined,
+          }}
+          onClick={header.onClick}
         >
           {header.label}
+          {header.active && " ↓"}
         </AppTypography>
       ))}
     </div>
@@ -605,7 +624,14 @@ const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
 const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
 }) => {
-  const processes = details.processes.top;
+  const [sortBy, setSortBy] = React.useState<"cpu" | "memory">("cpu");
+
+  const processes = React.useMemo(() => {
+    return [...details.processes.top].sort((a, b) =>
+      sortBy === "cpu" ? b.cpu - a.cpu : b.memory - a.memory,
+    );
+  }, [details.processes.top, sortBy]);
+
   const metaText = details.processes.error
     ? "Unavailable"
     : `${details.processes.count} ${details.processes.count === 1 ? "process" : "processes"}`;
@@ -618,8 +644,16 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
       headers={[
         { label: "PID" },
         { label: "Command" },
-        { label: "CPU" },
-        { label: "MEM" },
+        {
+          label: "CPU",
+          onClick: () => setSortBy("cpu"),
+          active: sortBy === "cpu",
+        },
+        {
+          label: "MEM",
+          onClick: () => setSortBy("memory"),
+          active: sortBy === "memory",
+        },
       ]}
       gridClassName="account-processes-grid"
       metaText={metaText}
@@ -640,10 +674,18 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
               <AppTypography variant="body2" noWrap>
                 {process.command}
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary" noWrap>
+              <AppTypography
+                variant="caption"
+                color={sortBy === "cpu" ? "text.primary" : "text.secondary"}
+                noWrap
+              >
                 {process.cpu.toFixed(1)}%
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary" noWrap>
+              <AppTypography
+                variant="caption"
+                color={sortBy === "memory" ? "text.primary" : "text.secondary"}
+                noWrap
+              >
                 {process.memory.toFixed(1)}%
               </AppTypography>
             </div>

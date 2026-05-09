@@ -9,6 +9,8 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   min-height: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .account-activity-section-header {
@@ -37,8 +39,12 @@
   max-height: clamp(148px, 19vh, 210px);
 }
 
+.account-activity-card--processes {
+  width: 100%;
+}
+
 .account-activity-card--processes .account-activity-section-body {
-  max-height: clamp(180px, 28vh, 360px);
+  max-height: clamp(260px, 34vh, 420px);
 }
 
 .account-activity-row {
@@ -61,6 +67,7 @@
 .account-processes-grid {
   display: grid;
   grid-template-columns: minmax(70px, 0.8fr) minmax(0, 1.4fr) 56px 56px;
+  column-gap: 12px;
 }
 
 .account-hidden-xs {
