@@ -17,11 +17,17 @@ import { GAP_SM } from "@/theme/constants";
 export interface GroupCardProps {
   group: AccountGroup;
   onEditMembers: () => void;
+  onDelete: () => void;
 }
 
-const GroupCard: React.FC<GroupCardProps> = ({ group, onEditMembers }) => {
+const GroupCard: React.FC<GroupCardProps> = ({
+  group,
+  onEditMembers,
+  onDelete,
+}) => {
   const theme = useAppTheme();
   const isRoot = group.name === "root";
+  const isProtected = isRoot || group.isSystem;
 
   const accentColor = group.isSystem
     ? theme.palette.text.secondary
@@ -140,6 +146,22 @@ const GroupCard: React.FC<GroupCardProps> = ({ group, onEditMembers }) => {
                 disabled={isRoot}
               >
                 <Icon icon="mdi:pencil" width={18} height={18} />
+              </AppIconButton>
+            </span>
+          </AppTooltip>
+          <AppTooltip title={isProtected ? "Cannot delete" : "Delete Group"}>
+            <span>
+              <AppIconButton
+                size="small"
+                onClick={onDelete}
+                disabled={isProtected}
+                style={{
+                  color: isProtected
+                    ? undefined
+                    : theme.palette.error.main,
+                }}
+              >
+                <Icon icon="mdi:delete" width={18} height={18} />
               </AppIconButton>
             </span>
           </AppTooltip>

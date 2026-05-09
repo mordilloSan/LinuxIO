@@ -3,13 +3,16 @@ package accounts
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
@@ -167,6 +170,324 @@ func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogi
 		})
 	}
 	return result, nil
+}
+
+// GetUserDetails returns security, runtime, and filesystem health for a user.
+func GetUserDetails(ctx context.Context, username string) (UserDetails, error) {
+	user, err := GetUser(username)
+	if err != nil {
+		return UserDetails{}, err
+	}
+
+	allGroups := allGroupsForUser(*user)
+	details := UserDetails{
+		Username:       user.Username,
+		ActiveSessions: getActiveSessions(ctx, user.Username),
+		Password:       getPasswordState(user.Username),
+		Admin:          getAdminAccess(*user, allGroups),
+		Home:           getHomeHealth(*user),
+		SSH:            getSSHAccess(*user),
+		Processes:      getProcessSummary(ctx, user.Username, 6),
+	}
+
+	failedAttempts, err := loginhistory.FetchFailedAttempts(ctx, user.Username, time.Time{})
+	if err != nil {
+		details.FailedLoginAttemptsError = err.Error()
+	} else {
+		details.FailedLoginAttempts = failedAttempts
+		details.FailedLoginAttemptsAvailable = true
+	}
+
+	return details, nil
+}
+
+func allGroupsForUser(user User) []string {
+	groups := []string{user.PrimaryGroup}
+	for _, group := range user.Groups {
+		if group != "" && !slices.Contains(groups, group) {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+func getActiveSessions(ctx context.Context, username string) []UserActiveSession {
+	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	output, err := exec.CommandContext(cmdCtx, "who", "-u").Output()
+	if err != nil {
+		return nil
+	}
+
+	sessions := make([]UserActiveSession, 0)
+	for line := range strings.SplitSeq(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[0] != username {
+			continue
+		}
+
+		session := UserActiveSession{
+			Terminal:  fields[1],
+			StartedAt: fields[2] + " " + fields[3],
+		}
+		if len(fields) >= 5 {
+			session.Idle = fields[4]
+		}
+		if len(fields) >= 6 {
+			session.PID, _ = strconv.Atoi(fields[5])
+		}
+		if len(fields) >= 7 {
+			session.Source = strings.Trim(strings.Join(fields[6:], " "), "()")
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
+func getPasswordState(username string) UserPasswordState {
+	file, err := os.Open(shadowFile)
+	if err != nil {
+		return UserPasswordState{Error: err.Error()}
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		parts := strings.Split(scanner.Text(), ":")
+		if len(parts) < 9 || parts[0] != username {
+			continue
+		}
+		return parsePasswordState(parts)
+	}
+	if err := scanner.Err(); err != nil {
+		return UserPasswordState{Error: err.Error()}
+	}
+	return UserPasswordState{Error: "shadow entry not found"}
+}
+
+func parsePasswordState(parts []string) UserPasswordState {
+	hash := parts[1]
+	locked := strings.HasPrefix(hash, "!") || strings.HasPrefix(hash, "*")
+	hashWithoutLock := strings.TrimLeft(hash, "!")
+	hasPassword := hashWithoutLock != "" &&
+		hashWithoutLock != "*" &&
+		hashWithoutLock != "!!" &&
+		hashWithoutLock != "x"
+
+	lastChangedDays := parseShadowInt(parts[2])
+	maxDays := intPtrIfValid(parseShadowInt(parts[4]))
+	warningDays := intPtrIfValid(parseShadowInt(parts[5]))
+
+	state := UserPasswordState{
+		Locked:      locked,
+		HasPassword: hasPassword,
+		MaxDays:     maxDays,
+		WarningDays: warningDays,
+	}
+
+	if lastChangedDays > 0 {
+		lastChanged := daysSinceEpoch(lastChangedDays)
+		state.LastChanged = formatDate(lastChanged)
+		if maxDays != nil && *maxDays > 0 && *maxDays < 99999 {
+			expires := lastChanged.AddDate(0, 0, *maxDays)
+			state.Expires = formatDate(expires)
+			days := int(time.Until(expires).Hours() / 24)
+			state.ExpiresInDays = &days
+		}
+	}
+
+	return state
+}
+
+func getAdminAccess(user User, groups []string) UserAdminAccess {
+	privilegedGroups := map[string]bool{
+		"admin":   true,
+		"docker":  true,
+		"libvirt": true,
+		"lxd":     true,
+		"root":    true,
+		"sudo":    true,
+		"wheel":   true,
+	}
+
+	adminGroups := make([]string, 0)
+	if user.UID == 0 {
+		adminGroups = append(adminGroups, "root")
+	}
+	for _, group := range groups {
+		if privilegedGroups[group] && !slices.Contains(adminGroups, group) {
+			adminGroups = append(adminGroups, group)
+		}
+	}
+
+	return UserAdminAccess{
+		IsAdmin: len(adminGroups) > 0,
+		Groups:  adminGroups,
+	}
+}
+
+func getHomeHealth(user User) UserHomeHealth {
+	if user.HomeDir == "" {
+		return UserHomeHealth{Error: "home directory is not configured"}
+	}
+
+	info, err := os.Stat(user.HomeDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return UserHomeHealth{Exists: false}
+	}
+	if err != nil {
+		return UserHomeHealth{Error: err.Error()}
+	}
+
+	health := UserHomeHealth{
+		Exists:      true,
+		IsDirectory: info.IsDir(),
+		Mode:        formatFileMode(info.Mode()),
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		_, gidToGroup := parseGroupFile()
+		health.OwnerUID = int(stat.Uid)
+		health.GroupGID = int(stat.Gid)
+		health.GroupName = gidToGroup[health.GroupGID]
+		health.OwnerMatches = health.OwnerUID == user.UID
+	}
+	return health
+}
+
+func getSSHAccess(user User) UserSSHAccess {
+	if user.HomeDir == "" {
+		return UserSSHAccess{Error: "home directory is not configured"}
+	}
+
+	sshDir := filepath.Join(user.HomeDir, ".ssh")
+	authKeysPath := filepath.Join(sshDir, "authorized_keys")
+	access := UserSSHAccess{}
+
+	sshInfo, err := os.Stat(sshDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return access
+	}
+	if err != nil {
+		access.Error = err.Error()
+		return access
+	}
+	access.SSHDirExists = true
+	access.SSHDirMode = formatFileMode(sshInfo.Mode())
+
+	keysInfo, err := os.Stat(authKeysPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return access
+	}
+	if err != nil {
+		access.Error = err.Error()
+		return access
+	}
+	access.AuthorizedKeysExists = true
+	access.AuthorizedKeysMode = formatFileMode(keysInfo.Mode())
+	if stat, ok := keysInfo.Sys().(*syscall.Stat_t); ok {
+		access.AuthorizedKeysOwnerMatches = int(stat.Uid) == user.UID
+	}
+
+	count, err := countAuthorizedKeys(authKeysPath)
+	if err != nil {
+		access.Error = err.Error()
+		return access
+	}
+	access.AuthorizedKeysCount = count
+	return access
+}
+
+func getProcessSummary(ctx context.Context, username string, limit int) UserProcessSummary {
+	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	output, err := exec.CommandContext(
+		cmdCtx,
+		"ps",
+		"-u",
+		username,
+		"-o",
+		"pid=,comm=,pcpu=,pmem=",
+		"--sort=-pcpu",
+	).Output()
+	if err != nil {
+		return UserProcessSummary{Error: err.Error()}
+	}
+
+	summary := UserProcessSummary{Top: make([]UserProcess, 0, limit)}
+	for line := range strings.SplitSeq(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		cpu, _ := strconv.ParseFloat(fields[2], 64)
+		mem, _ := strconv.ParseFloat(fields[3], 64)
+		summary.Count++
+		if len(summary.Top) < limit {
+			summary.Top = append(summary.Top, UserProcess{
+				PID:     pid,
+				Command: fields[1],
+				CPU:     cpu,
+				Memory:  mem,
+			})
+		}
+	}
+	return summary
+}
+
+func countAuthorizedKeys(path string) (int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	count := 0
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		count++
+	}
+	return count, scanner.Err()
+}
+
+func parseShadowInt(value string) int {
+	if value == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+func intPtrIfValid(value int) *int {
+	if value < 0 {
+		return nil
+	}
+	return &value
+}
+
+func daysSinceEpoch(days int) time.Time {
+	return time.Unix(0, 0).UTC().AddDate(0, 0, days)
+}
+
+func formatDate(value time.Time) string {
+	return value.Format("2006-01-02")
+}
+
+func formatFileMode(mode os.FileMode) string {
+	return fmt.Sprintf("%04o", mode.Perm())
 }
 
 // CreateUser creates a new system user

@@ -3,7 +3,7 @@ import React from "react";
 
 import {
   UserDetailsPanel,
-  UserLoginHistoryCard,
+  UserSupplementalCards,
 } from "./UserAccountDetails";
 
 import type { AccountUser } from "@/api";
@@ -130,7 +130,7 @@ const UserCardsView: React.FC<UserCardsViewProps> = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.1 }}
       >
-        <UserLoginHistoryCard username={selectedUser.username} />
+        <UserSupplementalCards username={selectedUser.username} />
       </motion.div>
     </div>
   );

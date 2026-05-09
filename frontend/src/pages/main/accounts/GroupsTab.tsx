@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import React, { useCallback, useEffect, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
+import DeleteGroupDialog from "./components/DeleteGroupDialog";
 import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { linuxio, type AccountGroup } from "@/api";
@@ -34,7 +35,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editMembersDialogOpen, setEditMembersDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AccountGroup | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<AccountGroup | null>(null);
 
   const groupsList = Array.isArray(groups) ? groups : [];
 
@@ -57,6 +60,11 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
   const handleEditMembers = (group: AccountGroup) => {
     setSelectedGroup(group);
     setEditMembersDialogOpen(true);
+  };
+
+  const handleDelete = (group: AccountGroup) => {
+    setGroupToDelete(group);
+    setDeleteDialogOpen(true);
   };
 
   const columns: UnifiedTableColumn[] = [
@@ -108,6 +116,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                 <GroupCard
                   group={group}
                   onEditMembers={() => handleEditMembers(group)}
+                  onDelete={() => handleDelete(group)}
                 />
               </AppGrid>
             ))}
@@ -199,6 +208,18 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       <Icon icon="mdi:pencil" width={20} height={20} />
                     </AppIconButton>
                   </AppTooltip>
+                  <AppTooltip title="Delete Group">
+                    <AppIconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(group);
+                      }}
+                      disabled={group.name === "root" || group.isSystem}
+                    >
+                      <Icon icon="mdi:delete" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
                 </div>
               </AppTableCell>
             </>
@@ -246,6 +267,21 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             setSelectedGroup(null);
           }}
           group={selectedGroup}
+        />
+      )}
+
+      {groupToDelete && (
+        <DeleteGroupDialog
+          open={deleteDialogOpen}
+          onClose={() => {
+            setDeleteDialogOpen(false);
+            setGroupToDelete(null);
+          }}
+          groupNames={[groupToDelete.name]}
+          onSuccess={() => {
+            setDeleteDialogOpen(false);
+            setGroupToDelete(null);
+          }}
         />
       )}
     </div>

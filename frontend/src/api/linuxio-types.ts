@@ -600,6 +600,77 @@ export interface AccountUserLogin {
   startedAt?: string;
 }
 
+export interface AccountActiveSession {
+  terminal: string;
+  startedAt: string;
+  idle?: string;
+  pid?: number;
+  source?: string;
+}
+
+export interface AccountPasswordState {
+  locked: boolean;
+  hasPassword: boolean;
+  lastChanged?: string;
+  expires?: string;
+  expiresInDays?: number;
+  maxDays?: number;
+  warningDays?: number;
+  error?: string;
+}
+
+export interface AccountAdminAccess {
+  isAdmin: boolean;
+  groups: string[];
+}
+
+export interface AccountHomeHealth {
+  exists: boolean;
+  isDirectory: boolean;
+  ownerUid?: number;
+  groupGid?: number;
+  groupName?: string;
+  ownerMatches: boolean;
+  mode?: string;
+  error?: string;
+}
+
+export interface AccountSSHAccess {
+  sshDirExists: boolean;
+  authorizedKeysExists: boolean;
+  authorizedKeysCount: number;
+  sshDirMode?: string;
+  authorizedKeysMode?: string;
+  authorizedKeysOwnerMatches: boolean;
+  error?: string;
+}
+
+export interface AccountUserProcess {
+  pid: number;
+  command: string;
+  cpu: number;
+  memory: number;
+}
+
+export interface AccountProcessSummary {
+  count: number;
+  top: AccountUserProcess[];
+  error?: string;
+}
+
+export interface AccountUserDetails {
+  username: string;
+  activeSessions: AccountActiveSession[];
+  failedLoginAttempts: number;
+  failedLoginAttemptsAvailable: boolean;
+  failedLoginAttemptsError?: string;
+  password: AccountPasswordState;
+  admin: AccountAdminAccess;
+  home: AccountHomeHealth;
+  ssh: AccountSSHAccess;
+  processes: AccountProcessSummary;
+}
+
 export interface AccountGroup {
   name: string;
   gid: number;
@@ -1152,6 +1223,7 @@ export interface LinuxIOSchema {
   accounts: {
     // User management
     list_users: { args: []; result: AccountUser[] };
+    get_user_details: { args: [username: string]; result: AccountUserDetails };
     list_user_logins: { args: [username: string]; result: AccountUserLogin[] };
     create_user: { args: [request: string]; result: void };
     delete_user: { args: [username: string]; result: void };

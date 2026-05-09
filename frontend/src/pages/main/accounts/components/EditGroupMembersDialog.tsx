@@ -1,9 +1,6 @@
-import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
-
-import DeleteGroupDialog from "./DeleteGroupDialog";
 
 import {
   linuxio,
@@ -36,9 +33,6 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,
   );
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-
-  const isProtected = group.name === "root";
 
   const { data: users = [] } = linuxio.accounts.list_users.useQuery();
 
@@ -83,8 +77,17 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <AppDialogTitle>Edit Group Members: {group.name}</AppDialogTitle>
-      <AppDialogContent>
+      <AppDialogTitle
+        style={{
+          fontSize: "1rem",
+          fontWeight: 600,
+          padding: "12px 20px",
+          lineHeight: 1.4,
+        }}
+      >
+        Edit Group Members: {group.name}
+      </AppDialogTitle>
+      <AppDialogContent style={{ padding: "12px 20px", fontSize: "0.85rem" }}>
         <div
           style={{
             display: "flex",
@@ -95,6 +98,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
         >
           <AppAutocomplete
             multiple
+            size="small"
             options={usersList
               .map((u) => u.username)
               .filter((u) => !selectedMembers.includes(u))}
@@ -122,6 +126,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
                   label={member}
                   size="small"
                   variant="soft"
+                  style={{ fontSize: "0.7rem", height: 22 }}
                   onDelete={() =>
                     setSelectedMembers(
                       selectedMembers.filter((m) => m !== member),
@@ -134,19 +139,11 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton
-          onClick={() => setDeleteDialogOpen(true)}
-          color="error"
-          disabled={isPending || isProtected}
-          startIcon={<Icon icon="mdi:delete" width={18} height={18} />}
-          style={{ marginRight: "auto" }}
-        >
-          Delete
-        </AppButton>
-        <AppButton onClick={onClose} disabled={isPending}>
+        <AppButton size="small" onClick={onClose} disabled={isPending}>
           Cancel
         </AppButton>
         <AppButton
+          size="small"
           onClick={handleSubmit}
           variant="contained"
           disabled={isPending}
@@ -154,13 +151,6 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
           {isPending ? "Saving..." : "Save"}
         </AppButton>
       </AppDialogActions>
-
-      <DeleteGroupDialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        groupNames={[group.name]}
-        onSuccess={onClose}
-      />
     </GeneralDialog>
   );
 };
