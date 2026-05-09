@@ -108,6 +108,62 @@ func TestGetProcessSummaryNoRowsIsNotAnError(t *testing.T) {
 	}
 }
 
+func TestParseWhoUserSessionHandlesSSHPTYLine(t *testing.T) {
+	line := "miguelmariz sshd pts/0   2026-05-09 11:23 00:04     2618794 (192.168.1.239)"
+
+	session, ok := parseWhoUserSession(line, "miguelmariz")
+	if !ok {
+		t.Fatal("parseWhoUserSession() ok = false, want true")
+	}
+	if session.Terminal != "sshd pts/0" {
+		t.Fatalf("Terminal = %q, want %q", session.Terminal, "sshd pts/0")
+	}
+	if session.StartedAt != "2026-05-09 11:23" {
+		t.Fatalf("StartedAt = %q, want %q", session.StartedAt, "2026-05-09 11:23")
+	}
+	if session.Idle != "00:04" {
+		t.Fatalf("Idle = %q, want %q", session.Idle, "00:04")
+	}
+	if session.PID != 2618794 {
+		t.Fatalf("PID = %d, want %d", session.PID, 2618794)
+	}
+	if session.Source != "192.168.1.239" {
+		t.Fatalf("Source = %q, want %q", session.Source, "192.168.1.239")
+	}
+}
+
+func TestParseWhoUserSessionHandlesSSHWithoutTTY(t *testing.T) {
+	line := "miguelmariz sshd         2026-05-09 11:13   ?       2606470 (192.168.1.239)"
+
+	session, ok := parseWhoUserSession(line, "miguelmariz")
+	if !ok {
+		t.Fatal("parseWhoUserSession() ok = false, want true")
+	}
+	if session.Terminal != "sshd" {
+		t.Fatalf("Terminal = %q, want %q", session.Terminal, "sshd")
+	}
+	if session.StartedAt != "2026-05-09 11:13" {
+		t.Fatalf("StartedAt = %q, want %q", session.StartedAt, "2026-05-09 11:13")
+	}
+	if session.Idle != "?" {
+		t.Fatalf("Idle = %q, want %q", session.Idle, "?")
+	}
+	if session.PID != 2606470 {
+		t.Fatalf("PID = %d, want %d", session.PID, 2606470)
+	}
+	if session.Source != "192.168.1.239" {
+		t.Fatalf("Source = %q, want %q", session.Source, "192.168.1.239")
+	}
+}
+
+func TestParseWhoUserSessionSkipsDifferentUser(t *testing.T) {
+	line := "other sshd pts/0   2026-05-09 11:23 00:04     2618794 (192.168.1.239)"
+
+	if _, ok := parseWhoUserSession(line, "miguelmariz"); ok {
+		t.Fatal("parseWhoUserSession() ok = true, want false")
+	}
+}
+
 func TestIsEmptyProcessListExit(t *testing.T) {
 	if !isEmptyProcessListExit(nil, &exec.ExitError{}) {
 		t.Fatal("isEmptyProcessListExit() = false, want true for empty ps output and empty stderr")

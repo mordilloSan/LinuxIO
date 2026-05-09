@@ -226,23 +226,9 @@ func getActiveSessions(ctx context.Context, username string) []UserActiveSession
 
 	sessions := make([]UserActiveSession, 0)
 	for line := range strings.SplitSeq(string(output), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 4 || fields[0] != username {
+		session, ok := parseWhoUserSession(line, username)
+		if !ok {
 			continue
-		}
-
-		session := UserActiveSession{
-			Terminal:  fields[1],
-			StartedAt: fields[2] + " " + fields[3],
-		}
-		if len(fields) >= 5 {
-			session.Idle = fields[4]
-		}
-		if len(fields) >= 6 {
-			session.PID, _ = strconv.Atoi(fields[5])
-		}
-		if len(fields) >= 7 {
-			session.Source = strings.Trim(strings.Join(fields[6:], " "), "()")
 		}
 		if session.PID > 0 {
 			session.SessionID = logindSessionFromPID(session.PID)
@@ -252,7 +238,52 @@ func getActiveSessions(ctx context.Context, username string) []UserActiveSession
 	return sessions
 }
 
-var logindSessionRegex = regexp.MustCompile(`session-([^.]+)\.scope`)
+func parseWhoUserSession(line, username string) (UserActiveSession, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 4 || fields[0] != username {
+		return UserActiveSession{}, false
+	}
+
+	dateIndex := findWhoDateField(fields)
+	if dateIndex <= 1 || dateIndex+1 >= len(fields) {
+		return UserActiveSession{}, false
+	}
+
+	session := UserActiveSession{
+		Terminal:  strings.Join(fields[1:dateIndex], " "),
+		StartedAt: fields[dateIndex] + " " + fields[dateIndex+1],
+	}
+
+	valueIndex := dateIndex + 2
+	if valueIndex < len(fields) {
+		session.Idle = fields[valueIndex]
+		valueIndex++
+	}
+	if valueIndex < len(fields) {
+		session.PID, _ = strconv.Atoi(fields[valueIndex])
+		valueIndex++
+	}
+	if valueIndex < len(fields) {
+		session.Source = strings.Trim(strings.Join(fields[valueIndex:], " "), "()")
+	}
+
+	return session, true
+}
+
+func findWhoDateField(fields []string) int {
+	for i := 1; i < len(fields)-1; i++ {
+		if whoDateFieldRegex.MatchString(fields[i]) && whoTimeFieldRegex.MatchString(fields[i+1]) {
+			return i
+		}
+	}
+	return -1
+}
+
+var (
+	whoDateFieldRegex  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	whoTimeFieldRegex  = regexp.MustCompile(`^\d{2}:\d{2}(?::\d{2})?$`)
+	logindSessionRegex = regexp.MustCompile(`session-([^.]+)\.scope`)
+)
 
 // logindSessionFromPID returns the systemd-logind session ID for a PID by
 // reading /proc/<pid>/cgroup. Returns "" if no session scope is found

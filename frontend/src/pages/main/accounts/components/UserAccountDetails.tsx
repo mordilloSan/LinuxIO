@@ -121,21 +121,41 @@ function loginStatusColor(login: AccountUserLogin) {
 }
 
 function isSessionActive(idle: string | undefined): boolean {
-  return !idle || idle === "." || idle === "";
+  const value = idle?.trim();
+  return !value || value === ".";
 }
 
-function sessionIdleLabel(idle: string | undefined): string {
-  return isSessionActive(idle) ? "Active" : "Idle";
+function sessionStatusLabel(): string {
+  return "Active";
 }
 
-function sessionIdleColor(idle: string | undefined): "success" | "warning" {
-  return isSessionActive(idle) ? "success" : "warning";
+function sessionStatusColor(): "success" {
+  return "success";
 }
 
-function sessionIdleTooltip(idle: string | undefined): string {
+function formatSessionIdle(idle: string): string {
+  const match = idle.match(/^(\d+):([0-5]\d)$/);
+  if (!match) {
+    return idle;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h ${minutes}m`;
+}
+
+function sessionStatusTooltip(idle: string | undefined): string {
   if (isSessionActive(idle)) return "Active session";
-  if (idle === "old") return "Idle for over 24 hours";
-  return `Idle for ${idle}`;
+  const value = idle?.trim();
+  if (value === "?") return "Active session. Terminal idle is unavailable.";
+  if (value === "old") return "Active session. Terminal idle for over 24 hours.";
+  return `Active session. Terminal idle for ${formatSessionIdle(value || "")}.`;
 }
 
 const activityChipStyle: React.CSSProperties = {
@@ -727,13 +747,13 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                 >
                   {sessionLocation(session)}
                 </AppTypography>
-                <AppTooltip title={sessionIdleTooltip(session.idle)}>
+                <AppTooltip title={sessionStatusTooltip(session.idle)}>
                   <div>
                     <Chip
-                      label={sessionIdleLabel(session.idle)}
+                      label={sessionStatusLabel()}
                       size="small"
                       variant="soft"
-                      color={sessionIdleColor(session.idle)}
+                      color={sessionStatusColor()}
                       style={activityChipStyle}
                     />
                   </div>
