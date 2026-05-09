@@ -1,11 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -263,232 +258,228 @@ const UsersTab: React.FC<UsersTabProps> = ({
           selectedKey={selectedUsername}
           onRowClick={(user) => selectUser(user.username)}
           renderMainRow={(user) => (
-                <>
-                  <AppTableCell>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <AppTypography
-                        variant="body2"
-                        fontWeight={500}
-                        style={responsiveTextStyles}
-                      >
-                        {user.username}
-                      </AppTypography>
-                      {user.username === currentUser?.name && (
-                        <Chip
-                          label="Your account"
-                          size="small"
-                          color="primary"
-                          variant="soft"
-                          style={{
-                            fontSize: "0.65rem",
-                            height: 20,
-                          }}
-                        />
-                      )}
-                      {user.isLocked && (
-                        <Chip
-                          label="locked"
-                          size="small"
-                          color="warning"
-                          variant="soft"
-                          style={{
-                            fontSize: "0.65rem",
-                            height: 20,
-                          }}
-                        />
-                      )}
-                    </div>
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-sm">
-                    <AppTypography variant="body2" style={responsiveTextStyles}>
-                      {user.gecos || "-"}
-                    </AppTypography>
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-md">
-                    <AppTypography variant="body2" style={responsiveTextStyles}>
-                      {user.uid}
-                    </AppTypography>
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-lg">
-                    <AppTypography
-                      variant="body2"
-                      color={
-                        user.username === currentUser?.name
-                          ? "success"
-                          : "text.secondary"
-                      }
-                      style={responsiveTextStyles}
-                    >
-                      {formatLastLogin(user.lastLogin, user.username)}
-                    </AppTypography>
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-xl">
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 2,
-                      }}
-                    >
-                      {getAllGroups(user)
-                        .slice(0, 3)
-                        .map((group, idx) => (
-                          <Chip
-                            key={group}
-                            label={
-                              idx === 0
-                                ? `${group} (${user.primaryGroup === group ? "primary" : ""})`.replace(
-                                    " ()",
-                                    "",
-                                  )
-                                : group
-                            }
-                            size="small"
-                            variant="soft"
-                            style={{
-                              fontSize: "0.65rem",
-                              height: 20,
-                            }}
-                          />
-                        ))}
-                      {getAllGroups(user).length > 3 && (
-                        <Chip
-                          label={`+${getAllGroups(user).length - 3}`}
-                          size="small"
-                          variant="soft"
-                          style={{
-                            fontSize: "0.65rem",
-                            height: 20,
-                          }}
-                        />
-                      )}
-                    </div>
-                  </AppTableCell>
-                  <AppTableCell align="right">
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        gap: 2,
-                      }}
-                    >
-                      <AppTooltip title="Edit">
-                        <AppIconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditUser(user);
-                          }}
-                          disabled={user.username === "root"}
-                        >
-                          <Icon icon="mdi:pencil" width={20} height={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Change Password">
-                        <AppIconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleChangePassword(user);
-                          }}
-                        >
-                          <Icon
-                            icon="mdi:form-textbox-password"
-                            width={20}
-                            height={20}
-                          />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-                        <AppIconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleLock(user);
-                          }}
-                          disabled={
-                            user.username === "root" ||
-                            user.username === currentUser?.name ||
-                            isLocking ||
-                            isUnlocking
-                          }
-                        >
-                          {user.isLocked ? (
-                            <Icon
-                              icon="mdi:lock-open"
-                              width={20}
-                              height={20}
-                            />
-                          ) : (
-                            <Icon icon="mdi:lock" width={20} height={20} />
-                          )}
-                        </AppIconButton>
-                      </AppTooltip>
-                    </div>
-                  </AppTableCell>
-                </>
-              )}
-              renderExpandedContent={(user) => (
-                <>
-                  <AppTypography variant="subtitle2" gutterBottom>
-                    <b>Home Directory:</b>
-                  </AppTypography>
+            <>
+              <AppTableCell>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <AppTypography
                     variant="body2"
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "0.85rem",
-                      marginBottom: 8,
-                    }}
+                    fontWeight={500}
+                    style={responsiveTextStyles}
                   >
-                    {user.homeDir}
+                    {user.username}
                   </AppTypography>
-
-                  <AppTypography variant="subtitle2" gutterBottom>
-                    <b>Shell:</b>
-                  </AppTypography>
-                  <AppTypography
-                    variant="body2"
-                    style={{
-                      marginBottom: 8,
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    {user.shell}
-                  </AppTypography>
-
-                  <AppTypography variant="subtitle2" gutterBottom>
-                    <b>All Groups:</b>
-                  </AppTypography>
-                  <div
-                    style={{
-                      marginBottom: 8,
-                      display: "flex",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {getAllGroups(user).map((group, idx) => (
+                  {user.username === currentUser?.name && (
+                    <Chip
+                      label="Your account"
+                      size="small"
+                      color="primary"
+                      variant="soft"
+                      style={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
+                    />
+                  )}
+                  {user.isLocked && (
+                    <Chip
+                      label="locked"
+                      size="small"
+                      color="warning"
+                      variant="soft"
+                      style={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
+                    />
+                  )}
+                </div>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <AppTypography variant="body2" style={responsiveTextStyles}>
+                  {user.gecos || "-"}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                <AppTypography variant="body2" style={responsiveTextStyles}>
+                  {user.uid}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-lg">
+                <AppTypography
+                  variant="body2"
+                  color={
+                    user.username === currentUser?.name
+                      ? "success"
+                      : "text.secondary"
+                  }
+                  style={responsiveTextStyles}
+                >
+                  {formatLastLogin(user.lastLogin, user.username)}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-xl">
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 2,
+                  }}
+                >
+                  {getAllGroups(user)
+                    .slice(0, 3)
+                    .map((group, idx) => (
                       <Chip
                         key={group}
-                        label={idx === 0 ? `${group} (primary)` : group}
+                        label={
+                          idx === 0
+                            ? `${group} (${user.primaryGroup === group ? "primary" : ""})`.replace(
+                                " ()",
+                                "",
+                              )
+                            : group
+                        }
                         size="small"
                         variant="soft"
                         style={{
-                          marginRight: 4,
-                          marginBottom: 4,
+                          fontSize: "0.65rem",
+                          height: 20,
                         }}
                       />
                     ))}
-                  </div>
-                </>
-              )}
+                  {getAllGroups(user).length > 3 && (
+                    <Chip
+                      label={`+${getAllGroups(user).length - 3}`}
+                      size="small"
+                      variant="soft"
+                      style={{
+                        fontSize: "0.65rem",
+                        height: 20,
+                      }}
+                    />
+                  )}
+                </div>
+              </AppTableCell>
+              <AppTableCell align="right">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 2,
+                  }}
+                >
+                  <AppTooltip title="Edit">
+                    <AppIconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditUser(user);
+                      }}
+                      disabled={user.username === "root"}
+                    >
+                      <Icon icon="mdi:pencil" width={20} height={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title="Change Password">
+                    <AppIconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleChangePassword(user);
+                      }}
+                    >
+                      <Icon
+                        icon="mdi:form-textbox-password"
+                        width={20}
+                        height={20}
+                      />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
+                    <AppIconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleLock(user);
+                      }}
+                      disabled={
+                        user.username === "root" ||
+                        user.username === currentUser?.name ||
+                        isLocking ||
+                        isUnlocking
+                      }
+                    >
+                      {user.isLocked ? (
+                        <Icon icon="mdi:lock-open" width={20} height={20} />
+                      ) : (
+                        <Icon icon="mdi:lock" width={20} height={20} />
+                      )}
+                    </AppIconButton>
+                  </AppTooltip>
+                </div>
+              </AppTableCell>
+            </>
+          )}
+          renderExpandedContent={(user) => (
+            <>
+              <AppTypography variant="subtitle2" gutterBottom>
+                <b>Home Directory:</b>
+              </AppTypography>
+              <AppTypography
+                variant="body2"
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: "0.85rem",
+                  marginBottom: 8,
+                }}
+              >
+                {user.homeDir}
+              </AppTypography>
+
+              <AppTypography variant="subtitle2" gutterBottom>
+                <b>Shell:</b>
+              </AppTypography>
+              <AppTypography
+                variant="body2"
+                style={{
+                  marginBottom: 8,
+                  fontSize: "0.85rem",
+                }}
+              >
+                {user.shell}
+              </AppTypography>
+
+              <AppTypography variant="subtitle2" gutterBottom>
+                <b>All Groups:</b>
+              </AppTypography>
+              <div
+                style={{
+                  marginBottom: 8,
+                  display: "flex",
+                  flexWrap: "wrap",
+                }}
+              >
+                {getAllGroups(user).map((group, idx) => (
+                  <Chip
+                    key={group}
+                    label={idx === 0 ? `${group} (primary)` : group}
+                    size="small"
+                    variant="soft"
+                    style={{
+                      marginRight: 4,
+                      marginBottom: 4,
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
           emptyMessage="No users found."
         />
       )}

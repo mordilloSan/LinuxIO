@@ -188,7 +188,7 @@ func GetUserDetails(ctx context.Context, username string) (UserDetails, error) {
 		Admin:          getAdminAccess(*user, allGroups),
 		Home:           getHomeHealth(*user),
 		SSH:            getSSHAccess(*user),
-		Processes:      getProcessSummary(ctx, user.Username, 6),
+		Processes:      getProcessSummary(ctx, user.Username),
 	}
 
 	failedAttempts, err := loginhistory.FetchFailedAttempts(ctx, user.Username, time.Time{})
@@ -399,7 +399,7 @@ func getSSHAccess(user User) UserSSHAccess {
 	return access
 }
 
-func getProcessSummary(ctx context.Context, username string, limit int) UserProcessSummary {
+func getProcessSummary(ctx context.Context, username string) UserProcessSummary {
 	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -416,7 +416,7 @@ func getProcessSummary(ctx context.Context, username string, limit int) UserProc
 		return UserProcessSummary{Error: err.Error()}
 	}
 
-	summary := UserProcessSummary{Top: make([]UserProcess, 0, limit)}
+	summary := UserProcessSummary{Top: []UserProcess{}}
 	for line := range strings.SplitSeq(string(output), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 4 {
@@ -429,14 +429,12 @@ func getProcessSummary(ctx context.Context, username string, limit int) UserProc
 		cpu, _ := strconv.ParseFloat(fields[2], 64)
 		mem, _ := strconv.ParseFloat(fields[3], 64)
 		summary.Count++
-		if len(summary.Top) < limit {
-			summary.Top = append(summary.Top, UserProcess{
-				PID:     pid,
-				Command: fields[1],
-				CPU:     cpu,
-				Memory:  mem,
-			})
-		}
+		summary.Top = append(summary.Top, UserProcess{
+			PID:     pid,
+			Command: fields[1],
+			CPU:     cpu,
+			Memory:  mem,
+		})
 	}
 	return summary
 }

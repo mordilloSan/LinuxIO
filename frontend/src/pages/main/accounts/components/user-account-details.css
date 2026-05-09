@@ -37,6 +37,10 @@
   max-height: clamp(148px, 19vh, 210px);
 }
 
+.account-activity-card--processes .account-activity-section-body {
+  max-height: clamp(180px, 28vh, 360px);
+}
+
 .account-activity-row {
   align-items: center;
   column-gap: 12px;
@@ -54,6 +58,11 @@
   grid-template-columns: minmax(0, 1fr) 76px;
 }
 
+.account-processes-grid {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.8fr) minmax(0, 1.4fr) 56px 56px;
+}
+
 .account-hidden-xs {
   display: none;
 }
@@ -65,6 +74,10 @@
 
   .account-logins-grid {
     grid-template-columns: minmax(180px, 1.4fr) minmax(100px, 0.75fr) minmax(120px, 0.85fr) 82px;
+  }
+
+  .account-processes-grid {
+    grid-template-columns: minmax(80px, 0.8fr) minmax(0, 1.6fr) 64px 64px;
   }
 
   .account-hidden-xs {

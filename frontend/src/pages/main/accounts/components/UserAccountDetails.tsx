@@ -18,14 +18,6 @@ import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableContainer,
-  AppTableHead,
-  AppTableRow,
-} from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -239,9 +231,12 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
   onClose,
 }) => {
   const theme = useAppTheme();
-  const { data: details, isPending, isError, error } = useAccountDetails(
-    user.username,
-  );
+  const {
+    data: details,
+    isPending,
+    isError,
+    error,
+  } = useAccountDetails(user.username);
 
   const adminColor = details?.admin.isAdmin
     ? theme.palette.warning.main
@@ -609,82 +604,66 @@ const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
 
 const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   details,
-}) => (
-  <FrostedCard style={{ padding: 12, height: "100%" }}>
-    <div style={{ marginBottom: 12 }}>
-      <AppTypography variant="subtitle2" fontWeight={700}>
-        Owned processes
-      </AppTypography>
-      <AppTypography
-        variant="caption"
-        color="text.secondary"
-        style={{ display: "block", marginTop: 2 }}
-      >
-        Current process count and busiest commands
-      </AppTypography>
-    </div>
+}) => {
+  const processes = details.processes.top;
+  const metaText = details.processes.error
+    ? "Unavailable"
+    : `${details.processes.count} ${details.processes.count === 1 ? "process" : "processes"}`;
 
-    {details.processes.error ? (
-      <InlineError message={details.processes.error} />
-    ) : (
-      <>
-        <DetailRow label="Count" noBorder>
-          <DetailText>{details.processes.count}</DetailText>
-        </DetailRow>
-        {details.processes.top.length === 0 ? (
-          <AppTypography
-            variant="body2"
-            color="text.secondary"
-            style={{ display: "block", marginTop: 10 }}
-          >
-            No running processes.
-          </AppTypography>
-        ) : (
-          <AppTableContainer style={{ marginTop: 10 }}>
-            <AppTable>
-              <AppTableHead>
-                <AppTableRow>
-                  <AppTableCell component="th">PID</AppTableCell>
-                  <AppTableCell component="th">Command</AppTableCell>
-                  <AppTableCell component="th" align="right">
-                    CPU
-                  </AppTableCell>
-                  <AppTableCell component="th" align="right">
-                    MEM
-                  </AppTableCell>
-                </AppTableRow>
-              </AppTableHead>
-              <AppTableBody>
-                {details.processes.top.map((process) => (
-                  <AppTableRow key={process.pid}>
-                    <AppTableCell>{process.pid}</AppTableCell>
-                    <AppTableCell>
-                      <AppTypography variant="body2" noWrap>
-                        {process.command}
-                      </AppTypography>
-                    </AppTableCell>
-                    <AppTableCell align="right">
-                      {process.cpu.toFixed(1)}%
-                    </AppTableCell>
-                    <AppTableCell align="right">
-                      {process.memory.toFixed(1)}%
-                    </AppTableCell>
-                  </AppTableRow>
-                ))}
-              </AppTableBody>
-            </AppTable>
-          </AppTableContainer>
-        )}
-      </>
-    )}
-  </FrostedCard>
-);
+  return (
+    <ActivitySection
+      className="account-activity-card--processes"
+      title="Owned processes"
+      subtitle="Current process count and busiest commands"
+      headers={[
+        { label: "PID" },
+        { label: "Command" },
+        { label: "CPU" },
+        { label: "MEM" },
+      ]}
+      gridClassName="account-processes-grid"
+      metaText={metaText}
+    >
+      {details.processes.error ? (
+        <div style={{ padding: 12 }}>
+          <InlineError message={details.processes.error} />
+        </div>
+      ) : processes.length === 0 ? (
+        <ActivityEmpty>No running processes.</ActivityEmpty>
+      ) : (
+        processes.map((process, index) => (
+          <React.Fragment key={process.pid}>
+            <div className="account-processes-grid account-activity-row">
+              <AppTypography variant="body2" fontWeight={500} noWrap>
+                {process.pid}
+              </AppTypography>
+              <AppTypography variant="body2" noWrap>
+                {process.command}
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary" noWrap>
+                {process.cpu.toFixed(1)}%
+              </AppTypography>
+              <AppTypography variant="caption" color="text.secondary" noWrap>
+                {process.memory.toFixed(1)}%
+              </AppTypography>
+            </div>
+            {index < processes.length - 1 && <AppDivider />}
+          </React.Fragment>
+        ))
+      )}
+    </ActivitySection>
+  );
+};
 
 export const UserHomeSSHPanel: React.FC<{ username: string }> = ({
   username,
 }) => {
-  const { data: details, isPending, isError, error } =
-    useAccountDetails(username);
+  const {
+    data: details,
+    isPending,
+    isError,
+    error,
+  } = useAccountDetails(username);
 
   if (isError) {
     return (
@@ -714,8 +693,12 @@ export const UserHomeSSHPanel: React.FC<{ username: string }> = ({
 export const UserProcessPanel: React.FC<{ username: string }> = ({
   username,
 }) => {
-  const { data: details, isPending, isError, error } =
-    useAccountDetails(username);
+  const {
+    data: details,
+    isPending,
+    isError,
+    error,
+  } = useAccountDetails(username);
 
   if (isError) {
     return (
@@ -745,8 +728,12 @@ export const UserProcessPanel: React.FC<{ username: string }> = ({
 export const UserSupplementalCards: React.FC<{ username: string }> = ({
   username,
 }) => {
-  const { data: details, isPending, isError, error } =
-    useAccountDetails(username);
+  const {
+    data: details,
+    isPending,
+    isError,
+    error,
+  } = useAccountDetails(username);
 
   return (
     <AppGrid container spacing={2.5}>

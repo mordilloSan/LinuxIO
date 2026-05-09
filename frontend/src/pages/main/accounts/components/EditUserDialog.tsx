@@ -159,9 +159,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
                   size="small"
                   variant="soft"
                   onDelete={() =>
-                    setSelectedGroups(
-                      selectedGroups.filter((g) => g !== group),
-                    )
+                    setSelectedGroups(selectedGroups.filter((g) => g !== group))
                   }
                 />
               ))}

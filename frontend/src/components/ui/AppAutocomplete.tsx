@@ -302,9 +302,7 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
           fullWidth={fullWidth}
           disabled={disabled}
           helperText={helperText}
-          shrinkLabel={
-            shrinkLabel || (isMultiple && selectedValues.length > 0)
-          }
+          shrinkLabel={shrinkLabel || (isMultiple && selectedValues.length > 0)}
           autoFocus={autoFocus}
           endAdornment={
             <div className="app-autocomplete__end">

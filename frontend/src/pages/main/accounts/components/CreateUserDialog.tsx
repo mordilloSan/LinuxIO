@@ -189,9 +189,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                   size="small"
                   variant="soft"
                   onDelete={() =>
-                    setSelectedGroups(
-                      selectedGroups.filter((g) => g !== group),
-                    )
+                    setSelectedGroups(selectedGroups.filter((g) => g !== group))
                   }
                 />
               ))}

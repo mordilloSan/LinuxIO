@@ -156,9 +156,7 @@ const GroupCard: React.FC<GroupCardProps> = ({
                 onClick={onDelete}
                 disabled={isProtected}
                 style={{
-                  color: isProtected
-                    ? undefined
-                    : theme.palette.error.main,
+                  color: isProtected ? undefined : theme.palette.error.main,
                 }}
               >
                 <Icon icon="mdi:delete" width={18} height={18} />
