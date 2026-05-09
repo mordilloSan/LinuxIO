@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import GroupsTab from "./GroupsTab";
 import UsersTab from "./UsersTab";
@@ -19,6 +20,8 @@ const AccountsPage: React.FC = () => {
   >(null);
   const [usersView, setUsersView] = useViewMode("accounts.users", "table");
   const [groupsView, setGroupsView] = useViewMode("accounts.groups", "table");
+  const [searchParams] = useSearchParams();
+  const isUserDetailOpen = searchParams.get("user") !== null;
 
   return (
     <TabContainer
@@ -35,7 +38,7 @@ const AccountsPage: React.FC = () => {
               setViewMode={setUsersView}
             />
           ),
-          rightContent: (
+          rightContent: isUserDetailOpen ? null : (
             <>
               <AppTooltip
                 title={

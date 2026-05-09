@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import CreateUserDialog from "./components/CreateUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
-import { UserDetailsStack } from "./components/UserAccountDetails";
 import UserCardsView from "./components/UserCardsView";
 
 import { linuxio, type AccountUser } from "@/api";
@@ -20,7 +19,6 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
-import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { AppTableCell } from "@/components/ui/AppTable";
@@ -72,13 +70,25 @@ const UsersTab: React.FC<UsersTabProps> = ({
     [setSearchParams],
   );
 
-  const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      setSelectedUsername(null);
-      if (returnToTable) {
-        setViewMode?.("table");
+  const selectUser = useCallback(
+    (username: string | null) => {
+      if (username !== null) {
+        if (viewMode === "table" && setViewMode) {
+          setReturnToTable(true);
+          setViewMode("card");
+        }
+      } else if (returnToTable && setViewMode) {
+        setViewMode("table");
         setReturnToTable(false);
       }
+      setSelectedUsername(username);
+    },
+    [returnToTable, setSelectedUsername, setViewMode, viewMode],
+  );
+
+  const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      selectUser(null);
     }
   });
 
@@ -86,12 +96,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
     window.addEventListener("keydown", handleEscapeKey);
     return () => window.removeEventListener("keydown", handleEscapeKey);
   }, []);
-
-  useEffect(() => {
-    if (viewMode === "table") {
-      setReturnToTable(false);
-    }
-  }, [viewMode]);
 
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
@@ -110,18 +114,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const detailUser = selectedUsername
     ? (filtered.find((user) => user.username === selectedUsername) ?? null)
     : null;
-  const handleCardSelect = (username: string | null) => {
-    setSelectedUsername(username);
-    if (username === null && returnToTable) {
-      setViewMode?.("table");
-      setReturnToTable(false);
-    }
-  };
-  const handleOpenCardView = (user: AccountUser) => {
-    setViewMode?.("card");
-    setSelectedUsername(user.username);
-    setReturnToTable(Boolean(setViewMode));
-  };
   const handleEditUser = (user: AccountUser) => {
     setDialogUser(user);
     setEditDialogOpen(true);
@@ -258,26 +250,19 @@ const UsersTab: React.FC<UsersTabProps> = ({
           currentUsername={currentUser?.name}
           isLocking={isLocking}
           isUnlocking={isUnlocking}
-          onSelect={handleCardSelect}
+          onSelect={selectUser}
           onEdit={handleEditUser}
           onChangePassword={handleChangePassword}
           onToggleLock={handleToggleLock}
         />
       ) : (
-        <AppGrid container spacing={3} alignItems="flex-start">
-          <AppGrid size={{ xs: 12, md: detailUser ? 7 : 12 }}>
-            <UnifiedCollapsibleTable
-              data={filtered}
-              columns={columns}
-              getRowKey={(user) => user.username}
-              selectedKey={selectedUsername}
-              onRowClick={(user) =>
-                setSelectedUsername(
-                  selectedUsername === user.username ? null : user.username,
-                )
-              }
-              onRowDoubleClick={handleOpenCardView}
-              renderMainRow={(user) => (
+        <UnifiedCollapsibleTable
+          data={filtered}
+          columns={columns}
+          getRowKey={(user) => user.username}
+          selectedKey={selectedUsername}
+          onRowClick={(user) => selectUser(user.username)}
+          renderMainRow={(user) => (
                 <>
                   <AppTableCell>
                     <div
@@ -504,19 +489,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                   </div>
                 </>
               )}
-              emptyMessage="No users found."
-            />
-          </AppGrid>
-          {detailUser && (
-            <AppGrid size={{ xs: 12, md: 5 }}>
-              <UserDetailsStack
-                user={detailUser}
-                currentUsername={currentUser?.name}
-                onClose={() => setSelectedUsername(null)}
-              />
-            </AppGrid>
-          )}
-        </AppGrid>
+          emptyMessage="No users found."
+        />
       )}
 
       <CreateUserDialog
