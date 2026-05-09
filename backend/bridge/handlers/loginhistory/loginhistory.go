@@ -7,9 +7,15 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	LoginStatusSuccess = "success"
+	LoginStatusFailed  = "failed"
 )
 
 type Login struct {
@@ -18,6 +24,7 @@ type Login struct {
 	Source    string
 	Time      string
 	StartedAt time.Time
+	Status    string
 }
 
 var runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -36,8 +43,12 @@ const (
 	btmpPath         = "/var/log/btmp"
 	btmpRecordSize   = 384
 	btmpTypeOffset   = 0
+	btmpLineOffset   = 8
+	btmpLineSize     = 32
 	btmpUserOffset   = 44
 	btmpUserSize     = 32
+	btmpHostOffset   = 76
+	btmpHostSize     = 256
 	btmpTimeOffset   = 340
 	utmpLoginProcess = 6
 	utmpUserProcess  = 7
@@ -73,6 +84,55 @@ func FetchRecent(ctx context.Context, username string, limit int) ([]Login, erro
 		return nil, err
 	}
 	return ParseLastOutput(username, string(output)), nil
+}
+
+func FetchRecentEvents(ctx context.Context, username string, limit int) ([]Login, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 12
+	}
+
+	successes, err := FetchRecent(ctx, username, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	failures, err := FetchRecentFailures(ctx, username, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	logins := make([]Login, 0, len(successes)+len(failures))
+	logins = append(logins, successes...)
+	logins = append(logins, failures...)
+	sortLoginsNewestFirst(logins)
+	if len(logins) > limit {
+		logins = logins[:limit]
+	}
+	return logins, nil
+}
+
+func FetchRecentFailures(ctx context.Context, username string, limit int) ([]Login, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, nil
+	}
+
+	data, err := readFile(btmpPath)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+
+	return parseBtmpFailures(username, data, limit), nil
 }
 
 func FetchByUser(ctx context.Context) (map[string]Login, error) {
@@ -161,6 +221,7 @@ func ParseLastOutput(username, output string) []Login {
 			Source:    source,
 			Time:      timeText,
 			StartedAt: parseLastTime(timeText),
+			Status:    LoginStatusSuccess,
 		})
 	}
 
@@ -220,10 +281,68 @@ func ParseWtmpdbOutput(username string, output []byte) ([]Login, error) {
 			Source:    strings.TrimSpace(entry.Hostname),
 			Time:      timeText,
 			StartedAt: parseLastTime(timeText),
+			Status:    LoginStatusSuccess,
 		})
 	}
 
 	return logins, nil
+}
+
+func parseBtmpFailures(username string, data []byte, limit int) []Login {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil
+	}
+
+	recordCount := len(data) / btmpRecordSize
+	failures := make([]Login, 0)
+	for i := recordCount - 1; i >= 0; i-- {
+		record := data[i*btmpRecordSize : (i+1)*btmpRecordSize]
+
+		recordType := binary.LittleEndian.Uint16(record[btmpTypeOffset:])
+		if recordType != utmpLoginProcess && recordType != utmpUserProcess {
+			continue
+		}
+
+		recordUser := strings.TrimSpace(fixedCString(record[btmpUserOffset : btmpUserOffset+btmpUserSize]))
+		if recordUser != username || !isLoginUser(recordUser) {
+			continue
+		}
+
+		recordTime := int64(binary.LittleEndian.Uint32(record[btmpTimeOffset:]))
+		if recordTime <= 0 {
+			continue
+		}
+
+		startedAt := time.Unix(recordTime, 0)
+		failures = append(failures, Login{
+			Username:  recordUser,
+			Terminal:  strings.TrimSpace(fixedCString(record[btmpLineOffset : btmpLineOffset+btmpLineSize])),
+			Source:    strings.TrimSpace(fixedCString(record[btmpHostOffset : btmpHostOffset+btmpHostSize])),
+			Time:      formatLoginTime(startedAt),
+			StartedAt: startedAt,
+			Status:    LoginStatusFailed,
+		})
+
+		if limit > 0 && len(failures) >= limit {
+			break
+		}
+	}
+	return failures
+}
+
+func sortLoginsNewestFirst(logins []Login) {
+	sort.SliceStable(logins, func(i, j int) bool {
+		left := logins[i].StartedAt
+		right := logins[j].StartedAt
+		if !left.IsZero() && !right.IsZero() && !left.Equal(right) {
+			return left.After(right)
+		}
+		if !left.IsZero() != !right.IsZero() {
+			return !left.IsZero()
+		}
+		return logins[i].Time > logins[j].Time
+	})
 }
 
 func firstLoginByUser(logins []Login) map[string]Login {
@@ -317,6 +436,10 @@ func splitTerminalAndSource(fields []string) (terminal string, source string) {
 
 func normalizeLastTime(value string) string {
 	return strings.Join(strings.Fields(value), " ")
+}
+
+func formatLoginTime(value time.Time) string {
+	return normalizeLastTime(value.Local().Format("Mon Jan _2 15:04:05 2006"))
 }
 
 func parseLastTime(value string) time.Time {

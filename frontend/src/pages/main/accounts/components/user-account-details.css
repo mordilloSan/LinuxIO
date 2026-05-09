@@ -1,0 +1,69 @@
+.account-activity-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.account-activity-card-header {
+  padding: 12px 12px 8px;
+}
+
+.account-activity-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.account-activity-section {
+  min-height: 0;
+}
+
+.account-activity-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 6px;
+}
+
+.account-activity-section-body {
+  max-height: 220px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.account-activity-row {
+  align-items: center;
+  column-gap: 12px;
+  min-height: 38px;
+  padding: 6px 12px;
+}
+
+.account-sessions-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(116px, max-content);
+}
+
+.account-logins-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+}
+
+.account-hidden-xs {
+  display: none;
+}
+
+@media (min-width: 770px) {
+  .account-sessions-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(110px, 0.7fr) minmax(132px, 0.9fr);
+  }
+
+  .account-logins-grid {
+    grid-template-columns: minmax(180px, 1.4fr) minmax(100px, 0.75fr) minmax(120px, 0.85fr) 82px;
+  }
+
+  .account-hidden-xs {
+    display: block;
+  }
+}

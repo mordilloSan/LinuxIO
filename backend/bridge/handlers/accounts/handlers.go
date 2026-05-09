@@ -55,7 +55,7 @@ func handleListUserLogins(ctx context.Context, args []string, emit ipc.Events) e
 	if err := requireAccountArgs(args, 1); err != nil {
 		return err
 	}
-	result, err := ListUserLogins(ctx, args[0], 12)
+	result, err := ListUserLogins(ctx, args[0], 24)
 	return emitAccountResult(emit, result, err)
 }
 

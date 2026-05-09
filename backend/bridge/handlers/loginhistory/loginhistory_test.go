@@ -100,6 +100,60 @@ func TestParseWtmpdbOutput(t *testing.T) {
 	require.Equal(t, "192.168.1.239", logins[0].Source)
 	require.Equal(t, "Mon May 4 19:11:47 2026", logins[0].Time)
 	require.False(t, logins[0].StartedAt.IsZero())
+	require.Equal(t, LoginStatusSuccess, logins[0].Status)
+}
+
+func TestParseBtmpFailures(t *testing.T) {
+	older := uint32(time.Date(2026, time.May, 7, 12, 0, 0, 0, time.UTC).Unix())
+	newer := uint32(time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC).Unix())
+	data := appendBtmpRecordWithDetails(nil, "miguel", older, "ssh:notty", "192.168.1.10")
+	data = appendBtmpRecordWithDetails(data, "other", newer, "ssh:notty", "192.168.1.20")
+	data = appendBtmpRecordWithDetails(data, "miguel", newer, "ssh:notty", "192.168.1.30")
+
+	logins := parseBtmpFailures("miguel", data, 1)
+
+	require.Len(t, logins, 1)
+	require.Equal(t, "miguel", logins[0].Username)
+	require.Equal(t, "ssh:notty", logins[0].Terminal)
+	require.Equal(t, "192.168.1.30", logins[0].Source)
+	require.Equal(t, LoginStatusFailed, logins[0].Status)
+	require.Equal(t, time.Unix(int64(newer), 0), logins[0].StartedAt)
+}
+
+func TestFetchRecentEventsMergesSuccessesAndFailures(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	failedAt := time.Date(2026, time.May, 8, 12, 30, 0, 0, time.UTC)
+
+	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return []byte(`{
+  "entries": [
+    {
+      "user": "miguel",
+      "tty": "web console",
+      "hostname": "192.168.1.239",
+      "login": "Fri May  8 12:00:00 2026"
+    }
+  ]
+}`), nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, btmpPath, path)
+		return appendBtmpRecordWithDetails(nil, "miguel", uint32(failedAt.Unix()), "ssh:notty", "192.168.1.30"), nil
+	}
+
+	logins, err := FetchRecentEvents(context.Background(), "miguel", 2)
+
+	require.NoError(t, err)
+	require.Len(t, logins, 2)
+	require.Equal(t, LoginStatusFailed, logins[0].Status)
+	require.Equal(t, LoginStatusSuccess, logins[1].Status)
 }
 
 func TestCountBtmpFailuresSince(t *testing.T) {
@@ -266,9 +320,15 @@ func TestFetchFailedAttemptsReturnsZeroWhenBtmpPermissionDenied(t *testing.T) {
 }
 
 func appendBtmpRecord(data []byte, username string, sec uint32) []byte {
+	return appendBtmpRecordWithDetails(data, username, sec, "", "")
+}
+
+func appendBtmpRecordWithDetails(data []byte, username string, sec uint32, line, host string) []byte {
 	record := make([]byte, btmpRecordSize)
 	binary.LittleEndian.PutUint16(record[btmpTypeOffset:], utmpLoginProcess)
+	copy(record[btmpLineOffset:btmpLineOffset+btmpLineSize], line)
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], username)
+	copy(record[btmpHostOffset:btmpHostOffset+btmpHostSize], host)
 	binary.LittleEndian.PutUint32(record[btmpTimeOffset:], sec)
 	return append(data, record...)
 }

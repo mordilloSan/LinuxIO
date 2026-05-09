@@ -15,6 +15,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import AppAlert from "@/components/ui/AppAlert";
 import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
@@ -28,6 +29,8 @@ import {
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import "./user-account-details.css";
 
 interface UserDetailsPanelProps {
   user: AccountUser;
@@ -104,6 +107,14 @@ function sessionLocation(session: AccountActiveSession): string {
   return "Local";
 }
 
+function loginStatusLabel(login: AccountUserLogin): string {
+  return login.status === "failed" ? "Failed" : "Success";
+}
+
+function loginStatusColor(login: AccountUserLogin): "success" | "error" {
+  return login.status === "failed" ? "error" : "success";
+}
+
 const LoadingRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     {Array.from({ length: rows }).map((_, index) => (
@@ -143,6 +154,73 @@ const DetailText: React.FC<{
   >
     {children}
   </span>
+);
+
+const ActivitySection: React.FC<{
+  title: string;
+  subtitle: string;
+  headers: { label: string; hiddenXs?: boolean }[];
+  gridClassName: string;
+  metaText: string;
+  children: React.ReactNode;
+}> = ({ title, subtitle, headers, gridClassName, metaText, children }) => (
+  <section className="account-activity-section">
+    <div className="account-activity-section-header">
+      <div style={{ minWidth: 0 }}>
+        <AppTypography variant="body2" fontWeight={700} noWrap>
+          {title}
+        </AppTypography>
+        <AppTypography
+          variant="caption"
+          color="text.secondary"
+          style={{ display: "block", marginTop: 2 }}
+        >
+          {subtitle}
+        </AppTypography>
+      </div>
+      <AppTypography variant="caption" color="text.secondary" noWrap>
+        {metaText}
+      </AppTypography>
+    </div>
+
+    <div
+      className={gridClassName}
+      style={{ paddingInline: 12, paddingBlock: 4 }}
+    >
+      {headers.map((header) => (
+        <AppTypography
+          key={header.label}
+          variant="overline"
+          color="text.secondary"
+          className={header.hiddenXs ? "account-hidden-xs" : undefined}
+          style={{ fontSize: "0.65rem" }}
+        >
+          {header.label}
+        </AppTypography>
+      ))}
+    </div>
+    <AppDivider />
+
+    <div className="account-activity-section-body custom-scrollbar">
+      {children}
+    </div>
+  </section>
+);
+
+const ActivityEmpty: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => (
+  <div style={{ paddingInline: 12, paddingBlock: 14, textAlign: "center" }}>
+    <AppTypography variant="body2" color="text.secondary">
+      {children}
+    </AppTypography>
+  </div>
+);
+
+const ActivityLoading: React.FC<{ rows?: number }> = ({ rows }) => (
+  <div style={{ padding: 12 }}>
+    <LoadingRows rows={rows} />
+  </div>
 );
 
 export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
@@ -315,10 +393,14 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
     enabled: Boolean(username),
     refetchInterval: 30000,
   });
+  const sessions = details?.activeSessions ?? [];
 
   return (
-    <FrostedCard style={{ padding: 12, height: "100%" }}>
-      <div style={{ marginBottom: 12 }}>
+    <FrostedCard
+      className="account-activity-card"
+      style={{ padding: 0, height: "100%" }}
+    >
+      <div className="account-activity-card-header">
         <AppTypography variant="subtitle2" fontWeight={700}>
           Sessions & login history
         </AppTypography>
@@ -327,123 +409,144 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           color="text.secondary"
           style={{ display: "block", marginTop: 2 }}
         >
-          Current sessions and recent successful logins
+          Current sessions and all recent login events
         </AppTypography>
       </div>
 
-      {detailsPending ? (
-        <LoadingRows rows={2} />
-      ) : detailsError ? (
-        <InlineError
-          message={
-            detailsErrorValue instanceof Error
-              ? detailsErrorValue.message
-              : "Session details unavailable"
+      <div className="account-activity-stack">
+        <ActivitySection
+          title="Active sessions"
+          subtitle=""
+          headers={[
+            { label: "Terminal" },
+            { label: "Source", hiddenXs: true },
+            { label: "Started" },
+          ]}
+          gridClassName="account-sessions-grid"
+          metaText={
+            detailsPending || !details
+              ? "Checking sessions"
+              : `${sessions.length} active ${sessions.length === 1 ? "session" : "sessions"}`
           }
-        />
-      ) : !details ? (
-        <LoadingRows rows={2} />
-      ) : details.activeSessions.length > 0 ? (
-        <div style={{ marginBottom: 12 }}>
-          <AppTypography
-            variant="caption"
-            color="text.secondary"
-            style={{ display: "block", marginBottom: 6 }}
-          >
-            Active sessions ({details.activeSessions.length})
-          </AppTypography>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {details.activeSessions.map((session) => (
-              <div
-                key={`${session.terminal}-${session.startedAt}`}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  borderBottom: "1px solid var(--app-palette-divider)",
-                  paddingBottom: 6,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
+        >
+          {detailsPending ? (
+            <ActivityLoading rows={2} />
+          ) : detailsError ? (
+            <div style={{ padding: 12 }}>
+              <InlineError
+                message={
+                  detailsErrorValue instanceof Error
+                    ? detailsErrorValue.message
+                    : "Session details unavailable"
+                }
+              />
+            </div>
+          ) : !details ? (
+            <ActivityLoading rows={2} />
+          ) : sessions.length === 0 ? (
+            <ActivityEmpty>No active sessions.</ActivityEmpty>
+          ) : (
+            sessions.map((session, index) => (
+              <React.Fragment key={`${session.terminal}-${session.startedAt}`}>
+                <div className="account-sessions-grid account-activity-row">
                   <AppTypography variant="body2" fontWeight={600} noWrap>
-                    {session.terminal}
+                    {session.terminal || "-"}
                   </AppTypography>
                   <AppTypography
                     variant="caption"
                     color="text.secondary"
                     noWrap
-                    style={{ display: "block" }}
+                    className="account-hidden-xs"
                   >
                     {sessionLocation(session)}
                   </AppTypography>
+                  <AppTypography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                  >
+                    {session.startedAt || "-"}
+                  </AppTypography>
                 </div>
-                <AppTypography variant="caption" color="text.secondary" noWrap>
-                  {session.startedAt}
-                </AppTypography>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <AppTypography
-          variant="body2"
-          color="text.secondary"
-          style={{ display: "block", marginBottom: 12 }}
-        >
-          No active sessions.
-        </AppTypography>
-      )}
+                {index < sessions.length - 1 && <AppDivider />}
+              </React.Fragment>
+            ))
+          )}
+        </ActivitySection>
 
-      {loginsPending ? (
-        <LoadingRows rows={3} />
-      ) : loginsError ? (
-        <InlineError
-          message={
-            loginsErrorValue instanceof Error
-              ? loginsErrorValue.message
-              : "Login history unavailable"
+        <AppDivider />
+
+        <ActivitySection
+          title="Login history"
+          subtitle=""
+          headers={[
+            { label: "Time" },
+            { label: "Terminal", hiddenXs: true },
+            { label: "Source", hiddenXs: true },
+            { label: "Result" },
+          ]}
+          gridClassName="account-logins-grid"
+          metaText={
+            loginsPending
+              ? "Loading login history"
+              : `${logins.length} recent ${logins.length === 1 ? "event" : "events"}`
           }
-        />
-      ) : logins.length === 0 ? (
-        <AppTypography variant="body2" color="text.secondary">
-          No login history found.
-        </AppTypography>
-      ) : (
-        <AppTableContainer>
-          <AppTable>
-            <AppTableHead>
-              <AppTableRow>
-                <AppTableCell component="th">Time</AppTableCell>
-                <AppTableCell component="th">Terminal</AppTableCell>
-                <AppTableCell component="th">Source</AppTableCell>
-              </AppTableRow>
-            </AppTableHead>
-            <AppTableBody>
-              {logins.slice(0, 6).map((login) => (
-                <AppTableRow
-                  key={`${login.time}-${login.terminal}-${login.source}`}
-                >
-                  <AppTableCell>
-                    <AppTypography variant="body2" fontWeight={500} noWrap>
-                      {login.time || "-"}
-                    </AppTypography>
-                  </AppTableCell>
-                  <AppTableCell>
-                    <AppTypography variant="body2" color="text.secondary">
-                      {login.terminal || "-"}
-                    </AppTypography>
-                  </AppTableCell>
-                  <AppTableCell>
-                    <AppTypography variant="body2" color="text.secondary">
-                      {getLoginLocation(login)}
-                    </AppTypography>
-                  </AppTableCell>
-                </AppTableRow>
-              ))}
-            </AppTableBody>
-          </AppTable>
-        </AppTableContainer>
-      )}
+        >
+          {loginsPending ? (
+            <ActivityLoading rows={3} />
+          ) : loginsError ? (
+            <div style={{ padding: 12 }}>
+              <InlineError
+                message={
+                  loginsErrorValue instanceof Error
+                    ? loginsErrorValue.message
+                    : "Login history unavailable"
+                }
+              />
+            </div>
+          ) : logins.length === 0 ? (
+            <ActivityEmpty>No login history found.</ActivityEmpty>
+          ) : (
+            logins.map((login, index) => (
+              <React.Fragment
+                key={`${login.status}-${login.startedAt || login.time}-${login.terminal}-${login.source}`}
+              >
+                <div className="account-logins-grid account-activity-row">
+                  <AppTypography variant="body2" fontWeight={500} noWrap>
+                    {login.time || "-"}
+                  </AppTypography>
+                  <AppTypography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                    className="account-hidden-xs"
+                  >
+                    {login.terminal || "-"}
+                  </AppTypography>
+                  <AppTypography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                    className="account-hidden-xs"
+                  >
+                    {getLoginLocation(login)}
+                  </AppTypography>
+                  <div>
+                    <Chip
+                      label={loginStatusLabel(login)}
+                      size="small"
+                      variant="soft"
+                      color={loginStatusColor(login)}
+                      style={{ fontSize: "0.65rem", height: 20 }}
+                    />
+                  </div>
+                </div>
+                {index < logins.length - 1 && <AppDivider />}
+              </React.Fragment>
+            ))
+          )}
+        </ActivitySection>
+      </div>
     </FrostedCard>
   );
 };

@@ -598,6 +598,7 @@ export interface AccountUserLogin {
   source: string;
   time: string;
   startedAt?: string;
+  status: "success" | "failed";
 }
 
 export interface AccountActiveSession {

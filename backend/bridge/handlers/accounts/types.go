@@ -15,13 +15,14 @@ type User struct {
 	LastLogin    string   `json:"lastLogin"`
 }
 
-// UserLogin represents one successful login session for a user account.
+// UserLogin represents one login event for a user account.
 type UserLogin struct {
 	Username  string `json:"username"`
 	Terminal  string `json:"terminal"`
 	Source    string `json:"source"`
 	Time      string `json:"time"`
 	StartedAt string `json:"startedAt,omitempty"`
+	Status    string `json:"status"`
 }
 
 // UserActiveSession represents a currently active login session.

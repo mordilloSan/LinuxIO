@@ -140,17 +140,17 @@ func GetUser(username string) (*User, error) {
 	return nil, fmt.Errorf("user not found: %s", username)
 }
 
-// ListUserLogins returns the most recent successful login sessions for a user.
+// ListUserLogins returns the most recent login events for a user.
 func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogin, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return nil, fmt.Errorf("username is required")
 	}
 	if limit <= 0 {
-		limit = 12
+		limit = 24
 	}
 
-	logins, err := loginhistory.FetchRecent(ctx, username, limit)
+	logins, err := loginhistory.FetchRecentEvents(ctx, username, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +167,7 @@ func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogi
 			Source:    login.Source,
 			Time:      login.Time,
 			StartedAt: startedAt,
+			Status:    login.Status,
 		})
 	}
 	return result, nil
