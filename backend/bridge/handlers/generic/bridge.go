@@ -2,7 +2,6 @@ package generic
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -59,12 +58,6 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	// Create context with session for handlers that need runtime session access.
 	ctx := session.WithContext(context.Background(), sess)
 
-	// Check if bidirectional
-	if bidirHandler, ok := h.(ipc.BidirectionalHandler); ok {
-		return handleBidirectional(ctx, stream, bidirHandler, handlerArgs, logMeta)
-	}
-
-	// Standard unidirectional handler
 	return handleUnidirectional(ctx, stream, h, handlerArgs, logMeta)
 }
 
@@ -100,82 +93,6 @@ func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, a
 			"error", closeErr)
 	}
 	return nil
-}
-
-func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.BidirectionalHandler, args []string, logMeta bridgeRPCLogMeta) (err error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	resizeChan := make(chan ipc.ResizeEvent, 1)
-	ctx = ipc.WithResizeChannel(ctx, resizeChan)
-
-	emit := newLoggingEmitter(stream)
-	defer func() {
-		logBridgeRPCCompletion(ctx, logMeta, emit, err)
-	}()
-
-	inputChan := make(chan []byte, 16)
-
-	go readClientFrames(ctx, cancel, stream, inputChan, resizeChan)
-
-	// Execute handler with input channel
-	if err = h.ExecuteWithInput(ctx, args, emit, inputChan); err != nil {
-		if emitErr := emit.Error(err, 500); emitErr != nil {
-			slog.Debug("failed to write bridge handler error frame",
-				"component", "bridge",
-				"stream_type", "bridge",
-				"error", emitErr)
-		}
-		if closeErr := emit.Close("handler error"); closeErr != nil {
-			slog.Debug("failed to write bridge stream close frame",
-				"component", "bridge",
-				"stream_type", "bridge",
-				"error", closeErr)
-		}
-		return err
-	}
-
-	if closeErr := emit.Close(""); closeErr != nil {
-		slog.Debug("failed to write bridge stream close frame",
-			"component", "bridge",
-			"stream_type", "bridge",
-			"error", closeErr)
-	}
-	return nil
-}
-
-func readClientFrames(ctx context.Context, cancel context.CancelFunc, stream net.Conn, inputChan chan<- []byte, resizeChan chan<- ipc.ResizeEvent) {
-	defer close(resizeChan)
-	defer close(inputChan)
-	for {
-		frame, err := ipc.ReadRelayFrame(stream)
-		if err != nil {
-			cancel()
-			return
-		}
-
-		switch frame.Opcode {
-		case ipc.OpStreamData:
-			select {
-			case inputChan <- frame.Payload:
-			case <-ctx.Done():
-				return
-			}
-		case ipc.OpStreamClose, ipc.OpStreamAbort:
-			cancel()
-			return
-		case ipc.OpStreamResize:
-			if len(frame.Payload) < 4 {
-				continue
-			}
-			cols := binary.BigEndian.Uint16(frame.Payload[0:2])
-			rows := binary.BigEndian.Uint16(frame.Payload[2:4])
-			select {
-			case resizeChan <- ipc.ResizeEvent{Cols: cols, Rows: rows}:
-			default:
-			}
-		}
-	}
 }
 
 // eventEmitter implements ipc.Events

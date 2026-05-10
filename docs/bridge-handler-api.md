@@ -140,13 +140,9 @@ type Handler interface {
 
 // HandlerFunc is a function adapter.
 type HandlerFunc func(ctx context.Context, args []string, emit Events) error
-
-// BidirectionalHandler extends Handler for streams that also receive client data.
-type BidirectionalHandler interface {
-    Handler
-    ExecuteWithInput(ctx context.Context, args []string, emit Events, input <-chan []byte) error
-}
 ```
+
+Bidirectional RPC over the `"bridge"` stream has been retired. Terminal-style protocols use raw stream handlers instead.
 
 ### Events Interface
 
@@ -302,23 +298,24 @@ func handleCompress(stream net.Conn, args []string) error {
 ```go
 // backend/bridge/handlers/register.go
 
-func RegisterAllHandlers(sess *session.Session) {
+func RegisterAllHandlers(rt runtime.Runtime) {
     // "bridge" is the universal JSON dispatcher
-    streamHandlers["bridge"] = generic.HandleBridgeStream
+    streamHandlers["bridge"] = func(rt runtime.Runtime, conn net.Conn, args []string) error {
+        return generic.HandleBridgeStream(rt.Session, conn, args)
+    }
 
     // Register IPC handlers (JSON request/response)
-    system.RegisterHandlers(sess)
-    monitoring.RegisterHandlers()
-    accounts.RegisterHandlers()
-    docker.RegisterHandlers(sess)
-    filebrowser.RegisterHandlers()
-    config.RegisterHandlers(sess)
-    control.RegisterHandlers()
-    dbus.RegisterHandlers()
-    terminal.RegisterHandlers(sess)
-    wireguard.RegisterHandlers()
-    storage.RegisterHandlers()
-    shares.RegisterHandlers()
+    system.RegisterHandlers(rt)
+    accounts.RegisterHandlers(rt)
+    docker.RegisterHandlers(rt)
+    filebrowser.RegisterHandlers(rt)
+    config.RegisterHandlers(rt)
+    control.RegisterHandlers(rt)
+    dbus.RegisterHandlers(rt)
+    terminal.RegisterHandlers(rt)
+    wireguard.RegisterHandlers(rt)
+    storage.RegisterHandlers(rt)
+    shares.RegisterHandlers(rt)
 
     // Register raw stream handlers
     control.RegisterStreamHandlers(streamHandlers)   // app-update

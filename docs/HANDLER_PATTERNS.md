@@ -4,7 +4,7 @@
 **Date:** 2026-05-10
 **Companion docs:** [bridge-handler-api.md](./bridge-handler-api.md), [PRIVILEGE_PATTERN.md](./PRIVILEGE_PATTERN.md)
 
-This ADR locks in the **per-package handler-body conventions** for bridge IPC and stream handlers. It is complementary to `bridge-handler-api.md` (which documents the immutable infrastructure: frame protocol, registry, `Events`, `Handler`, `BidirectionalHandler`). Nothing in this ADR changes the IPC layer or wire protocol.
+This ADR locks in the **per-package handler-body conventions** for bridge IPC and stream handlers. It is complementary to `bridge-handler-api.md` (which documents the immutable infrastructure: frame protocol, registry, `Events`, `Handler`). Nothing in this ADR changes the IPC layer or wire protocol.
 
 ---
 
@@ -298,9 +298,9 @@ func (h fbHandlers) resourcePatch(ctx context.Context, args []string, emit ipc.E
 
 ### 5.6 Bidirectional RPC
 
-`ipc.BidirectionalHandler` remains part of the bridge infrastructure, but no active handler package should add a new bidirectional RPC unless raw streams cannot model the protocol cleanly.
+Bidirectional RPC over the `bridge` stream is retired. Raw streams are the supported protocol for terminal-style I/O.
 
-The old `terminal.bash` / `terminal.sh` bidirectional RPC commands were legacy. The frontend uses raw stream openers (`openTerminalStream` and `openContainerStream`), and a repository search found no current caller for `terminal.bash` or `terminal.sh`. Those registrations and the private `terminalHandler` implementation have been removed.
+The old `terminal.bash` / `terminal.sh` bidirectional RPC commands were legacy. The frontend uses raw stream openers (`openTerminalStream` and `openContainerStream`), and a repository search found no current caller for `terminal.bash` or `terminal.sh`. Those registrations, the private `terminalHandler` implementation, the `generic.handleBidirectional` dispatcher branch, and the unused `ipc.BidirectionalHandler` interface have been removed.
 
 The terminal package now has one normal RPC command:
 
@@ -507,7 +507,7 @@ Existing `*_test.go` files that test adapter machinery (e.g., `TestDockerNoArgCa
 | Area | Status |
 |---|---|
 | IPC frame protocol, opcodes, payload limits | unchanged |
-| `ipc.Handler`, `ipc.HandlerFunc`, `ipc.BidirectionalHandler` | unchanged; no currently registered bridge handler needs `BidirectionalHandler` after terminal cleanup |
+| `ipc.Handler`, `ipc.HandlerFunc` | unchanged |
 | `ipc.Events` interface | unchanged |
 | `ipc.RegisterFunc`, `ipc.Register`, `ipc.Get` | unchanged |
 | `generic.HandleBridgeStream` | unchanged |
@@ -523,7 +523,7 @@ Audit date: 2026-05-10. This pass checked backend handler registrations, stream 
 | Area | Status | Action |
 |---|---|---|
 | `terminal.bash` / `terminal.sh` bidirectional RPC | dead registered API; no frontend caller; raw `terminal` and `container` streams are the active path | removed now |
-| `ipc.BidirectionalHandler` and `generic.handleBidirectional` | infrastructure only; no active handler currently registers an implementation | keep infrastructure |
+| `ipc.BidirectionalHandler` and `generic.handleBidirectional` | dead compatibility infrastructure after terminal cleanup | removed now |
 | Raw stream registry | active streams are `bridge`, `app-update`, `terminal`, `container`, `jobs-attach`, `jobs-data`, `jobs-events`, `general-logs`, `service-logs`, `docker-logs` | migrate signature in step 5 |
 | `bridge-handler-api.md` and `frontend-api.md` stream lists | contain stale names (`docker-compose`, `docker-indexer`, `fb-upload`, `fb-download`, `fb-archive`, `pkg-update`, etc.) that are now job types, frontend concepts, or old docs | doc cleanup follow-up; not part of this ADR migration |
 | `handlers.Dependencies` | currently only carries `ConfigStore`; exists because runtime is split across parameters | delete when `runtime.Runtime` lands |
@@ -603,7 +603,7 @@ Yes, even to packages that don't use it. Uniform `RegisterHandlers(rt runtime.Ru
 `Runtime` is a concrete struct. Tests build one with a real (or test-fixture) `Session` and `UserStore`. No interfaces. `bridge/settings/settingstest.NewStore(t)` provides a clean fixture.
 
 **Q6 — Bidirectional handlers?**
-Keep the infrastructure, but do not preserve unused bidirectional RPC commands. The legacy `terminal.bash` / `terminal.sh` handlers were removed because the active frontend path uses raw streams. Future bidirectional RPC handlers must justify why a raw stream is insufficient.
+Removed for bridge RPC. The legacy `terminal.bash` / `terminal.sh` handlers were removed because the active frontend path uses raw streams. Future terminal-style protocols should use raw streams unless there is a new, concrete reason to rebuild bidirectional RPC support.
 
 **Q7 — Stream handler registry shape?**
 `map[string]func(runtime.Runtime, net.Conn, []string) error`. All four producer packages (`control`, `terminal`, `logs`, `jobs`) update their `RegisterStreamHandlers` signature. The `Dependencies` struct is deleted.

@@ -23,14 +23,3 @@ type HandlerFunc func(ctx context.Context, args []string, emit Events) error
 func (f HandlerFunc) Execute(ctx context.Context, args []string, emit Events) error {
 	return f(ctx, args, emit)
 }
-
-// BidirectionalHandler extends Handler for streams that need to receive
-// data from the client (e.g., terminal, docker attach, file upload).
-//
-// The input channel receives OpStreamData frames from the client.
-// The channel is closed when the client closes the stream or disconnects.
-type BidirectionalHandler interface {
-	Handler
-	// ExecuteWithInput provides a channel to receive client data
-	ExecuteWithInput(ctx context.Context, args []string, emit Events, input <-chan []byte) error
-}
