@@ -5,42 +5,32 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-type storageRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
-
 // RegisterHandlers registers all storage handlers with the global registry
-func RegisterHandlers(_ runtime.Runtime) {
+func RegisterHandlers(rt runtime.Runtime) {
 	RegisterJobRunners()
 
-	registerStorageHandlers([]storageRegistration{
-		{command: "list_pvs", handler: handleListPVs},
-		{command: "list_vgs", handler: handleListVGs},
-		{command: "list_lvs", handler: handleListLVs},
-		{command: "create_lv", handler: handleCreateLV},
-		{command: "delete_lv", handler: handleDeleteLV},
-		{command: "resize_lv", handler: handleResizeLV},
-		{command: "list_nfs_mounts", handler: handleListNFSMounts},
-		{command: "list_nfs_exports", handler: handleListNFSExports},
-		{command: "mount_nfs", handler: handleMountNFS},
-		{command: "unmount_nfs", handler: handleUnmountNFS},
-		{command: "remount_nfs", handler: handleRemountNFS},
-		{command: "unmount_filesystem", handler: handleUnmountFilesystem},
-		{command: "create_btrfs_subvolume", handler: handleCreateBtrfsSubvolume},
-		{command: "get_drive_info", handler: handleGetDriveInfo},
-		{command: "run_smart_test", handler: handleRunSMARTTest},
+	rpc.Register("storage", rt, []rpc.Command{
+		{Name: "list_pvs", Handler: handleListPVs},
+		{Name: "list_vgs", Handler: handleListVGs},
+		{Name: "list_lvs", Handler: handleListLVs},
+		{Name: "create_lv", Handler: handleCreateLV},
+		{Name: "delete_lv", Handler: handleDeleteLV},
+		{Name: "resize_lv", Handler: handleResizeLV},
+		{Name: "list_nfs_mounts", Handler: handleListNFSMounts},
+		{Name: "list_nfs_exports", Handler: handleListNFSExports},
+		{Name: "mount_nfs", Handler: handleMountNFS},
+		{Name: "unmount_nfs", Handler: handleUnmountNFS},
+		{Name: "remount_nfs", Handler: handleRemountNFS},
+		{Name: "unmount_filesystem", Handler: handleUnmountFilesystem},
+		{Name: "create_btrfs_subvolume", Handler: handleCreateBtrfsSubvolume},
+		{Name: "get_drive_info", Handler: handleGetDriveInfo},
+		{Name: "run_smart_test", Handler: handleRunSMARTTest},
 	})
-}
-
-func registerStorageHandlers(registrations []storageRegistration) {
-	for _, registration := range registrations {
-		ipc.RegisterFunc("storage", registration.command, registration.handler)
-	}
 }
 
 func handleListPVs(ctx context.Context, args []string, emit ipc.Events) error {
@@ -51,7 +41,7 @@ func handleListPVs(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Debug("listed physical volumes", "count", len(pvs))
-	return emit.Result(pvs)
+	return rpc.EmitResult(emit, pvs, nil)
 }
 
 func handleListVGs(ctx context.Context, args []string, emit ipc.Events) error {
@@ -62,7 +52,7 @@ func handleListVGs(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Debug("listed volume groups", "count", len(vgs))
-	return emit.Result(vgs)
+	return rpc.EmitResult(emit, vgs, nil)
 }
 
 func handleListLVs(ctx context.Context, args []string, emit ipc.Events) error {
@@ -73,13 +63,13 @@ func handleListLVs(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Debug("listed logical volumes", "count", len(lvs))
-	return emit.Result(lvs)
+	return rpc.EmitResult(emit, lvs, nil)
 }
 
 func handleCreateLV(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 3 {
+	if err := rpc.RequireArgs(args, 3); err != nil {
 		slog.Error("create_lv: insufficient arguments (need vgName, lvName, size)")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	slog.Info("creating logical volume", "volume_group", args[0], "name", args[1], "size", args[2])
 	result, err := CreateLogicalVolume(args[0], args[1], args[2])
@@ -88,13 +78,13 @@ func handleCreateLV(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Info("logical volume created", "volume_group", args[0], "name", args[1])
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleDeleteLV(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
+	if err := rpc.RequireArgs(args, 2); err != nil {
 		slog.Error("delete_lv: insufficient arguments (need vgName, lvName)")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	slog.Info("deleting logical volume", "volume_group", args[0], "name", args[1])
 	result, err := DeleteLogicalVolume(args[0], args[1])
@@ -103,13 +93,13 @@ func handleDeleteLV(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Info("logical volume deleted", "volume_group", args[0], "name", args[1])
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleResizeLV(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 3 {
+	if err := rpc.RequireArgs(args, 3); err != nil {
 		slog.Error("resize_lv: insufficient arguments (need vgName, lvName, newSize)")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	slog.Info("resizing logical volume", "volume_group", args[0], "name", args[1], "size", args[2])
 	result, err := ResizeLogicalVolume(args[0], args[1], args[2])
@@ -118,7 +108,7 @@ func handleResizeLV(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Info("logical volume resized", "volume_group", args[0], "name", args[1], "size", args[2])
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleListNFSMounts(ctx context.Context, args []string, emit ipc.Events) error {
@@ -129,13 +119,13 @@ func handleListNFSMounts(ctx context.Context, args []string, emit ipc.Events) er
 		return err
 	}
 	slog.Debug("listed NFS mounts", "count", len(mounts))
-	return emit.Result(mounts)
+	return rpc.EmitResult(emit, mounts, nil)
 }
 
 func handleListNFSExports(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 1 {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		slog.Error("list_nfs_exports: missing server argument")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	slog.Debug("listing NFS exports", "server", args[0])
 	exports, err := ListNFSExports(ctx, args[0])
@@ -144,13 +134,13 @@ func handleListNFSExports(ctx context.Context, args []string, emit ipc.Events) e
 		return err
 	}
 	slog.Debug("listed NFS exports", "server", args[0], "count", len(exports))
-	return emit.Result(exports)
+	return rpc.EmitResult(emit, exports, nil)
 }
 
 func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 4 {
+	if err := rpc.RequireArgs(args, 4); err != nil {
 		slog.Error("mount_nfs: insufficient arguments (need server, exportPath, mountpoint, options)")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	persist := len(args) > 4 && (args[4] == "true" || args[4] == "1")
 	options := args[3]
@@ -169,13 +159,13 @@ func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
 			"error", err)
 		return err
 	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleUnmountNFS(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 1 {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		slog.Error("unmount_nfs: missing mountpoint argument")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	removeFstab := len(args) > 1 && (args[1] == "true" || args[1] == "1")
 	slog.Debug("unmount_nfs request", "mountpoint", args[0], "remove_fstab", removeFstab)
@@ -184,13 +174,13 @@ func handleUnmountNFS(ctx context.Context, args []string, emit ipc.Events) error
 		slog.Error("failed to unmount NFS share", "mountpoint", args[0], "error", err)
 		return err
 	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleRemountNFS(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
+	if err := rpc.RequireArgs(args, 2); err != nil {
 		slog.Error("remount_nfs: insufficient arguments (need mountpoint, options)")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	updateFstab := len(args) > 2 && (args[2] == "true" || args[2] == "1")
 	slog.Debug("remount_nfs request", "mountpoint", args[0], "options", args[1], "update_fstab", updateFstab)
@@ -199,13 +189,13 @@ func handleRemountNFS(ctx context.Context, args []string, emit ipc.Events) error
 		slog.Error("failed to remount NFS share", "mountpoint", args[0], "error", err)
 		return err
 	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleUnmountFilesystem(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 1 {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		slog.Error("unmount_filesystem: missing mountpoint argument")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	slog.Info("unmounting filesystem", "mountpoint", args[0])
 	result, err := UnmountFilesystem(ctx, args[0])
@@ -214,13 +204,13 @@ func handleUnmountFilesystem(ctx context.Context, args []string, emit ipc.Events
 		return err
 	}
 	slog.Info("filesystem unmounted", "mountpoint", args[0])
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
+	if err := rpc.RequireArgs(args, 2); err != nil {
 		slog.Error("create_btrfs_subvolume: insufficient arguments (need mountpoint, name)")
-		return ipc.ErrInvalidArgs
+		return err
 	}
 	slog.Info("creating btrfs subvolume", "mountpoint", args[0], "name", args[1])
 	result, err := CreateBtrfsSubvolume(args[0], args[1])
@@ -229,7 +219,7 @@ func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit ipc.Eve
 		return err
 	}
 	slog.Info("btrfs subvolume created", "mountpoint", args[0], "name", args[1])
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }
 
 func handleGetDriveInfo(ctx context.Context, args []string, emit ipc.Events) error {
@@ -237,7 +227,7 @@ func handleGetDriveInfo(ctx context.Context, args []string, emit ipc.Events) err
 	if err != nil {
 		return err
 	}
-	return emit.Result(driveInfo)
+	return rpc.EmitResult(emit, driveInfo, nil)
 }
 
 func handleRunSMARTTest(ctx context.Context, args []string, emit ipc.Events) error {
@@ -251,5 +241,5 @@ func handleRunSMARTTest(ctx context.Context, args []string, emit ipc.Events) err
 		return err
 	}
 	slog.Info("SMART test initiated", "device", device, "type", testType)
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, nil)
 }

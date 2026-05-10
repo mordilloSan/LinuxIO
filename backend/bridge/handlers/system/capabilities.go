@@ -1,7 +1,6 @@
 package system
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -12,7 +11,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 type capabilitiesResponse struct {
@@ -112,10 +110,4 @@ func buildCapabilitiesResponse() capabilitiesResponse {
 	logCapabilitiesSummary(out)
 
 	return out
-}
-
-func registerCapabilitiesHandlers() {
-	ipc.RegisterFunc("system", "get_capabilities", func(ctx context.Context, args []string, emit ipc.Events) error {
-		return emit.Result(buildCapabilitiesResponse())
-	})
 }

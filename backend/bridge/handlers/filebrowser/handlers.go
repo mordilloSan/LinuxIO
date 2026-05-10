@@ -4,74 +4,79 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
-
-type filebrowserRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime) {
 	store := rt.Store
 	RegisterJobRunners(store)
 
-	registerFilebrowserHandlers([]filebrowserRegistration{
-		{command: "resource_get", handler: emitFilebrowserArgsResult(resourceGet)},
-		{command: "resource_stat", handler: emitFilebrowserArgsResult(resourceStat)},
-		{command: "resource_delete", handler: emitFilebrowserLoggedArgsResult("resource_delete requested", resourceDelete)},
-		{command: "resource_post", handler: emitFilebrowserLoggedArgsResult("resource_post requested", resourcePost)},
-		{command: "resource_patch", handler: handleResourcePatch},
-		{command: "dir_size", handler: emitFilebrowserArgsResult(dirSize)},
-		{command: "indexer_status", handler: emitFilebrowserArgsResult(indexerStatus)},
-		{command: "subfolders", handler: emitFilebrowserArgsResult(subfolders)},
-		{command: "search", handler: emitFilebrowserArgsResult(searchFiles)},
-		{command: "users_groups", handler: handleUsersGroups},
+	rpc.Register("filebrowser", rt, []rpc.Command{
+		{Name: "resource_get", Handler: handleResourceGet},
+		{Name: "resource_stat", Handler: handleResourceStat},
+		{Name: "resource_delete", Handler: handleResourceDelete},
+		{Name: "resource_post", Handler: handleResourcePost},
+		{Name: "resource_patch", Handler: handleResourcePatch},
+		{Name: "dir_size", Handler: handleDirSize},
+		{Name: "indexer_status", Handler: handleIndexerStatus},
+		{Name: "subfolders", Handler: handleSubfolders},
+		{Name: "search", Handler: handleSearch},
+		{Name: "users_groups", Handler: handleUsersGroups},
 	})
 }
 
-func registerFilebrowserHandlers(registrations []filebrowserRegistration) {
-	for _, registration := range registrations {
-		ipc.RegisterFunc("filebrowser", registration.command, registration.handler)
-	}
+func handleResourceGet(ctx context.Context, args []string, emit ipc.Events) error {
+	result, err := resourceGet(args)
+	return rpc.EmitResult(emit, result, err)
 }
 
-func emitFilebrowserArgsResult(fn func([]string) (any, error)) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := fn(args)
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	}
+func handleResourceStat(ctx context.Context, args []string, emit ipc.Events) error {
+	result, err := resourceStat(args)
+	return rpc.EmitResult(emit, result, err)
 }
 
-func emitFilebrowserLoggedArgsResult(message string, fn func([]string) (any, error)) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		slog.Info(message, "component", "filebrowser")
-		result, err := fn(args)
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	}
+func handleResourceDelete(ctx context.Context, args []string, emit ipc.Events) error {
+	slog.Info("resource_delete requested", "component", "filebrowser")
+	result, err := resourceDelete(args)
+	return rpc.EmitResult(emit, result, err)
+}
+
+func handleResourcePost(ctx context.Context, args []string, emit ipc.Events) error {
+	slog.Info("resource_post requested", "component", "filebrowser")
+	result, err := resourcePost(args)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleResourcePatch(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("resource_patch requested")
 	result, err := resourcePatchWithProgress(ctx, args, emit)
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, err)
+}
+
+func handleDirSize(ctx context.Context, args []string, emit ipc.Events) error {
+	result, err := dirSize(args)
+	return rpc.EmitResult(emit, result, err)
+}
+
+func handleIndexerStatus(ctx context.Context, args []string, emit ipc.Events) error {
+	result, err := indexerStatus(args)
+	return rpc.EmitResult(emit, result, err)
+}
+
+func handleSubfolders(ctx context.Context, args []string, emit ipc.Events) error {
+	result, err := subfolders(args)
+	return rpc.EmitResult(emit, result, err)
+}
+
+func handleSearch(ctx context.Context, args []string, emit ipc.Events) error {
+	result, err := searchFiles(args)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleUsersGroups(ctx context.Context, args []string, emit ipc.Events) error {
 	result, err := usersGroups()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, err)
 }

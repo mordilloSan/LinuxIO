@@ -2,39 +2,27 @@ package shares
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-type sharesRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
-
 // RegisterHandlers registers all share management handlers with the global registry
-func RegisterHandlers(_ runtime.Runtime) {
-	registerSharesHandlers([]sharesRegistration{
+func RegisterHandlers(rt runtime.Runtime) {
+	rpc.Register("shares", rt, []rpc.Command{
 		// NFS exports (server-side shares via /etc/exports)
-		{command: "list_nfs_shares", handler: handleListNFSShares},
-		{command: "create_nfs_share", handler: handleCreateNFSShare},
-		{command: "update_nfs_share", handler: handleUpdateNFSShare},
-		{command: "delete_nfs_share", handler: handleDeleteNFSShare},
+		{Name: "list_nfs_shares", Handler: handleListNFSShares},
+		{Name: "create_nfs_share", Handler: handleCreateNFSShare},
+		{Name: "update_nfs_share", Handler: handleUpdateNFSShare},
+		{Name: "delete_nfs_share", Handler: handleDeleteNFSShare},
 		// Samba shares (via /etc/samba/smb.conf)
-		{command: "list_samba_shares", handler: handleListSambaShares},
-		{command: "create_samba_share", handler: handleCreateSambaShare},
-		{command: "update_samba_share", handler: handleUpdateSambaShare},
-		{command: "delete_samba_share", handler: handleDeleteSambaShare},
+		{Name: "list_samba_shares", Handler: handleListSambaShares},
+		{Name: "create_samba_share", Handler: handleCreateSambaShare},
+		{Name: "update_samba_share", Handler: handleUpdateSambaShare},
+		{Name: "delete_samba_share", Handler: handleDeleteSambaShare},
 	})
-}
-
-func registerSharesHandlers(registrations []sharesRegistration) {
-	for _, reg := range registrations {
-		ipc.RegisterFunc("shares", reg.command, reg.handler)
-	}
 }
 
 // --- NFS handlers ---
@@ -47,46 +35,46 @@ func handleListNFSShares(ctx context.Context, args []string, emit ipc.Events) er
 		return err
 	}
 	slog.Debug("listed NFS shares", "count", len(shares))
-	return emit.Result(shares)
+	return rpc.EmitResult(emit, shares, nil)
 }
 
 func handleCreateNFSShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
-		return ipc.ErrInvalidArgs
+	if err := rpc.RequireArgs(args, 2); err != nil {
+		return err
 	}
 	path := args[0]
-	var clients []NFSClient
-	if err := json.Unmarshal([]byte(args[1]), &clients); err != nil {
-		return fmt.Errorf("invalid clients JSON: %w", err)
+	clients, err := rpc.DecodeJSONArg[[]NFSClient](args, 1)
+	if err != nil {
+		return err
 	}
 	slog.Info("creating NFS share", "path", path, "count", len(clients))
 	if err := CreateNFSShare(path, clients); err != nil {
 		slog.Error("failed to create NFS share", "path", path, "error", err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true, "path": path})
+	return rpc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
 }
 
 func handleUpdateNFSShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
-		return ipc.ErrInvalidArgs
+	if err := rpc.RequireArgs(args, 2); err != nil {
+		return err
 	}
 	path := args[0]
-	var clients []NFSClient
-	if err := json.Unmarshal([]byte(args[1]), &clients); err != nil {
-		return fmt.Errorf("invalid clients JSON: %w", err)
+	clients, err := rpc.DecodeJSONArg[[]NFSClient](args, 1)
+	if err != nil {
+		return err
 	}
 	slog.Info("updating NFS share", "path", path)
 	if err := UpdateNFSShare(path, clients); err != nil {
 		slog.Error("failed to update NFS share", "path", path, "error", err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true, "path": path})
+	return rpc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
 }
 
 func handleDeleteNFSShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 1 {
-		return ipc.ErrInvalidArgs
+	if err := rpc.RequireArgs(args, 1); err != nil {
+		return err
 	}
 	path := args[0]
 	slog.Info("deleting NFS share", "path", path)
@@ -94,7 +82,7 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 		slog.Error("failed to delete NFS share", "path", path, "error", err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true})
+	return rpc.EmitResult(emit, map[string]any{"success": true}, nil)
 }
 
 // --- Samba handlers ---
@@ -107,29 +95,29 @@ func handleListSambaShares(ctx context.Context, args []string, emit ipc.Events) 
 		return err
 	}
 	slog.Debug("listed Samba shares", "count", len(shares))
-	return emit.Result(shares)
+	return rpc.EmitResult(emit, shares, nil)
 }
 
 func handleCreateSambaShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
-		return ipc.ErrInvalidArgs
+	if err := rpc.RequireArgs(args, 2); err != nil {
+		return err
 	}
 	name := args[0]
-	var properties map[string]string
-	if err := json.Unmarshal([]byte(args[1]), &properties); err != nil {
-		return fmt.Errorf("invalid properties JSON: %w", err)
+	properties, err := rpc.DecodeJSONArg[map[string]string](args, 1)
+	if err != nil {
+		return err
 	}
 	slog.Info("creating Samba share", "name", name, "path", properties["path"])
 	if err := CreateSambaShare(name, properties); err != nil {
 		slog.Error("failed to create Samba share", "name", name, "error", err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true, "name": name})
+	return rpc.EmitResult(emit, map[string]any{"success": true, "name": name}, nil)
 }
 
 func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
-		return ipc.ErrInvalidArgs
+	if err := rpc.RequireArgs(args, 2); err != nil {
+		return err
 	}
 	oldName := args[0]
 	newName := oldName
@@ -138,21 +126,21 @@ func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		newName = args[1]
 		propertiesArgIndex = 2
 	}
-	var properties map[string]string
-	if err := json.Unmarshal([]byte(args[propertiesArgIndex]), &properties); err != nil {
-		return fmt.Errorf("invalid properties JSON: %w", err)
+	properties, err := rpc.DecodeJSONArg[map[string]string](args, propertiesArgIndex)
+	if err != nil {
+		return err
 	}
 	slog.Info("updating Samba share", "name", oldName, "new_name", newName)
 	if err := UpdateSambaShare(oldName, newName, properties); err != nil {
 		slog.Error("failed to update Samba share", "name", oldName, "error", err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true, "name": newName})
+	return rpc.EmitResult(emit, map[string]any{"success": true, "name": newName}, nil)
 }
 
 func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 1 {
-		return ipc.ErrInvalidArgs
+	if err := rpc.RequireArgs(args, 1); err != nil {
+		return err
 	}
 	name := args[0]
 	slog.Info("deleting Samba share", "name", name)
@@ -160,5 +148,5 @@ func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		slog.Error("failed to delete Samba share", "name", name, "error", err)
 		return err
 	}
-	return emit.Result(map[string]any{"success": true})
+	return rpc.EmitResult(emit, map[string]any{"success": true}, nil)
 }
