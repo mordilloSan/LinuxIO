@@ -441,7 +441,7 @@ The current typed handlers are defined in `LinuxIOSchema`:
 | `system` | `get_capabilities`, `get_cpu_info`, `get_health_summary`, `get_server_time` |
 | `docker` | `list_containers`, `start_container`, `list_compose_projects`, `get_icon_uri`, `system_prune` |
 | `dbus` | `list_services`, `get_updates_basic`, `get_network_info`, `set_timezone` |
-| `filebrowser` | `resource_get`, `resource_stat`, `subfolders`, `search`, `chmod` |
+| `filebrowser` | `resource_get`, `resource_stat`, `subfolders`, `search`, `users_groups` |
 | `config` | `get`, `set` |
 | `indexer` | `get_config`, `get_status`, `set_config` |
 | `control` | `version` |

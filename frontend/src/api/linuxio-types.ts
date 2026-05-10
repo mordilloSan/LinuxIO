@@ -1160,16 +1160,6 @@ export interface LinuxIOSchema {
       args: [query: string, limit?: string, basePath?: string];
       result: SearchResponse;
     };
-    chmod: {
-      args: [
-        path: string,
-        mode: string,
-        owner?: string,
-        group?: string,
-        recursive?: string,
-      ];
-      result: void;
-    };
     users_groups: { args: []; result: UsersGroupsResponse };
   };
 
