@@ -19,7 +19,6 @@ import (
 	"time"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/semver"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -119,7 +118,7 @@ func getVersionInfo() (VersionInfo, error) {
 			info.UpdateAvailable = true
 		} else {
 			// For release versions, compare semantically
-			info.UpdateAvailable = semver.IsNewer(latestVersion, currentVersion)
+			info.UpdateAvailable = version.IsNewer(latestVersion, currentVersion)
 		}
 	}
 	return info, nil

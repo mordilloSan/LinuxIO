@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
@@ -20,12 +21,14 @@ const (
 	StreamTypeJobsEvents = "jobs-events"
 )
 
-func RegisterHandlers(_ runtime.Runtime) {
-	ipc.RegisterFunc("jobs", "start", handleStart)
-	ipc.RegisterFunc("jobs", "recover", handleRecover)
-	ipc.RegisterFunc("jobs", "list", handleList)
-	ipc.RegisterFunc("jobs", "get", handleGet)
-	ipc.RegisterFunc("jobs", "cancel", handleCancel)
+func RegisterHandlers(rt runtime.Runtime) {
+	rpc.Register("jobs", rt, []rpc.Command{
+		{Name: "start", Handler: handleStart},
+		{Name: "recover", Handler: handleRecover},
+		{Name: "list", Handler: handleList},
+		{Name: "get", Handler: handleGet},
+		{Name: "cancel", Handler: handleCancel},
+	})
 }
 
 func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
@@ -42,7 +45,7 @@ func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
 	if err != nil {
 		return err
 	}
-	return emit.Result(job.Snapshot())
+	return rpc.EmitResult(emit, job.Snapshot(), nil)
 }
 
 func handleRecover(ctx context.Context, args []string, emit ipc.Events) error {
@@ -57,15 +60,15 @@ func handleRecover(ctx context.Context, args []string, emit ipc.Events) error {
 		}
 		return err
 	}
-	return emit.Result(job.Snapshot())
+	return rpc.EmitResult(emit, job.Snapshot(), nil)
 }
 
 func handleList(ctx context.Context, args []string, emit ipc.Events) error {
 	owner := ownerFromContext(ctx)
 	if len(args) > 0 && args[0] == "active" {
-		return emit.Result(bridgejobs.ListActiveForOwner(owner))
+		return rpc.EmitResult(emit, bridgejobs.ListActiveForOwner(owner), nil)
 	}
-	return emit.Result(bridgejobs.ListForOwner(owner))
+	return rpc.EmitResult(emit, bridgejobs.ListForOwner(owner), nil)
 }
 
 func handleGet(ctx context.Context, args []string, emit ipc.Events) error {
@@ -76,7 +79,7 @@ func handleGet(ctx context.Context, args []string, emit ipc.Events) error {
 	if !ok {
 		return fmt.Errorf("job not found: %s", args[0])
 	}
-	return emit.Result(job.Snapshot())
+	return rpc.EmitResult(emit, job.Snapshot(), nil)
 }
 
 func handleCancel(ctx context.Context, args []string, emit ipc.Events) error {
@@ -88,7 +91,7 @@ func handleCancel(ctx context.Context, args []string, emit ipc.Events) error {
 		return fmt.Errorf("job not found: %s", args[0])
 	}
 	job.Cancel()
-	return emit.Result(job.Snapshot())
+	return rpc.EmitResult(emit, job.Snapshot(), nil)
 }
 
 func HandleAttachStream(rt runtime.Runtime, stream net.Conn, args []string) error {

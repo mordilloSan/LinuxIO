@@ -10,17 +10,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 const maxIndexerConfigPayloadBytes = 1 << 20
-
-type indexerRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
 
 // Config is the stable JSON configuration shape exposed by the indexer daemon.
 type Config struct {
@@ -70,17 +65,11 @@ type ConfigSetResult struct {
 
 // RegisterHandlers registers indexer admin handlers with the bridge.
 func RegisterHandlers(rt runtime.Runtime) {
-	for _, registration := range []indexerRegistration{
-		{command: "get_config", handler: handleGetConfig},
-		{command: "get_status", handler: handleGetStatus},
-		{command: "set_config", handler: handleSetConfig},
-	} {
-		ipc.RegisterFunc(
-			"indexer",
-			registration.command,
-			privilege.RequirePrivilegedIPC(rt.Session, registration.handler),
-		)
-	}
+	rpc.Register("indexer", rt, []rpc.Command{
+		{Name: "get_config", Handler: handleGetConfig, Privileged: true},
+		{Name: "get_status", Handler: handleGetStatus, Privileged: true},
+		{Name: "set_config", Handler: handleSetConfig, Privileged: true},
+	})
 }
 
 func handleGetConfig(ctx context.Context, args []string, emit ipc.Events) error {
@@ -88,10 +77,7 @@ func handleGetConfig(ctx context.Context, args []string, emit ipc.Events) error 
 		return ipc.ErrInvalidArgs
 	}
 	cfg, err := FetchConfig(ctx)
-	if err != nil {
-		return err
-	}
-	return emit.Result(cfg)
+	return rpc.EmitResult(emit, cfg, err)
 }
 
 func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
@@ -99,10 +85,7 @@ func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error 
 		return ipc.ErrInvalidArgs
 	}
 	status, err := FetchStatus(ctx)
-	if err != nil {
-		return err
-	}
-	return emit.Result(status)
+	return rpc.EmitResult(emit, status, err)
 }
 
 func handleSetConfig(ctx context.Context, args []string, emit ipc.Events) error {

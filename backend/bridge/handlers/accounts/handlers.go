@@ -2,68 +2,58 @@ package accounts
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strconv"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-type accountRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
-
 // RegisterHandlers registers accounts handlers with the IPC system
-func RegisterHandlers(_ runtime.Runtime) {
-	registerAccountHandlers([]accountRegistration{
-		{command: "list_users", handler: handleListUsers},
-		{command: "get_user_details", handler: handleGetUserDetails},
-		{command: "list_user_logins", handler: handleListUserLogins},
-		{command: "terminate_session", handler: handleTerminateSession},
-		{command: "create_user", handler: handleCreateUser},
-		{command: "delete_user", handler: handleDeleteUser},
-		{command: "modify_user", handler: handleModifyUser},
-		{command: "change_password", handler: handleChangePassword},
-		{command: "lock_user", handler: handleLockUser},
-		{command: "unlock_user", handler: handleUnlockUser},
-		{command: "list_groups", handler: handleListGroups},
-		{command: "create_group", handler: handleCreateGroup},
-		{command: "delete_group", handler: handleDeleteGroup},
-		{command: "modify_group_members", handler: handleModifyGroupMembers},
-		{command: "list_shells", handler: handleListShells},
+func RegisterHandlers(rt runtime.Runtime) {
+	rpc.Register("accounts", rt, []rpc.Command{
+		{Name: "list_users", Handler: handleListUsers},
+		{Name: "get_user_details", Handler: handleGetUserDetails},
+		{Name: "list_user_logins", Handler: handleListUserLogins},
+		{Name: "terminate_session", Handler: handleTerminateSession},
+		{Name: "create_user", Handler: handleCreateUser},
+		{Name: "delete_user", Handler: handleDeleteUser},
+		{Name: "modify_user", Handler: handleModifyUser},
+		{Name: "change_password", Handler: handleChangePassword},
+		{Name: "lock_user", Handler: handleLockUser},
+		{Name: "unlock_user", Handler: handleUnlockUser},
+		{Name: "list_groups", Handler: handleListGroups},
+		{Name: "create_group", Handler: handleCreateGroup},
+		{Name: "delete_group", Handler: handleDeleteGroup},
+		{Name: "modify_group_members", Handler: handleModifyGroupMembers},
+		{Name: "list_shells", Handler: handleListShells},
 	})
 }
 
-func registerAccountHandlers(registrations []accountRegistration) {
-	for _, registration := range registrations {
-		ipc.RegisterFunc("accounts", registration.command, registration.handler)
-	}
-}
-
 func handleListUsers(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitAccountCall(emit, ListUsers)
+	result, err := ListUsers()
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleGetUserDetails(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	result, err := GetUserDetails(ctx, args[0])
-	return emitAccountResult(emit, result, err)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleListUserLogins(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	result, err := ListUserLogins(ctx, args[0], 24)
-	return emitAccountResult(emit, result, err)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleTerminateSession(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 2); err != nil {
+	if err := rpc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	sessionID := args[0]
@@ -76,7 +66,7 @@ func handleTerminateSession(ctx context.Context, args []string, emit ipc.Events)
 }
 
 func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[CreateUserRequest](args)
+	req, err := rpc.DecodeJSONArg[CreateUserRequest](args, 0)
 	if err != nil {
 		return err
 	}
@@ -88,7 +78,7 @@ func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error
 }
 
 func handleDeleteUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	slog.Info("delete user requested", "user", args[0])
@@ -99,7 +89,7 @@ func handleDeleteUser(ctx context.Context, args []string, emit ipc.Events) error
 }
 
 func handleModifyUser(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[ModifyUserRequest](args)
+	req, err := rpc.DecodeJSONArg[ModifyUserRequest](args, 0)
 	if err != nil {
 		return err
 	}
@@ -111,7 +101,7 @@ func handleModifyUser(ctx context.Context, args []string, emit ipc.Events) error
 }
 
 func handleChangePassword(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 2); err != nil {
+	if err := rpc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	slog.Info("change password requested", "user", args[0])
@@ -122,7 +112,7 @@ func handleChangePassword(ctx context.Context, args []string, emit ipc.Events) e
 }
 
 func handleLockUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	slog.Info("lock user requested", "user", args[0])
@@ -133,7 +123,7 @@ func handleLockUser(ctx context.Context, args []string, emit ipc.Events) error {
 }
 
 func handleUnlockUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	slog.Info("unlock user requested", "user", args[0])
@@ -144,11 +134,12 @@ func handleUnlockUser(ctx context.Context, args []string, emit ipc.Events) error
 }
 
 func handleListGroups(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitAccountCall(emit, ListGroups)
+	result, err := ListGroups()
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleCreateGroup(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[CreateGroupRequest](args)
+	req, err := rpc.DecodeJSONArg[CreateGroupRequest](args, 0)
 	if err != nil {
 		return err
 	}
@@ -160,7 +151,7 @@ func handleCreateGroup(ctx context.Context, args []string, emit ipc.Events) erro
 }
 
 func handleDeleteGroup(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+	if err := rpc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	slog.Info("delete group requested", "group", args[0])
@@ -171,7 +162,7 @@ func handleDeleteGroup(ctx context.Context, args []string, emit ipc.Events) erro
 }
 
 func handleModifyGroupMembers(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[ModifyGroupMembersRequest](args)
+	req, err := rpc.DecodeJSONArg[ModifyGroupMembersRequest](args, 0)
 	if err != nil {
 		return err
 	}
@@ -183,36 +174,6 @@ func handleModifyGroupMembers(ctx context.Context, args []string, emit ipc.Event
 }
 
 func handleListShells(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitAccountCall(emit, ListShells)
-}
-
-func decodeAccountJSON[T any](args []string) (T, error) {
-	var zero T
-	if err := requireAccountArgs(args, 1); err != nil {
-		return zero, err
-	}
-	var payload T
-	if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-		return zero, err
-	}
-	return payload, nil
-}
-
-func requireAccountArgs(args []string, min int) error {
-	if len(args) < min {
-		return ipc.ErrInvalidArgs
-	}
-	return nil
-}
-
-func emitAccountResult(emit ipc.Events, result any, err error) error {
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
-}
-
-func emitAccountCall[T any](emit ipc.Events, fn func() (T, error)) error {
-	result, err := fn()
-	return emitAccountResult(emit, result, err)
+	result, err := ListShells()
+	return rpc.EmitResult(emit, result, err)
 }

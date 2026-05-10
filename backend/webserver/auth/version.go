@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/semver"
 	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -51,7 +50,7 @@ func CheckForUpdate() *UpdateInfo {
 	}
 
 	// Compare versions properly - only show update if latest is actually newer
-	if semver.IsNewer(latest, current) {
+	if ver.IsNewer(latest, current) {
 		slog.Info("update available", "current_version", current, "latest_version", latest)
 		return &UpdateInfo{
 			Available:      true,

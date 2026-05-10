@@ -4,46 +4,29 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-type powerRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
-
 func RegisterHandlers(rt runtime.Runtime) {
-	for _, registration := range []powerRegistration{
-		{command: "get_status", handler: handleGetStatus},
-		{command: "start", handler: handleStart},
-		{command: "set_profile", handler: handleSetProfile},
-		{command: "disable", handler: handleDisable},
-	} {
-		ipc.RegisterFunc(
-			"power",
-			registration.command,
-			privilege.RequirePrivilegedIPC(rt.Session, registration.handler),
-		)
-	}
+	rpc.Register("power", rt, []rpc.Command{
+		{Name: "get_status", Handler: handleGetStatus, Privileged: true},
+		{Name: "start", Handler: handleStart, Privileged: true},
+		{Name: "set_profile", Handler: handleSetProfile, Privileged: true},
+		{Name: "disable", Handler: handleDisable, Privileged: true},
+	})
 }
 
 func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
 	result, err := GetStatus()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("TuneD start requested", "component", "power")
 	result, err := StartTuned()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleSetProfile(ctx context.Context, args []string, emit ipc.Events) error {
@@ -52,17 +35,11 @@ func handleSetProfile(ctx context.Context, args []string, emit ipc.Events) error
 	}
 	slog.Info("TuneD profile change requested", "component", "power", "profile", args[0])
 	result, err := SetProfile(args[0])
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, err)
 }
 
 func handleDisable(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("TuneD disable requested", "component", "power")
 	result, err := DisableTuned()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return rpc.EmitResult(emit, result, err)
 }
