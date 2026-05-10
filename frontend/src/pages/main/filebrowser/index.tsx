@@ -599,8 +599,7 @@ const FileBrowser: React.FC = () => {
     setRenamingPath(null);
   }, []);
 
-  // Keep dialog-based rename for backward compatibility (context menu)
-  const handleRename = useCallback(() => {
+  const handleContextMenuRename = useCallback(() => {
     handleStartInlineRename();
   }, [handleStartInlineRename]);
   const handleDelete = useCallback(() => {
@@ -1212,7 +1211,7 @@ const FileBrowser: React.FC = () => {
         onChangePermissions={handleChangePermissions}
         onCopy={handleCopy}
         onCut={handleCut}
-        onRename={handleRename}
+        onRename={handleContextMenuRename}
         onPaste={handlePaste}
         onDelete={handleDelete}
         onDownload={handleDownloadSelected}

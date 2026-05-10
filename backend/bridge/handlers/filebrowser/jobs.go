@@ -417,11 +417,7 @@ func parseChmodArgs(args []string) (path, modeStr, owner, group string, recursiv
 	switch len(args) {
 	case 2:
 	case 3:
-		if args[2] == "true" || args[2] == "false" {
-			recursive = args[2] == "true"
-		} else {
-			owner = args[2]
-		}
+		owner = args[2]
 	case 4:
 		owner = args[2]
 		group = args[3]

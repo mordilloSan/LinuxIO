@@ -99,13 +99,6 @@ func TestParseChmodArgs(t *testing.T) {
 			wantOwner: "miguel",
 		},
 		{
-			name:          "recursive legacy third arg",
-			args:          []string{"/tmp/file", "0644", "true"},
-			wantPath:      "/tmp/file",
-			wantMode:      "0644",
-			wantRecursive: true,
-		},
-		{
 			name:      "owner and group",
 			args:      []string{"/tmp/file", "0644", "miguel", "staff"},
 			wantPath:  "/tmp/file",

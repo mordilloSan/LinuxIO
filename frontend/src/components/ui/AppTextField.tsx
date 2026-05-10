@@ -2,16 +2,6 @@ import React, { useRef, useState } from "react";
 
 import "./app-text-field.css";
 
-type AppTextFieldSlotProps = {
-  input?: {
-    startAdornment?: React.ReactNode;
-    endAdornment?: React.ReactNode;
-  };
-  inputLabel?: {
-    shrink?: boolean;
-  };
-};
-
 export interface AppTextFieldProps {
   label?: string;
   value?: string | number;
@@ -47,13 +37,7 @@ export interface AppTextFieldProps {
   onBlur?: (e: React.FocusEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
-  /** @deprecated Use startAdornment/endAdornment and shrinkLabel instead */
-  slotProps?: AppTextFieldSlotProps;
 }
-
-type AppTextFieldInternalProps = Omit<AppTextFieldProps, "slotProps"> & {
-  slotProps?: AppTextFieldSlotProps;
-};
 
 const AppTextField = React.forwardRef<
   HTMLInputElement | HTMLTextAreaElement,
@@ -92,20 +76,14 @@ const AppTextField = React.forwardRef<
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
     "aria-autocomplete": ariaAutocomplete,
-    slotProps: legacySlotProps,
-  } = props as AppTextFieldInternalProps;
+  } = props;
 
   const [focused, setFocused] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const resolvedStart =
-    startAdornment ?? legacySlotProps?.input?.startAdornment;
-  const resolvedEnd = endAdornment ?? legacySlotProps?.input?.endAdornment;
-  const forceShrink = shrinkLabel ?? legacySlotProps?.inputLabel?.shrink;
-
   const hasValue = value !== undefined && value !== "";
   const labelText = label && required ? `${label}\u2009*` : label;
-  const labelShrunk = !!(forceShrink || focused || hasValue || resolvedStart);
+  const labelShrunk = !!(shrinkLabel || focused || hasValue || startAdornment);
 
   const handleFocus = (e: React.FocusEvent) => {
     setFocused(true);
@@ -142,8 +120,8 @@ const AppTextField = React.forwardRef<
 
   const wrapperClasses = [
     "app-text-field__wrapper",
-    resolvedStart && "app-text-field__wrapper--has-start",
-    resolvedEnd && "app-text-field__wrapper--has-end",
+    startAdornment && "app-text-field__wrapper--has-start",
+    endAdornment && "app-text-field__wrapper--has-end",
   ]
     .filter(Boolean)
     .join(" ");
@@ -186,9 +164,9 @@ const AppTextField = React.forwardRef<
         className={wrapperClasses}
         onClick={handleWrapperClick}
       >
-        {resolvedStart && (
+        {startAdornment && (
           <div className="app-text-field__adornment app-text-field__adornment--start">
-            {resolvedStart}
+            {startAdornment}
           </div>
         )}
         {multiline ? (
@@ -200,9 +178,9 @@ const AppTextField = React.forwardRef<
         ) : (
           <input ref={ref as React.Ref<HTMLInputElement>} {...inputProps} />
         )}
-        {resolvedEnd && (
+        {endAdornment && (
           <div className="app-text-field__adornment app-text-field__adornment--end">
-            {resolvedEnd}
+            {endAdornment}
           </div>
         )}
         {variant === "outlined" && (

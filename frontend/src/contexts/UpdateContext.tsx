@@ -527,8 +527,6 @@ const useUpdateNavigationGuard = (isUpdating: boolean) => {
     (event: BeforeUnloadEvent) => {
       if (!isUpdating) return;
       event.preventDefault();
-      const legacyEvent: { returnValue?: string } = event;
-      legacyEvent.returnValue = "";
     },
     [isUpdating],
   );
