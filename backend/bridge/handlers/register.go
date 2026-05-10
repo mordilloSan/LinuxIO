@@ -55,7 +55,7 @@ func RegisterAllHandlers(sess *session.Session, deps Dependencies) {
 	control.RegisterHandlers()
 	power.RegisterHandlers(sess)
 	dbus.RegisterHandlers()
-	terminal.RegisterHandlers(sess)
+	terminal.RegisterHandlers()
 	wireguard.RegisterHandlers()
 	storage.RegisterHandlers()
 	shares.RegisterHandlers()
