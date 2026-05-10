@@ -296,25 +296,7 @@ func (h fbHandlers) resourcePatch(ctx context.Context, args []string, emit ipc.E
 
 `emit.Progress(...)` calls happen inside the operation function. No special pattern needed.
 
-### 5.6 Bidirectional RPC
-
-Bidirectional RPC over the `bridge` stream is retired. Raw streams are the supported protocol for terminal-style I/O.
-
-The old `terminal.bash` / `terminal.sh` bidirectional RPC commands were legacy. The frontend uses raw stream openers (`openTerminalStream` and `openContainerStream`), and a repository search found no current caller for `terminal.bash` or `terminal.sh`. Those registrations, the private `terminalHandler` implementation, the `generic.handleBidirectional` dispatcher branch, and the unused `ipc.BidirectionalHandler` interface have been removed.
-
-The terminal package now has one normal RPC command:
-
-```go
-func RegisterHandlers(rt runtime.Runtime) {
-    rpc.Register("terminal", rt, []rpc.Command{
-        {Name: "list_shells", Handler: handleListShells},
-    })
-}
-```
-
-Host terminal I/O and container terminal I/O are both raw stream handlers, documented in 5.7. This avoids keeping two terminal protocols alive for the same frontend workflow.
-
-### 5.7 Raw Stream
+### 5.6 Raw Stream
 
 For yamux streams that aren't request/response. Confirmed currently-registered raw streams (per [`handlers/register.go`](../backend/bridge/handlers/register.go) and the four producer packages):
 
@@ -522,8 +504,6 @@ Audit date: 2026-05-10. This pass checked backend handler registrations, stream 
 
 | Area | Status | Action |
 |---|---|---|
-| `terminal.bash` / `terminal.sh` bidirectional RPC | dead registered API; no frontend caller; raw `terminal` and `container` streams are the active path | removed now |
-| `ipc.BidirectionalHandler` and `generic.handleBidirectional` | dead compatibility infrastructure after terminal cleanup | removed now |
 | Raw stream registry | active streams are `bridge`, `app-update`, `terminal`, `container`, `jobs-attach`, `jobs-data`, `jobs-events`, `general-logs`, `service-logs`, `docker-logs` | migrate signature in step 5 |
 | `bridge-handler-api.md` and `frontend-api.md` stream lists | contain stale names (`docker-compose`, `docker-indexer`, `fb-upload`, `fb-download`, `fb-archive`, `pkg-update`, etc.) that are now job types, frontend concepts, or old docs | doc cleanup follow-up; not part of this ADR migration |
 | `handlers.Dependencies` | currently only carries `ConfigStore`; exists because runtime is split across parameters | delete when `runtime.Runtime` lands |

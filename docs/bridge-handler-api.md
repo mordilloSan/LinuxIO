@@ -142,8 +142,6 @@ type Handler interface {
 type HandlerFunc func(ctx context.Context, args []string, emit Events) error
 ```
 
-Bidirectional RPC over the `"bridge"` stream has been retired. Terminal-style protocols use raw stream handlers instead.
-
 ### Events Interface
 
 ```go
