@@ -8,6 +8,7 @@
  */
 
 import type { ContainerInfo } from "@/types/container";
+import type { AppConfig } from "@/types/config";
 import type { FilesystemInfo, ResourceStatData } from "@/types/fs";
 import type { Update } from "@/types/update";
 import type { WireGuardInterface } from "@/types/wireguard";
@@ -834,18 +835,6 @@ export interface DeleteStackResult {
   deleted_path: string;
 }
 
-export interface ConfigSettings {
-  appSettings: {
-    theme: string;
-    primaryColor: string;
-    sidebarCollapsed: boolean;
-    showHiddenFiles: boolean;
-  };
-  docker: {
-    folders: string[];
-  };
-}
-
 export interface ConfigSetResult {
   message: string;
   path: string;
@@ -1185,7 +1174,7 @@ export interface LinuxIOSchema {
   };
 
   config: {
-    get: { args: []; result: ConfigSettings };
+    get: { args: []; result: AppConfig };
     set: { args: [payload: string]; result: ConfigSetResult };
   };
 

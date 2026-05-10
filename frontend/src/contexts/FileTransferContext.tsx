@@ -278,8 +278,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const { status: streamMuxStatus } = useStreamMux();
   const configCtx = useContext(ConfigContext);
   const chunkSize =
-    (configCtx?.config.chunkSizeMB ?? 0) > 0
-      ? (configCtx!.config.chunkSizeMB as number) * 1024 * 1024
+    (configCtx?.config.appSettings.chunkSizeMB ?? 0) > 0
+      ? (configCtx!.config.appSettings.chunkSizeMB as number) * 1024 * 1024
       : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
   const uploadWindowSize =
     chunkSize * STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks;

@@ -18,12 +18,12 @@ const (
 	watchtowerComposePath = "/var/lib/linuxIO/watchtower/docker-compose.yml"
 )
 
-// SyncWatchtowerStack regenerates the global Watchtower compose file from the
-// current user's AutoUpdateStacks config and starts/restarts (or stops)
+// SyncWatchtowerStackWithStore regenerates the global Watchtower compose file
+// from the current user's AutoUpdateStacks config and starts/restarts (or stops)
 // Watchtower accordingly. Called after every auto-update toggle and on login.
 // Errors are logged but not returned — the toggle saves the config regardless.
-func SyncWatchtowerStack(username string) {
-	cfg, _, err := config.Load(username)
+func SyncWatchtowerStackWithStore(username string, store *config.UserStore) {
+	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		slog.Warn("failed to load docker config for watchtower", "component", "docker", "subsystem", "watchtower", "user", username, "error", err)
 		return

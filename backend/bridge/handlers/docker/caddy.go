@@ -47,9 +47,9 @@ type CaddyStatus struct {
 	Routes     []CaddyRoute `json:"routes"`
 }
 
-// GetCaddyStatus returns the current Caddy proxy status.
-func GetCaddyStatus(username string) (any, error) {
-	cfg, _, err := config.Load(username)
+// GetCaddyStatusWithStore returns the current Caddy proxy status.
+func GetCaddyStatusWithStore(username string, store *config.UserStore) (any, error) {
+	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -65,13 +65,8 @@ func GetCaddyStatus(username string) (any, error) {
 	}, nil
 }
 
-// EnableCaddy deploys the Caddy container and generates the initial Caddyfile.
-func EnableCaddy(username string) (any, error) {
-	cfg, _, err := config.Load(username)
-	if err != nil {
-		return nil, err
-	}
-
+// EnableCaddyWithStore deploys the Caddy container and generates the initial Caddyfile.
+func EnableCaddyWithStore(username string, store *config.UserStore) (any, error) {
 	if err := ensureCaddyDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create caddy config dirs: %w", err)
 	}
@@ -80,8 +75,11 @@ func EnableCaddy(username string) (any, error) {
 		return nil, fmt.Errorf("failed to deploy caddy: %w", err)
 	}
 
-	cfg.Docker.Proxy.CaddyEnabled = true
-	if _, err := config.Save(username, cfg); err != nil {
+	cfg, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+		cfg.Docker.Proxy.CaddyEnabled = true
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -92,28 +90,25 @@ func EnableCaddy(username string) (any, error) {
 	return map[string]any{"message": "Caddy deployed"}, nil
 }
 
-// DisableCaddy stops and removes the Caddy container.
-func DisableCaddy(username string) (any, error) {
-	cfg, _, err := config.Load(username)
-	if err != nil {
-		return nil, err
-	}
-
+// DisableCaddyWithStore stops and removes the Caddy container.
+func DisableCaddyWithStore(username string, store *config.UserStore) (any, error) {
 	if err := removeCaddyContainer(); err != nil {
 		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
 
-	cfg.Docker.Proxy.CaddyEnabled = false
-	if _, err := config.Save(username, cfg); err != nil {
+	if _, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+		cfg.Docker.Proxy.CaddyEnabled = false
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
 	return map[string]any{"message": "Caddy removed"}, nil
 }
 
-// ReloadCaddy regenerates the Caddyfile from current containers and reloads Caddy.
-func ReloadCaddy(username string) (any, error) {
-	cfg, _, err := config.Load(username)
+// ReloadCaddyWithStore regenerates the Caddyfile from current containers and reloads Caddy.
+func ReloadCaddyWithStore(username string, store *config.UserStore) (any, error) {
+	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ type configSetPayload struct {
 	AppSettings *configAppSettingsPayload `json:"appSettings"`
 	Docker      *configDockerPayload      `json:"docker"`
 	Jobs        *configJobSettingsPayload `json:"jobs"`
+	Dismissals  *configDismissalsPayload  `json:"dismissals"`
 }
 
 type configAppSettingsPayload struct {
@@ -65,8 +66,15 @@ type configThemeColorsPayload struct {
 }
 
 type configDockerPayload struct {
-	Folders          []string `json:"folders"`
-	AutoUpdateStacks []string `json:"autoUpdateStacks"`
+	Folders          []string                  `json:"folders"`
+	AutoUpdateStacks []string                  `json:"autoUpdateStacks"`
+	Proxy            *configDockerProxyPayload `json:"proxy"`
+}
+
+type configDockerProxyPayload struct {
+	CaddyEnabled *bool   `json:"caddyEnabled"`
+	BaseDomain   *string `json:"baseDomain"`
+	TLSEmail     *string `json:"tlsEmail"`
 }
 
 type configJobSettingsPayload struct {
@@ -78,12 +86,17 @@ type configJobSettingsPayload struct {
 	ArchiveExtractWorkers     *int `json:"archiveExtractWorkers"`
 }
 
+type configDismissalsPayload struct {
+	UncleanShutdownBootID *string `json:"uncleanShutdownBootId"`
+	FailedLoginAlertID    *string `json:"failedLoginAlertId"`
+}
+
 // RegisterHandlers registers config handlers with the new handler system
-func RegisterHandlers(sess *session.Session) {
+func RegisterHandlers(sess *session.Session, store *UserStore) {
 	username := sess.User.Username
 	registerConfigHandlers([]configRegistration{
-		{command: "get", handler: handleGetConfig(username)},
-		{command: "set", handler: handleSetConfig(username)},
+		{command: "get", handler: handleGetConfig(username, store)},
+		{command: "set", handler: handleSetConfig(username, store)},
 	})
 }
 
@@ -93,9 +106,9 @@ func registerConfigHandlers(registrations []configRegistration) {
 	}
 }
 
-func handleGetConfig(username string) ipc.HandlerFunc {
+func handleGetConfig(username string, store *UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		cfg, cfgPath, err := Load(username)
+		cfg, cfgPath, err := SnapshotForUser(username, store)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
@@ -105,7 +118,7 @@ func handleGetConfig(username string) ipc.HandlerFunc {
 	}
 }
 
-func handleSetConfig(username string) ipc.HandlerFunc {
+func handleSetConfig(username string, store *UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		payload, err := decodeConfigPayload(args)
 		if err != nil {
@@ -113,18 +126,11 @@ func handleSetConfig(username string) ipc.HandlerFunc {
 		}
 		slog.Info("config update requested", "component", "config", "user", username)
 
-		cfg, _, err := Load(username)
+		_, cfgPath, err := UpdateForUser(username, store, func(cfg *Settings) error {
+			return applyConfigPayload(cfg, &payload)
+		})
 		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		if applyErr := applyConfigPayload(cfg, &payload); applyErr != nil {
-			return applyErr
-		}
-
-		cfgPath, err := Save(username, cfg)
-		if err != nil {
-			return fmt.Errorf("save config: %w", err)
+			return fmt.Errorf("update config: %w", err)
 		}
 		slog.Info("user config updated", "component", "config", "user", username, "path", cfgPath)
 		return emit.Result(map[string]any{
@@ -160,6 +166,9 @@ func applyConfigPayload(cfg *Settings, payload *configSetPayload) error {
 		if err := applyJobSettingsUpdate(&cfg.Jobs, payload.Jobs); err != nil {
 			return err
 		}
+	}
+	if payload.Dismissals != nil {
+		applyDismissalsUpdate(&cfg.Dismissals, payload.Dismissals)
 	}
 	return nil
 }
@@ -337,7 +346,22 @@ func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) err
 	if payload.AutoUpdateStacks != nil {
 		docker.AutoUpdateStacks = payload.AutoUpdateStacks
 	}
+	if payload.Proxy != nil {
+		applyDockerProxyUpdate(&docker.Proxy, payload.Proxy)
+	}
 	return nil
+}
+
+func applyDockerProxyUpdate(proxy *DockerProxy, payload *configDockerProxyPayload) {
+	if payload.CaddyEnabled != nil {
+		proxy.CaddyEnabled = *payload.CaddyEnabled
+	}
+	if payload.BaseDomain != nil {
+		proxy.BaseDomain = strings.TrimSpace(*payload.BaseDomain)
+	}
+	if payload.TLSEmail != nil {
+		proxy.TLSEmail = strings.TrimSpace(*payload.TLSEmail)
+	}
 }
 
 func applyDockerFoldersSetting(docker *Docker, folderValues []string) error {
@@ -390,6 +414,21 @@ func applyJobSettingsUpdate(jobs *JobSettings, payload *configJobSettingsPayload
 		return err
 	}
 	return applyOptionalNonNegativeInt(&jobs.ArchiveExtractWorkers, payload.ArchiveExtractWorkers, "jobs.archiveExtractWorkers")
+}
+
+func applyDismissalsUpdate(dismissals **Dismissals, payload *configDismissalsPayload) {
+	if *dismissals == nil {
+		*dismissals = &Dismissals{}
+	}
+	if payload.UncleanShutdownBootID != nil {
+		(*dismissals).UncleanShutdownBootID = strings.TrimSpace(*payload.UncleanShutdownBootID)
+	}
+	if payload.FailedLoginAlertID != nil {
+		(*dismissals).FailedLoginAlertID = strings.TrimSpace(*payload.FailedLoginAlertID)
+	}
+	if (*dismissals).UncleanShutdownBootID == "" && (*dismissals).FailedLoginAlertID == "" {
+		*dismissals = nil
+	}
 }
 
 func applyOptionalNonNegativeInt(dst *int, value *int, name string) error {

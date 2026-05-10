@@ -25,6 +25,7 @@ func repairConfig(cfgPath, base string) error {
 		return err
 	}
 	changed = repairInvalidConfigValues(&cfg, defaults) || changed
+	changed = repairMissingDefaultValues(raw, &cfg, defaults) || changed
 	changed = repairDockerFolderPaths(&cfg, defaults) || changed
 
 	if changed {
@@ -82,6 +83,113 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 		changed = true
 	}
 	return changed
+}
+
+func repairMissingDefaultValues(raw []byte, cfg *Settings, defaults *Settings) bool {
+	var root map[string]any
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return false
+	}
+
+	changed := false
+	appSettings, hasAppSettings := childMap(root, "appSettings")
+	if !hasAppSettings {
+		cfg.AppSettings = cloneAppSettings(defaults.AppSettings)
+		changed = true
+	} else {
+		changed = repairMissingAppSettings(appSettings, cfg, defaults) || changed
+	}
+
+	jobs, hasJobs := childMap(root, "jobs")
+	if !hasJobs {
+		cfg.Jobs = defaults.Jobs
+		changed = true
+	} else {
+		changed = repairMissingJobSettings(jobs, cfg, defaults) || changed
+	}
+
+	return changed
+}
+
+func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, defaults *Settings) bool {
+	changed := false
+	if !hasMapKey(appSettings, "themeColors") {
+		cfg.AppSettings.ThemeColors = cloneThemeColorsByMode(defaults.AppSettings.ThemeColors)
+		changed = true
+	}
+	if !hasMapKey(appSettings, "dashboardOrder") {
+		cfg.AppSettings.DashboardOrder = cloneStringSlice(defaults.AppSettings.DashboardOrder)
+		changed = true
+	}
+	if !hasMapKey(appSettings, "dockerDashboardSections") {
+		if defaults.AppSettings.DockerDashboardSections != nil {
+			sections := *defaults.AppSettings.DockerDashboardSections
+			cfg.AppSettings.DockerDashboardSections = &sections
+		}
+		changed = true
+	}
+	if !hasMapKey(appSettings, "hardwareSections") {
+		if defaults.AppSettings.HardwareSections != nil {
+			sections := *defaults.AppSettings.HardwareSections
+			cfg.AppSettings.HardwareSections = &sections
+		}
+		changed = true
+	}
+	if !hasMapKey(appSettings, "viewModes") {
+		cfg.AppSettings.ViewModes = cloneStringMap(defaults.AppSettings.ViewModes)
+		changed = true
+	}
+	if !hasMapKey(appSettings, "chunkSizeMB") {
+		cfg.AppSettings.ChunkSizeMB = defaults.AppSettings.ChunkSizeMB
+		changed = true
+	}
+	return changed
+}
+
+func repairMissingJobSettings(jobs map[string]any, cfg *Settings, defaults *Settings) bool {
+	changed := false
+	if !hasMapKey(jobs, "progressMinIntervalMs") {
+		cfg.Jobs.ProgressMinIntervalMs = defaults.Jobs.ProgressMinIntervalMs
+		changed = true
+	}
+	if !hasMapKey(jobs, "notificationMinIntervalMs") {
+		cfg.Jobs.NotificationMinIntervalMs = defaults.Jobs.NotificationMinIntervalMs
+		changed = true
+	}
+	if !hasMapKey(jobs, "progressMinBytesMB") {
+		cfg.Jobs.ProgressMinBytesMB = defaults.Jobs.ProgressMinBytesMB
+		changed = true
+	}
+	if !hasMapKey(jobs, "heavyArchiveConcurrency") {
+		cfg.Jobs.HeavyArchiveConcurrency = defaults.Jobs.HeavyArchiveConcurrency
+		changed = true
+	}
+	if !hasMapKey(jobs, "archiveCompressionWorkers") {
+		cfg.Jobs.ArchiveCompressionWorkers = defaults.Jobs.ArchiveCompressionWorkers
+		changed = true
+	}
+	if !hasMapKey(jobs, "archiveExtractWorkers") {
+		cfg.Jobs.ArchiveExtractWorkers = defaults.Jobs.ArchiveExtractWorkers
+		changed = true
+	}
+	return changed
+}
+
+func childMap(root map[string]any, key string) (map[string]any, bool) {
+	value, ok := root[key]
+	if !ok {
+		return nil, false
+	}
+	child, ok := value.(map[string]any)
+	return child, ok
+}
+
+func hasMapKey(values map[string]any, key string) bool {
+	if values == nil {
+		return false
+	}
+	_, ok := values[key]
+	return ok
 }
 
 func repairDockerFolderValues(folders, defaults []AbsolutePath) ([]AbsolutePath, bool) {

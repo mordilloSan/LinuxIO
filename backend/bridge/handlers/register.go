@@ -26,13 +26,17 @@ import (
 // Populated during RegisterAllHandlers; read-only after that.
 var streamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
 
+type Dependencies struct {
+	ConfigStore *config.UserStore
+}
+
 // GetStreamHandler returns the handler for the given stream type.
 func GetStreamHandler(streamType string) (func(*session.Session, net.Conn, []string) error, bool) {
 	h, ok := streamHandlers[streamType]
 	return h, ok
 }
 
-func RegisterAllHandlers(sess *session.Session) {
+func RegisterAllHandlers(sess *session.Session, deps Dependencies) {
 	// Register the universal RPC stream handler.
 	// Typed frontend calls like linuxio.storage.get_drive_info.call()
 	// open a "bridge" stream and dispatch through ipc.RegisterFunc handlers.
@@ -41,13 +45,13 @@ func RegisterAllHandlers(sess *session.Session) {
 	}
 
 	// Register all handlers using the handler.Register() system
-	system.RegisterHandlers(sess)
+	system.RegisterHandlers(sess, deps.ConfigStore)
 	accounts.RegisterHandlers()
-	docker.RegisterHandlers(sess)
-	filebrowser.RegisterHandlers()
+	docker.RegisterHandlers(sess, deps.ConfigStore)
+	filebrowser.RegisterHandlers(deps.ConfigStore)
 	indexer.RegisterHandlers(sess)
 	jobhandlers.RegisterHandlers()
-	config.RegisterHandlers(sess)
+	config.RegisterHandlers(sess, deps.ConfigStore)
 	control.RegisterHandlers()
 	power.RegisterHandlers(sess)
 	dbus.RegisterHandlers()
@@ -59,6 +63,6 @@ func RegisterAllHandlers(sess *session.Session) {
 	// Register stream handlers for yamux streams (terminal, jobs, logs, etc.)
 	control.RegisterStreamHandlers(streamHandlers)
 	terminal.RegisterStreamHandlers(streamHandlers)
-	jobhandlers.RegisterStreamHandlers(streamHandlers)
+	jobhandlers.RegisterStreamHandlers(streamHandlers, deps.ConfigStore)
 	logs.RegisterStreamHandlers(streamHandlers)
 }

@@ -92,11 +92,14 @@ func main() {
 	clientConn := openClientConnection()
 	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
 
-	// Ensure per-user config exists and is valid
-	config.EnsureConfigReady(sess.User.Username)
-	slog.Debug("bridge config ready", "user", sess.User.Username)
+	userConfig, err := config.OpenUserStore(sess.User.Username)
+	if err != nil {
+		slog.Error("failed to open config store", "user", sess.User.Username, "error", err)
+		os.Exit(1)
+	}
+	slog.Info("config store ready", "user", sess.User.Username, "path", userConfig.Path())
 
-	runBridge(clientConn)
+	runBridge(clientConn, userConfig)
 	slog.Info("bridge stopped")
 }
 
@@ -238,9 +241,11 @@ func openClientConnection() net.Conn {
 	return clientConn
 }
 
-func runBridge(clientConn net.Conn) {
+func runBridge(clientConn net.Conn, userConfig *config.UserStore) {
 	shutdownCh := make(chan string, 1)
-	handlers.RegisterAllHandlers(sess)
+	handlers.RegisterAllHandlers(sess, handlers.Dependencies{
+		ConfigStore: userConfig,
+	})
 	startBridgeSignalHandler(shutdownCh)
 
 	closeClientConn := newClientConnCloser(clientConn)

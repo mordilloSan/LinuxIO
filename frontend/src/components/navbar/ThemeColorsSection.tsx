@@ -43,17 +43,17 @@ function ThemeColorsSection() {
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
   const [editMode, setEditMode] = useState<"light" | "dark">(
-    config.theme === "DARK" ? "dark" : "light",
+    config.appSettings.theme === "DARK" ? "dark" : "light",
   );
 
   const editTheme = useMemo(
     () =>
       buildAppTheme(
         editMode === "dark" ? "DARK" : "LIGHT",
-        config.primaryColor,
+        config.appSettings.primaryColor,
         themeColors,
       ),
-    [editMode, config.primaryColor, themeColors],
+    [editMode, config.appSettings.primaryColor, themeColors],
   );
 
   const entries: ColorEntry[] = useMemo(

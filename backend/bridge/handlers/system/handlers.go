@@ -21,7 +21,7 @@ type systemRegistration struct {
 }
 
 // RegisterHandlers registers all system handlers with the global registry
-func RegisterHandlers(sess *session.Session) {
+func RegisterHandlers(sess *session.Session, store *config.UserStore) {
 	registerCapabilitiesHandlers()
 	registerSystemHandlers(sess, []systemRegistration{
 		{command: "get_cpu_info", handler: handleGetCPUInfo},
@@ -40,10 +40,10 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "get_system_info", handler: handleGetSystemInfo},
 		{command: "get_pci_devices", handler: handleGetPCIDevices},
 		{command: "get_memory_modules", handler: handleGetMemoryModules},
-		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
+		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess, store)},
 		{command: "list_failed_login_events", handler: makeListFailedLoginEventsHandler(sess), privileged: true},
-		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess)},
-		{command: "dismiss_failed_login_alert", handler: makeDismissFailedLoginAlertHandler(sess)},
+		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess, store)},
+		{command: "dismiss_failed_login_alert", handler: makeDismissFailedLoginAlertHandler(sess, store)},
 		{command: "get_server_time", handler: handleGetServerTime},
 		{command: "get_timezones", handler: handleGetTimezones},
 	})
@@ -135,11 +135,11 @@ func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) err
 	return emitSystemCall(emit, GetTimezones)
 }
 
-func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
+func makeGetHealthSummaryHandler(sess *session.Session, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged, sess.Timing.CreatedAt)
 		if err == nil && result != nil {
-			applyHealthDismissals(sess.User.Username, result)
+			applyHealthDismissals(sess.User.Username, store, result)
 		}
 		return emitSystemResult(emit, result, err)
 	}
@@ -159,11 +159,11 @@ func makeListFailedLoginEventsHandler(sess *session.Session) ipc.HandlerFunc {
 // applyHealthDismissals suppresses acknowledged one-shot health signals. Any
 // error reading the user's settings is treated as "not dismissed" so warnings
 // still surface.
-func applyHealthDismissals(username string, summary *SystemHealthSummary) {
+func applyHealthDismissals(username string, store *config.UserStore, summary *SystemHealthSummary) {
 	if !hasDismissibleHealthSignal(summary) {
 		return
 	}
-	cfg, _, err := config.Load(username)
+	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
 		return
@@ -199,7 +199,7 @@ func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *co
 	}
 }
 
-func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
+func makeDismissUncleanShutdownHandler(sess *session.Session, store *config.UserStore) ipc.HandlerFunc {
 	username := sess.User.Username
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
@@ -210,24 +210,21 @@ func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
 			return ipc.ErrInvalidArgs
 		}
 
-		cfg, _, err := config.Load(username)
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.Dismissals{}
-		}
-		cfg.Dismissals.UncleanShutdownBootID = bootID
-
-		if _, err := config.Save(username, cfg); err != nil {
-			return fmt.Errorf("save config: %w", err)
+		if _, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+			if cfg.Dismissals == nil {
+				cfg.Dismissals = &config.Dismissals{}
+			}
+			cfg.Dismissals.UncleanShutdownBootID = bootID
+			return nil
+		}); err != nil {
+			return fmt.Errorf("update config: %w", err)
 		}
 		slog.Info("dismissed unclean shutdown", "user", username, "bootId", bootID)
 		return emit.Result(map[string]any{"message": "dismissed"})
 	}
 }
 
-func makeDismissFailedLoginAlertHandler(sess *session.Session) ipc.HandlerFunc {
+func makeDismissFailedLoginAlertHandler(sess *session.Session, store *config.UserStore) ipc.HandlerFunc {
 	username := sess.User.Username
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
@@ -238,17 +235,14 @@ func makeDismissFailedLoginAlertHandler(sess *session.Session) ipc.HandlerFunc {
 			return ipc.ErrInvalidArgs
 		}
 
-		cfg, _, err := config.Load(username)
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.Dismissals{}
-		}
-		cfg.Dismissals.FailedLoginAlertID = alertID
-
-		if _, err := config.Save(username, cfg); err != nil {
-			return fmt.Errorf("save config: %w", err)
+		if _, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+			if cfg.Dismissals == nil {
+				cfg.Dismissals = &config.Dismissals{}
+			}
+			cfg.Dismissals.FailedLoginAlertID = alertID
+			return nil
+		}); err != nil {
+			return fmt.Errorf("update config: %w", err)
 		}
 		slog.Info("dismissed failed login alert", "user", username, "alertId", alertID)
 		return emit.Result(map[string]any{"message": "dismissed"})

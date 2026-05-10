@@ -1,7 +1,12 @@
 // src/hooks/useConfig.ts
 import { useContext, useCallback } from "react";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { AppConfig } from "@/types/config";
+import {
+  AppSettings,
+  AppConfig,
+  ConfigValueKey,
+  ConfigValueMap,
+} from "@/types/config";
 
 export const useConfig = () => {
   const ctx = useContext(ConfigContext);
@@ -9,12 +14,23 @@ export const useConfig = () => {
   return ctx;
 };
 
-export function useConfigValue<K extends keyof AppConfig>(key: K) {
+const readConfigValue = <K extends ConfigValueKey>(
+  config: AppConfig,
+  key: K,
+): ConfigValueMap[K] => {
+  return config.appSettings[key as keyof AppSettings] as ConfigValueMap[K];
+};
+
+export function useConfigValue<K extends ConfigValueKey>(key: K) {
   const { config, setKey } = useConfig();
 
   const set = useCallback(
-    (next: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K])) => {
-      const cur = config[key];
+    (
+      next:
+        | ConfigValueMap[K]
+        | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
+    ) => {
+      const cur = readConfigValue(config, key);
       const val = typeof next === "function" ? (next as any)(cur) : next;
       if (Object.is(cur, val)) return;
       setKey(key, val);
@@ -22,7 +38,7 @@ export function useConfigValue<K extends keyof AppConfig>(key: K) {
     [config, key, setKey],
   );
 
-  return [config[key], set] as const;
+  return [readConfigValue(config, key), set] as const;
 }
 
 export function useConfigReady(): boolean {

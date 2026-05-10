@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
@@ -206,7 +207,7 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, args []string) (an
 	}
 }
 
-func runArchiveJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("missing format or paths", 400)
 	}
@@ -217,7 +218,7 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, args []string) (any
 	if err != nil {
 		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", format), 400)
 	}
-	settings := jobSettingsForJob(job)
+	settings := jobSettingsForJob(job, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
 		return nil, context.Canceled
@@ -253,7 +254,7 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, args []string) (any
 	transfer.archive = tempPath
 	transfer.mu.Unlock()
 
-	callbacks := newArchiveJobCallbacks(ctx, transfer)
+	callbacks := newArchiveJobCallbacks(ctx, transfer, store)
 	err = createArchive(format, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
 	if err != nil {
 		transfer.setReadyError(err)
@@ -351,8 +352,8 @@ func archiveNameForPaths(paths []string, extension string) string {
 	return "download" + extension
 }
 
-func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob) *ipc.OperationCallbacks {
-	limiter := newProgressLimiter(jobSettingsForJob(transfer.job), transfer.total)
+func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, store *config.UserStore) *ipc.OperationCallbacks {
+	limiter := newProgressLimiter(jobSettingsForJob(transfer.job, store), transfer.total)
 	return &ipc.OperationCallbacks{
 		Cancel: func() bool {
 			return ctx.Err() != nil

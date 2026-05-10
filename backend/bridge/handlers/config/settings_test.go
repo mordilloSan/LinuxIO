@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -47,4 +49,36 @@ func TestDefaultSettingsIncludeCompleteAppDefaults(t *testing.T) {
 	require.Equal(t, "card", app.ViewModes["docker.containers"])
 	require.Equal(t, "card", app.ViewModes["services.list"])
 	require.Equal(t, "card", app.ViewModes["shares.mounts"])
+}
+
+func TestRepairConfigBackfillsMissingDefaults(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+
+	err := os.WriteFile(cfgPath, []byte(`appSettings:
+  theme: DARK
+  primaryColor: "#2196f3"
+  sidebarCollapsed: false
+  showHiddenFiles: true
+docker:
+  folders:
+  - `+filepath.Join(base, "docker")+`
+jobs:
+  progressMinIntervalMs: 250
+`), filePerm)
+	require.NoError(t, err)
+
+	require.NoError(t, repairConfig(cfgPath, base))
+
+	cfg, err := readConfigStrict(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.AppSettings.ThemeColors)
+	require.Equal(t, defaultDashboardOrder(), cfg.AppSettings.DashboardOrder)
+	require.NotNil(t, cfg.AppSettings.DockerDashboardSections)
+	require.NotNil(t, cfg.AppSettings.HardwareSections)
+	require.Equal(t, defaultViewModes(), cfg.AppSettings.ViewModes)
+	require.Equal(t, 1, cfg.AppSettings.ChunkSizeMB)
+	require.Equal(t, 1000, cfg.Jobs.NotificationMinIntervalMs)
+	require.Equal(t, 16, cfg.Jobs.ProgressMinBytesMB)
+	require.Equal(t, 1, cfg.Jobs.HeavyArchiveConcurrency)
 }

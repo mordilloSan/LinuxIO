@@ -20,10 +20,8 @@ var (
 	dockerClientRefs int
 	dockerIdleTimer  *time.Timer
 	ensureNetOnce    sync.Once
-	// watchtowerOnce fires once per bridge session on the first Docker operation.
+	// watchtowerOnce fires once per bridge session.
 	watchtowerOnce sync.Once
-	// sessionUsername is set by RegisterHandlers and read by getClient.
-	sessionUsername string
 )
 
 // getClient returns the shared Docker client, creating it if necessary.
@@ -46,8 +44,6 @@ func getClient() (*client.Client, error) {
 		dockerClient = cli
 		// Ensure the shared Docker network exists once per client lifetime.
 		go ensureNetOnce.Do(EnsureLinuxIONetwork)
-		// Sync Watchtower once per session on first Docker operation.
-		go watchtowerOnce.Do(func() { SyncWatchtowerStack(sessionUsername) })
 	}
 
 	dockerClientRefs++

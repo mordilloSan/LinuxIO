@@ -19,10 +19,10 @@ type dockerRegistration struct {
 }
 
 // RegisterHandlers registers all docker handlers with the global registry
-func RegisterHandlers(sess *session.Session) {
+func RegisterHandlers(sess *session.Session, store *config.UserStore) {
 	username := sess.User.Username
-	sessionUsername = username
-	RegisterJobRunners(username)
+	RegisterJobRunners(username, store)
+	go watchtowerOnce.Do(func() { SyncWatchtowerStackWithStore(username, store) })
 
 	if err := initIconCache(); err != nil {
 		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "error", err)
@@ -42,20 +42,34 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "list_volumes", handler: dockerNoArgCall(ListVolumes)},
 		{command: "create_volume", handler: dockerOneArgCall(logCreateVolume, CreateVolume)},
 		{command: "delete_volume", handler: dockerOneArgCall(logDeleteVolume, DeleteVolume)},
-		{command: "list_compose_projects", handler: dockerUserCall(username, ListComposeProjects)},
-		{command: "get_compose_project", handler: dockerUserOneArgCall(username, GetComposeProject)},
-		{command: "compose_up", handler: composeUpHandler(username)},
-		{command: "compose_down", handler: dockerUserOneArgCall(username, ComposeDown)},
-		{command: "compose_stop", handler: dockerUserOneArgCall(username, ComposeStop)},
-		{command: "compose_restart", handler: dockerUserOneArgCall(username, ComposeRestart)},
-		{command: "delete_stack", handler: deleteStackHandler(username)},
-		{command: "get_docker_folders", handler: dockerUserCall(username, GetDockerFolders)},
+		{command: "list_compose_projects", handler: dockerUserCall(username, func(username string) (any, error) {
+			return ListComposeProjectsWithStore(username, store)
+		})},
+		{command: "get_compose_project", handler: dockerUserOneArgCall(username, func(username, projectName string) (any, error) {
+			return GetComposeProjectWithStore(username, store, projectName)
+		})},
+		{command: "compose_up", handler: composeUpHandler(username, store)},
+		{command: "compose_down", handler: dockerUserOneArgCall(username, func(username, projectName string) (any, error) {
+			return ComposeDownWithStore(username, store, projectName)
+		})},
+		{command: "compose_stop", handler: dockerUserOneArgCall(username, func(username, projectName string) (any, error) {
+			return ComposeStopWithStore(username, store, projectName)
+		})},
+		{command: "compose_restart", handler: dockerUserOneArgCall(username, func(username, projectName string) (any, error) {
+			return ComposeRestartWithStore(username, store, projectName)
+		})},
+		{command: "delete_stack", handler: deleteStackHandler(username, store)},
+		{command: "get_docker_folders", handler: dockerUserCall(username, func(username string) (any, error) {
+			return GetDockerFoldersWithStore(username, store)
+		})},
 		{command: "validate_compose", handler: dockerOneArgCall(nil, ValidateComposeFile)},
 		{command: "normalize_compose", handler: normalizeComposeHandler()},
-		{command: "get_compose_file_path", handler: dockerUserOneArgCall(username, GetComposeFilePath)},
+		{command: "get_compose_file_path", handler: dockerUserOneArgCall(username, func(username, stackName string) (any, error) {
+			return GetComposeFilePathWithStore(username, store, stackName)
+		})},
 		{command: "validate_stack_directory", handler: dockerOneArgCall(nil, ValidateStackDirectory)},
-		{command: "reindex_docker_folders", handler: reindexDockerFoldersHandler(username)},
-		{command: "delete_compose_stack", handler: deleteComposeStackHandler(username)},
+		{command: "reindex_docker_folders", handler: reindexDockerFoldersHandler(username, store)},
+		{command: "delete_compose_stack", handler: deleteComposeStackHandler(username, store)},
 		{command: "get_docker_info", handler: dockerNoArgCall(GetDockerInfo)},
 		{command: "get_icon_uri", handler: getIconURIHandler()},
 		{command: "get_icon", handler: getIconHandler()},
@@ -63,12 +77,20 @@ func RegisterHandlers(sess *session.Session) {
 		{command: "clear_icon_cache", handler: clearIconCacheHandler()},
 		{command: "start_all_stopped", handler: loggedDockerNoArgCallWithContext("start_all_stopped requested", StartAllStopped)},
 		{command: "stop_all_running", handler: loggedDockerNoArgCallWithContext("stop_all_running requested", StopAllRunning)},
-		{command: "list_auto_update_containers", handler: listAutoUpdateContainersHandler(username)},
-		{command: "set_auto_update", handler: setAutoUpdateHandler(username)},
-		{command: "get_caddy_status", handler: dockerUserCall(username, GetCaddyStatus)},
-		{command: "enable_caddy", handler: loggedDockerUserCall("enable_caddy requested", username, EnableCaddy)},
-		{command: "disable_caddy", handler: loggedDockerUserCall("disable_caddy requested", username, DisableCaddy)},
-		{command: "reload_caddy", handler: loggedDockerUserCall("reload_caddy requested", username, ReloadCaddy)},
+		{command: "list_auto_update_containers", handler: listAutoUpdateContainersHandler(username, store)},
+		{command: "set_auto_update", handler: setAutoUpdateHandler(username, store)},
+		{command: "get_caddy_status", handler: dockerUserCall(username, func(username string) (any, error) {
+			return GetCaddyStatusWithStore(username, store)
+		})},
+		{command: "enable_caddy", handler: loggedDockerUserCall("enable_caddy requested", username, func(username string) (any, error) {
+			return EnableCaddyWithStore(username, store)
+		})},
+		{command: "disable_caddy", handler: loggedDockerUserCall("disable_caddy requested", username, func(username string) (any, error) {
+			return DisableCaddyWithStore(username, store)
+		})},
+		{command: "reload_caddy", handler: loggedDockerUserCall("reload_caddy requested", username, func(username string) (any, error) {
+			return ReloadCaddyWithStore(username, store)
+		})},
 		{command: "connect_to_proxy", handler: dockerOneArgCall(logConnectToProxy, ConnectToProxy)},
 		{command: "system_prune", handler: systemPruneHandler()},
 	})
@@ -153,7 +175,7 @@ func dockerUserOneArgCall[T any](username string, fn func(string, string) (T, er
 	}
 }
 
-func composeUpHandler(username string) ipc.HandlerFunc {
+func composeUpHandler(username string, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -162,12 +184,12 @@ func composeUpHandler(username string) ipc.HandlerFunc {
 		if len(args) >= 2 {
 			composePath = args[1]
 		}
-		result, err := ComposeUp(username, args[0], composePath)
+		result, err := ComposeUpWithStore(username, store, args[0], composePath)
 		return emitDockerResult(emit, result, err)
 	}
 }
 
-func deleteStackHandler(username string) ipc.HandlerFunc {
+func deleteStackHandler(username string, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -176,7 +198,7 @@ func deleteStackHandler(username string) ipc.HandlerFunc {
 			DeleteFile:      len(args) >= 2 && args[1] == "true",
 			DeleteDirectory: len(args) >= 3 && args[2] == "true",
 		}
-		result, err := DeleteStack(username, args[0], options)
+		result, err := DeleteStackWithStore(username, store, args[0], options)
 		return emitDockerResult(emit, result, err)
 	}
 }
@@ -194,20 +216,20 @@ func normalizeComposeHandler() ipc.HandlerFunc {
 	}
 }
 
-func reindexDockerFoldersHandler(username string) ipc.HandlerFunc {
+func reindexDockerFoldersHandler(username string, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		slog.Info("reindex_docker_folders requested")
-		result, err := IndexDockerFolders(username)
+		result, err := IndexDockerFoldersWithStore(username, store)
 		return emitDockerResult(emit, result, err)
 	}
 }
 
-func deleteComposeStackHandler(username string) ipc.HandlerFunc {
+func deleteComposeStackHandler(username string, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
-		if err := DeleteComposeStack(username, args[0]); err != nil {
+		if err := DeleteComposeStackWithStore(username, store, args[0]); err != nil {
 			return err
 		}
 		return emit.Result(map[string]any{
@@ -263,9 +285,9 @@ func clearIconCacheHandler() ipc.HandlerFunc {
 	}
 }
 
-func listAutoUpdateContainersHandler(username string) ipc.HandlerFunc {
+func listAutoUpdateContainersHandler(username string, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		cfg, _, err := config.Load(username)
+		cfg, _, err := config.SnapshotForUser(username, store)
 		if err != nil {
 			return err
 		}
@@ -277,7 +299,7 @@ func listAutoUpdateContainersHandler(username string) ipc.HandlerFunc {
 	}
 }
 
-func setAutoUpdateHandler(username string) ipc.HandlerFunc {
+func setAutoUpdateHandler(username string, store *config.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -294,24 +316,22 @@ func setAutoUpdateHandler(username string) ipc.HandlerFunc {
 		}
 		slog.Info("set_auto_update requested", "component", "docker", "container", payload.Container, "mode", payload.Enabled, "user", username)
 
-		cfg, _, err := config.Load(username)
-		if err != nil {
-			return err
-		}
-		if payload.Enabled {
-			if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Container) {
-				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Container)
+		if _, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+			if payload.Enabled {
+				if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Container) {
+					cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Container)
+				}
+			} else {
+				cfg.Docker.AutoUpdateStacks = slices.DeleteFunc(cfg.Docker.AutoUpdateStacks, func(name string) bool {
+					return name == payload.Container
+				})
 			}
-		} else {
-			cfg.Docker.AutoUpdateStacks = slices.DeleteFunc(cfg.Docker.AutoUpdateStacks, func(name string) bool {
-				return name == payload.Container
-			})
-		}
-		if _, err := config.Save(username, cfg); err != nil {
+			return nil
+		}); err != nil {
 			return err
 		}
 
-		go SyncWatchtowerStack(username)
+		go SyncWatchtowerStackWithStore(username, store)
 
 		return emit.Result(map[string]any{"message": "auto-update updated"})
 	}

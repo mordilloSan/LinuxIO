@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -13,8 +14,8 @@ type filebrowserRegistration struct {
 }
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
-func RegisterHandlers() {
-	RegisterJobRunners()
+func RegisterHandlers(store *config.UserStore) {
+	RegisterJobRunners(store)
 
 	registerFilebrowserHandlers([]filebrowserRegistration{
 		{command: "resource_get", handler: emitFilebrowserArgsResult(resourceGet)},

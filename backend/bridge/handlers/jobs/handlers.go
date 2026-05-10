@@ -27,10 +27,12 @@ func RegisterHandlers() {
 	ipc.RegisterFunc("jobs", "cancel", handleCancel)
 }
 
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
+func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error, store *config.UserStore) {
 	handlers[StreamTypeJobsAttach] = HandleAttachStream
 	handlers[StreamTypeJobsData] = HandleDataStream
-	handlers[StreamTypeJobsEvents] = HandleEventsStream
+	handlers[StreamTypeJobsEvents] = func(sess *session.Session, stream net.Conn, args []string) error {
+		return HandleEventsStreamWithStore(sess, store, stream, args)
+	}
 }
 
 func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
@@ -115,7 +117,7 @@ func HandleDataStream(sess *session.Session, stream net.Conn, args []string) err
 	return nil
 }
 
-func HandleEventsStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleEventsStreamWithStore(sess *session.Session, store *config.UserStore, stream net.Conn, args []string) error {
 	owner := ownerFromSession(sess)
 	events, unsubscribe := bridgejobs.Subscribe(128)
 	defer unsubscribe()
@@ -127,7 +129,7 @@ func HandleEventsStream(sess *session.Session, stream net.Conn, args []string) e
 		return nil
 	}
 
-	interval := notificationInterval(sess)
+	interval := notificationInterval(sess, store)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	pending := make(map[string]bridgejobs.Event)
@@ -295,11 +297,11 @@ func ownerFromSession(sess *session.Session) bridgejobs.Owner {
 	}
 }
 
-func notificationInterval(sess *session.Session) time.Duration {
+func notificationInterval(sess *session.Session, store *config.UserStore) time.Duration {
 	if sess == nil {
 		return time.Second
 	}
-	cfg, _, err := config.Load(sess.User.Username)
+	cfg, _, err := config.SnapshotForUser(sess.User.Username, store)
 	if err != nil || cfg == nil {
 		return time.Second
 	}

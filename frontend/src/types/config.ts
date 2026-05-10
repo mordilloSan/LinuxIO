@@ -1,5 +1,6 @@
 export type TableCardViewMode = "card" | "table";
 export type AppViewModes = Record<string, TableCardViewMode>;
+export type Theme = "LIGHT" | "DARK";
 
 export interface ThemeColors {
   backgroundDefault?: string;
@@ -27,38 +28,47 @@ export interface ThemeColorsByMode {
   dark?: ThemeColors;
 }
 
-// Backend Settings structure
-export interface BackendSettings {
-  appSettings: {
-    theme: string;
-    primaryColor: string;
-    themeColors?: ThemeColorsByMode;
-    sidebarCollapsed: boolean;
-    showHiddenFiles: boolean;
-    dashboardOrder?: string[];
-    hiddenCards?: string[];
-    containerOrder?: string[];
-    dockerDashboardSections?: {
-      overview: boolean;
-      daemon: boolean;
-      resources: boolean;
-    };
-    hardwareSections?: {
-      overview: boolean;
-      hardware: boolean;
-      sensors: boolean;
-      systemInfo: boolean;
-      gpu: boolean;
-      pciDevices: boolean;
-      memoryModules: boolean;
-    };
-    viewModes?: AppViewModes;
-    chunkSizeMB?: number;
-  };
-  docker: {
-    folders: string[];
-  };
-  jobs?: JobSettings;
+export interface DockerDashboardSections {
+  overview: boolean;
+  daemon: boolean;
+  resources: boolean;
+}
+
+export interface HardwareSections {
+  overview: boolean;
+  hardware: boolean;
+  sensors: boolean;
+  systemInfo: boolean;
+  gpu: boolean;
+  pciDevices: boolean;
+  memoryModules: boolean;
+}
+
+export interface AppSettings {
+  theme: Theme;
+  primaryColor: string;
+  themeColors?: ThemeColorsByMode;
+  sidebarCollapsed: boolean;
+  showHiddenFiles: boolean;
+  dashboardOrder?: string[];
+  hiddenCards?: string[];
+  containerOrder?: string[];
+  dockerDashboardSections?: DockerDashboardSections;
+  hardwareSections?: HardwareSections;
+  viewModes?: AppViewModes;
+  chunkSizeMB?: number;
+}
+
+export interface DockerProxySettings {
+  caddyEnabled: boolean;
+  baseDomain?: string;
+  tlsEmail?: string;
+}
+
+export interface DockerSettings {
+  folders: string[];
+  autoUpdateStacks?: string[];
+  proxy: DockerProxySettings;
 }
 
 export interface JobSettings {
@@ -70,44 +80,38 @@ export interface JobSettings {
   archiveExtractWorkers: number;
 }
 
-// Flattened config for frontend use
-export interface AppConfig {
-  theme: string;
-  primaryColor: string;
-  themeColors?: ThemeColorsByMode;
-  sidebarCollapsed: boolean;
-  showHiddenFiles: boolean;
-  dockerFolders?: string[];
-  dashboardOrder?: string[];
-  hiddenCards?: string[];
-  containerOrder?: string[];
-  dockerDashboardSections?: {
-    overview: boolean;
-    daemon: boolean;
-    resources: boolean;
-  };
-  hardwareSections?: {
-    overview: boolean;
-    hardware: boolean;
-    sensors: boolean;
-    systemInfo: boolean;
-    gpu: boolean;
-    pciDevices: boolean;
-    memoryModules: boolean;
-  };
-  viewModes?: AppViewModes;
-  chunkSizeMB?: number;
-  jobs?: JobSettings;
+export interface Dismissals {
+  uncleanShutdownBootId?: string;
+  failedLoginAlertId?: string;
 }
+
+export interface AppConfig {
+  appSettings: AppSettings;
+  docker: DockerSettings;
+  jobs: JobSettings;
+  dismissals?: Dismissals;
+}
+
+export interface ConfigPatch {
+  appSettings?: Partial<AppSettings>;
+  docker?: Partial<Omit<DockerSettings, "proxy">> & {
+    proxy?: Partial<DockerProxySettings>;
+  };
+  jobs?: Partial<JobSettings>;
+  dismissals?: Partial<Dismissals>;
+}
+
+export type ConfigValueMap = AppSettings;
+export type ConfigValueKey = keyof AppSettings;
 
 export interface ConfigContextType {
   config: AppConfig;
   updateConfig: (
-    patch: Partial<AppConfig> | ((prev: AppConfig) => Partial<AppConfig>),
+    patch: ConfigPatch | ((prev: AppConfig) => ConfigPatch),
   ) => void;
-  setKey: <K extends keyof AppConfig>(
+  setKey: <K extends ConfigValueKey>(
     key: K,
-    value: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K]),
+    value: ConfigValueMap[K] | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
   ) => void;
   isLoaded: boolean;
 }

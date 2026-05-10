@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -35,16 +36,16 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
-func RegisterJobRunners(username string) {
+func RegisterJobRunners(username string, store *config.UserStore) {
 	bridgejobs.RegisterRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runDockerComposeJob(ctx, job, username, args)
+		return runDockerComposeJob(ctx, job, username, store, args)
 	})
 	bridgejobs.RegisterRunner(JobTypeDockerIndexer, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runDockerIndexerJob(ctx, job, username)
+		return runDockerIndexerJob(ctx, job, username, store)
 	})
 }
 
-func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, args []string) (any, error) {
+func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("missing required arguments: action, projectName", 400)
 	}
@@ -57,7 +58,7 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	}
 	slog.Info("docker compose job requested", "component", "docker", "job_type", JobTypeDockerCompose, "action", action, "service", projectName, "path", composePath, "user", username)
 
-	configFile, workingDir, err := resolveComposeJobPaths(username, projectName, composePath)
+	configFile, workingDir, err := resolveComposeJobPaths(username, store, projectName, composePath)
 	if err != nil {
 		job.ReportProgress(ComposeJobMessage{Type: "error", Message: "compose file not found: " + err.Error()})
 		return nil, bridgejobs.NewError("compose file not found: "+err.Error(), 404)
@@ -100,15 +101,15 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	return result, nil
 }
 
-func resolveComposeJobPaths(username, projectName, composePath string) (string, string, error) {
+func resolveComposeJobPaths(username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}
-	return findComposeFile(username, projectName)
+	return findComposeFileWithStore(username, store, projectName)
 }
 
-func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string) (any, error) {
-	dockerFolders, err := configuredDockerFolders(username)
+func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {
+	dockerFolders, err := configuredDockerFolders(username, store)
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to load user config", 500)
 	}

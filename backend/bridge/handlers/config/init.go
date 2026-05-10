@@ -74,38 +74,3 @@ func Initialize(username string) error {
 	slog.Info("created default config", "user", username, "path", cfgPath)
 	return nil
 }
-
-// EnsureConfigReady ensures config exists, repairs it, fixes ownership when root, and logs the final state.
-// It **never returns an error** — safe to call directly from main().
-func EnsureConfigReady(username string) {
-	// Create/repair
-	if err := Initialize(username); err != nil {
-		slog.Warn("initialize config failed", "user", username, "error", err)
-		return
-	}
-
-	// Strict load (determines the actual path, respecting fallbacks)
-	cfg, cfgPath, err := Load(username)
-	if err != nil {
-		slog.Warn("load config failed", "user", username, "error", err)
-		return
-	}
-
-	// If root, fix ownership of file and parent dir (no-op otherwise)
-	if err := chownIfRoot(filepath.Dir(cfgPath), username); err != nil {
-		slog.Warn("failed to ensure config directory ownership", "path", filepath.Dir(cfgPath), "user", username, "error", err)
-	} else {
-		slog.Debug("ensured config directory ownership", "path", filepath.Dir(cfgPath), "user", username)
-	}
-	if err := chownIfRoot(cfgPath, username); err != nil {
-		slog.Warn("failed to ensure config file ownership", "path", cfgPath, "user", username, "error", err)
-	} else {
-		slog.Debug("ensured config file ownership", "path", cfgPath, "user", username)
-	}
-	slog.Info("config ready", "user", username)
-	slog.Debug("config details",
-		"path", cfgPath,
-		"theme", cfg.AppSettings.Theme,
-		"primary", cfg.AppSettings.PrimaryColor,
-		"show_hidden", cfg.AppSettings.ShowHiddenFiles)
-}

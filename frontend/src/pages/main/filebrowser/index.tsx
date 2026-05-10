@@ -86,8 +86,8 @@ const FileEditor = React.lazy(
 const FileBrowser: React.FC = () => {
   const { config } = useConfig();
   const chunkSize =
-    (config.chunkSizeMB ?? 0) > 0
-      ? (config.chunkSizeMB as number) * 1024 * 1024
+    (config.appSettings.chunkSizeMB ?? 0) > 0
+      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
       : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
   const theme = useAppTheme();
   const location = useLocation();

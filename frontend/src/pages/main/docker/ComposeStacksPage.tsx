@@ -54,8 +54,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const queryClient = useQueryClient();
   const { config } = useConfig();
   const chunkSize =
-    (config.chunkSizeMB ?? 0) > 0
-      ? (config.chunkSizeMB as number) * 1024 * 1024
+    (config.appSettings.chunkSizeMB ?? 0) > 0
+      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
       : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
   const { runChunked: runChunkedStreamResult } = useStreamResult();
 
@@ -533,7 +533,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           open={setupDialogOpen}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
-          defaultWorkingDir={config.dockerFolders?.[0]}
+          defaultWorkingDir={config.docker.folders?.[0]}
         />
 
         <ComposeOperationDialog
