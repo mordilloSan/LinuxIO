@@ -374,7 +374,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (patch: ConfigPatch) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
-      setConfigRemote([JSON.stringify(patch)]);
+      setConfigRemote([patch]);
     },
     [canSave, setConfigRemote],
   );

@@ -480,7 +480,7 @@ const DockerPage: React.FC = () => {
       <PruneDialog
         open={pruneDialogOpen}
         onClose={() => !isPruning && setPruneDialogOpen(false)}
-        onConfirm={(opts: PruneOptions) => systemPrune([JSON.stringify(opts)])}
+        onConfirm={(opts: PruneOptions) => systemPrune([opts])}
         isLoading={isPruning}
       />
     </>

@@ -72,7 +72,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
       members: selectedMembers,
     };
 
-    modifyGroupMembers([JSON.stringify(request)]);
+    modifyGroupMembers([request]);
   };
 
   return (

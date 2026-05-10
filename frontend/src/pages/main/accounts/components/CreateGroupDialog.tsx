@@ -57,7 +57,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
       gid: gid ? parseInt(gid, 10) : undefined,
     };
 
-    createGroup([JSON.stringify(request)]);
+    createGroup([request]);
   };
 
   return (
