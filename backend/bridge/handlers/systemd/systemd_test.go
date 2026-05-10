@@ -224,24 +224,27 @@ func TestPackageLevelEnableDisableReloadManager(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			manager.ResetCalls()
 			tc.invoke(t)
-
-			calls := manager.Calls()
-			if len(calls) != 2 {
-				t.Fatalf("calls = %d, want 2", len(calls))
-			}
-			if calls[0].Method != tc.wantMethod {
-				t.Fatalf("method = %q, want %q", calls[0].Method, tc.wantMethod)
-			}
-			if !reflect.DeepEqual(calls[0].Args, tc.wantArgs) {
-				t.Fatalf("args = %#v, want %#v", calls[0].Args, tc.wantArgs)
-			}
-			if calls[1].Method != "Reload" {
-				t.Fatalf("trailing method = %q, want %q", calls[1].Method, "Reload")
-			}
-			if len(calls[1].Args) != 0 {
-				t.Fatalf("trailing args = %#v, want []", calls[1].Args)
-			}
+			assertCallsWithReload(t, manager.Calls(), tc.wantMethod, tc.wantArgs)
 		})
+	}
+}
+
+func assertCallsWithReload(t *testing.T, calls []testdbus.SystemdCall, wantMethod string, wantArgs []any) {
+	t.Helper()
+	if len(calls) != 2 {
+		t.Fatalf("calls = %d, want 2", len(calls))
+	}
+	if calls[0].Method != wantMethod {
+		t.Fatalf("method = %q, want %q", calls[0].Method, wantMethod)
+	}
+	if !reflect.DeepEqual(calls[0].Args, wantArgs) {
+		t.Fatalf("args = %#v, want %#v", calls[0].Args, wantArgs)
+	}
+	if calls[1].Method != "Reload" {
+		t.Fatalf("trailing method = %q, want %q", calls[1].Method, "Reload")
+	}
+	if len(calls[1].Args) != 0 {
+		t.Fatalf("trailing args = %#v, want []", calls[1].Args)
 	}
 }
 
