@@ -1,6 +1,7 @@
 package dbus
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 const timedateBus = "org.freedesktop.timedate1"
@@ -534,8 +535,9 @@ func chronyIncludedManagedPath(data string) (string, bool) {
 
 func serviceScore(candidates []string) int {
 	score := 0
+	ctx := context.Background()
 	for _, name := range candidates {
-		activeState, activeErr := systemdapi.GetActiveState(name)
+		activeState, activeErr := systemdapi.GetActiveState(ctx, name)
 		if activeErr == nil {
 			switch activeState {
 			case "active":
@@ -544,7 +546,7 @@ func serviceScore(candidates []string) int {
 				score = max(score, 250)
 			}
 		}
-		unitFileState, stateErr := systemdapi.GetUnitFileState(name)
+		unitFileState, stateErr := systemdapi.GetUnitFileState(ctx, name)
 		if stateErr == nil && unitFileState != "masked" && unitFileState != "disabled" {
 			score = max(score, 200)
 		}
@@ -553,14 +555,15 @@ func serviceScore(candidates []string) int {
 }
 
 func restartFirstService(candidates []string) error {
+	ctx := context.Background()
 	for _, name := range candidates {
 		if strings.TrimSpace(name) == "" {
 			continue
 		}
-		if _, err := systemdapi.GetUnitFileState(name); err == nil {
+		if _, err := systemdapi.GetUnitFileState(ctx, name); err == nil {
 			return RestartService(name)
 		}
-		if state, err := systemdapi.GetActiveState(name); err == nil && state != "inactive" {
+		if state, err := systemdapi.GetActiveState(ctx, name); err == nil && state != "inactive" {
 			return RestartService(name)
 		}
 	}

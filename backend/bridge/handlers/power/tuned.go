@@ -1,6 +1,7 @@
 package power
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 const (
@@ -257,7 +258,7 @@ func activateTuned(conn *godbus.Conn) error {
 }
 
 func readTunedUnitAvailability() unitAvailability {
-	state, err := systemdapi.GetUnitFileState(tunedUnitName)
+	state, err := systemdapi.GetUnitFileState(context.Background(), tunedUnitName)
 	if err != nil {
 		return unitAvailability{}
 	}
@@ -333,7 +334,7 @@ func startTunedDaemon(conn *godbus.Conn, state nameState) error {
 	if !availability.startable {
 		return fmt.Errorf("TuneD is installed but %s is not startable", tunedUnitName)
 	}
-	if err := systemdapi.StartUnit(tunedUnitName); err != nil {
+	if err := systemdapi.StartUnit(context.Background(), tunedUnitName); err != nil {
 		return fmt.Errorf("start %s through systemd D-Bus: %w", tunedUnitName, err)
 	}
 	return nil

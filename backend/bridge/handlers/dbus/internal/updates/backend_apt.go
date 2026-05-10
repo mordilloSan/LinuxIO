@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 type aptBackend struct{}
@@ -56,6 +56,12 @@ func (b *aptBackend) Read() (AutoUpdateState, error) {
 }
 
 func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !unattendedUpgradesInstalled() {
 		return fmt.Errorf("unattended-upgrades is not installed; run: sudo apt install unattended-upgrades")
 	}
@@ -74,7 +80,7 @@ func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 		return fmt.Errorf("failed to write 50unattended-upgrades: %w", writeErr)
 	}
 
-	oncal, err := systemd.OnCalendarFor(o.Frequency)
+	oncal, err := onCalendarFor(o.Frequency)
 	if err != nil {
 		return fmt.Errorf("invalid frequency: %w", err)
 	}

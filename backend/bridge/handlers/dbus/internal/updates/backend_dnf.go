@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 type dnfBackend struct{}
@@ -35,6 +35,12 @@ func (b *dnfBackend) Read() (AutoUpdateState, error) {
 }
 
 func (b *dnfBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	sd, err := systemd.New()
 	if err != nil {
 		return err
@@ -46,7 +52,7 @@ func (b *dnfBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 	}
 
 	timer := "dnf-automatic.timer"
-	oncal, err := systemd.OnCalendarFor(o.Frequency)
+	oncal, err := onCalendarFor(o.Frequency)
 	if err != nil {
 		return err
 	}

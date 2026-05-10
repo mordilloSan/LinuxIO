@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -127,7 +128,7 @@ func showVersion(args []string) {
 }
 
 func runStatus() {
-	units, err := systemd.ListUnitsWithPrefix("linuxio")
+	units, err := systemd.ListUnitsWithPrefix(context.Background(), "linuxio")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to query systemd: %v\n", err)
 		os.Exit(1)
@@ -522,19 +523,20 @@ func runSystemctlTargets(action string, targets []string, successLabel string) {
 		os.Exit(1)
 	}
 
+	ctx := context.Background()
 	for _, target := range targets {
 		var err error
 		switch action {
 		case "start":
-			err = systemd.StartUnit(target)
+			err = systemd.StartUnit(ctx, target)
 		case "stop":
-			err = systemd.StopUnit(target)
+			err = systemd.StopUnit(ctx, target)
 		case "restart":
-			err = systemd.RestartUnit(target)
+			err = systemd.RestartUnit(ctx, target)
 		case "enable":
-			err = systemd.EnableUnit(target)
+			err = systemd.EnableUnit(ctx, target)
 		case "disable":
-			err = systemd.DisableUnit(target)
+			err = systemd.DisableUnit(ctx, target)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown action: %s\n", action)
 			os.Exit(1)
@@ -651,13 +653,13 @@ func enableVerbose() {
 	fmt.Println("✓ Verbose mode enabled")
 
 	fmt.Println("Reloading systemd daemon...")
-	if err := systemd.DaemonReload(); err != nil {
+	if err := systemd.DaemonReload(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Restarting linuxio.target...")
-	if err := systemd.RestartUnit(linuxioTargetName); err != nil {
+	if err := systemd.RestartUnit(context.Background(), linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}
@@ -683,13 +685,13 @@ func disableVerbose() {
 	fmt.Println("✓ Verbose mode disabled")
 
 	fmt.Println("Reloading systemd daemon...")
-	if err := systemd.DaemonReload(); err != nil {
+	if err := systemd.DaemonReload(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Restarting linuxio.target...")
-	if err := systemd.RestartUnit(linuxioTargetName); err != nil {
+	if err := systemd.RestartUnit(context.Background(), linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}

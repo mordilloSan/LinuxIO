@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -117,7 +118,7 @@ func HandleAppUpdateStream(rt runtime.Runtime, stream net.Conn, args []string) e
 	}
 	// Success path: daemon-reload and schedule service restart
 	slog.Debug("reloading systemd daemon", "component", "control", "subsystem", "app_update", "stream_id", runID)
-	if reloadErr := systemdapi.DaemonReload(); reloadErr != nil {
+	if reloadErr := systemdapi.DaemonReload(context.Background()); reloadErr != nil {
 		slog.Warn("systemd daemon-reload failed", "component", "control", "subsystem", "app_update", "stream_id", runID, "error", reloadErr)
 	}
 	slog.Info("scheduling service restart", "component", "control", "subsystem", "app_update", "stream_id", runID)

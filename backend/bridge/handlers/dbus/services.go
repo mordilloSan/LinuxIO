@@ -1,11 +1,12 @@
 package dbus
 
 import (
+	"context"
 	"sync"
 
 	godbus "github.com/godbus/dbus/v5"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 type ServiceStatus struct {
@@ -75,61 +76,61 @@ func fetchServiceStatus(conn *godbus.Conn, entry listedUnit) ServiceStatus {
 func StartService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.StartUnit(name)
+	return systemdapi.StartUnit(context.Background(), name)
 }
 
 // Stop a service
 func StopService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.StopUnit(name)
+	return systemdapi.StopUnit(context.Background(), name)
 }
 
 // Restart a service
 func RestartService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.RestartUnit(name)
+	return systemdapi.RestartUnit(context.Background(), name)
 }
 
 // Reload a service (if supported)
 func ReloadService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.ReloadUnit(name)
+	return systemdapi.ReloadUnit(context.Background(), name)
 }
 
 // Enable a service (for boot)
 func EnableService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.EnableUnit(name)
+	return systemdapi.EnableUnit(context.Background(), name)
 }
 
 // Disable a service (prevent start at boot)
 func DisableService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.DisableUnit(name)
+	return systemdapi.DisableUnit(context.Background(), name)
 }
 
 // Mask a service (make it unstartable even manually)
 func MaskService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.MaskUnit(name)
+	return systemdapi.MaskUnit(context.Background(), name)
 }
 
 // Unmask a service
 func UnmaskService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.UnmaskUnit(name)
+	return systemdapi.UnmaskUnit(context.Background(), name)
 }
 
 // Reset the failed state of a service
 func ResetFailedService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return systemdapi.ResetFailedUnit(name)
+	return systemdapi.ResetFailedUnit(context.Background(), name)
 }

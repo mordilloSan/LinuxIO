@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/semver"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -462,7 +462,7 @@ func restartService() error {
 	slog.Info("restarting linuxio service")
 	var lastErr error
 	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
-		if err := systemdapi.RestartUnit(unit); err == nil {
+		if err := systemdapi.RestartUnit(context.Background(), unit); err == nil {
 			slog.Info("service restarted successfully", "component", "control", "subsystem", "app_update", "unit", unit)
 			return nil
 		} else {

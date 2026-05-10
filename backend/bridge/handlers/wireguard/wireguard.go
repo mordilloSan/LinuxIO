@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
@@ -19,7 +20,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
@@ -927,7 +928,7 @@ func EnableInterface(args []string) (any, error) {
 	}
 
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	if err := systemd.EnableUnit(serviceName); err != nil {
+	if err := systemd.EnableUnit(context.Background(), serviceName); err != nil {
 		slog.Error("failed to enable WireGuard interface", "interface", name, "service", serviceName, "error", err)
 		return nil, fmt.Errorf("enable interface: %w", err)
 	}
@@ -951,7 +952,7 @@ func DisableInterface(args []string) (any, error) {
 	}
 
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	if err := systemd.DisableUnit(serviceName); err != nil {
+	if err := systemd.DisableUnit(context.Background(), serviceName); err != nil {
 		slog.Error("failed to disable WireGuard interface", "interface", name, "service", serviceName, "error", err)
 		return nil, fmt.Errorf("disable interface: %w", err)
 	}

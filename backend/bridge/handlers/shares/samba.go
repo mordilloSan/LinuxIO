@@ -2,6 +2,7 @@ package shares
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 const smbConfFile = "/etc/samba/smb.conf"
@@ -30,7 +31,9 @@ var (
 	smbcontrolReload = func() ([]byte, error) {
 		return exec.Command("smbcontrol", "all", "reload-config").CombinedOutput()
 	}
-	systemdReloadUnit = systemd.ReloadUnit
+	systemdReloadUnit = func(name string) error {
+		return systemd.ReloadUnit(context.Background(), name)
+	}
 )
 
 // ListSambaShares reads smb.conf and returns all user-defined shares

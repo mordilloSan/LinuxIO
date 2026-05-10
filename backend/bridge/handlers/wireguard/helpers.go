@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,7 +19,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 // validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
@@ -66,7 +67,7 @@ func isInterfaceUp(name string) bool {
 
 func isInterfaceEnabled(name string) bool {
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	state, err := systemd.GetUnitFileState(serviceName)
+	state, err := systemd.GetUnitFileState(context.Background(), serviceName)
 	if err != nil {
 		slog.Debug("failed to query interface enabled state", "component", "wireguard", "interface", name, "service", serviceName, "error", err)
 		return false
