@@ -15,12 +15,6 @@ import (
 )
 
 const (
-	iconCacheDir           = "/run/linuxio/icons"
-	dashboardIconsCacheDir = "/run/linuxio/icons/dashboard-icons"
-	simpleIconsCacheDir    = "/run/linuxio/icons/simple-icons"
-	urlCacheDir            = "/run/linuxio/icons/url-cache"
-	userIconsDir           = "/run/linuxio/icons/user"
-
 	// Dashboard Icons repository (homarr-labs). Some icons are SVG, others PNG.
 	dashboardIconsRawBase = "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main"
 	// Simple Icons CDN - for brand icons via si: prefix
@@ -33,6 +27,14 @@ const (
 var httpClient = &http.Client{
 	Timeout: httpClientTimeout,
 }
+
+var (
+	iconCacheDir           = "/run/linuxio/icons"
+	dashboardIconsCacheDir = "/run/linuxio/icons/dashboard-icons"
+	simpleIconsCacheDir    = "/run/linuxio/icons/simple-icons"
+	urlCacheDir            = "/run/linuxio/icons/url-cache"
+	userIconsDir           = "/run/linuxio/icons/user"
+)
 
 type IconType string
 
@@ -127,7 +129,7 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	case IconTypeFile:
 		cachePath = filepath.Join(userIconsDir, identifier)
 	case IconTypeDerived:
-		return getDashboardCachedIcon(identifier)
+		return getDerivedCachedIcon(identifier)
 	default:
 		return "", false
 	}
@@ -159,6 +161,22 @@ func getDashboardCachedIcon(identifier string) (string, bool) {
 		return cachePath, true
 	}
 	return "", false
+}
+
+func getDerivedCachedIcon(identifier string) (string, bool) {
+	if cachePath, found := getDashboardCachedIcon(identifier); found {
+		return cachePath, true
+	}
+
+	cachePath := filepath.Join(simpleIconsCacheDir, identifier+".svg")
+	info, err := os.Stat(cachePath)
+	if err != nil {
+		return "", false
+	}
+	if time.Since(info.ModTime()) > iconCacheDuration {
+		return "", false
+	}
+	return cachePath, true
 }
 
 // fetchDashboardIcon downloads an icon from Dashboard Icons CDN (homarr-labs)
