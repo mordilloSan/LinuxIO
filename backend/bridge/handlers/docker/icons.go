@@ -479,7 +479,7 @@ func ClearIconCache() error {
 	return initIconCache()
 }
 
-// ResolveIconIdentifier resolves an icon identifier with fallback to image name, then service/container name
+// ResolveIconIdentifier resolves an explicit icon identifier, then falls back to the service/container name.
 func ResolveIconIdentifier(iconValue, serviceName string) string {
 	// If icon is explicitly set, use it
 	if iconValue != "" {
