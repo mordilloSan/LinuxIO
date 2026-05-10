@@ -7,8 +7,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -19,7 +20,7 @@ const (
 	StreamTypeJobsEvents = "jobs-events"
 )
 
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	ipc.RegisterFunc("jobs", "start", handleStart)
 	ipc.RegisterFunc("jobs", "recover", handleRecover)
 	ipc.RegisterFunc("jobs", "list", handleList)
@@ -27,12 +28,10 @@ func RegisterHandlers() {
 	ipc.RegisterFunc("jobs", "cancel", handleCancel)
 }
 
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error, store *config.UserStore) {
+func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
 	handlers[StreamTypeJobsAttach] = HandleAttachStream
 	handlers[StreamTypeJobsData] = HandleDataStream
-	handlers[StreamTypeJobsEvents] = func(sess *session.Session, stream net.Conn, args []string) error {
-		return HandleEventsStreamWithStore(sess, store, stream, args)
-	}
+	handlers[StreamTypeJobsEvents] = HandleEventsStream
 }
 
 func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
@@ -92,22 +91,22 @@ func handleCancel(ctx context.Context, args []string, emit ipc.Events) error {
 	return emit.Result(job.Snapshot())
 }
 
-func HandleAttachStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleAttachStream(rt runtime.Runtime, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		return ipc.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
-	job, ok := bridgejobs.GetForOwner(args[0], ownerFromSession(sess))
+	job, ok := bridgejobs.GetForOwner(args[0], ownerFromSession(rt.Session))
 	if !ok {
 		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", args[0]), 404)
 	}
 	return AttachStream(stream, job)
 }
 
-func HandleDataStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleDataStream(rt runtime.Runtime, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		return ipc.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
-	job, ok := bridgejobs.GetForOwner(args[0], ownerFromSession(sess))
+	job, ok := bridgejobs.GetForOwner(args[0], ownerFromSession(rt.Session))
 	if !ok {
 		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", args[0]), 404)
 	}
@@ -117,8 +116,8 @@ func HandleDataStream(sess *session.Session, stream net.Conn, args []string) err
 	return nil
 }
 
-func HandleEventsStreamWithStore(sess *session.Session, store *config.UserStore, stream net.Conn, args []string) error {
-	owner := ownerFromSession(sess)
+func HandleEventsStream(rt runtime.Runtime, stream net.Conn, args []string) error {
+	owner := ownerFromSession(rt.Session)
 	events, unsubscribe := bridgejobs.Subscribe(128)
 	defer unsubscribe()
 
@@ -129,7 +128,7 @@ func HandleEventsStreamWithStore(sess *session.Session, store *config.UserStore,
 		return nil
 	}
 
-	interval := notificationInterval(sess, store)
+	interval := notificationInterval(rt)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	pending := make(map[string]bridgejobs.Event)
@@ -297,11 +296,11 @@ func ownerFromSession(sess *session.Session) bridgejobs.Owner {
 	}
 }
 
-func notificationInterval(sess *session.Session, store *config.UserStore) time.Duration {
-	if sess == nil {
+func notificationInterval(rt runtime.Runtime) time.Duration {
+	if rt.Session == nil {
 		return time.Second
 	}
-	cfg, _, err := config.SnapshotForUser(sess.User.Username, store)
+	cfg, _, err := settings.SnapshotForUser(rt.Session.User.Username, rt.Store)
 	if err != nil || cfg == nil {
 		return time.Second
 	}

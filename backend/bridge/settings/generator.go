@@ -13,7 +13,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 )
 
 func gitVersion() string {
@@ -38,7 +38,7 @@ func main() {
 		log.Fatalf("mkdir: %v", err)
 	}
 
-	data, err := yaml.Marshal(config.ExampleDefaults())
+	data, err := yaml.Marshal(settings.ExampleDefaults())
 	if err != nil {
 		log.Fatalf("marshal: %v", err)
 	}

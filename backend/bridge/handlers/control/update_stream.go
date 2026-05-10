@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const (
@@ -33,13 +33,13 @@ type updateStatus struct {
 }
 
 // RegisterStreamHandlers registers the app-update stream handler.
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
+func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
 	handlers[streamTypeAppUpdate] = HandleAppUpdateStream
 }
 
 // HandleAppUpdateStream handles streaming app update with verified install script.
 // args: [runId] or [runId, version]
-func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleAppUpdateStream(rt runtime.Runtime, stream net.Conn, args []string) error {
 	if len(args) == 0 {
 		return writeUpdateError(stream, "missing run_id argument", 400)
 	}
@@ -53,7 +53,7 @@ func HandleAppUpdateStream(sess *session.Session, stream net.Conn, args []string
 	if len(args) > 1 {
 		version = args[1]
 	}
-	slog.Info("app update stream starting", "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version, "user", sess.User.Username)
+	slog.Info("app update stream starting", "component", "control", "subsystem", "app_update", "stream_id", runID, "version", version, "user", rt.Username())
 
 	// Resolve version if not specified
 	if version == "" {

@@ -12,8 +12,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const StreamTypeServiceLogs = "service-logs"
@@ -29,7 +29,7 @@ func writeServiceLogsError(stream net.Conn, message string, code int) {
 
 // HandleServiceLogsStream streams service logs from journalctl in real-time.
 // Args: [serviceName, lines] where lines is the number of initial lines (default "100")
-func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleServiceLogsStream(_ runtime.Runtime, stream net.Conn, args []string) error {
 	serviceName, lines, err := parseServiceLogsArgs(stream, args)
 	if err != nil {
 		return err

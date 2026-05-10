@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -14,7 +15,7 @@ type storageRegistration struct {
 }
 
 // RegisterHandlers registers all storage handlers with the global registry
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	RegisterJobRunners()
 
 	registerStorageHandlers([]storageRegistration{

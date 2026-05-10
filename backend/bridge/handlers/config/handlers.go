@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type configRegistration struct {
@@ -25,18 +26,18 @@ type configSetPayload struct {
 }
 
 type configAppSettingsPayload struct {
-	Theme                   *string                         `json:"theme"`
-	PrimaryColor            *string                         `json:"primaryColor"`
-	ThemeColors             *configThemeColorsByModePayload `json:"themeColors"`
-	SidebarCollapsed        *bool                           `json:"sidebarCollapsed"`
-	ShowHiddenFiles         *bool                           `json:"showHiddenFiles"`
-	DashboardOrder          []string                        `json:"dashboardOrder"`
-	HiddenCards             []string                        `json:"hiddenCards"`
-	ContainerOrder          []string                        `json:"containerOrder"`
-	DockerDashboardSections *DockerDashboardSections        `json:"dockerDashboardSections"`
-	HardwareSections        *HardwareSections               `json:"hardwareSections"`
-	ViewModes               map[string]string               `json:"viewModes"`
-	ChunkSizeMB             *int                            `json:"chunkSizeMB"`
+	Theme                   *string                           `json:"theme"`
+	PrimaryColor            *string                           `json:"primaryColor"`
+	ThemeColors             *configThemeColorsByModePayload   `json:"themeColors"`
+	SidebarCollapsed        *bool                             `json:"sidebarCollapsed"`
+	ShowHiddenFiles         *bool                             `json:"showHiddenFiles"`
+	DashboardOrder          []string                          `json:"dashboardOrder"`
+	HiddenCards             []string                          `json:"hiddenCards"`
+	ContainerOrder          []string                          `json:"containerOrder"`
+	DockerDashboardSections *settings.DockerDashboardSections `json:"dockerDashboardSections"`
+	HardwareSections        *settings.HardwareSections        `json:"hardwareSections"`
+	ViewModes               map[string]string                 `json:"viewModes"`
+	ChunkSizeMB             *int                              `json:"chunkSizeMB"`
 }
 
 type configThemeColorsByModePayload struct {
@@ -92,8 +93,9 @@ type configDismissalsPayload struct {
 }
 
 // RegisterHandlers registers config handlers with the new handler system
-func RegisterHandlers(sess *session.Session, store *UserStore) {
-	username := sess.User.Username
+func RegisterHandlers(rt runtime.Runtime) {
+	username := rt.Username()
+	store := rt.Store
 	registerConfigHandlers([]configRegistration{
 		{command: "get", handler: handleGetConfig(username, store)},
 		{command: "set", handler: handleSetConfig(username, store)},
@@ -106,19 +108,19 @@ func registerConfigHandlers(registrations []configRegistration) {
 	}
 }
 
-func handleGetConfig(username string, store *UserStore) ipc.HandlerFunc {
+func handleGetConfig(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		cfg, cfgPath, err := SnapshotForUser(username, store)
+		cfg, cfgPath, err := settings.SnapshotForUser(username, store)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		cfg.Jobs = EffectiveJobSettings(cfg.Jobs)
+		cfg.Jobs = settings.EffectiveJobSettings(cfg.Jobs)
 		slog.Debug("loaded user config", "component", "config", "user", username, "path", cfgPath)
 		return emit.Result(cfg)
 	}
 }
 
-func handleSetConfig(username string, store *UserStore) ipc.HandlerFunc {
+func handleSetConfig(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		payload, err := decodeConfigPayload(args)
 		if err != nil {
@@ -126,7 +128,7 @@ func handleSetConfig(username string, store *UserStore) ipc.HandlerFunc {
 		}
 		slog.Info("config update requested", "component", "config", "user", username)
 
-		_, cfgPath, err := UpdateForUser(username, store, func(cfg *Settings) error {
+		_, cfgPath, err := settings.UpdateForUser(username, store, func(cfg *settings.Settings) error {
 			return applyConfigPayload(cfg, &payload)
 		})
 		if err != nil {
@@ -151,7 +153,7 @@ func decodeConfigPayload(args []string) (configSetPayload, error) {
 	return payload, nil
 }
 
-func applyConfigPayload(cfg *Settings, payload *configSetPayload) error {
+func applyConfigPayload(cfg *settings.Settings, payload *configSetPayload) error {
 	if payload.AppSettings != nil {
 		if err := applyAppSettingsUpdate(&cfg.AppSettings, payload.AppSettings); err != nil {
 			return err
@@ -173,7 +175,7 @@ func applyConfigPayload(cfg *Settings, payload *configSetPayload) error {
 	return nil
 }
 
-func applyAppSettingsUpdate(app *AppSettings, payload *configAppSettingsPayload) error {
+func applyAppSettingsUpdate(app *settings.AppSettings, payload *configAppSettingsPayload) error {
 	if err := applyThemeSetting(app, payload.Theme); err != nil {
 		return err
 	}
@@ -194,30 +196,30 @@ func applyAppSettingsUpdate(app *AppSettings, payload *configAppSettingsPayload)
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
 
-func applyThemeSetting(app *AppSettings, theme *string) error {
+func applyThemeSetting(app *settings.AppSettings, theme *string) error {
 	if theme == nil {
 		return nil
 	}
 	normalized := strings.ToUpper(strings.TrimSpace(*theme))
-	if normalized != string(ThemeLight) && normalized != string(ThemeDark) {
+	if normalized != string(settings.ThemeLight) && normalized != string(settings.ThemeDark) {
 		return fmt.Errorf("invalid theme value (LIGHT|DARK)")
 	}
-	app.Theme = Theme(normalized)
+	app.Theme = settings.Theme(normalized)
 	return nil
 }
 
-func applyPrimaryColorSetting(app *AppSettings, primaryColor *string) error {
+func applyPrimaryColorSetting(app *settings.AppSettings, primaryColor *string) error {
 	if primaryColor == nil {
 		return nil
 	}
-	if !IsValidCSSColor(*primaryColor) {
+	if !settings.IsValidCSSColor(*primaryColor) {
 		return fmt.Errorf("invalid primaryColor")
 	}
-	app.PrimaryColor = CSSColor(*primaryColor)
+	app.PrimaryColor = settings.CSSColor(*primaryColor)
 	return nil
 }
 
-func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsByModePayload) error {
+func applyThemeColorOverrides(app *settings.AppSettings, payload *configThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
@@ -232,20 +234,20 @@ func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsByMode
 	if light == nil && dark == nil {
 		app.ThemeColors = nil
 	} else {
-		app.ThemeColors = &ThemeColorsByMode{Light: light, Dark: dark}
+		app.ThemeColors = &settings.ThemeColorsByMode{Light: light, Dark: dark}
 	}
 	return nil
 }
 
-func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*ThemeColors, error) {
+func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*settings.ThemeColors, error) {
 	if payload == nil {
 		return nil, nil
 	}
-	colors := &ThemeColors{}
+	colors := &settings.ThemeColors{}
 	hasAny := false
 	fields := []struct {
 		src *string
-		dst **CSSColor
+		dst **settings.CSSColor
 		key string
 	}{
 		{src: payload.BackgroundDefault, dst: &colors.BackgroundDefault, key: "backgroundDefault"},
@@ -271,10 +273,10 @@ func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*Th
 		if field.src == nil {
 			continue
 		}
-		if !IsValidCSSColor(*field.src) {
+		if !settings.IsValidCSSColor(*field.src) {
 			return nil, fmt.Errorf("invalid themeColors.%s.%s", modePrefix, field.key)
 		}
-		value := CSSColor(*field.src)
+		value := settings.CSSColor(*field.src)
 		*field.dst = &value
 		hasAny = true
 	}
@@ -296,19 +298,19 @@ func applyOptionalStringSlice(dst *[]string, value []string) {
 	}
 }
 
-func applyOptionalDockerDashboardSections(app *AppSettings, sections *DockerDashboardSections) {
+func applyOptionalDockerDashboardSections(app *settings.AppSettings, sections *settings.DockerDashboardSections) {
 	if sections != nil {
 		app.DockerDashboardSections = sections
 	}
 }
 
-func applyOptionalHardwareSections(app *AppSettings, sections *HardwareSections) {
+func applyOptionalHardwareSections(app *settings.AppSettings, sections *settings.HardwareSections) {
 	if sections != nil {
 		app.HardwareSections = sections
 	}
 }
 
-func applyViewModes(app *AppSettings, viewModes map[string]string) {
+func applyViewModes(app *settings.AppSettings, viewModes map[string]string) {
 	if viewModes == nil {
 		return
 	}
@@ -327,7 +329,7 @@ func applyViewModes(app *AppSettings, viewModes map[string]string) {
 	app.ViewModes = normalized
 }
 
-func applyChunkSizeSetting(app *AppSettings, chunkSize *int) error {
+func applyChunkSizeSetting(app *settings.AppSettings, chunkSize *int) error {
 	if chunkSize == nil {
 		return nil
 	}
@@ -339,7 +341,7 @@ func applyChunkSizeSetting(app *AppSettings, chunkSize *int) error {
 	return nil
 }
 
-func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) error {
+func applyDockerSettingsUpdate(docker *settings.Docker, payload *configDockerPayload) error {
 	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
@@ -352,7 +354,7 @@ func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) err
 	return nil
 }
 
-func applyDockerProxyUpdate(proxy *DockerProxy, payload *configDockerProxyPayload) {
+func applyDockerProxyUpdate(proxy *settings.DockerProxy, payload *configDockerProxyPayload) {
 	if payload.CaddyEnabled != nil {
 		proxy.CaddyEnabled = *payload.CaddyEnabled
 	}
@@ -364,7 +366,7 @@ func applyDockerProxyUpdate(proxy *DockerProxy, payload *configDockerProxyPayloa
 	}
 }
 
-func applyDockerFoldersSetting(docker *Docker, folderValues []string) error {
+func applyDockerFoldersSetting(docker *settings.Docker, folderValues []string) error {
 	if folderValues == nil {
 		return nil
 	}
@@ -372,7 +374,7 @@ func applyDockerFoldersSetting(docker *Docker, folderValues []string) error {
 		return fmt.Errorf("docker folders cannot be empty")
 	}
 
-	folders := make([]AbsolutePath, 0, len(folderValues))
+	folders := make([]settings.AbsolutePath, 0, len(folderValues))
 	seen := make(map[string]struct{}, len(folderValues))
 	for _, folderValue := range folderValues {
 		folderInput := strings.TrimSpace(folderValue)
@@ -390,14 +392,14 @@ func applyDockerFoldersSetting(docker *Docker, folderValues []string) error {
 			return fmt.Errorf("docker folders cannot include duplicates")
 		}
 		seen[folder] = struct{}{}
-		folders = append(folders, AbsolutePath(folder))
+		folders = append(folders, settings.AbsolutePath(folder))
 	}
 
 	docker.Folders = folders
 	return nil
 }
 
-func applyJobSettingsUpdate(jobs *JobSettings, payload *configJobSettingsPayload) error {
+func applyJobSettingsUpdate(jobs *settings.JobSettings, payload *configJobSettingsPayload) error {
 	if err := applyOptionalNonNegativeInt(&jobs.ProgressMinIntervalMs, payload.ProgressMinIntervalMs, "jobs.progressMinIntervalMs"); err != nil {
 		return err
 	}
@@ -416,9 +418,9 @@ func applyJobSettingsUpdate(jobs *JobSettings, payload *configJobSettingsPayload
 	return applyOptionalNonNegativeInt(&jobs.ArchiveExtractWorkers, payload.ArchiveExtractWorkers, "jobs.archiveExtractWorkers")
 }
 
-func applyDismissalsUpdate(dismissals **Dismissals, payload *configDismissalsPayload) {
+func applyDismissalsUpdate(dismissals **settings.Dismissals, payload *configDismissalsPayload) {
 	if *dismissals == nil {
-		*dismissals = &Dismissals{}
+		*dismissals = &settings.Dismissals{}
 	}
 	if payload.UncleanShutdownBootID != nil {
 		(*dismissals).UncleanShutdownBootID = strings.TrimSpace(*payload.UncleanShutdownBootID)

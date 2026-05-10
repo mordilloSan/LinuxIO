@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -36,7 +36,7 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
-func RegisterJobRunners(username string, store *config.UserStore) {
+func RegisterJobRunners(username string, store *settings.UserStore) {
 	bridgejobs.RegisterRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runDockerComposeJob(ctx, job, username, store, args)
 	})
@@ -45,7 +45,7 @@ func RegisterJobRunners(username string, store *config.UserStore) {
 	})
 }
 
-func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, args []string) (any, error) {
+func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *settings.UserStore, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("missing required arguments: action, projectName", 400)
 	}
@@ -101,14 +101,14 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	return result, nil
 }
 
-func resolveComposeJobPaths(username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
+func resolveComposeJobPaths(username string, store *settings.UserStore, projectName, composePath string) (string, string, error) {
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}
 	return findComposeFileWithStore(username, store, projectName)
 }
 
-func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {
+func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *settings.UserStore) (any, error) {
 	dockerFolders, err := configuredDockerFolders(username, store)
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to load user config", 500)

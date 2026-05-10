@@ -16,7 +16,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -92,14 +93,15 @@ func main() {
 	clientConn := openClientConnection()
 	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
 
-	userConfig, err := config.OpenUserStore(sess.User.Username)
+	userConfig, err := settings.OpenUserStore(sess.User.Username)
 	if err != nil {
 		slog.Error("failed to open config store", "user", sess.User.Username, "error", err)
 		os.Exit(1)
 	}
 	slog.Info("config store ready", "user", sess.User.Username, "path", userConfig.Path())
 
-	runBridge(clientConn, userConfig)
+	rt := runtime.New(sess, userConfig)
+	runBridge(clientConn, rt)
 	slog.Info("bridge stopped")
 }
 
@@ -241,15 +243,13 @@ func openClientConnection() net.Conn {
 	return clientConn
 }
 
-func runBridge(clientConn net.Conn, userConfig *config.UserStore) {
+func runBridge(clientConn net.Conn, rt runtime.Runtime) {
 	shutdownCh := make(chan string, 1)
-	handlers.RegisterAllHandlers(sess, handlers.Dependencies{
-		ConfigStore: userConfig,
-	})
+	handlers.RegisterAllHandlers(rt)
 	startBridgeSignalHandler(shutdownCh)
 
 	closeClientConn := newClientConnCloser(clientConn)
-	startMainRequestLoop(clientConn, closeClientConn, shutdownCh)
+	startMainRequestLoop(rt, clientConn, closeClientConn, shutdownCh)
 	<-startBridgeCleanup(shutdownCh, closeClientConn)
 }
 
@@ -276,9 +276,9 @@ func newClientConnCloser(clientConn net.Conn) func() {
 	}
 }
 
-func startMainRequestLoop(clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
+func startMainRequestLoop(rt runtime.Runtime, clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
 	wg.Go(func() {
-		handleMainRequest(clientConn, closeClientConn)
+		handleMainRequest(rt, clientConn, closeClientConn)
 		select {
 		case shutdownCh <- "client disconnected":
 		default:
@@ -321,14 +321,14 @@ func printBridgeVersion() {
 }
 
 // handleMainRequest sets up a yamux session for the client connection.
-func handleMainRequest(conn net.Conn, closeConn func()) {
+func handleMainRequest(rt runtime.Runtime, conn net.Conn, closeConn func()) {
 	defer closeConn()
-	handleYamuxSession(conn)
+	handleYamuxSession(rt, conn)
 }
 
 // handleYamuxSession handles a yamux multiplexed connection.
 // Each stream within the session is treated as an independent request.
-func handleYamuxSession(conn net.Conn) {
+func handleYamuxSession(rt runtime.Runtime, conn net.Conn) {
 	ymuxSession, err := ipc.NewYamuxServer(conn)
 	if err != nil {
 		slog.Error("failed to create yamux session", "session_id", sess.SessionID, "error", err)
@@ -360,7 +360,7 @@ func handleYamuxSession(conn net.Conn) {
 		streamWg.Go(func() {
 			defer s.Close()
 
-			handleYamuxStream(sess, s, sid)
+			handleYamuxStream(rt, s, sid)
 		})
 	}
 
@@ -371,7 +371,8 @@ func handleYamuxSession(conn net.Conn) {
 
 // handleYamuxStream handles a single stream within a yamux session.
 // Reads the OpStreamOpen frame, looks up the registered handler, and executes it.
-func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) {
+func handleYamuxStream(rt runtime.Runtime, stream net.Conn, streamID string) {
+	sess := rt.Session
 	// Read the first frame to determine stream type
 	frame, err := ipc.ReadRelayFrame(stream)
 	if err != nil {
@@ -410,7 +411,7 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 	}
 
 	// Execute stream handler
-	if err := handler(sess, stream, args); err != nil {
+	if err := handler(rt, stream, args); err != nil {
 		if streamType == "bridge" {
 			return
 		}

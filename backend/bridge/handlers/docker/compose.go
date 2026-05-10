@@ -19,8 +19,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 )
 
 var validNetworkMode = regexp.MustCompile(`^(none|host|bridge|service:.+|container:.+)$`)
@@ -53,7 +53,7 @@ type ComposeProject struct {
 }
 
 // ListComposeProjectsWithStore discovers all compose projects by analyzing container labels and indexer
-func ListComposeProjectsWithStore(username string, store *config.UserStore) (any, error) {
+func ListComposeProjectsWithStore(username string, store *settings.UserStore) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -75,7 +75,7 @@ func ListComposeProjectsWithStore(username string, store *config.UserStore) (any
 	}
 
 	// Load config once to check auto-update preferences.
-	cfg, _, _ := config.SnapshotForUser(username, store)
+	cfg, _, _ := settings.SnapshotForUser(username, store)
 
 	return finalizeComposeProjects(projects, cfg), nil
 }
@@ -206,7 +206,7 @@ func collectComposeServicePorts(ctr container.Summary) []string {
 	return ports
 }
 
-func finalizeComposeProjects(projects map[string]*ComposeProject, cfg *config.Settings) []*ComposeProject {
+func finalizeComposeProjects(projects map[string]*ComposeProject, cfg *settings.Settings) []*ComposeProject {
 	result := make([]*ComposeProject, 0, len(projects))
 	for _, project := range projects {
 		project.Status = calculateProjectStatus(project)
@@ -222,7 +222,7 @@ func finalizeComposeProjects(projects map[string]*ComposeProject, cfg *config.Se
 }
 
 // GetComposeProjectWithStore returns detailed information about a specific compose project
-func GetComposeProjectWithStore(username string, store *config.UserStore, projectName string) (any, error) {
+func GetComposeProjectWithStore(username string, store *settings.UserStore, projectName string) (any, error) {
 	projects, err := ListComposeProjectsWithStore(username, store)
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func GetComposeProjectWithStore(username string, store *config.UserStore, projec
 }
 
 // ComposeUpWithStore starts a compose project
-func ComposeUpWithStore(username string, store *config.UserStore, projectName, composePath string) (any, error) {
+func ComposeUpWithStore(username string, store *settings.UserStore, projectName, composePath string) (any, error) {
 	slog.Info("compose up requested", "user", username, "project", projectName, "compose_path", composePath)
 	var configFile string
 	var workingDir string
@@ -292,7 +292,7 @@ func ComposeUpWithStore(username string, store *config.UserStore, projectName, c
 }
 
 // findComposeFileWithStore attempts to locate a compose file for a project
-func findComposeFileWithStore(username string, store *config.UserStore, projectName string) (string, string, error) {
+func findComposeFileWithStore(username string, store *settings.UserStore, projectName string) (string, string, error) {
 	// Common compose file names
 	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 
@@ -335,7 +335,7 @@ func findComposeFileWithStore(username string, store *config.UserStore, projectN
 }
 
 // ComposeDownWithStore stops and removes a compose project
-func ComposeDownWithStore(username string, store *config.UserStore, projectName string) (any, error) {
+func ComposeDownWithStore(username string, store *settings.UserStore, projectName string) (any, error) {
 	slog.Info("compose down requested", "user", username, "project", projectName)
 	project, err := GetComposeProjectWithStore(username, store, projectName)
 	if err != nil {
@@ -374,7 +374,7 @@ type DeleteStackOptions struct {
 }
 
 // DeleteStackWithStore removes a compose stack with options to delete files
-func DeleteStackWithStore(username string, store *config.UserStore, projectName string, options DeleteStackOptions) (any, error) {
+func DeleteStackWithStore(username string, store *settings.UserStore, projectName string, options DeleteStackOptions) (any, error) {
 	slog.Info("delete stack requested",
 		"user", username,
 		"project", projectName,
@@ -483,7 +483,7 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 }
 
 // ComposeRestartWithStore restarts a compose project
-func ComposeRestartWithStore(username string, store *config.UserStore, projectName string) (any, error) {
+func ComposeRestartWithStore(username string, store *settings.UserStore, projectName string) (any, error) {
 	slog.Info("compose restart requested", "user", username, "project", projectName)
 	configFile, workingDir, err := resolveComposeRestartTarget(username, store, projectName)
 	if err != nil {
@@ -501,7 +501,7 @@ func ComposeRestartWithStore(username string, store *config.UserStore, projectNa
 	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
 }
 
-func resolveComposeRestartTarget(username string, store *config.UserStore, projectName string) (string, string, error) {
+func resolveComposeRestartTarget(username string, store *settings.UserStore, projectName string) (string, string, error) {
 	project, err := GetComposeProjectWithStore(username, store, projectName)
 	if err == nil {
 		if composeProject, ok := project.(*ComposeProject); ok {
@@ -607,7 +607,7 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 }
 
 // ComposeStopWithStore stops a compose project without removing containers
-func ComposeStopWithStore(username string, store *config.UserStore, projectName string) (any, error) {
+func ComposeStopWithStore(username string, store *settings.UserStore, projectName string) (any, error) {
 	slog.Info("compose stop requested", "user", username, "project", projectName)
 	project, err := GetComposeProjectWithStore(username, store, projectName)
 	if err != nil {
@@ -1010,8 +1010,8 @@ func populateNormalizedComposeContent(content string, result *ValidationResult) 
 	result.NormalizedContent = normalized
 }
 
-func configuredDockerFolders(username string, store *config.UserStore) ([]string, error) {
-	cfg, _, err := config.SnapshotForUser(username, store)
+func configuredDockerFolders(username string, store *settings.UserStore) ([]string, error) {
+	cfg, _, err := settings.SnapshotForUser(username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -1022,7 +1022,7 @@ func configuredDockerFolders(username string, store *config.UserStore) ([]string
 	return folders, nil
 }
 
-func dockerFoldersFromConfig(cfg *config.Settings) []string {
+func dockerFoldersFromConfig(cfg *settings.Settings) []string {
 	folders := make([]string, 0, len(cfg.Docker.Folders))
 	for _, folder := range cfg.Docker.Folders {
 		path := strings.TrimSpace(string(folder))
@@ -1034,7 +1034,7 @@ func dockerFoldersFromConfig(cfg *config.Settings) []string {
 }
 
 // GetDockerFoldersWithStore returns the configured Docker folder paths from user config.
-func GetDockerFoldersWithStore(username string, store *config.UserStore) (any, error) {
+func GetDockerFoldersWithStore(username string, store *settings.UserStore) (any, error) {
 	folders, err := configuredDockerFolders(username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
@@ -1046,8 +1046,8 @@ func GetDockerFoldersWithStore(username string, store *config.UserStore) (any, e
 }
 
 // GetComposeFilePathWithStore builds the full path for a compose file
-func GetComposeFilePathWithStore(username string, store *config.UserStore, stackName string) (any, error) {
-	cfg, _, err := config.SnapshotForUser(username, store)
+func GetComposeFilePathWithStore(username string, store *settings.UserStore, stackName string) (any, error) {
+	cfg, _, err := settings.SnapshotForUser(username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -1475,7 +1475,7 @@ func indexDockerFolderPath(username, dockerFolder string) error {
 }
 
 // IndexDockerFoldersWithStore is the handler function for indexing all configured Docker folders.
-func IndexDockerFoldersWithStore(username string, store *config.UserStore) (any, error) {
+func IndexDockerFoldersWithStore(username string, store *settings.UserStore) (any, error) {
 	dockerFolders, err := configuredDockerFolders(username, store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load user config: %w", err)
@@ -1518,7 +1518,7 @@ func extractStackIcon(composePath string) (string, error) {
 
 // discoverOfflineStacksWithStore searches the indexer for compose files and adds them as offline stacks.
 // It merges with existing projects to handle duplicates.
-func discoverOfflineStacksWithStore(username string, store *config.UserStore, projects map[string]*ComposeProject) error {
+func discoverOfflineStacksWithStore(username string, store *settings.UserStore, projects map[string]*ComposeProject) error {
 	dockerFolders, err := configuredDockerFolders(username, store)
 	if err != nil {
 		return fmt.Errorf("failed to load user config: %w", err)
@@ -1604,7 +1604,7 @@ func extractComposeIcon(composePath string) string {
 }
 
 // DeleteComposeStackWithStore runs docker compose down and deletes the compose file(s)
-func DeleteComposeStackWithStore(username string, store *config.UserStore, projectName string) error {
+func DeleteComposeStackWithStore(username string, store *settings.UserStore, projectName string) error {
 	slog.Info("delete compose stack requested", "component", "docker", "subsystem", "compose", "user", username, "service", projectName)
 	// Get project details to find config files
 	projects, err := ListComposeProjectsWithStore(username, store)

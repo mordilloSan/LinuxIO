@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // journaldFieldMatch matches journald-style KEY=VALUE operands. The key must
@@ -38,7 +38,7 @@ type generalLogsRequest struct {
 // - priority: max priority level 0-7 (optional, empty = all)
 // - identifier: filter by SYSLOG_IDENTIFIER (optional, empty = all)
 // - fieldMatches: optional KEY=VALUE journald match operands (ANDed)
-func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleGeneralLogsStream(_ runtime.Runtime, stream net.Conn, args []string) error {
 	req := parseGeneralLogsRequest(args)
 	slog.Debug("starting general log stream",
 		"component", "logs",

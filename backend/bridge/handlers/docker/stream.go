@@ -12,8 +12,8 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const StreamTypeDockerLogs = "docker-logs"
@@ -22,7 +22,7 @@ var dockerLogANSIRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 // HandleDockerLogsStream streams container logs in real time.
 // Args: [containerID, tail] where tail is the number of lines to start with (default "100")
-func HandleDockerLogsStream(_ *session.Session, stream net.Conn, args []string) error {
+func HandleDockerLogsStream(_ runtime.Runtime, stream net.Conn, args []string) error {
 	containerID, tail, err := parseDockerLogsArgs(args)
 	if err != nil {
 		slog.Error("invalid docker logs stream args", "component", "docker", "stream_type", StreamTypeDockerLogs, "error", err)

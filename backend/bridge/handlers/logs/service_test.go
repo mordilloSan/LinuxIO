@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -16,7 +17,7 @@ func TestHandleServiceLogsStreamRejectsTemplateUnits(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		defer server.Close()
-		errCh <- HandleServiceLogsStream(nil, server, []string{"apport-coredump-hook@.service"})
+		errCh <- HandleServiceLogsStream(runtime.Runtime{}, server, []string{"apport-coredump-hook@.service"})
 	}()
 
 	resultFrame, err := ipc.ReadRelayFrame(client)

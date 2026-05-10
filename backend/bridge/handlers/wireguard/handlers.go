@@ -4,11 +4,12 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // RegisterHandlers registers wireguard handlers with the new handler system
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	reg := func(action string, fn func([]string) (any, error)) {
 		ipc.RegisterFunc("wireguard", action, func(_ context.Context, args []string, emit ipc.Events) error {
 			if action != "list_interfaces" && action != "list_peers" && action != "peer_qrcode" && action != "peer_config_download" {

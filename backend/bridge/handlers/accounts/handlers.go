@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -15,7 +16,7 @@ type accountRegistration struct {
 }
 
 // RegisterHandlers registers accounts handlers with the IPC system
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	registerAccountHandlers([]accountRegistration{
 		{command: "list_users", handler: handleListUsers},
 		{command: "get_user_details", handler: handleGetUserDetails},

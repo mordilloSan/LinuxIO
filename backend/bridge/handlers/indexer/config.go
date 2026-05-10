@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const maxIndexerConfigPayloadBytes = 1 << 20
@@ -69,7 +69,7 @@ type ConfigSetResult struct {
 }
 
 // RegisterHandlers registers indexer admin handlers with the bridge.
-func RegisterHandlers(sess *session.Session) {
+func RegisterHandlers(rt runtime.Runtime) {
 	for _, registration := range []indexerRegistration{
 		{command: "get_config", handler: handleGetConfig},
 		{command: "get_status", handler: handleGetStatus},
@@ -78,7 +78,7 @@ func RegisterHandlers(sess *session.Session) {
 		ipc.RegisterFunc(
 			"indexer",
 			registration.command,
-			privilege.RequirePrivilegedIPC(sess, registration.handler),
+			privilege.RequirePrivilegedIPC(rt.Session, registration.handler),
 		)
 	}
 }

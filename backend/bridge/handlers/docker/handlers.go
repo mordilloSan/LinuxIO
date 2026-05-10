@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type dockerRegistration struct {
@@ -19,8 +19,9 @@ type dockerRegistration struct {
 }
 
 // RegisterHandlers registers all docker handlers with the global registry
-func RegisterHandlers(sess *session.Session, store *config.UserStore) {
-	username := sess.User.Username
+func RegisterHandlers(rt runtime.Runtime) {
+	username := rt.Username()
+	store := rt.Store
 	RegisterJobRunners(username, store)
 	go watchtowerOnce.Do(func() { SyncWatchtowerStackWithStore(username, store) })
 
@@ -175,7 +176,7 @@ func dockerUserOneArgCall[T any](username string, fn func(string, string) (T, er
 	}
 }
 
-func composeUpHandler(username string, store *config.UserStore) ipc.HandlerFunc {
+func composeUpHandler(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -189,7 +190,7 @@ func composeUpHandler(username string, store *config.UserStore) ipc.HandlerFunc 
 	}
 }
 
-func deleteStackHandler(username string, store *config.UserStore) ipc.HandlerFunc {
+func deleteStackHandler(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -216,7 +217,7 @@ func normalizeComposeHandler() ipc.HandlerFunc {
 	}
 }
 
-func reindexDockerFoldersHandler(username string, store *config.UserStore) ipc.HandlerFunc {
+func reindexDockerFoldersHandler(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		slog.Info("reindex_docker_folders requested")
 		result, err := IndexDockerFoldersWithStore(username, store)
@@ -224,7 +225,7 @@ func reindexDockerFoldersHandler(username string, store *config.UserStore) ipc.H
 	}
 }
 
-func deleteComposeStackHandler(username string, store *config.UserStore) ipc.HandlerFunc {
+func deleteComposeStackHandler(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -285,9 +286,9 @@ func clearIconCacheHandler() ipc.HandlerFunc {
 	}
 }
 
-func listAutoUpdateContainersHandler(username string, store *config.UserStore) ipc.HandlerFunc {
+func listAutoUpdateContainersHandler(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		cfg, _, err := config.SnapshotForUser(username, store)
+		cfg, _, err := settings.SnapshotForUser(username, store)
 		if err != nil {
 			return err
 		}
@@ -299,7 +300,7 @@ func listAutoUpdateContainersHandler(username string, store *config.UserStore) i
 	}
 }
 
-func setAutoUpdateHandler(username string, store *config.UserStore) ipc.HandlerFunc {
+func setAutoUpdateHandler(username string, store *settings.UserStore) ipc.HandlerFunc {
 	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
@@ -316,7 +317,7 @@ func setAutoUpdateHandler(username string, store *config.UserStore) ipc.HandlerF
 		}
 		slog.Info("set_auto_update requested", "component", "docker", "container", payload.Container, "mode", payload.Enabled, "user", username)
 
-		if _, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+		if _, _, err := settings.UpdateForUser(username, store, func(cfg *settings.Settings) error {
 			if payload.Enabled {
 				if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Container) {
 					cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Container)

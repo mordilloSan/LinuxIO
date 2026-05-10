@@ -21,8 +21,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // StreamTerminalSession manages a direct PTY-to-stream connection.
@@ -36,7 +36,7 @@ type StreamTerminalSession struct {
 }
 
 // RegisterStreamHandlers registers all terminal stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
+func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
 	handlers["terminal"] = HandleTerminalStream
 	handlers["container"] = HandleContainerTerminalStream
 }
@@ -48,7 +48,8 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 //   - Subsequent frames from client: OpStreamData with input bytes
 //   - Server sends: OpStreamData with PTY output bytes
 //   - Either side can send OpStreamClose to terminate
-func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleTerminalStream(rt runtime.Runtime, stream net.Conn, args []string) error {
+	sess := rt.Session
 	slog.Debug("starting terminal stream", "user", sess.User.Username, "args", args)
 
 	// Parse initial size from args (cols, rows)
@@ -257,7 +258,8 @@ func safeUint16(val int) uint16 {
 
 // HandleContainerTerminalStream handles a yamux stream for container terminal I/O.
 // Args: [containerID, shell, cols, rows]
-func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleContainerTerminalStream(rt runtime.Runtime, stream net.Conn, args []string) error {
+	sess := rt.Session
 	containerID, shell, cols, rows, err := parseContainerTerminalArgs(args)
 	if err != nil {
 		slog.Error("invalid container terminal arguments", "error", err)

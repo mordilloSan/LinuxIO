@@ -5,8 +5,8 @@ import (
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type powerRegistration struct {
@@ -14,7 +14,7 @@ type powerRegistration struct {
 	handler ipc.HandlerFunc
 }
 
-func RegisterHandlers(sess *session.Session) {
+func RegisterHandlers(rt runtime.Runtime) {
 	for _, registration := range []powerRegistration{
 		{command: "get_status", handler: handleGetStatus},
 		{command: "start", handler: handleStart},
@@ -24,7 +24,7 @@ func RegisterHandlers(sess *session.Session) {
 		ipc.RegisterFunc(
 			"power",
 			registration.command,
-			privilege.RequirePrivilegedIPC(sess, registration.handler),
+			privilege.RequirePrivilegedIPC(rt.Session, registration.handler),
 		)
 	}
 }

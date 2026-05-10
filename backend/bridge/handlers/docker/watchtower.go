@@ -9,7 +9,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 )
 
 const (
@@ -22,8 +22,8 @@ const (
 // from the current user's AutoUpdateStacks config and starts/restarts (or stops)
 // Watchtower accordingly. Called after every auto-update toggle and on login.
 // Errors are logged but not returned — the toggle saves the config regardless.
-func SyncWatchtowerStackWithStore(username string, store *config.UserStore) {
-	cfg, _, err := config.SnapshotForUser(username, store)
+func SyncWatchtowerStackWithStore(username string, store *settings.UserStore) {
+	cfg, _, err := settings.SnapshotForUser(username, store)
 	if err != nil {
 		slog.Warn("failed to load docker config for watchtower", "component", "docker", "subsystem", "watchtower", "user", username, "error", err)
 		return

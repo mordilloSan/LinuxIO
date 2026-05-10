@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -15,7 +16,7 @@ type dbusRegistration struct {
 }
 
 // RegisterHandlers registers dbus handlers with the new handler system
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	RegisterJobRunners()
 
 	registerDBusHandlers([]dbusRegistration{

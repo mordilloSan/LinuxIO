@@ -1,6 +1,6 @@
 //go:generate go run ./generator.go
 
-package config
+package settings
 
 import (
 	"log/slog"

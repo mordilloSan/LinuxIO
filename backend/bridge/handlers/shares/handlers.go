@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -15,7 +16,7 @@ type sharesRegistration struct {
 }
 
 // RegisterHandlers registers all share management handlers with the global registry
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	registerSharesHandlers([]sharesRegistration{
 		// NFS exports (server-side shares via /etc/exports)
 		{command: "list_nfs_shares", handler: handleListNFSShares},

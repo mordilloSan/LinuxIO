@@ -3,11 +3,12 @@ package terminal
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // RegisterHandlers registers all terminal handlers with the global registry
-func RegisterHandlers() {
+func RegisterHandlers(_ runtime.Runtime) {
 	ipc.RegisterFunc("terminal", "list_shells", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return emit.Result([]string{})
