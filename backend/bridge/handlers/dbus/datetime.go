@@ -10,8 +10,8 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
 
 const timedateBus = "org.freedesktop.timedate1"
