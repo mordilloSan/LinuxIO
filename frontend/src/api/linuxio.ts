@@ -6,11 +6,13 @@
  * implement that public surface.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import {
   getStreamMux,
+  subscribeMuxInstanceChanged,
   type Stream,
   type MuxStatus,
+  type StreamMultiplexer,
   type StreamType,
   encodeString,
 } from "./StreamMultiplexer";
@@ -24,6 +26,50 @@ function openMuxStream(
     return null;
   }
   return mux.openStream(type, initialPayload);
+}
+
+function makeSubscribeWithRebind(
+  bindToMux: (
+    mux: StreamMultiplexer,
+    notifyStoreChanged: () => void,
+  ) => () => void,
+) {
+  return (notifyStoreChanged: () => void) => {
+    let muxUnsub: (() => void) | null = null;
+
+    const rebind = (notify: boolean) => {
+      muxUnsub?.();
+      const mux = getStreamMux();
+      muxUnsub = mux ? bindToMux(mux, notifyStoreChanged) : null;
+      if (notify) {
+        notifyStoreChanged();
+      }
+    };
+
+    rebind(false);
+    const instanceUnsub = subscribeMuxInstanceChanged(() => rebind(true));
+
+    return () => {
+      muxUnsub?.();
+      instanceUnsub();
+    };
+  };
+}
+
+const subscribeToStatus = makeSubscribeWithRebind((mux, notifyStoreChanged) =>
+  mux.addStatusListener(notifyStoreChanged),
+);
+
+const subscribeToUpdating = makeSubscribeWithRebind((mux, notifyStoreChanged) =>
+  mux.addUpdatingListener(notifyStoreChanged),
+);
+
+function getStatusSnapshot(): MuxStatus {
+  return getStreamMux()?.status ?? "closed";
+}
+
+function getUpdatingSnapshot(): boolean {
+  return getStreamMux()?.isUpdating ?? false;
 }
 
 // ============================================================================
@@ -40,56 +86,7 @@ function openMuxStream(
  * const { status, isOpen, getStream } = useStreamMux();
  */
 export function useStreamMux() {
-  const [status, setStatus] = useState<MuxStatus>(() => {
-    const mux = getStreamMux();
-    return mux?.status ?? "closed";
-  });
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    let checkInterval: ReturnType<typeof setInterval> | null = null;
-
-    const setupListener = () => {
-      const mux = getStreamMux();
-      if (!mux) {
-        setStatus("closed");
-        return false;
-      }
-
-      // Update status immediately
-      setStatus(mux.status);
-
-      // Subscribe to status changes
-      unsubscribe = mux.addStatusListener((newStatus: MuxStatus) => {
-        setStatus(newStatus);
-      });
-
-      return true;
-    };
-
-    // Try to set up listener immediately
-    if (!setupListener()) {
-      // If mux doesn't exist yet, poll for it (handles late initialization)
-      checkInterval = setInterval(() => {
-        if (setupListener()) {
-          // Successfully set up, stop polling
-          if (checkInterval) {
-            clearInterval(checkInterval);
-            checkInterval = null;
-          }
-        }
-      }, 100);
-    }
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-      if (checkInterval) {
-        clearInterval(checkInterval);
-      }
-    };
-  }, []);
+  const status = useSyncExternalStore(subscribeToStatus, getStatusSnapshot);
 
   const getStream = useCallback((type: StreamType): Stream | null => {
     const mux = getStreamMux();
@@ -109,27 +106,7 @@ export function useStreamMux() {
  * Returns true when a system update is in progress and all API queries should be paused.
  */
 export function useIsUpdating(): boolean {
-  const [isUpdating, setIsUpdating] = useState<boolean>(() => {
-    const mux = getStreamMux();
-    return mux?.isUpdating ?? false;
-  });
-
-  useEffect(() => {
-    const mux = getStreamMux();
-    if (!mux) return;
-
-    // Update immediately
-    setIsUpdating(mux.isUpdating);
-
-    // Subscribe to changes
-    const unsubscribe = mux.addUpdatingListener((value: boolean) => {
-      setIsUpdating(value);
-    });
-
-    return unsubscribe;
-  }, []);
-
-  return isUpdating;
+  return useSyncExternalStore(subscribeToUpdating, getUpdatingSnapshot);
 }
 
 // ============================================================================

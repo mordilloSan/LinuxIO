@@ -902,6 +902,18 @@ export const BridgeOpcode = {
 // ============================================================================
 
 let instance: StreamMultiplexer | null = null;
+const muxInstanceListeners = new Set<() => void>();
+
+export function subscribeMuxInstanceChanged(cb: () => void): () => void {
+  muxInstanceListeners.add(cb);
+  return () => muxInstanceListeners.delete(cb);
+}
+
+function notifyMuxInstanceChanged(): void {
+  for (const cb of Array.from(muxInstanceListeners)) {
+    cb();
+  }
+}
 
 /**
  * Get or create the singleton StreamMultiplexer instance.
@@ -932,6 +944,7 @@ export function initStreamMux(
   const url = `${proto}://${window.location.host}/ws`;
 
   instance = new StreamMultiplexer(url);
+  notifyMuxInstanceChanged();
   return instance;
 }
 
@@ -943,6 +956,7 @@ export function closeStreamMux(): void {
   if (instance) {
     instance.close();
     instance = null;
+    notifyMuxInstanceChanged();
   }
 }
 
