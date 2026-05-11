@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 

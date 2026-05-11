@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/disk"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
 
 // Validation patterns for NFS
@@ -231,27 +233,7 @@ func saveManagedNFSMountEntries(entries map[string]managedNFSMountEntry) error {
 	}
 	data = append(data, '\n')
 
-	dir := filepath.Dir(managedNFSMountsPath)
-	if err = os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	tmpFile, err := os.CreateTemp(dir, "nfs-mounts-*.json")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpPath, managedNFSMountsPath)
+	return fsutil.WriteFileAtomic(managedNFSMountsPath, data, 0o644)
 }
 
 func upsertManagedNFSMount(source, mountpoint, fstype string, options []string) error {

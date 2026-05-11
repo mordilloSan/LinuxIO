@@ -10,7 +10,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
 
 // Homedir determines the user's home folder
@@ -119,46 +121,11 @@ func ensureFilePerms(path string, mode os.FileMode) error {
 
 // writeConfigFrom writes the provided Settings atomically to cfgPath with filePerm.
 func writeConfigFrom(cfgPath string, cfg Settings) error {
-	if err := os.MkdirAll(filepath.Dir(cfgPath), dirPerm); err != nil {
-		return err
-	}
 	data, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return err
 	}
-	return writeYAMLAtomic(cfgPath, data, filePerm)
-}
-
-// writeYAMLAtomic writes data to path atomically using O_EXCL temp file + rename.
-func writeYAMLAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	base := filepath.Base(path)
-	f, err := os.CreateTemp(dir, base+".*.tmp")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	_, werr := f.Write(data)
-	cerr := f.Close()
-	if werr != nil {
-		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
-			return errors.Join(werr, fmt.Errorf("remove temp file %s: %w", tmp, rmErr))
-		}
-		return werr
-	}
-	if cerr != nil {
-		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
-			return errors.Join(cerr, fmt.Errorf("remove temp file %s: %w", tmp, rmErr))
-		}
-		return cerr
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
-			return errors.Join(err, fmt.Errorf("remove temp file %s: %w", tmp, rmErr))
-		}
-		return err
-	}
-	return os.Chmod(path, perm)
+	return fsutil.WriteFileAtomic(cfgPath, data, filePerm)
 }
 
 // filepathJoinClean joins then cleans the result (normalizes).

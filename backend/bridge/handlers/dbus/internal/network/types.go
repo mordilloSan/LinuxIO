@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
 
 type InterfaceConfig struct {

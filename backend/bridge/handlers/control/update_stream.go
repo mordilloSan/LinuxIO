@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -170,41 +169,7 @@ func writeStatusFile(runID, status string, exitCode *int, errMsg string, started
 		return err
 	}
 
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(updateStatusPath), 0o755); err != nil {
-		return err
-	}
-
-	return writeFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
-}
-
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer func() {
-		_ = os.Remove(tmpPath)
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	return fsutil.WriteFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
 }
 
 func writeUpdateError(stream net.Conn, message string, code int) error {
