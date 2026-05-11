@@ -18,10 +18,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -673,8 +673,8 @@ func deleteFromIndexer(path string) error {
 
 // CheckIndexerAvailability checks if the indexer daemon is running via systemd.
 // Returns true if the service is active.
-func CheckIndexerAvailability() (bool, error) {
-	info, err := dbus.GetUnitInfo(indexerServiceName)
+func CheckIndexerAvailability(ctx context.Context) (bool, error) {
+	info, err := systemdapi.GetUnitInfo(ctx, indexerServiceName)
 	if err != nil {
 		setIndexerAvailability(false)
 		return false, err

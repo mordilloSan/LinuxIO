@@ -7,7 +7,7 @@
 
 4 - Session Activity And Job-Safe Idle Cleanup
 
-5 - protobuf and remove json all together from app?
+5 - protobuf and remove json all together from app? We already "rpc.EmitResult"
 
 user config to match config in UI - DONE
 Fix NFS distro dependency - DONE

@@ -9,6 +9,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient/testdbus"
 )
 
@@ -16,23 +17,17 @@ func exportManager(t *testing.T, bus *testdbus.Bus) *testdbus.SystemdManager {
 	t.Helper()
 
 	manager := testdbus.NewSystemdManager()
-	conn := bus.OwnName(t, systemdBusName)
-	if err := conn.Export(manager, godbus.ObjectPath(systemdObjectPath), systemdMgrIface); err != nil {
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
 		t.Fatalf("export systemd manager: %v", err)
 	}
 	return manager
 }
 
-func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocognit
+func TestPackageLevelMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocognit
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	manager := exportManager(t, bus)
-
-	client, err := New()
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer client.Close()
 
 	ctx := context.Background()
 	tests := []struct {
@@ -44,8 +39,8 @@ func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocogn
 		{
 			name: "Start",
 			invoke: func(t *testing.T) {
-				if err := client.Start(ctx, "demo.service"); err != nil {
-					t.Fatalf("Start: %v", err)
+				if err := StartUnit(ctx, "demo.service"); err != nil {
+					t.Fatalf("StartUnit: %v", err)
 				}
 			},
 			wantMethod: "StartUnit",
@@ -54,8 +49,8 @@ func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocogn
 		{
 			name: "Stop",
 			invoke: func(t *testing.T) {
-				if err := client.Stop(ctx, "demo.service"); err != nil {
-					t.Fatalf("Stop: %v", err)
+				if err := StopUnit(ctx, "demo.service"); err != nil {
+					t.Fatalf("StopUnit: %v", err)
 				}
 			},
 			wantMethod: "StopUnit",
@@ -64,8 +59,8 @@ func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocogn
 		{
 			name: "Restart",
 			invoke: func(t *testing.T) {
-				if err := client.Restart(ctx, "demo.service"); err != nil {
-					t.Fatalf("Restart: %v", err)
+				if err := RestartUnit(ctx, "demo.service"); err != nil {
+					t.Fatalf("RestartUnit: %v", err)
 				}
 			},
 			wantMethod: "RestartUnit",
@@ -74,7 +69,7 @@ func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocogn
 		{
 			name: "ReloadUnit",
 			invoke: func(t *testing.T) {
-				if err := client.ReloadUnit(ctx, "demo.service"); err != nil {
+				if err := ReloadUnit(ctx, "demo.service"); err != nil {
 					t.Fatalf("ReloadUnit: %v", err)
 				}
 			},
@@ -82,49 +77,9 @@ func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocogn
 			wantArgs:   []any{"demo.service", "replace"},
 		},
 		{
-			name: "Enable",
-			invoke: func(t *testing.T) {
-				if err := client.Enable(ctx, "demo.service"); err != nil {
-					t.Fatalf("Enable: %v", err)
-				}
-			},
-			wantMethod: "EnableUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false, true},
-		},
-		{
-			name: "Disable",
-			invoke: func(t *testing.T) {
-				if err := client.Disable(ctx, "demo.service"); err != nil {
-					t.Fatalf("Disable: %v", err)
-				}
-			},
-			wantMethod: "DisableUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false},
-		},
-		{
-			name: "Mask",
-			invoke: func(t *testing.T) {
-				if err := client.Mask(ctx, "demo.service"); err != nil {
-					t.Fatalf("Mask: %v", err)
-				}
-			},
-			wantMethod: "MaskUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false, true},
-		},
-		{
-			name: "Unmask",
-			invoke: func(t *testing.T) {
-				if err := client.Unmask(ctx, "demo.service"); err != nil {
-					t.Fatalf("Unmask: %v", err)
-				}
-			},
-			wantMethod: "UnmaskUnitFiles",
-			wantArgs:   []any{[]string{"demo.service"}, false},
-		},
-		{
 			name: "GetUnitFileState",
 			invoke: func(t *testing.T) {
-				state, err := client.GetUnitFileState(ctx, "demo.service")
+				state, err := GetUnitFileState(ctx, "demo.service")
 				if err != nil {
 					t.Fatalf("GetUnitFileState: %v", err)
 				}
@@ -136,10 +91,10 @@ func TestClientMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:gocogn
 			wantArgs:   []any{"demo.service"},
 		},
 		{
-			name: "Reload",
+			name: "DaemonReload",
 			invoke: func(t *testing.T) {
-				if err := client.Reload(ctx); err != nil {
-					t.Fatalf("Reload: %v", err)
+				if err := DaemonReload(ctx); err != nil {
+					t.Fatalf("DaemonReload: %v", err)
 				}
 			},
 			wantMethod: "Reload",

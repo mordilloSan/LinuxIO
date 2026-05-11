@@ -66,12 +66,6 @@ func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 		return fmt.Errorf("unattended-upgrades is not installed; run: sudo apt install unattended-upgrades")
 	}
 
-	sd, err := systemd.New()
-	if err != nil {
-		return err
-	}
-	defer sd.Close()
-
 	if writeErr := writeAptAutoUpgradeConfig(o); writeErr != nil {
 		return fmt.Errorf("failed to write 20auto-upgrades: %w", writeErr)
 	}
@@ -91,15 +85,15 @@ func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 		return fmt.Errorf("failed to write apt-daily-upgrade.timer drop-in: %w", err)
 	}
 
-	if err := sd.Reload(ctx); err != nil {
+	if err := systemd.DaemonReload(ctx); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
-	if err := applyAptTimerState(ctx, sd, o); err != nil {
+	if err := applyAptTimerState(ctx, o); err != nil {
 		return err
 	}
 
-	restartAptTimers(ctx, sd, o)
+	restartAptTimers(ctx, o)
 	return nil
 }
 
@@ -163,75 +157,75 @@ func aptRebootSetting(policy string) string {
 	return "false"
 }
 
-func applyAptTimerState(ctx context.Context, sd *systemd.Client, o AutoUpdateOptions) error {
+func applyAptTimerState(ctx context.Context, o AutoUpdateOptions) error {
 	if o.Enabled {
-		if err := enableAptDailyTimer(ctx, sd); err != nil {
+		if err := enableAptDailyTimer(ctx); err != nil {
 			return err
 		}
 		if o.DownloadOnly {
-			disableAptUpgradeTimer(ctx, sd, "in download-only mode")
+			disableAptUpgradeTimer(ctx, "in download-only mode")
 			return nil
 		}
-		if err := enableAptUpgradeTimer(ctx, sd); err != nil {
+		if err := enableAptUpgradeTimer(ctx); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	disableAptDailyTimer(ctx, sd, "while disabling auto-updates")
-	disableAptUpgradeTimer(ctx, sd, "while disabling auto-updates")
+	disableAptDailyTimer(ctx, "while disabling auto-updates")
+	disableAptUpgradeTimer(ctx, "while disabling auto-updates")
 	return nil
 }
 
-func enableAptDailyTimer(ctx context.Context, sd *systemd.Client) error {
-	if err := sd.Enable(ctx, "apt-daily.timer"); err != nil {
+func enableAptDailyTimer(ctx context.Context) error {
+	if err := systemd.EnableUnit(ctx, "apt-daily.timer"); err != nil {
 		return fmt.Errorf("failed to enable apt-daily.timer: %w", err)
 	}
-	if err := sd.Start(ctx, "apt-daily.timer"); err != nil {
+	if err := systemd.StartUnit(ctx, "apt-daily.timer"); err != nil {
 		return fmt.Errorf("failed to start apt-daily.timer: %w", err)
 	}
 	return nil
 }
 
-func enableAptUpgradeTimer(ctx context.Context, sd *systemd.Client) error {
-	if err := sd.Enable(ctx, "apt-daily-upgrade.timer"); err != nil {
+func enableAptUpgradeTimer(ctx context.Context) error {
+	if err := systemd.EnableUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
 		return fmt.Errorf("failed to enable apt-daily-upgrade.timer: %w", err)
 	}
-	if err := sd.Start(ctx, "apt-daily-upgrade.timer"); err != nil {
+	if err := systemd.StartUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
 		return fmt.Errorf("failed to start apt-daily-upgrade.timer: %w", err)
 	}
 	return nil
 }
 
-func disableAptDailyTimer(ctx context.Context, sd *systemd.Client, reason string) {
-	if err := sd.Stop(ctx, "apt-daily.timer"); err != nil {
+func disableAptDailyTimer(ctx context.Context, reason string) {
+	if err := systemd.StopUnit(ctx, "apt-daily.timer"); err != nil {
 		slog.Debug("failed to stop apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "mode", reason, "error", err)
 	}
-	if err := sd.Disable(ctx, "apt-daily.timer"); err != nil {
+	if err := systemd.DisableUnit(ctx, "apt-daily.timer"); err != nil {
 		slog.Debug("failed to disable apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "mode", reason, "error", err)
 	}
 }
 
-func disableAptUpgradeTimer(ctx context.Context, sd *systemd.Client, reason string) {
-	if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
+func disableAptUpgradeTimer(ctx context.Context, reason string) {
+	if err := systemd.StopUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
 		slog.Debug("failed to stop apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "mode", reason, "error", err)
 	}
-	if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
+	if err := systemd.DisableUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
 		slog.Debug("failed to disable apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "mode", reason, "error", err)
 	}
 }
 
-func restartAptTimers(ctx context.Context, sd *systemd.Client, o AutoUpdateOptions) {
+func restartAptTimers(ctx context.Context, o AutoUpdateOptions) {
 	if !o.Enabled {
 		return
 	}
-	if err := sd.Restart(ctx, "apt-daily.timer"); err != nil {
+	if err := systemd.RestartUnit(ctx, "apt-daily.timer"); err != nil {
 		slog.Debug("failed to restart apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "error", err)
 	}
 	if o.DownloadOnly {
 		return
 	}
-	if err := sd.Restart(ctx, "apt-daily-upgrade.timer"); err != nil {
+	if err := systemd.RestartUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
 		slog.Debug("failed to restart apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "error", err)
 	}
 }

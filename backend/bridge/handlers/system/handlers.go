@@ -49,7 +49,7 @@ func RegisterHandlers(rt runtime.Runtime) {
 }
 
 func handleGetCapabilities(ctx context.Context, args []string, emit ipc.Events) error {
-	return rpc.EmitResult(emit, buildCapabilitiesResponse(), nil)
+	return rpc.EmitResult(emit, buildCapabilitiesResponse(ctx), nil)
 }
 
 func handleGetCPUInfo(ctx context.Context, args []string, emit ipc.Events) error {

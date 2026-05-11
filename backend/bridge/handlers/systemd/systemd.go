@@ -3,64 +3,14 @@ package systemd
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
-const (
-	systemdBusName    = "org.freedesktop.systemd1"
-	systemdObjectPath = "/org/freedesktop/systemd1"
-	systemdMgrIface   = "org.freedesktop.systemd1.Manager"
-	systemdUnitIface  = "org.freedesktop.systemd1.Unit"
-	propertiesIface   = "org.freedesktop.DBus.Properties"
-)
-
-type Client struct {
-	conn    *godbus.Conn
-	manager godbus.BusObject
-}
-
-func New() (*Client, error) {
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return nil, fmt.Errorf("connect system bus: %w", err)
-	}
-	return &Client{
-		conn:    conn,
-		manager: conn.Object(systemdBusName, godbus.ObjectPath(systemdObjectPath)),
-	}, nil
-}
-
-func (c *Client) Close() {
-	if c == nil || c.conn == nil {
-		return
-	}
-	if err := c.conn.Close(); err != nil {
-		slog.Debug("failed to close systemd D-Bus connection", "component", "dbus", "subsystem", "systemd", "error", err)
-	}
-}
-
-func withClient(ctx context.Context, call func(*Client) error) error {
-	ctx = requireContext(ctx)
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	client, err := New()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	return call(client)
-}
-
-func requireContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
-}
+var managerIface = dbusclient.SystemdManager.Interface(dbusclient.SystemdManagerIface)
 
 func requireUnitName(name string) error {
 	if strings.TrimSpace(name) == "" {
@@ -69,186 +19,132 @@ func requireUnitName(name string) error {
 	return nil
 }
 
-func requireUnitNames(names []string) error {
-	if len(names) == 0 {
-		return fmt.Errorf("at least one unit name is required")
-	}
-	for _, name := range names {
-		if err := requireUnitName(name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Client) Start(ctx context.Context, name string) error {
+func StartUnit(ctx context.Context, name string) error {
 	if err := requireUnitName(name); err != nil {
 		return err
 	}
-	var job godbus.ObjectPath
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".StartUnit", 0, name, "replace").Store(&job); err != nil {
-		return fmt.Errorf("start unit %s: %w", name, err)
-	}
-	return nil
+	return callUnitJob(ctx, name, "StartUnit", "start")
 }
 
-func (c *Client) Stop(ctx context.Context, name string) error {
+func StopUnit(ctx context.Context, name string) error {
 	if err := requireUnitName(name); err != nil {
 		return err
 	}
-	var job godbus.ObjectPath
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".StopUnit", 0, name, "replace").Store(&job); err != nil {
-		return fmt.Errorf("stop unit %s: %w", name, err)
-	}
-	return nil
+	return callUnitJob(ctx, name, "StopUnit", "stop")
 }
 
-func (c *Client) Restart(ctx context.Context, name string) error {
+func RestartUnit(ctx context.Context, name string) error {
 	if err := requireUnitName(name); err != nil {
 		return err
 	}
-	var job godbus.ObjectPath
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".RestartUnit", 0, name, "replace").Store(&job); err != nil {
-		return fmt.Errorf("restart unit %s: %w", name, err)
-	}
-	return nil
+	return callUnitJob(ctx, name, "RestartUnit", "restart")
 }
 
-func (c *Client) ReloadUnit(ctx context.Context, name string) error {
+func ReloadUnit(ctx context.Context, name string) error {
 	if err := requireUnitName(name); err != nil {
 		return err
 	}
-	var job godbus.ObjectPath
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".ReloadUnit", 0, name, "replace").Store(&job); err != nil {
-		return fmt.Errorf("reload unit %s: %w", name, err)
-	}
-	return nil
+	return callUnitJob(ctx, name, "ReloadUnit", "reload")
 }
 
-func (c *Client) Enable(ctx context.Context, names ...string) error {
-	if err := requireUnitNames(names); err != nil {
-		return err
-	}
-	var carriesInstallInfo bool
-	var changes [][]any
-	if err := c.manager.CallWithContext(
-		requireContext(ctx),
-		systemdMgrIface+".EnableUnitFiles",
-		0,
-		names,
-		false,
-		true,
-	).Store(&carriesInstallInfo, &changes); err != nil {
-		return fmt.Errorf("enable unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
-}
-
-func (c *Client) Disable(ctx context.Context, names ...string) error {
-	if err := requireUnitNames(names); err != nil {
-		return err
-	}
-	var changes [][]any
-	if err := c.manager.CallWithContext(
-		requireContext(ctx),
-		systemdMgrIface+".DisableUnitFiles",
-		0,
-		names,
-		false,
-	).Store(&changes); err != nil {
-		return fmt.Errorf("disable unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
-}
-
-func (c *Client) Mask(ctx context.Context, names ...string) error {
-	if err := requireUnitNames(names); err != nil {
-		return err
-	}
-	var changes [][]any
-	if err := c.manager.CallWithContext(
-		requireContext(ctx),
-		systemdMgrIface+".MaskUnitFiles",
-		0,
-		names,
-		false,
-		true,
-	).Store(&changes); err != nil {
-		return fmt.Errorf("mask unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
-}
-
-func (c *Client) Unmask(ctx context.Context, names ...string) error {
-	if err := requireUnitNames(names); err != nil {
-		return err
-	}
-	var changes [][]any
-	if err := c.manager.CallWithContext(
-		requireContext(ctx),
-		systemdMgrIface+".UnmaskUnitFiles",
-		0,
-		names,
-		false,
-	).Store(&changes); err != nil {
-		return fmt.Errorf("unmask unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
-}
-
-func (c *Client) ResetFailed(ctx context.Context, name string) error {
+func EnableUnit(ctx context.Context, name string) error {
 	if err := requireUnitName(name); err != nil {
 		return err
 	}
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".ResetFailedUnit", 0, name).Err; err != nil {
+	names := []string{name}
+	if err := enableUnitFiles(ctx, names); err != nil {
+		return err
+	}
+	return DaemonReload(ctx)
+}
+
+func DisableUnit(ctx context.Context, name string) error {
+	if err := requireUnitName(name); err != nil {
+		return err
+	}
+	names := []string{name}
+	if err := disableUnitFiles(ctx, names); err != nil {
+		return err
+	}
+	return DaemonReload(ctx)
+}
+
+func MaskUnit(ctx context.Context, name string) error {
+	if err := requireUnitName(name); err != nil {
+		return err
+	}
+	names := []string{name}
+	if err := maskUnitFiles(ctx, names); err != nil {
+		return err
+	}
+	return DaemonReload(ctx)
+}
+
+func UnmaskUnit(ctx context.Context, name string) error {
+	if err := requireUnitName(name); err != nil {
+		return err
+	}
+	names := []string{name}
+	if err := unmaskUnitFiles(ctx, names); err != nil {
+		return err
+	}
+	return DaemonReload(ctx)
+}
+
+func ResetFailedUnit(ctx context.Context, name string) error {
+	if err := requireUnitName(name); err != nil {
+		return err
+	}
+	if err := managerIface.Call(ctx, "ResetFailedUnit", dbusclient.CallPolicy{}, name); err != nil {
 		return fmt.Errorf("reset failed unit %s: %w", name, err)
 	}
 	return nil
 }
 
-func (c *Client) GetUnitFileState(ctx context.Context, name string) (string, error) {
+func GetUnitFileState(ctx context.Context, name string) (string, error) {
 	if err := requireUnitName(name); err != nil {
 		return "", err
 	}
 	var state string
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".GetUnitFileState", 0, name).Store(&state); err != nil {
-		return "", fmt.Errorf("get unit file state %s: %w", name, err)
+	if err := managerIface.CallStore(ctx, "GetUnitFileState", dbusclient.CallPolicy{}, []any{name}, &state); err != nil {
+		return "", err
 	}
 	return state, nil
 }
 
-func (c *Client) Reload(ctx context.Context) error {
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".Reload", 0).Err; err != nil {
-		return fmt.Errorf("reload systemd manager: %w", err)
-	}
-	return nil
+func DaemonReload(ctx context.Context) error {
+	return reloadManager(ctx)
 }
 
-func (c *Client) GetActiveState(ctx context.Context, name string) (string, error) {
+func GetActiveState(ctx context.Context, name string) (string, error) {
 	if err := requireUnitName(name); err != nil {
 		return "", err
 	}
-	ctx = requireContext(ctx)
-	var path godbus.ObjectPath
-	if err := c.manager.CallWithContext(ctx, systemdMgrIface+".GetUnit", 0, name).Store(&path); err != nil {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
+	var state string
+	if err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		var path godbus.ObjectPath
+		if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{name}, &path); err != nil {
+			if session.Context().Err() != nil {
+				return session.Context().Err()
+			}
+			// Unit not loaded means inactive for the callers that use this helper.
+			state = "inactive"
+			return nil
 		}
-		// Unit not loaded means inactive for the callers that use this helper.
-		return "inactive", nil
-	}
 
-	unit := c.conn.Object(systemdBusName, path)
-	var prop godbus.Variant
-	if err := unit.CallWithContext(ctx, propertiesIface+".Get", 0, systemdUnitIface, "ActiveState").Store(&prop); err != nil {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
+		unit := session.ObjectAt(path)
+		activeState, err := dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "ActiveState")
+		if err != nil {
+			if session.Context().Err() != nil {
+				return session.Context().Err()
+			}
+			state = "unknown"
+			return nil
 		}
-		return "unknown", nil
-	}
-	state, ok := prop.Value().(string)
-	if !ok {
-		return "unknown", nil
+		state = activeState
+		return nil
+	}); err != nil {
+		return "", err
 	}
 	return state, nil
 }
@@ -261,9 +157,9 @@ type UnitStatus struct {
 	SubState    string
 }
 
-func (c *Client) ListUnitsWithPrefix(ctx context.Context, prefix string) ([]UnitStatus, error) {
+func ListUnitsWithPrefix(ctx context.Context, prefix string) ([]UnitStatus, error) {
 	var result [][]any
-	if err := c.manager.CallWithContext(requireContext(ctx), systemdMgrIface+".ListUnits", 0).Store(&result); err != nil {
+	if err := managerIface.CallStore(ctx, "ListUnits", dbusclient.CallPolicy{}, nil, &result); err != nil {
 		return nil, fmt.Errorf("list units: %w", err)
 	}
 
@@ -291,110 +187,75 @@ func (c *Client) ListUnitsWithPrefix(ctx context.Context, prefix string) ([]Unit
 	return units, nil
 }
 
-func StartUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		return client.Start(ctx, name)
-	})
-}
-
-func StopUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		return client.Stop(ctx, name)
-	})
-}
-
-func RestartUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		return client.Restart(ctx, name)
-	})
-}
-
-func ReloadUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		return client.ReloadUnit(ctx, name)
-	})
-}
-
-func EnableUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		if err := client.Enable(ctx, name); err != nil {
-			return err
-		}
-		return client.Reload(ctx)
-	})
-}
-
-func DisableUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		if err := client.Disable(ctx, name); err != nil {
-			return err
-		}
-		return client.Reload(ctx)
-	})
-}
-
-func MaskUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		if err := client.Mask(ctx, name); err != nil {
-			return err
-		}
-		return client.Reload(ctx)
-	})
-}
-
-func UnmaskUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		if err := client.Unmask(ctx, name); err != nil {
-			return err
-		}
-		return client.Reload(ctx)
-	})
-}
-
-func ResetFailedUnit(ctx context.Context, name string) error {
-	return withClient(ctx, func(client *Client) error {
-		return client.ResetFailed(ctx, name)
-	})
-}
-
-func GetUnitFileState(ctx context.Context, name string) (string, error) {
-	var state string
-	if err := withClient(ctx, func(client *Client) error {
-		var err error
-		state, err = client.GetUnitFileState(ctx, name)
-		return err
-	}); err != nil {
-		return "", err
+func callUnitJob(ctx context.Context, name, method, operation string) error {
+	var job godbus.ObjectPath
+	if err := managerIface.CallStore(ctx, method, dbusclient.CallPolicy{}, []any{name, "replace"}, &job); err != nil {
+		return fmt.Errorf("%s unit %s: %w", operation, name, err)
 	}
-	return state, nil
+	return nil
 }
 
-func DaemonReload(ctx context.Context) error {
-	return withClient(ctx, func(client *Client) error {
-		return client.Reload(ctx)
-	})
-}
-
-func GetActiveState(ctx context.Context, name string) (string, error) {
-	var state string
-	if err := withClient(ctx, func(client *Client) error {
-		var err error
-		state, err = client.GetActiveState(ctx, name)
-		return err
-	}); err != nil {
-		return "", err
+func enableUnitFiles(ctx context.Context, names []string) error {
+	var carriesInstallInfo bool
+	var changes [][]any
+	if err := managerIface.CallStore(
+		ctx,
+		"EnableUnitFiles",
+		dbusclient.CallPolicy{},
+		[]any{names, false, true},
+		&carriesInstallInfo,
+		&changes,
+	); err != nil {
+		return fmt.Errorf("enable unit files %s: %w", strings.Join(names, ", "), err)
 	}
-	return state, nil
+	return nil
 }
 
-func ListUnitsWithPrefix(ctx context.Context, prefix string) ([]UnitStatus, error) {
-	var units []UnitStatus
-	if err := withClient(ctx, func(client *Client) error {
-		var err error
-		units, err = client.ListUnitsWithPrefix(ctx, prefix)
-		return err
-	}); err != nil {
-		return nil, err
+func disableUnitFiles(ctx context.Context, names []string) error {
+	var changes [][]any
+	if err := managerIface.CallStore(
+		ctx,
+		"DisableUnitFiles",
+		dbusclient.CallPolicy{},
+		[]any{names, false},
+		&changes,
+	); err != nil {
+		return fmt.Errorf("disable unit files %s: %w", strings.Join(names, ", "), err)
 	}
-	return units, nil
+	return nil
+}
+
+func maskUnitFiles(ctx context.Context, names []string) error {
+	var changes [][]any
+	if err := managerIface.CallStore(
+		ctx,
+		"MaskUnitFiles",
+		dbusclient.CallPolicy{},
+		[]any{names, false, true},
+		&changes,
+	); err != nil {
+		return fmt.Errorf("mask unit files %s: %w", strings.Join(names, ", "), err)
+	}
+	return nil
+}
+
+func unmaskUnitFiles(ctx context.Context, names []string) error {
+	var changes [][]any
+	if err := managerIface.CallStore(
+		ctx,
+		"UnmaskUnitFiles",
+		dbusclient.CallPolicy{},
+		[]any{names, false},
+		&changes,
+	); err != nil {
+		return fmt.Errorf("unmask unit files %s: %w", strings.Join(names, ", "), err)
+	}
+	return nil
+}
+
+func reloadManager(ctx context.Context) error {
+	if err := managerIface.Call(ctx, "Reload", dbusclient.CallPolicy{}); err != nil {
+		return fmt.Errorf("reload systemd manager: %w", err)
+	}
+	return nil
 }

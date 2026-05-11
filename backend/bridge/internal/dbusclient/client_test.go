@@ -259,6 +259,49 @@ func TestSystemInterfaceCallStore(t *testing.T) {
 	}
 }
 
+func TestSystemObjectUseSession(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+
+	service := &echoService{}
+	owner := bus.OwnName(t, "org.example.Test")
+	if err := owner.Export(service, godbus.ObjectPath("/org/example/Test"), "org.example.Test"); err != nil {
+		t.Fatalf("export service: %v", err)
+	}
+	if err := owner.Export(service, godbus.ObjectPath("/org/example/Other"), "org.example.Test"); err != nil {
+		t.Fatalf("export other service: %v", err)
+	}
+
+	obj := SystemObject{
+		Subsystem: "test",
+		BusName:   "org.example.Test",
+		Path:      godbus.ObjectPath("/org/example/Test"),
+	}
+
+	var got string
+	var other string
+	err := obj.UseSession(context.Background(), func(session SystemSession) error {
+		if session.Context() == nil {
+			t.Fatalf("session context is nil")
+		}
+		if err := session.CallStore("org.example.Test.Echo", CallPolicy{}, []any{"pong"}, &got); err != nil {
+			return err
+		}
+		return session.ObjectAt(godbus.ObjectPath("/org/example/Other")).
+			CallWithContext(session.Context(), "org.example.Test.Echo", 0, "other").
+			Store(&other)
+	})
+	if err != nil {
+		t.Fatalf("UseSession: %v", err)
+	}
+	if got != "pong" {
+		t.Fatalf("got %q, want pong", got)
+	}
+	if other != "other" {
+		t.Fatalf("other = %q, want other", other)
+	}
+}
+
 func TestReadBusNameStateReportsActiveName(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)

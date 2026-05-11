@@ -1,9 +1,10 @@
-package dbus
+package systemd
 
 import (
+	"context"
 	"sync"
 
-	godbus "github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
 type TimerStatus struct {
@@ -20,10 +21,10 @@ type TimerStatus struct {
 	Unit                   string `json:"unit"`
 }
 
-func ListTimers() ([]TimerStatus, error) {
+func ListTimers(ctx context.Context) ([]TimerStatus, error) {
 	var timers []TimerStatus
-	err := withSystemdManager(func(conn *godbus.Conn, systemd godbus.BusObject) error {
-		entries, err := listUnitsBySuffix(systemd, ".timer")
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		entries, err := listUnitsBySuffix(session, ".timer")
 		if err != nil {
 			return err
 		}
@@ -34,7 +35,7 @@ func ListTimers() ([]TimerStatus, error) {
 			wg.Add(1)
 			go func(i int, entry listedUnit) {
 				defer wg.Done()
-				results[i] = fetchTimerStatus(conn, entry)
+				results[i] = fetchTimerStatus(session, entry)
 			}(i, entry)
 		}
 
@@ -45,7 +46,7 @@ func ListTimers() ([]TimerStatus, error) {
 	return timers, err
 }
 
-func fetchTimerStatus(conn *godbus.Conn, entry listedUnit) TimerStatus {
+func fetchTimerStatus(session dbusclient.SystemSession, entry listedUnit) TimerStatus {
 	timer := TimerStatus{
 		Name:          entry.Name,
 		Description:   entry.Description,
@@ -58,28 +59,28 @@ func fetchTimerStatus(conn *godbus.Conn, entry listedUnit) TimerStatus {
 		return timer
 	}
 
-	unit := unitObject(conn, entry.Path)
-	if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
+	unit := session.ObjectAt(entry.Path)
+	if state, ok := getStringProperty(session, unit, dbusclient.SystemdUnitIface, "UnitFileState"); ok {
 		timer.UnitFileState = state
 	}
-	if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
+	if ts, ok := getUint64Property(session, unit, dbusclient.SystemdUnitIface, "ActiveEnterTimestamp"); ok {
 		timer.ActiveEnterTimestamp = ts
 	}
-	if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
+	if ts, ok := getUint64Property(session, unit, dbusclient.SystemdUnitIface, "InactiveEnterTimestamp"); ok {
 		timer.InactiveEnterTimestamp = ts
 	}
-	if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecRealtime"); ok && next > 0 {
+	if next, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "NextElapseUSecRealtime"); ok && next > 0 {
 		timer.NextElapseUSec = next
 	}
 	if timer.NextElapseUSec == 0 {
-		if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecMonotonic"); ok {
+		if next, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "NextElapseUSecMonotonic"); ok {
 			timer.NextElapseUSec = next
 		}
 	}
-	if last, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.LastTriggerUSec"); ok {
+	if last, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "LastTriggerUSec"); ok {
 		timer.LastTriggerUSec = last
 	}
-	if target, ok := getStringProperty(unit, "org.freedesktop.systemd1.Timer.Unit"); ok {
+	if target, ok := getStringProperty(session, unit, dbusclient.SystemdTimerIface, "Unit"); ok {
 		timer.Unit = target
 	}
 	return timer

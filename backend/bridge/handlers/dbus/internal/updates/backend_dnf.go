@@ -41,12 +41,6 @@ func (b *dnfBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	sd, err := systemd.New()
-	if err != nil {
-		return err
-	}
-	defer sd.Close()
-
 	if writeErr := writeDnfAutomaticConfig(o); writeErr != nil {
 		return writeErr
 	}
@@ -60,11 +54,11 @@ func (b *dnfBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 		return err
 	}
 
-	if err := sd.Reload(ctx); err != nil {
+	if err := systemd.DaemonReload(ctx); err != nil {
 		return err
 	}
 
-	return applyDnfTimerState(ctx, sd, timer, o.Enabled)
+	return applyDnfTimerState(ctx, timer, o.Enabled)
 }
 
 func writeDnfAutomaticConfig(o AutoUpdateOptions) error {
@@ -102,39 +96,39 @@ func dnfExcludeLine(packages []string) string {
 	return "exclude = " + strings.Join(packages, " ") + "\n"
 }
 
-func applyDnfTimerState(ctx context.Context, sd *systemd.Client, timer string, enabled bool) error {
+func applyDnfTimerState(ctx context.Context, timer string, enabled bool) error {
 	if enabled {
-		if err := enableDnfTimer(ctx, sd, timer); err != nil {
+		if err := enableDnfTimer(ctx, timer); err != nil {
 			return err
 		}
-		restartDnfTimer(ctx, sd, timer)
+		restartDnfTimer(ctx, timer)
 		return nil
 	}
-	disableDnfTimer(ctx, sd, timer)
+	disableDnfTimer(ctx, timer)
 	return nil
 }
 
-func enableDnfTimer(ctx context.Context, sd *systemd.Client, timer string) error {
-	if err := sd.Enable(ctx, timer); err != nil {
+func enableDnfTimer(ctx context.Context, timer string) error {
+	if err := systemd.EnableUnit(ctx, timer); err != nil {
 		return err
 	}
-	if err := sd.Start(ctx, timer); err != nil {
+	if err := systemd.StartUnit(ctx, timer); err != nil {
 		return err
 	}
 	return nil
 }
 
-func restartDnfTimer(ctx context.Context, sd *systemd.Client, timer string) {
-	if err := sd.Restart(ctx, timer); err != nil {
+func restartDnfTimer(ctx context.Context, timer string) {
+	if err := systemd.RestartUnit(ctx, timer); err != nil {
 		slog.Debug("failed to restart dnf timer", "component", "dbus", "subsystem", "updates", "service", timer, "error", err)
 	}
 }
 
-func disableDnfTimer(ctx context.Context, sd *systemd.Client, timer string) {
-	if err := sd.Stop(ctx, timer); err != nil {
+func disableDnfTimer(ctx context.Context, timer string) {
+	if err := systemd.StopUnit(ctx, timer); err != nil {
 		slog.Debug("failed to stop dnf timer while disabling updates", "component", "dbus", "subsystem", "updates", "service", timer, "error", err)
 	}
-	if err := sd.Disable(ctx, timer); err != nil {
+	if err := systemd.DisableUnit(ctx, timer); err != nil {
 		slog.Debug("failed to disable dnf timer while disabling updates", "component", "dbus", "subsystem", "updates", "service", timer, "error", err)
 	}
 }

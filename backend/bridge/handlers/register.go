@@ -17,6 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
@@ -50,6 +51,7 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	config.RegisterHandlers(rt)
 	control.RegisterHandlers(rt)
 	power.RegisterHandlers(rt)
+	systemd.RegisterHandlers(rt)
 	dbus.RegisterHandlers(rt)
 	terminal.RegisterHandlers(rt)
 	wireguard.RegisterHandlers(rt)

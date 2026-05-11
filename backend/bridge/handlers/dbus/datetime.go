@@ -10,7 +10,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
 
@@ -537,7 +537,7 @@ func serviceScore(candidates []string) int {
 	score := 0
 	ctx := context.Background()
 	for _, name := range candidates {
-		activeState, activeErr := systemdapi.GetActiveState(ctx, name)
+		activeState, activeErr := systemd.GetActiveState(ctx, name)
 		if activeErr == nil {
 			switch activeState {
 			case "active":
@@ -546,7 +546,7 @@ func serviceScore(candidates []string) int {
 				score = max(score, 250)
 			}
 		}
-		unitFileState, stateErr := systemdapi.GetUnitFileState(ctx, name)
+		unitFileState, stateErr := systemd.GetUnitFileState(ctx, name)
 		if stateErr == nil && unitFileState != "masked" && unitFileState != "disabled" {
 			score = max(score, 200)
 		}
@@ -560,11 +560,11 @@ func restartFirstService(candidates []string) error {
 		if strings.TrimSpace(name) == "" {
 			continue
 		}
-		if _, err := systemdapi.GetUnitFileState(ctx, name); err == nil {
-			return RestartService(name)
+		if _, err := systemd.GetUnitFileState(ctx, name); err == nil {
+			return systemd.RestartUnit(ctx, name)
 		}
-		if state, err := systemdapi.GetActiveState(ctx, name); err == nil && state != "inactive" {
-			return RestartService(name)
+		if state, err := systemd.GetActiveState(ctx, name); err == nil && state != "inactive" {
+			return systemd.RestartUnit(ctx, name)
 		}
 	}
 	return fmt.Errorf("no available service to restart: %s", strings.Join(candidates, ", "))

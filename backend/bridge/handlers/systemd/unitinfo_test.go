@@ -1,11 +1,13 @@
-package dbus
+package systemd
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	godbus "github.com/godbus/dbus/v5"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient/testdbus"
 )
 
@@ -29,8 +31,8 @@ func (m *unitInfoManager) ListUnitFiles() ([]unitFileRecord, *godbus.Error) {
 func exportUnitInfoManager(t *testing.T, bus *testdbus.Bus, manager *unitInfoManager) {
 	t.Helper()
 
-	conn := bus.OwnName(t, systemdManagerBusName)
-	if err := conn.Export(manager, systemdManagerPath, systemdManagerBusName+".Manager"); err != nil {
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
 		t.Fatalf("export systemd manager: %v", err)
 	}
 }
@@ -53,7 +55,7 @@ func TestGetUnitInfoFallsBackToUnitFileRecord(t *testing.T) {
 		},
 	})
 
-	info, err := GetUnitInfo(unitName)
+	info, err := GetUnitInfo(context.Background(), unitName)
 	if err != nil {
 		t.Fatalf("GetUnitInfo: %v", err)
 	}
@@ -90,7 +92,7 @@ func TestGetUnitInfoReturnsOriginalLoadErrorWhenUnitFileMissing(t *testing.T) {
 		},
 	})
 
-	_, err := GetUnitInfo(unitName)
+	_, err := GetUnitInfo(context.Background(), unitName)
 	if err == nil {
 		t.Fatal("GetUnitInfo returned nil error")
 	}

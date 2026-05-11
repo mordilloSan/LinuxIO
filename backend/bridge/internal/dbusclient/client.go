@@ -44,6 +44,15 @@ type SystemInterface struct {
 	Name   string
 }
 
+// SystemSession is a short-lived view of one open system-bus connection.
+// It is valid only for the duration of the UseSession callback.
+type SystemSession struct {
+	ctx    context.Context
+	conn   *godbus.Conn
+	object SystemObject
+	busObj godbus.BusObject
+}
+
 type CallPolicy struct {
 	NoAutoStart                   bool
 	AllowInteractiveAuthorization bool
@@ -110,6 +119,22 @@ func (o SystemObject) Use(ctx context.Context, fn func(context.Context, *godbus.
 	return o.UseWithOptions(ctx, SystemBusOptions{}, fn)
 }
 
+// UseSession opens the system bus for one callback and passes a small session
+// object instead of leaking ctx/conn/object plumbing into callers.
+func (o SystemObject) UseSession(ctx context.Context, fn func(SystemSession) error) error {
+	if fn == nil {
+		return fmt.Errorf("nil D-Bus session callback")
+	}
+	return o.Use(ctx, func(ctx context.Context, conn *godbus.Conn, obj godbus.BusObject) error {
+		return fn(SystemSession{
+			ctx:    ctx,
+			conn:   conn,
+			object: o,
+			busObj: obj,
+		})
+	})
+}
+
 func (o SystemObject) UseWithOptions(ctx context.Context, opts SystemBusOptions, fn func(context.Context, *godbus.Conn, godbus.BusObject) error) error {
 	if opts.Subsystem == "" {
 		opts.Subsystem = o.Subsystem
@@ -121,6 +146,32 @@ func (o SystemObject) UseWithOptions(ctx context.Context, opts SystemBusOptions,
 
 func (o SystemObject) BusObject(conn *godbus.Conn) godbus.BusObject {
 	return conn.Object(o.BusName, o.Path)
+}
+
+// Context returns the callback context used for all calls in this session.
+func (s SystemSession) Context() context.Context {
+	return s.ctx
+}
+
+// Object returns this session's root bus object.
+func (s SystemSession) Object() godbus.BusObject {
+	return s.busObj
+}
+
+// ObjectAt returns another object owned by the same bus name on this session's
+// connection. It is useful for dynamic object paths returned by D-Bus calls.
+func (s SystemSession) ObjectAt(path godbus.ObjectPath) godbus.BusObject {
+	return s.conn.Object(s.object.BusName, path)
+}
+
+// Call invokes a method on this session's root object.
+func (s SystemSession) Call(method string, policy CallPolicy, args ...any) error {
+	return s.busObj.CallWithContext(s.ctx, method, policy.Flags(), args...).Err
+}
+
+// CallStore invokes a method on this session's root object and stores its reply.
+func (s SystemSession) CallStore(method string, policy CallPolicy, args []any, out ...any) error {
+	return s.busObj.CallWithContext(s.ctx, method, policy.Flags(), args...).Store(out...)
 }
 
 func (i SystemInterface) Use(ctx context.Context, fn func(context.Context, *godbus.Conn, godbus.BusObject) error) error {

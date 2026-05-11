@@ -25,19 +25,6 @@ func RegisterHandlers(rt runtime.Runtime) {
 		{Name: "set_auto_updates", Handler: handleSetAutoUpdates},
 		{Name: "apply_offline_updates", Handler: handleApplyOfflineUpdates},
 		{Name: "get_update_history", Handler: handleGetUpdateHistory},
-		{Name: "list_timers", Handler: handleListTimers},
-		{Name: "list_sockets", Handler: handleListSockets},
-		{Name: "list_services", Handler: handleListServices},
-		{Name: "get_unit_info", Handler: handleGetUnitInfo},
-		{Name: "start_service", Handler: handleStartService},
-		{Name: "stop_service", Handler: handleStopService},
-		{Name: "restart_service", Handler: handleRestartService},
-		{Name: "reload_service", Handler: handleReloadService},
-		{Name: "enable_service", Handler: handleEnableService},
-		{Name: "disable_service", Handler: handleDisableService},
-		{Name: "mask_service", Handler: handleMaskService},
-		{Name: "unmask_service", Handler: handleUnmaskService},
-		{Name: "reset_failed_service", Handler: handleResetFailedService},
 		{Name: "get_network_info", Handler: handleGetNetworkInfo},
 		{Name: "set_ipv4_manual", Handler: handleSetIPv4Manual},
 		{Name: "set_ipv4", Handler: handleSetIPv4},
@@ -112,111 +99,6 @@ func handleApplyOfflineUpdates(ctx context.Context, args []string, emit ipc.Even
 func handleGetUpdateHistory(ctx context.Context, args []string, emit ipc.Events) error {
 	result, err := GetUpdateHistory()
 	return rpc.EmitResult(emit, result, err)
-}
-
-func handleListTimers(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := ListTimers()
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleListSockets(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := ListSockets()
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleListServices(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := ListServices()
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleGetUnitInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	result, err := GetUnitInfo(unit)
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleStartService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("start_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, StartService(unit))
-}
-
-func handleStopService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("stop_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, StopService(unit))
-}
-
-func handleRestartService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("restart_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, RestartService(unit))
-}
-
-func handleReloadService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("reload_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, ReloadService(unit))
-}
-
-func handleEnableService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("enable_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, EnableService(unit))
-}
-
-func handleDisableService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("disable_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, DisableService(unit))
-}
-
-func handleMaskService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("mask_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, MaskService(unit))
-}
-
-func handleUnmaskService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("unmask_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, UnmaskService(unit))
-}
-
-func handleResetFailedService(ctx context.Context, args []string, emit ipc.Events) error {
-	unit, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("reset_failed_service requested", "component", "dbus", "unit", unit)
-	return rpc.EmitResult(emit, nil, ResetFailedService(unit))
 }
 
 func handleGetNetworkInfo(ctx context.Context, args []string, emit ipc.Events) error {

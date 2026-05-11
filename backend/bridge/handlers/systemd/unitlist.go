@@ -1,20 +1,15 @@
-package dbus
+package systemd
 
 import (
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
-)
-
-const (
-	systemdManagerBusName = "org.freedesktop.systemd1"
-	systemdManagerPath    = godbus.ObjectPath("/org/freedesktop/systemd1")
 )
 
 type listedUnit struct {
@@ -32,33 +27,12 @@ type unitFileRecord struct {
 	State string
 }
 
-func withSystemdManager(
-	fn func(conn *godbus.Conn, systemd godbus.BusObject) error,
-) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "systemd", "error", cerr)
-			}
-		}()
-
-		return fn(conn, conn.Object(systemdManagerBusName, systemdManagerPath))
-	})
-}
-
 func listUnitsBySuffix(
-	systemd godbus.BusObject,
+	session dbusclient.SystemSession,
 	suffix string,
 ) ([]listedUnit, error) {
 	var units [][]any
-	if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnits", 0).Store(&units); err != nil {
+	if err := session.CallStore(dbusclient.SystemdManagerIface+".ListUnits", dbusclient.CallPolicy{}, nil, &units); err != nil {
 		return nil, err
 	}
 
@@ -89,7 +63,7 @@ func listUnitsBySuffix(
 	}
 
 	var unitFiles []unitFileRecord
-	if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnitFiles", 0).Store(&unitFiles); err != nil {
+	if err := session.CallStore(dbusclient.SystemdManagerIface+".ListUnitFiles", dbusclient.CallPolicy{}, nil, &unitFiles); err != nil {
 		return nil, err
 	}
 
@@ -126,36 +100,26 @@ func listUnitsBySuffix(
 	return entries, nil
 }
 
-func unitObject(conn *godbus.Conn, path godbus.ObjectPath) godbus.BusObject {
-	return conn.Object(systemdManagerBusName, path)
-}
-
-func getStringProperty(unit godbus.BusObject, property string) (string, bool) {
-	val, err := unit.GetProperty(property)
+func getStringProperty(session dbusclient.SystemSession, unit godbus.BusObject, iface, property string) (string, bool) {
+	str, err := dbusclient.GetProperty[string](session.Context(), unit, iface, property)
 	if err != nil {
 		return "", false
 	}
-
-	str, ok := val.Value().(string)
-	return str, ok
+	return str, true
 }
 
-func getUint64Property(unit godbus.BusObject, property string) (uint64, bool) {
-	val, err := unit.GetProperty(property)
+func getUint64Property(session dbusclient.SystemSession, unit godbus.BusObject, iface, property string) (uint64, bool) {
+	n, err := dbusclient.GetProperty[uint64](session.Context(), unit, iface, property)
 	if err != nil {
 		return 0, false
 	}
-
-	n, ok := val.Value().(uint64)
-	return n, ok
+	return n, true
 }
 
-func getUint32Property(unit godbus.BusObject, property string) (uint32, bool) {
-	val, err := unit.GetProperty(property)
+func getUint32Property(session dbusclient.SystemSession, unit godbus.BusObject, iface, property string) (uint32, bool) {
+	n, err := dbusclient.GetProperty[uint32](session.Context(), unit, iface, property)
 	if err != nil {
 		return 0, false
 	}
-
-	n, ok := val.Value().(uint32)
-	return n, ok
+	return n, true
 }
