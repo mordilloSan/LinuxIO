@@ -8,7 +8,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
 type pkgkitBackend struct{}
@@ -16,7 +16,7 @@ type pkgkitBackend struct{}
 func newPkgKitBackend() Backend     { return &pkgkitBackend{} }
 func (*pkgkitBackend) Name() string { return "packagekit" }
 func (*pkgkitBackend) Detect() bool {
-	ok, err := pkgkit.Available()
+	ok, err := dbusclient.PackageKit.Available(context.Background())
 	return err == nil && ok
 }
 
@@ -46,10 +46,10 @@ func (*pkgkitBackend) Apply(_ context.Context, _ AutoUpdateOptions) error {
 // This is the main purpose of the PackageKit backend
 func (*pkgkitBackend) ApplyOfflineNow() error {
 	const (
-		pkBusName      = pkgkit.BusName
-		pkObjPath      = pkgkit.ObjectPath
-		transactionIfc = pkgkit.TransactionInterface
-		offlineIfc     = pkgkit.OfflineInterface
+		pkBusName      = dbusclient.PackageKitBusName
+		pkObjPath      = dbusclient.PackageKitPath
+		transactionIfc = dbusclient.PackageKitTransactionIface
+		offlineIfc     = dbusclient.PackageKitOfflineIface
 	)
 
 	conn, err := godbus.ConnectSystemBus()
@@ -58,7 +58,7 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 	}
 	defer conn.Close()
 
-	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 		return err
 	}
 
@@ -101,10 +101,10 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 	obj := conn.Object(busName, godbus.ObjectPath(objPath))
 
 	var transPath godbus.ObjectPath
-	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 		return err
 	}
-	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
+	if err := obj.Call(dbusclient.PackageKitCreateTransaction, 0).Store(&transPath); err != nil {
 		return fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 
@@ -168,10 +168,10 @@ func collectPackageKitUpdates(
 	busName, transIfc string,
 ) ([]string, error) {
 	var transPath godbus.ObjectPath
-	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 		return nil, err
 	}
-	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
+	if err := obj.Call(dbusclient.PackageKitCreateTransaction, 0).Store(&transPath); err != nil {
 		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 
@@ -211,10 +211,10 @@ func downloadPackageKitUpdates(
 	packageIDs []string,
 ) error {
 	var transPath godbus.ObjectPath
-	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 		return err
 	}
-	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
+	if err := obj.Call(dbusclient.PackageKitCreateTransaction, 0).Store(&transPath); err != nil {
 		return err
 	}
 

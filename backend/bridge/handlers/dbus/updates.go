@@ -18,7 +18,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/updates"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
@@ -41,9 +41,10 @@ type (
 )
 
 const (
-	packageKitBusName        = pkgkit.BusName
-	packageKitObjPath        = pkgkit.ObjectPath
-	packageKitTransactionIfc = pkgkit.TransactionInterface
+	packageKitBusName           = dbusclient.PackageKitBusName
+	packageKitObjPath           = dbusclient.PackageKitPath
+	packageKitTransactionIfc    = dbusclient.PackageKitTransactionIface
+	packageKitCreateTransaction = dbusclient.PackageKitCreateTransaction
 )
 
 type packageUpdateMeta struct {
@@ -210,14 +211,14 @@ func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
 }
 
 func newPackageKitTransaction(conn *godbus.Conn) (godbus.BusObject, godbus.ObjectPath, error) {
-	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 		return nil, "", err
 	}
 
 	obj := conn.Object(packageKitBusName, godbus.ObjectPath(packageKitObjPath))
 
 	var transPath godbus.ObjectPath
-	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
+	if err := obj.Call(packageKitCreateTransaction, 0).Store(&transPath); err != nil {
 		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 
@@ -763,19 +764,19 @@ func installPackage(packageID string) error {
 		}()
 
 		const (
-			pkBusName      = pkgkit.BusName
-			pkObjPath      = pkgkit.ObjectPath
-			transactionIfc = pkgkit.TransactionInterface
+			pkBusName      = packageKitBusName
+			pkObjPath      = packageKitObjPath
+			transactionIfc = packageKitTransactionIfc
 		)
 
-		if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+		if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 			return err
 		}
 
 		// 1. Create Transaction
 		obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
 		var transPath godbus.ObjectPath
-		if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
+		if err := obj.Call(packageKitCreateTransaction, 0).Store(&transPath); err != nil {
 			return fmt.Errorf("CreateTransaction failed: %w", err)
 		}
 		trans := conn.Object(pkBusName, transPath)

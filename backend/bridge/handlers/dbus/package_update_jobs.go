@@ -8,7 +8,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 )
 
@@ -163,9 +163,9 @@ func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report
 	}()
 
 	const (
-		pkBusName      = pkgkit.BusName
-		pkObjPath      = pkgkit.ObjectPath
-		transactionIfc = pkgkit.TransactionInterface
+		pkBusName      = packageKitBusName
+		pkObjPath      = packageKitObjPath
+		transactionIfc = packageKitTransactionIfc
 	)
 
 	trans, transPath, err := createPackageKitTransaction(conn, pkBusName, pkObjPath)
@@ -214,10 +214,10 @@ func createPackageKitTransaction(
 ) (godbus.BusObject, godbus.ObjectPath, error) {
 	obj := conn.Object(busName, godbus.ObjectPath(objectPath))
 	var transPath godbus.ObjectPath
-	if err := pkgkit.RequireAvailableOnConnection(conn); err != nil {
+	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
 		return nil, "", err
 	}
-	if err := obj.Call(pkgkit.CreateTransactionMethod, 0).Store(&transPath); err != nil {
+	if err := obj.Call(packageKitCreateTransaction, 0).Store(&transPath); err != nil {
 		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
 	}
 	return conn.Object(busName, transPath), transPath, nil
