@@ -58,12 +58,12 @@ func RegisterHandlers(rt runtime.Runtime) {
 
 func handleReboot(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("reboot requested", "component", "dbus")
-	return rpc.EmitResult(emit, nil, CallLogin1Action("Reboot"))
+	return rpc.EmitResult(emit, nil, Reboot(ctx))
 }
 
 func handlePowerOff(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("power_off requested", "component", "dbus")
-	return rpc.EmitResult(emit, nil, CallLogin1Action("PowerOff"))
+	return rpc.EmitResult(emit, nil, PowerOff(ctx))
 }
 
 func handleGetUpdatesBasic(ctx context.Context, args []string, emit ipc.Events) error {
