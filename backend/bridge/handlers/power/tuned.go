@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
@@ -36,127 +34,134 @@ type tunedProfileRecord struct {
 	Description string
 }
 
-func Available() (bool, error) {
-	state, err := dbusclient.Tuned.BusNameState(context.Background())
+func Available(ctx context.Context) (bool, error) {
+	state, err := dbusclient.Tuned.BusNameState(ctx)
 	if err != nil {
 		return false, err
 	}
 	// TuneD is not always D-Bus activatable when installed; the systemd unit
 	// fallback lets the bridge report and start tuned.service directly.
-	availability := readTunedUnitAvailability()
+	availability := readTunedUnitAvailability(ctx)
 	return state.Available() || availability.available, nil
 }
 
-func GetStatus() (PowerStatus, error) {
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return PowerStatus{}, fmt.Errorf("connect to system bus: %w", err)
-	}
-	defer conn.Close()
-
-	return getStatus(conn)
+func GetStatus(ctx context.Context) (PowerStatus, error) {
+	var status PowerStatus
+	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+		var err error
+		status, err = getStatus(session)
+		return err
+	})
+	return status, err
 }
 
-func StartTuned() (PowerStatus, error) {
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return PowerStatus{}, fmt.Errorf("connect to system bus: %w", err)
-	}
-	defer conn.Close()
-
-	if err := ensureTunedRunning(conn); err != nil {
-		return getStatusWithError(conn, err)
-	}
-	return getStatus(conn)
+func StartTuned(ctx context.Context) (PowerStatus, error) {
+	var status PowerStatus
+	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+		if err := ensureTunedRunning(session); err != nil {
+			status, _ = getStatus(session)
+			return err
+		}
+		var err error
+		status, err = getStatus(session)
+		return err
+	})
+	return status, err
 }
 
-func SetProfile(profile string) (PowerStatus, error) {
+func SetProfile(ctx context.Context, profile string) (PowerStatus, error) {
 	profile = strings.TrimSpace(profile)
 	if !profileNameRE.MatchString(profile) {
 		return PowerStatus{}, fmt.Errorf("invalid TuneD profile name")
 	}
 
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return PowerStatus{}, fmt.Errorf("connect to system bus: %w", err)
-	}
-	defer conn.Close()
-
-	status, err := getStatus(conn)
-	if err != nil {
-		return status, err
-	}
-	if !status.TunedAvailable {
-		return status, ErrUnavailable
-	}
-
-	if !status.TunedActive {
-		if startErr := ensureTunedRunning(conn); startErr != nil {
-			return status, startErr
+	var status PowerStatus
+	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+		var err error
+		status, err = getStatus(session)
+		if err != nil {
+			return err
 		}
-		status, _ = getStatus(conn)
-	}
-
-	if len(status.Profiles) > 0 && !slices.ContainsFunc(status.Profiles, func(p TunedProfile) bool { return p.Name == profile }) {
-		return status, fmt.Errorf("TuneD profile %q is not available", profile)
-	}
-
-	ok, message, err := switchProfile(conn, profile)
-	if err != nil {
-		return status, err
-	}
-	if !ok {
-		if message == "" {
-			message = "TuneD refused the profile change"
+		if !status.TunedAvailable {
+			return ErrUnavailable
 		}
-		return status, errors.New(message)
-	}
 
-	return getStatus(conn)
+		if !status.TunedActive {
+			if startErr := ensureTunedRunning(session); startErr != nil {
+				return startErr
+			}
+			status, _ = getStatus(session)
+		}
+
+		if len(status.Profiles) > 0 && !slices.ContainsFunc(status.Profiles, func(p TunedProfile) bool { return p.Name == profile }) {
+			return fmt.Errorf("TuneD profile %q is not available", profile)
+		}
+
+		ok, message, err := switchProfile(session, profile)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			if message == "" {
+				message = "TuneD refused the profile change"
+			}
+			return errors.New(message)
+		}
+
+		status, err = getStatus(session)
+		return err
+	})
+	return status, err
 }
 
-func DisableTuned() (PowerStatus, error) {
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return PowerStatus{}, fmt.Errorf("connect to system bus: %w", err)
-	}
-	defer conn.Close()
+func DisableTuned(ctx context.Context) (PowerStatus, error) {
+	var status PowerStatus
+	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+		var err error
+		status, err = getStatus(session)
+		if err != nil {
+			return err
+		}
+		if !status.TunedAvailable {
+			return ErrUnavailable
+		}
 
-	status, err := getStatus(conn)
-	if err != nil {
-		return status, err
-	}
-	if !status.TunedAvailable {
-		return status, ErrUnavailable
-	}
-
-	ok, err := disableTuned(conn)
-	if err != nil {
-		return status, err
-	}
-	if !ok {
-		return status, fmt.Errorf("TuneD did not disable tunings")
-	}
-	return getStatus(conn)
+		ok, err := disableTuned(session)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("TuneD did not disable tunings")
+		}
+		status, err = getStatus(session)
+		return err
+	})
+	return status, err
 }
 
-func getStatus(conn *godbus.Conn) (PowerStatus, error) {
+func withTunedSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
+	return dbusclient.Tuned.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
+		Unserialized: true,
+	}, fn)
+}
+
+func getStatus(session dbusclient.SystemSession) (PowerStatus, error) {
 	status := baseStatus()
 
-	tunedState, err := dbusclient.ReadBusNameState(context.Background(), conn, tunedBusName)
+	tunedState, err := dbusclient.Tuned.BusNameState(session.Context())
 	if err != nil {
 		status.Error = err.Error()
 		return status, nil
 	}
 
-	ppdState, ppdErr := dbusclient.ReadBusNameState(context.Background(), conn, ppdBusName)
+	ppdState, ppdErr := dbusclient.PowerProfiles.BusNameState(session.Context())
 	if ppdErr == nil {
 		status.PowerProfilesDaemonActive = ppdState.Active
 	}
 
 	status.TunedActive = tunedState.Active
 	status.TunedActivatable = tunedState.Activatable
-	unitAvailability := readTunedUnitAvailability()
+	unitAvailability := readTunedUnitAvailability(session.Context())
 	status.TunedUnitAvailable = unitAvailability.available
 	status.TunedUnitFileState = unitAvailability.state
 	status.TunedStartable = tunedState.Available() || unitAvailability.startable
@@ -175,37 +180,32 @@ func getStatus(conn *godbus.Conn) (PowerStatus, error) {
 		status.Notes = append(status.Notes, "power-profiles-daemon is active and may conflict with TuneD.")
 	}
 
-	if running, runErr := isTunedRunning(conn); runErr == nil {
+	if running, runErr := isTunedRunning(session); runErr == nil {
 		status.TunedActive = running
 		if !running {
 			status.Notes = append(status.Notes, "TuneD tunings are currently disabled.")
 		}
 	}
 
-	profiles, err := readProfiles(conn)
+	profiles, err := readProfiles(session)
 	if err != nil {
 		status.Error = err.Error()
 	} else {
 		status.Profiles = profiles
 	}
 
-	if active, err := activeProfile(conn); err == nil {
+	if active, err := activeProfile(session); err == nil {
 		status.ActiveProfile = active
 	} else if status.Error == "" {
 		status.Error = err.Error()
 	}
 
-	if recommended, err := recommendedProfile(conn); err == nil {
+	if recommended, err := recommendedProfile(session); err == nil {
 		status.RecommendedProfile = recommended
 	}
 
 	markProfiles(status.Profiles, status.ActiveProfile, status.RecommendedProfile)
 	return status, nil
-}
-
-func getStatusWithError(conn *godbus.Conn, cause error) (PowerStatus, error) {
-	status, _ := getStatus(conn)
-	return status, cause
 }
 
 func baseStatus() PowerStatus {
@@ -223,16 +223,21 @@ type unitAvailability struct {
 	state     string
 }
 
-func activateTuned(conn *godbus.Conn) error {
-	var result uint32
-	if err := conn.BusObject().Call(dbusclient.DBusStartServiceByName, 0, tunedBusName, uint32(0)).Store(&result); err != nil {
+func activateTuned(session dbusclient.SystemSession) error {
+	if err := dbusclient.DBus.Interface(dbusclient.DBusIface).Call(
+		session.Context(),
+		"StartServiceByName",
+		dbusclient.CallPolicy{},
+		tunedBusName,
+		uint32(0),
+	); err != nil {
 		return fmt.Errorf("start TuneD D-Bus service: %w", err)
 	}
 	return nil
 }
 
-func readTunedUnitAvailability() unitAvailability {
-	state, err := systemdapi.GetUnitFileState(context.Background(), tunedUnitName)
+func readTunedUnitAvailability(ctx context.Context) unitAvailability {
+	state, err := systemdapi.GetUnitFileState(ctx, tunedUnitName)
 	if err != nil {
 		return unitAvailability{}
 	}
@@ -257,26 +262,26 @@ func isStartableUnitFileState(state string) bool {
 	}
 }
 
-func ensureTunedRunning(conn *godbus.Conn) error {
-	state, err := dbusclient.ReadBusNameState(context.Background(), conn, tunedBusName)
+func ensureTunedRunning(session dbusclient.SystemSession) error {
+	state, err := dbusclient.Tuned.BusNameState(session.Context())
 	if err != nil {
 		return err
 	}
 
 	if !state.Active {
-		if startErr := startTunedDaemon(conn, state); startErr != nil {
+		if startErr := startTunedDaemon(session, state); startErr != nil {
 			return startErr
 		}
-		if waitErr := waitForTunedBus(conn); waitErr != nil {
+		if waitErr := waitForTunedBus(session); waitErr != nil {
 			return waitErr
 		}
 	}
 
-	if running, runErr := isTunedRunning(conn); runErr == nil && running {
+	if running, runErr := isTunedRunning(session); runErr == nil && running {
 		return nil
 	}
 
-	ok, err := startTunedTunings(conn)
+	ok, err := startTunedTunings(session)
 	if err != nil {
 		return err
 	}
@@ -284,12 +289,12 @@ func ensureTunedRunning(conn *godbus.Conn) error {
 		return nil
 	}
 
-	profile, err := ensureTunedProfile(conn)
+	profile, err := ensureTunedProfile(session)
 	if err != nil {
 		return err
 	}
 
-	ok, err = startTunedTunings(conn)
+	ok, err = startTunedTunings(session)
 	if err != nil {
 		return err
 	}
@@ -299,65 +304,71 @@ func ensureTunedRunning(conn *godbus.Conn) error {
 	return nil
 }
 
-func startTunedDaemon(conn *godbus.Conn, state dbusclient.BusNameState) error {
+func startTunedDaemon(session dbusclient.SystemSession, state dbusclient.BusNameState) error {
 	if state.Activatable {
-		return activateTuned(conn)
+		return activateTuned(session)
 	}
 
-	availability := readTunedUnitAvailability()
+	availability := readTunedUnitAvailability(session.Context())
 	if !availability.startable {
 		return fmt.Errorf("TuneD is installed but %s is not startable", tunedUnitName)
 	}
-	if err := systemdapi.StartUnit(context.Background(), tunedUnitName); err != nil {
+	if err := systemdapi.StartUnit(session.Context(), tunedUnitName); err != nil {
 		return fmt.Errorf("start %s through systemd D-Bus: %w", tunedUnitName, err)
 	}
 	return nil
 }
 
-func waitForTunedBus(conn *godbus.Conn) error {
-	deadline := time.Now().Add(3 * time.Second)
+func waitForTunedBus(session dbusclient.SystemSession) error {
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
-		state, err := dbusclient.ReadBusNameState(context.Background(), conn, tunedBusName)
+		state, err := dbusclient.Tuned.BusNameState(session.Context())
 		if err != nil {
 			return err
 		}
 		if state.Active {
 			return nil
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-session.Context().Done():
+			return session.Context().Err()
+		case <-timer.C:
 			return fmt.Errorf("TuneD D-Bus service did not appear after starting %s", tunedUnitName)
+		case <-ticker.C:
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-func isTunedRunning(conn *godbus.Conn) (bool, error) {
+func isTunedRunning(session dbusclient.SystemSession) (bool, error) {
 	var running bool
-	err := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".is_running", 0).Store(&running)
+	err := session.CallStore(tunedControlIface+".is_running", dbusclient.CallPolicy{}, nil, &running)
 	return running, err
 }
 
-func activeProfile(conn *godbus.Conn) (string, error) {
+func activeProfile(session dbusclient.SystemSession) (string, error) {
 	var profile string
-	err := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".active_profile", 0).Store(&profile)
+	err := session.CallStore(tunedControlIface+".active_profile", dbusclient.CallPolicy{}, nil, &profile)
 	return profile, err
 }
 
-func recommendedProfile(conn *godbus.Conn) (string, error) {
+func recommendedProfile(session dbusclient.SystemSession) (string, error) {
 	var profile string
-	err := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".recommend_profile", 0).Store(&profile)
+	err := session.CallStore(tunedControlIface+".recommend_profile", dbusclient.CallPolicy{}, nil, &profile)
 	return profile, err
 }
 
-func readProfiles(conn *godbus.Conn) ([]TunedProfile, error) {
-	obj := dbusclient.Tuned.BusObject(conn)
+func readProfiles(session dbusclient.SystemSession) ([]TunedProfile, error) {
 	var records []tunedProfileRecord
-	if err := obj.Call(tunedControlIface+".profiles2", 0).Store(&records); err == nil {
+	if err := session.CallStore(tunedControlIface+".profiles2", dbusclient.CallPolicy{}, nil, &records); err == nil {
 		return profilesFromRecords(records), nil
 	}
 
 	var names []string
-	if err := obj.Call(tunedControlIface+".profiles", 0).Store(&names); err != nil {
+	if err := session.CallStore(tunedControlIface+".profiles", dbusclient.CallPolicy{}, nil, &names); err != nil {
 		return nil, err
 	}
 	profiles := make([]TunedProfile, 0, len(names))
@@ -378,40 +389,40 @@ func profilesFromRecords(records []tunedProfileRecord) []TunedProfile {
 	return profiles
 }
 
-func switchProfile(conn *godbus.Conn, profile string) (bool, string, error) {
-	call := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".switch_profile", 0, profile)
+func switchProfile(session dbusclient.SystemSession, profile string) (bool, string, error) {
+	call := session.Object().CallWithContext(session.Context(), tunedControlIface+".switch_profile", 0, profile)
 	if call.Err != nil {
 		return false, "", call.Err
 	}
 	return boolStringResult(call.Body)
 }
 
-func autoProfile(conn *godbus.Conn) (bool, string, error) {
-	call := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".auto_profile", 0)
+func autoProfile(session dbusclient.SystemSession) (bool, string, error) {
+	call := session.Object().CallWithContext(session.Context(), tunedControlIface+".auto_profile", 0)
 	if call.Err != nil {
 		return false, "", call.Err
 	}
 	return boolStringResult(call.Body)
 }
 
-func disableTuned(conn *godbus.Conn) (bool, error) {
+func disableTuned(session dbusclient.SystemSession) (bool, error) {
 	var ok bool
-	err := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".disable", 0).Store(&ok)
+	err := session.CallStore(tunedControlIface+".disable", dbusclient.CallPolicy{}, nil, &ok)
 	return ok, err
 }
 
-func startTunedTunings(conn *godbus.Conn) (bool, error) {
+func startTunedTunings(session dbusclient.SystemSession) (bool, error) {
 	var ok bool
-	err := dbusclient.Tuned.BusObject(conn).Call(tunedControlIface+".start", 0).Store(&ok)
+	err := session.CallStore(tunedControlIface+".start", dbusclient.CallPolicy{}, nil, &ok)
 	return ok, err
 }
 
-func ensureTunedProfile(conn *godbus.Conn) (string, error) {
-	if active, err := activeProfile(conn); err == nil && active != "" {
+func ensureTunedProfile(session dbusclient.SystemSession) (string, error) {
+	if active, err := activeProfile(session); err == nil && active != "" {
 		return active, nil
 	}
 
-	recommended, err := recommendedProfile(conn)
+	recommended, err := recommendedProfile(session)
 	if err != nil {
 		return "", err
 	}
@@ -419,7 +430,7 @@ func ensureTunedProfile(conn *godbus.Conn) (string, error) {
 		return "", fmt.Errorf("TuneD has no active or recommended profile")
 	}
 
-	ok, message, err := autoProfile(conn)
+	ok, message, err := autoProfile(session)
 	if err != nil {
 		return "", err
 	}

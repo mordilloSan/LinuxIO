@@ -122,10 +122,15 @@ func (o SystemObject) Use(ctx context.Context, fn func(context.Context, *godbus.
 // UseSession opens the system bus for one callback and passes a small session
 // object instead of leaking ctx/conn/object plumbing into callers.
 func (o SystemObject) UseSession(ctx context.Context, fn func(SystemSession) error) error {
+	return o.UseSessionWithOptions(ctx, SystemBusOptions{}, fn)
+}
+
+// UseSessionWithOptions is UseSession with explicit bus options.
+func (o SystemObject) UseSessionWithOptions(ctx context.Context, opts SystemBusOptions, fn func(SystemSession) error) error {
 	if fn == nil {
 		return fmt.Errorf("nil D-Bus session callback")
 	}
-	return o.Use(ctx, func(ctx context.Context, conn *godbus.Conn, obj godbus.BusObject) error {
+	return o.UseWithOptions(ctx, opts, func(ctx context.Context, conn *godbus.Conn, obj godbus.BusObject) error {
 		return fn(SystemSession{
 			ctx:    ctx,
 			conn:   conn,
