@@ -113,7 +113,7 @@ func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
 	ok, err = nfsshares.CheckNFSServerAvailability()
 	out.NFSServerAvailable, out.NFSServerError = checkedCapability(ok, err, nil)
 
-	ok, err = power.Available()
+	ok, err = power.Available(ctx)
 	out.TunedAvailable, out.TunedError = checkedCapability(ok, err, power.ErrUnavailable)
 
 	logCapabilitiesSummary(out)

@@ -19,13 +19,13 @@ func RegisterHandlers(rt runtime.Runtime) {
 }
 
 func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := GetStatus()
+	result, err := GetStatus(ctx)
 	return rpc.EmitResult(emit, result, err)
 }
 
 func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("TuneD start requested", "component", "power")
-	result, err := StartTuned()
+	result, err := StartTuned(ctx)
 	return rpc.EmitResult(emit, result, err)
 }
 
@@ -34,12 +34,12 @@ func handleSetProfile(ctx context.Context, args []string, emit ipc.Events) error
 		return ipc.ErrInvalidArgs
 	}
 	slog.Info("TuneD profile change requested", "component", "power", "profile", args[0])
-	result, err := SetProfile(args[0])
+	result, err := SetProfile(ctx, args[0])
 	return rpc.EmitResult(emit, result, err)
 }
 
 func handleDisable(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("TuneD disable requested", "component", "power")
-	result, err := DisableTuned()
+	result, err := DisableTuned(ctx)
 	return rpc.EmitResult(emit, result, err)
 }
