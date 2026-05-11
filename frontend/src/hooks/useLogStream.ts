@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useEffectEvent,
+} from "react";
 
 import { useStreamMux, decodeString, type Stream } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
@@ -29,7 +35,7 @@ const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;
  * Manages a live log stream: opens/closes based on dialog state and live mode,
  * accumulates log text, and handles loading/error state.
  *
- * `createStream` does not need to be memoized — a ref is used internally.
+ * `createStream` does not need to be memoized.
  */
 export function useLogStream({
   open,
@@ -44,10 +50,6 @@ export function useLogStream({
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const hasReceivedData = useRef(false);
   const initialLoadTimeoutRef = useRef<number | null>(null);
-
-  // Stable ref so effects don't need createStream in their dep arrays.
-  const createStreamRef = useRef(createStream);
-  createStreamRef.current = createStream;
 
   const { streamRef, openStream, closeStream } = useLiveStream();
   const { isOpen: muxIsOpen } = useStreamMux();
@@ -68,28 +70,25 @@ export function useLogStream({
     }, INITIAL_LOG_SILENCE_TIMEOUT_MS);
   }, [clearInitialLoadTimeout]);
 
-  const handleStreamOpenError = useCallback(() => {
+  const handleStreamOpenError = useEffectEvent(() => {
     clearInitialLoadTimeout();
     queueMicrotask(() => {
       setError("Failed to connect to log stream");
       setIsLoading(false);
     });
-  }, [clearInitialLoadTimeout]);
+  });
 
-  const handleStreamData = useCallback(
-    (data: Uint8Array) => {
-      const text = decodeString(data);
-      if (!hasReceivedData.current) {
-        hasReceivedData.current = true;
-        clearInitialLoadTimeout();
-        setIsLoading(false);
-      }
-      setLogs((prev) => prev + text);
-    },
-    [clearInitialLoadTimeout],
-  );
+  const handleStreamData = useEffectEvent((data: Uint8Array) => {
+    const text = decodeString(data);
+    if (!hasReceivedData.current) {
+      hasReceivedData.current = true;
+      clearInitialLoadTimeout();
+      setIsLoading(false);
+    }
+    setLogs((prev) => prev + text);
+  });
 
-  const handleStreamResult = useCallback(
+  const handleStreamResult = useEffectEvent(
     (result: { status: "ok" | "error"; error?: string }) => {
       clearInitialLoadTimeout();
       if (result.status === "error") {
@@ -97,15 +96,14 @@ export function useLogStream({
         setIsLoading(false);
       }
     },
-    [clearInitialLoadTimeout],
   );
 
-  const handleStreamClose = useCallback(() => {
+  const handleStreamClose = useEffectEvent(() => {
     clearInitialLoadTimeout();
     if (!hasReceivedData.current) {
       setIsLoading(false);
     }
-  }, [clearInitialLoadTimeout]);
+  });
 
   // Scroll to bottom whenever new logs arrive.
   useEffect(() => {
@@ -133,24 +131,13 @@ export function useLogStream({
     scheduleInitialLoadTimeout();
 
     openStream({
-      open: () => createStreamRef.current(initialTail),
+      open: () => createStream(initialTail),
       onOpenError: handleStreamOpenError,
       onData: handleStreamData,
       onResult: handleStreamResult,
       onClose: handleStreamClose,
     });
-  }, [
-    open,
-    muxIsOpen,
-    openStream,
-    streamRef,
-    initialTail,
-    scheduleInitialLoadTimeout,
-    handleStreamOpenError,
-    handleStreamData,
-    handleStreamResult,
-    handleStreamClose,
-  ]);
+  }, [open, muxIsOpen, streamRef]);
 
   // Handle live mode toggle.
   useEffect(() => {
@@ -162,27 +149,14 @@ export function useLogStream({
       }
     } else if (liveMode && !streamRef.current && open && muxIsOpen) {
       openStream({
-        open: () => createStreamRef.current(liveTail),
+        open: () => createStream(liveTail),
         onOpenError: handleStreamOpenError,
         onData: handleStreamData,
         onResult: handleStreamResult,
         onClose: handleStreamClose,
       });
     }
-  }, [
-    liveMode,
-    open,
-    muxIsOpen,
-    closeStream,
-    openStream,
-    streamRef,
-    liveTail,
-    clearInitialLoadTimeout,
-    handleStreamOpenError,
-    handleStreamData,
-    handleStreamResult,
-    handleStreamClose,
-  ]);
+  }, [liveMode, open, muxIsOpen, streamRef]);
 
   // Close stream when the dialog closes (state is reset separately via onExited).
   useEffect(() => {

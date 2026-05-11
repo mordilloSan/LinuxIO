@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
@@ -33,16 +33,15 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
   const chartRef = useRef<SmoothieChart | null>(null);
   const readSeriesRef = useRef<TimeSeries>(new TimeSeries());
   const writeSeriesRef = useRef<TimeSeries>(new TimeSeries());
-  const readRef = useRef(readBytesPerSec);
-  const writeRef = useRef(writeBytesPerSec);
   const readColor = theme.chart.rx;
   const writeColor = theme.chart.tx;
   const neutral = theme.chart.neutral;
 
-  useEffect(() => {
-    readRef.current = readBytesPerSec;
-    writeRef.current = writeBytesPerSec;
-  }, [readBytesPerSec, writeBytesPerSec]);
+  const appendLatestThroughput = useEffectEvent(() => {
+    const now = Date.now();
+    readSeriesRef.current.append(now, readBytesPerSec);
+    writeSeriesRef.current.append(now, writeBytesPerSec);
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -94,9 +93,7 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
     chartRef.current = chart;
 
     const intervalId = setInterval(() => {
-      const now = Date.now();
-      readSeriesRef.current.append(now, readRef.current);
-      writeSeriesRef.current.append(now, writeRef.current);
+      appendLatestThroughput();
     }, 1000);
 
     return () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
@@ -16,16 +16,15 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   const chartRef = useRef<SmoothieChart | null>(null);
   const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());
   const txSeriesRef = useRef<TimeSeries>(new TimeSeries());
-  const rxRef = useRef(rx);
-  const txRef = useRef(tx);
   const rxColor = theme.chart.rx;
   const txColor = theme.chart.tx;
   const chartNeutral = theme.chart.neutral;
 
-  useEffect(() => {
-    rxRef.current = rx;
-    txRef.current = tx;
-  }, [rx, tx]);
+  const appendLatestTraffic = useEffectEvent(() => {
+    const now = Date.now();
+    rxSeriesRef.current.append(now, rx);
+    txSeriesRef.current.append(now, tx);
+  });
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -78,9 +77,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     chartRef.current = chart;
 
     const intervalId = setInterval(() => {
-      const now = Date.now();
-      rxSeriesRef.current.append(now, rxRef.current);
-      txSeriesRef.current.append(now, txRef.current);
+      appendLatestTraffic();
     }, 1000);
 
     return () => {

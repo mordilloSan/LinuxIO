@@ -1,4 +1,9 @@
-import React, { useEffect, useImperativeHandle, useRef } from "react";
+import React, {
+  useEffect,
+  useEffectEvent,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
@@ -19,14 +24,12 @@ const NetworkTrafficGraph = React.forwardRef<
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
-  const valueRef = useRef(value);
 
   useImperativeHandle(ref, () => canvasRef.current!);
 
-  // Keep the ref in sync with the latest prop
-  useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
+  const appendLatestValue = useEffectEvent(() => {
+    seriesRef.current.append(Date.now(), value);
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -75,7 +78,7 @@ const NetworkTrafficGraph = React.forwardRef<
     // Append a data point every second on a fixed interval,
     // completely decoupled from React's render cycle.
     const intervalId = setInterval(() => {
-      seriesRef.current.append(Date.now(), valueRef.current);
+      appendLatestValue();
     }, 1000);
 
     return () => {
