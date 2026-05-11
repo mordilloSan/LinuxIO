@@ -1,4 +1,4 @@
-package dbus
+package datetime
 
 import (
 	"context"
@@ -8,14 +8,10 @@ import (
 	"strings"
 	"time"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
-
-const timedateBus = "org.freedesktop.timedate1"
-const timedatePath = "/org/freedesktop/timedate1"
 
 const (
 	timesyncdMainConf    = "/etc/systemd/timesyncd.conf"
@@ -37,8 +33,8 @@ var (
 )
 
 type ntpServerBackend interface {
-	GetServers() ([]string, error)
-	SetServers([]string) error
+	GetServers(context.Context) ([]string, error)
+	SetServers(context.Context, []string) error
 }
 
 type backendCandidate struct {
@@ -54,151 +50,85 @@ type chronyBackend struct {
 	inlineManaged bool
 }
 
-func readTimedateProperty(prop string) (string, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
+var timedateIface = dbusclient.Timedate.Interface(dbusclient.TimedateIface)
+
+func readTimedateProperty(ctx context.Context, prop string) (string, error) {
 	var result string
-	err := RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil && err == nil {
-				err = cerr
-			}
-		}()
-		obj := conn.Object(timedateBus, timedatePath)
-		var variant godbus.Variant
-		if err = obj.Call("org.freedesktop.DBus.Properties.Get", 0, timedateBus, prop).Store(&variant); err != nil {
-			return err
-		}
-		s, ok := variant.Value().(string)
-		if !ok {
-			return fmt.Errorf("%s property not a string (got %T)", prop, variant.Value())
-		}
-		result = s
-		return nil
+	err := withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
+		var err error
+		result, err = dbusclient.GetProperty[string](session.Context(), session.Object(), dbusclient.TimedateIface, prop)
+		return err
 	})
 	return result, err
 }
 
-func readTimedateBoolProperty(prop string) (bool, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
+func readTimedateBoolProperty(ctx context.Context, prop string) (bool, error) {
 	var result bool
-	err := RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil && err == nil {
-				err = cerr
-			}
-		}()
-		obj := conn.Object(timedateBus, timedatePath)
-		var variant godbus.Variant
-		if err = obj.Call("org.freedesktop.DBus.Properties.Get", 0, timedateBus, prop).Store(&variant); err != nil {
-			return err
-		}
-		b, ok := variant.Value().(bool)
-		if !ok {
-			return fmt.Errorf("%s property not a bool (got %T)", prop, variant.Value())
-		}
-		result = b
-		return nil
+	err := withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
+		var err error
+		result, err = dbusclient.GetProperty[bool](session.Context(), session.Object(), dbusclient.TimedateIface, prop)
+		return err
 	})
 	return result, err
 }
 
-func GetNTPStatus() (bool, error) {
-	return readTimedateBoolProperty("NTP")
+func GetNTPStatus(ctx context.Context) (bool, error) {
+	return readTimedateBoolProperty(ctx, "NTP")
 }
 
-func GetTimezone() (string, error) {
-	return readTimedateProperty("Timezone")
+func GetTimezone(ctx context.Context) (string, error) {
+	return readTimedateProperty(ctx, "Timezone")
 }
 
-func SetTimezone(tz string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil && err == nil {
-				err = cerr
-			}
-		}()
-		obj := conn.Object(timedateBus, timedatePath)
-		return obj.Call(timedateBus+".SetTimezone", 0, tz, false).Err
-	})
+func SetTimezone(ctx context.Context, tz string) error {
+	return callTimedate(ctx, "SetTimezone", tz, false)
 }
 
-func SetNTP(enabled bool) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil && err == nil {
-				err = cerr
-			}
-		}()
-		obj := conn.Object(timedateBus, timedatePath)
-		return obj.Call(timedateBus+".SetNTP", 0, enabled, false).Err
-	})
+func SetNTP(ctx context.Context, enabled bool) error {
+	return callTimedate(ctx, "SetNTP", enabled, false)
 }
 
-func SetServerTime(isoTime string) error {
+func SetServerTime(ctx context.Context, isoTime string) error {
 	t, err := time.Parse(time.RFC3339, isoTime)
 	if err != nil {
 		return fmt.Errorf("invalid time format (expected RFC3339): %w", err)
 	}
 	usec := t.UnixMicro()
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil && err == nil {
-				err = cerr
-			}
-		}()
-		obj := conn.Object(timedateBus, timedatePath)
-		return obj.Call(timedateBus+".SetTime", 0, usec, false, false).Err
+	return callTimedate(ctx, "SetTime", usec, false, false)
+}
+
+func callTimedate(ctx context.Context, member string, args ...any) error {
+	return withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
+		return session.Call(timedateIface.Method(member), dbusclient.CallPolicy{}, args...)
 	})
 }
 
-func GetNTPServers() ([]string, error) {
-	backend, err := selectNTPServerBackend()
+func withTimedateSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
+	return dbusclient.Timedate.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
+		Unserialized: true,
+	}, fn)
+}
+
+func GetNTPServers(ctx context.Context) ([]string, error) {
+	backend, err := selectNTPServerBackend(ctx)
 	if err != nil {
 		return []string{}, nil
 	}
-	return backend.GetServers()
+	return backend.GetServers(ctx)
 }
 
-func SetNTPServers(servers []string) error {
-	backend, err := selectNTPServerBackend()
+func SetNTPServers(ctx context.Context, servers []string) error {
+	backend, err := selectNTPServerBackend(ctx)
 	if err != nil {
 		return err
 	}
-	return backend.SetServers(servers)
+	return backend.SetServers(ctx, servers)
 }
 
-func selectNTPServerBackend() (ntpServerBackend, error) {
+func selectNTPServerBackend(ctx context.Context) (ntpServerBackend, error) {
 	candidates := []backendCandidate{
-		detectChronyBackend(),
-		detectTimesyncdBackend(),
+		detectChronyBackend(ctx),
+		detectTimesyncdBackend(ctx),
 	}
 	best := backendCandidate{}
 	for _, candidate := range candidates {
@@ -212,8 +142,8 @@ func selectNTPServerBackend() (ntpServerBackend, error) {
 	return best.backend, nil
 }
 
-func detectTimesyncdBackend() backendCandidate {
-	score := serviceScore([]string{"systemd-timesyncd.service"})
+func detectTimesyncdBackend(ctx context.Context) backendCandidate {
+	score := serviceScore(ctx, []string{"systemd-timesyncd.service"})
 	if fileExists(timesyncdManagedConf) {
 		score = max(score, 150)
 	}
@@ -229,9 +159,9 @@ func detectTimesyncdBackend() backendCandidate {
 	}
 }
 
-func detectChronyBackend() backendCandidate {
+func detectChronyBackend(ctx context.Context) backendCandidate {
 	mainPath, mainExists := firstExistingPath(chronyMainConfCandidates)
-	score := serviceScore(chronyServiceCandidates)
+	score := serviceScore(ctx, chronyServiceCandidates)
 	if mainExists {
 		score = max(score, 100)
 	}
@@ -255,7 +185,7 @@ func detectChronyBackend() backendCandidate {
 	}
 }
 
-func (timesyncdBackend) GetServers() ([]string, error) {
+func (timesyncdBackend) GetServers(context.Context) ([]string, error) {
 	for _, path := range []string{timesyncdManagedConf, timesyncdMainConf} {
 		servers, found, err := parseTimesyncdServers(path)
 		if err != nil {
@@ -268,22 +198,22 @@ func (timesyncdBackend) GetServers() ([]string, error) {
 	return []string{}, nil
 }
 
-func (timesyncdBackend) SetServers(servers []string) error {
+func (timesyncdBackend) SetServers(ctx context.Context, servers []string) error {
 	if len(servers) == 0 {
 		if err := os.Remove(timesyncdManagedConf); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		return restartFirstService([]string{"systemd-timesyncd.service"})
+		return restartFirstService(ctx, []string{"systemd-timesyncd.service"})
 	}
 
 	content := "[Time]\nNTP=" + strings.Join(servers, " ") + "\n"
 	if err := fsutil.WriteFileAtomic(timesyncdManagedConf, []byte(content), 0o644); err != nil {
 		return err
 	}
-	return restartFirstService([]string{"systemd-timesyncd.service"})
+	return restartFirstService(ctx, []string{"systemd-timesyncd.service"})
 }
 
-func (b chronyBackend) GetServers() ([]string, error) {
+func (b chronyBackend) GetServers(context.Context) ([]string, error) {
 	if b.inlineManaged {
 		if servers, found, err := parseChronyInlineManagedServers(b.mainPath); err != nil {
 			return nil, err
@@ -305,24 +235,24 @@ func (b chronyBackend) GetServers() ([]string, error) {
 	return servers, err
 }
 
-func (b chronyBackend) SetServers(servers []string) error {
+func (b chronyBackend) SetServers(ctx context.Context, servers []string) error {
 	if b.inlineManaged {
 		if err := b.writeInlineManagedServers(servers); err != nil {
 			return err
 		}
-		return restartFirstService(chronyServiceCandidates)
+		return restartFirstService(ctx, chronyServiceCandidates)
 	}
 	if len(servers) == 0 {
 		if err := os.Remove(b.managedPath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		return restartFirstService(chronyServiceCandidates)
+		return restartFirstService(ctx, chronyServiceCandidates)
 	}
 	content := renderChronyManagedServers(servers)
 	if err := fsutil.WriteFileAtomic(b.managedPath, []byte(content), 0o644); err != nil {
 		return err
 	}
-	return restartFirstService(chronyServiceCandidates)
+	return restartFirstService(ctx, chronyServiceCandidates)
 }
 
 func (b chronyBackend) writeInlineManagedServers(servers []string) error {
@@ -533,9 +463,8 @@ func chronyIncludedManagedPath(data string) (string, bool) {
 	return "", false
 }
 
-func serviceScore(candidates []string) int {
+func serviceScore(ctx context.Context, candidates []string) int {
 	score := 0
-	ctx := context.Background()
 	for _, name := range candidates {
 		activeState, activeErr := systemd.GetActiveState(ctx, name)
 		if activeErr == nil {
@@ -554,8 +483,7 @@ func serviceScore(candidates []string) int {
 	return score
 }
 
-func restartFirstService(candidates []string) error {
-	ctx := context.Background()
+func restartFirstService(ctx context.Context, candidates []string) error {
 	for _, name := range candidates {
 		if strings.TrimSpace(name) == "" {
 			continue

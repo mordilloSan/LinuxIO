@@ -6,10 +6,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
@@ -52,6 +54,8 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	control.RegisterHandlers(rt)
 	power.RegisterHandlers(rt)
 	systemd.RegisterHandlers(rt)
+	hostname.RegisterHandlers(rt)
+	datetime.RegisterHandlers(rt)
 	dbus.RegisterHandlers(rt)
 	terminal.RegisterHandlers(rt)
 	wireguard.RegisterHandlers(rt)

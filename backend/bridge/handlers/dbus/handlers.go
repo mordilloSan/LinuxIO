@@ -32,14 +32,6 @@ func RegisterHandlers(rt runtime.Runtime) {
 		{Name: "set_mtu", Handler: handleSetMTU},
 		{Name: "enable_connection", Handler: handleEnableConnection},
 		{Name: "disable_connection", Handler: handleDisableConnection},
-		{Name: "set_hostname", Handler: handleSetHostname},
-		{Name: "get_ntp_status", Handler: handleGetNTPStatus},
-		{Name: "set_ntp", Handler: handleSetNTP},
-		{Name: "set_server_time", Handler: handleSetServerTime},
-		{Name: "get_timezone", Handler: handleGetTimezone},
-		{Name: "set_timezone", Handler: handleSetTimezone},
-		{Name: "get_ntp_servers", Handler: handleGetNTPServers},
-		{Name: "set_ntp_servers", Handler: handleSetNTPServers},
 	})
 }
 
@@ -173,60 +165,4 @@ func handleDisableConnection(ctx context.Context, args []string, emit ipc.Events
 	}
 	slog.Info("disable_connection requested", "component", "dbus", "interface", iface)
 	return rpc.EmitResult(emit, nil, DisableConnection(iface))
-}
-
-func handleSetHostname(ctx context.Context, args []string, emit ipc.Events) error {
-	hostname, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("set_hostname requested", "component", "dbus", "service", hostname)
-	return rpc.EmitResult(emit, nil, SetHostname(hostname))
-}
-
-func handleGetNTPStatus(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := GetNTPStatus()
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleSetNTP(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) != 1 {
-		return ipc.ErrInvalidArgs
-	}
-	enabled := args[0] == "true"
-	slog.Info("set_ntp requested", "component", "dbus", "enabled", enabled)
-	return rpc.EmitResult(emit, nil, SetNTP(enabled))
-}
-
-func handleSetServerTime(ctx context.Context, args []string, emit ipc.Events) error {
-	mode, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("set_server_time requested", "component", "dbus", "mode", mode)
-	return rpc.EmitResult(emit, nil, SetServerTime(mode))
-}
-
-func handleGetTimezone(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := GetTimezone()
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleSetTimezone(ctx context.Context, args []string, emit ipc.Events) error {
-	timezone, err := rpc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	slog.Info("set_timezone requested", "component", "dbus", "mode", timezone)
-	return rpc.EmitResult(emit, nil, SetTimezone(timezone))
-}
-
-func handleGetNTPServers(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := GetNTPServers()
-	return rpc.EmitResult(emit, result, err)
-}
-
-func handleSetNTPServers(ctx context.Context, args []string, emit ipc.Events) error {
-	slog.Info("set_ntp_servers requested", "component", "dbus", "server_count", len(args))
-	return rpc.EmitResult(emit, nil, SetNTPServers(args))
 }
