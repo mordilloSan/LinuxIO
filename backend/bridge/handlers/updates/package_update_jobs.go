@@ -1,4 +1,4 @@
-package dbus
+package updates
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 )
 
@@ -149,97 +149,44 @@ func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, args []string
 }
 
 func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return fmt.Errorf("failed to connect to system bus: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "packagekit", "error", cerr)
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
+		trans, err := session.CreateTransaction(100)
+		if err != nil {
+			return err
 		}
-	}()
+		defer pkgkit.LogClose(session.Context(), trans)
 
-	const (
-		pkBusName      = packageKitBusName
-		pkObjPath      = packageKitObjPath
-		transactionIfc = packageKitTransactionIfc
-	)
-
-	trans, transPath, err := createPackageKitTransaction(conn, pkBusName, pkObjPath)
-	if err != nil {
-		return err
-	}
-	sigCh := subscribePackageKitSignals(conn, transPath, 100)
-	defer conn.RemoveSignal(sigCh)
-	defer removePackageKitSignalMatch(conn, transPath)
-	// Call UpdatePackages with all package IDs at once
-	// Flag 0 = no special flags (install normally)
-	slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "error", fmt.Errorf("packages=%d", len(packageIDs)))
-	call := trans.Call(transactionIfc+".UpdatePackages", 0, uint64(0), packageIDs)
-	if call.Err != nil {
-		return fmt.Errorf("UpdatePackages failed: %w", call.Err)
-	}
-
-	// Process signals until Finished or error
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute) // Long timeout for large updates
-	defer cancel()
-	var lastWorkStatus uint32
-
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				continue
-			}
-			done, err := handlePackageUpdateSignal(report, sig, transactionIfc, &lastWorkStatus)
-			if err != nil {
-				return err
-			}
-			if done {
-				return nil
-			}
-
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for package updates to complete")
+		// Call UpdatePackages with all package IDs at once.
+		// Flag 0 = no special flags (install normally).
+		slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_count", len(packageIDs))
+		if err := trans.Call("UpdatePackages", uint64(0), packageIDs); err != nil {
+			return err
 		}
-	}
-}
 
-func createPackageKitTransaction(
-	conn *godbus.Conn,
-	busName, objectPath string,
-) (godbus.BusObject, godbus.ObjectPath, error) {
-	obj := conn.Object(busName, godbus.ObjectPath(objectPath))
-	var transPath godbus.ObjectPath
-	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
-		return nil, "", err
-	}
-	if err := obj.Call(packageKitCreateTransaction, 0).Store(&transPath); err != nil {
-		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
-	}
-	return conn.Object(busName, transPath), transPath, nil
-}
+		// Process signals until Finished or error.
+		waitCtx, cancel := context.WithTimeout(session.Context(), 30*time.Minute)
+		defer cancel()
+		var lastWorkStatus uint32
 
-func subscribePackageKitSignals(
-	conn *godbus.Conn,
-	transPath godbus.ObjectPath,
-	buffer int,
-) chan *godbus.Signal {
-	sigCh := make(chan *godbus.Signal, buffer)
-	conn.Signal(sigCh)
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "packagekit", "error", err)
-	}
-	return sigCh
-}
+		for {
+			select {
+			case sig := <-trans.Signals():
+				if sig == nil {
+					continue
+				}
+				done, err := handlePackageUpdateSignal(report, sig, pkgkit.TransactionIface, &lastWorkStatus)
+				if err != nil {
+					return err
+				}
+				if done {
+					return nil
+				}
 
-func removePackageKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
-	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "packagekit", "error", err)
-	}
+			case <-waitCtx.Done():
+				return fmt.Errorf("timeout waiting for package updates to complete")
+			}
+		}
+	})
 }
 
 func handlePackageUpdateSignal(

@@ -1,4 +1,4 @@
-package dbus
+package updates
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func RegisterHandlers(rt runtime.Runtime) {
 }
 
 func handleGetUpdatesBasic(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := GetUpdatesBasic()
+	result, err := GetUpdatesBasic(ctx)
 	return rpc.EmitResult(emit, result, err)
 }
 
@@ -34,7 +34,7 @@ func handleGetUpdateDetail(ctx context.Context, args []string, emit ipc.Events) 
 	if err != nil {
 		return err
 	}
-	result, err := GetSingleUpdateDetail(packageID)
+	result, err := GetSingleUpdateDetail(ctx, packageID)
 	return rpc.EmitResult(emit, result, err)
 }
 
@@ -44,11 +44,11 @@ func handleInstallPackage(ctx context.Context, args []string, emit ipc.Events) e
 		return err
 	}
 	slog.Info("install_package requested", "component", "dbus", "package", packageName)
-	return rpc.EmitResult(emit, nil, InstallPackage(packageName))
+	return rpc.EmitResult(emit, nil, InstallPackage(ctx, packageName))
 }
 
 func handleGetAutoUpdates(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := getAutoUpdates()
+	result, err := getAutoUpdates(ctx)
 	return rpc.EmitResult(emit, result, err)
 }
 
@@ -57,13 +57,13 @@ func handleSetAutoUpdates(ctx context.Context, args []string, emit ipc.Events) e
 		return ipc.ErrInvalidArgs
 	}
 	slog.Info("set_auto_updates requested", "component", "dbus", "mode", args[0])
-	result, err := setAutoUpdates(args[0])
+	result, err := setAutoUpdates(ctx, args[0])
 	return rpc.EmitResult(emit, result, err)
 }
 
 func handleApplyOfflineUpdates(ctx context.Context, args []string, emit ipc.Events) error {
 	slog.Info("apply_offline_updates requested")
-	result, err := applyOfflineUpdates()
+	result, err := applyOfflineUpdates(ctx)
 	return rpc.EmitResult(emit, result, err)
 }
 

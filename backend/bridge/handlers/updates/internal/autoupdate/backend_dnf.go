@@ -1,4 +1,4 @@
-package updates
+package autoupdate
 
 import (
 	"context"
@@ -133,7 +133,7 @@ func disableDnfTimer(ctx context.Context, timer string) {
 	}
 }
 
-func (b *dnfBackend) ApplyOfflineNow() error {
+func (b *dnfBackend) ApplyOfflineNow(context.Context) error {
 	return fmt.Errorf("not implemented for dnf; use packagekit backend")
 }
 

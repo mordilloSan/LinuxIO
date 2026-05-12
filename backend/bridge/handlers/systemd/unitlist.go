@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
@@ -19,7 +17,7 @@ type listedUnit struct {
 	ActiveState   string
 	SubState      string
 	UnitFileState string
-	Path          godbus.ObjectPath
+	Path          dbusclient.ObjectPath
 }
 
 type unitFileRecord struct {
@@ -50,7 +48,7 @@ func listUnitsBySuffix(
 		loadState, _ := utils.AsString(rawUnit[2])
 		activeState, _ := utils.AsString(rawUnit[3])
 		subState, _ := utils.AsString(rawUnit[4])
-		path, _ := rawUnit[6].(godbus.ObjectPath)
+		path, _ := rawUnit[6].(dbusclient.ObjectPath)
 
 		loaded[name] = listedUnit{
 			Name:        name,
@@ -100,7 +98,7 @@ func listUnitsBySuffix(
 	return entries, nil
 }
 
-func getStringProperty(session dbusclient.SystemSession, unit godbus.BusObject, iface, property string) (string, bool) {
+func getStringProperty(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (string, bool) {
 	str, err := dbusclient.GetProperty[string](session.Context(), unit, iface, property)
 	if err != nil {
 		return "", false
@@ -108,7 +106,7 @@ func getStringProperty(session dbusclient.SystemSession, unit godbus.BusObject, 
 	return str, true
 }
 
-func getUint64Property(session dbusclient.SystemSession, unit godbus.BusObject, iface, property string) (uint64, bool) {
+func getUint64Property(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (uint64, bool) {
 	n, err := dbusclient.GetProperty[uint64](session.Context(), unit, iface, property)
 	if err != nil {
 		return 0, false
@@ -116,7 +114,7 @@ func getUint64Property(session dbusclient.SystemSession, unit godbus.BusObject, 
 	return n, true
 }
 
-func getUint32Property(session dbusclient.SystemSession, unit godbus.BusObject, iface, property string) (uint32, bool) {
+func getUint32Property(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (uint32, bool) {
 	n, err := dbusclient.GetProperty[uint32](session.Context(), unit, iface, property)
 	if err != nil {
 		return 0, false

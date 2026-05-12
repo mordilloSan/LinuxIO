@@ -1,4 +1,4 @@
-package updates
+package autoupdate
 
 import "context"
 
@@ -22,7 +22,7 @@ type Backend interface {
 	Detect() bool
 	Read() (AutoUpdateState, error)
 	Apply(context.Context, AutoUpdateOptions) error
-	ApplyOfflineNow() error // optional; may return not-implemented
+	ApplyOfflineNow(context.Context) error // optional; may return not-implemented
 }
 
 func SelectBackend() Backend {

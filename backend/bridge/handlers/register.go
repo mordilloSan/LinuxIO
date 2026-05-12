@@ -8,7 +8,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
@@ -23,6 +22,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 )
@@ -60,7 +60,7 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	hostname.RegisterHandlers(rt)
 	datetime.RegisterHandlers(rt)
 	network.RegisterHandlers(rt)
-	dbus.RegisterHandlers(rt)
+	updates.RegisterHandlers(rt)
 	terminal.RegisterHandlers(rt)
 	wireguard.RegisterHandlers(rt)
 	storage.RegisterHandlers(rt)

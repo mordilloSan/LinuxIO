@@ -85,6 +85,28 @@ func TestRetryOnceIfClosedDoesNotRetryOtherErrors(t *testing.T) {
 	}
 }
 
+func TestUseSystemBusWithOptionsNoRetryDisablesClosedRetry(t *testing.T) {
+	t.Cleanup(setRetryDelayForTest(0))
+
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+
+	var calls int
+	err := UseSystemBusWithOptions(context.Background(), SystemBusOptions{
+		Unserialized: true,
+		NoRetry:      true,
+	}, func(context.Context, *godbus.Conn) error {
+		calls++
+		return net.ErrClosed
+	})
+	if !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("err = %v, want net.ErrClosed", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
 func TestSystemBusLockSerializesCalls(t *testing.T) {
 	t.Cleanup(setRetryDelayForTest(0))
 
@@ -404,6 +426,26 @@ func TestSystemObjectRequireAvailableOnConnection(t *testing.T) {
 	}).RequireAvailableOnConnection(context.Background(), conn)
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
+	}
+}
+
+func TestSystemSessionRequireAvailableUsesSessionConnection(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	bus.OwnName(t, "org.example.Available")
+
+	obj := SystemObject{
+		Subsystem: "test",
+		BusName:   "org.example.Available",
+		Path:      godbus.ObjectPath("/org/example/Available"),
+	}
+	err := obj.UseSessionWithOptions(context.Background(), SystemBusOptions{
+		Unserialized: true,
+	}, func(session SystemSession) error {
+		return session.RequireAvailable()
+	})
+	if err != nil {
+		t.Fatalf("RequireAvailable: %v", err)
 	}
 }
 

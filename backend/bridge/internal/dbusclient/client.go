@@ -27,6 +27,10 @@ type SystemBusOptions struct {
 	Subsystem string
 	Timeout   time.Duration
 
+	// NoRetry disables the net.ErrClosed retry wrapper. Use it for non-idempotent
+	// calls where replaying the callback could duplicate a transaction.
+	NoRetry bool
+
 	// Unserialized bypasses the process-wide call gate. Use it only for callers
 	// that do not participate in long-running stateful D-Bus workflows.
 	Unserialized bool
@@ -100,9 +104,15 @@ func UseSystemBusWithOptions(ctx context.Context, opts SystemBusOptions, fn func
 		return err
 	}
 
+	runOnce := func() error {
+		return useSystemBusOnce(ctx, opts.Subsystem, fn)
+	}
 	run := func() error {
+		if opts.NoRetry {
+			return runOnce()
+		}
 		return RetryOnceIfClosed(ctx, func() error {
-			return useSystemBusOnce(ctx, opts.Subsystem, fn)
+			return runOnce()
 		})
 	}
 	if opts.Unserialized {
@@ -167,6 +177,12 @@ func (s SystemSession) Object() godbus.BusObject {
 // connection. It is useful for dynamic object paths returned by D-Bus calls.
 func (s SystemSession) ObjectAt(path godbus.ObjectPath) godbus.BusObject {
 	return s.conn.Object(s.object.BusName, path)
+}
+
+// RequireAvailable verifies that this session's well-known bus name is active
+// or activatable on the same connection used by the session.
+func (s SystemSession) RequireAvailable() error {
+	return s.object.RequireAvailableOnConnection(s.ctx, s.conn)
 }
 
 // Call invokes a method on this session's root object.

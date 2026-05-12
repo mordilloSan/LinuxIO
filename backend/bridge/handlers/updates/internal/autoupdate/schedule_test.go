@@ -1,4 +1,4 @@
-package updates
+package autoupdate
 
 import "testing"
 

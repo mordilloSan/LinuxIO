@@ -1,10 +1,11 @@
-package dbus
+package updates
 
 import (
 	"bufio"
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,8 +18,8 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/updates"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/autoupdate"
+	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
@@ -36,15 +37,8 @@ type UpdateDetail struct {
 
 // —— use type ALIASES, not new structs —— //
 type (
-	AutoUpdateOptions = updates.AutoUpdateOptions
-	AutoUpdateState   = updates.AutoUpdateState
-)
-
-const (
-	packageKitBusName           = dbusclient.PackageKitBusName
-	packageKitObjPath           = dbusclient.PackageKitPath
-	packageKitTransactionIfc    = dbusclient.PackageKitTransactionIface
-	packageKitCreateTransaction = dbusclient.PackageKitCreateTransaction
+	AutoUpdateOptions = autoupdate.AutoUpdateOptions
+	AutoUpdateState   = autoupdate.AutoUpdateState
 )
 
 type packageUpdateMeta struct {
@@ -52,71 +46,43 @@ type packageUpdateMeta struct {
 	InfoEnum uint32
 }
 
-func getAutoUpdates() (AutoUpdateState, error) {
-	var out AutoUpdateState
-	err := RetryOnceIfClosed(nil, func() error {
-		systemDBusMu.Lock()
-		defer systemDBusMu.Unlock()
-
-		b := updates.SelectBackend()
-		if b == nil {
-			return fmt.Errorf("no supported backend found")
-		}
-		_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		st, err := b.Read()
-		if err != nil {
-			return err
-		}
-		out = st
-		return nil
-	})
-	return out, err
+func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
+	b := autoupdate.SelectBackend()
+	if b == nil {
+		return AutoUpdateState{}, fmt.Errorf("no supported backend found")
+	}
+	ctx, cancel := context.WithTimeout(requireContext(ctx), 5*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return AutoUpdateState{}, err
+	}
+	return b.Read()
 }
 
-func setAutoUpdates(jsonArg string) (AutoUpdateState, error) {
+func setAutoUpdates(ctx context.Context, jsonArg string) (AutoUpdateState, error) {
 	var opts AutoUpdateOptions
 	if err := json.Unmarshal([]byte(jsonArg), &opts); err != nil {
 		return AutoUpdateState{}, fmt.Errorf("invalid JSON: %w", err)
 	}
 
-	var out AutoUpdateState
-	err := RetryOnceIfClosed(nil, func() error {
-		systemDBusMu.Lock()
-		defer systemDBusMu.Unlock()
-
-		b := updates.SelectBackend()
-		if b == nil {
-			return fmt.Errorf("no supported backend found")
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-		if err := b.Apply(ctx, opts); err != nil { // opts now exactly matches backend type
-			return err
-		}
-		st, err := b.Read()
-		if err != nil {
-			return err
-		}
-		out = st
-		return nil
-	})
-	return out, err
+	b := autoupdate.SelectBackend()
+	if b == nil {
+		return AutoUpdateState{}, fmt.Errorf("no supported backend found")
+	}
+	ctx, cancel := context.WithTimeout(requireContext(ctx), 8*time.Second)
+	defer cancel()
+	if err := b.Apply(ctx, opts); err != nil {
+		return AutoUpdateState{}, err
+	}
+	return b.Read()
 }
 
-func applyOfflineUpdates() (any, error) {
-	return nil, RetryOnceIfClosed(nil, func() error {
-		systemDBusMu.Lock()
-		defer systemDBusMu.Unlock()
-
-		b := updates.NewPkgKitBackendIfAvailable()
-		if b == nil {
-			return fmt.Errorf("PackageKit not available")
-		}
-		_, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return b.ApplyOfflineNow()
-	})
+func applyOfflineUpdates(ctx context.Context) (any, error) {
+	b := autoupdate.NewPkgKitBackendIfAvailable()
+	if b == nil {
+		return nil, fmt.Errorf("PackageKit not available")
+	}
+	return nil, b.ApplyOfflineNow(ctx)
 }
 
 // --- Helpers ---
@@ -173,6 +139,9 @@ func extractNameVersion(packageID string) (name, version string) {
 }
 
 func toStringSlice(iface any) []string {
+	if strs, ok := iface.([]string); ok {
+		return append([]string(nil), strs...)
+	}
 	arr, ok := iface.([]any)
 	if !ok {
 		return []string{}
@@ -210,53 +179,12 @@ func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
 	return combinedCVEs
 }
 
-func newPackageKitTransaction(conn *godbus.Conn) (godbus.BusObject, godbus.ObjectPath, error) {
-	if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
-		return nil, "", err
-	}
-
-	obj := conn.Object(packageKitBusName, godbus.ObjectPath(packageKitObjPath))
-
-	var transPath godbus.ObjectPath
-	if err := obj.Call(packageKitCreateTransaction, 0).Store(&transPath); err != nil {
-		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
-	}
-
-	return conn.Object(packageKitBusName, transPath), transPath, nil
-}
-
-func watchTransactionSignals(conn *godbus.Conn, transPath godbus.ObjectPath) (chan *godbus.Signal, func()) {
-	sigCh := make(chan *godbus.Signal, 20)
-	conn.Signal(sigCh)
-
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
-	}
-
-	cleanup := func() {
-		conn.RemoveSignal(sigCh)
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
-		}
-	}
-
-	return sigCh, cleanup
-}
-
-func callPackageKitTransaction(trans godbus.BusObject, method string, args ...any) error {
-	call := trans.Call(packageKitTransactionIfc+"."+method, 0, args...)
-	if call.Err != nil {
-		return fmt.Errorf("%s failed: %w", method, call.Err)
-	}
-	return nil
-}
-
 func isTransactionFinished(sig *godbus.Signal) bool {
-	return sig == nil || sig.Name == packageKitTransactionIfc+".Finished"
+	return sig == nil || sig.Name == pkgkit.TransactionIface+".Finished"
 }
 
 func readPackageSignal(sig *godbus.Signal) (string, packageUpdateMeta, bool) {
-	if sig.Name != packageKitTransactionIfc+".Package" || len(sig.Body) <= 2 {
+	if sig.Name != pkgkit.TransactionIface+".Package" || len(sig.Body) <= 2 {
 		return "", packageUpdateMeta{}, false
 	}
 
@@ -369,7 +297,7 @@ func collectSingleUpdateDetail(ctx context.Context, sigCh <-chan *godbus.Signal,
 			if isTransactionFinished(sig) {
 				return finalizeSingleUpdateDetail(detail, packageID)
 			}
-			if sig.Name != packageKitTransactionIfc+".UpdateDetail" {
+			if sig.Name != pkgkit.TransactionIface+".UpdateDetail" {
 				continue
 			}
 
@@ -402,7 +330,7 @@ func collectUpdateDetails(ctx context.Context, sigCh <-chan *godbus.Signal, meta
 			if isTransactionFinished(sig) {
 				return details, nil
 			}
-			if sig.Name != packageKitTransactionIfc+".UpdateDetail" {
+			if sig.Name != pkgkit.TransactionIface+".UpdateDetail" {
 				continue
 			}
 
@@ -428,177 +356,126 @@ func collectUpdateDetails(ctx context.Context, sigCh <-chan *godbus.Signal, meta
 
 // GetUpdatesBasic returns package updates with basic info only (fast).
 // This skips the slow GetUpdateDetail D-Bus call.
-func GetUpdatesBasic() ([]UpdateDetail, error) {
-	var result []UpdateDetail
-	err := RetryOnceIfClosed(nil, func() error {
-		updates, err := getUpdatesBasic()
-		if err != nil {
-			return err
-		}
-		if updates == nil {
-			updates = make([]UpdateDetail, 0)
-		}
-		result = updates
-		return nil
-	})
-	return result, err
+func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
+	updates, err := getUpdatesBasic(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if updates == nil {
+		updates = make([]UpdateDetail, 0)
+	}
+	return updates, nil
 }
 
-func GetUpdatesWithDetails() ([]UpdateDetail, error) {
-	var result []UpdateDetail
-	err := RetryOnceIfClosed(nil, func() error {
-		details, err := getUpdatesWithDetails()
-		if err != nil {
-			return err
-		}
-		if details == nil {
-			details = make([]UpdateDetail, 0)
-		}
-		result = details
-		return nil
-	})
-	return result, err
+func GetUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
+	details, err := getUpdatesWithDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if details == nil {
+		details = make([]UpdateDetail, 0)
+	}
+	return details, nil
 }
 
-func InstallPackage(packageID string) error {
-	return RetryOnceIfClosed(nil, func() error {
-		return installPackage(packageID)
-	})
+func InstallPackage(ctx context.Context, packageID string) error {
+	return installPackage(ctx, packageID)
 }
 
 // GetSingleUpdateDetail returns detailed info for a single package.
 // Used for on-demand changelog fetching.
-func GetSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
-	var result *UpdateDetail
-	err := RetryOnceIfClosed(nil, func() error {
-		detail, err := getSingleUpdateDetail(packageID)
-		if err != nil {
-			return err
-		}
-		result = detail
-		return nil
-	})
-	return result, err
+func GetSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail, error) {
+	return getSingleUpdateDetail(ctx, packageID)
 }
 
 // --- Private Implementation ---
 
 // getUpdatesBasic fetches available updates with basic info only (fast).
 // Only calls GetUpdates, skips the slow GetUpdateDetail call.
-func getUpdatesBasic() ([]UpdateDetail, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
+func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
+	var updates []UpdateDetail
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.Session) error {
+		trans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
 		}
-	}()
+		defer pkgkit.LogClose(session.Context(), trans)
 
-	trans, transPath, err := newPackageKitTransaction(conn)
-	if err != nil {
-		return nil, err
-	}
-	sigCh, cleanup := watchTransactionSignals(conn, transPath)
-	defer cleanup()
+		if err := trans.Call("GetUpdates", uint64(0)); err != nil {
+			return err
+		}
 
-	if err := callPackageKitTransaction(trans, "GetUpdates", uint64(0)); err != nil {
-		return nil, err
-	}
+		waitCtx, cancel := context.WithTimeout(session.Context(), 15*time.Second)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pkgIDs, metaByPkg := collectUpdatePackages(ctx, sigCh)
-	return buildBasicUpdates(pkgIDs, metaByPkg), nil
+		pkgIDs, metaByPkg := collectUpdatePackages(waitCtx, trans.Signals())
+		updates = buildBasicUpdates(pkgIDs, metaByPkg)
+		return nil
+	})
+	return updates, err
 }
 
 // getSingleUpdateDetail fetches detailed info for a single package.
-func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
+func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail, error) {
+	var detail *UpdateDetail
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.Session) error {
+		trans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
 		}
-	}()
+		defer pkgkit.LogClose(session.Context(), trans)
 
-	trans, transPath, err := newPackageKitTransaction(conn)
-	if err != nil {
-		return nil, err
-	}
-	sigCh, cleanup := watchTransactionSignals(conn, transPath)
-	defer cleanup()
+		if err := trans.Call("GetUpdateDetail", []string{packageID}); err != nil {
+			return err
+		}
 
-	if err := callPackageKitTransaction(trans, "GetUpdateDetail", []string{packageID}); err != nil {
-		return nil, err
-	}
+		waitCtx, cancel := context.WithTimeout(session.Context(), 10*time.Second)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	return collectSingleUpdateDetail(ctx, sigCh, packageID)
+		detail, err = collectSingleUpdateDetail(waitCtx, trans.Signals(), packageID)
+		return err
+	})
+	return detail, err
 }
 
-func getUpdatesWithDetails() ([]UpdateDetail, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-	conn, err := godbus.ConnectSystemBus()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
+func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
+	var details []UpdateDetail
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.Session) error {
+		updatesTrans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
 		}
-	}()
+		defer pkgkit.LogClose(session.Context(), updatesTrans)
 
-	// 1. First transaction: GetUpdates
-	updatesTrans, updatesTransPath, err := newPackageKitTransaction(conn)
-	if err != nil {
-		return nil, err
-	}
-	updatesCh, cleanupUpdates := watchTransactionSignals(conn, updatesTransPath)
-	defer cleanupUpdates()
+		if err := updatesTrans.Call("GetUpdates", uint64(0)); err != nil {
+			return err
+		}
 
-	if callErr := callPackageKitTransaction(updatesTrans, "GetUpdates", uint64(0)); callErr != nil {
-		return nil, callErr
-	}
+		updatesCtx, cancelUpdates := context.WithTimeout(session.Context(), 15*time.Second)
+		defer cancelUpdates()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+		pkgIDs, metaByPkg := collectUpdatePackages(updatesCtx, updatesTrans.Signals())
+		if len(pkgIDs) == 0 {
+			return nil
+		}
 
-	pkgIDs, metaByPkg := collectUpdatePackages(ctx, updatesCh)
+		detailsTrans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
+		}
+		defer pkgkit.LogClose(session.Context(), detailsTrans)
 
-	if len(pkgIDs) == 0 {
-		return nil, nil
-	}
+		if err := detailsTrans.Call("GetUpdateDetail", pkgIDs); err != nil {
+			return err
+		}
 
-	// 2. New transaction: GetUpdateDetail
-	detailsTrans, detailsTransPath, err := newPackageKitTransaction(conn)
-	if err != nil {
-		return nil, err
-	}
-	detailsCh, cleanupDetails := watchTransactionSignals(conn, detailsTransPath)
-	defer cleanupDetails()
+		detailsCtx, cancelDetails := context.WithTimeout(session.Context(), 15*time.Second)
+		defer cancelDetails()
 
-	if callErr := callPackageKitTransaction(detailsTrans, "GetUpdateDetail", pkgIDs); callErr != nil {
-		return nil, callErr
-	}
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel2()
-
-	return collectUpdateDetails(ctx2, detailsCh, metaByPkg)
+		details, err = collectUpdateDetails(detailsCtx, detailsTrans.Signals(), metaByPkg)
+		return err
+	})
+	return details, err
 }
 
 // --- Update History (log parsing) ---
@@ -748,83 +625,37 @@ func mapToSortedHistory(historyMap map[string][]UpgradeItem) []UpdateHistoryEntr
 	return history
 }
 
-func installPackage(packageID string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.ConnectSystemBus()
+func installPackage(ctx context.Context, packageID string) error {
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
+		trans, err := session.CreateTransaction(20)
 		if err != nil {
-			return fmt.Errorf("failed to connect to system bus: %w", err)
+			return err
 		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				slog.Warn("failed to close D-Bus connection", "component", "dbus", "subsystem", "updates", "error", cerr)
-			}
-		}()
+		defer pkgkit.LogClose(session.Context(), trans)
 
-		const (
-			pkBusName      = packageKitBusName
-			pkObjPath      = packageKitObjPath
-			transactionIfc = packageKitTransactionIfc
-		)
-
-		if err := dbusclient.PackageKit.RequireAvailableOnConnection(context.Background(), conn); err != nil {
+		if err := trans.Call("InstallPackages", uint64(0), []string{packageID}); err != nil {
 			return err
 		}
 
-		// 1. Create Transaction
-		obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
-		var transPath godbus.ObjectPath
-		if err := obj.Call(packageKitCreateTransaction, 0).Store(&transPath); err != nil {
-			return fmt.Errorf("CreateTransaction failed: %w", err)
-		}
-		trans := conn.Object(pkBusName, transPath)
-
-		// Listen for signals
-		sigCh := make(chan *godbus.Signal, 20)
-		conn.Signal(sigCh)
-		defer conn.RemoveSignal(sigCh)
-		defer func() {
-			if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-				slog.Debug("failed to remove D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
-			}
-		}()
-		if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			slog.Warn("failed to add D-Bus match signal", "component", "dbus", "subsystem", "updates", "error", err)
-		}
-
-		// 2. Call InstallPackages
-		call := trans.Call(transactionIfc+".InstallPackages", 0, uint64(0), []string{packageID})
-		if call.Err != nil {
-			return fmt.Errorf("InstallPackages failed: %w", call.Err)
-		}
-
-		// 3. Wait for Finished/ErrorCode signal
-		return awaitPackageKitSignal(sigCh, transactionIfc)
+		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
+		defer cancel()
+		return awaitPackageKitSignal(waitCtx, trans.Signals())
 	})
 }
 
-func awaitPackageKitSignal(sigCh chan *godbus.Signal, transactionIfc string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				return fmt.Errorf("nil signal from D-Bus")
-			}
-			switch sig.Name {
-			case transactionIfc + ".ErrorCode":
-				code, _ := sig.Body[0].(uint32)
-				msg, _ := sig.Body[1].(string)
-				return fmt.Errorf("PackageKit error code %d: %s", code, msg)
-			case transactionIfc + ".Finished":
-				return nil
-			}
-		case <-ctx.Done():
+func awaitPackageKitSignal(ctx context.Context, sigCh <-chan *godbus.Signal) error {
+	if err := pkgkit.AwaitFinished(ctx, sigCh, ""); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("timeout waiting for PackageKit to finish install")
 		}
+		return err
 	}
+	return nil
+}
+
+func requireContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }

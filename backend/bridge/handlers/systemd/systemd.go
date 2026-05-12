@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
@@ -122,7 +120,7 @@ func GetActiveState(ctx context.Context, name string) (string, error) {
 	}
 	var state string
 	if err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
-		var path godbus.ObjectPath
+		var path dbusclient.ObjectPath
 		if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{name}, &path); err != nil {
 			if session.Context().Err() != nil {
 				return session.Context().Err()
@@ -188,7 +186,7 @@ func ListUnitsWithPrefix(ctx context.Context, prefix string) ([]UnitStatus, erro
 }
 
 func callUnitJob(ctx context.Context, name, method, operation string) error {
-	var job godbus.ObjectPath
+	var job dbusclient.ObjectPath
 	if err := managerIface.CallStore(ctx, method, dbusclient.CallPolicy{}, []any{name, "replace"}, &job); err != nil {
 		return fmt.Errorf("%s unit %s: %w", operation, name, err)
 	}

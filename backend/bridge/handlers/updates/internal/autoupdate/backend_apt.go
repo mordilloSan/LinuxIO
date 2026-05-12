@@ -1,4 +1,4 @@
-package updates
+package autoupdate
 
 import (
 	"context"
@@ -230,7 +230,7 @@ func restartAptTimers(ctx context.Context, o AutoUpdateOptions) {
 	}
 }
 
-func (b *aptBackend) ApplyOfflineNow() error {
+func (b *aptBackend) ApplyOfflineNow(context.Context) error {
 	return fmt.Errorf("not implemented for apt; use packagekit backend")
 }
 

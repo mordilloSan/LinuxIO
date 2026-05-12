@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
@@ -101,8 +99,8 @@ func findUnitFileRecord(
 func getUnitObjectPath(
 	session dbusclient.SystemSession,
 	unitName string,
-) (godbus.ObjectPath, error) {
-	var unitPath godbus.ObjectPath
+) (dbusclient.ObjectPath, error) {
+	var unitPath dbusclient.ObjectPath
 	if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{unitName}, &unitPath); err == nil {
 		return unitPath, nil
 	}
@@ -114,7 +112,7 @@ func getUnitObjectPath(
 	return unitPath, nil
 }
 
-func enrichServiceUnitInfo(session dbusclient.SystemSession, unit godbus.BusObject, info map[string]any) {
+func enrichServiceUnitInfo(session dbusclient.SystemSession, unit dbusclient.BusObject, info map[string]any) {
 	if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdServiceIface, "MainPID"); err == nil {
 		info["MainPID"] = val.Value()
 	}
@@ -128,7 +126,7 @@ func enrichServiceUnitInfo(session dbusclient.SystemSession, unit godbus.BusObje
 	}
 }
 
-func enrichTimerUnitInfo(session dbusclient.SystemSession, unit godbus.BusObject, info map[string]any) {
+func enrichTimerUnitInfo(session dbusclient.SystemSession, unit dbusclient.BusObject, info map[string]any) {
 	if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdTimerIface, "NextElapseUSecRealtime"); err == nil {
 		if v, ok := val.Value().(uint64); ok && v > 0 {
 			info["NextElapseUSec"] = v
@@ -149,7 +147,7 @@ func enrichTimerUnitInfo(session dbusclient.SystemSession, unit godbus.BusObject
 	}
 }
 
-func enrichSocketUnitInfo(session dbusclient.SystemSession, unit godbus.BusObject, info map[string]any) {
+func enrichSocketUnitInfo(session dbusclient.SystemSession, unit dbusclient.BusObject, info map[string]any) {
 	if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdSocketIface, "Listen"); err == nil {
 		if listen := parseSocketListen(val.Value()); len(listen) > 0 {
 			info["Listen"] = listen
