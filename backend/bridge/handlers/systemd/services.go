@@ -16,6 +16,7 @@ type ServiceStatus struct {
 	UnitFileState          string `json:"unit_file_state"`
 	ActiveEnterTimestamp   uint64 `json:"active_enter_timestamp"`
 	InactiveEnterTimestamp uint64 `json:"inactive_enter_timestamp"`
+	MainPID                int32  `json:"main_pid"`
 }
 
 // --- List all services (robust) ---
@@ -66,6 +67,9 @@ func fetchServiceStatus(session dbusclient.SystemSession, entry listedUnit) Serv
 	}
 	if ts, ok := getUint64Property(session, unit, dbusclient.SystemdUnitIface, "InactiveEnterTimestamp"); ok {
 		service.InactiveEnterTimestamp = ts
+	}
+	if pid, ok := getUint32Property(session, unit, dbusclient.SystemdServiceIface, "MainPID"); ok {
+		service.MainPID = int32(pid)
 	}
 	return service
 }
