@@ -1,4 +1,4 @@
-package dbus
+package network
 
 import (
 	"fmt"
@@ -8,9 +8,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/network"
+	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/vishvananda/netlink"
 )
@@ -33,14 +34,15 @@ type NetworkInterfaceInfo struct {
 }
 
 var (
+	networkMu     sync.Mutex
 	lastNetStats  = make(map[string]net.IOCountersStat)
 	lastTimestamp int64
-	networkEnv    = network.DefaultEnvironment()
+	networkEnv    = networkbackend.DefaultEnvironment()
 )
 
 func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
+	networkMu.Lock()
+	defer networkMu.Unlock()
 
 	snapshotMap, now, interval := currentNetworkSnapshot()
 	defer func() { lastTimestamp = now }()
@@ -56,7 +58,7 @@ func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
 	results := make([]NetworkInterfaceInfo, 0, len(ifaces))
 	for _, iface := range ifaces {
 		info := liveInterfaceInfo(iface, dns, gateways[iface.Name], snapshotMap, interval)
-		if cfg, ok, err := network.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
+		if cfg, ok, err := networkbackend.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
 			mergeConfiguredState(&info, cfg)
 		} else if err != nil {
 			slog.Debug("network config unavailable", "component", "dbus", "subsystem", "network", "interface", iface.Name, "error", err)
@@ -67,9 +69,6 @@ func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
 }
 
 func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface is required")
 	}
@@ -82,7 +81,10 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 	if len(dnsServers) == 0 {
 		return fmt.Errorf("at least one DNS server is required")
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -90,12 +92,13 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 }
 
 func SetIPv4DHCP(iface string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -103,12 +106,13 @@ func SetIPv4DHCP(iface string) error {
 }
 
 func SetIPv6DHCP(iface string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -116,15 +120,16 @@ func SetIPv6DHCP(iface string) error {
 }
 
 func SetIPv6Static(iface, addressCIDR string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
 	if strings.TrimSpace(addressCIDR) == "" {
 		return fmt.Errorf("IPv6 CIDR is required")
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -132,12 +137,13 @@ func SetIPv6Static(iface, addressCIDR string) error {
 }
 
 func DisableConnection(iface string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -145,12 +151,13 @@ func DisableConnection(iface string) error {
 }
 
 func EnableConnection(iface string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -158,8 +165,6 @@ func EnableConnection(iface string) error {
 }
 
 func SetMTU(iface, mtu string) error {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" || strings.TrimSpace(mtu) == "" {
 		return fmt.Errorf("SetMTU requires interface and MTU value")
 	}
@@ -170,7 +175,10 @@ func SetMTU(iface, mtu string) error {
 	if value < 68 {
 		return fmt.Errorf("invalid MTU value: %d (must be between 68 and 65535)", value)
 	}
-	backend, err := network.OpenBackend(networkEnv, iface)
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -348,7 +356,7 @@ func networkInterfaceSpeed(name string, snapshotMap map[string]net.IOCountersSta
 	return rxSpeed, txSpeed
 }
 
-func mergeConfiguredState(info *NetworkInterfaceInfo, cfg network.InterfaceConfig) {
+func mergeConfiguredState(info *NetworkInterfaceInfo, cfg networkbackend.InterfaceConfig) {
 	info.IPv4Method = cfg.IPv4Method
 	if cfg.MTU != nil {
 		info.MTU = *cfg.MTU

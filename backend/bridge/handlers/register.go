@@ -16,6 +16,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
@@ -58,6 +59,7 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	systemd.RegisterHandlers(rt)
 	hostname.RegisterHandlers(rt)
 	datetime.RegisterHandlers(rt)
+	network.RegisterHandlers(rt)
 	dbus.RegisterHandlers(rt)
 	terminal.RegisterHandlers(rt)
 	wireguard.RegisterHandlers(rt)

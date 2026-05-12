@@ -1,9 +1,9 @@
-package dbus
+package network
 
 import (
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/network"
+	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
 )
 
 func TestMergeConfiguredStatePrefersManualConfiguredValues(t *testing.T) {
@@ -15,7 +15,7 @@ func TestMergeConfiguredStatePrefersManualConfiguredValues(t *testing.T) {
 		MTU:          1500,
 		IPv4Method:   "unknown",
 	}
-	cfg := network.InterfaceConfig{
+	cfg := networkbackend.InterfaceConfig{
 		Backend:       "netplan",
 		IPv4Method:    "manual",
 		IPv4Addresses: []string{"10.0.0.20/24"},
@@ -46,7 +46,7 @@ func TestMergeConfiguredStatePrefersManualConfiguredValues(t *testing.T) {
 
 func TestMergeConfiguredStateBackfillsEmptyLiveValues(t *testing.T) {
 	info := NetworkInterfaceInfo{Name: "eth1"}
-	cfg := network.InterfaceConfig{
+	cfg := networkbackend.InterfaceConfig{
 		Backend:       "ifcfg",
 		IPv4Method:    "manual",
 		IPv4Addresses: []string{"172.16.10.5/24"},
