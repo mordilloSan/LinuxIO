@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -59,12 +58,7 @@ func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
 	return b.Read()
 }
 
-func setAutoUpdates(ctx context.Context, jsonArg string) (AutoUpdateState, error) {
-	var opts AutoUpdateOptions
-	if err := json.Unmarshal([]byte(jsonArg), &opts); err != nil {
-		return AutoUpdateState{}, fmt.Errorf("invalid JSON: %w", err)
-	}
-
+func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateState, error) {
 	b := autoupdate.SelectBackend()
 	if b == nil {
 		return AutoUpdateState{}, fmt.Errorf("no supported backend found")

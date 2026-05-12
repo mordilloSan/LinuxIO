@@ -103,6 +103,11 @@ func parseAddInterfaceArgs(args []string) (addInterfaceRequest, error) {
 		return addInterfaceRequest{}, fmt.Errorf("invalid listen port: %w", err)
 	}
 
+	peers, err := parseOptionalPeers(args, 6)
+	if err != nil {
+		return addInterfaceRequest{}, fmt.Errorf("invalid peers JSON: %w", err)
+	}
+
 	return addInterfaceRequest{
 		name:       name,
 		addresses:  addresses,
@@ -110,7 +115,7 @@ func parseAddInterfaceArgs(args []string) (addInterfaceRequest, error) {
 		egressNic:  args[3],
 		dns:        parseOptionalCSV(args, 4),
 		mtu:        parseOptionalInt(args, 5, 0),
-		peers:      parseOptionalPeers(args, 6),
+		peers:      peers,
 		numPeers:   parseOptionalInt(args, 7, 0),
 	}, nil
 }

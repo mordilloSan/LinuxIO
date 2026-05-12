@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -19,6 +18,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
@@ -332,14 +332,15 @@ func parseOptionalInt(args []string, index int, defaultVal int) int {
 	return defaultVal
 }
 
-func parseOptionalPeers(args []string, index int) []PeerConfig {
-	if index < len(args) && args[index] != "" && args[index] != "null" && args[index] != "[]" {
-		var peers []PeerConfig
-		if err := json.Unmarshal([]byte(args[index]), &peers); err == nil {
-			return peers
-		}
+func parseOptionalPeers(args []string, index int) ([]PeerConfig, error) {
+	if index >= len(args) {
+		return nil, nil
 	}
-	return nil
+	switch args[index] {
+	case "", "null", "[]":
+		return nil, nil
+	}
+	return rpc.DecodeJSONArg[[]PeerConfig](args, index)
 }
 
 func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {

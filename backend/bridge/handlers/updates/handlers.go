@@ -53,11 +53,12 @@ func handleGetAutoUpdates(ctx context.Context, args []string, emit ipc.Events) e
 }
 
 func handleSetAutoUpdates(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) != 1 {
-		return ipc.ErrInvalidArgs
+	opts, err := rpc.DecodeJSONArg[AutoUpdateOptions](args, 0)
+	if err != nil {
+		return err
 	}
 	slog.Info("set_auto_updates requested", "component", "dbus", "mode", args[0])
-	result, err := setAutoUpdates(ctx, args[0])
+	result, err := setAutoUpdates(ctx, opts)
 	return rpc.EmitResult(emit, result, err)
 }
 

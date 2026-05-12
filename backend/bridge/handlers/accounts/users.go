@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 )
 
 const (
