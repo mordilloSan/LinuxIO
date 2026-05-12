@@ -2,6 +2,7 @@ package docker
 
 import (
 	"log/slog"
+	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
@@ -71,4 +72,9 @@ func RegisterHandlers(rt runtime.Runtime) {
 		{Name: "connect_to_proxy", Handler: handlers.handleConnectToProxy},
 		{Name: "system_prune", Handler: handlers.handleSystemPrune},
 	})
+}
+
+// RegisterStreamHandlers registers all docker stream handlers.
+func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
+	handlers[StreamTypeDockerLogs] = HandleDockerLogsStream
 }

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
 )
 
 type SystemHealthSummary struct {

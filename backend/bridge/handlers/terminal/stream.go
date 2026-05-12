@@ -35,12 +35,6 @@ type StreamTerminalSession struct {
 	doneChan chan struct{}
 }
 
-// RegisterStreamHandlers registers all terminal stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
-	handlers["terminal"] = HandleTerminalStream
-	handlers["container"] = HandleContainerTerminalStream
-}
-
 // HandleTerminalStream handles a yamux stream dedicated to terminal I/O.
 // This bypasses all JSON encoding - raw PTY bytes flow directly.
 // Protocol:

@@ -2,6 +2,7 @@ package appupdate
 
 import (
 	"context"
+	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
@@ -13,6 +14,11 @@ func RegisterHandlers(rt runtime.Runtime) {
 	rpc.Register("control", rt, []rpc.Command{
 		{Name: "version", Handler: handleVersion},
 	})
+}
+
+// RegisterStreamHandlers registers the app-update stream handler.
+func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
+	handlers[streamTypeAppUpdate] = HandleAppUpdateStream
 }
 
 func handleVersion(ctx context.Context, args []string, emit ipc.Events) error {

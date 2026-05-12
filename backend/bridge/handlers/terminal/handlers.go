@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
@@ -13,6 +14,12 @@ func RegisterHandlers(rt runtime.Runtime) {
 	rpc.Register("terminal", rt, []rpc.Command{
 		{Name: "list_shells", Handler: handleListShells},
 	})
+}
+
+// RegisterStreamHandlers registers all terminal stream handlers.
+func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
+	handlers["terminal"] = HandleTerminalStream
+	handlers["container"] = HandleContainerTerminalStream
 }
 
 func handleListShells(ctx context.Context, args []string, emit ipc.Events) error {

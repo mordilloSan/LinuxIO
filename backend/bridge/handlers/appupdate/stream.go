@@ -32,11 +32,6 @@ type updateStatus struct {
 	FinishedAt int64  `json:"finished_at,omitempty"`
 }
 
-// RegisterStreamHandlers registers the app-update stream handler.
-func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
-	handlers[streamTypeAppUpdate] = HandleAppUpdateStream
-}
-
 // HandleAppUpdateStream handles streaming app update with verified install script.
 // args: [runId] or [runId, version]
 func HandleAppUpdateStream(rt runtime.Runtime, stream net.Conn, args []string) error {

@@ -71,4 +71,5 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	terminal.RegisterStreamHandlers(streamHandlers)
 	jobhandlers.RegisterStreamHandlers(streamHandlers)
 	logs.RegisterStreamHandlers(streamHandlers)
+	docker.RegisterStreamHandlers(streamHandlers)
 }
