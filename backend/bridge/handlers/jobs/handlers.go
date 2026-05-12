@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"

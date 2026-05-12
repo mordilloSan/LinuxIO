@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/internal/rpc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 )

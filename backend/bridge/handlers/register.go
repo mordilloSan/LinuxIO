@@ -10,7 +10,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
@@ -24,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 )
 

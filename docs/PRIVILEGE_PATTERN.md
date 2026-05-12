@@ -40,7 +40,7 @@ That flag is the source of truth for privileged bridge commands.
 
 ## Current Backend Pattern
 
-Bridge handlers are registered through `backend/bridge/handlers/internal/rpc`:
+Bridge handlers are registered through `backend/bridge/internal/rpc`:
 
 ```go
 func RegisterHandlers(rt runtime.Runtime) {

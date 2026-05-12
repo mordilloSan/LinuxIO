@@ -14,7 +14,7 @@ The handler migration proposed by the original ADR has landed. Current code uses
 |------|--------------|
 | Runtime dependencies | `backend/bridge/runtime.Runtime` carries `Session` and `Store` |
 | Settings domain | `backend/bridge/settings`; `handlers/config` contains IPC handlers only |
-| IPC registration | `backend/bridge/handlers/internal/rpc` |
+| IPC registration | `backend/bridge/internal/rpc` |
 | Privilege wrapping | `rpc.Command{Privileged: true}` |
 | Raw streams | `map[string]func(runtime.Runtime, net.Conn, []string) error` |
 | Long-running operations | `backend/bridge/jobs`, attached through `jobs-*` streams |
@@ -44,7 +44,7 @@ Stream handlers also receive `runtime.Runtime` at execution time, not registrati
 
 ## RPC Helper
 
-`backend/bridge/handlers/internal/rpc` is intentionally small:
+`backend/bridge/internal/rpc` is intentionally small:
 
 ```go
 type Command struct {

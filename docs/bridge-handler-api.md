@@ -92,7 +92,7 @@ bridge\0<handlerType>\0<command>\0<arg1>\0<arg2>...
 
 `generic.HandleBridgeStream` looks up the handler with `ipc.Get(handlerType, command)`, adds the session to the context, executes the handler, and closes the stream after the handler returns.
 
-Most packages use the thin helper in `backend/bridge/handlers/internal/rpc`:
+Most packages use the thin helper in `backend/bridge/internal/rpc`:
 
 ```go
 rpc.Register("docker", rt, []rpc.Command{
