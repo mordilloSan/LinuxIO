@@ -25,7 +25,5 @@ func GetHostname(ctx context.Context) (string, error) {
 }
 
 func withHostnameSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Hostname.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
-		Unserialized: true,
-	}, fn)
+	return dbusclient.Hostname.UseSession(ctx, fn)
 }

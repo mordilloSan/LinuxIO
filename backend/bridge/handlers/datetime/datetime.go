@@ -104,9 +104,7 @@ func callTimedate(ctx context.Context, member string, args ...any) error {
 }
 
 func withTimedateSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Timedate.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
-		Unserialized: true,
-	}, fn)
+	return dbusclient.Timedate.UseSession(ctx, fn)
 }
 
 func GetNTPServers(ctx context.Context) ([]string, error) {

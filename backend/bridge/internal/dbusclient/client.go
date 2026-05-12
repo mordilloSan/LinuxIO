@@ -11,17 +11,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 )
 
-var (
-	// systemDBusGate serializes conservative one-shot system bus calls.
-	// It is a channel rather than sync.Mutex so callers can abandon the wait when
-	// their context is canceled.
-	systemDBusGate = make(chan struct{}, 1)
-	retryDelay     = 150 * time.Millisecond
-)
-
-func init() {
-	systemDBusGate <- struct{}{}
-}
+var retryDelay = 150 * time.Millisecond
 
 type SystemBusOptions struct {
 	Subsystem string
@@ -30,10 +20,6 @@ type SystemBusOptions struct {
 	// NoRetry disables the net.ErrClosed retry wrapper. Use it for non-idempotent
 	// calls where replaying the callback could duplicate a transaction.
 	NoRetry bool
-
-	// Unserialized bypasses the process-wide call gate. Use it only for callers
-	// that do not participate in long-running stateful D-Bus workflows.
-	Unserialized bool
 }
 
 type SystemObject struct {
@@ -115,10 +101,7 @@ func UseSystemBusWithOptions(ctx context.Context, opts SystemBusOptions, fn func
 			return runOnce()
 		})
 	}
-	if opts.Unserialized {
-		return run()
-	}
-	return withSystemBusLock(ctx, run)
+	return run()
 }
 
 func (o SystemObject) Interface(name string) SystemInterface {
@@ -230,18 +213,6 @@ func (p CallPolicy) Flags() godbus.Flags {
 		flags |= godbus.FlagNoReplyExpected
 	}
 	return flags
-}
-
-// withSystemBusLock protects conservative one-shot operations from overlapping
-// with stateful bus workflows while still honoring caller cancellation.
-func withSystemBusLock(ctx context.Context, fn func() error) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-systemDBusGate:
-		defer func() { systemDBusGate <- struct{}{} }()
-		return fn()
-	}
 }
 
 func useSystemBusOnce(ctx context.Context, subsystem string, fn func(context.Context, *godbus.Conn) error) error {

@@ -139,9 +139,7 @@ func DisableTuned(ctx context.Context) (PowerStatus, error) {
 }
 
 func withTunedSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Tuned.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
-		Unserialized: true,
-	}, fn)
+	return dbusclient.Tuned.UseSession(ctx, fn)
 }
 
 func getStatus(session dbusclient.SystemSession) (PowerStatus, error) {

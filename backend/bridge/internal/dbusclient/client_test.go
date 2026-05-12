@@ -6,7 +6,6 @@ import (
 	"net"
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -93,8 +92,7 @@ func TestUseSystemBusWithOptionsNoRetryDisablesClosedRetry(t *testing.T) {
 
 	var calls int
 	err := UseSystemBusWithOptions(context.Background(), SystemBusOptions{
-		Unserialized: true,
-		NoRetry:      true,
+		NoRetry: true,
 	}, func(context.Context, *godbus.Conn) error {
 		calls++
 		return net.ErrClosed
@@ -104,83 +102,6 @@ func TestUseSystemBusWithOptionsNoRetryDisablesClosedRetry(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("calls = %d, want 1", calls)
-	}
-}
-
-func TestSystemBusLockSerializesCalls(t *testing.T) {
-	t.Cleanup(setRetryDelayForTest(0))
-
-	firstEntered := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	firstDone := make(chan error, 1)
-	secondDone := make(chan error, 1)
-	var secondEntered atomic.Bool
-
-	go func() {
-		firstDone <- withSystemBusLock(context.Background(), func() error {
-			close(firstEntered)
-			<-releaseFirst
-			return nil
-		})
-	}()
-
-	<-firstEntered
-	go func() {
-		secondDone <- withSystemBusLock(context.Background(), func() error {
-			secondEntered.Store(true)
-			return nil
-		})
-	}()
-
-	select {
-	case err := <-secondDone:
-		t.Fatalf("second call finished before first released: %v", err)
-	case <-time.After(25 * time.Millisecond):
-	}
-	if secondEntered.Load() {
-		t.Fatalf("second call entered while first call held the lock")
-	}
-
-	close(releaseFirst)
-	if err := <-firstDone; err != nil {
-		t.Fatalf("first call: %v", err)
-	}
-	if err := <-secondDone; err != nil {
-		t.Fatalf("second call: %v", err)
-	}
-	if !secondEntered.Load() {
-		t.Fatalf("second call did not enter after first released")
-	}
-}
-
-func TestSystemBusLockHonorsCanceledContext(t *testing.T) {
-	t.Cleanup(setRetryDelayForTest(0))
-
-	firstEntered := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	firstDone := make(chan error, 1)
-
-	go func() {
-		firstDone <- withSystemBusLock(context.Background(), func() error {
-			close(firstEntered)
-			<-releaseFirst
-			return nil
-		})
-	}()
-	<-firstEntered
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := withSystemBusLock(ctx, func() error {
-		t.Fatalf("lock body ran for a canceled context")
-		return nil
-	}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("err = %v, want context.Canceled", err)
-	}
-
-	close(releaseFirst)
-	if err := <-firstDone; err != nil {
-		t.Fatalf("first call: %v", err)
 	}
 }
 
@@ -367,40 +288,6 @@ func TestSystemObjectAvailableUsesSystemBus(t *testing.T) {
 	}
 }
 
-func TestBusNameAvailableBypassesSystemBusGate(t *testing.T) {
-	bus := testdbus.Start(t)
-	bus.SetSystemBus(t)
-	bus.OwnName(t, "org.example.Available")
-
-	gateHeld := make(chan struct{})
-	releaseGate := make(chan struct{})
-	gateDone := make(chan error, 1)
-	go func() {
-		gateDone <- withSystemBusLock(context.Background(), func() error {
-			close(gateHeld)
-			<-releaseGate
-			return nil
-		})
-	}()
-	<-gateHeld
-	defer func() {
-		close(releaseGate)
-		if err := <-gateDone; err != nil {
-			t.Fatalf("gate holder: %v", err)
-		}
-	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	ok, err := BusNameAvailable(ctx, "org.example.Available")
-	if err != nil {
-		t.Fatalf("BusNameAvailable: %v", err)
-	}
-	if !ok {
-		t.Fatalf("BusNameAvailable = false, want true")
-	}
-}
-
 func TestReadBusNameStateRejectsInvalidInput(t *testing.T) {
 	if _, err := ReadBusNameState(context.Background(), nil, "org.example.Missing"); err == nil {
 		t.Fatalf("ReadBusNameState with nil connection succeeded")
@@ -439,9 +326,7 @@ func TestSystemSessionRequireAvailableUsesSessionConnection(t *testing.T) {
 		BusName:   "org.example.Available",
 		Path:      godbus.ObjectPath("/org/example/Available"),
 	}
-	err := obj.UseSessionWithOptions(context.Background(), SystemBusOptions{
-		Unserialized: true,
-	}, func(session SystemSession) error {
+	err := obj.UseSession(context.Background(), func(session SystemSession) error {
 		return session.RequireAvailable()
 	})
 	if err != nil {
@@ -521,58 +406,6 @@ func TestWatchSignalsReceivesAndClosesMatch(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for signal")
-	}
-}
-
-func TestSignalsNotStarvedByGate(t *testing.T) {
-	bus := testdbus.Start(t)
-	bus.SetSystemBus(t)
-	t.Cleanup(func() {
-		if err := CloseSignals(context.Background()); err != nil {
-			t.Fatalf("close signals: %v", err)
-		}
-	})
-
-	sender := bus.OwnName(t, "org.example.Signals")
-	gateHeld := make(chan struct{})
-	releaseGate := make(chan struct{})
-	gateDone := make(chan error, 1)
-	go func() {
-		gateDone <- withSystemBusLock(context.Background(), func() error {
-			close(gateHeld)
-			<-releaseGate
-			return nil
-		})
-	}()
-	<-gateHeld
-	defer func() {
-		close(releaseGate)
-		if err := <-gateDone; err != nil {
-			t.Fatalf("gate holder: %v", err)
-		}
-	}()
-
-	sub, err := WatchSignals(context.Background(), 1, SignalMatch{
-		Interface: "org.example.Signals",
-		Member:    "Changed",
-		Path:      godbus.ObjectPath("/org/example/Signals"),
-	})
-	if err != nil {
-		t.Fatalf("WatchSignals: %v", err)
-	}
-	defer sub.Close(context.Background())
-
-	if err := sender.Emit(godbus.ObjectPath("/org/example/Signals"), "org.example.Signals.Changed", "value"); err != nil {
-		t.Fatalf("emit signal: %v", err)
-	}
-
-	select {
-	case sig := <-sub.Chan():
-		if sig == nil {
-			t.Fatalf("subscription closed while gate was held")
-		}
-	case <-time.After(time.Second):
-		t.Fatalf("timed out waiting for signal while gate was held")
 	}
 }
 

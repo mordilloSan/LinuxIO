@@ -23,8 +23,7 @@ func (s BusNameState) Available() bool {
 func BusNameAvailable(ctx context.Context, busName string) (bool, error) {
 	var available bool
 	err := UseSystemBusWithOptions(ctx, SystemBusOptions{
-		Subsystem:    "dbus",
-		Unserialized: true,
+		Subsystem: "dbus",
 	}, func(ctx context.Context, conn *godbus.Conn) error {
 		var err error
 		available, err = BusNameAvailableOnConnection(ctx, conn, busName)
@@ -73,8 +72,7 @@ func ReadBusNameState(ctx context.Context, conn *godbus.Conn, busName string) (B
 func (o SystemObject) BusNameState(ctx context.Context) (BusNameState, error) {
 	var state BusNameState
 	err := UseSystemBusWithOptions(ctx, SystemBusOptions{
-		Subsystem:    o.Subsystem,
-		Unserialized: true,
+		Subsystem: o.Subsystem,
 	}, func(ctx context.Context, conn *godbus.Conn) error {
 		var err error
 		state, err = o.BusNameStateOnConnection(ctx, conn)

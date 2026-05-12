@@ -54,9 +54,8 @@ func Run(ctx context.Context, opts OperationOptions, fn func(Session) error) err
 
 	return WithGate(ctx, func() error {
 		return dbusclient.PackageKit.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
-			Subsystem:    "packagekit",
-			Unserialized: true,
-			NoRetry:      opts.NoRetry,
+			Subsystem: "packagekit",
+			NoRetry:   opts.NoRetry,
 		}, func(session dbusclient.SystemSession) error {
 			if err := session.RequireAvailable(); err != nil {
 				return err

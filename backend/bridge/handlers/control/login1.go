@@ -40,7 +40,5 @@ func callLogin1Manager(ctx context.Context, method string, args ...any) error {
 }
 
 func withLogin1Session(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Login1Manager.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
-		Unserialized: true,
-	}, fn)
+	return dbusclient.Login1Manager.UseSession(ctx, fn)
 }
