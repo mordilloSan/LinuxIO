@@ -4,6 +4,7 @@ import (
 	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
@@ -44,6 +45,7 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	}
 
 	// Register all handlers using the handler.Register() system
+	appupdate.RegisterHandlers(rt)
 	system.RegisterHandlers(rt)
 	accounts.RegisterHandlers(rt)
 	docker.RegisterHandlers(rt)
@@ -63,7 +65,7 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	shares.RegisterHandlers(rt)
 
 	// Register stream handlers for yamux streams (terminal, jobs, logs, etc.)
-	control.RegisterStreamHandlers(streamHandlers)
+	appupdate.RegisterStreamHandlers(streamHandlers)
 	terminal.RegisterStreamHandlers(streamHandlers)
 	jobhandlers.RegisterStreamHandlers(streamHandlers)
 	logs.RegisterStreamHandlers(streamHandlers)

@@ -16,8 +16,6 @@ func RegisterHandlers(rt runtime.Runtime) {
 	RegisterJobRunners()
 
 	rpc.Register("dbus", rt, []rpc.Command{
-		{Name: "reboot", Handler: handleReboot},
-		{Name: "power_off", Handler: handlePowerOff},
 		{Name: "get_updates_basic", Handler: handleGetUpdatesBasic},
 		{Name: "get_update_detail", Handler: handleGetUpdateDetail},
 		{Name: "install_package", Handler: handleInstallPackage},
@@ -33,16 +31,6 @@ func RegisterHandlers(rt runtime.Runtime) {
 		{Name: "enable_connection", Handler: handleEnableConnection},
 		{Name: "disable_connection", Handler: handleDisableConnection},
 	})
-}
-
-func handleReboot(ctx context.Context, args []string, emit ipc.Events) error {
-	slog.Info("reboot requested", "component", "dbus")
-	return rpc.EmitResult(emit, nil, Reboot(ctx))
-}
-
-func handlePowerOff(ctx context.Context, args []string, emit ipc.Events) error {
-	slog.Info("power_off requested", "component", "dbus")
-	return rpc.EmitResult(emit, nil, PowerOff(ctx))
 }
 
 func handleGetUpdatesBasic(ctx context.Context, args []string, emit ipc.Events) error {

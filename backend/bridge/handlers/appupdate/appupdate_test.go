@@ -1,4 +1,4 @@
-package control
+package appupdate
 
 import (
 	"strings"

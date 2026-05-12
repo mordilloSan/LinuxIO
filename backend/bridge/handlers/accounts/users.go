@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	logindbus "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
 )
 
@@ -312,7 +312,7 @@ func TerminateSession(ctx context.Context, sessionID string, pid int) error {
 	defer cancel()
 
 	if sessionID != "" {
-		if err := logindbus.TerminateLogin1Session(cmdCtx, sessionID); err != nil {
+		if err := control.Logoff(cmdCtx, sessionID); err != nil {
 			slog.Warn("login1 TerminateSession failed, falling back to kill",
 				"sessionID", sessionID, "pid", pid, "err", err)
 		} else {

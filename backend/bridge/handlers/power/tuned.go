@@ -18,7 +18,6 @@ import (
 const (
 	tunedBusName       = dbusclient.TunedBusName
 	tunedControlIface  = dbusclient.TunedControlIface
-	ppdBusName         = dbusclient.PowerProfilesBusName
 	tunedUnitName      = "tuned.service"
 	tunedPackageName   = "tuned"
 	defaultInstallHint = "Install the tuned package with your distribution package manager"

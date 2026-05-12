@@ -1,4 +1,4 @@
-package dbus
+package control
 
 import (
 	"context"
@@ -65,14 +65,14 @@ func exportLogin1Manager(t *testing.T, bus *testdbus.Bus, manager *login1Manager
 	}
 }
 
-func TestTerminateLogin1SessionCallsManager(t *testing.T) {
+func TestLogoffCallsManager(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	manager := &login1ManagerStub{}
 	exportLogin1Manager(t, bus, manager)
 
-	if err := TerminateLogin1Session(context.Background(), "12"); err != nil {
-		t.Fatalf("TerminateLogin1Session: %v", err)
+	if err := Logoff(context.Background(), "12"); err != nil {
+		t.Fatalf("Logoff: %v", err)
 	}
 
 	if got, want := manager.terminatedSessions(), []string{"12"}; !reflect.DeepEqual(got, want) {
