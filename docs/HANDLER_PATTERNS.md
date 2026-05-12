@@ -44,7 +44,7 @@ Stream handlers also receive `runtime.Runtime` at execution time, not registrati
 
 ## RPC Helper
 
-`backend/bridge/internal/rpc` is intentionally small:
+`backend/bridge/internal/rpc` owns bridge RPC dispatch and the small helper API used by handler packages:
 
 ```go
 type Command struct {
@@ -54,6 +54,7 @@ type Command struct {
 }
 
 func Register(component string, rt runtime.Runtime, commands []Command)
+func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) error
 func Arg(args []string, i int) (string, error)
 func RequireArgs(args []string, n int) error
 func DecodeJSONArg[T any](args []string, i int) (T, error)
@@ -156,7 +157,7 @@ func handleCreateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 }
 ```
 
-Malformed or missing arguments currently return errors that `generic.HandleBridgeStream` serializes as code `500`, unless the handler explicitly emits its own error result. Keep that in mind for user-facing validation paths.
+Malformed or missing arguments currently return errors that `rpc.HandleBridgeStream` serializes as code `500`, unless the handler explicitly emits its own error result. Keep that in mind for user-facing validation paths.
 
 ### Privileged Handlers
 
@@ -247,7 +248,7 @@ Current raw stream registrations:
 
 | Stream Type | Registered By | Handler |
 |-------------|---------------|---------|
-| `bridge` | `handlers/register.go` | `generic.HandleBridgeStream` |
+| `bridge` | `handlers/register.go` | `rpc.HandleBridgeStream` |
 | `app-update` | `control` | `control.HandleAppUpdateStream` |
 | `terminal` | `terminal` | `terminal.HandleTerminalStream` |
 | `container` | `terminal` | `terminal.HandleContainerTerminalStream` |

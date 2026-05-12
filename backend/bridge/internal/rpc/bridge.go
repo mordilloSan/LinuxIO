@@ -1,4 +1,4 @@
-package generic
+package rpc
 
 import (
 	"context"
@@ -95,39 +95,27 @@ func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, a
 	return nil
 }
 
-// eventEmitter implements ipc.Events
-type eventEmitter struct {
-	stream net.Conn
-}
-
-func newEventEmitter(stream net.Conn) *eventEmitter {
-	return &eventEmitter{stream: stream}
-}
-
 type loggingEmitter struct {
-	inner        *eventEmitter
-	dataSent     bool
-	progressSent bool
-	resultSent   bool
-	errorSent    bool
+	stream    net.Conn
+	errorSent bool
 }
 
 func newLoggingEmitter(stream net.Conn) *loggingEmitter {
-	return &loggingEmitter{inner: newEventEmitter(stream)}
+	return &loggingEmitter{stream: stream}
 }
 
-func (e *eventEmitter) Data(chunk []byte) error {
+func (e *loggingEmitter) Data(chunk []byte) error {
 	return ipc.WriteRelayFrame(e.stream, &ipc.StreamFrame{
 		Opcode:  ipc.OpStreamData,
 		Payload: chunk,
 	})
 }
 
-func (e *eventEmitter) Progress(progress any) error {
+func (e *loggingEmitter) Progress(progress any) error {
 	return ipc.WriteProgress(e.stream, 0, progress)
 }
 
-func (e *eventEmitter) Result(result any) error {
+func (e *loggingEmitter) Result(result any) error {
 	data, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
@@ -138,38 +126,15 @@ func (e *eventEmitter) Result(result any) error {
 	})
 }
 
-func (e *eventEmitter) Error(err error, code int) error {
+func (e *loggingEmitter) Error(err error, code int) error {
+	e.errorSent = true
 	return ipc.WriteResultError(e.stream, 0, err.Error(), code)
 }
 
-func (e *eventEmitter) Close(reason string) error {
+func (e *loggingEmitter) Close(string) error {
 	// Note: We could extend the protocol to include a reason in the close frame
 	// For now, just send the close opcode
 	return ipc.WriteStreamClose(e.stream, 0)
-}
-
-func (e *loggingEmitter) Data(chunk []byte) error {
-	e.dataSent = true
-	return e.inner.Data(chunk)
-}
-
-func (e *loggingEmitter) Progress(progress any) error {
-	e.progressSent = true
-	return e.inner.Progress(progress)
-}
-
-func (e *loggingEmitter) Result(result any) error {
-	e.resultSent = true
-	return e.inner.Result(result)
-}
-
-func (e *loggingEmitter) Error(err error, code int) error {
-	e.errorSent = true
-	return e.inner.Error(err, code)
-}
-
-func (e *loggingEmitter) Close(reason string) error {
-	return e.inner.Close(reason)
 }
 
 type bridgeRPCLogMeta struct {

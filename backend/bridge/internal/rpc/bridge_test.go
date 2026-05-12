@@ -1,4 +1,4 @@
-package generic
+package rpc
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 )
 
 func TestHandleBridgeStreamLogsSuccessfulRPC(t *testing.T) {
-	logs := captureGenericLogs(t)
+	logs := captureRPCLogs(t)
 
 	const handlerType = "test_bridge_logging"
 	const command = "success"
@@ -34,7 +34,7 @@ func TestHandleBridgeStreamLogsSuccessfulRPC(t *testing.T) {
 		t.Fatalf("HandleBridgeStream returned error: %v", err)
 	}
 
-	requireGenericContains(t, logs.String(),
+	requireRPCContains(t, logs.String(),
 		"bridge rpc succeeded: test_bridge_logging.success",
 		"handler=test_bridge_logging",
 		"command=success",
@@ -48,7 +48,7 @@ func TestHandleBridgeStreamLogsSuccessfulRPC(t *testing.T) {
 }
 
 func TestHandleBridgeStreamLogsFailedRPC(t *testing.T) {
-	logs := captureGenericLogs(t)
+	logs := captureRPCLogs(t)
 
 	const handlerType = "test_bridge_logging"
 	const command = "failure"
@@ -68,7 +68,7 @@ func TestHandleBridgeStreamLogsFailedRPC(t *testing.T) {
 		t.Fatalf("expected %v, got %v", handlerErr, err)
 	}
 
-	requireGenericContains(t, logs.String(),
+	requireRPCContains(t, logs.String(),
 		"bridge rpc failed: test_bridge_logging.failure",
 		"outcome=failure",
 		"error=boom",
@@ -77,7 +77,7 @@ func TestHandleBridgeStreamLogsFailedRPC(t *testing.T) {
 }
 
 func TestHandleBridgeStreamTreatsEmitterErrorFrameAsFailure(t *testing.T) {
-	logs := captureGenericLogs(t)
+	logs := captureRPCLogs(t)
 
 	const handlerType = "test_bridge_logging"
 	const command = "error_frame"
@@ -95,14 +95,14 @@ func TestHandleBridgeStreamTreatsEmitterErrorFrameAsFailure(t *testing.T) {
 		t.Fatalf("HandleBridgeStream returned error: %v", err)
 	}
 
-	requireGenericContains(t, logs.String(),
+	requireRPCContains(t, logs.String(),
 		"bridge rpc failed: test_bridge_logging.error_frame",
 		"outcome=failure",
 		"duration=",
 	)
 }
 
-func captureGenericLogs(t *testing.T) *bytes.Buffer {
+func captureRPCLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 
 	var buf bytes.Buffer
@@ -115,7 +115,7 @@ func captureGenericLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func requireGenericContains(t *testing.T, output string, needles ...string) {
+func requireRPCContains(t *testing.T, output string, needles ...string) {
 	t.Helper()
 
 	for _, needle := range needles {

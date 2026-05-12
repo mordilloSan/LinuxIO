@@ -19,7 +19,7 @@ ParseStreamOpenPayload: <stream-type>\0<arg1>\0...
     v
 handlers.GetStreamHandler(streamType)
     |
-    +-- bridge        -> generic.HandleBridgeStream -> ipc registry
+    +-- bridge        -> rpc.HandleBridgeStream -> ipc registry
     +-- terminal      -> PTY stream
     +-- container     -> Docker exec stream
     +-- service-logs  -> log stream
@@ -66,7 +66,7 @@ Current stream registrations:
 
 | Package | Stream Types |
 |---------|--------------|
-| `generic` via `register.go` | `bridge` |
+| `rpc` via `register.go` | `bridge` |
 | `control` | `app-update` |
 | `terminal` | `terminal`, `container` |
 | `jobs` | `jobs-attach`, `jobs-data`, `jobs-events` |
@@ -90,7 +90,7 @@ The public path is a `bridge` stream. Its initial payload is:
 bridge\0<handlerType>\0<command>\0<arg1>\0<arg2>...
 ```
 
-`generic.HandleBridgeStream` looks up the handler with `ipc.Get(handlerType, command)`, adds the session to the context, executes the handler, and closes the stream after the handler returns.
+`rpc.HandleBridgeStream` looks up the handler with `ipc.Get(handlerType, command)`, adds the session to the context, executes the handler, and closes the stream after the handler returns.
 
 Most packages use the thin helper in `backend/bridge/internal/rpc`:
 
@@ -149,7 +149,7 @@ The `Events` interface supports:
 | `Error(error, code)` | `OpStreamResult` | `{ "status": "error", "error": "...", "code": code }`; does not close the stream |
 | `Close(reason)` | `OpStreamClose` | Reason is currently not serialized |
 
-On success, handlers should emit one final `Result`. The bridge closes the stream after `Execute` returns. If a handler returns an error, `generic.HandleBridgeStream` writes an error result with code `500` and then closes the stream. If an IPC handler needs another status code, it must emit the error explicitly.
+On success, handlers should emit one final `Result`. The bridge closes the stream after `Execute` returns. If a handler returns an error, `rpc.HandleBridgeStream` writes an error result with code `500` and then closes the stream. If an IPC handler needs another status code, it must emit the error explicitly.
 
 ## Helper APIs
 
@@ -298,25 +298,25 @@ Some JSON handler packages also register job runners as part of their `RegisterH
 ## Handler Package Layout
 
 ```text
-backend/bridge/handlers/
-├── register.go             stream and JSON registration
-├── generic/                universal bridge stream dispatcher
-├── internal/rpc/           command registration and arg helpers
-├── jobs/                   jobs.* IPC commands and jobs-* streams
-├── system/                 system.* IPC handlers
-├── accounts/               accounts.* IPC handlers
-├── docker/                 docker.* IPC handlers and docker job runners
-├── filebrowser/            filebrowser.* IPC handlers and file job runners
-├── indexer/                indexer.* IPC handlers
-├── config/                 config.* IPC handlers
-├── control/                control.* IPC handlers and app-update stream
-├── power/                  power.* IPC handlers
-├── dbus/                   dbus.* IPC handlers and package job runner
-├── terminal/               terminal.* IPC handlers plus terminal/container streams
-├── wireguard/              wireguard.* IPC handlers
-├── storage/                storage.* IPC handlers and SMART job runner
-├── shares/                 shares.* IPC handlers
-└── logs/                   general/service/docker log streams
+backend/bridge/
+├── internal/rpc/           bridge RPC dispatch, command registration, arg helpers
+└── handlers/
+    ├── register.go         stream and JSON registration
+    ├── jobs/               jobs.* IPC commands and jobs-* streams
+    ├── system/             system.* IPC handlers
+    ├── accounts/           accounts.* IPC handlers
+    ├── docker/             docker.* IPC handlers and docker job runners
+    ├── filebrowser/        filebrowser.* IPC handlers and file job runners
+    ├── indexer/            indexer.* IPC handlers
+    ├── config/             config.* IPC handlers
+    ├── control/            control.* IPC handlers and app-update stream
+    ├── power/              power.* IPC handlers
+    ├── dbus/               dbus.* IPC handlers and package job runner
+    ├── terminal/           terminal.* IPC handlers plus terminal/container streams
+    ├── wireguard/          wireguard.* IPC handlers
+    ├── storage/            storage.* IPC handlers and SMART job runner
+    ├── shares/             shares.* IPC handlers
+    └── logs/               general/service/docker log streams
 ```
 
 ## Privilege Enforcement
@@ -329,7 +329,7 @@ rpc.Register("power", rt, []rpc.Command{
 })
 ```
 
-This wraps the command with `privilege.RequirePrivilegedIPC(rt.Session, handler)`. If the session is not privileged, the handler returns `operation requires administrator privileges`; the generic bridge currently sends that returned error as an error result with code `500`.
+This wraps the command with `privilege.RequirePrivilegedIPC(rt.Session, handler)`. If the session is not privileged, the handler returns `operation requires administrator privileges`; `rpc.HandleBridgeStream` currently sends that returned error as an error result with code `500`.
 
 ## See Also
 

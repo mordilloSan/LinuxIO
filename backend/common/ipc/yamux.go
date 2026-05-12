@@ -8,10 +8,6 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 )
 
-// MemoryManagerFactory creates a new yamux.MemoryManager per session.
-// Return nil to use unlimited memory (default behavior).
-var MemoryManagerFactory func() yamux.MemoryManager = nil
-
 // YamuxConfig returns the default yamux configuration for LinuxIO
 func YamuxConfig() *yamux.Config {
 	cfg := yamux.DefaultConfig()

@@ -23,7 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/generic"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 )
 
@@ -42,7 +42,7 @@ func RegisterAllHandlers(rt runtime.Runtime) {
 	// Typed frontend calls like linuxio.storage.get_drive_info.call()
 	// open a "bridge" stream and dispatch through ipc.RegisterFunc handlers.
 	streamHandlers["bridge"] = func(rt runtime.Runtime, conn net.Conn, args []string) error {
-		return generic.HandleBridgeStream(rt.Session, conn, args)
+		return rpc.HandleBridgeStream(rt.Session, conn, args)
 	}
 
 	// Register all handlers using the handler.Register() system

@@ -96,36 +96,3 @@ func Unregister(handlerType, command string) bool {
 
 	return true
 }
-
-// UnregisterAll removes all handlers for a given handler type.
-// Returns true if any handlers were removed, false if the type didn't exist.
-func UnregisterAll(handlerType string) bool {
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, ok := registry[handlerType]; !ok {
-		return false
-	}
-
-	delete(registry, handlerType)
-	return true
-}
-
-// List returns all registered handler types and their commands.
-// Useful for debugging and introspection.
-//
-// Returns a map: {"system": ["get_cpu_info", "get_drive_info"], ...}
-func List() map[string][]string {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	result := make(map[string][]string)
-	for handlerType, commands := range registry {
-		commandList := make([]string, 0, len(commands))
-		for command := range commands {
-			commandList = append(commandList, command)
-		}
-		result[handlerType] = commandList
-	}
-	return result
-}
