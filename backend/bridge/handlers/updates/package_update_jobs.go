@@ -6,9 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 )
 
@@ -192,7 +191,7 @@ func awaitPackageUpdateSignals(ctx context.Context, trans *pkgkit.Transaction, r
 
 func handlePackageUpdateSignal(
 	report pkgUpdateReporter,
-	sig *godbus.Signal,
+	sig *dbusclient.Signal,
 	transactionIfc string,
 	lastWorkStatus *uint32,
 ) (bool, error) {
@@ -216,7 +215,7 @@ func handlePackageUpdateSignal(
 	return false, nil
 }
 
-func handleItemProgressSignal(report pkgUpdateReporter, sig *godbus.Signal, lastWorkStatus *uint32) {
+func handleItemProgressSignal(report pkgUpdateReporter, sig *dbusclient.Signal, lastWorkStatus *uint32) {
 	if len(sig.Body) < 3 {
 		return
 	}
@@ -237,7 +236,7 @@ func handleItemProgressSignal(report pkgUpdateReporter, sig *godbus.Signal, last
 	})
 }
 
-func handlePackageSignal(report pkgUpdateReporter, sig *godbus.Signal) {
+func handlePackageSignal(report pkgUpdateReporter, sig *dbusclient.Signal) {
 	if len(sig.Body) < 3 {
 		return
 	}
@@ -254,7 +253,7 @@ func handlePackageSignal(report pkgUpdateReporter, sig *godbus.Signal) {
 	})
 }
 
-func handleMessageSignal(report pkgUpdateReporter, sig *godbus.Signal) {
+func handleMessageSignal(report pkgUpdateReporter, sig *dbusclient.Signal) {
 	if len(sig.Body) < 2 {
 		return
 	}
@@ -268,7 +267,7 @@ func handleMessageSignal(report pkgUpdateReporter, sig *godbus.Signal) {
 	})
 }
 
-func packageUpdateSignalError(sig *godbus.Signal) error {
+func packageUpdateSignalError(sig *dbusclient.Signal) error {
 	if len(sig.Body) >= 2 {
 		code, _ := sig.Body[0].(uint32)
 		details, _ := sig.Body[1].(string)
@@ -288,7 +287,7 @@ func handleFinishedSignal(report pkgUpdateReporter) {
 
 func handlePropertiesChangedSignal(
 	report pkgUpdateReporter,
-	sig *godbus.Signal,
+	sig *dbusclient.Signal,
 	transactionIfc string,
 	lastWorkStatus *uint32,
 ) {
@@ -304,10 +303,10 @@ func handlePropertiesChangedSignal(
 }
 
 func parseTransactionProperties(
-	sig *godbus.Signal,
+	sig *dbusclient.Signal,
 	transactionIfc string,
 	lastWorkStatus uint32,
-) (map[string]godbus.Variant, uint32, uint32, bool) {
+) (map[string]dbusclient.Variant, uint32, uint32, bool) {
 	if len(sig.Body) < 2 {
 		return nil, 0, 0, false
 	}
@@ -315,7 +314,7 @@ func parseTransactionProperties(
 	if iface != transactionIfc {
 		return nil, 0, 0, false
 	}
-	props, ok := sig.Body[1].(map[string]godbus.Variant)
+	props, ok := sig.Body[1].(map[string]dbusclient.Variant)
 	if !ok {
 		return nil, 0, 0, false
 	}
@@ -328,7 +327,7 @@ func parseTransactionProperties(
 	return props, statusForPercentage, currentStatus, hasStatus
 }
 
-func writePercentageProgress(report pkgUpdateReporter, props map[string]godbus.Variant, status uint32) {
+func writePercentageProgress(report pkgUpdateReporter, props map[string]dbusclient.Variant, status uint32) {
 	pct, ok := propertyUint32(props, "Percentage")
 	if !ok || !isRealWorkStatus(status) {
 		return
@@ -350,7 +349,7 @@ func writeStatusProgress(report pkgUpdateReporter, currentStatus uint32, hasStat
 	})
 }
 
-func propertyUint32(props map[string]godbus.Variant, key string) (uint32, bool) {
+func propertyUint32(props map[string]dbusclient.Variant, key string) (uint32, bool) {
 	variant, ok := props[key]
 	if !ok {
 		return 0, false

@@ -15,10 +15,9 @@ import (
 	"strings"
 	"time"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/autoupdate"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
@@ -173,11 +172,11 @@ func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
 	return combinedCVEs
 }
 
-func isTransactionFinished(sig *godbus.Signal) bool {
+func isTransactionFinished(sig *dbusclient.Signal) bool {
 	return sig == nil || sig.Name == pkgkit.TransactionIface+".Finished"
 }
 
-func readPackageSignal(sig *godbus.Signal) (string, packageUpdateMeta, bool) {
+func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool) {
 	if sig.Name != pkgkit.TransactionIface+".Package" || len(sig.Body) <= 2 {
 		return "", packageUpdateMeta{}, false
 	}
@@ -192,7 +191,7 @@ func readPackageSignal(sig *godbus.Signal) (string, packageUpdateMeta, bool) {
 	}, true
 }
 
-func collectUpdatePackages(ctx context.Context, sigCh <-chan *godbus.Signal) ([]string, map[string]packageUpdateMeta) {
+func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta) {
 	var pkgIDs []string
 	metaByPkg := make(map[string]packageUpdateMeta)
 
@@ -282,7 +281,7 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 	}, nil
 }
 
-func collectSingleUpdateDetail(ctx context.Context, sigCh <-chan *godbus.Signal, packageID string) (*UpdateDetail, error) {
+func collectSingleUpdateDetail(ctx context.Context, sigCh <-chan *dbusclient.Signal, packageID string) (*UpdateDetail, error) {
 	var detail *UpdateDetail
 
 	for {
@@ -315,7 +314,7 @@ func finalizeSingleUpdateDetail(detail *UpdateDetail, packageID string) (*Update
 	return detail, nil
 }
 
-func collectUpdateDetails(ctx context.Context, sigCh <-chan *godbus.Signal, metaByPkg map[string]packageUpdateMeta) ([]UpdateDetail, error) {
+func collectUpdateDetails(ctx context.Context, sigCh <-chan *dbusclient.Signal, metaByPkg map[string]packageUpdateMeta) ([]UpdateDetail, error) {
 	var details []UpdateDetail
 
 	for {
@@ -637,7 +636,7 @@ func installPackage(ctx context.Context, packageID string) error {
 	})
 }
 
-func awaitPackageKitSignal(ctx context.Context, sigCh <-chan *godbus.Signal) error {
+func awaitPackageKitSignal(ctx context.Context, sigCh <-chan *dbusclient.Signal) error {
 	if err := pkgkit.AwaitFinished(ctx, sigCh, ""); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("timeout waiting for PackageKit to finish install")

@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	godbus "github.com/godbus/dbus/v5"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
@@ -33,8 +31,8 @@ type Session struct {
 
 type Transaction struct {
 	session Session
-	object  godbus.BusObject
-	path    godbus.ObjectPath
+	object  dbusclient.BusObject
+	path    dbusclient.ObjectPath
 	sub     *dbusclient.SignalSubscription
 }
 
@@ -84,7 +82,7 @@ func (s Session) Context() context.Context {
 }
 
 func (s Session) CreateTransaction(buffer int) (*Transaction, error) {
-	var path godbus.ObjectPath
+	var path dbusclient.ObjectPath
 	if err := s.session.CallStore(dbusclient.PackageKitCreateTransaction, dbusclient.CallPolicy{}, nil, &path); err != nil {
 		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
 	}
@@ -113,14 +111,14 @@ func (s Session) TriggerOffline(action string) error {
 	return nil
 }
 
-func (t *Transaction) Path() godbus.ObjectPath {
+func (t *Transaction) Path() dbusclient.ObjectPath {
 	if t == nil {
 		return ""
 	}
 	return t.path
 }
 
-func (t *Transaction) Signals() <-chan *godbus.Signal {
+func (t *Transaction) Signals() <-chan *dbusclient.Signal {
 	if t == nil || t.sub == nil {
 		return nil
 	}
@@ -148,7 +146,7 @@ func (t *Transaction) AwaitFinished(ctx context.Context, action string) error {
 	return AwaitFinished(ctx, t.Signals(), action)
 }
 
-func AwaitFinished(ctx context.Context, signals <-chan *godbus.Signal, action string) error {
+func AwaitFinished(ctx context.Context, signals <-chan *dbusclient.Signal, action string) error {
 	ctx = requireContext(ctx)
 	for {
 		select {
@@ -168,7 +166,7 @@ func AwaitFinished(ctx context.Context, signals <-chan *godbus.Signal, action st
 	}
 }
 
-func CollectPackageIDs(ctx context.Context, signals <-chan *godbus.Signal, action string) ([]string, error) {
+func CollectPackageIDs(ctx context.Context, signals <-chan *dbusclient.Signal, action string) ([]string, error) {
 	ctx = requireContext(ctx)
 	var packageIDs []string
 	for {
@@ -195,7 +193,7 @@ func CollectPackageIDs(ctx context.Context, signals <-chan *godbus.Signal, actio
 	}
 }
 
-func ErrorFromSignal(sig *godbus.Signal, action string) error {
+func ErrorFromSignal(sig *dbusclient.Signal, action string) error {
 	if sig == nil || len(sig.Body) < 2 {
 		return fmt.Errorf("PackageKit error (unknown)")
 	}
