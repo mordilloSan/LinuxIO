@@ -15,8 +15,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 
-const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
-
 interface ComposeOperationDialogProps {
   open: boolean;
   onClose: () => void;
@@ -95,10 +93,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         const jobArgs = composePath
           ? [action, projectName, composePath]
           : [action, projectName];
-        const job = await linuxio.jobs.start.call(
-          JOB_TYPE_DOCKER_COMPOSE,
-          ...jobArgs,
-        );
+        const job = await linuxio.docker.compose.call(...jobArgs);
         if (cancelled) {
           return;
         }

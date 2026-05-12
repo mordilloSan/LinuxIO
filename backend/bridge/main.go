@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,7 +19,9 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -28,8 +31,8 @@ import (
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
 // FAIL-FAST: If bootstrap is invalid, exit immediately with code 1.
 // This ensures the auth daemon's exec-status pipe detects failure.
-func readBootstrap() *ipc.Bootstrap {
-	b, err := ipc.ReadBootstrap(os.Stdin)
+func readBootstrap() *authipc.Bootstrap {
+	b, err := authipc.ReadBootstrap(os.Stdin)
 	if err != nil {
 		slog.Error("failed to read bridge bootstrap", "error", err)
 		os.Exit(1)
@@ -49,7 +52,7 @@ func readBootstrap() *ipc.Bootstrap {
 }
 
 // Bootstrap config and session - initialized in main() after CLI checks
-var bootCfg *ipc.Bootstrap
+var bootCfg *authipc.Bootstrap
 var sess *session.Session
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
@@ -245,11 +248,11 @@ func openClientConnection() net.Conn {
 
 func runBridge(clientConn net.Conn, rt runtime.Runtime) {
 	shutdownCh := make(chan string, 1)
-	handlers.RegisterAllHandlers(rt)
+	router := handlers.RegisterAllHandlers(rt)
 	startBridgeSignalHandler(shutdownCh)
 
 	closeClientConn := newClientConnCloser(clientConn)
-	startMainRequestLoop(rt, clientConn, closeClientConn, shutdownCh)
+	startMainRequestLoop(rt, router, clientConn, closeClientConn, shutdownCh)
 	<-startBridgeCleanup(shutdownCh, closeClientConn)
 }
 
@@ -276,9 +279,9 @@ func newClientConnCloser(clientConn net.Conn) func() {
 	}
 }
 
-func startMainRequestLoop(rt runtime.Runtime, clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
+func startMainRequestLoop(rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
 	wg.Go(func() {
-		handleMainRequest(rt, clientConn, closeClientConn)
+		handleMainRequest(rt, router, clientConn, closeClientConn)
 		select {
 		case shutdownCh <- "client disconnected":
 		default:
@@ -321,15 +324,15 @@ func printBridgeVersion() {
 }
 
 // handleMainRequest sets up a yamux session for the client connection.
-func handleMainRequest(rt runtime.Runtime, conn net.Conn, closeConn func()) {
+func handleMainRequest(rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn, closeConn func()) {
 	defer closeConn()
-	handleYamuxSession(rt, conn)
+	handleYamuxSession(rt, router, conn)
 }
 
 // handleYamuxSession handles a yamux multiplexed connection.
 // Each stream within the session is treated as an independent request.
-func handleYamuxSession(rt runtime.Runtime, conn net.Conn) {
-	ymuxSession, err := ipc.NewYamuxServer(conn)
+func handleYamuxSession(rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn) {
+	ymuxSession, err := relay.NewYamuxServer(conn)
 	if err != nil {
 		slog.Error("failed to create yamux session", "session_id", sess.SessionID, "error", err)
 		return
@@ -360,7 +363,7 @@ func handleYamuxSession(rt runtime.Runtime, conn net.Conn) {
 		streamWg.Go(func() {
 			defer s.Close()
 
-			handleYamuxStream(rt, s, sid)
+			handleYamuxStream(rt, router, s, sid)
 		})
 	}
 
@@ -371,72 +374,55 @@ func handleYamuxSession(rt runtime.Runtime, conn net.Conn) {
 
 // handleYamuxStream handles a single stream within a yamux session.
 // Reads the OpStreamOpen frame, looks up the registered handler, and executes it.
-func handleYamuxStream(rt runtime.Runtime, stream net.Conn, streamID string) {
+func handleYamuxStream(rt runtime.Runtime, router *bridgeipc.Router, stream net.Conn, streamID string) {
 	sess := rt.Session
 	// Read the first frame to determine stream type
-	frame, err := ipc.ReadRelayFrame(stream)
+	frame, err := relay.ReadRelayFrame(stream)
 	if err != nil {
 		slog.Warn("failed to read stream open frame", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
 		return
 	}
 
-	if frame.Opcode != ipc.OpStreamOpen {
+	if frame.Opcode != relay.OpStreamOpen {
 		slog.Warn("expected OpStreamOpen frame", "session_id", sess.SessionID, "stream_id", streamID, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
 		return
 	}
 
 	// Parse stream type and args from payload
-	streamType, args := ipc.ParseStreamOpenPayload(frame.Payload)
+	route, args := relay.ParseStreamOpenPayload(frame.Payload)
 	startedAt := time.Now()
-	if streamType != "bridge" {
-		slog.Debug("stream started: "+streamType,
-			"session_id", sess.SessionID,
-			"stream_id", streamID,
-			"stream_type", streamType,
-			"arg_count", len(args))
-	}
 
-	// Look up registered stream handler
-	handler, found := handlers.GetStreamHandler(streamType)
-	if !found {
-		slog.Warn("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
-		// Send close frame
-		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
-			Opcode:   ipc.OpStreamClose,
-			StreamID: frame.StreamID,
-		}); err != nil {
-			slog.Debug("failed to write close frame for unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
-		}
-		return
-	}
+	slog.Debug("stream started: "+route,
+		"session_id", sess.SessionID,
+		"stream_id", streamID,
+		"route", route,
+		"arg_count", len(args))
 
-	// Execute stream handler
-	if err := handler(rt, stream, args); err != nil {
-		if streamType == "bridge" {
-			return
-		}
-		if errors.Is(err, ipc.ErrAborted) {
-			slog.Debug("stream aborted: "+streamType,
+	if err := router.Dispatch(context.Background(), stream, bridgeipc.Request{
+		Route:   route,
+		Args:    args,
+		Session: sess,
+	}); err != nil {
+		if errors.Is(err, relay.ErrAborted) || errors.Is(err, context.Canceled) {
+			slog.Debug("stream aborted: "+route,
 				"session_id", sess.SessionID,
 				"stream_id", streamID,
-				"stream_type", streamType,
+				"route", route,
 				"duration", time.Since(startedAt))
 			return
 		}
-		slog.Warn("stream failed: "+streamType,
+		slog.Warn("stream failed: "+route,
 			"session_id", sess.SessionID,
 			"stream_id", streamID,
-			"stream_type", streamType,
+			"route", route,
 			"duration", time.Since(startedAt),
 			"error", err)
 		return
 	}
 
-	if streamType != "bridge" {
-		slog.Debug("stream completed: "+streamType,
-			"session_id", sess.SessionID,
-			"stream_id", streamID,
-			"stream_type", streamType,
-			"duration", time.Since(startedAt))
-	}
+	slog.Debug("stream completed: "+route,
+		"session_id", sess.SessionID,
+		"stream_id", streamID,
+		"route", route,
+		"duration", time.Since(startedAt))
 }

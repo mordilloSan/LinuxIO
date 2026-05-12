@@ -7,7 +7,9 @@
 
 4 - Session Activity And Job-Safe Idle Cleanup
 
-5 - protobuf and remove json all together from app? We already "rpc.EmitResult"
+5 - values fixed in router.go should be set in global settings file?
+
+5 - protobuf and remove json all together from app? Remove DecodeJSONArg?
 
 user config to match config in UI - DONE
 Fix NFS distro dependency - DONE

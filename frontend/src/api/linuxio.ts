@@ -11,11 +11,16 @@ import {
   getStreamMux,
   subscribeMuxInstanceChanged,
   type Stream,
+  type StreamStatus,
+  type ProgressFrame,
+  type ResultFrame,
   type MuxStatus,
   type StreamMultiplexer,
   type StreamType,
   encodeString,
 } from "./StreamMultiplexer";
+import { call as bridgeCall } from "./linuxio-core";
+import type { JobSnapshot } from "./linuxio-types";
 
 function openMuxStream(
   type: StreamType,
@@ -26,6 +31,197 @@ function openMuxStream(
     return null;
   }
   return mux.openStream(type, initialPayload);
+}
+
+let nextJobBackedStreamID = -1;
+
+type JobDataProgress = {
+  type?: unknown;
+  data?: unknown;
+};
+
+function isTerminalJobState(state: JobSnapshot["state"]): boolean {
+  return state === "completed" || state === "failed" || state === "canceled";
+}
+
+function routeParts(route: string): [string, string] {
+  const dot = route.indexOf(".");
+  if (dot <= 0 || dot === route.length - 1) {
+    throw new Error(`Invalid bridge route: ${route}`);
+  }
+  return [route.slice(0, dot), route.slice(dot + 1)];
+}
+
+function dataProgressValue(progress: unknown): string | null {
+  if (!progress || typeof progress !== "object") {
+    return null;
+  }
+  const candidate = progress as JobDataProgress;
+  if (candidate.type !== "data") {
+    return null;
+  }
+  if (typeof candidate.data === "string") {
+    return candidate.data;
+  }
+  if (candidate.data == null) {
+    return "";
+  }
+  return String(candidate.data);
+}
+
+class JobBackedDataStream implements Stream {
+  readonly id = nextJobBackedStreamID--;
+  readonly type: StreamType;
+  onData: ((data: Uint8Array) => void) | null = null;
+  onClose: (() => void) | null = null;
+  onProgress: ((progress: ProgressFrame) => void) | null = null;
+  onResult: ((result: ResultFrame) => void) | null = null;
+
+  private _status: StreamStatus = "opening";
+  private attachStream: Stream | null = null;
+  private jobId: string | null = null;
+  private closed = false;
+
+  constructor(
+    route: string,
+    private readonly args: string[],
+  ) {
+    this.type = route;
+    void this.start(route);
+  }
+
+  get status(): StreamStatus {
+    return this._status;
+  }
+
+  write(): void {
+    // Job-backed data streams are receive-only.
+  }
+
+  resize(): void {
+    // Not applicable to receive-only job data streams.
+  }
+
+  close(): void {
+    this.stop(false);
+  }
+
+  abort(): void {
+    this.stop(true);
+  }
+
+  private async start(route: string): Promise<void> {
+    try {
+      const [handler, command] = routeParts(route);
+      const snapshot = await bridgeCall<JobSnapshot>(
+        handler,
+        command,
+        this.args,
+      );
+      if (this.closed) {
+        void this.cancelJob(snapshot.id);
+        return;
+      }
+
+      this.jobId = snapshot.id;
+      const attach = openJobAttachStream(snapshot.id);
+      if (!attach) {
+        if (isTerminalJobState(snapshot.state)) {
+          this.forwardProgress(snapshot.progress);
+          this.forwardTerminalSnapshot(snapshot);
+          return;
+        }
+        this.forwardError("Failed to attach job stream", "stream_unavailable");
+        return;
+      }
+
+      this.attachStream = attach;
+      this._status = "open";
+      attach.onData = (data) => this.onData?.(data);
+      attach.onProgress = (progress) => this.forwardProgress(progress);
+      attach.onResult = (result) => {
+        this.onResult?.(result);
+        this.markClosed();
+      };
+      attach.onClose = () => this.markClosed();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to start job stream";
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? (error as { code?: string | number }).code
+          : undefined;
+      this.forwardError(message, code);
+    }
+  }
+
+  private forwardProgress(progress: unknown): void {
+    const data = dataProgressValue(progress);
+    if (data !== null) {
+      this.onData?.(encodeString(data));
+      return;
+    }
+    if (progress !== undefined && progress !== null) {
+      this.onProgress?.(progress as ProgressFrame);
+    }
+  }
+
+  private forwardTerminalSnapshot(snapshot: JobSnapshot): void {
+    if (snapshot.state === "completed") {
+      this.onResult?.({ status: "ok", data: snapshot.result });
+    } else {
+      this.onResult?.({
+        status: "error",
+        error: snapshot.error?.message ?? "Job failed",
+        code: snapshot.error?.code,
+      });
+    }
+    this.markClosed();
+  }
+
+  private forwardError(message: string, code?: string | number): void {
+    this.onResult?.({
+      status: "error",
+      error: message,
+      code: typeof code === "number" ? code : undefined,
+    });
+    this.markClosed();
+  }
+
+  private stop(abort: boolean): void {
+    if (this.closed) return;
+    if (abort) {
+      this.attachStream?.abort();
+    } else {
+      this.attachStream?.close();
+    }
+    if (this.jobId) {
+      void this.cancelJob(this.jobId);
+    }
+    this.markClosed();
+  }
+
+  private async cancelJob(jobId: string): Promise<void> {
+    try {
+      await bridgeCall<JobSnapshot>("jobs", "cancel", [jobId]);
+    } catch (error) {
+      console.debug("Failed to cancel bridge job", error);
+    }
+  }
+
+  private markClosed(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this._status = "closed";
+    this.onClose?.();
+  }
+}
+
+function openJobBackedDataStream(route: string, args: string[]): Stream | null {
+  if (!isConnected()) {
+    return null;
+  }
+  return new JobBackedDataStream(route, args);
 }
 
 function makeSubscribeWithRebind(
@@ -134,10 +330,8 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 // ============================================================================
 
 export function openTerminalStream(cols: number, rows: number): Stream | null {
-  return openMuxStream(
-    "terminal",
-    encodeString(["terminal", cols, rows].join("\0")),
-  );
+  const route = "terminal.open";
+  return openMuxStream(route, encodeString([route, cols, rows].join("\0")));
 }
 
 export function openContainerStream(
@@ -146,9 +340,10 @@ export function openContainerStream(
   cols: number,
   rows: number,
 ): Stream | null {
+  const route = "container.open";
   return openMuxStream(
-    "container",
-    encodeString(["container", containerId, shell, cols, rows].join("\0")),
+    route,
+    encodeString([route, containerId, shell, cols, rows].join("\0")),
   );
 }
 
@@ -156,20 +351,16 @@ export function openDockerLogsStream(
   containerId: string,
   tail: string = "100",
 ): Stream | null {
-  return openMuxStream(
-    "docker-logs",
-    encodeString(["docker-logs", containerId, tail].join("\0")),
-  );
+  const route = "docker.logs.follow";
+  return openJobBackedDataStream(route, [containerId, tail]);
 }
 
 export function openServiceLogsStream(
   serviceName: string,
   lines: string = "100",
 ): Stream | null {
-  return openMuxStream(
-    "service-logs",
-    encodeString(["service-logs", serviceName, lines].join("\0")),
-  );
+  const route = "logs.service.follow";
+  return openJobBackedDataStream(route, [serviceName, lines]);
 }
 
 export function openGeneralLogsStream(
@@ -179,47 +370,42 @@ export function openGeneralLogsStream(
   identifier: string = "",
   fieldFilters: string[] = [],
 ): Stream | null {
-  return openMuxStream(
-    "general-logs",
-    encodeString(
-      [
-        "general-logs",
-        lines,
-        timePeriod,
-        priority,
-        identifier,
-        ...fieldFilters,
-      ].join("\0"),
-    ),
-  );
+  const route = "logs.general.follow";
+  return openJobBackedDataStream(route, [
+    lines,
+    timePeriod,
+    priority,
+    identifier,
+    ...fieldFilters,
+  ]);
 }
 
 export function openAppUpdateStream(
   runId: string,
   version?: string,
 ): Stream | null {
-  const parts = ["app-update", runId];
+  const route = "control.app_update";
+  const parts = [runId];
   if (version) parts.push(version);
-  return openMuxStream("app-update", encodeString(parts.join("\0")));
+  return openJobBackedDataStream(route, parts);
 }
 
 export function openJobAttachStream(jobId: string): Stream | null {
-  return openMuxStream(
-    "jobs-attach",
-    encodeString(["jobs-attach", jobId].join("\0")),
-  );
+  const route = "jobs.attach";
+  return openMuxStream(route, encodeString([route, jobId].join("\0")));
 }
 
 export function openJobDataStream(
   jobId: string,
   offset: number = 0,
 ): Stream | null {
+  const route = "jobs.data";
   return openMuxStream(
-    "jobs-data",
-    encodeString(["jobs-data", jobId, String(offset)].join("\0")),
+    route,
+    encodeString([route, jobId, String(offset)].join("\0")),
   );
 }
 
 export function openJobEventsStream(): Stream | null {
-  return openMuxStream("jobs-events", encodeString("jobs-events"));
+  return openMuxStream("jobs.events", encodeString("jobs.events"));
 }

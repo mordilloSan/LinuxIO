@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
+	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const JobTypeStorageSmartTest = "storage.smart_test"
+const JobTypeStorageSmartTest = "storage.run_smart_test"
 
 type SmartTestProgress struct {
 	Type     string `json:"type"`
@@ -17,8 +17,8 @@ type SmartTestProgress struct {
 	Message  string `json:"message,omitempty"`
 }
 
-func RegisterJobRunners() {
-	bridgejobs.RegisterRunner(JobTypeStorageSmartTest, runSmartTestJob)
+func RegisterJobRoutes(router *bridgejobs.Router) {
+	router.JobRunner(JobTypeStorageSmartTest, runSmartTestJob, bridgejobs.ActionDefault)
 }
 
 func runSmartTestJob(_ context.Context, job *bridgejobs.Job, args []string) (any, error) {

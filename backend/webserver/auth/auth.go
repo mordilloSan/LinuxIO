@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
@@ -85,7 +85,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 				"remote_host", remoteHost,
 				"error", err)
 			switch authErr.Code {
-			case ipc.ResultPasswordExpired, ipc.ResultAccessDenied:
+			case authipc.ResultPasswordExpired, authipc.ResultAccessDenied:
 				msg := authErr.Message
 				if msg == "" {
 					msg = authErr.Code.DefaultMessage()

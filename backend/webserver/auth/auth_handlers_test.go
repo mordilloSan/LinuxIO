@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 )
@@ -267,7 +267,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 
 	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
-			Code:    ipc.ResultAuthFailed,
+			Code:    authipc.ResultAuthFailed,
 			Message: "authentication failed",
 		}
 	}
@@ -303,7 +303,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 
 	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
-			Code:    ipc.ResultPasswordExpired,
+			Code:    authipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
 		}
 	}

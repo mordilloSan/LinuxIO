@@ -4,28 +4,27 @@ import (
 	"context"
 	"net"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers all terminal handlers with the global registry
-func RegisterHandlers(rt runtime.Runtime) {
-	rpc.Register("terminal", rt, []rpc.Command{
-		{Name: "list_shells", Handler: handleListShells},
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "terminal", []bridgeipc.Command{
+		{Name: "list_shells", Mode: bridgeipc.ModeQuery, Handler: handleListShells},
+	})
+	router.Duplex("terminal.open", func(ctx context.Context, stream net.Conn, args []string) error {
+		return HandleTerminalSession(rt, stream, args)
+	})
+	router.Duplex("container.open", func(ctx context.Context, stream net.Conn, args []string) error {
+		return HandleContainerTerminalSession(rt, stream, args)
 	})
 }
 
-// RegisterStreamHandlers registers all terminal stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
-	handlers["terminal"] = HandleTerminalStream
-	handlers["container"] = HandleContainerTerminalStream
-}
-
-func handleListShells(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListShells(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	if len(args) < 1 {
 		return emit.Result([]string{})
 	}
 	shells, err := ListContainerShells(args[0])
-	return rpc.EmitResult(emit, shells, err)
+	return bridgeipc.EmitResult(emit, shells, err)
 }

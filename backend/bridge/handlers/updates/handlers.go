@@ -4,71 +4,70 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers dbus handlers with the new handler system
-func RegisterHandlers(rt runtime.Runtime) {
-	RegisterJobRunners()
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	RegisterJobRoutes(router)
 
-	rpc.Register("dbus", rt, []rpc.Command{
-		{Name: "get_updates_basic", Handler: handleGetUpdatesBasic},
-		{Name: "get_update_detail", Handler: handleGetUpdateDetail},
-		{Name: "install_package", Handler: handleInstallPackage},
-		{Name: "get_auto_updates", Handler: handleGetAutoUpdates},
-		{Name: "set_auto_updates", Handler: handleSetAutoUpdates},
-		{Name: "apply_offline_updates", Handler: handleApplyOfflineUpdates},
-		{Name: "get_update_history", Handler: handleGetUpdateHistory},
+	bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+		{Name: "get_updates_basic", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesBasic},
+		{Name: "get_update_detail", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdateDetail},
+		{Name: "install_package", Mode: bridgeipc.ModeJob, Handler: handleInstallPackage},
+		{Name: "get_auto_updates", Mode: bridgeipc.ModeQuery, Handler: handleGetAutoUpdates},
+		{Name: "set_auto_updates", Mode: bridgeipc.ModeJob, Handler: handleSetAutoUpdates},
+		{Name: "apply_offline_updates", Mode: bridgeipc.ModeJob, Handler: handleApplyOfflineUpdates},
+		{Name: "get_update_history", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdateHistory},
 	})
 }
 
-func handleGetUpdatesBasic(ctx context.Context, args []string, emit ipc.Events) error {
+func handleGetUpdatesBasic(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	result, err := GetUpdatesBasic(ctx)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdateDetail(ctx context.Context, args []string, emit ipc.Events) error {
-	packageID, err := rpc.Arg(args, 0)
+func handleGetUpdateDetail(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	packageID, err := bridgeipc.Arg(args, 0)
 	if err != nil {
 		return err
 	}
 	result, err := GetSingleUpdateDetail(ctx, packageID)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleInstallPackage(ctx context.Context, args []string, emit ipc.Events) error {
-	packageName, err := rpc.Arg(args, 0)
+func handleInstallPackage(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	packageName, err := bridgeipc.Arg(args, 0)
 	if err != nil {
 		return err
 	}
 	slog.Info("install_package requested", "component", "dbus", "package", packageName)
-	return rpc.EmitResult(emit, nil, InstallPackage(ctx, packageName))
+	return bridgeipc.EmitResult(emit, nil, InstallPackage(ctx, packageName))
 }
 
-func handleGetAutoUpdates(ctx context.Context, args []string, emit ipc.Events) error {
+func handleGetAutoUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	result, err := getAutoUpdates(ctx)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleSetAutoUpdates(ctx context.Context, args []string, emit ipc.Events) error {
-	opts, err := rpc.DecodeJSONArg[AutoUpdateOptions](args, 0)
+func handleSetAutoUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	opts, err := bridgeipc.DecodeJSONArg[AutoUpdateOptions](args, 0)
 	if err != nil {
 		return err
 	}
 	slog.Info("set_auto_updates requested", "component", "dbus", "mode", args[0])
 	result, err := setAutoUpdates(ctx, opts)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleApplyOfflineUpdates(ctx context.Context, args []string, emit ipc.Events) error {
+func handleApplyOfflineUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("apply_offline_updates requested")
 	result, err := applyOfflineUpdates(ctx)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdateHistory(ctx context.Context, args []string, emit ipc.Events) error {
+func handleGetUpdateHistory(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	result, err := GetUpdateHistory()
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }

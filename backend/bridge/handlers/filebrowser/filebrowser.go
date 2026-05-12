@@ -22,7 +22,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 var (
@@ -327,7 +328,7 @@ func computePatchSize(realSrc string) int64 {
 	return totalSize
 }
 
-func newPatchCallbacks(ctx context.Context, emit ipc.Events, action string, totalSize int64) *ipc.OperationCallbacks {
+func newPatchCallbacks(ctx context.Context, emit bridgeipc.Events, action string, totalSize int64) *ipc.OperationCallbacks {
 	var bytesProcessed int64
 	var lastProgress int64
 	const progressInterval = int64(2 * 1024 * 1024)
@@ -439,7 +440,7 @@ func resourcePost(args []string) (any, error) {
 
 // resourcePatchWithProgress performs patch operations with progress feedback
 // Args: [action, from, destination, overwrite?]
-func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Events) (any, error) {
+func resourcePatchWithProgress(ctx context.Context, args []string, emit bridgeipc.Events) (any, error) {
 	req, err := parseResourcePatchArgs(args)
 	if err != nil {
 		return nil, err
@@ -1225,4 +1226,4 @@ func getAllGroups() ([]string, error) {
 }
 
 // NOTE: fileUploadFromTemp, fileUpdateFromTemp, fileDownloadToTemp, archiveDownloadSetup removed.
-// These operations now use durable jobs plus generic jobs-data streams.
+// These operations now use durable jobs plus built-in jobs.data streams.

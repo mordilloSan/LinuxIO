@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  jobSnapshotResult,
   linuxio,
   type AutoUpdateFrequency,
   type AutoUpdateOptions,
@@ -81,8 +82,10 @@ export const useUpdateSettingsState = (enabled = true) => {
   const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
     linuxio.dbus.apply_offline_updates.useMutation({
       onSuccess: (result) => {
-        if (result?.status && result.status !== "ok") {
-          const errMsg = result.error || "Failed to schedule offline update";
+        const updateResult = jobSnapshotResult(result);
+        if (updateResult?.status && updateResult.status !== "ok") {
+          const errMsg =
+            updateResult.error || "Failed to schedule offline update";
           if (
             errMsg.includes("no updates available") ||
             errMsg.includes("Prepared update not found")

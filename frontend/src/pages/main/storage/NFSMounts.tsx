@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
+import { linuxio, CACHE_TTL_MS, jobSnapshotResult, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -191,8 +191,9 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const { mutate: mountNFS, isPending: isMounting } =
     linuxio.storage.mount_nfs.useMutation({
       onSuccess: (result) => {
-        if (result.warning) {
-          toast.warning(result.warning);
+        const mountResult = jobSnapshotResult(result);
+        if (mountResult.warning) {
+          toast.warning(mountResult.warning);
         } else {
           toast.success(`NFS share mounted at ${mountpoint}`);
         }
@@ -394,6 +395,7 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
   const { mutate: removeEntry, isPending: isRemoving } =
     linuxio.storage.unmount_nfs.useMutation({
       onSuccess: (result) => {
+        const removeResult = jobSnapshotResult(result);
         if (mount?.mounted) {
           toast.success(
             mount.inFstab
@@ -403,8 +405,8 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
         } else {
           toast.success(`Removed saved entry for ${mount?.mountpoint}`);
         }
-        if (result.warning) {
-          toast.warning(result.warning);
+        if (removeResult.warning) {
+          toast.warning(removeResult.warning);
         }
         queryClient.invalidateQueries({
           queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
@@ -527,8 +529,9 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   const { mutate: remountNFS, isPending: isRemounting } =
     linuxio.storage.remount_nfs.useMutation({
       onSuccess: (result) => {
-        if (result.warning) {
-          toast.warning(result.warning);
+        const remountResult = jobSnapshotResult(result);
+        if (remountResult.warning) {
+          toast.warning(remountResult.warning);
         } else {
           toast.success(`NFS mount options updated`);
         }
@@ -691,8 +694,9 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   });
   const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useMutation({
     onSuccess: (result) => {
-      if (result.warning) {
-        toast.warning(result.warning);
+      const mountResult = jobSnapshotResult(result);
+      if (mountResult.warning) {
+        toast.warning(mountResult.warning);
       } else {
         toast.success("NFS entry mounted");
       }
@@ -706,8 +710,9 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   });
   const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useMutation({
     onSuccess: (result, variables) => {
-      if (result.warning) {
-        toast.warning(result.warning);
+      const unmountResult = jobSnapshotResult(result);
+      if (unmountResult.warning) {
+        toast.warning(unmountResult.warning);
       } else {
         toast.success(`Unmounted ${variables[0]}`);
       }

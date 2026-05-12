@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 // indexerClient is the HTTP client for SSE connections to the indexer service.

@@ -13,8 +13,6 @@ import IndexerStatusDialog, {
 } from "@/components/dialog/IndexerStatusDialog";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
-const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
-
 const normalizeIndexedPath = (path: string) => {
   const trimmed = path.trim();
   if (!trimmed) {
@@ -148,7 +146,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
 
     void (async () => {
       try {
-        const job = await linuxio.jobs.start.call(JOB_TYPE_DOCKER_INDEXER);
+        const job = await linuxio.docker.indexer.call();
         if (cancelled) {
           void linuxio.jobs.cancel.call(job.id).catch(() => undefined);
           return;

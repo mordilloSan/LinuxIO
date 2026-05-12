@@ -1,6 +1,6 @@
 // Binary bootstrap protocol for LinuxIO auth/bridge communication.
 // Keep in sync with packaging/linuxio_protocol.h
-package ipc
+package auth
 
 import (
 	"encoding/binary"

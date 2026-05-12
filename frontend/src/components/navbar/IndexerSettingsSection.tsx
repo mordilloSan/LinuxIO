@@ -4,8 +4,9 @@ import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
-  linuxio,
   CACHE_TTL_MS,
+  jobSnapshotResult,
+  linuxio,
   type IndexerConfig,
   type IndexerDaemonStatus,
 } from "@/api";
@@ -366,15 +367,16 @@ const IndexerSettingsSection: React.FC = () => {
 
   const setConfigMutation = linuxio.indexer.set_config.useMutation({
     onSuccess: (result) => {
+      const configResult = jobSnapshotResult(result);
       queryClient.setQueryData(
         linuxio.indexer.get_config.queryKey(),
-        result.config,
+        configResult.config,
       );
       setDraftPatch({});
       setErrors({});
-      setRestartRequired(result.restart_required);
+      setRestartRequired(configResult.restart_required);
       toast.success("Indexer settings saved");
-      if (result.restart_required) {
+      if (configResult.restart_required) {
         toast.info("Restart indexer to apply database or listener changes.");
       }
     },

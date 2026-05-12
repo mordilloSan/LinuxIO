@@ -8,13 +8,15 @@ import (
 
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
+	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const JobTypePackageUpdate = "package.update"
+const JobTypePackageUpdate = "packages.update"
 
-func RegisterJobRunners() {
-	bridgejobs.RegisterRunner(JobTypePackageUpdate, runPackageUpdateJob)
+func RegisterJobRoutes(router *bridgejobs.Router) {
+	policy := bridgejobs.SingletonSystem
+	policy.Timeout = 2 * time.Hour
+	router.JobRunner(JobTypePackageUpdate, runPackageUpdateJob, policy)
 }
 
 // PkgUpdateProgress represents progress for package update operations.

@@ -5,21 +5,20 @@ import (
 	"encoding/base64"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleGetIconURI(ctx context.Context, args []string, emit ipc.Events) error {
-	identifier, err := rpc.Arg(args, 0)
+func (h dockerHandlers) handleGetIconURI(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	identifier, err := bridgeipc.Arg(args, 0)
 	if err != nil {
 		return err
 	}
 	uri, err := GetIconURI(identifier)
-	return rpc.EmitResult(emit, map[string]string{"uri": uri}, err)
+	return bridgeipc.EmitResult(emit, map[string]string{"uri": uri}, err)
 }
 
-func (h dockerHandlers) handleGetIcon(ctx context.Context, args []string, emit ipc.Events) error {
-	identifier, err := rpc.Arg(args, 0)
+func (h dockerHandlers) handleGetIcon(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	identifier, err := bridgeipc.Arg(args, 0)
 	if err != nil {
 		return err
 	}
@@ -28,21 +27,21 @@ func (h dockerHandlers) handleGetIcon(ctx context.Context, args []string, emit i
 		return err
 	}
 	encoded := base64.StdEncoding.EncodeToString(data)
-	return rpc.EmitResult(emit, map[string]string{"data": encoded}, nil)
+	return bridgeipc.EmitResult(emit, map[string]string{"data": encoded}, nil)
 }
 
-func (h dockerHandlers) handleGetIconInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	identifier, err := rpc.Arg(args, 0)
+func (h dockerHandlers) handleGetIconInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	identifier, err := bridgeipc.Arg(args, 0)
 	if err != nil {
 		return err
 	}
-	return rpc.EmitResult(emit, GetIconInfo(identifier), nil)
+	return bridgeipc.EmitResult(emit, GetIconInfo(identifier), nil)
 }
 
-func (h dockerHandlers) handleClearIconCache(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleClearIconCache(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("clear_icon_cache requested", "component", "docker")
 	if err := ClearIconCache(); err != nil {
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]string{"message": "Icon cache cleared successfully"}, nil)
+	return bridgeipc.EmitResult(emit, map[string]string{"message": "Icon cache cleared successfully"}, nil)
 }

@@ -79,7 +79,6 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   card: <Icon icon="mdi:view-grid" width={20} height={20} />,
   list: <Icon icon="mdi:view-list" width={20} height={20} />,
 };
-const JOB_TYPE_FILE_UPLOAD = "file.upload";
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
@@ -768,8 +767,7 @@ const FileBrowser: React.FC = () => {
   );
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
-      const job = await linuxio.jobs.start.call(
-        JOB_TYPE_FILE_UPLOAD,
+      const job = await linuxio.filebrowser.upload.call(
         path,
         String(contentBytes.length),
       );

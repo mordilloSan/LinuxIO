@@ -194,8 +194,11 @@ func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 // runInstallScript downloads the installer and runs it in a transient unit
 // with stdout/stderr piped back to this process (so logs appear in-order).
 // If relay is non-nil, output lines are also written to it.
-func runInstallScript(ver string, relay io.Writer) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	client := &http.Client{Timeout: 20 * time.Second}

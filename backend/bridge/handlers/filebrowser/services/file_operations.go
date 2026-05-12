@@ -16,7 +16,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 var (

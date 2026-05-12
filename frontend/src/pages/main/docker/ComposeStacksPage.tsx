@@ -38,8 +38,6 @@ import {
 import { useConfig } from "@/hooks/useConfig";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
-const JOB_TYPE_FILE_UPLOAD = "file.upload";
-
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
   onMountIndexerHandler?: (handler: () => void) => void;
@@ -361,8 +359,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
-      const job = await linuxio.jobs.start.call(
-        JOB_TYPE_FILE_UPLOAD,
+      const job = await linuxio.filebrowser.upload.call(
         filePath,
         String(contentSize),
         ...(override ? ["true"] : []),

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const maxIndexerConfigPayloadBytes = 1 << 20
@@ -131,7 +131,7 @@ func decodeConfigResponse(resp *http.Response) (Config, error) {
 
 func normalizeConfigPatchPayload(payload []byte) ([]byte, error) {
 	if len(payload) == 0 || len(strings.TrimSpace(string(payload))) == 0 {
-		return nil, ipc.ErrInvalidArgs
+		return nil, bridgeipc.ErrInvalidArgs
 	}
 	if len(payload) > maxIndexerConfigPayloadBytes {
 		return nil, fmt.Errorf("indexer config payload is too large")

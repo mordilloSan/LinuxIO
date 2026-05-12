@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import "./power-settings.css";
 
-import { linuxio, type PowerStatus } from "@/api";
+import { linuxio, jobSnapshotResult, type PowerStatus } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -81,7 +81,7 @@ const PowerSettingsSection: React.FC = () => {
 
   const commonMutationOptions = {
     onSuccess: (nextStatus: PowerStatus) => {
-      setPowerStatusCache(queryClient, nextStatus);
+      setPowerStatusCache(queryClient, jobSnapshotResult(nextStatus));
     },
     onError: (err: Error) => {
       toast.error(getMutationErrorMessage(err, "Power action failed"));

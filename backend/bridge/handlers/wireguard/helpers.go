@@ -19,7 +19,7 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
@@ -340,7 +340,7 @@ func parseOptionalPeers(args []string, index int) ([]PeerConfig, error) {
 	case "", "null", "[]":
 		return nil, nil
 	}
-	return rpc.DecodeJSONArg[[]PeerConfig](args, index)
+	return bridgeipc.DecodeJSONArg[[]PeerConfig](args, index)
 }
 
 func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {

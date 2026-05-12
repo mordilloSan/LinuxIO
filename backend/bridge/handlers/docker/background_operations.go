@@ -10,9 +10,9 @@ import (
 	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 const (
@@ -36,13 +36,13 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
-func RegisterJobRunners(username string, store *settings.UserStore) {
-	bridgejobs.RegisterRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+func RegisterJobRoutes(router *bridgejobs.Router, username string, store *settings.UserStore) {
+	router.JobRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runDockerComposeJob(ctx, job, username, store, args)
-	})
-	bridgejobs.RegisterRunner(JobTypeDockerIndexer, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+	}, bridgejobs.ActionDefault)
+	router.JobRunner(JobTypeDockerIndexer, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runDockerIndexerJob(ctx, job, username, store)
-	})
+	}, bridgejobs.SingletonSystem)
 }
 
 func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *settings.UserStore, args []string) (any, error) {

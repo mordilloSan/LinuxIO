@@ -17,21 +17,21 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 const (
-	JobTypeFileCompress = "file.compress"
-	JobTypeFileExtract  = "file.extract"
-	JobTypeFileCopy     = "file.copy"
-	JobTypeFileMove     = "file.move"
-	JobTypeFileIndexer  = "file.indexer"
-	JobTypeFileUpload   = "file.upload"
-	JobTypeFileDownload = "file.download"
-	JobTypeFileArchive  = "file.archive"
-	JobTypeFileChmod    = "file.chmod"
+	JobTypeFileCompress = "filebrowser.compress"
+	JobTypeFileExtract  = "filebrowser.extract"
+	JobTypeFileCopy     = "filebrowser.copy"
+	JobTypeFileMove     = "filebrowser.move"
+	JobTypeFileIndexer  = "filebrowser.index"
+	JobTypeFileUpload   = "filebrowser.upload"
+	JobTypeFileDownload = "filebrowser.download"
+	JobTypeFileArchive  = "filebrowser.archive"
+	JobTypeFileChmod    = "filebrowser.chmod"
 )
 
 var heavyArchiveLimiter archiveResourceLimiter
@@ -212,29 +212,28 @@ type ChmodProgress struct {
 	Phase     string `json:"phase,omitempty"`
 }
 
-func RegisterJobRunners(store *settings.UserStore) {
-	bridgejobs.RegisterRunner(JobTypeFileCompress, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+func RegisterJobRoutes(router *bridgejobs.Router, store *settings.UserStore) {
+	router.JobRunner(JobTypeFileCompress, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runCompressJobWithStore(ctx, job, store, args)
-	})
-	bridgejobs.RegisterRunner(JobTypeFileExtract, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+	}, bridgejobs.ActionDefault)
+	router.JobRunner(JobTypeFileExtract, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runExtractJobWithStore(ctx, job, store, args)
-	})
-	bridgejobs.RegisterRunner(JobTypeFileCopy, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+	}, bridgejobs.ActionDefault)
+	router.JobRunner(JobTypeFileCopy, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runCopyJobWithStore(ctx, job, store, args)
-	})
-	bridgejobs.RegisterRunner(JobTypeFileMove, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+	}, bridgejobs.ActionDefault)
+	router.JobRunner(JobTypeFileMove, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runMoveJobWithStore(ctx, job, store, args)
-	})
-	bridgejobs.RegisterRunner(JobTypeFileIndexer, runIndexerJob)
-	bridgejobs.RegisterRunner(JobTypeFileUpload, runUploadJob)
-	bridgejobs.RegisterRunner(JobTypeFileDownload, runDownloadJob)
-	bridgejobs.RegisterRunner(JobTypeFileArchive, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+	}, bridgejobs.ActionDefault)
+	router.JobRunner(JobTypeFileIndexer, runIndexerJob, bridgejobs.SingletonSystem)
+	router.JobRunner(JobTypeFileUpload, runUploadJob, bridgejobs.StreamDefault)
+	router.JobRunner(JobTypeFileDownload, runDownloadJob, bridgejobs.StreamDefault)
+	router.JobRunner(JobTypeFileArchive, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runArchiveJobWithStore(ctx, job, store, args)
-	})
-	bridgejobs.RegisterRunner(JobTypeFileChmod, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+	}, bridgejobs.StreamDefault)
+	router.JobRunner(JobTypeFileChmod, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runChmodJobWithStore(ctx, job, store, args)
-	})
-	bridgejobs.RegisterRecoverer(JobTypeFileIndexer, recoverIndexerJob)
+	}, bridgejobs.ActionDefault)
 	bridgejobs.RegisterDataAttacher(JobTypeFileUpload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(JobTypeFileDownload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(JobTypeFileArchive, attachFileTransferData)
@@ -790,22 +789,6 @@ func runIndexerJob(ctx context.Context, job *bridgejobs.Job, args []string) (any
 		path = filepath.Clean(args[0])
 	}
 	return runIndexerOperation(ctx, job, path, false)
-}
-
-func recoverIndexerJob(registry *bridgejobs.Registry, owner bridgejobs.Owner) (*bridgejobs.Job, error) {
-	status, err := fetchIndexerStatusFromIndexer()
-	if err != nil {
-		if errors.Is(err, errIndexerUnavailable) {
-			return nil, bridgejobs.NewError("no active indexer job", 404)
-		}
-		return nil, err
-	}
-	if !status.Running {
-		return nil, bridgejobs.NewError("no active indexer job", 404)
-	}
-	return registry.StartWithRunnerForOwner(JobTypeFileIndexer, nil, owner, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runIndexerOperation(ctx, job, "", true)
-	})
 }
 
 func runIndexerOperation(ctx context.Context, job *bridgejobs.Job, path string, attachOnly bool) (any, error) {

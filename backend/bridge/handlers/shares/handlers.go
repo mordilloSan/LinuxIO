@@ -4,30 +4,29 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers all share management handlers with the global registry
-func RegisterHandlers(rt runtime.Runtime) {
-	rpc.Register("shares", rt, []rpc.Command{
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "shares", []bridgeipc.Command{
 		// NFS exports (server-side shares via /etc/exports)
-		{Name: "list_nfs_shares", Handler: handleListNFSShares},
-		{Name: "create_nfs_share", Handler: handleCreateNFSShare},
-		{Name: "update_nfs_share", Handler: handleUpdateNFSShare},
-		{Name: "delete_nfs_share", Handler: handleDeleteNFSShare},
+		{Name: "list_nfs_shares", Mode: bridgeipc.ModeQuery, Handler: handleListNFSShares},
+		{Name: "create_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleCreateNFSShare},
+		{Name: "update_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleUpdateNFSShare},
+		{Name: "delete_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleDeleteNFSShare},
 		// Samba shares (via /etc/samba/smb.conf)
-		{Name: "list_samba_shares", Handler: handleListSambaShares},
-		{Name: "create_samba_share", Handler: handleCreateSambaShare},
-		{Name: "update_samba_share", Handler: handleUpdateSambaShare},
-		{Name: "delete_samba_share", Handler: handleDeleteSambaShare},
+		{Name: "list_samba_shares", Mode: bridgeipc.ModeQuery, Handler: handleListSambaShares},
+		{Name: "create_samba_share", Mode: bridgeipc.ModeJob, Handler: handleCreateSambaShare},
+		{Name: "update_samba_share", Mode: bridgeipc.ModeJob, Handler: handleUpdateSambaShare},
+		{Name: "delete_samba_share", Mode: bridgeipc.ModeJob, Handler: handleDeleteSambaShare},
 	})
 }
 
 // --- NFS handlers ---
 
-func handleListNFSShares(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListNFSShares(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS shares")
 	shares, err := ListNFSShares()
 	if err != nil {
@@ -35,15 +34,15 @@ func handleListNFSShares(ctx context.Context, args []string, emit ipc.Events) er
 		return err
 	}
 	slog.Debug("listed NFS shares", "count", len(shares))
-	return rpc.EmitResult(emit, shares, nil)
+	return bridgeipc.EmitResult(emit, shares, nil)
 }
 
-func handleCreateNFSShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleCreateNFSShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	path := args[0]
-	clients, err := rpc.DecodeJSONArg[[]NFSClient](args, 1)
+	clients, err := bridgeipc.DecodeJSONArg[[]NFSClient](args, 1)
 	if err != nil {
 		return err
 	}
@@ -52,15 +51,15 @@ func handleCreateNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 		slog.Error("failed to create NFS share", "path", path, "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
 }
 
-func handleUpdateNFSShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleUpdateNFSShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	path := args[0]
-	clients, err := rpc.DecodeJSONArg[[]NFSClient](args, 1)
+	clients, err := bridgeipc.DecodeJSONArg[[]NFSClient](args, 1)
 	if err != nil {
 		return err
 	}
@@ -69,11 +68,11 @@ func handleUpdateNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 		slog.Error("failed to update NFS share", "path", path, "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
 }
 
-func handleDeleteNFSShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 1); err != nil {
+func handleDeleteNFSShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	path := args[0]
@@ -82,12 +81,12 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit ipc.Events) e
 		slog.Error("failed to delete NFS share", "path", path, "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]any{"success": true}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true}, nil)
 }
 
 // --- Samba handlers ---
 
-func handleListSambaShares(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListSambaShares(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing Samba shares")
 	shares, err := ListSambaShares()
 	if err != nil {
@@ -95,15 +94,15 @@ func handleListSambaShares(ctx context.Context, args []string, emit ipc.Events) 
 		return err
 	}
 	slog.Debug("listed Samba shares", "count", len(shares))
-	return rpc.EmitResult(emit, shares, nil)
+	return bridgeipc.EmitResult(emit, shares, nil)
 }
 
-func handleCreateSambaShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleCreateSambaShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	name := args[0]
-	properties, err := rpc.DecodeJSONArg[map[string]string](args, 1)
+	properties, err := bridgeipc.DecodeJSONArg[map[string]string](args, 1)
 	if err != nil {
 		return err
 	}
@@ -112,11 +111,11 @@ func handleCreateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		slog.Error("failed to create Samba share", "name", name, "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]any{"success": true, "name": name}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "name": name}, nil)
 }
 
-func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleUpdateSambaShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	oldName := args[0]
@@ -126,7 +125,7 @@ func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		newName = args[1]
 		propertiesArgIndex = 2
 	}
-	properties, err := rpc.DecodeJSONArg[map[string]string](args, propertiesArgIndex)
+	properties, err := bridgeipc.DecodeJSONArg[map[string]string](args, propertiesArgIndex)
 	if err != nil {
 		return err
 	}
@@ -135,11 +134,11 @@ func handleUpdateSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		slog.Error("failed to update Samba share", "name", oldName, "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]any{"success": true, "name": newName}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "name": newName}, nil)
 }
 
-func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 1); err != nil {
+func handleDeleteSambaShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	name := args[0]
@@ -148,5 +147,5 @@ func handleDeleteSambaShare(ctx context.Context, args []string, emit ipc.Events)
 		slog.Error("failed to delete Samba share", "name", name, "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, map[string]any{"success": true}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true}, nil)
 }

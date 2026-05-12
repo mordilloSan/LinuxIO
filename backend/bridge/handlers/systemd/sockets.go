@@ -2,7 +2,6 @@ package systemd
 
 import (
 	"context"
-	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
@@ -30,16 +29,11 @@ func ListSockets(ctx context.Context) ([]SocketStatus, error) {
 		}
 
 		results := make([]SocketStatus, len(entries))
-		var wg sync.WaitGroup
-		for i, entry := range entries {
-			wg.Add(1)
-			go func(i int, entry listedUnit) {
-				defer wg.Done()
-				results[i] = fetchSocketStatus(session, entry)
-			}(i, entry)
+		if err := forEachListedUnitLimited(session.Context(), entries, func(i int, entry listedUnit) {
+			results[i] = fetchSocketStatus(session, entry)
+		}); err != nil {
+			return err
 		}
-
-		wg.Wait()
 		sockets = results
 		return nil
 	})

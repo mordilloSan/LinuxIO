@@ -6,13 +6,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net"
 	"os/exec"
 	"regexp"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // journaldFieldMatch matches journald-style KEY=VALUE operands. The key must
@@ -21,7 +20,7 @@ import (
 // untrusted UI input from being passed straight to journalctl.
 var journaldFieldMatch = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=.*$`)
 
-const StreamTypeGeneralLogs = "general-logs"
+const StreamTypeGeneralLogs = "logs.general.follow"
 
 type generalLogsRequest struct {
 	lines        string
@@ -31,51 +30,53 @@ type generalLogsRequest struct {
 	fieldFilters []string
 }
 
-// HandleGeneralLogsStream streams general journal logs in real-time.
+// runGeneralLogsJob streams general journal logs through the bridge job lifecycle.
 // Args: [lines, timePeriod, priority, identifier, fieldMatches...]
 // - lines: number of initial lines (default "100")
 // - timePeriod: time range like "1h", "24h", "7d" (optional)
 // - priority: max priority level 0-7 (optional, empty = all)
 // - identifier: filter by SYSLOG_IDENTIFIER (optional, empty = all)
 // - fieldMatches: optional KEY=VALUE journald match operands (ANDed)
-func HandleGeneralLogsStream(_ runtime.Runtime, stream net.Conn, args []string) error {
+func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, args []string) (any, error) {
 	req := parseGeneralLogsRequest(args)
-	slog.Debug("starting general log stream",
+	slog.Debug("starting general log job",
 		"component", "logs",
-		"stream_type", StreamTypeGeneralLogs,
+		"route", StreamTypeGeneralLogs,
+		"job_id", job.ID(),
 		"lines", req.lines,
 		"time_period", req.timePeriod,
 		"priority", req.priority,
 		"identifier", req.identifier,
 		"field_filters", strings.Join(req.fieldFilters, " "))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	cmd, stdout, err := startGeneralLogsCommand(ctx, req)
 	if err != nil {
-		slog.Error("failed to create general log stream pipe",
+		slog.Error("failed to create general log job pipe",
 			"component", "logs",
-			"stream_type", StreamTypeGeneralLogs,
+			"route", StreamTypeGeneralLogs,
+			"job_id", job.ID(),
 			"error", err)
-		closeLogsStream(stream, "[GeneralLogs]")
-		return err
+		return nil, err
 	}
 
 	if err := cmd.Start(); err != nil {
-		slog.Error("failed to start general log stream",
+		slog.Error("failed to start general log job",
 			"component", "logs",
-			"stream_type", StreamTypeGeneralLogs,
+			"route", StreamTypeGeneralLogs,
+			"job_id", job.ID(),
 			"error", err)
-		closeLogsStream(stream, "[GeneralLogs]")
-		return err
+		return nil, err
 	}
 
-	monitorLogsStreamDisconnect(stream, cancel)
-	streamJournalLines(ctx, stream, stdout, cmd, "[GeneralLogs]")
-	waitForLogsCommand(cmd, "[GeneralLogs]")
-	closeLogsStream(stream, "[GeneralLogs]")
-	return nil
+	readErr := streamJournalLinesToJob(ctx, job, stdout, cmd, "[GeneralLogs]")
+	waitErr := waitForLogsCommand(cmd, "[GeneralLogs]")
+	if readErr != nil {
+		return nil, readErr
+	}
+	if waitErr != nil {
+		return nil, waitErr
+	}
+	return map[string]any{"status": "stopped"}, nil
 }
 
 func parseGeneralLogsRequest(args []string) generalLogsRequest {
@@ -122,20 +123,11 @@ func startGeneralLogsCommand(ctx context.Context, req generalLogsRequest) (*exec
 	return cmd, stdout, nil
 }
 
-func monitorLogsStreamDisconnect(stream net.Conn, cancel context.CancelFunc) {
-	go func() {
-		frame, err := ipc.ReadRelayFrame(stream)
-		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			cancel()
-		}
-	}()
-}
-
-func streamJournalLines(ctx context.Context, stream net.Conn, stdout io.Reader, cmd *exec.Cmd, label string) {
+func streamJournalLinesToJob(ctx context.Context, job *bridgeipc.Job, stdout io.Reader, cmd *exec.Cmd, label string) error {
 	reader := bufio.NewReader(stdout)
 	for {
-		if handleLogsContextCancellation(ctx, cmd, stream, label) {
-			return
+		if handleLogsContextCancellation(ctx, cmd, label) {
+			return ctx.Err()
 		}
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -144,20 +136,18 @@ func streamJournalLines(ctx context.Context, stream net.Conn, stdout io.Reader, 
 					"component", "logs",
 					"stream_label", label,
 					"error", err)
+				return err
 			}
-			return
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return nil
 		}
-		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
-			Opcode:   ipc.OpStreamData,
-			StreamID: 1,
-			Payload:  []byte(line),
-		}); err != nil {
-			return
-		}
+		job.ReportProgress(map[string]any{"type": "data", "data": line})
 	}
 }
 
-func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, stream net.Conn, label string) bool {
+func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, label string) bool {
 	select {
 	case <-ctx.Done():
 		if killErr := cmd.Process.Kill(); killErr != nil {
@@ -166,27 +156,19 @@ func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, stream ne
 				"stream_label", label,
 				"error", killErr)
 		}
-		closeLogsStream(stream, label)
 		return true
 	default:
 		return false
 	}
 }
 
-func waitForLogsCommand(cmd *exec.Cmd, label string) {
+func waitForLogsCommand(cmd *exec.Cmd, label string) error {
 	if err := cmd.Wait(); err != nil {
 		slog.Debug("journalctl exited with error",
 			"component", "logs",
 			"stream_label", label,
 			"error", err)
+		return err
 	}
-}
-
-func closeLogsStream(stream net.Conn, label string) {
-	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		slog.Debug("failed to write log stream close frame",
-			"component", "logs",
-			"stream_label", label,
-			"error", err)
-	}
+	return nil
 }

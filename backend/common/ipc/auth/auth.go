@@ -1,6 +1,6 @@
 // Auth request/response protocol for LinuxIO auth communication.
 // Keep in sync with backend/auth/linuxio_protocol.h
-package ipc
+package auth
 
 import (
 	"encoding/binary"

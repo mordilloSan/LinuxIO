@@ -720,7 +720,7 @@ export class StreamMultiplexer {
   }
 
   // Stream types that should be cached and reused (persistent streams)
-  private static readonly PERSISTENT_STREAM_TYPES = new Set(["terminal"]);
+  private static readonly PERSISTENT_STREAM_TYPES = new Set(["terminal.open"]);
 
   /**
    * Open a new stream and send initial payload.

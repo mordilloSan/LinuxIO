@@ -22,11 +22,11 @@ import (
 	"github.com/docker/docker/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
-// StreamTerminalSession manages a direct PTY-to-stream connection.
-type StreamTerminalSession struct {
+// TerminalSession manages a direct PTY-to-duplex connection.
+type TerminalSession struct {
 	PTY      *os.File
 	Cmd      *exec.Cmd
 	Stream   net.Conn // yamux stream
@@ -35,14 +35,14 @@ type StreamTerminalSession struct {
 	doneChan chan struct{}
 }
 
-// HandleTerminalStream handles a yamux stream dedicated to terminal I/O.
+// HandleTerminalSession handles a yamux stream dedicated to terminal I/O.
 // This bypasses all JSON encoding - raw PTY bytes flow directly.
 // Protocol:
 //   - First frame from client: OpStreamOpen with args [cols, rows]
 //   - Subsequent frames from client: OpStreamData with input bytes
 //   - Server sends: OpStreamData with PTY output bytes
 //   - Either side can send OpStreamClose to terminate
-func HandleTerminalStream(rt runtime.Runtime, stream net.Conn, args []string) error {
+func HandleTerminalSession(rt runtime.Runtime, stream net.Conn, args []string) error {
 	sess := rt.Session
 	slog.Debug("starting terminal stream", "user", sess.User.Username, "args", args)
 
@@ -116,7 +116,7 @@ func HandleTerminalStream(rt runtime.Runtime, stream net.Conn, args []string) er
 		slog.Debug("failed to set initial PTY size", "cols", cols, "rows", rows, "error", err)
 	}
 
-	sts := &StreamTerminalSession{
+	sts := &TerminalSession{
 		PTY:      ptmx,
 		Cmd:      cmd,
 		Stream:   stream,
@@ -142,7 +142,7 @@ func HandleTerminalStream(rt runtime.Runtime, stream net.Conn, args []string) er
 }
 
 // relayPTYToStream reads PTY output and sends it as stream data frames.
-func (sts *StreamTerminalSession) relayPTYToStream() {
+func (sts *TerminalSession) relayPTYToStream() {
 	buf := make([]byte, 4096)
 	for {
 		n, err := sts.PTY.Read(buf)
@@ -167,7 +167,7 @@ func (sts *StreamTerminalSession) relayPTYToStream() {
 }
 
 // relayStreamToPTY reads stream frames and writes input to PTY.
-func (sts *StreamTerminalSession) relayStreamToPTY() {
+func (sts *TerminalSession) relayStreamToPTY() {
 	for {
 		frame, err := ipc.ReadRelayFrame(sts.Stream)
 		if err != nil {
@@ -202,7 +202,7 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 	}
 }
 
-func (sts *StreamTerminalSession) cleanup() {
+func (sts *TerminalSession) cleanup() {
 	sts.mu.Lock()
 	if sts.closed {
 		sts.mu.Unlock()
@@ -250,9 +250,9 @@ func safeUint16(val int) uint16 {
 	return uint16(val)
 }
 
-// HandleContainerTerminalStream handles a yamux stream for container terminal I/O.
+// HandleContainerTerminalSession handles a yamux stream for container terminal I/O.
 // Args: [containerID, shell, cols, rows]
-func HandleContainerTerminalStream(rt runtime.Runtime, stream net.Conn, args []string) error {
+func HandleContainerTerminalSession(rt runtime.Runtime, stream net.Conn, args []string) error {
 	sess := rt.Session
 	containerID, shell, cols, rows, err := parseContainerTerminalArgs(args)
 	if err != nil {

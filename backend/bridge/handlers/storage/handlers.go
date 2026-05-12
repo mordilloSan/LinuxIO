@@ -2,38 +2,35 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers all storage handlers with the global registry
-func RegisterHandlers(rt runtime.Runtime) {
-	RegisterJobRunners()
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	RegisterJobRoutes(router)
 
-	rpc.Register("storage", rt, []rpc.Command{
-		{Name: "list_pvs", Handler: handleListPVs},
-		{Name: "list_vgs", Handler: handleListVGs},
-		{Name: "list_lvs", Handler: handleListLVs},
-		{Name: "create_lv", Handler: handleCreateLV},
-		{Name: "delete_lv", Handler: handleDeleteLV},
-		{Name: "resize_lv", Handler: handleResizeLV},
-		{Name: "list_nfs_mounts", Handler: handleListNFSMounts},
-		{Name: "list_nfs_exports", Handler: handleListNFSExports},
-		{Name: "mount_nfs", Handler: handleMountNFS},
-		{Name: "unmount_nfs", Handler: handleUnmountNFS},
-		{Name: "remount_nfs", Handler: handleRemountNFS},
-		{Name: "unmount_filesystem", Handler: handleUnmountFilesystem},
-		{Name: "create_btrfs_subvolume", Handler: handleCreateBtrfsSubvolume},
-		{Name: "get_drive_info", Handler: handleGetDriveInfo},
-		{Name: "run_smart_test", Handler: handleRunSMARTTest},
+	bridgeipc.RegisterRoutes(router, "storage", []bridgeipc.Command{
+		{Name: "list_pvs", Mode: bridgeipc.ModeQuery, Handler: handleListPVs},
+		{Name: "list_vgs", Mode: bridgeipc.ModeQuery, Handler: handleListVGs},
+		{Name: "list_lvs", Mode: bridgeipc.ModeQuery, Handler: handleListLVs},
+		{Name: "create_lv", Mode: bridgeipc.ModeJob, Handler: handleCreateLV},
+		{Name: "delete_lv", Mode: bridgeipc.ModeJob, Handler: handleDeleteLV},
+		{Name: "resize_lv", Mode: bridgeipc.ModeJob, Handler: handleResizeLV},
+		{Name: "list_nfs_mounts", Mode: bridgeipc.ModeQuery, Handler: handleListNFSMounts},
+		{Name: "list_nfs_exports", Mode: bridgeipc.ModeQuery, Handler: handleListNFSExports},
+		{Name: "mount_nfs", Mode: bridgeipc.ModeJob, Handler: handleMountNFS},
+		{Name: "unmount_nfs", Mode: bridgeipc.ModeJob, Handler: handleUnmountNFS},
+		{Name: "remount_nfs", Mode: bridgeipc.ModeJob, Handler: handleRemountNFS},
+		{Name: "unmount_filesystem", Mode: bridgeipc.ModeJob, Handler: handleUnmountFilesystem},
+		{Name: "create_btrfs_subvolume", Mode: bridgeipc.ModeJob, Handler: handleCreateBtrfsSubvolume},
+		{Name: "get_drive_info", Mode: bridgeipc.ModeQuery, Handler: handleGetDriveInfo},
 	})
 }
 
-func handleListPVs(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListPVs(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing physical volumes")
 	pvs, err := ListPhysicalVolumes()
 	if err != nil {
@@ -41,10 +38,10 @@ func handleListPVs(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Debug("listed physical volumes", "count", len(pvs))
-	return rpc.EmitResult(emit, pvs, nil)
+	return bridgeipc.EmitResult(emit, pvs, nil)
 }
 
-func handleListVGs(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListVGs(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing volume groups")
 	vgs, err := ListVolumeGroups()
 	if err != nil {
@@ -52,10 +49,10 @@ func handleListVGs(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Debug("listed volume groups", "count", len(vgs))
-	return rpc.EmitResult(emit, vgs, nil)
+	return bridgeipc.EmitResult(emit, vgs, nil)
 }
 
-func handleListLVs(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListLVs(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing logical volumes")
 	lvs, err := ListLogicalVolumes()
 	if err != nil {
@@ -63,11 +60,11 @@ func handleListLVs(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Debug("listed logical volumes", "count", len(lvs))
-	return rpc.EmitResult(emit, lvs, nil)
+	return bridgeipc.EmitResult(emit, lvs, nil)
 }
 
-func handleCreateLV(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 3); err != nil {
+func handleCreateLV(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 3); err != nil {
 		slog.Error("create_lv: insufficient arguments (need vgName, lvName, size)")
 		return err
 	}
@@ -78,11 +75,11 @@ func handleCreateLV(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Info("logical volume created", "volume_group", args[0], "name", args[1])
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleDeleteLV(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleDeleteLV(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		slog.Error("delete_lv: insufficient arguments (need vgName, lvName)")
 		return err
 	}
@@ -93,11 +90,11 @@ func handleDeleteLV(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Info("logical volume deleted", "volume_group", args[0], "name", args[1])
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleResizeLV(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 3); err != nil {
+func handleResizeLV(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 3); err != nil {
 		slog.Error("resize_lv: insufficient arguments (need vgName, lvName, newSize)")
 		return err
 	}
@@ -108,10 +105,10 @@ func handleResizeLV(ctx context.Context, args []string, emit ipc.Events) error {
 		return err
 	}
 	slog.Info("logical volume resized", "volume_group", args[0], "name", args[1], "size", args[2])
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleListNFSMounts(ctx context.Context, args []string, emit ipc.Events) error {
+func handleListNFSMounts(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS mounts")
 	mounts, err := ListNFSMounts()
 	if err != nil {
@@ -119,11 +116,11 @@ func handleListNFSMounts(ctx context.Context, args []string, emit ipc.Events) er
 		return err
 	}
 	slog.Debug("listed NFS mounts", "count", len(mounts))
-	return rpc.EmitResult(emit, mounts, nil)
+	return bridgeipc.EmitResult(emit, mounts, nil)
 }
 
-func handleListNFSExports(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 1); err != nil {
+func handleListNFSExports(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		slog.Error("list_nfs_exports: missing server argument")
 		return err
 	}
@@ -134,11 +131,11 @@ func handleListNFSExports(ctx context.Context, args []string, emit ipc.Events) e
 		return err
 	}
 	slog.Debug("listed NFS exports", "server", args[0], "count", len(exports))
-	return rpc.EmitResult(emit, exports, nil)
+	return bridgeipc.EmitResult(emit, exports, nil)
 }
 
-func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 4); err != nil {
+func handleMountNFS(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 4); err != nil {
 		slog.Error("mount_nfs: insufficient arguments (need server, exportPath, mountpoint, options)")
 		return err
 	}
@@ -159,11 +156,11 @@ func handleMountNFS(ctx context.Context, args []string, emit ipc.Events) error {
 			"error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleUnmountNFS(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 1); err != nil {
+func handleUnmountNFS(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		slog.Error("unmount_nfs: missing mountpoint argument")
 		return err
 	}
@@ -174,11 +171,11 @@ func handleUnmountNFS(ctx context.Context, args []string, emit ipc.Events) error
 		slog.Error("failed to unmount NFS share", "mountpoint", args[0], "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleRemountNFS(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleRemountNFS(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		slog.Error("remount_nfs: insufficient arguments (need mountpoint, options)")
 		return err
 	}
@@ -189,11 +186,11 @@ func handleRemountNFS(ctx context.Context, args []string, emit ipc.Events) error
 		slog.Error("failed to remount NFS share", "mountpoint", args[0], "error", err)
 		return err
 	}
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleUnmountFilesystem(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 1); err != nil {
+func handleUnmountFilesystem(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		slog.Error("unmount_filesystem: missing mountpoint argument")
 		return err
 	}
@@ -204,11 +201,11 @@ func handleUnmountFilesystem(ctx context.Context, args []string, emit ipc.Events
 		return err
 	}
 	slog.Info("filesystem unmounted", "mountpoint", args[0])
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := rpc.RequireArgs(args, 2); err != nil {
+func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		slog.Error("create_btrfs_subvolume: insufficient arguments (need mountpoint, name)")
 		return err
 	}
@@ -219,27 +216,13 @@ func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit ipc.Eve
 		return err
 	}
 	slog.Info("btrfs subvolume created", "mountpoint", args[0], "name", args[1])
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleGetDriveInfo(ctx context.Context, args []string, emit ipc.Events) error {
+func handleGetDriveInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	driveInfo, err := FetchDriveInfo()
 	if err != nil {
 		return err
 	}
-	return rpc.EmitResult(emit, driveInfo, nil)
-}
-
-func handleRunSMARTTest(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) < 2 {
-		return fmt.Errorf("run_smart_test requires device name and test type (short/long)")
-	}
-	device := args[0]
-	testType := args[1]
-	result, err := RunSmartTest(device, testType)
-	if err != nil {
-		return err
-	}
-	slog.Info("SMART test initiated", "device", device, "type", testType)
-	return rpc.EmitResult(emit, result, nil)
+	return bridgeipc.EmitResult(emit, driveInfo, nil)
 }

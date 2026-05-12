@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 type configHandlers struct {
@@ -17,29 +16,29 @@ type configHandlers struct {
 }
 
 // RegisterHandlers registers config handlers with the new handler system
-func RegisterHandlers(rt runtime.Runtime) {
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := configHandlers{
 		username: rt.Username(),
 		store:    rt.Store,
 	}
-	rpc.Register("config", rt, []rpc.Command{
-		{Name: "get", Handler: handlers.handleGetConfig},
-		{Name: "set", Handler: handlers.handleSetConfig},
+	bridgeipc.RegisterRoutes(router, "config", []bridgeipc.Command{
+		{Name: "get", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetConfig},
+		{Name: "set", Mode: bridgeipc.ModeJob, Handler: handlers.handleSetConfig},
 	})
 }
 
-func (h configHandlers) handleGetConfig(ctx context.Context, args []string, emit ipc.Events) error {
+func (h configHandlers) handleGetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	cfg, cfgPath, err := settings.SnapshotForUser(h.username, h.store)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	cfg.Jobs = settings.EffectiveJobSettings(cfg.Jobs)
 	slog.Debug("loaded user config", "component", "config", "user", h.username, "path", cfgPath)
-	return rpc.EmitResult(emit, cfg, nil)
+	return bridgeipc.EmitResult(emit, cfg, nil)
 }
 
-func (h configHandlers) handleSetConfig(ctx context.Context, args []string, emit ipc.Events) error {
-	payload, err := rpc.DecodeJSONArg[configSetPayload](args, 0)
+func (h configHandlers) handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	payload, err := bridgeipc.DecodeJSONArg[configSetPayload](args, 0)
 	if err != nil {
 		return err
 	}
@@ -52,7 +51,7 @@ func (h configHandlers) handleSetConfig(ctx context.Context, args []string, emit
 		return fmt.Errorf("update config: %w", err)
 	}
 	slog.Info("user config updated", "component", "config", "user", h.username, "path", cfgPath)
-	return rpc.EmitResult(emit, map[string]any{
+	return bridgeipc.EmitResult(emit, map[string]any{
 		"message": "config updated",
 		"path":    cfgPath,
 	}, nil)

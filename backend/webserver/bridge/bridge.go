@@ -12,7 +12,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -20,9 +20,9 @@ import (
 // yamuxSessions manages persistent yamux sessions per session ID
 var yamuxSessions = struct {
 	sync.RWMutex
-	sessions map[string]*ipc.YamuxSession
+	sessions map[string]*relay.YamuxSession
 }{
-	sessions: make(map[string]*ipc.YamuxSession),
+	sessions: make(map[string]*relay.YamuxSession),
 }
 
 // validateBridgeHash computes SHA256 of the bridge binary and compares to expected.
@@ -58,8 +58,8 @@ func validateBridgeHash(bridgePath string) error {
 
 const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
 
-func bridgeOpenPayload(handlerType, command string, args ...string) []byte {
-	payload := []byte("bridge\x00" + handlerType + "\x00" + command)
+func bridgeOpenPayload(route string, args ...string) []byte {
+	payload := []byte(route)
 	for _, arg := range args {
 		payload = append(payload, 0)
 		payload = append(payload, arg...)
@@ -68,16 +68,16 @@ func bridgeOpenPayload(handlerType, command string, args ...string) []byte {
 }
 
 func writeCapabilitiesRequest(stream io.Writer) error {
-	return ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
-		Opcode:  ipc.OpStreamOpen,
-		Payload: bridgeOpenPayload("system", "get_capabilities"),
+	return relay.WriteRelayFrame(stream, &relay.StreamFrame{
+		Opcode:  relay.OpStreamOpen,
+		Payload: bridgeOpenPayload("system.get_capabilities"),
 	})
 }
 
-func decodeCapabilitiesResult(frame *ipc.StreamFrame) (session.Capabilities, error) {
+func decodeCapabilitiesResult(frame *relay.StreamFrame) (session.Capabilities, error) {
 	var (
 		caps   session.Capabilities
-		result ipc.ResultFrame
+		result relay.ResultFrame
 	)
 
 	if err := json.Unmarshal(frame.Payload, &result); err != nil {
@@ -101,17 +101,17 @@ func decodeCapabilitiesResult(frame *ipc.StreamFrame) (session.Capabilities, err
 
 func readCapabilitiesResponse(stream io.Reader) (session.Capabilities, error) {
 	for {
-		frame, err := ipc.ReadRelayFrame(stream)
+		frame, err := relay.ReadRelayFrame(stream)
 		if err != nil {
 			return session.Capabilities{}, fmt.Errorf("read capabilities response: %w", err)
 		}
 
 		switch frame.Opcode {
-		case ipc.OpStreamProgress:
+		case relay.OpStreamProgress:
 			continue
-		case ipc.OpStreamResult:
+		case relay.OpStreamResult:
 			return decodeCapabilitiesResult(frame)
-		case ipc.OpStreamClose:
+		case relay.OpStreamClose:
 			return session.Capabilities{}, fmt.Errorf("capabilities stream closed before result")
 		default:
 			return session.Capabilities{}, fmt.Errorf("unexpected capabilities opcode: 0x%02x", frame.Opcode)
@@ -193,13 +193,13 @@ func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost 
 func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 	// Create yamux client session from the connection
 	// (auth daemon forked bridge and passed our FD to it via dup2)
-	yamuxSession, err := ipc.NewYamuxClient(conn)
+	yamuxSession, err := relay.NewYamuxClient(conn)
 	if err != nil {
 		conn.Close()
 		return fmt.Errorf("failed to create yamux session: %w", err)
 	}
 
-	var old *ipc.YamuxSession
+	var old *relay.YamuxSession
 	yamuxSessions.Lock()
 	if existing, exists := yamuxSessions.sessions[sess.SessionID]; exists {
 		delete(yamuxSessions.sessions, sess.SessionID)
@@ -238,7 +238,7 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 
 // GetYamuxSession returns an existing yamux session for the given session ID.
 // The session must have been created by StartBridge.
-func GetYamuxSession(sessionID string) (*ipc.YamuxSession, error) {
+func GetYamuxSession(sessionID string) (*relay.YamuxSession, error) {
 	yamuxSessions.RLock()
 	session, exists := yamuxSessions.sessions[sessionID]
 	yamuxSessions.RUnlock()

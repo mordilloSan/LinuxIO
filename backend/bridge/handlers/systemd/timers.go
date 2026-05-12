@@ -2,7 +2,6 @@ package systemd
 
 import (
 	"context"
-	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
@@ -30,16 +29,11 @@ func ListTimers(ctx context.Context) ([]TimerStatus, error) {
 		}
 
 		results := make([]TimerStatus, len(entries))
-		var wg sync.WaitGroup
-		for i, entry := range entries {
-			wg.Add(1)
-			go func(i int, entry listedUnit) {
-				defer wg.Done()
-				results[i] = fetchTimerStatus(session, entry)
-			}(i, entry)
+		if err := forEachListedUnitLimited(session.Context(), entries, func(i int, entry listedUnit) {
+			results[i] = fetchTimerStatus(session, entry)
+		}); err != nil {
+			return err
 		}
-
-		wg.Wait()
 		timers = results
 		return nil
 	})

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"net"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
@@ -12,7 +10,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	jobhandlers "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
@@ -23,53 +20,32 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// streamHandlers is the registry for yamux stream handlers.
-// Populated during RegisterAllHandlers; read-only after that.
-var streamHandlers = map[string]func(runtime.Runtime, net.Conn, []string) error{}
+func RegisterAllHandlers(rt runtime.Runtime) *bridgeipc.Router {
+	router := bridgeipc.NewRouter(bridgeipc.DefaultRegistry)
 
-// GetStreamHandler returns the handler for the given stream type.
-func GetStreamHandler(streamType string) (func(runtime.Runtime, net.Conn, []string) error, bool) {
-	h, ok := streamHandlers[streamType]
-	return h, ok
-}
+	appupdate.RegisterHandlers(rt, router)
+	system.RegisterHandlers(rt, router)
+	accounts.RegisterHandlers(rt, router)
+	docker.RegisterHandlers(rt, router)
+	filebrowser.RegisterHandlers(rt, router)
+	indexer.RegisterHandlers(rt, router)
+	config.RegisterHandlers(rt, router)
+	control.RegisterHandlers(rt, router)
+	power.RegisterHandlers(rt, router)
+	systemd.RegisterHandlers(rt, router)
+	hostname.RegisterHandlers(rt, router)
+	datetime.RegisterHandlers(rt, router)
+	network.RegisterHandlers(rt, router)
+	updates.RegisterHandlers(rt, router)
+	terminal.RegisterHandlers(rt, router)
+	wireguard.RegisterHandlers(rt, router)
+	storage.RegisterHandlers(rt, router)
+	shares.RegisterHandlers(rt, router)
+	logs.RegisterHandlers(rt, router)
 
-func RegisterAllHandlers(rt runtime.Runtime) {
-	// Register the universal RPC stream handler.
-	// Typed frontend calls like linuxio.storage.get_drive_info.call()
-	// open a "bridge" stream and dispatch through ipc.RegisterFunc handlers.
-	streamHandlers["bridge"] = func(rt runtime.Runtime, conn net.Conn, args []string) error {
-		return rpc.HandleBridgeStream(rt.Session, conn, args)
-	}
-
-	// Register all handlers using the handler.Register() system
-	appupdate.RegisterHandlers(rt)
-	system.RegisterHandlers(rt)
-	accounts.RegisterHandlers(rt)
-	docker.RegisterHandlers(rt)
-	filebrowser.RegisterHandlers(rt)
-	indexer.RegisterHandlers(rt)
-	jobhandlers.RegisterHandlers(rt)
-	config.RegisterHandlers(rt)
-	control.RegisterHandlers(rt)
-	power.RegisterHandlers(rt)
-	systemd.RegisterHandlers(rt)
-	hostname.RegisterHandlers(rt)
-	datetime.RegisterHandlers(rt)
-	network.RegisterHandlers(rt)
-	updates.RegisterHandlers(rt)
-	terminal.RegisterHandlers(rt)
-	wireguard.RegisterHandlers(rt)
-	storage.RegisterHandlers(rt)
-	shares.RegisterHandlers(rt)
-
-	// Register stream handlers for yamux streams (terminal, jobs, logs, etc.)
-	appupdate.RegisterStreamHandlers(streamHandlers)
-	terminal.RegisterStreamHandlers(streamHandlers)
-	jobhandlers.RegisterStreamHandlers(streamHandlers)
-	logs.RegisterStreamHandlers(streamHandlers)
-	docker.RegisterStreamHandlers(streamHandlers)
+	return router
 }

@@ -26,19 +26,19 @@ import {
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
-const JOB_TYPE_FILE_COMPRESS = "file.compress";
-const JOB_TYPE_FILE_EXTRACT = "file.extract";
-const JOB_TYPE_FILE_COPY = "file.copy";
-const JOB_TYPE_FILE_MOVE = "file.move";
-const JOB_TYPE_FILE_INDEXER = "file.indexer";
-const JOB_TYPE_FILE_UPLOAD = "file.upload";
-const JOB_TYPE_FILE_DOWNLOAD = "file.download";
-const JOB_TYPE_FILE_ARCHIVE = "file.archive";
-const JOB_TYPE_FILE_CHMOD = "file.chmod";
+const JOB_TYPE_FILE_COMPRESS = "filebrowser.compress";
+const JOB_TYPE_FILE_EXTRACT = "filebrowser.extract";
+const JOB_TYPE_FILE_COPY = "filebrowser.copy";
+const JOB_TYPE_FILE_MOVE = "filebrowser.move";
+const JOB_TYPE_FILE_INDEXER = "filebrowser.index";
+const JOB_TYPE_FILE_UPLOAD = "filebrowser.upload";
+const JOB_TYPE_FILE_DOWNLOAD = "filebrowser.download";
+const JOB_TYPE_FILE_ARCHIVE = "filebrowser.archive";
+const JOB_TYPE_FILE_CHMOD = "filebrowser.chmod";
 const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
 const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
-const JOB_TYPE_PACKAGE_UPDATE = "package.update";
-const JOB_TYPE_STORAGE_SMART_TEST = "storage.smart_test";
+const JOB_TYPE_PACKAGE_UPDATE = "packages.update";
+const JOB_TYPE_STORAGE_SMART_TEST = "storage.run_smart_test";
 
 interface Download {
   id: string;
@@ -570,10 +570,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       try {
-        const activeDownloadJob = await linuxio.jobs.start.call(
-          isSingleFile ? JOB_TYPE_FILE_DOWNLOAD : JOB_TYPE_FILE_ARCHIVE,
-          ...(isSingleFile ? [paths[0]] : ["zip", ...paths]),
-        );
+        const activeDownloadJob = isSingleFile
+          ? await linuxio.filebrowser.download.call(paths[0])
+          : await linuxio.filebrowser.archive.call("zip", ...paths);
         activeFileTransferJobIdsRef.current.add(activeDownloadJob.id);
         releaseDownloadLabelBase(reqId);
         reqId = activeDownloadJob.id;
@@ -756,8 +755,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         : `${destination}/${archiveName}`;
       let job: JobSnapshot;
       try {
-        job = await linuxio.jobs.start.call(
-          JOB_TYPE_FILE_COMPRESS,
+        job = await linuxio.filebrowser.compress.call(
           format,
           fullDestination,
           ...paths,
@@ -906,7 +904,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const jobArgs = destination ? [archivePath, destination] : [archivePath];
       let job: JobSnapshot;
       try {
-        job = await linuxio.jobs.start.call(JOB_TYPE_FILE_EXTRACT, ...jobArgs);
+        job = await linuxio.filebrowser.extract.call(jobArgs[0], jobArgs[1]);
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start extraction",
@@ -1089,7 +1087,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       let job: JobSnapshot;
       try {
         const jobArgs = path && path !== "/" ? [path] : [];
-        job = await linuxio.jobs.start.call(JOB_TYPE_FILE_INDEXER, ...jobArgs);
+        job = await linuxio.filebrowser.index.call(jobArgs[0]);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to start indexer";
@@ -1244,8 +1242,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.jobs.start.call(
-          JOB_TYPE_FILE_UPLOAD,
+        job = await linuxio.filebrowser.upload.call(
           targetPath,
           String(file.size),
         );
@@ -1711,11 +1708,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.jobs.start.call(
-          JOB_TYPE_FILE_COPY,
-          source,
-          destination,
-        );
+        job = await linuxio.filebrowser.copy.call(source, destination);
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start copy",
@@ -1854,11 +1847,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.jobs.start.call(
-          JOB_TYPE_FILE_MOVE,
-          source,
-          destination,
-        );
+        job = await linuxio.filebrowser.move.call(source, destination);
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start move",
@@ -2456,24 +2445,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     let cancelled = false;
     let cleanupEvents: (() => void) | undefined;
     let eventStream: Stream | null = null;
-    let externalIndexerRecoveryAttempted = false;
-
-    const recoverExternalIndexerJob = async () => {
-      if (externalIndexerRecoveryAttempted) {
-        return;
-      }
-      externalIndexerRecoveryAttempted = true;
-      try {
-        const indexerJob = await linuxio.jobs.recover.call(
-          JOB_TYPE_FILE_INDEXER,
-        );
-        if (!cancelled && indexerJob) {
-          attachRecoveredJob(indexerJob);
-        }
-      } catch (error) {
-        console.debug("Failed to recover external indexer job", error);
-      }
-    };
 
     eventStream = openJobEventsStream();
     if (eventStream) {
@@ -2491,8 +2462,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     } else {
       console.debug("Failed to open job events stream");
     }
-
-    void recoverExternalIndexerJob();
 
     return () => {
       cancelled = true;

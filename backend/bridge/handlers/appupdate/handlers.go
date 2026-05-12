@@ -2,26 +2,25 @@ package appupdate
 
 import (
 	"context"
-	"net"
+	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers control handlers with the new handler system
-func RegisterHandlers(rt runtime.Runtime) {
-	rpc.Register("control", rt, []rpc.Command{
-		{Name: "version", Handler: handleVersion},
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "control", []bridgeipc.Command{
+		{Name: "version", Mode: bridgeipc.ModeQuery, Handler: handleVersion},
 	})
+	policy := bridgeipc.SingletonSystem
+	policy.Timeout = 30 * time.Minute
+	router.JobRunner("control.app_update", func(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
+		return runAppUpdateJob(ctx, rt, job, args)
+	}, policy)
 }
 
-// RegisterStreamHandlers registers the app-update stream handler.
-func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
-	handlers[streamTypeAppUpdate] = HandleAppUpdateStream
-}
-
-func handleVersion(ctx context.Context, args []string, emit ipc.Events) error {
+func handleVersion(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	info, err := getVersionInfo()
-	return rpc.EmitResult(emit, info, err)
+	return bridgeipc.EmitResult(emit, info, err)
 }

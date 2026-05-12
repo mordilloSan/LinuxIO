@@ -945,11 +945,13 @@ export interface JobEvent {
  */
 export interface LinuxIOSchema {
   jobs: {
-    start: { args: [jobType: string, ...args: string[]]; result: JobSnapshot };
-    recover: { args: [jobType: string]; result: JobSnapshot | null };
     list: { args: [status?: string]; result: JobSnapshot[] };
     get: { args: [jobId: string]; result: JobSnapshot };
     cancel: { args: [jobId: string]; result: JobSnapshot };
+  };
+
+  packages: {
+    update: { args: string[]; result: JobSnapshot };
   };
 
   system: {
@@ -988,6 +990,11 @@ export interface LinuxIOSchema {
 
   docker: {
     get_docker_info: { args: []; result: DockerSystemInfo };
+    compose: {
+      args: [action: string, projectName: string, composePath?: string];
+      result: JobSnapshot;
+    };
+    indexer: { args: []; result: JobSnapshot };
     list_containers: { args: []; result: ContainerInfo[] };
     start_container: { args: [containerId: string]; result: void };
     stop_container: { args: [containerId: string]; result: void };
@@ -1153,6 +1160,36 @@ export interface LinuxIOSchema {
       args: [action: string, src: string, dst: string];
       result: void;
     };
+    compress: {
+      args: [format: string, targetPath: string, ...paths: string[]];
+      result: JobSnapshot;
+    };
+    extract: {
+      args: [archivePath: string, destination?: string];
+      result: JobSnapshot;
+    };
+    copy: { args: [source: string, destination: string]; result: JobSnapshot };
+    move: { args: [source: string, destination: string]; result: JobSnapshot };
+    index: { args: [path?: string]; result: JobSnapshot };
+    upload: {
+      args: [targetPath: string, size: string, overwrite?: string];
+      result: JobSnapshot;
+    };
+    download: { args: [path: string]; result: JobSnapshot };
+    archive: {
+      args: [format: string, ...paths: string[]];
+      result: JobSnapshot;
+    };
+    chmod: {
+      args: [
+        path: string,
+        mode: string,
+        owner: string,
+        group: string,
+        recursive?: string,
+      ];
+      result: JobSnapshot;
+    };
     indexer_status: { args: []; result: IndexerStatusResponse };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
@@ -1306,12 +1343,7 @@ export interface LinuxIOSchema {
     get_drive_info: { args: []; result: ApiDisk[] };
     run_smart_test: {
       args: [device: string, testType: string];
-      result: {
-        success: boolean;
-        device: string;
-        test: string;
-        message: string;
-      };
+      result: JobSnapshot;
     };
     // NFS
     list_nfs_mounts: { args: []; result: NFSMount[] };

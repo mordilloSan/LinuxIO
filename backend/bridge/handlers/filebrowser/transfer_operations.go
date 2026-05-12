@@ -16,9 +16,9 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/bridge/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 type transferOutcome struct {

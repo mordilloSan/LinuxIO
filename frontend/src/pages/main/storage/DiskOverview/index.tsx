@@ -19,7 +19,13 @@ import type {
 } from "./types";
 import { parseSizeToBytes } from "./utils";
 
-import { linuxio, openJobAttachStream, type Stream, type ApiDisk } from "@/api";
+import {
+  jobSnapshotResult,
+  linuxio,
+  openJobAttachStream,
+  type Stream,
+  type ApiDisk,
+} from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -33,8 +39,6 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-const JOB_TYPE_STORAGE_SMART_TEST = "storage.smart_test";
 
 interface DriveDetailsProps {
   drive: DriveInfo;
@@ -123,8 +127,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     void (async () => {
       let jobId: string | null = null;
       try {
-        const job = await linuxio.jobs.start.call(
-          JOB_TYPE_STORAGE_SMART_TEST,
+        const job = await linuxio.storage.run_smart_test.call(
           rawDrive.name,
           testType,
         );
@@ -380,20 +383,21 @@ const DiskOverview: React.FC = () => {
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
     linuxio.storage.create_btrfs_subvolume.useMutation({
       onSuccess: async (result) => {
+        const subvolumeResult = jobSnapshotResult(result);
         await queryClient.invalidateQueries({
           queryKey: linuxio.system.get_fs_info.queryKey(),
         });
-        if (result.path) {
-          toast.success(`Created subvolume at ${result.path}`);
+        if (subvolumeResult.path) {
+          toast.success(`Created subvolume at ${subvolumeResult.path}`);
         } else {
           toast.success("Subvolume created");
         }
-        if (result.mountpoint) {
+        if (subvolumeResult.mountpoint) {
           setSubvolumeDrafts((prev) => {
             const next = {
               ...prev,
             };
-            delete next[result.mountpoint!];
+            delete next[subvolumeResult.mountpoint!];
             return next;
           });
         }

@@ -1,14 +1,18 @@
 package systemd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
+
+const maxConcurrentUnitPropertyFetches = 16
 
 type listedUnit struct {
 	Name          string
@@ -96,6 +100,50 @@ func listUnitsBySuffix(
 	})
 
 	return entries, nil
+}
+
+func forEachListedUnitLimited(ctx context.Context, entries []listedUnit, fn func(int, listedUnit)) error {
+	ctx = requireContext(ctx)
+	if len(entries) == 0 {
+		return ctx.Err()
+	}
+
+	limit := maxConcurrentUnitPropertyFetches
+	if limit <= 0 || limit > len(entries) {
+		limit = len(entries)
+	}
+
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for i, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			wg.Wait()
+			return err
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return ctx.Err()
+		}
+
+		wg.Add(1)
+		go func(i int, entry listedUnit) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fn(i, entry)
+		}(i, entry)
+	}
+
+	wg.Wait()
+	return ctx.Err()
+}
+
+func requireContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 func getStringProperty(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (string, bool) {

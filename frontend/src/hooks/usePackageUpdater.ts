@@ -5,7 +5,6 @@ import { linuxio, openJobAttachStream, type Stream } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 const MIN_PROGRESS_VISIBLE_MS = 1500;
-const JOB_TYPE_PACKAGE_UPDATE = "package.update";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -111,10 +110,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       cancelledRef.current = false;
 
       try {
-        const job = await linuxio.jobs.start.call(
-          JOB_TYPE_PACKAGE_UPDATE,
-          ...packages,
-        );
+        const job = await linuxio.packages.update.call(...packages);
         jobIdRef.current = job.id;
 
         await runStreamResult<void, PkgUpdateProgress>({

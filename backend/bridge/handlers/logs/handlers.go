@@ -1,13 +1,17 @@
 package logs
 
 import (
-	"net"
+	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// RegisterStreamHandlers registers all logs stream handlers.
-func RegisterStreamHandlers(handlers map[string]func(runtime.Runtime, net.Conn, []string) error) {
-	handlers[StreamTypeGeneralLogs] = HandleGeneralLogsStream
-	handlers[StreamTypeServiceLogs] = HandleServiceLogsStream
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	router.JobRunner("logs.general.follow", func(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
+		return runGeneralLogsJob(ctx, rt, job, args)
+	}, bridgeipc.StreamDefault)
+	router.JobRunner("logs.service.follow", func(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
+		return runServiceLogsJob(ctx, rt, job, args)
+	}, bridgeipc.StreamDefault)
 }

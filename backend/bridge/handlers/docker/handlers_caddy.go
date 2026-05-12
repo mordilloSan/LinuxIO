@@ -5,9 +5,8 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 type autoUpdatePayload struct {
@@ -15,7 +14,7 @@ type autoUpdatePayload struct {
 	Enabled   bool   `json:"enabled"`
 }
 
-func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	cfg, _, err := settings.SnapshotForUser(h.username, h.store)
 	if err != nil {
 		return err
@@ -24,16 +23,16 @@ func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, args
 	if names == nil {
 		names = []string{}
 	}
-	return rpc.EmitResult(emit, names, nil)
+	return bridgeipc.EmitResult(emit, names, nil)
 }
 
-func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, args []string, emit ipc.Events) error {
-	payload, err := rpc.DecodeJSONArg[autoUpdatePayload](args, 0)
+func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	payload, err := bridgeipc.DecodeJSONArg[autoUpdatePayload](args, 0)
 	if err != nil {
 		return err
 	}
 	if payload.Container == "" {
-		return ipc.ErrInvalidArgs
+		return bridgeipc.ErrInvalidArgs
 	}
 	slog.Info("set_auto_update requested", "component", "docker", "container", payload.Container, "mode", payload.Enabled, "user", h.username)
 
@@ -54,38 +53,38 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, args []string, 
 
 	go SyncWatchtowerStackWithStore(h.username, h.store)
 
-	return rpc.EmitResult(emit, map[string]any{"message": "auto-update updated"}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"message": "auto-update updated"}, nil)
 }
 
-func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	result, err := GetCaddyStatusWithStore(h.username, h.store)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleEnableCaddy(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleEnableCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("enable_caddy requested", "component", "docker", "user", h.username)
 	result, err := EnableCaddyWithStore(h.username, h.store)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleDisableCaddy(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleDisableCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("disable_caddy requested", "component", "docker", "user", h.username)
 	result, err := DisableCaddyWithStore(h.username, h.store)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleReloadCaddy(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleReloadCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("reload_caddy requested", "component", "docker", "user", h.username)
 	result, err := ReloadCaddyWithStore(h.username, h.store)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleConnectToProxy(ctx context.Context, args []string, emit ipc.Events) error {
-	id, err := rpc.Arg(args, 0)
+func (h dockerHandlers) handleConnectToProxy(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	id, err := bridgeipc.Arg(args, 0)
 	if err != nil {
 		return err
 	}
 	slog.Info("connect_to_proxy requested", "component", "docker", "container", id)
 	result, err := ConnectToProxy(id)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }

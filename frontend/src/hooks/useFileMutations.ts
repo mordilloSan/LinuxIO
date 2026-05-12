@@ -175,7 +175,13 @@ export const useFileMutations = ({
       if (recursive) {
         args.push("true");
       }
-      const job = await linuxio.jobs.start.call("file.chmod", ...args);
+      const job = await linuxio.filebrowser.chmod.call(
+        args[0],
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+      );
       await runStreamResult({
         open: () => openJobAttachStream(job.id),
         closeMessage: "Permissions job stream closed before completion",

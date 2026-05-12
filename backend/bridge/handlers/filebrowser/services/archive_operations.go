@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func closeWithLog(name string, closer io.Closer) {

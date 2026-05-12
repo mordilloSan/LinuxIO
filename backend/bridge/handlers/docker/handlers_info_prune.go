@@ -4,17 +4,16 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, args []string, emit ipc.Events) error {
+func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	result, err := GetDockerInfo()
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleSystemPrune(ctx context.Context, args []string, emit ipc.Events) error {
-	opts, err := rpc.DecodeJSONArg[PruneOptions](args, 0)
+func (h dockerHandlers) handleSystemPrune(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	opts, err := bridgeipc.DecodeJSONArg[PruneOptions](args, 0)
 	if err != nil {
 		return err
 	}
@@ -25,5 +24,5 @@ func (h dockerHandlers) handleSystemPrune(ctx context.Context, args []string, em
 		"networks", opts.Networks,
 		"volumes", opts.Volumes)
 	result, err := SystemPrune(opts)
-	return rpc.EmitResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }

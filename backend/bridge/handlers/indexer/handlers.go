@@ -3,39 +3,38 @@ package indexer
 import (
 	"context"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/rpc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers indexer admin handlers with the bridge.
-func RegisterHandlers(rt runtime.Runtime) {
-	rpc.Register("indexer", rt, []rpc.Command{
-		{Name: "get_config", Handler: handleGetConfig, Privileged: true},
-		{Name: "get_status", Handler: handleGetStatus, Privileged: true},
-		{Name: "set_config", Handler: handleSetConfig, Privileged: true},
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "indexer", []bridgeipc.Command{
+		{Name: "get_config", Mode: bridgeipc.ModeQuery, Handler: handleGetConfig, Privileged: true},
+		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
+		{Name: "set_config", Mode: bridgeipc.ModeJob, Handler: handleSetConfig, Privileged: true},
 	})
 }
 
-func handleGetConfig(ctx context.Context, args []string, emit ipc.Events) error {
+func handleGetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	if len(args) != 0 {
-		return ipc.ErrInvalidArgs
+		return bridgeipc.ErrInvalidArgs
 	}
 	cfg, err := FetchConfig(ctx)
-	return rpc.EmitResult(emit, cfg, err)
+	return bridgeipc.EmitResult(emit, cfg, err)
 }
 
-func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
+func handleGetStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	if len(args) != 0 {
-		return ipc.ErrInvalidArgs
+		return bridgeipc.ErrInvalidArgs
 	}
 	status, err := FetchStatus(ctx)
-	return rpc.EmitResult(emit, status, err)
+	return bridgeipc.EmitResult(emit, status, err)
 }
 
-func handleSetConfig(ctx context.Context, args []string, emit ipc.Events) error {
+func handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	if len(args) != 1 {
-		return ipc.ErrInvalidArgs
+		return bridgeipc.ErrInvalidArgs
 	}
 	cfg, restartRequired, err := UpdateConfig(ctx, []byte(args[0]))
 	if err != nil {

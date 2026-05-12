@@ -1,4 +1,4 @@
-package jobs
+package bridge
 
 import (
 	"context"
@@ -92,13 +92,10 @@ type Event struct {
 }
 
 type Runner func(ctx context.Context, job *Job, args []string) (any, error)
-type Recoverer func(registry *Registry, owner Owner) (*Job, error)
 type DataAttacher func(ctx context.Context, job *Job, stream net.Conn, args []string) error
 
 type Registry struct {
 	mu            sync.RWMutex
-	runners       map[string]Runner
-	recoverers    map[string]Recoverer
 	dataAttachers map[string]DataAttacher
 	jobs          map[string]*Job
 	subscribers   map[chan Event]struct{}
@@ -110,6 +107,7 @@ type Registry struct {
 type Job struct {
 	registry *Registry
 
+	ctx         context.Context
 	mu          sync.RWMutex
 	id          string
 	typ         string
@@ -117,6 +115,7 @@ type Job struct {
 	owner       Owner
 	state       State
 	progress    any
+	progressLog []Event
 	result      any
 	err         *Error
 	createdAt   time.Time
@@ -124,6 +123,8 @@ type Job struct {
 	updatedAt   time.Time
 	finishedAt  *time.Time
 	cancel      context.CancelFunc
+	done        chan struct{}
+	doneOnce    sync.Once
 	subscribers map[chan Event]struct{}
 }
 
@@ -132,12 +133,11 @@ var DefaultRegistry = NewRegistry()
 const (
 	DefaultTerminalJobTTL         = 30 * time.Minute
 	DefaultTerminalJobSweepPeriod = time.Minute
+	DefaultJobProgressReplayLimit = 1024
 )
 
 func NewRegistry() *Registry {
 	r := &Registry{
-		runners:       make(map[string]Runner),
-		recoverers:    make(map[string]Recoverer),
 		dataAttachers: make(map[string]DataAttacher),
 		jobs:          make(map[string]*Job),
 		subscribers:   make(map[chan Event]struct{}),
@@ -147,32 +147,8 @@ func NewRegistry() *Registry {
 	return r
 }
 
-func RegisterRunner(jobType string, runner Runner) {
-	DefaultRegistry.RegisterRunner(jobType, runner)
-}
-
-func RegisterRecoverer(jobType string, recoverer Recoverer) {
-	DefaultRegistry.RegisterRecoverer(jobType, recoverer)
-}
-
 func RegisterDataAttacher(jobType string, attacher DataAttacher) {
 	DefaultRegistry.RegisterDataAttacher(jobType, attacher)
-}
-
-func Start(jobType string, args []string) (*Job, error) {
-	return DefaultRegistry.Start(jobType, args)
-}
-
-func StartForOwner(jobType string, args []string, owner Owner) (*Job, error) {
-	return DefaultRegistry.StartForOwner(jobType, args, owner)
-}
-
-func StartWithRunner(jobType string, args []string, runner Runner) (*Job, error) {
-	return DefaultRegistry.StartWithRunner(jobType, args, runner)
-}
-
-func StartWithRunnerForOwner(jobType string, args []string, owner Owner, runner Runner) (*Job, error) {
-	return DefaultRegistry.StartWithRunnerForOwner(jobType, args, owner, runner)
 }
 
 func Get(id string) (*Job, bool) {
@@ -199,54 +175,12 @@ func ListActiveForOwner(owner Owner) []Snapshot {
 	return DefaultRegistry.ListActiveForOwner(owner)
 }
 
-func FindActiveByType(jobType string) (*Job, bool) {
-	return DefaultRegistry.FindActiveByType(jobType)
-}
-
-func FindActiveByTypeForOwner(jobType string, owner Owner) (*Job, bool) {
-	return DefaultRegistry.FindActiveByTypeForOwner(jobType, owner)
-}
-
-func Recover(jobType string) (*Job, error) {
-	return DefaultRegistry.RecoverForOwner(jobType, Owner{})
-}
-
-func RecoverForOwner(jobType string, owner Owner) (*Job, error) {
-	return DefaultRegistry.RecoverForOwner(jobType, owner)
-}
-
 func AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
 	return DefaultRegistry.AttachData(ctx, job, stream, args)
 }
 
 func Subscribe(buffer int) (<-chan Event, func()) {
 	return DefaultRegistry.Subscribe(buffer)
-}
-
-func (r *Registry) RegisterRunner(jobType string, runner Runner) {
-	if jobType == "" {
-		panic("job type cannot be empty")
-	}
-	if runner == nil {
-		panic("job runner cannot be nil")
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.runners[jobType] = runner
-}
-
-func (r *Registry) RegisterRecoverer(jobType string, recoverer Recoverer) {
-	if jobType == "" {
-		panic("job type cannot be empty")
-	}
-	if recoverer == nil {
-		panic("job recoverer cannot be nil")
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.recoverers[jobType] = recoverer
 }
 
 func (r *Registry) RegisterDataAttacher(jobType string, attacher DataAttacher) {
@@ -276,49 +210,13 @@ func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, ar
 	return attacher(ctx, job, stream, args)
 }
 
-func (r *Registry) Start(jobType string, args []string) (*Job, error) {
-	return r.StartForOwner(jobType, args, Owner{})
+func (r *Registry) Create(jobType string, args []string) (*Job, error) {
+	return r.CreateForOwner(jobType, args, Owner{})
 }
 
-func (r *Registry) StartForOwner(jobType string, args []string, owner Owner) (*Job, error) {
-	r.mu.Lock()
-	runner, ok := r.runners[jobType]
-	if !ok {
-		r.mu.Unlock()
-		return nil, fmt.Errorf("job runner not found: %s", jobType)
-	}
-	r.mu.Unlock()
-	return r.StartWithRunnerForOwner(jobType, args, owner, runner)
-}
-
-func (r *Registry) Recover(jobType string) (*Job, error) {
-	return r.RecoverForOwner(jobType, Owner{})
-}
-
-func (r *Registry) RecoverForOwner(jobType string, owner Owner) (*Job, error) {
-	if job, ok := r.FindActiveByTypeForOwner(jobType, owner); ok {
-		return job, nil
-	}
-
-	r.mu.RLock()
-	recoverer, ok := r.recoverers[jobType]
-	r.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("job recoverer not found: %s", jobType)
-	}
-	return recoverer(r, owner)
-}
-
-func (r *Registry) StartWithRunner(jobType string, args []string, runner Runner) (*Job, error) {
-	return r.StartWithRunnerForOwner(jobType, args, Owner{}, runner)
-}
-
-func (r *Registry) StartWithRunnerForOwner(jobType string, args []string, owner Owner, runner Runner) (*Job, error) {
+func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*Job, error) {
 	if jobType == "" {
 		return nil, fmt.Errorf("job type cannot be empty")
-	}
-	if runner == nil {
-		return nil, fmt.Errorf("job runner cannot be nil")
 	}
 
 	r.mu.Lock()
@@ -328,6 +226,7 @@ func (r *Registry) StartWithRunnerForOwner(jobType string, args []string, owner 
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &Job{
 		registry:    r,
+		ctx:         ctx,
 		id:          id,
 		typ:         jobType,
 		args:        append([]string(nil), args...),
@@ -336,12 +235,12 @@ func (r *Registry) StartWithRunnerForOwner(jobType string, args []string, owner 
 		createdAt:   now,
 		updatedAt:   now,
 		cancel:      cancel,
+		done:        make(chan struct{}),
 		subscribers: make(map[chan Event]struct{}),
 	}
 	r.jobs[id] = job
 	r.mu.Unlock()
 
-	go job.run(ctx, runner)
 	return job, nil
 }
 
@@ -411,29 +310,6 @@ func (r *Registry) ListActiveForOwner(owner Owner) []Snapshot {
 	return active
 }
 
-func (r *Registry) FindActiveByType(jobType string) (*Job, bool) {
-	return r.FindActiveByTypeForOwner(jobType, Owner{})
-}
-
-func (r *Registry) FindActiveByTypeForOwner(jobType string, owner Owner) (*Job, bool) {
-	r.mu.RLock()
-	jobs := make([]*Job, 0, len(r.jobs))
-	for _, job := range r.jobs {
-		jobs = append(jobs, job)
-	}
-	r.mu.RUnlock()
-
-	for _, job := range jobs {
-		snapshot := job.Snapshot()
-		if snapshot.Type == jobType &&
-			(owner.Empty() || snapshot.Owner.Matches(owner)) &&
-			(snapshot.State == StateQueued || snapshot.State == StateRunning) {
-			return job, true
-		}
-	}
-	return nil, false
-}
-
 func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
 	if buffer <= 0 {
 		buffer = 32
@@ -491,6 +367,24 @@ func (j *Job) Cancel() {
 	j.cancel()
 }
 
+func (j *Job) Done() <-chan struct{} {
+	return j.done
+}
+
+func (j *Job) Start(runner Runner) {
+	if runner == nil {
+		j.markFailed(NewError("job runner cannot be nil", 500))
+		return
+	}
+	go j.run(j.ctx, runner)
+}
+
+func (j *Job) IsTerminal() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.isTerminalLocked()
+}
+
 func (j *Job) ReportProgress(progress any) {
 	j.mu.Lock()
 	if j.isTerminalLocked() {
@@ -504,16 +398,26 @@ func (j *Job) ReportProgress(progress any) {
 		Job:      j.snapshotLocked(),
 		Progress: progress,
 	}
+	j.progressLog = append(j.progressLog, event)
+	if limit := DefaultJobProgressReplayLimit; limit > 0 && len(j.progressLog) > limit {
+		j.progressLog = append([]Event(nil), j.progressLog[len(j.progressLog)-limit:]...)
+	}
 	j.mu.Unlock()
 	j.broadcast(event)
 }
 
 func (j *Job) Subscribe(buffer int) (<-chan Event, func()) {
+	ch, _, unsubscribe := j.SubscribeWithReplay(buffer)
+	return ch, unsubscribe
+}
+
+func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 	if buffer <= 0 {
 		buffer = 8
 	}
 	ch := make(chan Event, buffer)
 	j.mu.Lock()
+	replay := append([]Event(nil), j.progressLog...)
 	j.subscribers[ch] = struct{}{}
 	j.mu.Unlock()
 
@@ -525,13 +429,17 @@ func (j *Job) Subscribe(buffer int) (<-chan Event, func()) {
 		}
 		j.mu.Unlock()
 	}
-	return ch, unsubscribe
+	return ch, replay, unsubscribe
 }
 
 func (j *Job) run(ctx context.Context, runner Runner) {
 	j.markStarted()
 	result, err := runner(ctx, j, append([]string(nil), j.args...))
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			j.markFailed(NewError("operation timed out", 504))
+			return
+		}
 		if errors.Is(err, context.Canceled) {
 			j.markCanceled()
 			return
@@ -570,6 +478,7 @@ func (j *Job) markCompleted(result any) {
 	j.finishedAt = &now
 	event := Event{Type: EventResult, Job: j.snapshotLocked(), Result: result}
 	j.mu.Unlock()
+	j.signalDone()
 	j.broadcast(event)
 	j.closeSubscribers()
 }
@@ -587,6 +496,7 @@ func (j *Job) markFailed(err *Error) {
 	j.finishedAt = &now
 	event := Event{Type: EventError, Job: j.snapshotLocked(), Error: err}
 	j.mu.Unlock()
+	j.signalDone()
 	j.broadcast(event)
 	j.closeSubscribers()
 }
@@ -605,8 +515,15 @@ func (j *Job) markCanceled() {
 	j.finishedAt = &now
 	event := Event{Type: EventCanceled, Job: j.snapshotLocked(), Error: jobErr}
 	j.mu.Unlock()
+	j.signalDone()
 	j.broadcast(event)
 	j.closeSubscribers()
+}
+
+func (j *Job) signalDone() {
+	j.doneOnce.Do(func() {
+		close(j.done)
+	})
 }
 
 func (j *Job) broadcast(event Event) {
