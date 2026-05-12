@@ -110,7 +110,7 @@ func collectPackageKitUpdates(ctx context.Context, session packagekit.Session) (
 	}
 	defer packagekit.LogClose(ctx, trans)
 
-	if err := trans.Call("GetUpdates", uint64(0)); err != nil {
+	if err = trans.Call("GetUpdates", uint64(0)); err != nil {
 		return nil, err
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

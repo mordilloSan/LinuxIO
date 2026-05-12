@@ -419,7 +419,7 @@ func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail
 		}
 		defer pkgkit.LogClose(session.Context(), trans)
 
-		if err := trans.Call("GetUpdateDetail", []string{packageID}); err != nil {
+		if err = trans.Call("GetUpdateDetail", []string{packageID}); err != nil {
 			return err
 		}
 
@@ -441,7 +441,7 @@ func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
 		}
 		defer pkgkit.LogClose(session.Context(), updatesTrans)
 
-		if err := updatesTrans.Call("GetUpdates", uint64(0)); err != nil {
+		if err = updatesTrans.Call("GetUpdates", uint64(0)); err != nil {
 			return err
 		}
 
@@ -459,7 +459,7 @@ func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
 		}
 		defer pkgkit.LogClose(session.Context(), detailsTrans)
 
-		if err := detailsTrans.Call("GetUpdateDetail", pkgIDs); err != nil {
+		if err = detailsTrans.Call("GetUpdateDetail", pkgIDs); err != nil {
 			return err
 		}
 

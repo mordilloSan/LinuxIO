@@ -159,34 +159,35 @@ func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report
 		// Call UpdatePackages with all package IDs at once.
 		// Flag 0 = no special flags (install normally).
 		slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_count", len(packageIDs))
-		if err := trans.Call("UpdatePackages", uint64(0), packageIDs); err != nil {
+		if err = trans.Call("UpdatePackages", uint64(0), packageIDs); err != nil {
 			return err
 		}
 
-		// Process signals until Finished or error.
 		waitCtx, cancel := context.WithTimeout(session.Context(), 30*time.Minute)
 		defer cancel()
-		var lastWorkStatus uint32
-
-		for {
-			select {
-			case sig := <-trans.Signals():
-				if sig == nil {
-					continue
-				}
-				done, err := handlePackageUpdateSignal(report, sig, pkgkit.TransactionIface, &lastWorkStatus)
-				if err != nil {
-					return err
-				}
-				if done {
-					return nil
-				}
-
-			case <-waitCtx.Done():
-				return fmt.Errorf("timeout waiting for package updates to complete")
-			}
-		}
+		return awaitPackageUpdateSignals(waitCtx, trans, report)
 	})
+}
+
+func awaitPackageUpdateSignals(ctx context.Context, trans *pkgkit.Transaction, report pkgUpdateReporter) error {
+	var lastWorkStatus uint32
+	for {
+		select {
+		case sig := <-trans.Signals():
+			if sig == nil {
+				continue
+			}
+			done, err := handlePackageUpdateSignal(report, sig, pkgkit.TransactionIface, &lastWorkStatus)
+			if err != nil {
+				return err
+			}
+			if done {
+				return nil
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for package updates to complete")
+		}
+	}
 }
 
 func handlePackageUpdateSignal(
