@@ -16,7 +16,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -207,7 +207,7 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, args []string) (an
 	}
 }
 
-func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, args []string) (any, error) {
+func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("missing format or paths", 400)
 	}
@@ -352,7 +352,7 @@ func archiveNameForPaths(paths []string, extension string) string {
 	return "download" + extension
 }
 
-func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, store *settings.UserStore) *ipc.OperationCallbacks {
+func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, store *config.UserStore) *ipc.OperationCallbacks {
 	limiter := newProgressLimiter(jobSettingsForJob(transfer.job, store), transfer.total)
 	return &ipc.OperationCallbacks{
 		Cancel: func() bool {

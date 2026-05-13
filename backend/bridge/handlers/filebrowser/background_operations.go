@@ -17,7 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -91,8 +91,8 @@ type countProgressLimiter struct {
 	lastAt      time.Time
 }
 
-func newProgressLimiter(jobSettings settings.JobSettings, total int64) *progressLimiter {
-	jobSettings = settings.EffectiveJobSettings(jobSettings)
+func newProgressLimiter(jobSettings config.JobSettings, total int64) *progressLimiter {
+	jobSettings = config.EffectiveJobSettings(jobSettings)
 	minBytes := int64(jobSettings.ProgressMinBytesMB) * 1024 * 1024
 	if minBytes <= 0 {
 		minBytes = progressReportIntervalBytes
@@ -109,8 +109,8 @@ func newProgressLimiter(jobSettings settings.JobSettings, total int64) *progress
 	}
 }
 
-func newCountProgressLimiter(jobSettings settings.JobSettings) *countProgressLimiter {
-	jobSettings = settings.EffectiveJobSettings(jobSettings)
+func newCountProgressLimiter(jobSettings config.JobSettings) *countProgressLimiter {
+	jobSettings = config.EffectiveJobSettings(jobSettings)
 	minInterval := time.Duration(jobSettings.ProgressMinIntervalMs) * time.Millisecond
 	if minInterval <= 0 {
 		minInterval = 250 * time.Millisecond
@@ -172,18 +172,18 @@ func (l *countProgressLimiter) Set(processed, total int64) (int64, int, bool) {
 	return l.processed, pct, true
 }
 
-func jobSettingsForJob(job *bridgejobs.Job, store *settings.UserStore) settings.JobSettings {
+func jobSettingsForJob(job *bridgejobs.Job, store *config.UserStore) config.JobSettings {
 	if job == nil || strings.TrimSpace(job.Owner().Username) == "" {
-		return settings.DefaultJobSettings()
+		return config.DefaultJobSettings()
 	}
-	cfg, _, err := settings.SnapshotForUser(job.Owner().Username, store)
+	cfg, _, err := config.SnapshotForUser(job.Owner().Username, store)
 	if err != nil || cfg == nil {
-		return settings.DefaultJobSettings()
+		return config.DefaultJobSettings()
 	}
-	return settings.EffectiveJobSettings(cfg.Jobs)
+	return config.EffectiveJobSettings(cfg.Jobs)
 }
 
-func archiveCompressionWorkers(jobSettings settings.JobSettings) int {
+func archiveCompressionWorkers(jobSettings config.JobSettings) int {
 	workers := jobSettings.ArchiveCompressionWorkers
 	if workers <= 0 {
 		return runtime.GOMAXPROCS(0)
@@ -191,7 +191,7 @@ func archiveCompressionWorkers(jobSettings settings.JobSettings) int {
 	return workers
 }
 
-func archiveExtractWorkers(jobSettings settings.JobSettings) int {
+func archiveExtractWorkers(jobSettings config.JobSettings) int {
 	workers := jobSettings.ArchiveExtractWorkers
 	if workers <= 0 {
 		return runtime.GOMAXPROCS(0)
@@ -212,7 +212,7 @@ type ChmodProgress struct {
 	Phase     string `json:"phase,omitempty"`
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router, store *settings.UserStore) {
+func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
 	router.JobRunner(JobTypeFileCompress, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runCompressJobWithStore(ctx, job, store, args)
 	}, bridgejobs.ActionDefault)
@@ -239,7 +239,7 @@ func RegisterJobRoutes(router *bridgejobs.Router, store *settings.UserStore) {
 	bridgejobs.RegisterDataAttacher(JobTypeFileArchive, attachFileTransferData)
 }
 
-func newJobPhaseCallbacks(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {
+func newJobPhaseCallbacks(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {
 	limiter := newProgressLimiter(jobSettingsForJob(job, store), totalSize)
 	cancelFn := func() bool {
 		select {
@@ -428,7 +428,7 @@ func parseChmodArgs(args []string) (path, modeStr, owner, group string, recursiv
 	return
 }
 
-func newChmodProgressReporter(job *bridgejobs.Job, jobSettings settings.JobSettings, phase string) func(processed, total int64) {
+func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.JobSettings, phase string) func(processed, total int64) {
 	limiter := newCountProgressLimiter(jobSettings)
 	return func(processed, total int64) {
 		processed, pct, ok := limiter.Set(processed, total)
@@ -468,7 +468,7 @@ func prepareTransfer(root *fsroot.FSRoot, req transferRequest) (transferRequest,
 	return req, nil
 }
 
-func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, args []string) (any, error) {
+func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	path, modeStr, owner, group, recursive, err := parseChmodArgs(args)
 	if err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 400)
@@ -526,7 +526,7 @@ func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *setti
 	}, nil
 }
 
-func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, args []string) (any, error) {
+func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	if len(args) < 3 {
 		return nil, bridgejobs.NewError("missing format, destination, or paths", 400)
 	}
@@ -594,7 +594,7 @@ func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *se
 	}, nil
 }
 
-func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, args []string) (any, error) {
+func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	archivePath, destination, err := parseExtractArgs(args)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing archive path", 400)
@@ -648,7 +648,7 @@ func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *set
 	}, nil
 }
 
-func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, args []string) (any, error) {
+func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("missing source or destination", 400)
 	}
@@ -715,7 +715,7 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settin
 	}, nil
 }
 
-func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *settings.UserStore, args []string) (any, error) {
+func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
 	req, err := parseTransferRequest(args)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing source or destination", 400)

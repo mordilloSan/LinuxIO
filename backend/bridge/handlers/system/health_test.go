@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,7 +94,7 @@ func TestApplyFailedLoginAlertDismissal(t *testing.T) {
 		},
 	}
 
-	applyFailedLoginAlertDismissal(summary, &settings.Dismissals{FailedLoginAlertID: alertID})
+	applyFailedLoginAlertDismissal(summary, &config.Dismissals{FailedLoginAlertID: alertID})
 
 	require.Nil(t, summary.FailedLoginAlert)
 }
@@ -111,7 +111,7 @@ func TestApplyFailedLoginAlertDismissalKeepsNewAlert(t *testing.T) {
 		},
 	}
 
-	applyFailedLoginAlertDismissal(summary, &settings.Dismissals{FailedLoginAlertID: failedLoginAlertID("user", "miguel", "login_def")})
+	applyFailedLoginAlertDismissal(summary, &config.Dismissals{FailedLoginAlertID: failedLoginAlertID("user", "miguel", "login_def")})
 
 	require.NotNil(t, summary.FailedLoginAlert)
 	require.Equal(t, alertID, summary.FailedLoginAlert.ID)

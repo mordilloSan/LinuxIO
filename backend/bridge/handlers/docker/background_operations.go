@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -36,7 +36,7 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router, username string, store *settings.UserStore) {
+func RegisterJobRoutes(router *bridgejobs.Router, username string, store *config.UserStore) {
 	router.JobRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 		return runDockerComposeJob(ctx, job, username, store, args)
 	}, bridgejobs.ActionDefault)
@@ -45,7 +45,7 @@ func RegisterJobRoutes(router *bridgejobs.Router, username string, store *settin
 	}, bridgejobs.SingletonSystem)
 }
 
-func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *settings.UserStore, args []string) (any, error) {
+func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("missing required arguments: action, projectName", 400)
 	}
@@ -101,14 +101,14 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	return result, nil
 }
 
-func resolveComposeJobPaths(username string, store *settings.UserStore, projectName, composePath string) (string, string, error) {
+func resolveComposeJobPaths(username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}
 	return findComposeFileWithStore(username, store, projectName)
 }
 
-func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *settings.UserStore) (any, error) {
+func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {
 	dockerFolders, err := configuredDockerFolders(username, store)
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to load user config", 500)

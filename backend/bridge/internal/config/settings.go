@@ -1,4 +1,4 @@
-package settings
+package config
 
 // DefaultAppSettings returns sane UI defaults.
 func DefaultAppSettings() AppSettings {
@@ -114,27 +114,27 @@ func DefaultJobSettings() JobSettings {
 	}
 }
 
-func EffectiveJobSettings(settings JobSettings) JobSettings {
+func EffectiveJobSettings(jobSettings JobSettings) JobSettings {
 	defaults := DefaultJobSettings()
-	if settings.ProgressMinIntervalMs <= 0 {
-		settings.ProgressMinIntervalMs = defaults.ProgressMinIntervalMs
+	if jobSettings.ProgressMinIntervalMs <= 0 {
+		jobSettings.ProgressMinIntervalMs = defaults.ProgressMinIntervalMs
 	}
-	if settings.NotificationMinIntervalMs <= 0 {
-		settings.NotificationMinIntervalMs = defaults.NotificationMinIntervalMs
+	if jobSettings.NotificationMinIntervalMs <= 0 {
+		jobSettings.NotificationMinIntervalMs = defaults.NotificationMinIntervalMs
 	}
-	if settings.ProgressMinBytesMB <= 0 {
-		settings.ProgressMinBytesMB = defaults.ProgressMinBytesMB
+	if jobSettings.ProgressMinBytesMB <= 0 {
+		jobSettings.ProgressMinBytesMB = defaults.ProgressMinBytesMB
 	}
-	if settings.HeavyArchiveConcurrency <= 0 {
-		settings.HeavyArchiveConcurrency = defaults.HeavyArchiveConcurrency
+	if jobSettings.HeavyArchiveConcurrency <= 0 {
+		jobSettings.HeavyArchiveConcurrency = defaults.HeavyArchiveConcurrency
 	}
-	if settings.ArchiveCompressionWorkers < 0 {
-		settings.ArchiveCompressionWorkers = defaults.ArchiveCompressionWorkers
+	if jobSettings.ArchiveCompressionWorkers < 0 {
+		jobSettings.ArchiveCompressionWorkers = defaults.ArchiveCompressionWorkers
 	}
-	if settings.ArchiveExtractWorkers < 0 {
-		settings.ArchiveExtractWorkers = defaults.ArchiveExtractWorkers
+	if jobSettings.ArchiveExtractWorkers < 0 {
+		jobSettings.ArchiveExtractWorkers = defaults.ArchiveExtractWorkers
 	}
-	return settings
+	return jobSettings
 }
 
 // DefaultSettings composes full defaults for later expansion.

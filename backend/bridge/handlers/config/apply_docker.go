@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyDockerSettingsUpdate(docker *settings.Docker, payload *configDockerPayload) error {
+func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *configDockerPayload) error {
 	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
@@ -21,7 +21,7 @@ func applyDockerSettingsUpdate(docker *settings.Docker, payload *configDockerPay
 	return nil
 }
 
-func applyDockerProxyUpdate(proxy *settings.DockerProxy, payload *configDockerProxyPayload) {
+func applyDockerProxyUpdate(proxy *bridgeconfig.DockerProxy, payload *configDockerProxyPayload) {
 	if payload.CaddyEnabled != nil {
 		proxy.CaddyEnabled = *payload.CaddyEnabled
 	}
@@ -33,7 +33,7 @@ func applyDockerProxyUpdate(proxy *settings.DockerProxy, payload *configDockerPr
 	}
 }
 
-func applyDockerFoldersSetting(docker *settings.Docker, folderValues []string) error {
+func applyDockerFoldersSetting(docker *bridgeconfig.Docker, folderValues []string) error {
 	if folderValues == nil {
 		return nil
 	}
@@ -41,7 +41,7 @@ func applyDockerFoldersSetting(docker *settings.Docker, folderValues []string) e
 		return fmt.Errorf("docker folders cannot be empty")
 	}
 
-	folders := make([]settings.AbsolutePath, 0, len(folderValues))
+	folders := make([]bridgeconfig.AbsolutePath, 0, len(folderValues))
 	seen := make(map[string]struct{}, len(folderValues))
 	for _, folderValue := range folderValues {
 		folderInput := strings.TrimSpace(folderValue)
@@ -59,7 +59,7 @@ func applyDockerFoldersSetting(docker *settings.Docker, folderValues []string) e
 			return fmt.Errorf("docker folders cannot include duplicates")
 		}
 		seen[folder] = struct{}{}
-		folders = append(folders, settings.AbsolutePath(folder))
+		folders = append(folders, bridgeconfig.AbsolutePath(folder))
 	}
 
 	docker.Folders = folders

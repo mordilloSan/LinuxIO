@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -9,11 +9,11 @@ import (
 // Pass it by value; it is only two pointers.
 type Runtime struct {
 	Session *session.Session
-	Store   *settings.UserStore
+	Store   *config.UserStore
 }
 
 // New constructs a Runtime and panics if either dependency is nil.
-func New(sess *session.Session, store *settings.UserStore) Runtime {
+func New(sess *session.Session, store *config.UserStore) Runtime {
 	if sess == nil {
 		panic("runtime: nil session")
 	}

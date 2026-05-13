@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -39,9 +39,9 @@ func DismissUncleanShutdownForRuntime(rt runtime.Runtime, args []string) (map[st
 		return nil, bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := settings.UpdateForUser(username, rt.Store, func(cfg *settings.Settings) error {
+	if _, _, err := config.UpdateForUser(username, rt.Store, func(cfg *config.Settings) error {
 		if cfg.Dismissals == nil {
-			cfg.Dismissals = &settings.Dismissals{}
+			cfg.Dismissals = &config.Dismissals{}
 		}
 		cfg.Dismissals.UncleanShutdownBootID = bootID
 		return nil
@@ -62,9 +62,9 @@ func DismissFailedLoginAlertForRuntime(rt runtime.Runtime, args []string) (map[s
 		return nil, bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := settings.UpdateForUser(username, rt.Store, func(cfg *settings.Settings) error {
+	if _, _, err := config.UpdateForUser(username, rt.Store, func(cfg *config.Settings) error {
 		if cfg.Dismissals == nil {
-			cfg.Dismissals = &settings.Dismissals{}
+			cfg.Dismissals = &config.Dismissals{}
 		}
 		cfg.Dismissals.FailedLoginAlertID = alertID
 		return nil
@@ -78,11 +78,11 @@ func DismissFailedLoginAlertForRuntime(rt runtime.Runtime, args []string) (map[s
 // applyHealthDismissals suppresses acknowledged one-shot health signals. Any
 // error reading the user's settings is treated as "not dismissed" so warnings
 // still surface.
-func applyHealthDismissals(username string, store *settings.UserStore, summary *SystemHealthSummary) {
+func applyHealthDismissals(username string, store *config.UserStore, summary *SystemHealthSummary) {
 	if !hasDismissibleHealthSignal(summary) {
 		return
 	}
-	cfg, _, err := settings.SnapshotForUser(username, store)
+	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
 		return
@@ -99,7 +99,7 @@ func hasDismissibleHealthSignal(summary *SystemHealthSummary) bool {
 		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
 }
 
-func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *settings.Dismissals) {
+func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
 	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
 		return
 	}
@@ -109,7 +109,7 @@ func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *set
 	}
 }
 
-func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *settings.Dismissals) {
+func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
 	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
 		return
 	}

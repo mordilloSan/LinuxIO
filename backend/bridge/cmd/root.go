@@ -6,8 +6,8 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
 
@@ -45,7 +45,7 @@ func RunBridgeProcess() {
 	clientConn := openClientConnection()
 	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
 
-	userConfig, err := settings.OpenUserStore(sess.User.Username)
+	userConfig, err := config.OpenUserStore(sess.User.Username)
 	if err != nil {
 		slog.Error("failed to open config store", "user", sess.User.Username, "error", err)
 		os.Exit(1)

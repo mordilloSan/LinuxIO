@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyAppSettingsUpdate(app *settings.AppSettings, payload *configAppSettingsPayload) error {
+func applyAppSettingsUpdate(app *bridgeconfig.AppSettings, payload *configAppSettingsPayload) error {
 	if err := applyThemeSetting(app, payload.Theme); err != nil {
 		return err
 	}
@@ -28,30 +28,30 @@ func applyAppSettingsUpdate(app *settings.AppSettings, payload *configAppSetting
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
 
-func applyThemeSetting(app *settings.AppSettings, theme *string) error {
+func applyThemeSetting(app *bridgeconfig.AppSettings, theme *string) error {
 	if theme == nil {
 		return nil
 	}
 	normalized := strings.ToUpper(strings.TrimSpace(*theme))
-	if normalized != string(settings.ThemeLight) && normalized != string(settings.ThemeDark) {
+	if normalized != string(bridgeconfig.ThemeLight) && normalized != string(bridgeconfig.ThemeDark) {
 		return fmt.Errorf("invalid theme value (LIGHT|DARK)")
 	}
-	app.Theme = settings.Theme(normalized)
+	app.Theme = bridgeconfig.Theme(normalized)
 	return nil
 }
 
-func applyPrimaryColorSetting(app *settings.AppSettings, primaryColor *string) error {
+func applyPrimaryColorSetting(app *bridgeconfig.AppSettings, primaryColor *string) error {
 	if primaryColor == nil {
 		return nil
 	}
-	if !settings.IsValidCSSColor(*primaryColor) {
+	if !bridgeconfig.IsValidCSSColor(*primaryColor) {
 		return fmt.Errorf("invalid primaryColor")
 	}
-	app.PrimaryColor = settings.CSSColor(*primaryColor)
+	app.PrimaryColor = bridgeconfig.CSSColor(*primaryColor)
 	return nil
 }
 
-func applyThemeColorOverrides(app *settings.AppSettings, payload *configThemeColorsByModePayload) error {
+func applyThemeColorOverrides(app *bridgeconfig.AppSettings, payload *configThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
@@ -66,20 +66,20 @@ func applyThemeColorOverrides(app *settings.AppSettings, payload *configThemeCol
 	if light == nil && dark == nil {
 		app.ThemeColors = nil
 	} else {
-		app.ThemeColors = &settings.ThemeColorsByMode{Light: light, Dark: dark}
+		app.ThemeColors = &bridgeconfig.ThemeColorsByMode{Light: light, Dark: dark}
 	}
 	return nil
 }
 
-func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*settings.ThemeColors, error) {
+func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*bridgeconfig.ThemeColors, error) {
 	if payload == nil {
 		return nil, nil
 	}
-	colors := &settings.ThemeColors{}
+	colors := &bridgeconfig.ThemeColors{}
 	hasAny := false
 	fields := []struct {
 		src *string
-		dst **settings.CSSColor
+		dst **bridgeconfig.CSSColor
 		key string
 	}{
 		{src: payload.BackgroundDefault, dst: &colors.BackgroundDefault, key: "backgroundDefault"},
@@ -105,10 +105,10 @@ func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*se
 		if field.src == nil {
 			continue
 		}
-		if !settings.IsValidCSSColor(*field.src) {
+		if !bridgeconfig.IsValidCSSColor(*field.src) {
 			return nil, fmt.Errorf("invalid themeColors.%s.%s", modePrefix, field.key)
 		}
-		value := settings.CSSColor(*field.src)
+		value := bridgeconfig.CSSColor(*field.src)
 		*field.dst = &value
 		hasAny = true
 	}
@@ -118,19 +118,19 @@ func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*se
 	return colors, nil
 }
 
-func applyOptionalDockerDashboardSections(app *settings.AppSettings, sections *settings.DockerDashboardSections) {
+func applyOptionalDockerDashboardSections(app *bridgeconfig.AppSettings, sections *bridgeconfig.DockerDashboardSections) {
 	if sections != nil {
 		app.DockerDashboardSections = sections
 	}
 }
 
-func applyOptionalHardwareSections(app *settings.AppSettings, sections *settings.HardwareSections) {
+func applyOptionalHardwareSections(app *bridgeconfig.AppSettings, sections *bridgeconfig.HardwareSections) {
 	if sections != nil {
 		app.HardwareSections = sections
 	}
 }
 
-func applyViewModes(app *settings.AppSettings, viewModes map[string]string) {
+func applyViewModes(app *bridgeconfig.AppSettings, viewModes map[string]string) {
 	if viewModes == nil {
 		return
 	}
@@ -149,7 +149,7 @@ func applyViewModes(app *settings.AppSettings, viewModes map[string]string) {
 	app.ViewModes = normalized
 }
 
-func applyChunkSizeSetting(app *settings.AppSettings, chunkSize *int) error {
+func applyChunkSizeSetting(app *bridgeconfig.AppSettings, chunkSize *int) error {
 	if chunkSize == nil {
 		return nil
 	}

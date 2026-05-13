@@ -1,6 +1,6 @@
 package config
 
-import "github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+import bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 
 type configSetPayload struct {
 	AppSettings *configAppSettingsPayload `json:"appSettings"`
@@ -10,18 +10,18 @@ type configSetPayload struct {
 }
 
 type configAppSettingsPayload struct {
-	Theme                   *string                           `json:"theme"`
-	PrimaryColor            *string                           `json:"primaryColor"`
-	ThemeColors             *configThemeColorsByModePayload   `json:"themeColors"`
-	SidebarCollapsed        *bool                             `json:"sidebarCollapsed"`
-	ShowHiddenFiles         *bool                             `json:"showHiddenFiles"`
-	DashboardOrder          []string                          `json:"dashboardOrder"`
-	HiddenCards             []string                          `json:"hiddenCards"`
-	ContainerOrder          []string                          `json:"containerOrder"`
-	DockerDashboardSections *settings.DockerDashboardSections `json:"dockerDashboardSections"`
-	HardwareSections        *settings.HardwareSections        `json:"hardwareSections"`
-	ViewModes               map[string]string                 `json:"viewModes"`
-	ChunkSizeMB             *int                              `json:"chunkSizeMB"`
+	Theme                   *string                               `json:"theme"`
+	PrimaryColor            *string                               `json:"primaryColor"`
+	ThemeColors             *configThemeColorsByModePayload       `json:"themeColors"`
+	SidebarCollapsed        *bool                                 `json:"sidebarCollapsed"`
+	ShowHiddenFiles         *bool                                 `json:"showHiddenFiles"`
+	DashboardOrder          []string                              `json:"dashboardOrder"`
+	HiddenCards             []string                              `json:"hiddenCards"`
+	ContainerOrder          []string                              `json:"containerOrder"`
+	DockerDashboardSections *bridgeconfig.DockerDashboardSections `json:"dockerDashboardSections"`
+	HardwareSections        *bridgeconfig.HardwareSections        `json:"hardwareSections"`
+	ViewModes               map[string]string                     `json:"viewModes"`
+	ChunkSizeMB             *int                                  `json:"chunkSizeMB"`
 }
 
 type configThemeColorsByModePayload struct {

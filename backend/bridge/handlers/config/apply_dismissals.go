@@ -3,12 +3,12 @@ package config
 import (
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
+	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyDismissalsUpdate(dismissals **settings.Dismissals, payload *configDismissalsPayload) {
+func applyDismissalsUpdate(dismissals **bridgeconfig.Dismissals, payload *configDismissalsPayload) {
 	if *dismissals == nil {
-		*dismissals = &settings.Dismissals{}
+		*dismissals = &bridgeconfig.Dismissals{}
 	}
 	if payload.UncleanShutdownBootID != nil {
 		(*dismissals).UncleanShutdownBootID = strings.TrimSpace(*payload.UncleanShutdownBootID)
