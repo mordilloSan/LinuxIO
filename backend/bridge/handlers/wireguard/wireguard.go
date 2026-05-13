@@ -21,7 +21,6 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
 // --- Handler Implementations ---
@@ -139,7 +138,7 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 }
 
 func readInterfaceEndpointInfo(logPrefix, egressNic string) (string, string) {
-	publicIP, _ := utils.GetPublicIP()
+	publicIP, _ := getPublicIP()
 	if publicIP == "" {
 		slog.Warn("public IP lookup returned empty string", "operation", logPrefix)
 	}
@@ -235,9 +234,9 @@ func createNextPeer(cfg InterfaceConfig) (PeerConfig, string, error) {
 }
 
 func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig) error {
-	publicIP, _ := utils.GetPublicIP()
+	publicIP, _ := getPublicIP()
 	if publicIP == "" {
-		slog.Warn("AddPeer: GetPublicIP returned empty string")
+		slog.Warn("AddPeer: public IP lookup returned empty string")
 	}
 
 	gatewayDNS, _ := getDefaultGatewayIPv4()

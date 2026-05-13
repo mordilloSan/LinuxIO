@@ -170,7 +170,8 @@ func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
 	}
 	var result relay.ResultFrame
-	if err := json.Unmarshal(frame.Payload, &result); err != nil {
+	err = json.Unmarshal(frame.Payload, &result)
+	if err != nil {
 		t.Fatalf("json.Unmarshal(result): %v", err)
 	}
 	if result.Status != "ok" {

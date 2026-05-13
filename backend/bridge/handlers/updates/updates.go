@@ -18,7 +18,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/autoupdate"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
 type UpdateDetail struct {
@@ -231,12 +230,12 @@ func buildBasicUpdates(pkgIDs []string, metaByPkg map[string]packageUpdateMeta) 
 }
 
 func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetail, error) {
-	pkgID, err := utils.AsString(body[0])
+	pkgID, err := dbusclient.AsString(body[0])
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid pkgID: %w", err)
 	}
 
-	version, err := utils.AsString(body[11])
+	version, err := dbusclient.AsString(body[11])
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid version for %q: %w", pkgID, err)
 	}
@@ -244,22 +243,22 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 		_, version = extractNameVersion(pkgID)
 	}
 
-	issued, err := utils.AsString(body[10])
+	issued, err := dbusclient.AsString(body[10])
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid issued date for %q: %w", pkgID, err)
 	}
 
-	changelogRaw, err := utils.AsString(body[8])
+	changelogRaw, err := dbusclient.AsString(body[8])
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid changelog for %q: %w", pkgID, err)
 	}
 
-	restart, err := utils.AsUint32(body[6])
+	restart, err := dbusclient.AsUint32(body[6])
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid restart flag for %q: %w", pkgID, err)
 	}
 
-	state, err := utils.AsUint32(body[9])
+	state, err := dbusclient.AsUint32(body[9])
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid state for %q: %w", pkgID, err)
 	}
@@ -327,7 +326,7 @@ func collectUpdateDetails(ctx context.Context, sigCh <-chan *dbusclient.Signal, 
 				continue
 			}
 
-			pkgID, err := utils.AsString(sig.Body[0])
+			pkgID, err := dbusclient.AsString(sig.Body[0])
 			if err != nil {
 				return nil, fmt.Errorf("invalid pkgID: %w", err)
 			}

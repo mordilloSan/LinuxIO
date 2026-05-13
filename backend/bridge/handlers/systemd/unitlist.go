@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
 const maxConcurrentUnitPropertyFetches = 16
@@ -40,7 +39,7 @@ func listUnitsBySuffix(
 
 	loaded := make(map[string]listedUnit)
 	for _, rawUnit := range units {
-		name, err := utils.AsString(rawUnit[0])
+		name, err := dbusclient.AsString(rawUnit[0])
 		if err != nil {
 			return nil, fmt.Errorf("invalid unit name: %w", err)
 		}
@@ -48,10 +47,10 @@ func listUnitsBySuffix(
 			continue
 		}
 
-		description, _ := utils.AsString(rawUnit[1])
-		loadState, _ := utils.AsString(rawUnit[2])
-		activeState, _ := utils.AsString(rawUnit[3])
-		subState, _ := utils.AsString(rawUnit[4])
+		description, _ := dbusclient.AsString(rawUnit[1])
+		loadState, _ := dbusclient.AsString(rawUnit[2])
+		activeState, _ := dbusclient.AsString(rawUnit[3])
+		subState, _ := dbusclient.AsString(rawUnit[4])
 		path, _ := rawUnit[6].(dbusclient.ObjectPath)
 
 		loaded[name] = listedUnit{
