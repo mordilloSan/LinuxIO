@@ -40,8 +40,8 @@ func handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) 
 	if err != nil {
 		return err
 	}
-	return emit.Result(ConfigSetResult{
+	return bridgeipc.EmitResult(emit, ConfigSetResult{
 		Config:          cfg,
 		RestartRequired: restartRequired,
-	})
+	}, nil)
 }

@@ -18,6 +18,10 @@ func FetchUptimeSeconds() (uint64, error) {
 	return host.Uptime()
 }
 
+func GetCurrentServerTime() string {
+	return time.Now().Format(time.RFC3339)
+}
+
 func GetTimezones() ([]string, error) {
 	const root = "/usr/share/zoneinfo"
 	var zones []string

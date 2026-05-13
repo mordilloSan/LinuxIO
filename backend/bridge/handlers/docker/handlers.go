@@ -2,31 +2,15 @@ package docker
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/settings"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-type dockerHandlers struct {
-	username string
-	store    *settings.UserStore
-}
-
 // RegisterHandlers registers all docker handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	handlers := dockerHandlers{
-		username: rt.Username(),
-		store:    rt.Store,
-	}
-
-	RegisterJobRoutes(router, handlers.username, handlers.store)
-	go watchtowerOnce.Do(func() { SyncWatchtowerStackWithStore(handlers.username, handlers.store) })
-
-	if err := initIconCache(); err != nil {
-		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "error", err)
-	}
+	handlers := newDockerHandlers(rt)
+	prepareDockerHandlers(router, handlers)
 
 	bridgeipc.RegisterRoutes(router, "docker", []bridgeipc.Command{
 		{Name: "list_containers", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListContainers},

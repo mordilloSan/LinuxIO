@@ -176,6 +176,13 @@ func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q, want ok", result.Status)
 	}
+	frame, err = relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamClose {
+		t.Fatalf("opcode = 0x%02x, want OpStreamClose", frame.Opcode)
+	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("AttachJobStream returned error: %v", err)
 	}

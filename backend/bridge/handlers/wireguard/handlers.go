@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -32,13 +31,11 @@ func handleListInterfaces(ctx context.Context, args []string, emit bridgeipc.Eve
 }
 
 func handleAddInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("add_interface")
 	result, err := AddInterface(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleRemoveInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("remove_interface")
 	result, err := RemoveInterface(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -49,13 +46,11 @@ func handleListPeers(ctx context.Context, args []string, emit bridgeipc.Events) 
 }
 
 func handleAddPeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("add_peer")
 	result, err := AddPeer(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleRemovePeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("remove_peer")
 	result, err := RemovePeerByName(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -71,29 +66,21 @@ func handlePeerConfigDownload(ctx context.Context, args []string, emit bridgeipc
 }
 
 func handleUpInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("up_interface")
 	result, err := UpInterface(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleDownInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("down_interface")
 	result, err := DownInterface(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleEnableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("enable_interface")
 	result, err := EnableInterface(args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleDisableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	logAction("disable_interface")
 	result, err := DisableInterface(args)
 	return bridgeipc.EmitResult(emit, result, err)
-}
-
-func logAction(action string) {
-	slog.Info("wireguard action requested", "component", "wireguard", "mode", action)
 }

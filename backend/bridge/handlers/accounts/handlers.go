@@ -61,7 +61,7 @@ func handleTerminateSession(ctx context.Context, args []string, emit bridgeipc.E
 	if err := TerminateSession(ctx, sessionID, pid); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleCreateUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -73,7 +73,7 @@ func handleCreateUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err := CreateUser(req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleDeleteUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -84,7 +84,7 @@ func handleDeleteUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err := DeleteUser(args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleModifyUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -96,7 +96,7 @@ func handleModifyUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err := ModifyUser(req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleChangePassword(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -107,7 +107,7 @@ func handleChangePassword(ctx context.Context, args []string, emit bridgeipc.Eve
 	if err := ChangePassword(args[0], args[1]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleLockUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -118,7 +118,7 @@ func handleLockUser(ctx context.Context, args []string, emit bridgeipc.Events) e
 	if err := LockUser(args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleUnlockUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -129,7 +129,7 @@ func handleUnlockUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err := UnlockUser(args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleListGroups(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -146,7 +146,7 @@ func handleCreateGroup(ctx context.Context, args []string, emit bridgeipc.Events
 	if err := CreateGroup(req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleDeleteGroup(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -157,7 +157,7 @@ func handleDeleteGroup(ctx context.Context, args []string, emit bridgeipc.Events
 	if err := DeleteGroup(args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleModifyGroupMembers(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -169,7 +169,7 @@ func handleModifyGroupMembers(ctx context.Context, args []string, emit bridgeipc
 	if err := ModifyGroupMembers(req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
 func handleListShells(ctx context.Context, args []string, emit bridgeipc.Events) error {

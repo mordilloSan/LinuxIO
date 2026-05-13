@@ -2,6 +2,39 @@
 
 Bridge handlers are route based. Pick the route mode first, then write the smallest handler shape that matches it.
 
+## `handlers.go` Layout
+
+`handlers.go` is only route wiring and IPC adapter code. It may contain:
+
+- `RegisterHandlers`
+- `handle*` adapter functions or methods
+
+It must not contain package state types, package variables, constants, helper functions, validators, parsers, or domain implementations. Put those in named files beside it, for example:
+
+- `handler_state.go` for small adapter state structs
+- `handler_args.go` for shared route argument parsing
+- `*_operation.go` for mutation/job orchestration
+- domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `terminal_session.go`
+
+Every adapter in `handlers.go` should call one domain or operation function and return through `bridgeipc.EmitResult`:
+
+```go
+func handleListTimers(ctx context.Context, args []string, emit bridgeipc.Events) error {
+    result, err := ListTimers(ctx)
+    return bridgeipc.EmitResult(emit, result, err)
+}
+```
+
+The implementation belongs outside `handlers.go`:
+
+```go
+func ListTimers(ctx context.Context) ([]TimerStatus, error) {
+    // actual implementation
+}
+```
+
+Do not call `emit.Result(...)` or `emit.Error(...)` directly from `handlers.go`; use `bridgeipc.EmitResult` so result and error mapping stay consistent.
+
 ## Mode Selection
 
 | Need | Mode |
@@ -46,7 +79,7 @@ router.Job("things.create", handleCreate, bridgeipc.ActionDefault)
 router.JobRunner("things.reindex", runReindex, bridgeipc.SingletonSystem)
 ```
 
-Handlers registered with `router.Job` can report progress with `emit.Progress(...)` and set the final result with `emit.Result(...)`.
+Handlers registered with `router.Job` can report progress with `emit.Progress(...)`; `handlers.go` adapters still finish with `bridgeipc.EmitResult(...)`. Operation helpers outside `handlers.go` may use lower-level event APIs when they genuinely need to orchestrate progress.
 
 Runners registered with `router.JobRunner` report progress directly:
 

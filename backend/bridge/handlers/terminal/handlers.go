@@ -23,7 +23,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 func handleListShells(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	if len(args) < 1 {
-		return emit.Result([]string{})
+		return bridgeipc.EmitResult(emit, []string{}, nil)
 	}
 	shells, err := ListContainerShells(args[0])
 	return bridgeipc.EmitResult(emit, shells, err)
