@@ -281,7 +281,8 @@ func newClientConnCloser(clientConn net.Conn) func() {
 
 func startMainRequestLoop(rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
 	wg.Go(func() {
-		handleMainRequest(rt, router, clientConn, closeClientConn)
+		defer closeClientConn()
+		handleYamuxSession(rt, router, clientConn)
 		select {
 		case shutdownCh <- "client disconnected":
 		default:
@@ -321,12 +322,6 @@ func waitForInflightHandlers() {
 
 func printBridgeVersion() {
 	fmt.Printf("LinuxIO Bridge %s\n", version.Version)
-}
-
-// handleMainRequest sets up a yamux session for the client connection.
-func handleMainRequest(rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn, closeConn func()) {
-	defer closeConn()
-	handleYamuxSession(rt, router, conn)
 }
 
 // handleYamuxSession handles a yamux multiplexed connection.
