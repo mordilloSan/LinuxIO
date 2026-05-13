@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -24,18 +25,18 @@ type InterfaceConfig struct {
 type Backend interface {
 	Name() string
 	Read() (InterfaceConfig, error)
-	SetIPv4DHCP() error
-	SetIPv4Manual(addressCIDR, gateway string, dns []string) error
-	SetIPv6DHCP() error
-	SetIPv6Static(addressCIDR string) error
-	SetMTU(mtu uint32) error
-	Enable() error
-	Disable() error
+	SetIPv4DHCP(ctx context.Context) error
+	SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error
+	SetIPv6DHCP(ctx context.Context) error
+	SetIPv6Static(ctx context.Context, addressCIDR string) error
+	SetMTU(ctx context.Context, mtu uint32) error
+	Enable(ctx context.Context) error
+	Disable(ctx context.Context) error
 }
 
 type Runner interface {
 	LookPath(name string) (string, error)
-	Run(name string, args ...string) ([]byte, error)
+	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 type Environment struct {

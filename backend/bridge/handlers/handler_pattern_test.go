@@ -19,12 +19,32 @@ func TestHandlerFilesOnlyContainRegistrationAndAdapters(t *testing.T) {
 	}
 }
 
+func TestHandlerCodeUsesCallerContextForBlockingWork(t *testing.T) {
+	if err := walkGoFiles(func(path string) error {
+		return checkContextPropagation(t, path)
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func walkHandlerFiles(check func(path string) error) error {
 	return filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if skipHandlerFile(path, d) {
+			return nil
+		}
+		return check(path)
+	})
+}
+
+func walkGoFiles(check func(path string) error) error {
+	return filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 		return check(path)
@@ -81,4 +101,62 @@ func checkHandlerFuncDecl(t *testing.T, path string, decl *ast.FuncDecl) {
 	if decl.Name.Name != "RegisterHandlers" && !strings.HasPrefix(decl.Name.Name, "handle") {
 		t.Errorf("%s: unexpected function %s in handlers.go; only RegisterHandlers and handle* adapters are allowed", path, decl.Name.Name)
 	}
+}
+
+func checkContextPropagation(t *testing.T, path string) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, src, 0)
+	if err != nil {
+		return err
+	}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if isSelectorCall(call, "exec", "Command") {
+				t.Errorf("%s:%s: use exec.CommandContext with caller ctx", path, fn.Name.Name)
+			}
+			if isSelectorCall(call, "context", "Background") && !isAllowedBackground(path, fn.Name.Name) {
+				t.Errorf("%s:%s: use caller ctx instead of context.Background", path, fn.Name.Name)
+			}
+			return true
+		})
+	}
+	return nil
+}
+
+func isSelectorCall(call *ast.CallExpr, pkg, name string) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != name {
+		return false
+	}
+	ident, ok := sel.X.(*ast.Ident)
+	return ok && ident.Name == pkg
+}
+
+func isAllowedBackground(path, funcName string) bool {
+	allowed := map[string]map[string]bool{
+		"appupdate/app_update_operation.go": {
+			"detachedPostUpdateContext": true,
+		},
+		"docker/docker.go": {
+			"detachedDockerStartupContext": true,
+		},
+		"docker/watchtower.go": {
+			"detachedWatchtowerContext": true,
+		},
+		"filebrowser/filebrowser.go": {
+			"runDetachedIndexerUpdate": true,
+		},
+	}
+	return allowed[filepath.ToSlash(path)][funcName]
 }

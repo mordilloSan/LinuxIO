@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -19,7 +20,10 @@ func (r *fakeRunner) LookPath(name string) (string, error) {
 	return name, nil
 }
 
-func (r *fakeRunner) Run(name string, args ...string) ([]byte, error) {
+func (r *fakeRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	call := strings.TrimSpace(strings.Join(append([]string{name}, args...), " "))
 	r.calls = append(r.calls, call)
 	if out, ok := r.outputs[call]; ok {

@@ -2,6 +2,7 @@ package network
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -61,8 +62,8 @@ func (b *ifcfgBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *ifcfgBackend) SetIPv4DHCP() error {
-	return b.update(func(doc *keyValueDoc) error {
+func (b *ifcfgBackend) SetIPv4DHCP(ctx context.Context) error {
+	return b.update(ctx, func(doc *keyValueDoc) error {
 		doc.set("BOOTPROTO", "dhcp")
 		for _, key := range []string{"IPADDR", "PREFIX", "NETMASK", "GATEWAY", "PEERDNS"} {
 			doc.delete(key)
@@ -72,7 +73,7 @@ func (b *ifcfgBackend) SetIPv4DHCP() error {
 	})
 }
 
-func (b *ifcfgBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) error {
+func (b *ifcfgBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
 	ip, prefix, err := parseIPv4CIDR(addressCIDR)
 	if err != nil {
 		return err
@@ -80,7 +81,7 @@ func (b *ifcfgBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) 
 	if !isIPv4(gateway) {
 		return fmt.Errorf("invalid IPv4 gateway %q", gateway)
 	}
-	return b.update(func(doc *keyValueDoc) error {
+	return b.update(ctx, func(doc *keyValueDoc) error {
 		doc.set("BOOTPROTO", "none")
 		doc.set("IPADDR", ip)
 		doc.set("PREFIX", fmt.Sprintf("%d", prefix))
@@ -91,8 +92,8 @@ func (b *ifcfgBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) 
 	})
 }
 
-func (b *ifcfgBackend) SetIPv6DHCP() error {
-	return b.update(func(doc *keyValueDoc) error {
+func (b *ifcfgBackend) SetIPv6DHCP(ctx context.Context) error {
+	return b.update(ctx, func(doc *keyValueDoc) error {
 		doc.set("IPV6INIT", "yes")
 		doc.set("IPV6_AUTOCONF", "yes")
 		doc.set("DHCPV6C", "yes")
@@ -101,11 +102,11 @@ func (b *ifcfgBackend) SetIPv6DHCP() error {
 	})
 }
 
-func (b *ifcfgBackend) SetIPv6Static(addressCIDR string) error {
+func (b *ifcfgBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
 	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
-	return b.update(func(doc *keyValueDoc) error {
+	return b.update(ctx, func(doc *keyValueDoc) error {
 		doc.set("IPV6INIT", "yes")
 		doc.set("IPV6_AUTOCONF", "no")
 		doc.set("DHCPV6C", "no")
@@ -114,24 +115,24 @@ func (b *ifcfgBackend) SetIPv6Static(addressCIDR string) error {
 	})
 }
 
-func (b *ifcfgBackend) SetMTU(mtu uint32) error {
-	return b.update(func(doc *keyValueDoc) error {
+func (b *ifcfgBackend) SetMTU(ctx context.Context, mtu uint32) error {
+	return b.update(ctx, func(doc *keyValueDoc) error {
 		doc.set("MTU", fmt.Sprintf("%d", mtu))
 		return nil
 	})
 }
 
-func (b *ifcfgBackend) Enable() error {
-	_, err := b.runIfup()
+func (b *ifcfgBackend) Enable(ctx context.Context) error {
+	_, err := b.runIfup(ctx)
 	return err
 }
 
-func (b *ifcfgBackend) Disable() error {
-	_, err := b.runIfdown()
+func (b *ifcfgBackend) Disable(ctx context.Context) error {
+	_, err := b.runIfdown(ctx)
 	return err
 }
 
-func (b *ifcfgBackend) update(updateFn func(doc *keyValueDoc) error) error {
+func (b *ifcfgBackend) update(ctx context.Context, updateFn func(doc *keyValueDoc) error) error {
 	doc, err := loadKeyValueDoc(b.path)
 	if err != nil {
 		return err
@@ -144,25 +145,25 @@ func (b *ifcfgBackend) update(updateFn func(doc *keyValueDoc) error) error {
 	if writeErr != nil {
 		return writeErr
 	}
-	_, _ = b.runIfdown()
-	_, err = b.runIfup()
+	_, _ = b.runIfdown(ctx)
+	_, err = b.runIfup(ctx)
 	return err
 }
 
-func (b *ifcfgBackend) runIfup() ([]byte, error) {
-	output, err := b.env.Runner.Run("ifup", b.iface)
+func (b *ifcfgBackend) runIfup(ctx context.Context) ([]byte, error) {
+	output, err := b.env.Runner.Run(ctx, "ifup", b.iface)
 	if err == nil {
 		return output, nil
 	}
-	fallback, fallbackErr := b.env.Runner.Run("systemctl", "restart", "network")
+	fallback, fallbackErr := b.env.Runner.Run(ctx, "systemctl", "restart", "network")
 	if fallbackErr == nil {
 		return fallback, nil
 	}
 	return output, commandError("ifup", []string{b.iface}, output, err)
 }
 
-func (b *ifcfgBackend) runIfdown() ([]byte, error) {
-	output, err := b.env.Runner.Run("ifdown", b.iface)
+func (b *ifcfgBackend) runIfdown(ctx context.Context) ([]byte, error) {
+	output, err := b.env.Runner.Run(ctx, "ifdown", b.iface)
 	if err == nil {
 		return output, nil
 	}

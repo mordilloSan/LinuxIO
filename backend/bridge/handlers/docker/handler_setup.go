@@ -22,7 +22,7 @@ func newDockerHandlers(rt runtime.Runtime) dockerHandlers {
 
 func prepareDockerHandlers(router *bridgeipc.Router, handlers dockerHandlers) {
 	RegisterJobRoutes(router, handlers.username, handlers.store)
-	go watchtowerOnce.Do(func() { SyncWatchtowerStackWithStore(handlers.username, handlers.store) })
+	go watchtowerOnce.Do(func() { SyncWatchtowerStackDetached(handlers.username, handlers.store) })
 
 	if err := initIconCache(); err != nil {
 		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "error", err)

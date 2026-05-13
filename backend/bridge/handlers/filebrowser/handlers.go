@@ -28,24 +28,24 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleResourceGet(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := resourceGet(args)
+	result, err := resourceGet(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleResourceStat(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := resourceStat(args)
+	result, err := resourceStat(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleResourceDelete(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("resource_delete requested", "component", "filebrowser")
-	result, err := resourceDelete(args)
+	result, err := resourceDelete(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleResourcePost(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("resource_post requested", "component", "filebrowser")
-	result, err := resourcePost(args)
+	result, err := resourcePost(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -56,26 +56,26 @@ func handleResourcePatch(ctx context.Context, args []string, emit bridgeipc.Even
 }
 
 func handleDirSize(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := dirSize(args)
+	result, err := dirSize(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleIndexerStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := indexerStatus(args)
+	result, err := indexerStatus(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleSubfolders(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := subfolders(args)
+	result, err := subfolders(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleSearch(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := searchFiles(args)
+	result, err := searchFiles(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleUsersGroups(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := usersGroups()
+	result, err := usersGroups(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

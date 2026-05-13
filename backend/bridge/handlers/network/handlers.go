@@ -23,7 +23,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleGetNetworkInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetNetworkInfo()
+	result, err := GetNetworkInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -36,7 +36,7 @@ func handleSetIPv4Manual(ctx context.Context, args []string, emit bridgeipc.Even
 	gateway := args[2]
 	dnsServers := args[3:]
 	slog.Info("set_ipv4_manual requested", "component", "dbus", "subsystem", "network", "interface", iface, "path", addressCIDR, "service", gateway, "dns_count", len(dnsServers))
-	return bridgeipc.EmitResult(emit, nil, SetIPv4Manual(iface, addressCIDR, gateway, dnsServers))
+	return bridgeipc.EmitResult(emit, nil, SetIPv4Manual(ctx, iface, addressCIDR, gateway, dnsServers))
 }
 
 func handleSetIPv4(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -48,7 +48,7 @@ func handleSetIPv4(ctx context.Context, args []string, emit bridgeipc.Events) er
 	if method != "dhcp" && method != "auto" {
 		return fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
 	}
-	return bridgeipc.EmitResult(emit, nil, SetIPv4DHCP(iface))
+	return bridgeipc.EmitResult(emit, nil, SetIPv4DHCP(ctx, iface))
 }
 
 func handleSetIPv6(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -59,12 +59,12 @@ func handleSetIPv6(ctx context.Context, args []string, emit bridgeipc.Events) er
 	slog.Info("set_ipv6 requested", "component", "dbus", "subsystem", "network", "interface", iface, "mode", method)
 	switch method {
 	case "dhcp", "auto":
-		return bridgeipc.EmitResult(emit, nil, SetIPv6DHCP(iface))
+		return bridgeipc.EmitResult(emit, nil, SetIPv6DHCP(ctx, iface))
 	case "static":
 		if len(args) != 3 {
 			return bridgeipc.ErrInvalidArgs
 		}
-		return bridgeipc.EmitResult(emit, nil, SetIPv6Static(iface, args[2]))
+		return bridgeipc.EmitResult(emit, nil, SetIPv6Static(ctx, iface, args[2]))
 	default:
 		return fmt.Errorf("SetIPv6 method must be 'dhcp' or 'static'")
 	}
@@ -75,7 +75,7 @@ func handleSetMTU(ctx context.Context, args []string, emit bridgeipc.Events) err
 		return bridgeipc.ErrInvalidArgs
 	}
 	slog.Info("set_mtu requested", "component", "dbus", "subsystem", "network", "interface", args[0], "mode", args[1])
-	return bridgeipc.EmitResult(emit, nil, SetMTU(args[0], args[1]))
+	return bridgeipc.EmitResult(emit, nil, SetMTU(ctx, args[0], args[1]))
 }
 
 func handleEnableConnection(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -84,7 +84,7 @@ func handleEnableConnection(ctx context.Context, args []string, emit bridgeipc.E
 		return err
 	}
 	slog.Info("enable_connection requested", "component", "dbus", "subsystem", "network", "interface", iface)
-	return bridgeipc.EmitResult(emit, nil, EnableConnection(iface))
+	return bridgeipc.EmitResult(emit, nil, EnableConnection(ctx, iface))
 }
 
 func handleDisableConnection(ctx context.Context, args []string, emit bridgeipc.Events) error {
@@ -93,5 +93,5 @@ func handleDisableConnection(ctx context.Context, args []string, emit bridgeipc.
 		return err
 	}
 	slog.Info("disable_connection requested", "component", "dbus", "subsystem", "network", "interface", iface)
-	return bridgeipc.EmitResult(emit, nil, DisableConnection(iface))
+	return bridgeipc.EmitResult(emit, nil, DisableConnection(ctx, iface))
 }

@@ -24,7 +24,7 @@ import (
 )
 
 // --- Handler Implementations ---
-func ListInterfaces([]string) (any, error) {
+func ListInterfaces(ctx context.Context, _ []string) (any, error) {
 	slog.Debug("ListInterfaces: listing interfaces")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
@@ -37,6 +37,9 @@ func ListInterfaces([]string) (any, error) {
 	interfaces := make([]WireGuardInterfaceUI, 0, len(files))
 
 	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		name := strings.TrimSuffix(filepath.Base(f), configExt)
 		cfg, err := ParseWireGuardConfig(f)
 		if err != nil {
@@ -55,7 +58,7 @@ func ListInterfaces([]string) (any, error) {
 			Address:     strings.Join(cfg.Address, ", "),
 			Port:        cfg.ListenPort,
 			PeerCount:   len(cfg.Peers),
-			IsEnabled:   isInterfaceEnabled(name),
+			IsEnabled:   isInterfaceEnabled(ctx, name),
 		})
 	}
 	slog.Info("listed WireGuard interfaces", "count", len(interfaces))
@@ -182,14 +185,14 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg InterfaceCo
 	return nil
 }
 
-func bringUpInterfaceWithNAT(name, egressNic, subnet string) error {
-	if _, err := UpInterface([]string{name}); err != nil {
+func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string) error {
+	if _, err := UpInterface(ctx, []string{name}); err != nil {
 		return err
 	}
 
-	backendName, err := SetupNAT(name, egressNic, subnet)
+	backendName, err := SetupNAT(ctx, name, egressNic, subnet)
 	if err != nil {
-		if _, downErr := DownInterface([]string{name}); downErr != nil {
+		if _, downErr := DownInterface(ctx, []string{name}); downErr != nil {
 			slog.Warn("failed to bring down interface after NAT failure",
 				"interface", name,
 				"error", downErr)
@@ -268,7 +271,10 @@ func writePeerConfig(interfaceName string, cfg InterfaceConfig, peer PeerConfig)
 	return nil
 }
 
-func applyPeerToRunningInterface(interfaceName string, peer PeerConfig) error {
+func applyPeerToRunningInterface(ctx context.Context, interfaceName string, peer PeerConfig) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !isInterfaceUp(interfaceName) {
 		return nil
 	}
@@ -302,6 +308,9 @@ func applyPeerToRunningInterface(interfaceName string, peer PeerConfig) error {
 		PersistentKeepaliveInterval: &keepalive,
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{peerCfg},
 	}); err != nil {
@@ -343,7 +352,10 @@ func removePeerFromConfig(cfg InterfaceConfig, allowedIP string) (InterfaceConfi
 	return cfg, removedPeerPubKey, found
 }
 
-func removePeerFromRunningInterface(interfaceName, removedPeerPubKey string) {
+func removePeerFromRunningInterface(ctx context.Context, interfaceName, removedPeerPubKey string) {
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	if !isInterfaceUp(interfaceName) || removedPeerPubKey == "" {
 		return
 	}
@@ -365,6 +377,9 @@ func removePeerFromRunningInterface(interfaceName, removedPeerPubKey string) {
 		PublicKey: pubKey,
 		Remove:    true,
 	}
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{peerCfg},
 	}); err != nil {
@@ -374,7 +389,7 @@ func removePeerFromRunningInterface(interfaceName, removedPeerPubKey string) {
 	slog.Info("removed peer from running interface", "interface", interfaceName)
 }
 
-func loadExportedPeers(interfaceName string) ([]PeerInfo, error) {
+func loadExportedPeers(ctx context.Context, interfaceName string) ([]PeerInfo, error) {
 	pattern := filepath.Join(peerDirPath(interfaceName), "*"+configExt)
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -383,6 +398,9 @@ func loadExportedPeers(interfaceName string) ([]PeerInfo, error) {
 
 	peers := make([]PeerInfo, 0, len(files))
 	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		peer, err := loadExportedPeer(file)
 		if err != nil {
 			slog.Warn("failed to parse exported peer config", "path", file, "error", err)
@@ -513,7 +531,7 @@ func applyPeerRuntimeStats(peers []PeerInfo, statsByPub map[string]peerRuntimeSt
 	}
 }
 
-func AddInterface(args []string) (any, error) {
+func AddInterface(ctx context.Context, args []string) (any, error) {
 	req, err := parseAddInterfaceArgs(args)
 	if err != nil {
 		slog.Error("invalid add interface arguments", "error", err)
@@ -546,7 +564,7 @@ func AddInterface(args []string) (any, error) {
 	}
 
 	subnet := req.addresses[0]
-	if err := bringUpInterfaceWithNAT(req.name, req.egressNic, subnet); err != nil {
+	if err := bringUpInterfaceWithNAT(ctx, req.name, req.egressNic, subnet); err != nil {
 		slog.Error("failed to set up WireGuard interface", "interface", req.name, "error", err)
 		return nil, err
 	}
@@ -560,7 +578,7 @@ func AddInterface(args []string) (any, error) {
 	}, nil
 }
 
-func RemoveInterface(args []string) (any, error) {
+func RemoveInterface(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid remove interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: remove_interface <name>")
@@ -577,7 +595,7 @@ func RemoveInterface(args []string) (any, error) {
 	if natCfg, err := LoadNATConfig(name); err != nil {
 		slog.Warn("failed to load NAT config", "interface", name, "error", err)
 	} else if natCfg != nil {
-		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
+		if err := CleanupNAT(ctx, name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
 			slog.Warn("failed to clean up NAT", "interface", name, "error", err)
 		}
 		if err := RemoveNATConfig(name); err != nil {
@@ -586,7 +604,7 @@ func RemoveInterface(args []string) (any, error) {
 	}
 
 	// Best-effort: bring it down, but don't abort on failure.
-	if _, err := DownInterface([]string{name}); err != nil {
+	if _, err := DownInterface(ctx, []string{name}); err != nil {
 		slog.Warn("failed to bring down interface before removal", "interface", name, "error", err)
 	} else {
 		slog.Info("interface brought down before removal", "interface", name)
@@ -616,7 +634,7 @@ func RemoveInterface(args []string) (any, error) {
 	return "removed", nil
 }
 
-func AddPeer(args []string) (any, error) {
+func AddPeer(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid add peer arguments", "args", args)
 		return nil, fmt.Errorf("usage: add_peer <interface>")
@@ -652,7 +670,7 @@ func AddPeer(args []string) (any, error) {
 		return nil, err
 	}
 
-	if err := applyPeerToRunningInterface(interfaceName, peer); err != nil {
+	if err := applyPeerToRunningInterface(ctx, interfaceName, peer); err != nil {
 		slog.Error("failed to apply peer to running interface", "interface", interfaceName, "peer", peer.Name, "error", err)
 		return nil, err
 	}
@@ -669,7 +687,7 @@ func AddPeer(args []string) (any, error) {
 	}, nil
 }
 
-func RemovePeerByName(args []string) (any, error) {
+func RemovePeerByName(ctx context.Context, args []string) (any, error) {
 	if len(args) < 2 {
 		slog.Error("invalid remove peer arguments", "args", args)
 		return nil, fmt.Errorf("usage: remove_peer <interface> <peer>")
@@ -712,7 +730,7 @@ func RemovePeerByName(args []string) (any, error) {
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 
-	removePeerFromRunningInterface(interfaceName, removedPeerPubKey)
+	removePeerFromRunningInterface(ctx, interfaceName, removedPeerPubKey)
 
 	// Remove peer config file
 	if err := os.Remove(peerPath); err != nil && !os.IsNotExist(err) {
@@ -724,7 +742,7 @@ func RemovePeerByName(args []string) (any, error) {
 	return "removed", nil
 }
 
-func ListPeers(args []string) (any, error) {
+func ListPeers(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid list peers arguments", "args", args)
 		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
@@ -737,7 +755,7 @@ func ListPeers(args []string) (any, error) {
 	}
 	slog.Debug("listing exported peers", "interface", interfaceName)
 
-	peers, err := loadExportedPeers(interfaceName)
+	peers, err := loadExportedPeers(ctx, interfaceName)
 	if err != nil {
 		slog.Error("failed to read exported peers", "interface", interfaceName, "error", err)
 		return nil, err
@@ -756,7 +774,7 @@ func ListPeers(args []string) (any, error) {
 	return peers, nil
 }
 
-func UpInterface(args []string) (any, error) {
+func UpInterface(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid up interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: up_interface <name>")
@@ -770,7 +788,7 @@ func UpInterface(args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wg-quick not found: %w", err)
 	}
-	cmd := exec.Command(wgQuickPath, "up", name)
+	cmd := exec.CommandContext(ctx, wgQuickPath, "up", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -793,7 +811,7 @@ func UpInterface(args []string) (any, error) {
 	}, nil
 }
 
-func DownInterface(args []string) (any, error) {
+func DownInterface(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid down interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: down_interface <name>")
@@ -808,7 +826,7 @@ func DownInterface(args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wg-quick not found: %w", err)
 	}
-	cmd := exec.Command(wgQuickPath, "down", name)
+	cmd := exec.CommandContext(ctx, wgQuickPath, "down", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -831,7 +849,7 @@ func DownInterface(args []string) (any, error) {
 	}, nil
 }
 
-func PeerQRCode(args []string) (any, error) {
+func PeerQRCode(ctx context.Context, args []string) (any, error) {
 	if len(args) < 2 {
 		slog.Error("invalid peer QR code arguments", "args", args)
 		return nil, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
@@ -847,6 +865,9 @@ func PeerQRCode(args []string) (any, error) {
 	}
 
 	peerPath := peerConfigPath(args[0], args[1])
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	rawConfig, err := os.ReadFile(peerPath)
 	if err != nil {
 		slog.Error("failed to read peer config for QR code", "path", peerPath, "error", err)
@@ -865,7 +886,7 @@ func PeerQRCode(args []string) (any, error) {
 	return map[string]string{"qrcode": dataURI}, nil
 }
 
-func PeerConfigDownload(args []string) (any, error) {
+func PeerConfigDownload(ctx context.Context, args []string) (any, error) {
 	if len(args) < 2 {
 		slog.Error("invalid peer config download arguments", "args", args)
 		return nil, fmt.Errorf("usage: peer_config_download <interface> <peername>")
@@ -881,6 +902,9 @@ func PeerConfigDownload(args []string) (any, error) {
 	}
 
 	peerPath := peerConfigPath(args[0], args[1])
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(peerPath)
 	if err != nil {
 		slog.Error("failed to read peer config for download", "path", peerPath, "error", err)
@@ -919,7 +943,7 @@ func GetKeys(args []string) (any, error) {
 	}, nil
 }
 
-func EnableInterface(args []string) (any, error) {
+func EnableInterface(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid enable interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: enable_interface <name>")
@@ -932,7 +956,7 @@ func EnableInterface(args []string) (any, error) {
 	}
 
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	if err := systemd.EnableUnit(context.Background(), serviceName); err != nil {
+	if err := systemd.EnableUnit(ctx, serviceName); err != nil {
 		slog.Error("failed to enable WireGuard interface", "interface", name, "service", serviceName, "error", err)
 		return nil, fmt.Errorf("enable interface: %w", err)
 	}
@@ -943,7 +967,7 @@ func EnableInterface(args []string) (any, error) {
 	}, nil
 }
 
-func DisableInterface(args []string) (any, error) {
+func DisableInterface(ctx context.Context, args []string) (any, error) {
 	if len(args) < 1 {
 		slog.Error("invalid disable interface arguments", "args", args)
 		return nil, fmt.Errorf("usage: disable_interface <name>")
@@ -956,7 +980,7 @@ func DisableInterface(args []string) (any, error) {
 	}
 
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	if err := systemd.DisableUnit(context.Background(), serviceName); err != nil {
+	if err := systemd.DisableUnit(ctx, serviceName); err != nil {
 		slog.Error("failed to disable WireGuard interface", "interface", name, "service", serviceName, "error", err)
 		return nil, fmt.Errorf("disable interface: %w", err)
 	}

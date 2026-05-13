@@ -27,7 +27,7 @@ type MemoryResponse struct {
 }
 
 // FetchMemoryInfo returns the system memory, docker usage, and ZFS ARC cache info.
-func FetchMemoryInfo() (*MemoryResponse, error) {
+func FetchMemoryInfo(ctx context.Context) (*MemoryResponse, error) {
 	vm, err := mem.VirtualMemory()
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func FetchMemoryInfo() (*MemoryResponse, error) {
 	resp.System = vm
 	resp.ZFS.ARC = readZFSArc()
 
-	if used, err := getDockerMemoryUsage(); err == nil {
+	if used, err := getDockerMemoryUsage(ctx); err == nil {
 		resp.Docker.Used = used
 		// (Intentionally ignore Docker errors to keep endpoint useful without Docker.)
 	}
@@ -88,13 +88,13 @@ func dockerClient() (*client.Client, error) {
 
 // getDockerMemoryUsage returns the sum of "current" memory usage across containers.
 // We approximate current as usage - inactive_file when available (cgroup v2 style).
-func getDockerMemoryUsage() (uint64, error) {
+func getDockerMemoryUsage(parent context.Context) (uint64, error) {
 	cli, err := dockerClient()
 	if err != nil {
 		return 0, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})

@@ -8,7 +8,7 @@ import (
 )
 
 func (h dockerHandlers) handleListComposeProjects(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListComposeProjectsWithStore(h.username, h.store)
+	result, err := ListComposeProjectsWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -17,7 +17,7 @@ func (h dockerHandlers) handleGetComposeProject(ctx context.Context, args []stri
 	if err != nil {
 		return err
 	}
-	result, err := GetComposeProjectWithStore(h.username, h.store, projectName)
+	result, err := GetComposeProjectWithStore(ctx, h.username, h.store, projectName)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -30,7 +30,7 @@ func (h dockerHandlers) handleComposeUp(ctx context.Context, args []string, emit
 	if len(args) >= 2 {
 		composePath = args[1]
 	}
-	result, err := ComposeUpWithStore(h.username, h.store, projectName, composePath)
+	result, err := ComposeUpWithStore(ctx, h.username, h.store, projectName, composePath)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -39,7 +39,7 @@ func (h dockerHandlers) handleComposeDown(ctx context.Context, args []string, em
 	if err != nil {
 		return err
 	}
-	result, err := ComposeDownWithStore(h.username, h.store, projectName)
+	result, err := ComposeDownWithStore(ctx, h.username, h.store, projectName)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -48,7 +48,7 @@ func (h dockerHandlers) handleComposeStop(ctx context.Context, args []string, em
 	if err != nil {
 		return err
 	}
-	result, err := ComposeStopWithStore(h.username, h.store, projectName)
+	result, err := ComposeStopWithStore(ctx, h.username, h.store, projectName)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -57,7 +57,7 @@ func (h dockerHandlers) handleComposeRestart(ctx context.Context, args []string,
 	if err != nil {
 		return err
 	}
-	result, err := ComposeRestartWithStore(h.username, h.store, projectName)
+	result, err := ComposeRestartWithStore(ctx, h.username, h.store, projectName)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -70,7 +70,7 @@ func (h dockerHandlers) handleDeleteStack(ctx context.Context, args []string, em
 		DeleteFile:      len(args) >= 2 && args[1] == "true",
 		DeleteDirectory: len(args) >= 3 && args[2] == "true",
 	}
-	result, err := DeleteStackWithStore(h.username, h.store, projectName, options)
+	result, err := DeleteStackWithStore(ctx, h.username, h.store, projectName, options)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -84,7 +84,7 @@ func (h dockerHandlers) handleValidateCompose(ctx context.Context, args []string
 	if err != nil {
 		return err
 	}
-	result, err := ValidateComposeFile(content)
+	result, err := ValidateComposeFile(ctx, content)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -102,7 +102,7 @@ func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, args []str
 	if err != nil {
 		return err
 	}
-	result, err := GetComposeFilePathWithStore(h.username, h.store, stackName)
+	result, err := GetComposeFilePathWithStore(ctx, h.username, h.store, stackName)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -117,7 +117,7 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, args [
 
 func (h dockerHandlers) handleReindexDockerFolders(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("reindex_docker_folders requested", "component", "docker", "user", h.username)
-	result, err := IndexDockerFoldersWithStore(h.username, h.store)
+	result, err := IndexDockerFoldersWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -126,7 +126,7 @@ func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, args []str
 	if err != nil {
 		return err
 	}
-	if err := DeleteComposeStackWithStore(h.username, h.store, projectName); err != nil {
+	if err := DeleteComposeStackWithStore(ctx, h.username, h.store, projectName); err != nil {
 		return err
 	}
 	return bridgeipc.EmitResult(emit, map[string]any{

@@ -32,7 +32,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 func handleListPVs(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing physical volumes")
-	pvs, err := ListPhysicalVolumes()
+	pvs, err := ListPhysicalVolumes(ctx)
 	if err != nil {
 		slog.Error("failed to list physical volumes", "error", err)
 		return err
@@ -43,7 +43,7 @@ func handleListPVs(ctx context.Context, args []string, emit bridgeipc.Events) er
 
 func handleListVGs(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing volume groups")
-	vgs, err := ListVolumeGroups()
+	vgs, err := ListVolumeGroups(ctx)
 	if err != nil {
 		slog.Error("failed to list volume groups", "error", err)
 		return err
@@ -54,7 +54,7 @@ func handleListVGs(ctx context.Context, args []string, emit bridgeipc.Events) er
 
 func handleListLVs(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing logical volumes")
-	lvs, err := ListLogicalVolumes()
+	lvs, err := ListLogicalVolumes(ctx)
 	if err != nil {
 		slog.Error("failed to list logical volumes", "error", err)
 		return err
@@ -69,7 +69,7 @@ func handleCreateLV(ctx context.Context, args []string, emit bridgeipc.Events) e
 		return err
 	}
 	slog.Info("creating logical volume", "volume_group", args[0], "name", args[1], "size", args[2])
-	result, err := CreateLogicalVolume(args[0], args[1], args[2])
+	result, err := CreateLogicalVolume(ctx, args[0], args[1], args[2])
 	if err != nil {
 		slog.Error("failed to create logical volume", "volume_group", args[0], "name", args[1], "error", err)
 		return err
@@ -84,7 +84,7 @@ func handleDeleteLV(ctx context.Context, args []string, emit bridgeipc.Events) e
 		return err
 	}
 	slog.Info("deleting logical volume", "volume_group", args[0], "name", args[1])
-	result, err := DeleteLogicalVolume(args[0], args[1])
+	result, err := DeleteLogicalVolume(ctx, args[0], args[1])
 	if err != nil {
 		slog.Error("failed to delete logical volume", "volume_group", args[0], "name", args[1], "error", err)
 		return err
@@ -99,7 +99,7 @@ func handleResizeLV(ctx context.Context, args []string, emit bridgeipc.Events) e
 		return err
 	}
 	slog.Info("resizing logical volume", "volume_group", args[0], "name", args[1], "size", args[2])
-	result, err := ResizeLogicalVolume(args[0], args[1], args[2])
+	result, err := ResizeLogicalVolume(ctx, args[0], args[1], args[2])
 	if err != nil {
 		slog.Error("failed to resize logical volume", "volume_group", args[0], "name", args[1], "error", err)
 		return err
@@ -210,7 +210,7 @@ func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit bridgei
 		return err
 	}
 	slog.Info("creating btrfs subvolume", "mountpoint", args[0], "name", args[1])
-	result, err := CreateBtrfsSubvolume(args[0], args[1])
+	result, err := CreateBtrfsSubvolume(ctx, args[0], args[1])
 	if err != nil {
 		slog.Error("failed to create btrfs subvolume", "mountpoint", args[0], "name", args[1], "error", err)
 		return err
@@ -220,7 +220,7 @@ func handleCreateBtrfsSubvolume(ctx context.Context, args []string, emit bridgei
 }
 
 func handleGetDriveInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	driveInfo, err := FetchDriveInfo()
+	driveInfo, err := FetchDriveInfo(ctx)
 	if err != nil {
 		return err
 	}

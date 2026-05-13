@@ -45,7 +45,7 @@ func runAppUpdateJob(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job
 		return nil, err
 	}
 
-	version, err := resolveAppUpdateVersion(req)
+	version, err := resolveAppUpdateVersion(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -70,12 +70,12 @@ func parseAppUpdateRequest(args []string) (appUpdateRequest, error) {
 	return req, nil
 }
 
-func resolveAppUpdateVersion(req appUpdateRequest) (string, error) {
+func resolveAppUpdateVersion(ctx context.Context, req appUpdateRequest) (string, error) {
 	if req.version != "" {
 		return req.version, nil
 	}
 
-	latest, err := fetchLatestVersion()
+	latest, err := fetchLatestVersion(ctx)
 	if err != nil {
 		return "", bridgeipc.NewError(fmt.Sprintf("failed to fetch latest version: %v", err), 500)
 	}
@@ -135,17 +135,32 @@ func finishSuccessfulUpdate(runID string, relay *jobOutputWriter, startedAt, fin
 }
 
 func reloadAndRestartAfterUpdate(runID string) {
+	ctx, cancel := detachedPostUpdateContext()
 	slog.Debug("reloading systemd daemon", "component", "control", "subsystem", "app_update", "run_id", runID)
-	if reloadErr := systemdapi.DaemonReload(context.Background()); reloadErr != nil {
+	if reloadErr := systemdapi.DaemonReload(ctx); reloadErr != nil {
 		slog.Warn("systemd daemon-reload failed", "component", "control", "subsystem", "app_update", "run_id", runID, "error", reloadErr)
 	}
 	slog.Info("scheduling service restart", "component", "control", "subsystem", "app_update", "run_id", runID)
 	go func() {
-		time.Sleep(500 * time.Millisecond)
-		if restartErr := restartService(); restartErr != nil {
+		defer cancel()
+		timer := time.NewTimer(500 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			slog.Error("service restart context expired before restart", "component", "control", "subsystem", "app_update", "run_id", runID, "error", ctx.Err())
+			return
+		}
+		if restartErr := restartService(ctx); restartErr != nil {
 			slog.Error("failed to restart service after update", "component", "control", "subsystem", "app_update", "run_id", runID, "error", restartErr)
 		}
 	}()
+}
+
+// detachedPostUpdateContext bounds the intentionally detached restart path:
+// after a successful update the current job can finish before the service restarts.
+func detachedPostUpdateContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 30*time.Second)
 }
 
 func writeUpdateStatusWithLog(runID, status string, exitCode *int, errMsg string, startedAt, finishedAt int64, phase string) {

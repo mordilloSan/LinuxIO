@@ -231,7 +231,7 @@ func useSystemBusOnce(ctx context.Context, subsystem string, fn func(context.Con
 
 func requireContext(ctx context.Context) context.Context {
 	if ctx == nil {
-		return context.Background()
+		panic("dbusclient: nil context")
 	}
 	return ctx
 }

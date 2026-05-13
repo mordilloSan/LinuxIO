@@ -133,11 +133,9 @@ func restoreUploadedFile(root *fsroot.FSRoot, realRel string, attrs uploadAttrib
 }
 
 func notifyUploadedFile(path string, info os.FileInfo) {
-	go func(stat os.FileInfo) {
-		if err := addToIndexer(path, stat); err != nil {
-			slog.Debug("failed to update indexer after upload", "path", path, "error", err)
-		}
-	}(info)
+	runDetachedIndexerUpdate("upload", func(ctx context.Context) error {
+		return addToIndexer(ctx, path, info)
+	})
 }
 
 func runUploadJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {

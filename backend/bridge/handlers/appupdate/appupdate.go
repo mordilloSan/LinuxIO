@@ -98,15 +98,15 @@ type VersionInfo struct {
 	Error           string `json:"error,omitempty"`
 }
 
-func getVersionInfo() (VersionInfo, error) {
-	currentVersion := getInstalledVersion()
+func getVersionInfo(ctx context.Context) (VersionInfo, error) {
+	currentVersion := getInstalledVersion(ctx)
 	info := VersionInfo{
 		CurrentVersion:  currentVersion,
 		UpdateAvailable: false,
 		CheckedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 
-	latestVersion, err := fetchLatestVersion()
+	latestVersion, err := fetchLatestVersion(ctx)
 	if err != nil {
 		slog.Debug("failed to fetch latest version", "component", "control", "subsystem", "version", "error", err)
 		info.Error = fmt.Sprintf("could not check for updates: %v", err)
@@ -196,7 +196,7 @@ func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 // If relay is non-nil, output lines are also written to it.
 func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	if ctx == nil {
-		ctx = context.Background()
+		return fmt.Errorf("nil context")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
@@ -270,7 +270,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 
 	if err != nil {
 		captured := tail.String()
-		journal := systemdUnitJournalTail(unit)
+		journal := systemdUnitJournalTail(ctx, unit)
 		if journal != "" {
 			if captured != "" {
 				captured += "\n"
@@ -286,8 +286,8 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	return nil
 }
 
-func systemdUnitJournalTail(unit string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func systemdUnitJournalTail(parent context.Context, unit string) string {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 
 	output, err := exec.CommandContext(ctx, "journalctl", "-u", unit, "-n", "80", "--no-pager", "--output=cat").CombinedOutput()
@@ -306,7 +306,7 @@ func scriptArgs(ver string) []string {
 	return args
 }
 
-func getInstalledVersion() string {
+func getInstalledVersion(parent context.Context) string {
 	// Use compiled-in version (most reliable)
 	// The binary is compiled with -ldflags to set version.Version
 	if version.Version != "" && version.Version != "untracked" {
@@ -314,7 +314,9 @@ func getInstalledVersion() string {
 	}
 
 	// Fallback: try running linuxio-webserver to get version
-	cmd := exec.Command(version.BinDir+"/linuxio-webserver", "version")
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, version.BinDir+"/linuxio-webserver", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Debug("failed to get version from binary", "component", "control", "subsystem", "version", "error", err)
@@ -345,11 +347,15 @@ func parseVersionOutput(output string) string {
 	return "unknown"
 }
 
-func fetchLatestVersion() (string, error) {
+func fetchLatestVersion(ctx context.Context) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", version.RepoOwner, version.RepoName)
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -460,11 +466,11 @@ func readErrorBody(r io.Reader) string {
 	return string(body)
 }
 
-func restartService() error {
+func restartService(ctx context.Context) error {
 	slog.Info("restarting linuxio service")
 	var lastErr error
 	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
-		if err := systemdapi.RestartUnit(context.Background(), unit); err == nil {
+		if err := systemdapi.RestartUnit(ctx, unit); err == nil {
 			slog.Info("service restarted successfully", "component", "control", "subsystem", "app_update", "unit", unit)
 			return nil
 		} else {

@@ -15,8 +15,11 @@ type pkgkitBackend struct{}
 
 func newPkgKitBackend() Backend     { return &pkgkitBackend{} }
 func (*pkgkitBackend) Name() string { return "packagekit" }
-func (*pkgkitBackend) Detect() bool {
-	ok, err := dbusclient.PackageKit.Available(context.Background())
+func (*pkgkitBackend) Detect(ctx context.Context) bool {
+	if ctx == nil || ctx.Err() != nil {
+		return false
+	}
+	ok, err := dbusclient.PackageKit.Available(ctx)
 	return err == nil && ok
 }
 

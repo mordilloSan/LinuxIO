@@ -18,7 +18,7 @@ type aptBackend struct{}
 
 func newAptBackend() Backend     { return &aptBackend{} }
 func (*aptBackend) Name() string { return "apt-unattended" }
-func (*aptBackend) Detect() bool {
+func (*aptBackend) Detect(context.Context) bool {
 	return fileExists("/usr/bin/apt")
 }
 
@@ -57,7 +57,7 @@ func (b *aptBackend) Read() (AutoUpdateState, error) {
 
 func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 	if ctx == nil {
-		ctx = context.Background()
+		return fmt.Errorf("nil context")
 	}
 	if err := ctx.Err(); err != nil {
 		return err

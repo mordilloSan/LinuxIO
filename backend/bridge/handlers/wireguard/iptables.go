@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,14 +19,14 @@ const iptablesCmd = "iptables"
 
 type natBackend interface {
 	Name() string
-	Setup(interfaceName, egressNic, subnet string) error
-	Cleanup(interfaceName, egressNic, subnet string) error
+	Setup(ctx context.Context, interfaceName, egressNic, subnet string) error
+	Cleanup(ctx context.Context, interfaceName, egressNic, subnet string) error
 }
 
 type natCommandRunner interface {
 	LookPath(name string) (string, error)
-	Run(name string, args ...string) ([]byte, error)
-	RunInput(name, input string, args ...string) ([]byte, error)
+	Run(ctx context.Context, name string, args ...string) ([]byte, error)
+	RunInput(ctx context.Context, name, input string, args ...string) ([]byte, error)
 }
 
 type execNATCommandRunner struct{}
@@ -40,25 +41,25 @@ func (execNATCommandRunner) LookPath(name string) (string, error) {
 	return exec.LookPath(name)
 }
 
-func (execNATCommandRunner) Run(name string, args ...string) ([]byte, error) {
+func (execNATCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	path, err := exec.LookPath(name)
 	if err != nil {
 		return nil, err
 	}
-	return exec.Command(path, args...).CombinedOutput()
+	return exec.CommandContext(ctx, path, args...).CombinedOutput()
 }
 
-func (execNATCommandRunner) RunInput(name, input string, args ...string) ([]byte, error) {
+func (execNATCommandRunner) RunInput(ctx context.Context, name, input string, args ...string) ([]byte, error) {
 	path, err := exec.LookPath(name)
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(path, args...)
+	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Stdin = strings.NewReader(input)
 	return cmd.CombinedOutput()
 }
 
-func SetupNAT(interfaceName, egressNic, subnet string) (string, error) {
+func SetupNAT(ctx context.Context, interfaceName, egressNic, subnet string) (string, error) {
 	slog.Info("configuring NAT", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet)
 
 	if err := validateNATArgs(egressNic, subnet); err != nil {
@@ -69,7 +70,7 @@ func SetupNAT(interfaceName, egressNic, subnet string) (string, error) {
 		return "", fmt.Errorf("enable IP forwarding: %w", err)
 	}
 
-	backendName, err := detectPreferredNATBackend()
+	backendName, err := detectPreferredNATBackend(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -78,24 +79,24 @@ func SetupNAT(interfaceName, egressNic, subnet string) (string, error) {
 		return "", err
 	}
 
-	if err := backend.Setup(interfaceName, egressNic, subnet); err != nil {
+	if err := backend.Setup(ctx, interfaceName, egressNic, subnet); err != nil {
 		return "", err
 	}
 	slog.Info("configured NAT", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backendName)
 	return backendName, nil
 }
 
-func CleanupNAT(interfaceName, egressNic, subnet, backendName string) error {
+func CleanupNAT(ctx context.Context, interfaceName, egressNic, subnet, backendName string) error {
 	slog.Info("removing NAT rules", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backendName)
 
-	backends, err := cleanupBackends(backendName)
+	backends, err := cleanupBackends(ctx, backendName)
 	if err != nil {
 		return err
 	}
 
 	var cleanupErrors []error
 	for _, backend := range backends {
-		if err := backend.Cleanup(interfaceName, egressNic, subnet); err != nil {
+		if err := backend.Cleanup(ctx, interfaceName, egressNic, subnet); err != nil {
 			slog.Warn("NAT backend cleanup failed", "component", "wireguard", "subsystem", "nat", "interface", interfaceName, "service", egressNic, "subnet", subnet, "mode", backend.Name(), "error", err)
 			cleanupErrors = append(cleanupErrors, err)
 			continue
@@ -114,15 +115,15 @@ func (iptablesBackend) Name() string {
 	return "iptables"
 }
 
-func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
-	if err := insertRuleIfMissing("filter", "FORWARD", 1,
+func (iptablesBackend) Setup(ctx context.Context, interfaceName, egressNic, subnet string) error {
+	if err := insertRuleIfMissing(ctx, "filter", "FORWARD", 1,
 		"-i", interfaceName,
 		"-o", egressNic,
 		"-j", "ACCEPT"); err != nil {
 		return fmt.Errorf("add forward rule (wg -> egress): %w", err)
 	}
 
-	if err := insertRuleIfMissing("filter", "FORWARD", 1,
+	if err := insertRuleIfMissing(ctx, "filter", "FORWARD", 1,
 		"-o", interfaceName,
 		"-i", egressNic,
 		"-m", "state",
@@ -131,7 +132,7 @@ func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
 		return fmt.Errorf("add forward rule (egress -> wg): %w", err)
 	}
 
-	if err := appendRuleIfMissing("nat", "POSTROUTING",
+	if err := appendRuleIfMissing(ctx, "nat", "POSTROUTING",
 		"-o", egressNic,
 		"-s", subnet,
 		"-j", "MASQUERADE"); err != nil {
@@ -141,15 +142,15 @@ func (iptablesBackend) Setup(interfaceName, egressNic, subnet string) error {
 	return nil
 }
 
-func (iptablesBackend) Cleanup(interfaceName, egressNic, subnet string) error {
+func (iptablesBackend) Cleanup(ctx context.Context, interfaceName, egressNic, subnet string) error {
 	var cleanupErrors []error
-	if err := removeRuleIfExists("filter", "FORWARD",
+	if err := removeRuleIfExists(ctx, "filter", "FORWARD",
 		"-i", interfaceName,
 		"-o", egressNic,
 		"-j", "ACCEPT"); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	if err := removeRuleIfExists("filter", "FORWARD",
+	if err := removeRuleIfExists(ctx, "filter", "FORWARD",
 		"-o", interfaceName,
 		"-i", egressNic,
 		"-m", "state",
@@ -157,7 +158,7 @@ func (iptablesBackend) Cleanup(interfaceName, egressNic, subnet string) error {
 		"-j", "ACCEPT"); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	if err := removeRuleIfExists("nat", "POSTROUTING",
+	if err := removeRuleIfExists(ctx, "nat", "POSTROUTING",
 		"-o", egressNic,
 		"-s", subnet,
 		"-j", "MASQUERADE"); err != nil {
@@ -174,8 +175,8 @@ func (firewalldBackend) Name() string {
 	return "firewalld"
 }
 
-func (firewalldBackend) Setup(interfaceName, egressNic, subnet string) error {
-	rules, err := firewalldRules()
+func (firewalldBackend) Setup(ctx context.Context, interfaceName, egressNic, subnet string) error {
+	rules, err := firewalldRules(ctx)
 	if err != nil {
 		return err
 	}
@@ -184,7 +185,7 @@ func (firewalldBackend) Setup(interfaceName, egressNic, subnet string) error {
 			continue
 		}
 		args := append([]string{"--direct", "--add-rule"}, rule...)
-		output, cmdErr := wireguardNATRunner.Run("firewall-cmd", args...)
+		output, cmdErr := wireguardNATRunner.Run(ctx, "firewall-cmd", args...)
 		if cmdErr != nil {
 			return commandOutputError("firewall-cmd", args, output, cmdErr)
 		}
@@ -192,8 +193,8 @@ func (firewalldBackend) Setup(interfaceName, egressNic, subnet string) error {
 	return nil
 }
 
-func (firewalldBackend) Cleanup(interfaceName, egressNic, subnet string) error {
-	rules, err := firewalldRules()
+func (firewalldBackend) Cleanup(ctx context.Context, interfaceName, egressNic, subnet string) error {
+	rules, err := firewalldRules(ctx)
 	if err != nil {
 		return err
 	}
@@ -202,7 +203,7 @@ func (firewalldBackend) Cleanup(interfaceName, egressNic, subnet string) error {
 			continue
 		}
 		args := append([]string{"--direct", "--remove-rule"}, rule...)
-		output, cmdErr := wireguardNATRunner.Run("firewall-cmd", args...)
+		output, cmdErr := wireguardNATRunner.Run(ctx, "firewall-cmd", args...)
 		if cmdErr != nil {
 			return commandOutputError("firewall-cmd", args, output, cmdErr)
 		}
@@ -214,28 +215,28 @@ func (nftBackend) Name() string {
 	return "nft"
 }
 
-func (nftBackend) Setup(interfaceName, egressNic, subnet string) error {
+func (nftBackend) Setup(ctx context.Context, interfaceName, egressNic, subnet string) error {
 	table := nftTableName(interfaceName)
-	_, _ = wireguardNATRunner.Run("nft", "delete", "table", "ip", table)
+	_, _ = wireguardNATRunner.Run(ctx, "nft", "delete", "table", "ip", table)
 	script := buildNFTSetupScript(table, interfaceName, egressNic, subnet)
-	output, err := wireguardNATRunner.RunInput("nft", script, "-f", "-")
+	output, err := wireguardNATRunner.RunInput(ctx, "nft", script, "-f", "-")
 	if err != nil {
 		return commandOutputError("nft", []string{"-f", "-"}, output, err)
 	}
 	return nil
 }
 
-func (nftBackend) Cleanup(interfaceName, _, _ string) error {
+func (nftBackend) Cleanup(ctx context.Context, interfaceName, _, _ string) error {
 	table := nftTableName(interfaceName)
-	output, err := wireguardNATRunner.Run("nft", "delete", "table", "ip", table)
+	output, err := wireguardNATRunner.Run(ctx, "nft", "delete", "table", "ip", table)
 	if err != nil && !nftMissingTable(output) {
 		return commandOutputError("nft", []string{"delete", "table", "ip", table}, output, err)
 	}
 	return nil
 }
 
-func detectPreferredNATBackend() (string, error) {
-	return preferredNATBackendName(firewalldRunning(), nftAvailable(), iptablesAvailable())
+func detectPreferredNATBackend(ctx context.Context) (string, error) {
+	return preferredNATBackendName(firewalldRunning(ctx), nftAvailable(), iptablesAvailable(ctx))
 }
 
 func preferredNATBackendName(hasFirewalld, hasNft, hasIPTables bool) (string, error) {
@@ -251,7 +252,7 @@ func preferredNATBackendName(hasFirewalld, hasNft, hasIPTables bool) (string, er
 	}
 }
 
-func cleanupBackends(preferred string) ([]natBackend, error) {
+func cleanupBackends(ctx context.Context, preferred string) ([]natBackend, error) {
 	if strings.TrimSpace(preferred) != "" {
 		backend, err := openNATBackend(preferred)
 		if err != nil {
@@ -261,13 +262,13 @@ func cleanupBackends(preferred string) ([]natBackend, error) {
 	}
 
 	backends := make([]natBackend, 0, 3)
-	if firewalldRunning() {
+	if firewalldRunning(ctx) {
 		backends = append(backends, firewalldBackend{})
 	}
 	if nftAvailable() {
 		backends = append(backends, nftBackend{})
 	}
-	if iptablesAvailable() {
+	if iptablesAvailable(ctx) {
 		backends = append(backends, iptablesBackend{})
 	}
 	if len(backends) == 0 {
@@ -303,11 +304,11 @@ func validateNATArgs(egressNic, subnet string) error {
 	return nil
 }
 
-func firewalldRunning() bool {
+func firewalldRunning(ctx context.Context) bool {
 	if _, err := wireguardNATRunner.LookPath("firewall-cmd"); err != nil {
 		return false
 	}
-	output, err := wireguardNATRunner.Run("firewall-cmd", "--state")
+	output, err := wireguardNATRunner.Run(ctx, "firewall-cmd", "--state")
 	return err == nil && strings.TrimSpace(string(output)) == "running"
 }
 
@@ -316,7 +317,7 @@ func nftAvailable() bool {
 	return err == nil
 }
 
-func iptablesAvailable() bool {
+func iptablesAvailable(ctx context.Context) bool {
 	if _, err := wireguardNATRunner.LookPath(iptablesCmd); err != nil {
 		return false
 	}
@@ -328,7 +329,7 @@ func iptablesAvailable() bool {
 	args := []string{"--wait", "-t", "filter", "-C", "FORWARD",
 		"-s", "169.254.255.255/32", "-d", "169.254.255.254/32",
 		"-j", "ACCEPT"}
-	_, err := wireguardNATRunner.Run(iptablesCmd, args...)
+	_, err := wireguardNATRunner.Run(ctx, iptablesCmd, args...)
 	if err == nil {
 		return true
 	}
@@ -336,8 +337,8 @@ func iptablesAvailable() bool {
 	return errors.As(err, &exitErr) && exitErr.ExitCode() == 1
 }
 
-func firewalldRules() (map[string]struct{}, error) {
-	output, err := wireguardNATRunner.Run("firewall-cmd", "--direct", "--get-all-rules")
+func firewalldRules(ctx context.Context) (map[string]struct{}, error) {
+	output, err := wireguardNATRunner.Run(ctx, "firewall-cmd", "--direct", "--get-all-rules")
 	if err != nil {
 		return nil, commandOutputError("firewall-cmd", []string{"--direct", "--get-all-rules"}, output, err)
 	}
@@ -405,16 +406,16 @@ func commandOutputError(name string, args []string, output []byte, err error) er
 // iptablesRun invokes iptables with --wait so we participate in the xtables
 // lock. Returns the combined output and (for callers that care) the raw error
 // so they can inspect the exit code.
-func iptablesRun(args ...string) ([]byte, error) {
+func iptablesRun(ctx context.Context, args ...string) ([]byte, error) {
 	full := append([]string{"--wait"}, args...)
-	return wireguardNATRunner.Run(iptablesCmd, full...)
+	return wireguardNATRunner.Run(ctx, iptablesCmd, full...)
 }
 
 // iptablesRuleExists checks for a rule via `iptables -C`. Exit code 1 means
 // the rule is absent; any other non-zero exit is a real failure.
-func iptablesRuleExists(table, chain string, rulespec ...string) (bool, error) {
+func iptablesRuleExists(ctx context.Context, table, chain string, rulespec ...string) (bool, error) {
 	args := append([]string{"-t", table, "-C", chain}, rulespec...)
-	output, err := iptablesRun(args...)
+	output, err := iptablesRun(ctx, args...)
 	if err == nil {
 		return true, nil
 	}
@@ -425,8 +426,8 @@ func iptablesRuleExists(table, chain string, rulespec ...string) (bool, error) {
 	return false, commandOutputError(iptablesCmd, args, output, err)
 }
 
-func removeRuleIfExists(table, chain string, rulespec ...string) error {
-	exists, err := iptablesRuleExists(table, chain, rulespec...)
+func removeRuleIfExists(ctx context.Context, table, chain string, rulespec ...string) error {
+	exists, err := iptablesRuleExists(ctx, table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
@@ -434,15 +435,15 @@ func removeRuleIfExists(table, chain string, rulespec ...string) error {
 		return nil
 	}
 	args := append([]string{"-t", table, "-D", chain}, rulespec...)
-	output, err := iptablesRun(args...)
+	output, err := iptablesRun(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("delete rule: %w", commandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }
 
-func insertRuleIfMissing(table, chain string, position int, rulespec ...string) error {
-	exists, err := iptablesRuleExists(table, chain, rulespec...)
+func insertRuleIfMissing(ctx context.Context, table, chain string, position int, rulespec ...string) error {
+	exists, err := iptablesRuleExists(ctx, table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
@@ -450,15 +451,15 @@ func insertRuleIfMissing(table, chain string, position int, rulespec ...string) 
 		return nil
 	}
 	args := append([]string{"-t", table, "-I", chain, strconv.Itoa(position)}, rulespec...)
-	output, err := iptablesRun(args...)
+	output, err := iptablesRun(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("insert rule: %w", commandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }
 
-func appendRuleIfMissing(table, chain string, rulespec ...string) error {
-	exists, err := iptablesRuleExists(table, chain, rulespec...)
+func appendRuleIfMissing(ctx context.Context, table, chain string, rulespec ...string) error {
+	exists, err := iptablesRuleExists(ctx, table, chain, rulespec...)
 	if err != nil {
 		return fmt.Errorf("check rule existence: %w", err)
 	}
@@ -466,7 +467,7 @@ func appendRuleIfMissing(table, chain string, rulespec ...string) error {
 		return nil
 	}
 	args := append([]string{"-t", table, "-A", chain}, rulespec...)
-	output, err := iptablesRun(args...)
+	output, err := iptablesRun(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("append rule: %w", commandOutputError(iptablesCmd, args, output, err))
 	}

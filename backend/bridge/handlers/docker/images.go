@@ -9,14 +9,14 @@ import (
 )
 
 // List all images
-func ListImages() (any, error) {
+func ListImages(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	images, err := cli.ImageList(context.Background(), image.ListOptions{All: true})
+	images, err := cli.ImageList(ctx, image.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list images: %w", err)
 	}
@@ -33,14 +33,14 @@ func ListImages() (any, error) {
 }
 
 // Delete an image
-func DeleteImage(imageID string) (any, error) {
+func DeleteImage(ctx context.Context, imageID string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	_, err = cli.ImageRemove(context.Background(), imageID, image.RemoveOptions{Force: false, PruneChildren: true})
+	_, err = cli.ImageRemove(ctx, imageID, image.RemoveOptions{Force: false, PruneChildren: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to remove image: %w", err)
 	}

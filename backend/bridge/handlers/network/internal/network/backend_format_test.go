@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ network:
 	if err != nil {
 		t.Fatalf("detectNetplanBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual("192.168.10.50/24", "192.168.10.1", []string{"1.1.1.1", "8.8.8.8"})
+	setErr := backend.SetIPv4Manual(context.Background(), "192.168.10.50/24", "192.168.10.1", []string{"1.1.1.1", "8.8.8.8"})
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -62,7 +63,7 @@ DNS=2001:4860:4860::8888
 	if err != nil {
 		t.Fatalf("detectNetworkdBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual("10.0.0.20/24", "10.0.0.1", []string{"9.9.9.9"})
+	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.20/24", "10.0.0.1", []string{"9.9.9.9"})
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -97,7 +98,7 @@ iface eth0 inet dhcp
 	if err != nil {
 		t.Fatalf("detectIfupdownBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual("172.16.0.10/24", "172.16.0.1", []string{"1.1.1.1"})
+	setErr := backend.SetIPv4Manual(context.Background(), "172.16.0.10/24", "172.16.0.1", []string{"1.1.1.1"})
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -132,7 +133,7 @@ ONBOOT=yes
 	if err != nil {
 		t.Fatalf("detectIfcfgBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual("192.168.1.20/24", "192.168.1.1", []string{"8.8.8.8", "1.1.1.1"})
+	setErr := backend.SetIPv4Manual(context.Background(), "192.168.1.20/24", "192.168.1.1", []string{"8.8.8.8", "1.1.1.1"})
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -179,7 +180,7 @@ mtu=1500
 	if err != nil {
 		t.Fatalf("detectNMConnectionBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual("192.168.50.10/24", "192.168.50.1", []string{"4.4.4.4"})
+	setErr := backend.SetIPv4Manual(context.Background(), "192.168.50.10/24", "192.168.50.1", []string{"4.4.4.4"})
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -224,7 +225,7 @@ method=auto
 	if err != nil {
 		t.Fatalf("detectNMConnectionBackend: %v", err)
 	}
-	if err := backend.SetIPv4DHCP(); err != nil {
+	if err := backend.SetIPv4DHCP(context.Background()); err != nil {
 		t.Fatalf("SetIPv4DHCP: %v", err)
 	}
 	requireCalls(

@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
@@ -28,7 +30,14 @@ const (
 
 var versionExecCommand = exec.Command
 
+func cliOperationContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, timeout)
+}
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	if len(os.Args) < 2 {
 		showHelp()
 		os.Exit(0)
@@ -39,17 +48,17 @@ func main() {
 
 	switch cmd {
 	case "status":
-		runStatus()
+		runStatus(ctx)
 	case "logs":
 		runLogs(args)
 	case "start":
-		runSystemctl("start", linuxioTargetName)
+		runSystemctl(ctx, "start", linuxioTargetName)
 	case "stop":
-		runSystemctl("stop", linuxioTargetName)
+		runSystemctl(ctx, "stop", linuxioTargetName)
 	case "restart":
-		runRestart(args)
+		runRestart(ctx, args)
 	case "verbose":
-		runVerbose(args)
+		runVerbose(ctx, args)
 	case "version":
 		showVersion(args)
 	case "help", "-h", "--help":
@@ -127,8 +136,10 @@ func showVersion(args []string) {
 
 }
 
-func runStatus() {
-	units, err := systemd.ListUnitsWithPrefix(context.Background(), "linuxio")
+func runStatus(parent context.Context) {
+	ctx, cancel := cliOperationContext(parent, 5*time.Second)
+	defer cancel()
+	units, err := systemd.ListUnitsWithPrefix(ctx, "linuxio")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to query systemd: %v\n", err)
 		os.Exit(1)
@@ -513,17 +524,18 @@ func journalPriorityLevel(entry journalEntry) string {
 	}
 }
 
-func runSystemctl(action, target string) {
-	runSystemctlTargets(action, []string{target}, target)
+func runSystemctl(ctx context.Context, action, target string) {
+	runSystemctlTargets(ctx, action, []string{target}, target)
 }
 
-func runSystemctlTargets(action string, targets []string, successLabel string) {
+func runSystemctlTargets(parent context.Context, action string, targets []string, successLabel string) {
 	if len(targets) == 0 {
 		fmt.Fprintf(os.Stderr, "No targets provided for systemctl %s\n", action)
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := cliOperationContext(parent, 30*time.Second)
+	defer cancel()
 	for _, target := range targets {
 		var err error
 		switch action {
@@ -570,7 +582,7 @@ func pastTense(action string) string {
 	}
 }
 
-func runRestart(args []string) {
+func runRestart(ctx context.Context, args []string) {
 	targets, successLabel, err := restartTargets(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -578,7 +590,7 @@ func runRestart(args []string) {
 		os.Exit(1)
 	}
 
-	runSystemctlTargets("restart", targets, successLabel)
+	runSystemctlTargets(ctx, "restart", targets, successLabel)
 }
 
 func restartTargets(args []string) ([]string, string, error) {
@@ -606,7 +618,7 @@ ExecStart=
 ExecStart=/usr/local/bin/linuxio-webserver run -verbose
 `
 
-func runVerbose(args []string) {
+func runVerbose(ctx context.Context, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: linuxio verbose [enable|disable|status]")
 		os.Exit(1)
@@ -616,9 +628,9 @@ func runVerbose(args []string) {
 
 	switch action {
 	case "enable":
-		enableVerbose()
+		enableVerbose(ctx)
 	case "disable":
-		disableVerbose()
+		disableVerbose(ctx)
 	case "status":
 		showVerboseStatus()
 	default:
@@ -628,7 +640,7 @@ func runVerbose(args []string) {
 	}
 }
 
-func enableVerbose() {
+func enableVerbose(parent context.Context) {
 	// Check if already enabled
 	if _, err := os.Stat(verboseDropinPath); err == nil {
 		fmt.Println("Verbose mode is already enabled")
@@ -653,13 +665,15 @@ func enableVerbose() {
 	fmt.Println("✓ Verbose mode enabled")
 
 	fmt.Println("Reloading systemd daemon...")
-	if err := systemd.DaemonReload(context.Background()); err != nil {
+	ctx, cancel := cliOperationContext(parent, 30*time.Second)
+	defer cancel()
+	if err := systemd.DaemonReload(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Restarting linuxio.target...")
-	if err := systemd.RestartUnit(context.Background(), linuxioTargetName); err != nil {
+	if err := systemd.RestartUnit(ctx, linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}
@@ -668,7 +682,7 @@ func enableVerbose() {
 	fmt.Println("  View debug logs with: linuxio logs")
 }
 
-func disableVerbose() {
+func disableVerbose(parent context.Context) {
 	// Check if already disabled
 	if _, err := os.Stat(verboseDropinPath); os.IsNotExist(err) {
 		fmt.Println("Verbose mode is already disabled")
@@ -685,13 +699,15 @@ func disableVerbose() {
 	fmt.Println("✓ Verbose mode disabled")
 
 	fmt.Println("Reloading systemd daemon...")
-	if err := systemd.DaemonReload(context.Background()); err != nil {
+	ctx, cancel := cliOperationContext(parent, 30*time.Second)
+	defer cancel()
+	if err := systemd.DaemonReload(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Restarting linuxio.target...")
-	if err := systemd.RestartUnit(context.Background(), linuxioTargetName); err != nil {
+	if err := systemd.RestartUnit(ctx, linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}

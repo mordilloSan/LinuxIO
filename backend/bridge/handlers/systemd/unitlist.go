@@ -102,7 +102,9 @@ func listUnitsBySuffix(
 }
 
 func forEachListedUnitLimited(ctx context.Context, entries []listedUnit, fn func(int, listedUnit)) error {
-	ctx = requireContext(ctx)
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
 	if len(entries) == 0 {
 		return ctx.Err()
 	}
@@ -136,13 +138,6 @@ func forEachListedUnitLimited(ctx context.Context, entries []listedUnit, fn func
 
 	wg.Wait()
 	return ctx.Err()
-}
-
-func requireContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
 }
 
 func getStringProperty(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (string, bool) {

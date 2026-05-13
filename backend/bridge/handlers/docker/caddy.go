@@ -48,14 +48,14 @@ type CaddyStatus struct {
 }
 
 // GetCaddyStatusWithStore returns the current Caddy proxy status.
-func GetCaddyStatusWithStore(username string, store *config.UserStore) (any, error) {
+func GetCaddyStatusWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		return nil, err
 	}
 
-	running := isCaddyRunning()
-	routes, _ := buildRoutes(cfg.Docker.Proxy)
+	running := isCaddyRunning(ctx)
+	routes, _ := buildRoutes(ctx, cfg.Docker.Proxy)
 
 	return CaddyStatus{
 		Enabled:    cfg.Docker.Proxy.CaddyEnabled,
@@ -66,12 +66,12 @@ func GetCaddyStatusWithStore(username string, store *config.UserStore) (any, err
 }
 
 // EnableCaddyWithStore deploys the Caddy container and generates the initial Caddyfile.
-func EnableCaddyWithStore(username string, store *config.UserStore) (any, error) {
+func EnableCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	if err := ensureCaddyDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create caddy config dirs: %w", err)
 	}
 
-	if err := deployCaddyContainer(); err != nil {
+	if err := deployCaddyContainer(ctx); err != nil {
 		return nil, fmt.Errorf("failed to deploy caddy: %w", err)
 	}
 
@@ -84,15 +84,21 @@ func EnableCaddyWithStore(username string, store *config.UserStore) (any, error)
 	}
 
 	// Give Caddy a moment to start before attempting first reload
-	time.Sleep(2 * time.Second)
-	_ = reloadCaddyfile(cfg.Docker.Proxy)
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	_ = reloadCaddyfile(ctx, cfg.Docker.Proxy)
 
 	return map[string]any{"message": "Caddy deployed"}, nil
 }
 
 // DisableCaddyWithStore stops and removes the Caddy container.
-func DisableCaddyWithStore(username string, store *config.UserStore) (any, error) {
-	if err := removeCaddyContainer(); err != nil {
+func DisableCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+	if err := removeCaddyContainer(ctx); err != nil {
 		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
 
@@ -107,20 +113,20 @@ func DisableCaddyWithStore(username string, store *config.UserStore) (any, error
 }
 
 // ReloadCaddyWithStore regenerates the Caddyfile from current containers and reloads Caddy.
-func ReloadCaddyWithStore(username string, store *config.UserStore) (any, error) {
+func ReloadCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		return nil, err
 	}
-	if err := reloadCaddyfile(cfg.Docker.Proxy); err != nil {
+	if err := reloadCaddyfile(ctx, cfg.Docker.Proxy); err != nil {
 		return nil, err
 	}
 	return map[string]any{"message": "Caddy reloaded"}, nil
 }
 
 // ConnectToProxy attaches a container to linuxio-docker so Caddy can reach it.
-func ConnectToProxy(containerID string) (any, error) {
-	ConnectToProxyNetwork(containerID)
+func ConnectToProxy(ctx context.Context, containerID string) (any, error) {
+	ConnectToProxyNetwork(ctx, containerID)
 	return map[string]any{"message": "connected"}, nil
 }
 
@@ -135,14 +141,12 @@ func ensureCaddyDirs() error {
 	return nil
 }
 
-func deployCaddyContainer() error {
+func deployCaddyContainer(ctx context.Context) error {
 	cli, err := getClient()
 	if err != nil {
 		return err
 	}
 	defer releaseClient(cli)
-
-	ctx := context.Background()
 
 	// Remove any existing (stopped) container first
 	_ = cli.ContainerRemove(ctx, caddyContainerName, container.RemoveOptions{Force: true})
@@ -203,24 +207,24 @@ func deployCaddyContainer() error {
 	return nil
 }
 
-func removeCaddyContainer() error {
+func removeCaddyContainer(ctx context.Context) error {
 	cli, err := getClient()
 	if err != nil {
 		return err
 	}
 	defer releaseClient(cli)
 
-	return cli.ContainerRemove(context.Background(), caddyContainerName, container.RemoveOptions{Force: true})
+	return cli.ContainerRemove(ctx, caddyContainerName, container.RemoveOptions{Force: true})
 }
 
-func isCaddyRunning() bool {
+func isCaddyRunning(ctx context.Context) bool {
 	cli, err := getClient()
 	if err != nil {
 		return false
 	}
 	defer releaseClient(cli)
 
-	list, err := cli.ContainerList(context.Background(), container.ListOptions{
+	list, err := cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("name", caddyContainerName)),
 	})
 	if err != nil {
@@ -235,14 +239,14 @@ func isCaddyRunning() bool {
 }
 
 // buildRoutes lists running containers with proxy labels and builds the route table.
-func buildRoutes(proxyCfg config.DockerProxy) ([]CaddyRoute, error) {
+func buildRoutes(ctx context.Context, proxyCfg config.DockerProxy) ([]CaddyRoute, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, err
 	}
 	defer releaseClient(cli)
 
-	list, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
+	list, err := cli.ContainerList(ctx, container.ListOptions{All: false})
 	if err != nil {
 		return nil, err
 	}
@@ -297,8 +301,8 @@ func caddyContainerShortName(c container.Summary) string {
 }
 
 // reloadCaddyfile generates the Caddyfile and reloads Caddy via its Admin API.
-func reloadCaddyfile(proxyCfg config.DockerProxy) error {
-	routes, err := buildRoutes(proxyCfg)
+func reloadCaddyfile(ctx context.Context, proxyCfg config.DockerProxy) error {
+	routes, err := buildRoutes(ctx, proxyCfg)
 	if err != nil {
 		return fmt.Errorf("build routes: %w", err)
 	}
@@ -311,7 +315,7 @@ func reloadCaddyfile(proxyCfg config.DockerProxy) error {
 	}
 
 	req, err := http.NewRequestWithContext(
-		context.Background(),
+		ctx,
 		http.MethodPost,
 		caddyAdminURL,
 		bytes.NewReader([]byte(caddyfile)),

@@ -9,14 +9,14 @@ import (
 )
 
 // List all volumes
-func ListVolumes() (any, error) {
+func ListVolumes(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	volumesResp, err := cli.VolumeList(context.Background(), volume.ListOptions{})
+	volumesResp, err := cli.VolumeList(ctx, volume.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list volumes: %w", err)
 	}
@@ -33,14 +33,14 @@ func ListVolumes() (any, error) {
 }
 
 // Delete a volume
-func DeleteVolume(name string) (any, error) {
+func DeleteVolume(ctx context.Context, name string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	err = cli.VolumeRemove(context.Background(), name, true)
+	err = cli.VolumeRemove(ctx, name, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to remove volume: %w", err)
 	}
@@ -49,14 +49,14 @@ func DeleteVolume(name string) (any, error) {
 }
 
 // Create a volume
-func CreateVolume(name string) (any, error) {
+func CreateVolume(ctx context.Context, name string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	volume, err := cli.VolumeCreate(context.Background(), volume.CreateOptions{
+	volume, err := cli.VolumeCreate(ctx, volume.CreateOptions{
 		Name: name,
 	})
 	if err != nil {

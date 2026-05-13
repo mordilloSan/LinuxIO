@@ -21,7 +21,7 @@ func RegisterJobRoutes(router *bridgejobs.Router) {
 	router.JobRunner(JobTypeStorageSmartTest, runSmartTestJob, bridgejobs.ActionDefault)
 }
 
-func runSmartTestJob(_ context.Context, job *bridgejobs.Job, args []string) (any, error) {
+func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, bridgejobs.NewError("run_smart_test requires device name and test type (short/long)", 400)
 	}
@@ -36,7 +36,7 @@ func runSmartTestJob(_ context.Context, job *bridgejobs.Job, args []string) (any
 		Message:  fmt.Sprintf("Starting SMART %s self-test", testType),
 	})
 
-	result, err := RunSmartTest(device, testType)
+	result, err := RunSmartTest(ctx, device, testType)
 	if err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 500)
 	}

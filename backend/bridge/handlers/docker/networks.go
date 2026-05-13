@@ -15,15 +15,13 @@ const linuxIONetworkName = "linuxio-docker"
 // EnsureLinuxIONetwork checks that the linuxio-docker bridge network exists and
 // creates it if it does not. Failures are logged but never fatal — the bridge
 // starts normally even when Docker is unavailable.
-func EnsureLinuxIONetwork() {
+func EnsureLinuxIONetwork(ctx context.Context) {
 	cli, err := getClient()
 	if err != nil {
 		slog.Debug("cannot ensure docker network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
 		return
 	}
 	defer releaseClient(cli)
-
-	ctx := context.Background()
 
 	networks, err := cli.NetworkList(ctx, network.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("name", linuxIONetworkName)),
@@ -72,19 +70,19 @@ func connectToProxyNetwork(ctx context.Context, containerID string) {
 // ConnectToProxyNetwork attaches a container to the linuxio-docker bridge so the
 // built-in path proxy can reach it. The call is idempotent — Docker returns a
 // "already exists" error which is silently ignored.
-func ConnectToProxyNetwork(containerID string) {
-	connectToProxyNetwork(context.Background(), containerID)
+func ConnectToProxyNetwork(ctx context.Context, containerID string) {
+	connectToProxyNetwork(ctx, containerID)
 }
 
 // List all networks
-func ListDockerNetworks() (any, error) {
+func ListDockerNetworks(ctx context.Context) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	networks, err := cli.NetworkList(context.Background(), network.ListOptions{})
+	networks, err := cli.NetworkList(ctx, network.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
@@ -92,7 +90,7 @@ func ListDockerNetworks() (any, error) {
 	results := make([]map[string]any, 0, len(networks))
 
 	for _, nw := range networks {
-		inspect, err := cli.NetworkInspect(context.Background(), nw.ID, network.InspectOptions{})
+		inspect, err := cli.NetworkInspect(ctx, nw.ID, network.InspectOptions{})
 		if err != nil {
 			slog.
 				// Log warning but continue
@@ -138,14 +136,14 @@ func ListDockerNetworks() (any, error) {
 }
 
 // Delete a network
-func DeleteDockerNetwork(name string) (any, error) {
+func DeleteDockerNetwork(ctx context.Context, name string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	if err := cli.NetworkRemove(context.Background(), name); err != nil {
+	if err := cli.NetworkRemove(ctx, name); err != nil {
 		return nil, fmt.Errorf("failed to remove network: %w", err)
 	}
 
@@ -153,14 +151,14 @@ func DeleteDockerNetwork(name string) (any, error) {
 }
 
 // Create a volume
-func CreateDockerNetwork(name string) (any, error) {
+func CreateDockerNetwork(ctx context.Context, name string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	network, err := cli.NetworkCreate(context.Background(), name, network.CreateOptions{})
+	network, err := cli.NetworkCreate(ctx, name, network.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}

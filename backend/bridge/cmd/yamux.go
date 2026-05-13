@@ -20,6 +20,9 @@ var streamCounter atomic.Uint64
 // handleYamuxSession handles a yamux multiplexed connection.
 // Each stream within the session is treated as an independent request.
 func handleYamuxSession(rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	ymuxSession, err := relay.NewYamuxServer(conn)
 	if err != nil {
 		slog.Error("failed to create yamux session", "session_id", sess.SessionID, "error", err)
@@ -51,7 +54,7 @@ func handleYamuxSession(rt runtime.Runtime, router *bridgeipc.Router, conn net.C
 		streamWg.Go(func() {
 			defer s.Close()
 
-			handleYamuxStream(rt, router, s, sid)
+			handleYamuxStream(ctx, rt, router, s, sid)
 		})
 	}
 
@@ -62,7 +65,7 @@ func handleYamuxSession(rt runtime.Runtime, router *bridgeipc.Router, conn net.C
 
 // handleYamuxStream handles a single stream within a yamux session.
 // Reads the OpStreamOpen frame, looks up the registered handler, and executes it.
-func handleYamuxStream(rt runtime.Runtime, router *bridgeipc.Router, stream net.Conn, streamID string) {
+func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, stream net.Conn, streamID string) {
 	sess := rt.Session
 	// Read the first frame to determine stream type.
 	frame, err := relay.ReadRelayFrame(stream)
@@ -79,7 +82,7 @@ func handleYamuxStream(rt runtime.Runtime, router *bridgeipc.Router, stream net.
 	// Parse stream type and args from payload.
 	route, args := relay.ParseStreamOpenPayload(frame.Payload)
 
-	if err := router.Dispatch(context.Background(), stream, bridgeipc.Request{
+	if err := router.Dispatch(ctx, stream, bridgeipc.Request{
 		Route:   route,
 		Args:    args,
 		Session: sess,

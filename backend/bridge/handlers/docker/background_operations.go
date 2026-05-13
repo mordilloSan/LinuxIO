@@ -58,7 +58,7 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	}
 	slog.Info("docker compose job requested", "component", "docker", "job_type", JobTypeDockerCompose, "action", action, "service", projectName, "path", composePath, "user", username)
 
-	configFile, workingDir, err := resolveComposeJobPaths(username, store, projectName, composePath)
+	configFile, workingDir, err := resolveComposeJobPaths(ctx, username, store, projectName, composePath)
 	if err != nil {
 		job.ReportProgress(ComposeJobMessage{Type: "error", Message: "compose file not found: " + err.Error()})
 		return nil, bridgejobs.NewError("compose file not found: "+err.Error(), 404)
@@ -101,11 +101,11 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	return result, nil
 }
 
-func resolveComposeJobPaths(username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
+func resolveComposeJobPaths(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}
-	return findComposeFileWithStore(username, store, projectName)
+	return findComposeFileWithStore(ctx, username, store, projectName)
 }
 
 func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {

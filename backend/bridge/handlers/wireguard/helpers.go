@@ -65,9 +65,9 @@ func isInterfaceUp(name string) bool {
 	return err == nil
 }
 
-func isInterfaceEnabled(name string) bool {
+func isInterfaceEnabled(ctx context.Context, name string) bool {
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	state, err := systemd.GetUnitFileState(context.Background(), serviceName)
+	state, err := systemd.GetUnitFileState(ctx, serviceName)
 	if err != nil {
 		slog.Debug("failed to query interface enabled state", "component", "wireguard", "interface", name, "service", serviceName, "error", err)
 		return false

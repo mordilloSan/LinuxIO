@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,10 +30,10 @@ func (ExecRunner) LookPath(name string) (string, error) {
 	return "", fmt.Errorf("%s not found in PATH", name)
 }
 
-func (r ExecRunner) Run(name string, args ...string) ([]byte, error) {
+func (r ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	path, err := r.LookPath(name)
 	if err != nil {
 		return nil, err
 	}
-	return exec.Command(path, args...).CombinedOutput()
+	return exec.CommandContext(ctx, path, args...).CombinedOutput()
 }

@@ -13,7 +13,7 @@ func (h dockerHandlers) handleGetIconURI(ctx context.Context, args []string, emi
 	if err != nil {
 		return err
 	}
-	uri, err := GetIconURI(identifier)
+	uri, err := GetIconURI(ctx, identifier)
 	return bridgeipc.EmitResult(emit, map[string]string{"uri": uri}, err)
 }
 
@@ -22,7 +22,7 @@ func (h dockerHandlers) handleGetIcon(ctx context.Context, args []string, emit b
 	if err != nil {
 		return err
 	}
-	data, err := GetIcon(identifier)
+	data, err := GetIcon(ctx, identifier)
 	if err != nil {
 		return err
 	}

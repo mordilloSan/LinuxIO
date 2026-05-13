@@ -8,7 +8,7 @@ import (
 )
 
 func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetDockerInfo()
+	result, err := GetDockerInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -23,6 +23,6 @@ func (h dockerHandlers) handleSystemPrune(ctx context.Context, args []string, em
 		"build_cache", opts.BuildCache,
 		"networks", opts.Networks,
 		"volumes", opts.Volumes)
-	result, err := SystemPrune(opts)
+	result, err := SystemPrune(ctx, opts)
 	return bridgeipc.EmitResult(emit, result, err)
 }

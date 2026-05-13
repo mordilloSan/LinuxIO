@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -87,8 +88,8 @@ func (b *ifupdownBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *ifupdownBackend) SetIPv4DHCP() error {
-	return b.update(func(state *ifupdownInterfaceState) error {
+func (b *ifupdownBackend) SetIPv4DHCP(ctx context.Context) error {
+	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV4(b.iface)
 		block.Method = "dhcp"
 		block.deleteOptions("address", "gateway", "dns-nameservers")
@@ -96,14 +97,14 @@ func (b *ifupdownBackend) SetIPv4DHCP() error {
 	})
 }
 
-func (b *ifupdownBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) error {
+func (b *ifupdownBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}
 	if !isIPv4(gateway) {
 		return fmt.Errorf("invalid IPv4 gateway %q", gateway)
 	}
-	return b.update(func(state *ifupdownInterfaceState) error {
+	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV4(b.iface)
 		block.Method = "static"
 		block.setOption("address", strings.TrimSpace(addressCIDR))
@@ -113,8 +114,8 @@ func (b *ifupdownBackend) SetIPv4Manual(addressCIDR, gateway string, dns []strin
 	})
 }
 
-func (b *ifupdownBackend) SetIPv6DHCP() error {
-	return b.update(func(state *ifupdownInterfaceState) error {
+func (b *ifupdownBackend) SetIPv6DHCP(ctx context.Context) error {
+	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV6(b.iface)
 		block.Method = "auto"
 		block.deleteOptions("address")
@@ -122,11 +123,11 @@ func (b *ifupdownBackend) SetIPv6DHCP() error {
 	})
 }
 
-func (b *ifupdownBackend) SetIPv6Static(addressCIDR string) error {
+func (b *ifupdownBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
 	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
-	return b.update(func(state *ifupdownInterfaceState) error {
+	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV6(b.iface)
 		block.Method = "static"
 		block.setOption("address", strings.TrimSpace(addressCIDR))
@@ -134,21 +135,21 @@ func (b *ifupdownBackend) SetIPv6Static(addressCIDR string) error {
 	})
 }
 
-func (b *ifupdownBackend) SetMTU(mtu uint32) error {
-	return b.update(func(state *ifupdownInterfaceState) error {
+func (b *ifupdownBackend) SetMTU(ctx context.Context, mtu uint32) error {
+	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV4(b.iface)
 		block.setOption("mtu", fmt.Sprintf("%d", mtu))
 		return nil
 	})
 }
 
-func (b *ifupdownBackend) Enable() error {
-	output, err := b.env.Runner.Run("ifup", b.iface)
+func (b *ifupdownBackend) Enable(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "ifup", b.iface)
 	return commandError("ifup", []string{b.iface}, output, err)
 }
 
-func (b *ifupdownBackend) Disable() error {
-	output, err := b.env.Runner.Run("ifdown", b.iface)
+func (b *ifupdownBackend) Disable(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "ifdown", b.iface)
 	return commandError("ifdown", []string{b.iface}, output, err)
 }
 
@@ -160,7 +161,7 @@ func (b *ifupdownBackend) load() (*ifupdownDoc, error) {
 	return parseIfupdownDoc(string(raw)), nil
 }
 
-func (b *ifupdownBackend) update(updateFn func(state *ifupdownInterfaceState) error) error {
+func (b *ifupdownBackend) update(ctx context.Context, updateFn func(state *ifupdownInterfaceState) error) error {
 	doc, err := b.load()
 	if err != nil {
 		return err
@@ -177,10 +178,10 @@ func (b *ifupdownBackend) update(updateFn func(state *ifupdownInterfaceState) er
 	if writeErr != nil {
 		return writeErr
 	}
-	if down, downErr := b.env.Runner.Run("ifdown", b.iface); downErr == nil {
+	if down, downErr := b.env.Runner.Run(ctx, "ifdown", b.iface); downErr == nil {
 		_ = down
 	}
-	output, err := b.env.Runner.Run("ifup", b.iface)
+	output, err := b.env.Runner.Run(ctx, "ifup", b.iface)
 	return commandError("ifup", []string{b.iface}, output, err)
 }
 

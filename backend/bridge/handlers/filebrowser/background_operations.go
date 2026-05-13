@@ -333,11 +333,9 @@ func removeWithDebug(root *fsroot.FSRoot, targetRel, targetPath string) {
 }
 
 func notifyCompressedArchive(targetPath string, info os.FileInfo) {
-	go func(stat os.FileInfo) {
-		if err := addToIndexer(targetPath, stat); err != nil {
-			slog.Debug("failed to update indexer after archive creation", "path", targetPath, "error", err)
-		}
-	}(info)
+	runDetachedIndexerUpdate("archive_create", func(ctx context.Context) error {
+		return addToIndexer(ctx, targetPath, info)
+	})
 }
 
 func computeExtractSize(archivePath string, archiveSize int64) int64 {
@@ -367,15 +365,17 @@ func parseExtractArgs(args []string) (string, string, error) {
 }
 
 func notifyExtractedFiles(destination string) {
-	go func(destPath string) {
+	runDetachedIndexerUpdate("archive_extract", func(ctx context.Context) error {
 		walkRoot, err := fsroot.Open()
 		if err != nil {
-			slog.Debug("failed to open root for indexer walk", "path", destPath, "error", err)
-			return
+			return fmt.Errorf("open root for indexer walk: %w", err)
 		}
 		defer walkRoot.Close()
 
-		if err := walkRoot.WalkDir(destPath, func(rel string, entry fs.DirEntry, walkErr error) error {
+		if err := walkRoot.WalkDir(destination, func(rel string, entry fs.DirEntry, walkErr error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if walkErr != nil {
 				return nil
 			}
@@ -384,14 +384,15 @@ func notifyExtractedFiles(destination string) {
 				return nil
 			}
 			absPath := filepath.Clean("/" + strings.TrimPrefix(rel, "/"))
-			if err := addToIndexer(absPath, info); err != nil {
+			if err := addToIndexer(ctx, absPath, info); err != nil {
 				slog.Debug("failed to update indexer for extracted path", "path", absPath, "error", err)
 			}
 			return nil
 		}); err != nil {
-			slog.Debug("failed to walk extracted destination", "path", destPath, "error", err)
+			return fmt.Errorf("walk extracted destination: %w", err)
 		}
-	}(destination)
+		return nil
+	})
 }
 
 func parseTransferRequest(args []string) (transferRequest, error) {
@@ -700,11 +701,9 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 	}
 
 	if info, err := root.Root.Stat(fsroot.ToRel(destination)); err == nil {
-		go func(stat os.FileInfo) {
-			if err := addToIndexer(destination, stat); err != nil {
-				slog.Debug("failed to update indexer after copy", "path", destination, "error", err)
-			}
-		}(info)
+		runDetachedIndexerUpdate("copy", func(ctx context.Context) error {
+			return addToIndexer(ctx, destination, info)
+		})
 	}
 
 	slog.Info("copy complete", "source", source, "destination", destination, "size", totalSize)
@@ -764,16 +763,17 @@ func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 		slog.Debug("failed to stat move destination", "destination", req.destination, "error", statErr)
 	}
-	go func(info os.FileInfo) {
-		if err := deleteFromIndexer(req.source); err != nil {
+	runDetachedIndexerUpdate("move", func(ctx context.Context) error {
+		if err := deleteFromIndexer(ctx, req.source); err != nil {
 			slog.Debug("failed to delete from indexer after move", "source", req.source, "error", err)
 		}
-		if info != nil {
-			if err := addToIndexer(req.destination, info); err != nil {
+		if destInfoAfterMove != nil {
+			if err := addToIndexer(ctx, req.destination, destInfoAfterMove); err != nil {
 				slog.Debug("failed to update indexer after move", "destination", req.destination, "error", err)
 			}
 		}
-	}(destInfoAfterMove)
+		return nil
+	})
 
 	slog.Info("move complete", "source", req.source, "destination", req.destination, "size", totalSize)
 	return map[string]any{

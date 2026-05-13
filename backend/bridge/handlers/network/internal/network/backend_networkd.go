@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -71,63 +72,63 @@ func (b *networkdBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *networkdBackend) SetIPv4DHCP() error {
-	return b.update(func(cfg *ini.File) error {
+func (b *networkdBackend) SetIPv4DHCP(ctx context.Context) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		return updateNetworkdConfig(cfg, 4, "", "", nil, nil)
 	})
 }
 
-func (b *networkdBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) error {
+func (b *networkdBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}
 	if !isIPv4(gateway) {
 		return fmt.Errorf("invalid IPv4 gateway %q", gateway)
 	}
-	return b.update(func(cfg *ini.File) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		return updateNetworkdConfig(cfg, 4, addressCIDR, gateway, dns, nil)
 	})
 }
 
-func (b *networkdBackend) SetIPv6DHCP() error {
-	return b.update(func(cfg *ini.File) error {
+func (b *networkdBackend) SetIPv6DHCP(ctx context.Context) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		return updateNetworkdConfig(cfg, 6, "", "", nil, nil)
 	})
 }
 
-func (b *networkdBackend) SetIPv6Static(addressCIDR string) error {
+func (b *networkdBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
 	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
-	return b.update(func(cfg *ini.File) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		return updateNetworkdConfig(cfg, 6, addressCIDR, "", nil, nil)
 	})
 }
 
-func (b *networkdBackend) SetMTU(mtu uint32) error {
-	return b.update(func(cfg *ini.File) error {
+func (b *networkdBackend) SetMTU(ctx context.Context, mtu uint32) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		cfg.Section("Link").Key("MTUBytes").SetValue(strconv.FormatUint(uint64(mtu), 10))
 		return nil
 	})
 }
 
-func (b *networkdBackend) Enable() error {
-	if err := b.reloadAndReconfigure(); err != nil {
+func (b *networkdBackend) Enable(ctx context.Context) error {
+	if err := b.reloadAndReconfigure(ctx); err != nil {
 		return err
 	}
-	output, err := b.env.Runner.Run("networkctl", "up", b.iface)
+	output, err := b.env.Runner.Run(ctx, "networkctl", "up", b.iface)
 	if err != nil {
 		return commandError("networkctl", []string{"up", b.iface}, output, err)
 	}
 	return nil
 }
 
-func (b *networkdBackend) Disable() error {
-	output, err := b.env.Runner.Run("networkctl", "down", b.iface)
+func (b *networkdBackend) Disable(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "networkctl", "down", b.iface)
 	return commandError("networkctl", []string{"down", b.iface}, output, err)
 }
 
-func (b *networkdBackend) update(updateFn func(cfg *ini.File) error) error {
+func (b *networkdBackend) update(ctx context.Context, updateFn func(cfg *ini.File) error) error {
 	cfg, err := readINIFile(b.path)
 	if err != nil {
 		return err
@@ -147,15 +148,15 @@ func (b *networkdBackend) update(updateFn func(cfg *ini.File) error) error {
 	if err := b.env.WriteFile(b.path, rendered, existingMode(b.path, 0o644)); err != nil {
 		return err
 	}
-	return b.reloadAndReconfigure()
+	return b.reloadAndReconfigure(ctx)
 }
 
-func (b *networkdBackend) reloadAndReconfigure() error {
-	output, err := b.env.Runner.Run("networkctl", "reload")
+func (b *networkdBackend) reloadAndReconfigure(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "networkctl", "reload")
 	if err != nil {
 		return commandError("networkctl", []string{"reload"}, output, err)
 	}
-	output, err = b.env.Runner.Run("networkctl", "reconfigure", b.iface)
+	output, err = b.env.Runner.Run(ctx, "networkctl", "reconfigure", b.iface)
 	return commandError("networkctl", []string{"reconfigure", b.iface}, output, err)
 }
 

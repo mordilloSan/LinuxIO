@@ -51,31 +51,31 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, args []string, 
 		return err
 	}
 
-	go SyncWatchtowerStackWithStore(h.username, h.store)
+	go SyncWatchtowerStackDetached(h.username, h.store)
 
 	return bridgeipc.EmitResult(emit, map[string]any{"message": "auto-update updated"}, nil)
 }
 
 func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetCaddyStatusWithStore(h.username, h.store)
+	result, err := GetCaddyStatusWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleEnableCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("enable_caddy requested", "component", "docker", "user", h.username)
-	result, err := EnableCaddyWithStore(h.username, h.store)
+	result, err := EnableCaddyWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleDisableCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("disable_caddy requested", "component", "docker", "user", h.username)
-	result, err := DisableCaddyWithStore(h.username, h.store)
+	result, err := DisableCaddyWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleReloadCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("reload_caddy requested", "component", "docker", "user", h.username)
-	result, err := ReloadCaddyWithStore(h.username, h.store)
+	result, err := ReloadCaddyWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -85,6 +85,6 @@ func (h dockerHandlers) handleConnectToProxy(ctx context.Context, args []string,
 		return err
 	}
 	slog.Info("connect_to_proxy requested", "component", "docker", "container", id)
-	result, err := ConnectToProxy(id)
+	result, err := ConnectToProxy(ctx, id)
 	return bridgeipc.EmitResult(emit, result, err)
 }

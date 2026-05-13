@@ -17,8 +17,8 @@ type ServiceInfo struct {
 	Failed      bool   `json:"failed"`
 }
 
-func FetchServices() ([]ServiceInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func FetchServices(parent context.Context) ([]ServiceInfo, error) {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 
 	services, err := systemdapi.ListServices(ctx)

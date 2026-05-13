@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 
@@ -22,7 +23,19 @@ const (
 // from the current user's AutoUpdateStacks config and starts/restarts (or stops)
 // Watchtower accordingly. Called after every auto-update toggle and on login.
 // Errors are logged but not returned — the toggle saves the config regardless.
-func SyncWatchtowerStackWithStore(username string, store *config.UserStore) {
+func SyncWatchtowerStackDetached(username string, store *config.UserStore) {
+	ctx, cancel := detachedWatchtowerContext()
+	defer cancel()
+	SyncWatchtowerStackWithStore(ctx, username, store)
+}
+
+// detachedWatchtowerContext bounds intentionally detached Watchtower syncs
+// kicked off after config changes and at bridge-session startup.
+func detachedWatchtowerContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 2*time.Minute)
+}
+
+func SyncWatchtowerStackWithStore(ctx context.Context, username string, store *config.UserStore) {
 	cfg, _, err := config.SnapshotForUser(username, store)
 	if err != nil {
 		slog.Warn("failed to load docker config for watchtower", "component", "docker", "subsystem", "watchtower", "user", username, "error", err)
@@ -31,12 +44,12 @@ func SyncWatchtowerStackWithStore(username string, store *config.UserStore) {
 
 	// When no stacks have auto-update enabled, stop Watchtower entirely.
 	if len(cfg.Docker.AutoUpdateStacks) == 0 {
-		stopWatchtower()
+		stopWatchtower(ctx)
 		slog.Info("no auto-update stacks — watchtower stopped")
 		return
 	}
 
-	containerNames := collectContainerNames(cfg.Docker.AutoUpdateStacks)
+	containerNames := collectContainerNames(ctx, cfg.Docker.AutoUpdateStacks)
 
 	// Write the generated compose file.
 	content := generateWatchtowerCompose(containerNames)
@@ -46,7 +59,7 @@ func SyncWatchtowerStackWithStore(username string, store *config.UserStore) {
 	}
 
 	// Start or recreate Watchtower with the new config.
-	if err := composeUpWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
+	if err := composeUpWithSDK(ctx, watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
 		slog.Warn("watchtower compose up failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	} else {
 		slog.Info("watchtower synced", "containers", len(containerNames))
@@ -55,12 +68,12 @@ func SyncWatchtowerStackWithStore(username string, store *config.UserStore) {
 
 // stopWatchtower brings down the Watchtower stack and removes its compose file.
 // The global directory itself is preserved.
-func stopWatchtower() {
+func stopWatchtower(ctx context.Context) {
 	if _, err := os.Stat(watchtowerComposePath); os.IsNotExist(err) {
 		return // Nothing to stop.
 	}
 
-	if err := composeDownWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, false, nil); err != nil {
+	if err := composeDownWithSDK(ctx, watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, false, nil); err != nil {
 		slog.Warn("watchtower compose down failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	}
 
@@ -72,7 +85,7 @@ func stopWatchtower() {
 // collectContainerNames filters autoUpdateContainers to only include currently
 // running containers. Falls back to the full list if Docker is unavailable,
 // so Watchtower is ready once containers start.
-func collectContainerNames(autoUpdateContainers []string) []string {
+func collectContainerNames(ctx context.Context, autoUpdateContainers []string) []string {
 	cli, err := getClient()
 	if err != nil {
 		slog.Debug("docker client unavailable for watchtower sync; using fallback container names", "component", "docker", "subsystem", "watchtower", "error", err)
@@ -80,7 +93,7 @@ func collectContainerNames(autoUpdateContainers []string) []string {
 	}
 	defer releaseClient(cli)
 
-	running, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
+	running, err := cli.ContainerList(ctx, container.ListOptions{All: false})
 	if err != nil {
 		slog.Warn("failed to list running containers for watchtower sync", "component", "docker", "subsystem", "watchtower", "error", err)
 		return autoUpdateContainers

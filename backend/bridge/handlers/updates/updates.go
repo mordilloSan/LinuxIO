@@ -44,12 +44,15 @@ type packageUpdateMeta struct {
 }
 
 func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
-	b := autoupdate.SelectBackend()
+	if ctx == nil {
+		return AutoUpdateState{}, fmt.Errorf("nil context")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	b := autoupdate.SelectBackend(ctx)
 	if b == nil {
 		return AutoUpdateState{}, fmt.Errorf("no supported backend found")
 	}
-	ctx, cancel := context.WithTimeout(requireContext(ctx), 5*time.Second)
-	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return AutoUpdateState{}, err
 	}
@@ -57,12 +60,15 @@ func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
 }
 
 func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateState, error) {
-	b := autoupdate.SelectBackend()
+	if ctx == nil {
+		return AutoUpdateState{}, fmt.Errorf("nil context")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	b := autoupdate.SelectBackend(ctx)
 	if b == nil {
 		return AutoUpdateState{}, fmt.Errorf("no supported backend found")
 	}
-	ctx, cancel := context.WithTimeout(requireContext(ctx), 8*time.Second)
-	defer cancel()
 	if err := b.Apply(ctx, opts); err != nil {
 		return AutoUpdateState{}, err
 	}
@@ -70,7 +76,10 @@ func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateStat
 }
 
 func applyOfflineUpdates(ctx context.Context) (any, error) {
-	b := autoupdate.NewPkgKitBackendIfAvailable()
+	if ctx == nil {
+		return nil, fmt.Errorf("nil context")
+	}
+	b := autoupdate.NewPkgKitBackendIfAvailable(ctx)
 	if b == nil {
 		return nil, fmt.Errorf("PackageKit not available")
 	}
@@ -643,11 +652,4 @@ func awaitPackageKitSignal(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 		return err
 	}
 	return nil
-}
-
-func requireContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
 }

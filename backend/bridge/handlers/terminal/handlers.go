@@ -14,10 +14,10 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 		{Name: "list_shells", Mode: bridgeipc.ModeQuery, Handler: handleListShells},
 	})
 	router.Duplex("terminal.open", func(ctx context.Context, stream net.Conn, args []string) error {
-		return HandleTerminalSession(rt, stream, args)
+		return HandleTerminalSession(ctx, rt, stream, args)
 	})
 	router.Duplex("container.open", func(ctx context.Context, stream net.Conn, args []string) error {
-		return HandleContainerTerminalSession(rt, stream, args)
+		return HandleContainerTerminalSession(ctx, rt, stream, args)
 	})
 }
 
@@ -25,6 +25,6 @@ func handleListShells(ctx context.Context, args []string, emit bridgeipc.Events)
 	if len(args) < 1 {
 		return bridgeipc.EmitResult(emit, []string{}, nil)
 	}
-	shells, err := ListContainerShells(args[0])
+	shells, err := ListContainerShells(ctx, args[0])
 	return bridgeipc.EmitResult(emit, shells, err)
 }

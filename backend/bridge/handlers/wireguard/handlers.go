@@ -26,61 +26,61 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleListInterfaces(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListInterfaces(args)
+	result, err := ListInterfaces(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleAddInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := AddInterface(args)
+	result, err := AddInterface(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleRemoveInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := RemoveInterface(args)
+	result, err := RemoveInterface(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleListPeers(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListPeers(args)
+	result, err := ListPeers(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleAddPeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := AddPeer(args)
+	result, err := AddPeer(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleRemovePeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := RemovePeerByName(args)
+	result, err := RemovePeerByName(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handlePeerQRCode(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := PeerQRCode(args)
+	result, err := PeerQRCode(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handlePeerConfigDownload(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := PeerConfigDownload(args)
+	result, err := PeerConfigDownload(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleUpInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := UpInterface(args)
+	result, err := UpInterface(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleDownInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DownInterface(args)
+	result, err := DownInterface(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleEnableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := EnableInterface(args)
+	result, err := EnableInterface(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleDisableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DisableInterface(args)
+	result, err := DisableInterface(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }

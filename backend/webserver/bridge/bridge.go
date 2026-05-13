@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -119,13 +120,15 @@ func readCapabilitiesResponse(stream io.Reader) (session.Capabilities, error) {
 	}
 }
 
-func fetchSessionCapabilities(sessionID string) (session.Capabilities, error) {
+func fetchSessionCapabilities(ctx context.Context, sessionID string) (session.Capabilities, error) {
 	yamuxSession, err := GetYamuxSession(sessionID)
 	if err != nil {
 		return session.Capabilities{}, fmt.Errorf("get yamux session: %w", err)
 	}
 
-	stream, err := yamuxSession.Open(context.Background())
+	openCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	stream, err := yamuxSession.Open(openCtx)
 	if err != nil {
 		return session.Capabilities{}, fmt.Errorf("open capabilities stream: %w", err)
 	}
@@ -140,7 +143,7 @@ func fetchSessionCapabilities(sessionID string) (session.Capabilities, error) {
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.
-func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
@@ -167,7 +170,7 @@ func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost 
 		return nil, attachErr
 	}
 
-	caps, err := fetchSessionCapabilities(sess.SessionID)
+	caps, err := fetchSessionCapabilities(ctx, sess.SessionID)
 	if err != nil {
 		slog.Warn("failed to fetch session capabilities, using defaults",
 			"session_id", sess.SessionID,

@@ -718,12 +718,6 @@ func CommonPrefix(sep byte, paths ...string) string {
 	return string(c)
 }
 
-// ChangePermissions changes the permissions of a file or directory
-// If recursive is true and the path is a directory, changes permissions recursively
-func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
-	return ChangePermissionsCtx(context.Background(), path, mode, recursive, nil)
-}
-
 // ChangePermissionsCtx changes permissions and reports processed entries when requested.
 func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, cb func(processed, total int64)) error {
 	path = cleanAbsPath(path)
@@ -768,7 +762,7 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 // If recursive is true and the path is a directory, changes ownership recursively.
 // Passing uid or gid as -1 will leave that field unchanged (POSIX semantics).
 func ChangeOwnership(path string, uid, gid int, recursive bool) error {
-	return ChangeOwnershipCtx(context.Background(), path, uid, gid, recursive, nil)
+	return fmt.Errorf("ChangeOwnership requires a caller context; use ChangeOwnershipCtx")
 }
 
 // ChangeOwnershipCtx changes ownership and reports processed entries when requested.

@@ -28,16 +28,16 @@ var (
 	sectionRegex     = regexp.MustCompile(`^\[([^\]]+)\]$`)
 	keyValueRegex    = regexp.MustCompile(`^\s*([^=]+?)\s*=\s*(.*)$`)
 	validShareName   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$`)
-	smbcontrolReload = func() ([]byte, error) {
-		return exec.Command("smbcontrol", "all", "reload-config").CombinedOutput()
+	smbcontrolReload = func(ctx context.Context) ([]byte, error) {
+		return exec.CommandContext(ctx, "smbcontrol", "all", "reload-config").CombinedOutput()
 	}
-	systemdReloadUnit = func(name string) error {
-		return systemd.ReloadUnit(context.Background(), name)
+	systemdReloadUnit = func(ctx context.Context, name string) error {
+		return systemd.ReloadUnit(ctx, name)
 	}
 )
 
 // ListSambaShares reads smb.conf and returns all user-defined shares
-func ListSambaShares() ([]SambaShare, error) {
+func ListSambaShares(ctx context.Context) ([]SambaShare, error) {
 	sections, err := parseSmbConf()
 	if err != nil {
 		return nil, err
@@ -45,6 +45,9 @@ func ListSambaShares() ([]SambaShare, error) {
 
 	var shares []SambaShare
 	for name, props := range sections {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if reservedSections[strings.ToLower(name)] {
 			continue
 		}
@@ -62,7 +65,7 @@ func ListSambaShares() ([]SambaShare, error) {
 }
 
 // CreateSambaShare adds a new share section to smb.conf and reloads samba
-func CreateSambaShare(name string, properties map[string]string) error {
+func CreateSambaShare(ctx context.Context, name string, properties map[string]string) error {
 	if !validShareName.MatchString(name) {
 		return fmt.Errorf("invalid share name: %s", name)
 	}
@@ -103,12 +106,12 @@ func CreateSambaShare(name string, properties map[string]string) error {
 		return fmt.Errorf("failed to write to %s: %w", smbConfFile, err)
 	}
 	slog.Info("Samba share created", "name", name, "path", path)
-	return reloadSamba()
+	return reloadSamba(ctx)
 }
 
 // UpdateSambaShare replaces a share section in smb.conf and reloads samba.
 // oldName identifies the existing section; newName is the section name to write.
-func UpdateSambaShare(oldName, newName string, properties map[string]string) error {
+func UpdateSambaShare(ctx context.Context, oldName, newName string, properties map[string]string) error {
 	if !validShareName.MatchString(newName) {
 		return fmt.Errorf("invalid share name: %s", newName)
 	}
@@ -154,11 +157,11 @@ func UpdateSambaShare(oldName, newName string, properties map[string]string) err
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
 	slog.Info("Samba share updated", "name", oldName, "new_name", newName, "path", path)
-	return reloadSamba()
+	return reloadSamba(ctx)
 }
 
 // DeleteSambaShare removes a share section from smb.conf and reloads samba
-func DeleteSambaShare(name string) error {
+func DeleteSambaShare(ctx context.Context, name string) error {
 	content, err := os.ReadFile(smbConfFile)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", smbConfFile, err)
@@ -173,7 +176,7 @@ func DeleteSambaShare(name string) error {
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
 	slog.Info("Samba share deleted", "name", name)
-	return reloadSamba()
+	return reloadSamba(ctx)
 }
 
 // parseSmbConf parses smb.conf into a map of section name -> key/value properties
@@ -326,9 +329,9 @@ func removeSmbSection(content, name string) (string, bool) {
 
 // reloadSamba reloads the Samba configuration using the first method that works.
 // Tries smbcontrol first, then falls back to systemd D-Bus reloads with common service names.
-func reloadSamba() error {
+func reloadSamba(ctx context.Context) error {
 	// smbcontrol is the most portable method
-	out, err := smbcontrolReload()
+	out, err := smbcontrolReload(ctx)
 	if err == nil {
 		slog.Info("Samba configuration reloaded via smbcontrol")
 		return nil
@@ -339,7 +342,7 @@ func reloadSamba() error {
 
 	// Fall back to distro-specific unit names through the shared systemd D-Bus helper.
 	for _, service := range []string{"smbd.service", "smb.service", "samba.service"} {
-		err := systemdReloadUnit(service)
+		err := systemdReloadUnit(ctx, service)
 		if err == nil {
 			slog.Info("Samba reloaded via systemd D-Bus", "service", service)
 			return nil

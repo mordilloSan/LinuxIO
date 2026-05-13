@@ -28,7 +28,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 func handleListNFSShares(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS shares")
-	shares, err := ListNFSShares()
+	shares, err := ListNFSShares(ctx)
 	if err != nil {
 		slog.Error("failed to list NFS shares", "error", err)
 		return err
@@ -47,7 +47,7 @@ func handleCreateNFSShare(ctx context.Context, args []string, emit bridgeipc.Eve
 		return err
 	}
 	slog.Info("creating NFS share", "path", path, "count", len(clients))
-	if err := CreateNFSShare(path, clients); err != nil {
+	if err := CreateNFSShare(ctx, path, clients); err != nil {
 		slog.Error("failed to create NFS share", "path", path, "error", err)
 		return err
 	}
@@ -64,7 +64,7 @@ func handleUpdateNFSShare(ctx context.Context, args []string, emit bridgeipc.Eve
 		return err
 	}
 	slog.Info("updating NFS share", "path", path)
-	if err := UpdateNFSShare(path, clients); err != nil {
+	if err := UpdateNFSShare(ctx, path, clients); err != nil {
 		slog.Error("failed to update NFS share", "path", path, "error", err)
 		return err
 	}
@@ -77,7 +77,7 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit bridgeipc.Eve
 	}
 	path := args[0]
 	slog.Info("deleting NFS share", "path", path)
-	if err := DeleteNFSShare(path); err != nil {
+	if err := DeleteNFSShare(ctx, path); err != nil {
 		slog.Error("failed to delete NFS share", "path", path, "error", err)
 		return err
 	}
@@ -88,7 +88,7 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit bridgeipc.Eve
 
 func handleListSambaShares(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing Samba shares")
-	shares, err := ListSambaShares()
+	shares, err := ListSambaShares(ctx)
 	if err != nil {
 		slog.Error("failed to list Samba shares", "error", err)
 		return err
@@ -107,7 +107,7 @@ func handleCreateSambaShare(ctx context.Context, args []string, emit bridgeipc.E
 		return err
 	}
 	slog.Info("creating Samba share", "name", name, "path", properties["path"])
-	if err := CreateSambaShare(name, properties); err != nil {
+	if err := CreateSambaShare(ctx, name, properties); err != nil {
 		slog.Error("failed to create Samba share", "name", name, "error", err)
 		return err
 	}
@@ -130,7 +130,7 @@ func handleUpdateSambaShare(ctx context.Context, args []string, emit bridgeipc.E
 		return err
 	}
 	slog.Info("updating Samba share", "name", oldName, "new_name", newName)
-	if err := UpdateSambaShare(oldName, newName, properties); err != nil {
+	if err := UpdateSambaShare(ctx, oldName, newName, properties); err != nil {
 		slog.Error("failed to update Samba share", "name", oldName, "error", err)
 		return err
 	}
@@ -143,7 +143,7 @@ func handleDeleteSambaShare(ctx context.Context, args []string, emit bridgeipc.E
 	}
 	name := args[0]
 	slog.Info("deleting Samba share", "name", name)
-	if err := DeleteSambaShare(name); err != nil {
+	if err := DeleteSambaShare(ctx, name); err != nil {
 		slog.Error("failed to delete Samba share", "name", name, "error", err)
 		return err
 	}

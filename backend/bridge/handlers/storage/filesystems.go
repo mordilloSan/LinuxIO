@@ -62,7 +62,7 @@ func UnmountFilesystem(ctx context.Context, mountpoint string) (map[string]any, 
 		return UnmountNFS(ctx, mountpoint, false)
 	}
 
-	cmd := exec.Command("umount", mountpoint)
+	cmd := exec.CommandContext(ctx, "umount", mountpoint)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
@@ -74,7 +74,7 @@ func UnmountFilesystem(ctx context.Context, mountpoint string) (map[string]any, 
 	}, nil
 }
 
-func CreateBtrfsSubvolume(mountpoint, name string) (map[string]any, error) {
+func CreateBtrfsSubvolume(ctx context.Context, mountpoint, name string) (map[string]any, error) {
 	if !validPath.MatchString(mountpoint) {
 		return nil, fmt.Errorf("invalid mountpoint")
 	}
@@ -112,7 +112,7 @@ func CreateBtrfsSubvolume(mountpoint, name string) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to inspect target path: %w", statErr)
 	}
 
-	cmd := exec.Command("btrfs", "subvolume", "create", targetPath)
+	cmd := exec.CommandContext(ctx, "btrfs", "subvolume", "create", targetPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("btrfs subvolume create failed: %s", strings.TrimSpace(string(out)))

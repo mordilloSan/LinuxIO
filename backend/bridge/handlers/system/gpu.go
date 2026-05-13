@@ -29,13 +29,13 @@ type nvidiaGPUStats struct {
 	MaxGraphicsClockMHz int
 }
 
-func FetchGPUInfo() ([]map[string]any, error) {
+func FetchGPUInfo(ctx context.Context) ([]map[string]any, error) {
 	info, err := gpu.New()
 	if err != nil || info == nil {
 		return nil, fmt.Errorf("failed to retrieve GPU information: %w", err)
 	}
 
-	nvidiaStats := readNvidiaSMIStats()
+	nvidiaStats := readNvidiaSMIStats(ctx)
 	gpus := make([]map[string]any, 0, len(info.GraphicsCards))
 	for _, card := range info.GraphicsCards {
 		entry := buildGPUEntry(card)
@@ -344,13 +344,13 @@ func estimateBusyPercentFromRC6(path string, sample time.Duration) (float64, boo
 	return round1(busy), true
 }
 
-func readNvidiaSMIStats() map[string]nvidiaGPUStats {
+func readNvidiaSMIStats(parent context.Context) map[string]nvidiaGPUStats {
 	nvidiaSMIPath, err := exec.LookPath("nvidia-smi")
 	if err != nil {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(

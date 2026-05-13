@@ -128,7 +128,7 @@ type componentVersionProbe struct {
 
 func getComponentVersions(parent context.Context) map[string]string {
 	if parent == nil {
-		parent = context.Background()
+		return map[string]string{}
 	}
 
 	components := make(map[string]string, 4)

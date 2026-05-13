@@ -1,6 +1,9 @@
 package docker
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestExtractHostPortsTreatsTCPAndUDPAsDistinct(t *testing.T) {
 	svc := map[string]any{
@@ -42,7 +45,7 @@ services:
       - "53:53/udp"
 `
 
-	resultAny, err := ValidateComposeFile(content)
+	resultAny, err := ValidateComposeFile(context.Background(), content)
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
 	}
@@ -65,7 +68,7 @@ services:
       - "8080:8080/tcp"
 `
 
-	resultAny, err := ValidateComposeFile(content)
+	resultAny, err := ValidateComposeFile(context.Background(), content)
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
 	}

@@ -40,7 +40,9 @@ func Run(ctx context.Context, opts OperationOptions, fn func(Session) error) err
 	if fn == nil {
 		return fmt.Errorf("nil PackageKit callback")
 	}
-	ctx = requireContext(ctx)
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -64,7 +66,9 @@ func Run(ctx context.Context, opts OperationOptions, fn func(Session) error) err
 }
 
 func WithGate(ctx context.Context, fn func() error) error {
-	ctx = requireContext(ctx)
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
 	if fn == nil {
 		return fmt.Errorf("nil PackageKit gate callback")
 	}
@@ -147,7 +151,9 @@ func (t *Transaction) AwaitFinished(ctx context.Context, action string) error {
 }
 
 func AwaitFinished(ctx context.Context, signals <-chan *dbusclient.Signal, action string) error {
-	ctx = requireContext(ctx)
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
 	for {
 		select {
 		case sig := <-signals:
@@ -167,7 +173,9 @@ func AwaitFinished(ctx context.Context, signals <-chan *dbusclient.Signal, actio
 }
 
 func CollectPackageIDs(ctx context.Context, signals <-chan *dbusclient.Signal, action string) ([]string, error) {
-	ctx = requireContext(ctx)
+	if ctx == nil {
+		return nil, fmt.Errorf("nil context")
+	}
 	var packageIDs []string
 	for {
 		select {
@@ -209,11 +217,4 @@ func LogClose(ctx context.Context, trans *Transaction) {
 	if err := trans.Close(ctx); err != nil {
 		slog.Debug("failed to close PackageKit transaction subscription", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
-}
-
-func requireContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
 }

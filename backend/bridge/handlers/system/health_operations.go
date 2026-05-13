@@ -12,9 +12,9 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func GetHealthSummaryForRuntime(rt runtime.Runtime) (*SystemHealthSummary, error) {
+func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*SystemHealthSummary, error) {
 	session := rt.Session
-	result, err := FetchSystemHealthSummary(session.User.Username, session.Privileged, session.Timing.CreatedAt)
+	result, err := FetchSystemHealthSummary(ctx, session.User.Username, session.Privileged, session.Timing.CreatedAt)
 	if err == nil && result != nil {
 		applyHealthDismissals(session.User.Username, rt.Store, result)
 	}

@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,8 +77,8 @@ func (b *nmConnectionBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *nmConnectionBackend) SetIPv4DHCP() error {
-	return b.update(func(cfg *ini.File) error {
+func (b *nmConnectionBackend) SetIPv4DHCP(ctx context.Context) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		section := cfg.Section("ipv4")
 		section.Key("method").SetValue("auto")
 		deletePrefixedKeys(section, "address")
@@ -97,14 +98,14 @@ func (b *nmConnectionBackend) SetIPv4DHCP() error {
 	})
 }
 
-func (b *nmConnectionBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) error {
+func (b *nmConnectionBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}
 	if !isIPv4(gateway) {
 		return fmt.Errorf("invalid IPv4 gateway %q", gateway)
 	}
-	return b.update(func(cfg *ini.File) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		section := cfg.Section("ipv4")
 		section.Key("method").SetValue("manual")
 		deletePrefixedKeys(section, "address")
@@ -127,8 +128,8 @@ func (b *nmConnectionBackend) SetIPv4Manual(addressCIDR, gateway string, dns []s
 	})
 }
 
-func (b *nmConnectionBackend) SetIPv6DHCP() error {
-	return b.update(func(cfg *ini.File) error {
+func (b *nmConnectionBackend) SetIPv6DHCP(ctx context.Context) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		section := cfg.Section("ipv6")
 		section.Key("method").SetValue("auto")
 		deletePrefixedKeys(section, "address")
@@ -141,11 +142,11 @@ func (b *nmConnectionBackend) SetIPv6DHCP() error {
 	})
 }
 
-func (b *nmConnectionBackend) SetIPv6Static(addressCIDR string) error {
+func (b *nmConnectionBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
 	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
-	return b.update(func(cfg *ini.File) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		section := cfg.Section("ipv6")
 		section.Key("method").SetValue("manual")
 		deletePrefixedKeys(section, "address")
@@ -156,37 +157,37 @@ func (b *nmConnectionBackend) SetIPv6Static(addressCIDR string) error {
 	})
 }
 
-func (b *nmConnectionBackend) SetMTU(mtu uint32) error {
-	return b.update(func(cfg *ini.File) error {
+func (b *nmConnectionBackend) SetMTU(ctx context.Context, mtu uint32) error {
+	return b.update(ctx, func(cfg *ini.File) error {
 		mtuSection := nmMTUSection(cfg)
 		mtuSection.Key("mtu").SetValue(strconv.FormatUint(uint64(mtu), 10))
 		return nil
 	})
 }
 
-func (b *nmConnectionBackend) Enable() error {
-	if err := b.loadConnection(); err != nil {
+func (b *nmConnectionBackend) Enable(ctx context.Context) error {
+	if err := b.loadConnection(ctx); err != nil {
 		return err
 	}
 	targetArgs := b.connectionTargetArgs()
-	output, err := b.env.Runner.Run("nmcli", append([]string{"connection", "up"}, targetArgs...)...)
+	output, err := b.env.Runner.Run(ctx, "nmcli", append([]string{"connection", "up"}, targetArgs...)...)
 	return commandError("nmcli", append([]string{"connection", "up"}, targetArgs...), output, err)
 }
 
-func (b *nmConnectionBackend) Disable() error {
-	output, err := b.env.Runner.Run("nmcli", "device", "disconnect", b.iface)
+func (b *nmConnectionBackend) Disable(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "nmcli", "device", "disconnect", b.iface)
 	if err == nil {
 		return nil
 	}
 	targetArgs := b.connectionTargetArgs()
-	_, fallbackErr := b.env.Runner.Run("nmcli", append([]string{"connection", "down"}, targetArgs...)...)
+	_, fallbackErr := b.env.Runner.Run(ctx, "nmcli", append([]string{"connection", "down"}, targetArgs...)...)
 	if fallbackErr == nil {
 		return nil
 	}
 	return commandError("nmcli", []string{"device", "disconnect", b.iface}, output, err)
 }
 
-func (b *nmConnectionBackend) update(updateFn func(cfg *ini.File) error) error {
+func (b *nmConnectionBackend) update(ctx context.Context, updateFn func(cfg *ini.File) error) error {
 	cfg, err := readINIFile(b.path)
 	if err != nil {
 		return err
@@ -202,28 +203,28 @@ func (b *nmConnectionBackend) update(updateFn func(cfg *ini.File) error) error {
 	if err := b.env.WriteFile(b.path, rendered, existingMode(b.path, 0o600)); err != nil {
 		return err
 	}
-	return b.reloadAndReapply()
+	return b.reloadAndReapply(ctx)
 }
 
-func (b *nmConnectionBackend) reloadAndReapply() error {
-	if err := b.loadConnection(); err != nil {
+func (b *nmConnectionBackend) reloadAndReapply(ctx context.Context) error {
+	if err := b.loadConnection(ctx); err != nil {
 		return err
 	}
-	output, err := b.env.Runner.Run("nmcli", "device", "reapply", b.iface)
+	output, err := b.env.Runner.Run(ctx, "nmcli", "device", "reapply", b.iface)
 	if err == nil {
 		return nil
 	}
 	targetArgs := b.connectionTargetArgs()
-	_, fallbackErr := b.env.Runner.Run("nmcli", append([]string{"connection", "up"}, targetArgs...)...)
+	_, fallbackErr := b.env.Runner.Run(ctx, "nmcli", append([]string{"connection", "up"}, targetArgs...)...)
 	if fallbackErr == nil {
 		return nil
 	}
 	return commandError("nmcli", []string{"device", "reapply", b.iface}, output, err)
 }
 
-func (b *nmConnectionBackend) loadConnection() error {
+func (b *nmConnectionBackend) loadConnection(ctx context.Context) error {
 	args := []string{"connection", "load", b.path}
-	output, err := b.env.Runner.Run("nmcli", args...)
+	output, err := b.env.Runner.Run(ctx, "nmcli", args...)
 	return commandError("nmcli", args, output, err)
 }
 

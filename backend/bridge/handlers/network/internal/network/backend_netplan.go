@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,8 +78,8 @@ func (b *netplanBackend) Read() (InterfaceConfig, error) {
 	return cfg, nil
 }
 
-func (b *netplanBackend) SetIPv4DHCP() error {
-	return b.update(func(ifaceMap map[string]any) error {
+func (b *netplanBackend) SetIPv4DHCP(ctx context.Context) error {
+	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["dhcp4"] = true
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 4, nil)
 		setNetplanGateway(ifaceMap, "")
@@ -87,14 +88,14 @@ func (b *netplanBackend) SetIPv4DHCP() error {
 	})
 }
 
-func (b *netplanBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string) error {
+func (b *netplanBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}
 	if !isIPv4(gateway) {
 		return fmt.Errorf("invalid IPv4 gateway %q", gateway)
 	}
-	return b.update(func(ifaceMap map[string]any) error {
+	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["dhcp4"] = false
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 4, []string{strings.TrimSpace(addressCIDR)})
 		setNetplanGateway(ifaceMap, gateway)
@@ -103,41 +104,41 @@ func (b *netplanBackend) SetIPv4Manual(addressCIDR, gateway string, dns []string
 	})
 }
 
-func (b *netplanBackend) SetIPv6DHCP() error {
-	return b.update(func(ifaceMap map[string]any) error {
+func (b *netplanBackend) SetIPv6DHCP(ctx context.Context) error {
+	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["dhcp6"] = true
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 6, nil)
 		return nil
 	})
 }
 
-func (b *netplanBackend) SetIPv6Static(addressCIDR string) error {
+func (b *netplanBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
 	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
-	return b.update(func(ifaceMap map[string]any) error {
+	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["dhcp6"] = false
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 6, []string{strings.TrimSpace(addressCIDR)})
 		return nil
 	})
 }
 
-func (b *netplanBackend) SetMTU(mtu uint32) error {
-	return b.update(func(ifaceMap map[string]any) error {
+func (b *netplanBackend) SetMTU(ctx context.Context, mtu uint32) error {
+	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["mtu"] = int64(mtu)
 		return nil
 	})
 }
 
-func (b *netplanBackend) Enable() error {
-	if err := b.apply(); err != nil {
+func (b *netplanBackend) Enable(ctx context.Context) error {
+	if err := b.apply(ctx); err != nil {
 		return err
 	}
-	return setLinkUp(b.iface)
+	return setLinkUp(ctx, b.iface)
 }
 
-func (b *netplanBackend) Disable() error {
-	return setLinkDown(b.iface)
+func (b *netplanBackend) Disable(ctx context.Context) error {
+	return setLinkDown(ctx, b.iface)
 }
 
 func (b *netplanBackend) load() (*netplanDoc, error) {
@@ -155,7 +156,7 @@ func (b *netplanBackend) load() (*netplanDoc, error) {
 	return doc, nil
 }
 
-func (b *netplanBackend) update(updateFn func(ifaceMap map[string]any) error) error {
+func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[string]any) error) error {
 	original, err := os.ReadFile(b.path)
 	if err != nil {
 		return err
@@ -180,20 +181,20 @@ func (b *netplanBackend) update(updateFn func(ifaceMap map[string]any) error) er
 	if err := b.env.WriteFile(b.path, rendered, mode); err != nil {
 		return err
 	}
-	if err := b.generate(); err != nil {
+	if err := b.generate(ctx); err != nil {
 		_ = b.env.WriteFile(b.path, original, mode)
 		return err
 	}
-	return b.apply()
+	return b.apply(ctx)
 }
 
-func (b *netplanBackend) generate() error {
-	output, err := b.env.Runner.Run("netplan", "generate")
+func (b *netplanBackend) generate(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "netplan", "generate")
 	return commandError("netplan", []string{"generate"}, output, err)
 }
 
-func (b *netplanBackend) apply() error {
-	output, err := b.env.Runner.Run("netplan", "apply")
+func (b *netplanBackend) apply(ctx context.Context) error {
+	output, err := b.env.Runner.Run(ctx, "netplan", "apply")
 	return commandError("netplan", []string{"apply"}, output, err)
 }
 

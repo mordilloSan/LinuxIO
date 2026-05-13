@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	stdnet "net"
 	"strconv"
@@ -140,17 +141,29 @@ func parseMTU(mtu string) (uint32, error) {
 	return uint32(value), nil
 }
 
-func setLinkUp(iface string) error {
+func setLinkUp(ctx context.Context, iface string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return netlink.LinkSetUp(link)
 }
 
-func setLinkDown(iface string) error {
+func setLinkDown(ctx context.Context, iface string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return netlink.LinkSetDown(link)

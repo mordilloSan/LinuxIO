@@ -56,7 +56,7 @@ func handleGetMotherboardInfo(ctx context.Context, args []string, emit bridgeipc
 }
 
 func handleGetMemoryInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchMemoryInfo()
+	result, err := FetchMemoryInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -81,17 +81,17 @@ func handleGetProcesses(ctx context.Context, args []string, emit bridgeipc.Event
 }
 
 func handleGetServices(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchServices()
+	result, err := FetchServices(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetGPUInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchGPUInfo()
+	result, err := FetchGPUInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetUpdatesFast(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetUpdatesFast()
+	result, err := GetUpdatesFast(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -116,7 +116,7 @@ func handleGetPCIDevices(ctx context.Context, args []string, emit bridgeipc.Even
 }
 
 func handleGetMemoryModules(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchMemoryModules()
+	result, err := FetchMemoryModules(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -130,7 +130,7 @@ func handleGetTimezones(ctx context.Context, args []string, emit bridgeipc.Event
 }
 
 func (h systemHandlers) handleGetHealthSummary(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetHealthSummaryForRuntime(h.rt)
+	result, err := GetHealthSummaryForRuntime(ctx, h.rt)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 

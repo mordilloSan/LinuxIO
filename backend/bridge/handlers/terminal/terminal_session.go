@@ -42,7 +42,7 @@ type TerminalSession struct {
 //   - Subsequent frames from client: OpStreamData with input bytes
 //   - Server sends: OpStreamData with PTY output bytes
 //   - Either side can send OpStreamClose to terminate
-func HandleTerminalSession(rt runtime.Runtime, stream net.Conn, args []string) error {
+func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, args []string) error {
 	sess := rt.Session
 	slog.Debug("starting terminal stream", "user", sess.User.Username, "args", args)
 
@@ -84,7 +84,7 @@ func HandleTerminalSession(rt runtime.Runtime, stream net.Conn, args []string) e
 		shellPath = "sh"
 	}
 
-	cmd := exec.Command(shellPath, "-i", "-l")
+	cmd := exec.CommandContext(ctx, shellPath, "-i", "-l")
 	cmd.Dir = u.HomeDir
 	cmd.Env = append(env, "SHELL="+shellPath)
 
@@ -122,6 +122,10 @@ func HandleTerminalSession(rt runtime.Runtime, stream net.Conn, args []string) e
 		Stream:   stream,
 		doneChan: make(chan struct{}),
 	}
+	go func() {
+		<-ctx.Done()
+		sts.cleanup()
+	}()
 
 	// Start bidirectional relay
 	var wg sync.WaitGroup
@@ -252,7 +256,7 @@ func safeUint16(val int) uint16 {
 
 // HandleContainerTerminalSession handles a yamux stream for container terminal I/O.
 // Args: [containerID, shell, cols, rows]
-func HandleContainerTerminalSession(rt runtime.Runtime, stream net.Conn, args []string) error {
+func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, stream net.Conn, args []string) error {
 	sess := rt.Session
 	containerID, shell, cols, rows, err := parseContainerTerminalArgs(args)
 	if err != nil {
@@ -262,7 +266,7 @@ func HandleContainerTerminalSession(rt runtime.Runtime, stream net.Conn, args []
 	}
 	slog.Debug("starting container terminal stream", "container", containerID, "shell", shell, "user", sess.User.Username)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
@@ -294,7 +298,7 @@ func HandleContainerTerminalSession(rt runtime.Runtime, stream net.Conn, args []
 	go streamContainerExecOutput(attachResp.Reader, stream, done)
 	go streamContainerExecInput(ctx, cli, execResp.ID, attachResp.Conn, stream, done)
 
-	return waitForContainerTerminalEnd(cancel, attachResp.Close, stream, done)
+	return waitForContainerTerminalEnd(ctx, cancel, attachResp.Close, stream, done)
 }
 
 func parseContainerTerminalArgs(args []string) (string, string, int, int, error) {
@@ -416,8 +420,13 @@ func parseResizePayload(payload []byte) (int, int, bool) {
 	return int(binary.BigEndian.Uint16(payload[0:2])), int(binary.BigEndian.Uint16(payload[2:4])), true
 }
 
-func waitForContainerTerminalEnd(cancel context.CancelFunc, closeAttach func(), stream net.Conn, done <-chan error) error {
-	err := <-done
+func waitForContainerTerminalEnd(ctx context.Context, cancel context.CancelFunc, closeAttach func(), stream net.Conn, done <-chan error) error {
+	var err error
+	select {
+	case err = <-done:
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
 	cancel()
 	if closeAttach != nil {
 		closeAttach()

@@ -11,17 +11,19 @@ import (
 )
 
 // ListContainerShells returns a list of available shells in a container.
-func ListContainerShells(containerID string) ([]string, error) {
+func ListContainerShells(ctx context.Context, containerID string) ([]string, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer cli.Close()
 
-	ctx := context.Background()
 	shells := []string{"bash", "sh", "zsh", "ash", "dash"}
 	available := []string{}
 	for _, sh := range shells {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		execResp, err := cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
 			AttachStdout: true,
 			AttachStderr: true,

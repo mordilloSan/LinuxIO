@@ -2,6 +2,7 @@ package shares
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -57,13 +58,13 @@ func requireNFSServerAvailability() error {
 
 // ListNFSShares reads /etc/exports and returns all configured exports
 // with their active status from exportfs -v
-func ListNFSShares() ([]NFSExport, error) {
+func ListNFSShares(ctx context.Context) ([]NFSExport, error) {
 	exports, err := parseExportsFile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", exportsFile, err)
 	}
 
-	activeExports := getActiveExports()
+	activeExports := getActiveExports(ctx)
 	for i, export := range exports {
 		normalized := strings.TrimRight(export.Path, "/")
 		if activeExports[normalized] || activeExports[export.Path] {
@@ -75,7 +76,7 @@ func ListNFSShares() ([]NFSExport, error) {
 }
 
 // CreateNFSShare adds a new export to /etc/exports and applies it
-func CreateNFSShare(path string, clients []NFSClient) error {
+func CreateNFSShare(ctx context.Context, path string, clients []NFSClient) error {
 	if err := requireNFSServerAvailability(); err != nil {
 		return err
 	}
@@ -110,11 +111,11 @@ func CreateNFSShare(path string, clients []NFSClient) error {
 		return fmt.Errorf("failed to write to %s: %w", exportsFile, err)
 	}
 	slog.Info("NFS export added", "path", path, "count", len(clients))
-	return applyNFSExports()
+	return applyNFSExports(ctx)
 }
 
 // UpdateNFSShare modifies an existing export's clients in /etc/exports
-func UpdateNFSShare(path string, clients []NFSClient) error {
+func UpdateNFSShare(ctx context.Context, path string, clients []NFSClient) error {
 	if err := requireNFSServerAvailability(); err != nil {
 		return err
 	}
@@ -155,11 +156,11 @@ func UpdateNFSShare(path string, clients []NFSClient) error {
 		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
 	}
 	slog.Info("NFS export updated", "path", path, "count", len(clients))
-	return applyNFSExports()
+	return applyNFSExports(ctx)
 }
 
 // DeleteNFSShare removes an export from /etc/exports and applies changes
-func DeleteNFSShare(path string) error {
+func DeleteNFSShare(ctx context.Context, path string) error {
 	if err := requireNFSServerAvailability(); err != nil {
 		return err
 	}
@@ -192,7 +193,7 @@ func DeleteNFSShare(path string) error {
 		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
 	}
 	slog.Info("NFS export removed", "path", path)
-	return applyNFSExports()
+	return applyNFSExports(ctx)
 }
 
 // parseExportsFile reads and parses /etc/exports
@@ -255,7 +256,7 @@ func parseExportLine(line string) (NFSExport, error) {
 }
 
 // getActiveExports returns paths currently exported via exportfs -v
-func getActiveExports() map[string]bool {
+func getActiveExports(ctx context.Context) map[string]bool {
 	active := make(map[string]bool)
 
 	exportfs, findErr := findNFSServerCommand("exportfs")
@@ -264,7 +265,7 @@ func getActiveExports() map[string]bool {
 		return active
 	}
 
-	output, err := exec.Command(exportfs, "-v").CombinedOutput()
+	output, err := exec.CommandContext(ctx, exportfs, "-v").CombinedOutput()
 	if err != nil {
 		slog.Debug("exportfs inspection failed",
 			"command", "exportfs -v",
@@ -306,13 +307,13 @@ func formatExportLine(path string, clients []NFSClient) string {
 }
 
 // applyNFSExports runs exportfs -ra to apply changes
-func applyNFSExports() error {
+func applyNFSExports(ctx context.Context) error {
 	exportfs, findErr := findNFSServerCommand("exportfs")
 	if findErr != nil {
 		return fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
 	}
 
-	out, err := exec.Command(exportfs, "-ra").CombinedOutput()
+	out, err := exec.CommandContext(ctx, exportfs, "-ra").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("exportfs -ra failed: %s", strings.TrimSpace(string(out)))
 	}

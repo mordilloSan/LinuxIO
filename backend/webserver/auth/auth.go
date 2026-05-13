@@ -74,7 +74,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remoteHost := clientRemoteHost(r)
-	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
+	sess, err := startBridge(r.Context(), h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
 	if err != nil {
 		var authErr *bridge.AuthError
 		if errors.As(err, &authErr) && authErr.IsUnauthorized() {

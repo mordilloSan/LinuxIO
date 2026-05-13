@@ -92,7 +92,7 @@ func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
 
 	var out capabilitiesResponse
 
-	ok, err := docker.CheckDockerAvailability()
+	ok, err := docker.CheckDockerAvailability(ctx)
 	out.DockerAvailable, out.DockerError = checkedCapability(ok, err, nil)
 
 	ok, err = filebrowser.CheckIndexerAvailability(ctx)

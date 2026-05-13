@@ -223,6 +223,8 @@ func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*
 	r.nextID++
 	now := time.Now().UTC()
 	id := fmt.Sprintf("job-%d", r.nextID)
+	// Jobs are intentionally detached from the stream that created them; cancel
+	// through jobs.cancel, attached stream abort, or policy timeout instead.
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &Job{
 		registry:    r,

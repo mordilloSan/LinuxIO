@@ -37,14 +37,13 @@ func volumePruneFilters(apiVersion string) filters.Args {
 }
 
 // SystemPrune removes unused Docker resources according to opts.
-func SystemPrune(opts PruneOptions) (*PruneResult, error) {
+func SystemPrune(ctx context.Context, opts PruneOptions) (*PruneResult, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	ctx := context.Background()
 	result := &PruneResult{}
 
 	if err := pruneContainers(ctx, cli, opts, result); err != nil {

@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	stdnet "net"
@@ -40,7 +41,7 @@ var (
 	networkEnv    = networkbackend.DefaultEnvironment()
 )
 
-func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
+func GetNetworkInfo(ctx context.Context) ([]NetworkInterfaceInfo, error) {
 	networkMu.Lock()
 	defer networkMu.Unlock()
 
@@ -57,6 +58,9 @@ func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
 	gateways := readDefaultGateways()
 	results := make([]NetworkInterfaceInfo, 0, len(ifaces))
 	for _, iface := range ifaces {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		info := liveInterfaceInfo(iface, dns, gateways[iface.Name], snapshotMap, interval)
 		if cfg, ok, err := networkbackend.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
 			mergeConfiguredState(&info, cfg)
@@ -68,7 +72,7 @@ func GetNetworkInfo() ([]NetworkInterfaceInfo, error) {
 	return results, nil
 }
 
-func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) error {
+func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsServers []string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface is required")
 	}
@@ -88,10 +92,10 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 	if err != nil {
 		return err
 	}
-	return backend.SetIPv4Manual(addressCIDR, gateway, dnsServers)
+	return backend.SetIPv4Manual(ctx, addressCIDR, gateway, dnsServers)
 }
 
-func SetIPv4DHCP(iface string) error {
+func SetIPv4DHCP(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
@@ -102,10 +106,10 @@ func SetIPv4DHCP(iface string) error {
 	if err != nil {
 		return err
 	}
-	return backend.SetIPv4DHCP()
+	return backend.SetIPv4DHCP(ctx)
 }
 
-func SetIPv6DHCP(iface string) error {
+func SetIPv6DHCP(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
@@ -116,10 +120,10 @@ func SetIPv6DHCP(iface string) error {
 	if err != nil {
 		return err
 	}
-	return backend.SetIPv6DHCP()
+	return backend.SetIPv6DHCP(ctx)
 }
 
-func SetIPv6Static(iface, addressCIDR string) error {
+func SetIPv6Static(ctx context.Context, iface, addressCIDR string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
@@ -133,10 +137,10 @@ func SetIPv6Static(iface, addressCIDR string) error {
 	if err != nil {
 		return err
 	}
-	return backend.SetIPv6Static(addressCIDR)
+	return backend.SetIPv6Static(ctx, addressCIDR)
 }
 
-func DisableConnection(iface string) error {
+func DisableConnection(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
@@ -147,10 +151,10 @@ func DisableConnection(iface string) error {
 	if err != nil {
 		return err
 	}
-	return backend.Disable()
+	return backend.Disable(ctx)
 }
 
-func EnableConnection(iface string) error {
+func EnableConnection(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
@@ -161,10 +165,10 @@ func EnableConnection(iface string) error {
 	if err != nil {
 		return err
 	}
-	return backend.Enable()
+	return backend.Enable(ctx)
 }
 
-func SetMTU(iface, mtu string) error {
+func SetMTU(ctx context.Context, iface, mtu string) error {
 	if strings.TrimSpace(iface) == "" || strings.TrimSpace(mtu) == "" {
 		return fmt.Errorf("SetMTU requires interface and MTU value")
 	}
@@ -182,7 +186,7 @@ func SetMTU(iface, mtu string) error {
 	if err != nil {
 		return err
 	}
-	return backend.SetMTU(uint32(value))
+	return backend.SetMTU(ctx, uint32(value))
 }
 
 func currentNetworkSnapshot() (map[string]net.IOCountersStat, int64, int64) {

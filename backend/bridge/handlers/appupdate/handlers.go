@@ -21,6 +21,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleVersion(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	info, err := getVersionInfo()
+	info, err := getVersionInfo(ctx)
 	return bridgeipc.EmitResult(emit, info, err)
 }

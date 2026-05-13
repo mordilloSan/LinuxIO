@@ -881,9 +881,6 @@ func runNFSCombinedOutput(parent context.Context, timeout time.Duration, name st
 }
 
 func withNFSCommandTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	if parent == nil {
-		parent = context.Background()
-	}
 	return context.WithTimeout(parent, timeout)
 }
 
