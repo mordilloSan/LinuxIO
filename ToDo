@@ -9,7 +9,9 @@
 
 5 - values fixed in router.go should be set in global settings file?
 
-5 - protobuf and remove json all together from app? Remove DecodeJSONArg?
+6 - protobuf and remove json all together from app? Remove DecodeJSONArg?
+
+7 - Config not loaded on every page load. go template?
 
 user config to match config in UI - DONE
 Fix NFS distro dependency - DONE
