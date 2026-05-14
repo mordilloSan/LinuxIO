@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"log/slog"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -116,7 +115,6 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, args [
 }
 
 func (h dockerHandlers) handleReindexDockerFolders(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("reindex_docker_folders requested", "component", "docker", "user", h.username)
 	result, err := IndexDockerFoldersWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

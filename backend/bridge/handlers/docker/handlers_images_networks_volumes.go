@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"log/slog"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -17,7 +16,6 @@ func (h dockerHandlers) handleDeleteImage(ctx context.Context, args []string, em
 	if err != nil {
 		return err
 	}
-	slog.Info("delete_image requested", "component", "docker", "image", id)
 	result, err := DeleteImage(ctx, id)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -32,7 +30,6 @@ func (h dockerHandlers) handleCreateNetwork(ctx context.Context, args []string, 
 	if err != nil {
 		return err
 	}
-	slog.Info("create_network requested", "component", "docker", "network", name)
 	result, err := CreateDockerNetwork(ctx, name)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -42,7 +39,6 @@ func (h dockerHandlers) handleDeleteNetwork(ctx context.Context, args []string, 
 	if err != nil {
 		return err
 	}
-	slog.Info("delete_network requested", "component", "docker", "network", name)
 	result, err := DeleteDockerNetwork(ctx, name)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -57,7 +53,6 @@ func (h dockerHandlers) handleCreateVolume(ctx context.Context, args []string, e
 	if err != nil {
 		return err
 	}
-	slog.Info("create_volume requested", "component", "docker", "volume", name)
 	result, err := CreateVolume(ctx, name)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -67,7 +62,6 @@ func (h dockerHandlers) handleDeleteVolume(ctx context.Context, args []string, e
 	if err != nil {
 		return err
 	}
-	slog.Info("delete_volume requested", "component", "docker", "volume", name)
 	result, err := DeleteVolume(ctx, name)
 	return bridgeipc.EmitResult(emit, result, err)
 }

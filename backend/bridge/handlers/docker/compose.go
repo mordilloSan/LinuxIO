@@ -250,7 +250,6 @@ func GetComposeProjectWithStore(ctx context.Context, username string, store *con
 
 // ComposeUpWithStore starts a compose project
 func ComposeUpWithStore(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (any, error) {
-	slog.Info("compose up requested", "user", username, "project", projectName, "compose_path", composePath)
 	var configFile string
 	var workingDir string
 
@@ -342,7 +341,6 @@ func findComposeFileInBases(ctx context.Context, basePaths []string, stackName s
 
 // ComposeDownWithStore stops and removes a compose project
 func ComposeDownWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
-	slog.Info("compose down requested", "user", username, "project", projectName)
 	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
@@ -381,11 +379,6 @@ type DeleteStackOptions struct {
 
 // DeleteStackWithStore removes a compose stack with options to delete files
 func DeleteStackWithStore(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (any, error) {
-	slog.Info("delete stack requested",
-		"user", username,
-		"project", projectName,
-		"delete_file", options.DeleteFile,
-		"delete_directory", options.DeleteDirectory)
 	// Get project info first
 	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
@@ -501,7 +494,6 @@ func deleteComposeFile(ctx context.Context, result map[string]any, projectName, 
 
 // ComposeRestartWithStore restarts a compose project
 func ComposeRestartWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
-	slog.Info("compose restart requested", "user", username, "project", projectName)
 	configFile, workingDir, err := resolveComposeRestartTarget(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
@@ -626,7 +618,6 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 
 // ComposeStopWithStore stops a compose project without removing containers
 func ComposeStopWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
-	slog.Info("compose stop requested", "user", username, "project", projectName)
 	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
@@ -1635,7 +1626,6 @@ func extractComposeIcon(composePath string) string {
 
 // DeleteComposeStackWithStore runs docker compose down and deletes the compose file(s)
 func DeleteComposeStackWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) error {
-	slog.Info("delete compose stack requested", "component", "docker", "subsystem", "compose", "user", username, "service", projectName)
 	// Get project details to find config files
 	projects, err := ListComposeProjectsWithStore(ctx, username, store)
 	if err != nil {

@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"encoding/base64"
-	"log/slog"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -39,7 +38,6 @@ func (h dockerHandlers) handleGetIconInfo(ctx context.Context, args []string, em
 }
 
 func (h dockerHandlers) handleClearIconCache(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("clear_icon_cache requested", "component", "docker")
 	if err := ClearIconCache(ctx); err != nil {
 		return err
 	}

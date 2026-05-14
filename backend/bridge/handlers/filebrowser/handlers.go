@@ -2,7 +2,6 @@ package filebrowser
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -38,19 +37,16 @@ func handleResourceStat(ctx context.Context, args []string, emit bridgeipc.Event
 }
 
 func handleResourceDelete(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("resource_delete requested", "component", "filebrowser")
 	result, err := resourceDelete(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleResourcePost(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("resource_post requested", "component", "filebrowser")
 	result, err := resourcePost(ctx, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleResourcePatch(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("resource_patch requested")
 	result, err := resourcePatchWithProgress(ctx, args, emit)
 	return bridgeipc.EmitResult(emit, result, err)
 }

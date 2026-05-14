@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"log/slog"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -17,12 +16,6 @@ func (h dockerHandlers) handleSystemPrune(ctx context.Context, args []string, em
 	if err != nil {
 		return err
 	}
-	slog.Info("system_prune requested", "component", "docker",
-		"containers", opts.Containers,
-		"images", opts.Images,
-		"build_cache", opts.BuildCache,
-		"networks", opts.Networks,
-		"volumes", opts.Volumes)
 	result, err := SystemPrune(ctx, opts)
 	return bridgeipc.EmitResult(emit, result, err)
 }

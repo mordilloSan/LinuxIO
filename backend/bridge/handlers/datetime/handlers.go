@@ -2,7 +2,6 @@ package datetime
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -30,7 +29,6 @@ func handleSetNTP(ctx context.Context, args []string, emit bridgeipc.Events) err
 		return bridgeipc.ErrInvalidArgs
 	}
 	enabled := args[0] == "true"
-	slog.Info("set_ntp requested", "component", "dbus", "subsystem", "timedate", "enabled", enabled)
 	return bridgeipc.EmitResult(emit, nil, SetNTP(ctx, enabled))
 }
 
@@ -39,7 +37,6 @@ func handleSetServerTime(ctx context.Context, args []string, emit bridgeipc.Even
 	if err != nil {
 		return err
 	}
-	slog.Info("set_server_time requested", "component", "dbus", "subsystem", "timedate", "mode", mode)
 	return bridgeipc.EmitResult(emit, nil, SetServerTime(ctx, mode))
 }
 
@@ -53,7 +50,6 @@ func handleSetTimezone(ctx context.Context, args []string, emit bridgeipc.Events
 	if err != nil {
 		return err
 	}
-	slog.Info("set_timezone requested", "component", "dbus", "subsystem", "timedate", "mode", timezone)
 	return bridgeipc.EmitResult(emit, nil, SetTimezone(ctx, timezone))
 }
 
@@ -63,6 +59,5 @@ func handleGetNTPServers(ctx context.Context, args []string, emit bridgeipc.Even
 }
 
 func handleSetNTPServers(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("set_ntp_servers requested", "component", "dbus", "subsystem", "timedate", "server_count", len(args))
 	return bridgeipc.EmitResult(emit, nil, SetNTPServers(ctx, args))
 }

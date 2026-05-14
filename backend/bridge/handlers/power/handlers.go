@@ -2,7 +2,6 @@ package power
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -23,7 +22,6 @@ func handleGetStatus(ctx context.Context, args []string, emit bridgeipc.Events) 
 }
 
 func handleStart(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("TuneD start requested", "component", "power")
 	result, err := StartTuned(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -32,13 +30,11 @@ func handleSetProfile(ctx context.Context, args []string, emit bridgeipc.Events)
 	if len(args) != 1 {
 		return bridgeipc.ErrInvalidArgs
 	}
-	slog.Info("TuneD profile change requested", "component", "power", "profile", args[0])
 	result, err := SetProfile(ctx, args[0])
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleDisable(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("TuneD disable requested", "component", "power")
 	result, err := DisableTuned(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

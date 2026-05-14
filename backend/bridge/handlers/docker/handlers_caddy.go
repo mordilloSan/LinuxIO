@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"log/slog"
 	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
@@ -34,7 +33,6 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, args []string, 
 	if payload.Container == "" {
 		return bridgeipc.ErrInvalidArgs
 	}
-	slog.Info("set_auto_update requested", "component", "docker", "container", payload.Container, "mode", payload.Enabled, "user", h.username)
 
 	if _, _, err := config.UpdateForUser(ctx, h.username, h.store, func(cfg *config.Settings) error {
 		if payload.Enabled {
@@ -62,19 +60,16 @@ func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, args []string,
 }
 
 func (h dockerHandlers) handleEnableCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("enable_caddy requested", "component", "docker", "user", h.username)
 	result, err := EnableCaddyWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleDisableCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("disable_caddy requested", "component", "docker", "user", h.username)
 	result, err := DisableCaddyWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleReloadCaddy(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("reload_caddy requested", "component", "docker", "user", h.username)
 	result, err := ReloadCaddyWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -84,7 +79,6 @@ func (h dockerHandlers) handleConnectToProxy(ctx context.Context, args []string,
 	if err != nil {
 		return err
 	}
-	slog.Info("connect_to_proxy requested", "component", "docker", "container", id)
 	result, err := ConnectToProxy(ctx, id)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -127,7 +127,6 @@ func resourceDelete(ctx context.Context, args []string) (any, error) {
 	}
 
 	path := args[0]
-	slog.Info("delete requested", "path", path)
 
 	if path == "/" {
 		return nil, fmt.Errorf("bad_request:cannot delete root")
@@ -431,11 +430,6 @@ func resourcePost(ctx context.Context, args []string) (any, error) {
 	req, err := parseResourcePostArgs(args)
 	if err != nil {
 		return nil, err
-	}
-	if req.isDir {
-		slog.Info("create directory requested", "path", req.cleanPath, "overwrite", req.override)
-	} else {
-		slog.Info("create file requested", "path", req.cleanPath, "overwrite", req.override)
 	}
 
 	root, err := fsroot.Open()

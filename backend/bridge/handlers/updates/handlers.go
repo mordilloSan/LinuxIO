@@ -2,7 +2,6 @@ package updates
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -42,7 +41,6 @@ func handleInstallPackage(ctx context.Context, args []string, emit bridgeipc.Eve
 	if err != nil {
 		return err
 	}
-	slog.Info("install_package requested", "component", "dbus", "package", packageName)
 	return bridgeipc.EmitResult(emit, nil, InstallPackage(ctx, packageName))
 }
 
@@ -56,13 +54,11 @@ func handleSetAutoUpdates(ctx context.Context, args []string, emit bridgeipc.Eve
 	if err != nil {
 		return err
 	}
-	slog.Info("set_auto_updates requested", "component", "dbus", "mode", args[0])
 	result, err := setAutoUpdates(ctx, opts)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleApplyOfflineUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("apply_offline_updates requested")
 	result, err := applyOfflineUpdates(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -2,7 +2,6 @@ package accounts
 
 import (
 	"context"
-	"log/slog"
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -57,7 +56,6 @@ func handleTerminateSession(ctx context.Context, args []string, emit bridgeipc.E
 	}
 	sessionID := args[0]
 	pid, _ := strconv.Atoi(args[1])
-	slog.Info("terminate session requested", "sessionID", sessionID, "pid", pid)
 	if err := TerminateSession(ctx, sessionID, pid); err != nil {
 		return err
 	}
@@ -69,7 +67,6 @@ func handleCreateUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err != nil {
 		return err
 	}
-	slog.Info("create user requested", "user", req.Username)
 	if err := CreateUser(ctx, req); err != nil {
 		return err
 	}
@@ -80,7 +77,6 @@ func handleDeleteUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("delete user requested", "user", args[0])
 	if err := DeleteUser(ctx, args[0]); err != nil {
 		return err
 	}
@@ -92,7 +88,6 @@ func handleModifyUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err != nil {
 		return err
 	}
-	slog.Info("modify user requested", "user", req.Username)
 	if err := ModifyUser(ctx, req); err != nil {
 		return err
 	}
@@ -103,7 +98,6 @@ func handleChangePassword(ctx context.Context, args []string, emit bridgeipc.Eve
 	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
-	slog.Info("change password requested", "user", args[0])
 	if err := ChangePassword(ctx, args[0], args[1]); err != nil {
 		return err
 	}
@@ -114,7 +108,6 @@ func handleLockUser(ctx context.Context, args []string, emit bridgeipc.Events) e
 	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("lock user requested", "user", args[0])
 	if err := LockUser(ctx, args[0]); err != nil {
 		return err
 	}
@@ -125,7 +118,6 @@ func handleUnlockUser(ctx context.Context, args []string, emit bridgeipc.Events)
 	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("unlock user requested", "user", args[0])
 	if err := UnlockUser(ctx, args[0]); err != nil {
 		return err
 	}
@@ -142,7 +134,6 @@ func handleCreateGroup(ctx context.Context, args []string, emit bridgeipc.Events
 	if err != nil {
 		return err
 	}
-	slog.Info("create group requested", "group", req.Name)
 	if err := CreateGroup(ctx, req); err != nil {
 		return err
 	}
@@ -153,7 +144,6 @@ func handleDeleteGroup(ctx context.Context, args []string, emit bridgeipc.Events
 	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("delete group requested", "group", args[0])
 	if err := DeleteGroup(ctx, args[0]); err != nil {
 		return err
 	}
@@ -165,7 +155,6 @@ func handleModifyGroupMembers(ctx context.Context, args []string, emit bridgeipc
 	if err != nil {
 		return err
 	}
-	slog.Info("modify group members requested", "group", req.GroupName)
 	if err := ModifyGroupMembers(ctx, req); err != nil {
 		return err
 	}

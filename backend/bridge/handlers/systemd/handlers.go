@@ -2,7 +2,6 @@ package systemd
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -57,7 +56,6 @@ func handleStartService(ctx context.Context, args []string, emit bridgeipc.Event
 	if err != nil {
 		return err
 	}
-	slog.Info("start_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, StartUnit(ctx, unit))
 }
 
@@ -66,7 +64,6 @@ func handleStopService(ctx context.Context, args []string, emit bridgeipc.Events
 	if err != nil {
 		return err
 	}
-	slog.Info("stop_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, StopUnit(ctx, unit))
 }
 
@@ -75,7 +72,6 @@ func handleRestartService(ctx context.Context, args []string, emit bridgeipc.Eve
 	if err != nil {
 		return err
 	}
-	slog.Info("restart_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, RestartUnit(ctx, unit))
 }
 
@@ -84,7 +80,6 @@ func handleReloadService(ctx context.Context, args []string, emit bridgeipc.Even
 	if err != nil {
 		return err
 	}
-	slog.Info("reload_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, ReloadUnit(ctx, unit))
 }
 
@@ -93,7 +88,6 @@ func handleEnableService(ctx context.Context, args []string, emit bridgeipc.Even
 	if err != nil {
 		return err
 	}
-	slog.Info("enable_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, EnableUnit(ctx, unit))
 }
 
@@ -102,7 +96,6 @@ func handleDisableService(ctx context.Context, args []string, emit bridgeipc.Eve
 	if err != nil {
 		return err
 	}
-	slog.Info("disable_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, DisableUnit(ctx, unit))
 }
 
@@ -111,7 +104,6 @@ func handleMaskService(ctx context.Context, args []string, emit bridgeipc.Events
 	if err != nil {
 		return err
 	}
-	slog.Info("mask_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, MaskUnit(ctx, unit))
 }
 
@@ -120,7 +112,6 @@ func handleUnmaskService(ctx context.Context, args []string, emit bridgeipc.Even
 	if err != nil {
 		return err
 	}
-	slog.Info("unmask_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, UnmaskUnit(ctx, unit))
 }
 
@@ -129,6 +120,5 @@ func handleResetFailedService(ctx context.Context, args []string, emit bridgeipc
 	if err != nil {
 		return err
 	}
-	slog.Info("reset_failed_service requested", "component", "systemd", "unit", unit)
 	return bridgeipc.EmitResult(emit, nil, ResetFailedUnit(ctx, unit))
 }

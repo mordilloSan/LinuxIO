@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -18,12 +17,10 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleReboot(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("reboot requested", "component", "dbus", "subsystem", "login1")
 	return bridgeipc.EmitResult(emit, nil, Reboot(ctx))
 }
 
 func handlePowerOff(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	slog.Info("power_off requested", "component", "dbus", "subsystem", "login1")
 	return bridgeipc.EmitResult(emit, nil, PowerOff(ctx))
 }
 
@@ -32,6 +29,5 @@ func handleLogoff(ctx context.Context, args []string, emit bridgeipc.Events) err
 		return err
 	}
 	sessionID := args[0]
-	slog.Info("logoff requested", "component", "dbus", "subsystem", "login1", "sessionID", sessionID)
 	return bridgeipc.EmitResult(emit, nil, Logoff(ctx, sessionID))
 }

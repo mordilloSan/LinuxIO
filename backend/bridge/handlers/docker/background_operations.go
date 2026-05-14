@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -56,7 +55,6 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	if len(args) >= 3 {
 		composePath = args[2]
 	}
-	slog.Info("docker compose job requested", "component", "docker", "job_type", JobTypeDockerCompose, "action", action, "service", projectName, "path", composePath, "user", username)
 
 	configFile, workingDir, err := resolveComposeJobPaths(ctx, username, store, projectName, composePath)
 	if err != nil {

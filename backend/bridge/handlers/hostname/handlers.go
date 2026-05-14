@@ -2,7 +2,6 @@ package hostname
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -19,6 +18,5 @@ func handleSetHostname(ctx context.Context, args []string, emit bridgeipc.Events
 	if err != nil {
 		return err
 	}
-	slog.Info("set_hostname requested", "component", "dbus", "subsystem", "hostname", "service", name)
 	return bridgeipc.EmitResult(emit, nil, SetHostname(ctx, name))
 }

@@ -24,7 +24,6 @@ func SetConfigForUser(ctx context.Context, args []string, username string, store
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("config update requested", "component", "config", "user", username)
 
 	_, cfgPath, err := bridgeconfig.UpdateForUser(ctx, username, store, func(cfg *bridgeconfig.Settings) error {
 		return applyConfigPayload(cfg, &payload)
