@@ -244,8 +244,7 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 	}
 
 	startedAt := time.Now()
-	slog.Debug("bridge route started",
-		"component", "bridge",
+	slog.Debug("route started",
 		"route", req.Route,
 		"mode", route.Mode,
 		"arg_count", len(req.Args),
@@ -268,8 +267,7 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 	if err != nil {
 		outcome = "failure"
 	}
-	slog.Debug("bridge route completed",
-		"component", "bridge",
+	slog.Debug("route completed",
 		"route", req.Route,
 		"mode", route.Mode,
 		"outcome", outcome,

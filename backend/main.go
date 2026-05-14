@@ -360,10 +360,14 @@ type journalEntry struct {
 }
 
 var visibleJournalFields = map[string]struct{}{
+	"LINUXIO_ARG_COUNT":  {},
+	"LINUXIO_DURATION":   {},
 	"LINUXIO_ERROR":      {},
 	"LINUXIO_GID":        {},
 	"LINUXIO_MODE":       {},
+	"LINUXIO_OUTCOME":    {},
 	"LINUXIO_PRIVILEGED": {},
+	"LINUXIO_ROUTE":      {},
 	"LINUXIO_UID":        {},
 	"LINUXIO_USER":       {},
 	"LINUXIO_VERBOSE":    {},
