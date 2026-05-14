@@ -26,6 +26,7 @@ type Error struct {
 	Code    int    `json:"code,omitempty"`
 }
 
+// Error returns the error message.
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
@@ -33,6 +34,7 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
+// NewError creates a new Error with the given message and code.
 func NewError(message string, code int) *Error {
 	return &Error{Message: message, Code: code}
 }
@@ -43,10 +45,12 @@ type Owner struct {
 	UID       uint32 `json:"uid,omitempty"`
 }
 
+// Empty reports whether the Owner is unset (all fields empty).
 func (o Owner) Empty() bool {
 	return o.SessionID == "" && o.Username == "" && o.UID == 0
 }
 
+// Matches reports whether o and other refer to the same owner by username or UID.
 func (o Owner) Matches(other Owner) bool {
 	if o.Empty() || other.Empty() {
 		return false
@@ -136,6 +140,7 @@ const (
 	DefaultJobProgressReplayLimit = 1024
 )
 
+// NewRegistry creates a new job registry with automatic cleanup of terminal jobs.
 func NewRegistry() *Registry {
 	r := &Registry{
 		dataAttachers: make(map[string]DataAttacher),
@@ -147,42 +152,52 @@ func NewRegistry() *Registry {
 	return r
 }
 
+// RegisterDataAttacher registers a data attacher for the given job type on the default registry.
 func RegisterDataAttacher(jobType string, attacher DataAttacher) {
 	DefaultRegistry.RegisterDataAttacher(jobType, attacher)
 }
 
+// Get retrieves a job by ID from the default registry.
 func Get(id string) (*Job, bool) {
 	return DefaultRegistry.Get(id)
 }
 
+// GetForOwner retrieves a job by ID from the default registry, verifying it belongs to the owner.
 func GetForOwner(id string, owner Owner) (*Job, bool) {
 	return DefaultRegistry.GetForOwner(id, owner)
 }
 
+// List returns all jobs from the default registry.
 func List() []Snapshot {
 	return DefaultRegistry.List()
 }
 
+// ListForOwner returns all jobs belonging to the owner from the default registry.
 func ListForOwner(owner Owner) []Snapshot {
 	return DefaultRegistry.ListForOwner(owner)
 }
 
+// ListActive returns all queued and running jobs from the default registry.
 func ListActive() []Snapshot {
 	return DefaultRegistry.ListActive()
 }
 
+// ListActiveForOwner returns all queued and running jobs belonging to the owner from the default registry.
 func ListActiveForOwner(owner Owner) []Snapshot {
 	return DefaultRegistry.ListActiveForOwner(owner)
 }
 
+// AttachData attaches stream data to a job using the default registry.
 func AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
 	return DefaultRegistry.AttachData(ctx, job, stream, args)
 }
 
+// Subscribe subscribes to all job events on the default registry with an optional buffer size.
 func Subscribe(buffer int) (<-chan Event, func()) {
 	return DefaultRegistry.Subscribe(buffer)
 }
 
+// RegisterDataAttacher registers a data attacher for the given job type.
 func (r *Registry) RegisterDataAttacher(jobType string, attacher DataAttacher) {
 	if jobType == "" {
 		panic("job type cannot be empty")
@@ -196,6 +211,7 @@ func (r *Registry) RegisterDataAttacher(jobType string, attacher DataAttacher) {
 	r.dataAttachers[jobType] = attacher
 }
 
+// AttachData calls the registered data attacher for the job's type.
 func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
 	if job == nil {
 		return fmt.Errorf("job cannot be nil")
@@ -210,10 +226,12 @@ func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, ar
 	return attacher(ctx, job, stream, args)
 }
 
+// Create creates a new unowned job in the registry.
 func (r *Registry) Create(jobType string, args []string) (*Job, error) {
 	return r.CreateForOwner(jobType, args, Owner{})
 }
 
+// CreateForOwner creates a new job owned by the specified owner.
 func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*Job, error) {
 	if jobType == "" {
 		return nil, fmt.Errorf("job type cannot be empty")
@@ -246,6 +264,7 @@ func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*
 	return job, nil
 }
 
+// Get retrieves a job by ID, returning false if not found.
 func (r *Registry) Get(id string) (*Job, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -253,6 +272,7 @@ func (r *Registry) Get(id string) (*Job, bool) {
 	return job, ok
 }
 
+// GetForOwner retrieves a job by ID if it belongs to the owner, returning false otherwise.
 func (r *Registry) GetForOwner(id string, owner Owner) (*Job, bool) {
 	job, ok := r.Get(id)
 	if !ok {
@@ -264,6 +284,7 @@ func (r *Registry) GetForOwner(id string, owner Owner) (*Job, bool) {
 	return job, true
 }
 
+// List returns snapshots of all jobs in the registry.
 func (r *Registry) List() []Snapshot {
 	r.mu.RLock()
 	jobs := make([]*Job, 0, len(r.jobs))
@@ -279,6 +300,7 @@ func (r *Registry) List() []Snapshot {
 	return snapshots
 }
 
+// ListForOwner returns snapshots of all jobs belonging to the owner.
 func (r *Registry) ListForOwner(owner Owner) []Snapshot {
 	all := r.List()
 	filtered := all[:0]
@@ -290,6 +312,7 @@ func (r *Registry) ListForOwner(owner Owner) []Snapshot {
 	return filtered
 }
 
+// ListActive returns snapshots of all queued and running jobs.
 func (r *Registry) ListActive() []Snapshot {
 	all := r.List()
 	active := all[:0]
@@ -301,6 +324,7 @@ func (r *Registry) ListActive() []Snapshot {
 	return active
 }
 
+// ListActiveForOwner returns snapshots of all queued and running jobs belonging to the owner.
 func (r *Registry) ListActiveForOwner(owner Owner) []Snapshot {
 	all := r.ListForOwner(owner)
 	active := all[:0]
@@ -312,6 +336,8 @@ func (r *Registry) ListActiveForOwner(owner Owner) []Snapshot {
 	return active
 }
 
+// Subscribe returns a channel that receives all job events from the registry,
+// and an unsubscribe function to stop receiving events.
 func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
 	if buffer <= 0 {
 		buffer = 32
@@ -332,20 +358,24 @@ func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
 	return ch, unsubscribe
 }
 
+// ID returns the job's unique identifier.
 func (j *Job) ID() string {
 	return j.id
 }
 
+// Type returns the job type.
 func (j *Job) Type() string {
 	return j.typ
 }
 
+// Owner returns the job's owner.
 func (j *Job) Owner() Owner {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return j.owner
 }
 
+// Snapshot returns a point-in-time snapshot of the job's state.
 func (j *Job) Snapshot() Snapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
@@ -365,6 +395,9 @@ func (j *Job) Snapshot() Snapshot {
 	}
 }
 
+// Cancel requests cancellation of the job. If the job is queued, it is marked
+// canceled immediately; if running, the context is canceled and the job will
+// transition to canceled when it detects the cancellation.
 func (j *Job) Cancel() {
 	j.cancel()
 	j.mu.Lock()
@@ -397,10 +430,12 @@ func (r *Registry) CancelForSession(sessionID string) {
 	}
 }
 
+// Done returns a channel that closes when the job reaches a terminal state.
 func (j *Job) Done() <-chan struct{} {
 	return j.done
 }
 
+// Start begins executing the job with the given runner. If runner is nil, the job fails immediately.
 func (j *Job) Start(runner Runner) {
 	if runner == nil {
 		j.markFailed(NewError("job runner cannot be nil", 500))
@@ -409,12 +444,15 @@ func (j *Job) Start(runner Runner) {
 	go j.run(j.ctx, runner)
 }
 
+// IsTerminal reports whether the job has reached a terminal state (completed, failed, or canceled).
 func (j *Job) IsTerminal() bool {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return j.isTerminalLocked()
 }
 
+// ReportProgress updates the job's progress. The progress is broadcast to all
+// subscribers and recorded in the job's progress log for replay to future subscribers.
 func (j *Job) ReportProgress(progress any) {
 	j.mu.Lock()
 	if j.isTerminalLocked() {
@@ -436,11 +474,15 @@ func (j *Job) ReportProgress(progress any) {
 	j.broadcast(event)
 }
 
+// Subscribe returns a channel that receives job events, and an unsubscribe function.
 func (j *Job) Subscribe(buffer int) (<-chan Event, func()) {
 	ch, _, unsubscribe := j.SubscribeWithReplay(buffer)
 	return ch, unsubscribe
 }
 
+// SubscribeWithReplay returns a channel that receives job events, prior progress
+// events for replay, and an unsubscribe function. The replay contains up to
+// DefaultJobProgressReplayLimit recent progress events.
 func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 	if buffer <= 0 {
 		buffer = 8
@@ -625,6 +667,8 @@ func (j *Job) snapshotLocked() Snapshot {
 	}
 }
 
+// SweepTerminalOlderThan removes all terminal jobs that finished before the cutoff time.
+// It returns the number of jobs removed.
 func (r *Registry) SweepTerminalOlderThan(cutoff time.Time) int {
 	r.mu.RLock()
 	jobs := make(map[string]*Job, len(r.jobs))

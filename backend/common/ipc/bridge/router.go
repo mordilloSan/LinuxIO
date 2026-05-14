@@ -187,10 +187,15 @@ func (r *Router) Registry() *Registry {
 	return r.registry
 }
 
+// Query registers a request-response route. The handler runs synchronously and
+// its result is written back to the caller before the connection is closed.
 func (r *Router) Query(name string, handler HandlerFunc, opts ...RouteOption) {
 	r.register(Route{Name: name, Mode: ModeQuery, Handler: handler}, opts...)
 }
 
+// Job registers a background job route using a HandlerFunc. The handler emits
+// progress and results through the Events interface. If policy.Name is empty,
+// ActionDefault is used.
 func (r *Router) Job(name string, handler HandlerFunc, policy JobPolicy, opts ...RouteOption) {
 	if policy.Name == "" {
 		policy = ActionDefault
@@ -198,6 +203,9 @@ func (r *Router) Job(name string, handler HandlerFunc, policy JobPolicy, opts ..
 	r.register(Route{Name: name, Mode: ModeJob, Handler: handler, Policy: policy}, opts...)
 }
 
+// JobRunner registers a background job route using a Runner. Unlike Job, the
+// runner receives the *Job directly, enabling lower-level control (e.g. calling
+// ReportProgress). If policy.Name is empty, ActionDefault is used.
 func (r *Router) JobRunner(name string, runner Runner, policy JobPolicy, opts ...RouteOption) {
 	if policy.Name == "" {
 		policy = ActionDefault
@@ -205,37 +213,14 @@ func (r *Router) JobRunner(name string, runner Runner, policy JobPolicy, opts ..
 	r.register(Route{Name: name, Mode: ModeJob, Runner: runner, Policy: policy}, opts...)
 }
 
+// Duplex registers a full-duplex streaming route. The handler receives the raw
+// net.Conn, allowing bidirectional communication for the lifetime of the stream.
 func (r *Router) Duplex(name string, handler DuplexFunc, opts ...RouteOption) {
 	r.register(Route{Name: name, Mode: ModeDuplex, Duplex: handler}, opts...)
 }
 
-func (r *Router) register(route Route, opts ...RouteOption) {
-	if route.Name == "" {
-		panic("bridge route cannot be empty")
-	}
-	if strings.HasPrefix(route.Name, "jobs.") {
-		panic("bridge route uses reserved jobs.* namespace: " + route.Name)
-	}
-	if route.Mode == ModeQuery && route.Handler == nil {
-		panic("bridge route handler cannot be nil: " + route.Name)
-	}
-	if route.Mode == ModeJob && route.Handler == nil && route.Runner == nil {
-		panic("bridge job route handler cannot be nil: " + route.Name)
-	}
-	if route.Mode == ModeDuplex && route.Duplex == nil {
-		panic("bridge duplex route handler cannot be nil: " + route.Name)
-	}
-	for _, opt := range opts {
-		opt(&route)
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, exists := r.routes[route.Name]; exists {
-		panic("bridge route already registered: " + route.Name)
-	}
-	r.routes[route.Name] = route
-}
-
+// Dispatch routes an incoming request to the appropriate handler based on the
+// request route, enforcing privilege checks and logging request lifecycle events.
 func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) error {
 	req.Owner = ownerFromSession(req.Session)
 	if req.Session != nil {
@@ -291,6 +276,33 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 		"duration", time.Since(startedAt),
 		"error", err)
 	return err
+}
+
+func (r *Router) register(route Route, opts ...RouteOption) {
+	if route.Name == "" {
+		panic("bridge route cannot be empty")
+	}
+	if strings.HasPrefix(route.Name, "jobs.") {
+		panic("bridge route uses reserved jobs.* namespace: " + route.Name)
+	}
+	if route.Mode == ModeQuery && route.Handler == nil {
+		panic("bridge route handler cannot be nil: " + route.Name)
+	}
+	if route.Mode == ModeJob && route.Handler == nil && route.Runner == nil {
+		panic("bridge job route handler cannot be nil: " + route.Name)
+	}
+	if route.Mode == ModeDuplex && route.Duplex == nil {
+		panic("bridge duplex route handler cannot be nil: " + route.Name)
+	}
+	for _, opt := range opts {
+		opt(&route)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.routes[route.Name]; exists {
+		panic("bridge route already registered: " + route.Name)
+	}
+	r.routes[route.Name] = route
 }
 
 func (r *Router) lookup(route string) (Route, bool) {
