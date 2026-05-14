@@ -7,10 +7,8 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// RegisterHandlers keeps the existing dbus RPC component names while moving
-// systemd command ownership into this package.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+	bridgeipc.RegisterRoutes(router, "systemd", []bridgeipc.Command{
 		{Name: "list_timers", Mode: bridgeipc.ModeQuery, Handler: handleListTimers},
 		{Name: "list_sockets", Mode: bridgeipc.ModeQuery, Handler: handleListSockets},
 		{Name: "list_services", Mode: bridgeipc.ModeQuery, Handler: handleListServices},

@@ -25,7 +25,7 @@ function matchesServiceSearch(service: Service, search: string): boolean {
 }
 
 function useServicesQuery(viewMode: TableCardViewMode) {
-  return linuxio.dbus.list_services.useQuery({
+  return linuxio.systemd.list_services.useQuery({
     refetchInterval: viewMode === "card" ? false : 2000,
   });
 }

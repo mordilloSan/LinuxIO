@@ -106,6 +106,19 @@ Never log raw passwords, tokens, or full unreviewed argument payloads.
 
 When in doubt between `Query` and `Job`, ask: "can this change system state, run for a while, emit progress, or need cancellation?" If yes, use `Job`.
 
+## Route Namespaces
+
+Route namespaces describe the product or domain surface, not the implementation transport. Do not use transport names such as `dbus` for bridge routes.
+
+D-Bus-backed operations still use domain namespaces:
+
+- `control.*` for host/session control
+- `updates.*` for package and update operations
+- `systemd.*` for units, timers, and sockets
+- `network.*` for network configuration
+- `hostname.*` for hostname changes
+- `datetime.*` for time, timezone, and NTP operations
+
 ## File Naming
 
 Handler packages should name files after the domain operation they implement, not after IPC mechanics.

@@ -26,7 +26,7 @@ function matchesTimerSearch(timer: Timer, search: string): boolean {
 }
 
 function useTimersQuery(viewMode: TableCardViewMode) {
-  return linuxio.dbus.list_timers.useQuery({
+  return linuxio.systemd.list_timers.useQuery({
     refetchInterval: viewMode === "card" ? false : 5000,
   });
 }

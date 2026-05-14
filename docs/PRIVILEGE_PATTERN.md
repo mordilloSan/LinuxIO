@@ -7,13 +7,13 @@ Privilege is part of bridge route metadata. Handlers should not perform the norm
 Declare privileged operations where the route is registered:
 
 ```go
-router.Job("dbus.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
+router.Job("control.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
 ```
 
 or in command tables:
 
 ```go
-bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+bridgeipc.RegisterRoutes(router, "control", []bridgeipc.Command{
     {Name: "reboot", Mode: bridgeipc.ModeJob, Handler: handleReboot, Privileged: true},
 })
 ```

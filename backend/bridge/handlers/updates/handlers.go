@@ -7,11 +7,11 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// RegisterHandlers registers dbus handlers with the new handler system
+// RegisterHandlers registers update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 
-	bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+	bridgeipc.RegisterRoutes(router, "updates", []bridgeipc.Command{
 		{Name: "get_updates_basic", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesBasic},
 		{Name: "get_update_detail", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdateDetail},
 		{Name: "install_package", Mode: bridgeipc.ModeJob, Handler: handleInstallPackage},

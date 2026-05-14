@@ -23,7 +23,7 @@ const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
   const queryClient = useQueryClient();
   const [hostname, setHostname] = useState(current);
 
-  const { mutate, isPending } = linuxio.dbus.set_hostname.useMutation({
+  const { mutate, isPending } = linuxio.hostname.set_hostname.useMutation({
     onSuccess: () => {
       toast.success("Hostname updated successfully");
       queryClient.invalidateQueries({

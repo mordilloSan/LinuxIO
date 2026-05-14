@@ -30,7 +30,7 @@ const TimerSummaryRows: React.FC<{ timer: Timer }> = ({ timer }) => (
 );
 
 const TimerSelectedRows: React.FC<{ timer: Timer }> = ({ timer }) => {
-  const { data: info } = linuxio.dbus.get_unit_info.useQuery(timer.name, {
+  const { data: info } = linuxio.systemd.get_unit_info.useQuery(timer.name, {
     refetchInterval: 2000,
   });
 
@@ -61,7 +61,7 @@ const TimerSelectedRows: React.FC<{ timer: Timer }> = ({ timer }) => {
 };
 
 const TimerActionsWrapper: React.FC<{ timer: Timer }> = ({ timer }) => {
-  const { data: info } = linuxio.dbus.get_unit_info.useQuery(timer.name, {
+  const { data: info } = linuxio.systemd.get_unit_info.useQuery(timer.name, {
     refetchInterval: 2000,
   });
   return (

@@ -249,7 +249,7 @@ export interface DiskThroughputResponse {
   devices: DiskThroughputDevice[];
 }
 
-/** Full network interface info (from dbus GetNetworkInfo) */
+/** Full network interface info (from network.get_network_info) */
 export interface NetworkInterface {
   name: string;
   type: string;
@@ -1099,9 +1099,7 @@ export interface LinuxIOSchema {
     };
   };
 
-  dbus: {
-    reboot: { args: []; result: void };
-    power_off: { args: []; result: void };
+  updates: {
     get_updates_basic: { args: []; result: Update[] };
     get_update_detail: { args: [packageId: string]; result: Update };
     install_package: { args: [packageId: string]; result: void };
@@ -1115,6 +1113,9 @@ export interface LinuxIOSchema {
       result: { status?: string; error?: string };
     };
     get_update_history: { args: []; result: UpdateHistoryRow[] };
+  };
+
+  systemd: {
     list_services: { args: []; result: Service[] };
     get_unit_info: { args: [unitName: string]; result: UnitInfo };
     list_timers: { args: []; result: Timer[] };
@@ -1128,6 +1129,9 @@ export interface LinuxIOSchema {
     mask_service: { args: [serviceName: string]; result: void };
     unmask_service: { args: [serviceName: string]; result: void };
     reset_failed_service: { args: [serviceName: string]; result: void };
+  };
+
+  network: {
     get_network_info: { args: []; result: NetworkInterface[] };
     set_ipv4_manual: {
       args: [iface: string, address: string, gateway: string, dns: string];
@@ -1138,7 +1142,13 @@ export interface LinuxIOSchema {
     set_mtu: { args: [iface: string, mtu: string]; result: void };
     enable_connection: { args: [iface: string]; result: void };
     disable_connection: { args: [iface: string]; result: void };
+  };
+
+  hostname: {
     set_hostname: { args: [hostname: string]; result: void };
+  };
+
+  datetime: {
     get_ntp_status: { args: []; result: boolean };
     set_ntp: { args: [enabled: string]; result: void };
     set_server_time: { args: [isoTime: string]; result: void };
@@ -1216,6 +1226,9 @@ export interface LinuxIOSchema {
 
   control: {
     version: { args: []; result: VersionResponse };
+    reboot: { args: []; result: void };
+    power_off: { args: []; result: void };
+    logoff: { args: [sessionID: string]; result: void };
   };
 
   power: {

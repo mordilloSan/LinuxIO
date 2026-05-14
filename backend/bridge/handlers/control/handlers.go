@@ -9,7 +9,7 @@ import (
 
 // RegisterHandlers registers host control handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+	bridgeipc.RegisterRoutes(router, "control", []bridgeipc.Command{
 		{Name: "reboot", Mode: bridgeipc.ModeJob, Handler: handleReboot},
 		{Name: "power_off", Mode: bridgeipc.ModeJob, Handler: handlePowerOff},
 		{Name: "logoff", Mode: bridgeipc.ModeJob, Handler: handleLogoff},

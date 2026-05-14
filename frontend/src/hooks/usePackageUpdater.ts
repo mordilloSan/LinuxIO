@@ -51,7 +51,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const { run: runStreamResult } = useStreamResult();
 
   const { mutateAsync: installPackage } =
-    linuxio.dbus.install_package.useMutation();
+    linuxio.updates.install_package.useMutation();
 
   const appendEvent = useCallback((message: string) => {
     const trimmed = message.trim();

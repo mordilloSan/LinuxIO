@@ -8,7 +8,7 @@ import (
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+	bridgeipc.RegisterRoutes(router, "hostname", []bridgeipc.Command{
 		{Name: "set_hostname", Mode: bridgeipc.ModeJob, Handler: handleSetHostname},
 	})
 }

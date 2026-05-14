@@ -35,7 +35,7 @@ const UpdateList: React.FC<Props> = ({
       setLoadingChangelog(packageId);
       try {
         const detail = await queryClient.fetchQuery(
-          linuxio.dbus.get_update_detail.queryOptions(packageId, {
+          linuxio.updates.get_update_detail.queryOptions(packageId, {
             staleTime: CACHE_TTL_MS.FIVE_MINUTES,
           }),
         );

@@ -218,10 +218,10 @@ export const UnitCardActions: React.FC<{
 
   const invalidateUnit = React.useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: linuxio.dbus.list_services.queryKey(),
+      queryKey: linuxio.systemd.list_services.queryKey(),
     });
     queryClient.invalidateQueries({
-      queryKey: linuxio.dbus.get_unit_info.queryKey(unitName),
+      queryKey: linuxio.systemd.get_unit_info.queryKey(unitName),
     });
   }, [queryClient, unitName]);
 
@@ -240,23 +240,23 @@ export const UnitCardActions: React.FC<{
   );
 
   const { mutate: startService, isPending: isStarting } =
-    linuxio.dbus.start_service.useMutation(makeHandlers("started"));
+    linuxio.systemd.start_service.useMutation(makeHandlers("started"));
   const { mutate: stopService, isPending: isStopping } =
-    linuxio.dbus.stop_service.useMutation(makeHandlers("stopped"));
+    linuxio.systemd.stop_service.useMutation(makeHandlers("stopped"));
   const { mutate: restartService, isPending: isRestarting } =
-    linuxio.dbus.restart_service.useMutation(makeHandlers("restarted"));
+    linuxio.systemd.restart_service.useMutation(makeHandlers("restarted"));
   const { mutate: reloadService, isPending: isReloading } =
-    linuxio.dbus.reload_service.useMutation(makeHandlers("reloaded"));
+    linuxio.systemd.reload_service.useMutation(makeHandlers("reloaded"));
   const { mutate: enableService, isPending: isEnabling } =
-    linuxio.dbus.enable_service.useMutation(makeHandlers("enabled"));
+    linuxio.systemd.enable_service.useMutation(makeHandlers("enabled"));
   const { mutate: disableService, isPending: isDisabling } =
-    linuxio.dbus.disable_service.useMutation(makeHandlers("disabled"));
+    linuxio.systemd.disable_service.useMutation(makeHandlers("disabled"));
   const { mutate: maskService, isPending: isMasking } =
-    linuxio.dbus.mask_service.useMutation(makeHandlers("masked"));
+    linuxio.systemd.mask_service.useMutation(makeHandlers("masked"));
   const { mutate: unmaskService, isPending: isUnmasking } =
-    linuxio.dbus.unmask_service.useMutation(makeHandlers("unmasked"));
+    linuxio.systemd.unmask_service.useMutation(makeHandlers("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    linuxio.dbus.reset_failed_service.useMutation(makeHandlers("reset"));
+    linuxio.systemd.reset_failed_service.useMutation(makeHandlers("reset"));
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";

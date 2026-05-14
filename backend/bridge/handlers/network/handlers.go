@@ -10,7 +10,7 @@ import (
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "dbus", []bridgeipc.Command{
+	bridgeipc.RegisterRoutes(router, "network", []bridgeipc.Command{
 		{Name: "get_network_info", Mode: bridgeipc.ModeQuery, Handler: handleGetNetworkInfo},
 		{Name: "set_ipv4_manual", Mode: bridgeipc.ModeJob, Handler: handleSetIPv4Manual},
 		{Name: "set_ipv4", Mode: bridgeipc.ModeJob, Handler: handleSetIPv4},

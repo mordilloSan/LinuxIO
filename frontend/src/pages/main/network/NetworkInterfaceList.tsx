@@ -19,7 +19,7 @@ const NetworkInterfaceList = () => {
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
   const { data: rawInterfaces = [], isPending: isLoading } =
-    linuxio.dbus.get_network_info.useQuery({
+    linuxio.network.get_network_info.useQuery({
       refetchInterval: 1000,
     });
 

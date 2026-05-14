@@ -135,7 +135,7 @@ return bridgeipc.EmitResult(emit, result, err)
 Privileged routes declare it at registration:
 
 ```go
-router.Job("dbus.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
+router.Job("control.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
 ```
 
 or in command tables:

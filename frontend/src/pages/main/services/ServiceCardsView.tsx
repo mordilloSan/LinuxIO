@@ -33,7 +33,7 @@ const ServiceStatusRows = React.memo<{ service: Service }>(({ service }) => (
 ServiceStatusRows.displayName = "ServiceStatusRows";
 
 const ServiceInfoRows: React.FC<{ service: Service }> = ({ service }) => {
-  const { data: info } = linuxio.dbus.get_unit_info.useQuery(service.name, {
+  const { data: info } = linuxio.systemd.get_unit_info.useQuery(service.name, {
     refetchInterval: 2000,
   });
   const mainPid = Number(info?.MainPID ?? 0);
@@ -84,7 +84,7 @@ const ServiceInfoRows: React.FC<{ service: Service }> = ({ service }) => {
 };
 
 const ServiceActionsWrapper: React.FC<{ service: Service }> = ({ service }) => {
-  const { data: info } = linuxio.dbus.get_unit_info.useQuery(service.name, {
+  const { data: info } = linuxio.systemd.get_unit_info.useQuery(service.name, {
     refetchInterval: 2000,
   });
   return (

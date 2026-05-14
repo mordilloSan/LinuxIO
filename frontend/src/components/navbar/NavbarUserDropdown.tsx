@@ -32,7 +32,7 @@ function NavbarUserDropdown() {
   );
 
   // Mutations for power actions
-  const { mutate: reboot } = linuxio.dbus.reboot.useMutation({
+  const { mutate: reboot } = linuxio.control.reboot.useMutation({
     onSuccess: () => {
       // Server may die before responding - this is expected
     },
@@ -42,7 +42,7 @@ function NavbarUserDropdown() {
     },
   });
 
-  const { mutate: powerOff } = linuxio.dbus.power_off.useMutation({
+  const { mutate: powerOff } = linuxio.control.power_off.useMutation({
     onSuccess: () => {
       // Server may die before responding - this is expected
     },
