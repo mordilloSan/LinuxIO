@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/disk"
@@ -21,17 +22,20 @@ type FilesystemMount struct {
 	InodesUsedPercent float64 `json:"inodesUsedPercent,omitempty"`
 }
 
-func FetchFileSystemInfo(includeAll bool) ([]FilesystemMount, error) {
-	parts, err := disk.Partitions(true)
+func FetchFileSystemInfo(ctx context.Context, includeAll bool) ([]FilesystemMount, error) {
+	parts, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 	results := make([]FilesystemMount, 0, len(parts))
 	for _, p := range parts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !includeAll && isPseudoFS(p) {
 			continue
 		}
-		usage, err := disk.Usage(p.Mountpoint)
+		usage, err := disk.UsageWithContext(ctx, p.Mountpoint)
 		if err != nil {
 			continue
 		}

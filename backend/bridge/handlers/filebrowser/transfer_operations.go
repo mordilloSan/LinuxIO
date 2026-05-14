@@ -216,7 +216,7 @@ func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 	if err != nil {
 		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", format), 400)
 	}
-	settings := jobSettingsForJob(job, store)
+	settings := jobSettingsForJob(ctx, job, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
 		return nil, context.Canceled
@@ -351,7 +351,7 @@ func archiveNameForPaths(paths []string, extension string) string {
 }
 
 func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, store *config.UserStore) *ipc.OperationCallbacks {
-	limiter := newProgressLimiter(jobSettingsForJob(transfer.job, store), transfer.total)
+	limiter := newProgressLimiter(jobSettingsForJob(ctx, transfer.job, store), transfer.total)
 	return &ipc.OperationCallbacks{
 		Cancel: func() bool {
 			return ctx.Err() != nil

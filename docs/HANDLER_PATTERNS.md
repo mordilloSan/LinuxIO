@@ -35,6 +35,66 @@ func ListTimers(ctx context.Context) ([]TimerStatus, error) {
 
 Do not call `emit.Result(...)` or `emit.Error(...)` directly from `handlers.go`; use `bridgeipc.EmitResult` so result and error mapping stay consistent.
 
+## Context
+
+Every handler must accept the caller `context.Context` and pass it to every callee. Any callee that performs I/O, blocks on external state, launches a command, or loops over filesystem/sysfs entries should accept `ctx context.Context` as its first parameter.
+
+Use context-aware APIs whenever they exist:
+
+- use `exec.CommandContext(ctx, ...)`, never bare `exec.Command`, in handler code
+- use gopsutil `WithContext` variants where available
+- add `ctx.Err()` guards at the top of loops over sysfs, procfs, or file entries
+- add `ctx.Err()` checks before starting work through libraries that do not support contexts
+
+Some libraries, such as `ghw`, do not expose context-aware calls. In those cases the function should still accept `ctx` for consistent handler flow and should document the limitation:
+
+```go
+// ghw has no context support; ctx is accepted for consistent handler flow.
+```
+
+Some primitives are not cancellable once entered. Check `ctx.Err()` before acquiring them and document the limitation:
+
+```go
+// sync.Mutex.Lock is not cancellable once entered.
+mu.Lock()
+```
+
+The same applies to `sync.RWMutex` and `syscall.Flock`.
+
+Mock variables that wrap blocking work must accept `context.Context`. Command wrappers should use the `exec.CommandContext` shape:
+
+```go
+func(context.Context, string, ...string) *exec.Cmd
+```
+
+Sampler and reader mocks should keep their domain-specific return shape while taking `context.Context`, for example:
+
+```go
+func(context.Context) map[string]gopsnet.IOCountersStat
+func(context.Context) ([]gopsnet.InterfaceStat, error)
+```
+
+## Logging
+
+Request logging is centralized in `backend/common/ipc/bridge`. The router logs the route envelope at `debug` without raw arguments:
+
+- route name
+- route mode
+- argument count
+- session/user identifiers
+- policy name when applicable
+- outcome, status, and duration
+
+Handler adapters do not log. Route operation functions do not emit `"... requested"` logs either; they parse, validate, map route arguments, and call domain functions.
+
+Domain functions log meaningful work:
+
+- successful state changes, such as `user created` or `group deleted`
+- important no-op decisions, such as `group members unchanged`
+- contextual failures or fallbacks where the domain has useful detail
+
+Never log raw passwords, tokens, or full unreviewed argument payloads.
+
 ## Mode Selection
 
 | Need | Mode |

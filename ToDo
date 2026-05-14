@@ -6,6 +6,7 @@
 - `eslint-plugin-react`
 
 4 - Session Activity And Job-Safe Idle Cleanup
+beware of ctx in handlers and if session dies bridge is orpahned doing work?
 
 5 - values fixed in router.go should be set in global settings file?
 

@@ -68,6 +68,6 @@ func handleApplyOfflineUpdates(ctx context.Context, args []string, emit bridgeip
 }
 
 func handleGetUpdateHistory(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetUpdateHistory()
+	result, err := GetUpdateHistory(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

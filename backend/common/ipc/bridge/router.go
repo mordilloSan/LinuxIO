@@ -118,7 +118,6 @@ type JobPolicy struct {
 	// Timeout is the maximum runtime after a job starts. Queue time is not counted.
 	// When it expires, bridgeipc cancels the runner context and fails the job with 504.
 	Timeout               time.Duration
-	SessionBound          bool
 	DuplicateActiveReject bool
 }
 
@@ -145,7 +144,6 @@ var (
 		MaxActivePerOwnerRoute:  8,
 		QueueLimit:              0,
 		StartRatePerMinuteOwner: 30,
-		SessionBound:            true,
 	}
 )
 
@@ -182,6 +180,11 @@ func NewRouter(registry *Registry) *Router {
 		queuedByRoute:      make(map[string][]queuedJob),
 		startsByOwnerRoute: make(map[string][]time.Time),
 	}
+}
+
+// Registry returns the job registry used by this router.
+func (r *Router) Registry() *Registry {
+	return r.registry
 }
 
 func (r *Router) Query(name string, handler HandlerFunc, opts ...RouteOption) {

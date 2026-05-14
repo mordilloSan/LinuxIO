@@ -42,16 +42,16 @@ func handleGetCapabilities(ctx context.Context, args []string, emit bridgeipc.Ev
 }
 
 func handleGetCPUInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchCPUInfo()
+	result, err := FetchCPUInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetSensorInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, FetchSensorsInfo(), nil)
+	return bridgeipc.EmitResult(emit, FetchSensorsInfo(ctx), nil)
 }
 
 func handleGetMotherboardInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchBaseboardInfo()
+	result, err := FetchBaseboardInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -61,22 +61,22 @@ func handleGetMemoryInfo(ctx context.Context, args []string, emit bridgeipc.Even
 }
 
 func handleGetHostInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchHostInfo()
+	result, err := FetchHostInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetUptime(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	uptimeSeconds, err := FetchUptimeSeconds()
+	uptimeSeconds, err := FetchUptimeSeconds(ctx)
 	return bridgeipc.EmitResult(emit, uptimeSeconds, err)
 }
 
 func handleGetFilesystemInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchFileSystemInfo(parseIncludeAllArg(args))
+	result, err := FetchFileSystemInfo(ctx, parseIncludeAllArg(args))
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetProcesses(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchProcesses()
+	result, err := FetchProcesses(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -96,22 +96,22 @@ func handleGetUpdatesFast(ctx context.Context, args []string, emit bridgeipc.Eve
 }
 
 func handleGetNetworkInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchNetworks()
+	result, err := FetchNetworks(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetDiskThroughput(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchDiskThroughput()
+	result, err := FetchDiskThroughput(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetSystemInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchSystemInfo()
+	result, err := FetchSystemInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func handleGetPCIDevices(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchPCIDevices()
+	result, err := FetchPCIDevices(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -121,11 +121,11 @@ func handleGetMemoryModules(ctx context.Context, args []string, emit bridgeipc.E
 }
 
 func handleGetServerTime(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, GetCurrentServerTime(), nil)
+	return bridgeipc.EmitResult(emit, GetCurrentServerTime(ctx), nil)
 }
 
 func handleGetTimezones(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetTimezones()
+	result, err := GetTimezones(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -140,11 +140,11 @@ func (h systemHandlers) handleListFailedLoginEvents(ctx context.Context, args []
 }
 
 func (h systemHandlers) handleDismissUncleanShutdown(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DismissUncleanShutdownForRuntime(h.rt, args)
+	result, err := DismissUncleanShutdownForRuntime(ctx, h.rt, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h systemHandlers) handleDismissFailedLoginAlert(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DismissFailedLoginAlertForRuntime(h.rt, args)
+	result, err := DismissFailedLoginAlertForRuntime(ctx, h.rt, args)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -75,6 +75,84 @@ func TestJobCancelMarksCanceled(t *testing.T) {
 	}
 }
 
+func TestCancelQueuedJobEmitsCanceled(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	events, unsubscribe := registry.Subscribe(8)
+	defer unsubscribe()
+	job, err := registry.CreateForOwner("test.cancel.queued", nil, owner)
+	if err != nil {
+		t.Fatalf("CreateForOwner returned error: %v", err)
+	}
+
+	job.Cancel()
+
+	waitForState(t, job, StateCanceled)
+	event := waitForJobEvent(t, events, job.ID(), EventCanceled)
+	if event.Job.State != StateCanceled {
+		t.Fatalf("event state = %q, want canceled", event.Job.State)
+	}
+}
+
+func TestCancelForSessionActiveJob(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	events, unsubscribe := registry.Subscribe(8)
+	defer unsubscribe()
+	started := make(chan struct{})
+	job, err := startTestJob(registry, "test.cancel.session.active", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+		close(started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	if err != nil {
+		t.Fatalf("startTestJob returned error: %v", err)
+	}
+	<-started
+
+	registry.CancelForSession(owner.SessionID)
+
+	waitForState(t, job, StateCanceled)
+	waitForJobEvent(t, events, job.ID(), EventCanceled)
+}
+
+func TestCancelForSessionQueuedJob(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	events, unsubscribe := registry.Subscribe(8)
+	defer unsubscribe()
+	job, err := registry.CreateForOwner("test.cancel.session.queued", nil, owner)
+	if err != nil {
+		t.Fatalf("CreateForOwner returned error: %v", err)
+	}
+
+	registry.CancelForSession(owner.SessionID)
+
+	waitForState(t, job, StateCanceled)
+	waitForJobEvent(t, events, job.ID(), EventCanceled)
+}
+
+func TestCancelForSessionCompletedJobIgnored(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	job, err := startTestJob(registry, "test.cancel.session.completed", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+		return map[string]any{"ok": true}, nil
+	})
+	if err != nil {
+		t.Fatalf("startTestJob returned error: %v", err)
+	}
+	waitForState(t, job, StateCompleted)
+	events, unsubscribe := registry.Subscribe(8)
+	defer unsubscribe()
+
+	registry.CancelForSession(owner.SessionID)
+
+	if snapshot := job.Snapshot(); snapshot.State != StateCompleted {
+		t.Fatalf("state after CancelForSession = %q, want completed", snapshot.State)
+	}
+	assertNoJobEvent(t, events, job.ID(), EventCanceled)
+}
+
 func TestOwnerScopedAccessors(t *testing.T) {
 	registry := NewRegistry()
 	ownerA := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
@@ -269,6 +347,37 @@ func waitForState(t *testing.T, job *Job, want State) {
 		case <-ticker.C:
 			if job.Snapshot().State == want {
 				return
+			}
+		}
+	}
+}
+
+func waitForJobEvent(t *testing.T, events <-chan Event, jobID string, want EventType) Event {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for event %q on job %s", want, jobID)
+		case event := <-events:
+			if event.Job.ID == jobID && event.Type == want {
+				return event
+			}
+		}
+	}
+}
+
+func assertNoJobEvent(t *testing.T, events <-chan Event, jobID string, eventType EventType) {
+	t.Helper()
+	timer := time.NewTimer(25 * time.Millisecond)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			return
+		case event := <-events:
+			if event.Job.ID == jobID && event.Type == eventType {
+				t.Fatalf("unexpected event %q for job %s", eventType, jobID)
 			}
 		}
 	}

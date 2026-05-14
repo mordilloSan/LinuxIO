@@ -16,7 +16,7 @@ func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*Syste
 	session := rt.Session
 	result, err := FetchSystemHealthSummary(ctx, session.User.Username, session.Privileged, session.Timing.CreatedAt)
 	if err == nil && result != nil {
-		applyHealthDismissals(session.User.Username, rt.Store, result)
+		applyHealthDismissals(ctx, session.User.Username, rt.Store, result)
 	}
 	return result, err
 }
@@ -29,7 +29,7 @@ func ListFailedLoginEventsForRuntime(ctx context.Context, rt runtime.Runtime, ar
 	return FetchFailedLoginEvents(ctx, session.User.Username, session.Timing.CreatedAt, limit)
 }
 
-func DismissUncleanShutdownForRuntime(rt runtime.Runtime, args []string) (map[string]any, error) {
+func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, args []string) (map[string]any, error) {
 	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func DismissUncleanShutdownForRuntime(rt runtime.Runtime, args []string) (map[st
 		return nil, bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := config.UpdateForUser(username, rt.Store, func(cfg *config.Settings) error {
+	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
 		if cfg.Dismissals == nil {
 			cfg.Dismissals = &config.Dismissals{}
 		}
@@ -52,7 +52,7 @@ func DismissUncleanShutdownForRuntime(rt runtime.Runtime, args []string) (map[st
 	return map[string]any{"message": "dismissed"}, nil
 }
 
-func DismissFailedLoginAlertForRuntime(rt runtime.Runtime, args []string) (map[string]any, error) {
+func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, args []string) (map[string]any, error) {
 	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func DismissFailedLoginAlertForRuntime(rt runtime.Runtime, args []string) (map[s
 		return nil, bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := config.UpdateForUser(username, rt.Store, func(cfg *config.Settings) error {
+	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
 		if cfg.Dismissals == nil {
 			cfg.Dismissals = &config.Dismissals{}
 		}
@@ -78,11 +78,11 @@ func DismissFailedLoginAlertForRuntime(rt runtime.Runtime, args []string) (map[s
 // applyHealthDismissals suppresses acknowledged one-shot health signals. Any
 // error reading the user's settings is treated as "not dismissed" so warnings
 // still surface.
-func applyHealthDismissals(username string, store *config.UserStore, summary *SystemHealthSummary) {
+func applyHealthDismissals(ctx context.Context, username string, store *config.UserStore, summary *SystemHealthSummary) {
 	if !hasDismissibleHealthSignal(summary) {
 		return
 	}
-	cfg, _, err := config.SnapshotForUser(username, store)
+	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
 		return

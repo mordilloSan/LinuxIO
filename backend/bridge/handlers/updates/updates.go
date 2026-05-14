@@ -491,71 +491,99 @@ type UpdateHistoryEntry struct {
 	Upgrades []UpgradeItem `json:"upgrades"`
 }
 
-func GetUpdateHistory() ([]UpdateHistoryEntry, error) {
+type dpkgLogPatterns struct {
+	install   *regexp.Regexp
+	configure *regexp.Regexp
+}
+
+func GetUpdateHistory(ctx context.Context) ([]UpdateHistoryEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat("/var/log/dpkg.log"); err == nil {
 		slog.Debug("Parsing dpkg update history")
-		return parseDpkgLogs(), nil
+		return parseDpkgLogs(ctx), nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if _, err := os.Stat("/var/log/dnf.log"); err == nil {
 		slog.Debug("Parsing dnf update history")
-		return parseDnfHistory("/var/log/dnf.log"), nil
+		return parseDnfHistory(ctx, "/var/log/dnf.log"), nil
 	}
 	slog.Warn("No known package manager log found")
 	return []UpdateHistoryEntry{}, nil
 }
 
 // parseDpkgLogs reads dpkg.log plus all rotated variants (.1, .2.gz, …).
-func parseDpkgLogs() []UpdateHistoryEntry {
+func parseDpkgLogs(ctx context.Context) []UpdateHistoryEntry {
 	historyMap := make(map[string][]UpgradeItem)
 	pendingPackages := make(map[string]string)
-
-	// Collect all dpkg log files (dpkg.log, dpkg.log.1, dpkg.log.2.gz, …)
 	matches, _ := filepath.Glob("/var/log/dpkg.log*")
-	// Sort in reverse so oldest logs are parsed first (pending state resolves correctly)
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 
-	installRe := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+(install|upgrade)\s+([^ ]+)\s+([^ ]+)`)
-	configureRe := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+configure\s+([^ ]+)\s+([^ ]+)`)
-
+	patterns := dpkgLogPatterns{
+		install:   regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+(install|upgrade)\s+([^ ]+)\s+([^ ]+)`),
+		configure: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+configure\s+([^ ]+)\s+([^ ]+)`),
+	}
 	for _, logPath := range matches {
-		reader, closer, err := openLogFile(logPath)
-		if err != nil {
-			slog.Warn("failed to open update log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
-			continue
+		if err := ctx.Err(); err != nil {
+			return mapToSortedHistory(historyMap)
 		}
-
-		scanner := bufio.NewScanner(reader)
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			if m := installRe.FindStringSubmatch(line); len(m) == 5 {
-				date, pkg, version := m[1], m[3], m[4]
-				if version == "<none>" {
-					pendingPackages[pkg] = date
-				} else {
-					historyMap[date] = append(historyMap[date], UpgradeItem{
-						Package: pkg,
-						Version: version,
-					})
-				}
-			}
-
-			if m := configureRe.FindStringSubmatch(line); len(m) == 4 {
-				_, pkg, version := m[1], m[2], m[3]
-				if origDate, exists := pendingPackages[pkg]; exists {
-					historyMap[origDate] = append(historyMap[origDate], UpgradeItem{
-						Package: pkg,
-						Version: version,
-					})
-					delete(pendingPackages, pkg)
-				}
-			}
-		}
-
-		closer()
+		parseDpkgLogFile(ctx, logPath, patterns, historyMap, pendingPackages)
 	}
 
 	return mapToSortedHistory(historyMap)
+}
+
+func parseDpkgLogFile(
+	ctx context.Context,
+	logPath string,
+	patterns dpkgLogPatterns,
+	historyMap map[string][]UpgradeItem,
+	pendingPackages map[string]string,
+) {
+	reader, closer, err := openLogFile(logPath)
+	if err != nil {
+		slog.Warn("failed to open update log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
+		return
+	}
+	defer closer()
+
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		applyDpkgLogLine(scanner.Text(), patterns, historyMap, pendingPackages)
+	}
+}
+
+func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
+	if m := patterns.install.FindStringSubmatch(line); len(m) == 5 {
+		recordDpkgInstall(m[1], m[3], m[4], historyMap, pendingPackages)
+		return
+	}
+	if m := patterns.configure.FindStringSubmatch(line); len(m) == 4 {
+		recordDpkgConfigure(m[2], m[3], historyMap, pendingPackages)
+	}
+}
+
+func recordDpkgInstall(date, pkg, version string, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
+	if version == "<none>" {
+		pendingPackages[pkg] = date
+		return
+	}
+	historyMap[date] = append(historyMap[date], UpgradeItem{Package: pkg, Version: version})
+}
+
+func recordDpkgConfigure(pkg, version string, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
+	origDate, exists := pendingPackages[pkg]
+	if !exists {
+		return
+	}
+	historyMap[origDate] = append(historyMap[origDate], UpgradeItem{Package: pkg, Version: version})
+	delete(pendingPackages, pkg)
 }
 
 // openLogFile opens a plain or gzipped log file and returns an io.Reader and a close function.
@@ -577,7 +605,10 @@ func openLogFile(path string) (io.Reader, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-func parseDnfHistory(logPath string) []UpdateHistoryEntry {
+func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
+	if err := ctx.Err(); err != nil {
+		return nil
+	}
 	file, err := os.Open(logPath)
 	if err != nil {
 		slog.Error("failed to open DNF log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
@@ -591,6 +622,9 @@ func parseDnfHistory(logPath string) []UpdateHistoryEntry {
 	historyMap := make(map[string][]UpgradeItem)
 
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return mapToSortedHistory(historyMap)
+		}
 		line := scanner.Text()
 		parts := strings.Fields(line)
 		if len(parts) < 1 {

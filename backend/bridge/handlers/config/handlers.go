@@ -20,11 +20,11 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func (h configHandlers) handleGetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetConfigForUser(h.username, h.store)
+	result, err := GetConfigForUser(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h configHandlers) handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := SetConfigForUser(args, h.username, h.store)
+	result, err := SetConfigForUser(ctx, args, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

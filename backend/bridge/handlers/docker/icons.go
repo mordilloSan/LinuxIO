@@ -114,12 +114,15 @@ func parseIconIdentifier(identifier string) (IconType, string) {
 }
 
 // getCachedIcon checks if an icon is cached and returns its path
-func getCachedIcon(iconType IconType, identifier string) (string, bool) {
+func getCachedIcon(ctx context.Context, iconType IconType, identifier string) (string, bool) {
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
 	var cachePath string
 
 	switch iconType {
 	case IconTypeDashboardIcon:
-		return getDashboardCachedIcon(identifier)
+		return getDashboardCachedIcon(ctx, identifier)
 	case IconTypeSimpleIcon:
 		cachePath = filepath.Join(simpleIconsCacheDir, identifier+".svg")
 	case IconTypeURL:
@@ -130,12 +133,15 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	case IconTypeFile:
 		cachePath = filepath.Join(userIconsDir, identifier)
 	case IconTypeDerived:
-		return getDerivedCachedIcon(identifier)
+		return getDerivedCachedIcon(ctx, identifier)
 	default:
 		return "", false
 	}
 
 	// Check if file exists and is not too old
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
 	info, err := os.Stat(cachePath)
 	if err != nil {
 		return "", false
@@ -149,8 +155,11 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	return cachePath, true
 }
 
-func getDashboardCachedIcon(identifier string) (string, bool) {
+func getDashboardCachedIcon(ctx context.Context, identifier string) (string, bool) {
 	for _, ext := range []string{".svg", ".png", ".webp"} {
+		if err := ctx.Err(); err != nil {
+			return "", false
+		}
 		cachePath := filepath.Join(dashboardIconsCacheDir, identifier+ext)
 		info, err := os.Stat(cachePath)
 		if err != nil {
@@ -164,12 +173,15 @@ func getDashboardCachedIcon(identifier string) (string, bool) {
 	return "", false
 }
 
-func getDerivedCachedIcon(identifier string) (string, bool) {
-	if cachePath, found := getDashboardCachedIcon(identifier); found {
+func getDerivedCachedIcon(ctx context.Context, identifier string) (string, bool) {
+	if cachePath, found := getDashboardCachedIcon(ctx, identifier); found {
 		return cachePath, true
 	}
 
 	cachePath := filepath.Join(simpleIconsCacheDir, identifier+".svg")
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
 	info, err := os.Stat(cachePath)
 	if err != nil {
 		return "", false
@@ -345,7 +357,7 @@ func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	iconType, value := parseIconIdentifier(identifier)
 
 	// Check cache first
-	if data, found := readCachedIcon(iconType, value, identifier); found {
+	if data, found := readCachedIcon(ctx, iconType, value, identifier); found {
 		return data, nil
 	}
 
@@ -362,12 +374,15 @@ func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	return data, nil
 }
 
-func readCachedIcon(iconType IconType, value, identifier string) ([]byte, bool) {
-	cachePath, found := getCachedIcon(iconType, value)
+func readCachedIcon(ctx context.Context, iconType IconType, value, identifier string) ([]byte, bool) {
+	cachePath, found := getCachedIcon(ctx, iconType, value)
 	if !found {
 		return nil, false
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, false
+	}
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
 		slog.Warn("failed to read cached icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "path", cachePath, "error", err)
@@ -467,9 +482,9 @@ func GetIconURI(ctx context.Context, identifier string) (string, error) {
 }
 
 // GetIconInfo returns metadata about an icon without fetching it
-func GetIconInfo(identifier string) IconInfo {
+func GetIconInfo(ctx context.Context, identifier string) IconInfo {
 	iconType, value := parseIconIdentifier(identifier)
-	_, cached := getCachedIcon(iconType, value)
+	_, cached := getCachedIcon(ctx, iconType, value)
 
 	return IconInfo{
 		Type:       iconType,
@@ -479,16 +494,22 @@ func GetIconInfo(identifier string) IconInfo {
 }
 
 // ClearIconCache removes all cached icons
-func ClearIconCache() error {
+func ClearIconCache(ctx context.Context) error {
 	slog.Info("clearing icon cache")
 
 	dirs := []string{dashboardIconsCacheDir, simpleIconsCacheDir, urlCacheDir}
 	for _, dir := range dirs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("failed to remove cache directory %s: %w", dir, err)
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// Recreate directories
 	return initIconCache()
 }

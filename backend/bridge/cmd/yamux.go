@@ -19,10 +19,7 @@ var streamCounter atomic.Uint64
 
 // handleYamuxSession handles a yamux multiplexed connection.
 // Each stream within the session is treated as an independent request.
-func handleYamuxSession(rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn) {
 	ymuxSession, err := relay.NewYamuxServer(conn)
 	if err != nil {
 		slog.Error("failed to create yamux session", "session_id", sess.SessionID, "error", err)

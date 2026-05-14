@@ -49,7 +49,7 @@ type CaddyStatus struct {
 
 // GetCaddyStatusWithStore returns the current Caddy proxy status.
 func GetCaddyStatusWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
-	cfg, _, err := config.SnapshotForUser(username, store)
+	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func EnableCaddyWithStore(ctx context.Context, username string, store *config.Us
 		return nil, fmt.Errorf("failed to deploy caddy: %w", err)
 	}
 
-	cfg, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+	cfg, _, err := config.UpdateForUser(ctx, username, store, func(cfg *config.Settings) error {
 		cfg.Docker.Proxy.CaddyEnabled = true
 		return nil
 	})
@@ -102,7 +102,7 @@ func DisableCaddyWithStore(ctx context.Context, username string, store *config.U
 		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
 
-	if _, _, err := config.UpdateForUser(username, store, func(cfg *config.Settings) error {
+	if _, _, err := config.UpdateForUser(ctx, username, store, func(cfg *config.Settings) error {
 		cfg.Docker.Proxy.CaddyEnabled = false
 		return nil
 	}); err != nil {
@@ -114,7 +114,7 @@ func DisableCaddyWithStore(ctx context.Context, username string, store *config.U
 
 // ReloadCaddyWithStore regenerates the Caddyfile from current containers and reloads Caddy.
 func ReloadCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
-	cfg, _, err := config.SnapshotForUser(username, store)
+	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}

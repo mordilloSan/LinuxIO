@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"os"
@@ -43,12 +44,17 @@ func openClientConnection() net.Conn {
 // shutdown cleanup for one authenticated bridge process.
 func runBridge(clientConn net.Conn, rt runtime.Runtime) {
 	shutdownCh := make(chan string, 1)
+	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	router := handlers.RegisterAllHandlers(rt)
 	startBridgeSignalHandler(shutdownCh)
 
 	closeClientConn := newClientConnCloser(clientConn)
-	startMainRequestLoop(rt, router, clientConn, closeClientConn, shutdownCh)
-	<-startBridgeCleanup(shutdownCh, closeClientConn)
+	startMainRequestLoop(sessionCtx, rt, router, clientConn, shutdownCh)
+	sessionID := ""
+	if rt.Session != nil {
+		sessionID = rt.Session.SessionID
+	}
+	<-startBridgeCleanup(shutdownCh, closeClientConn, router.Registry(), sessionID, sessionCancel)
 }
 
 // startBridgeSignalHandler forwards SIGINT/SIGTERM into the bridge shutdown
@@ -80,10 +86,9 @@ func newClientConnCloser(clientConn net.Conn) func() {
 
 // startMainRequestLoop runs the yamux serving loop and reports client
 // disconnects as bridge shutdown reasons.
-func startMainRequestLoop(rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, closeClientConn func(), shutdownCh chan<- string) {
+func startMainRequestLoop(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, shutdownCh chan<- string) {
 	wg.Go(func() {
-		defer closeClientConn()
-		handleYamuxSession(rt, router, clientConn)
+		handleYamuxSession(ctx, rt, router, clientConn)
 		select {
 		case shutdownCh <- "client disconnected":
 		default:
@@ -91,14 +96,20 @@ func startMainRequestLoop(rt runtime.Runtime, router *bridgeipc.Router, clientCo
 	})
 }
 
-// startBridgeCleanup waits for a shutdown reason, closes the client connection,
-// and gives in-flight stream handlers a bounded drain window.
-func startBridgeCleanup(shutdownCh <-chan string, closeClientConn func()) <-chan struct{} {
+// startBridgeCleanup waits for a shutdown reason, cancels session work, then
+// closes the client connection and gives in-flight stream handlers a bounded
+// drain window.
+func startBridgeCleanup(shutdownCh <-chan string, closeClientConn func(), registry *bridgeipc.Registry, sessionID string, sessionCancel context.CancelFunc) <-chan struct{} {
 	cleanupDone := make(chan struct{}, 1)
 	go func() {
 		reason := <-shutdownCh
 		time.Sleep(50 * time.Millisecond)
 		close(bridgeClosing)
+		sessionCancel()
+		if registry != nil {
+			registry.CancelForSession(sessionID)
+		}
+		time.Sleep(100 * time.Millisecond)
 		closeClientConn()
 		waitForInflightHandlers()
 		slog.Debug("shutdown initiated", "reason", reason, "user", sess.User.Username, "session_id", sess.SessionID)

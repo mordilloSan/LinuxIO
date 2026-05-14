@@ -787,8 +787,11 @@ func UnlockUser(ctx context.Context, username string) error {
 }
 
 // ListShells returns available login shells
-func ListShells() ([]string, error) {
+func ListShells(ctx context.Context) ([]string, error) {
 	shells := []string{}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	file, err := os.Open(shellsFile)
 	if err != nil {

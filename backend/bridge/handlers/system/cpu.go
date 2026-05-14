@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,7 +35,7 @@ type LoadInfoResponse struct {
 
 // ---------- Helpers ----------
 
-func getCurrentFrequencies() ([]float64, error) {
+func getCurrentFrequencies(ctx context.Context) ([]float64, error) {
 	var freqs []float64
 	const basePath = "/sys/devices/system/cpu"
 
@@ -44,6 +45,9 @@ func getCurrentFrequencies() ([]float64, error) {
 	}
 
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "cpu") {
 			continue
 		}
@@ -67,9 +71,9 @@ func getCurrentFrequencies() ([]float64, error) {
 }
 
 // NOTE: Assuming you already have getTemperatureMap() elsewhere in this package.
-// If it returns nil or errors, we’ll just send an empty map.
-func safeTemperatureMap() map[string]float64 {
-	m := getTemperatureMap()
+// If it returns nil or errors, we'll just send an empty map.
+func safeTemperatureMap(ctx context.Context) map[string]float64 {
+	m := getTemperatureMap(ctx)
 	if m == nil {
 		return map[string]float64{}
 	}
@@ -83,8 +87,8 @@ func safeTemperatureMap() map[string]float64 {
 	return cpuTemps
 }
 
-func FetchPreferredCPUTemperature() (float64, bool) {
-	temps := safeTemperatureMap()
+func FetchPreferredCPUTemperature(ctx context.Context) (float64, bool) {
+	temps := safeTemperatureMap(ctx)
 	if len(temps) == 0 {
 		return 0, false
 	}
@@ -102,16 +106,16 @@ func FetchPreferredCPUTemperature() (float64, bool) {
 
 // ---------- Fetchers ----------
 
-func FetchCPUInfo() (*CPUInfoResponse, error) {
-	info, err := cpu.Info()
+func FetchCPUInfo(ctx context.Context) (*CPUInfoResponse, error) {
+	info, err := cpu.InfoWithContext(ctx)
 	if err != nil || len(info) == 0 {
 		return nil, err
 	}
 
-	percent, _ := cpu.Percent(0, true) // per-core usage snapshot (%)
-	counts, _ := cpu.Counts(true)      // logical cores
-	loadAvg, _ := load.Avg()
-	currentFreqs, _ := getCurrentFrequencies()
+	percent, _ := cpu.PercentWithContext(ctx, 0, true) // per-core usage snapshot (%)
+	counts, _ := cpu.CountsWithContext(ctx, true)      // logical cores
+	loadAvg, _ := load.AvgWithContext(ctx)
+	currentFreqs, _ := getCurrentFrequencies(ctx)
 
 	cpuData := info[0]
 
@@ -125,12 +129,12 @@ func FetchCPUInfo() (*CPUInfoResponse, error) {
 		Cores:              counts,
 		LoadAverage:        loadAvg,
 		PerCoreUsage:       percent,
-		Temperature:        safeTemperatureMap(),
+		Temperature:        safeTemperatureMap(ctx),
 	}, nil
 }
 
-func FetchLoadInfo() (*LoadInfoResponse, error) {
-	loadAvg, err := load.Avg()
+func FetchLoadInfo(ctx context.Context) (*LoadInfoResponse, error) {
+	loadAvg, err := load.AvgWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}

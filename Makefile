@@ -618,7 +618,7 @@ build: generate test build-vite build-bridge _build-binaries
 fastbuild: generate build-bridge _build-binaries
 
 generate:
-	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/settings/init.go
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/internal/config/init.go
 
 clean:
 	@rm -f ./linuxio || true

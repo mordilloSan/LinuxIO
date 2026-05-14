@@ -35,12 +35,12 @@ func (h dockerHandlers) handleGetIconInfo(ctx context.Context, args []string, em
 	if err != nil {
 		return err
 	}
-	return bridgeipc.EmitResult(emit, GetIconInfo(identifier), nil)
+	return bridgeipc.EmitResult(emit, GetIconInfo(ctx, identifier), nil)
 }
 
 func (h dockerHandlers) handleClearIconCache(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Info("clear_icon_cache requested", "component", "docker")
-	if err := ClearIconCache(); err != nil {
+	if err := ClearIconCache(ctx); err != nil {
 		return err
 	}
 	return bridgeipc.EmitResult(emit, map[string]string{"message": "Icon cache cleared successfully"}, nil)

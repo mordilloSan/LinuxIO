@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -107,7 +108,7 @@ func TestFetchDiskThroughputComputesRatesOnDemand(t *testing.T) {
 		},
 	}
 	sampleIndex := 0
-	diskCounterSampler = func() map[string]gopsdisk.IOCountersStat {
+	diskCounterSampler = func(ctx context.Context) map[string]gopsdisk.IOCountersStat {
 		sample := samples[sampleIndex]
 		sampleIndex++
 		return sample
@@ -124,7 +125,7 @@ func TestFetchDiskThroughputComputesRatesOnDemand(t *testing.T) {
 		return ts
 	}
 
-	first, err := FetchDiskThroughput()
+	first, err := FetchDiskThroughput(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 0.0, first.IntervalSeconds)
 	require.Len(t, first.Devices, 1)
@@ -134,7 +135,7 @@ func TestFetchDiskThroughputComputesRatesOnDemand(t *testing.T) {
 	require.Zero(t, first.Devices[0].ReadOpsPerSec)
 	require.Zero(t, first.Devices[0].WriteOpsPerSec)
 
-	second, err := FetchDiskThroughput()
+	second, err := FetchDiskThroughput(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 1.0, second.IntervalSeconds)
 	require.Len(t, second.Devices, 1)
@@ -158,7 +159,7 @@ func TestIsPhysicalDiskCounterFiltersNonPhysicalDevices(t *testing.T) {
 		sysBlockDeviceExist = originalDeviceExists
 	})
 
-	sysBlockExists = func(name string) bool {
+	sysBlockExists = func(ctx context.Context, name string) bool {
 		switch name {
 		case "nvme0n1", "sda", "vdb", "dm-0", "sda1":
 			return true
@@ -166,7 +167,7 @@ func TestIsPhysicalDiskCounterFiltersNonPhysicalDevices(t *testing.T) {
 			return false
 		}
 	}
-	sysBlockDeviceExist = func(name string) bool {
+	sysBlockDeviceExist = func(ctx context.Context, name string) bool {
 		switch name {
 		case "nvme0n1", "sda", "vdb":
 			return true
@@ -175,15 +176,16 @@ func TestIsPhysicalDiskCounterFiltersNonPhysicalDevices(t *testing.T) {
 		}
 	}
 
-	require.True(t, isPhysicalDiskCounter("nvme0n1"))
-	require.True(t, isPhysicalDiskCounter("sda"))
-	require.True(t, isPhysicalDiskCounter("vdb"))
-	require.False(t, isPhysicalDiskCounter(""))
-	require.False(t, isPhysicalDiskCounter("loop0"))
-	require.False(t, isPhysicalDiskCounter("zram0"))
-	require.False(t, isPhysicalDiskCounter("dm-0"))
-	require.False(t, isPhysicalDiskCounter("md127"))
-	require.False(t, isPhysicalDiskCounter("sr0"))
-	require.False(t, isPhysicalDiskCounter("sda/queue"))
-	require.False(t, isPhysicalDiskCounter("sda1"))
+	ctx := context.Background()
+	require.True(t, isPhysicalDiskCounter(ctx, "nvme0n1"))
+	require.True(t, isPhysicalDiskCounter(ctx, "sda"))
+	require.True(t, isPhysicalDiskCounter(ctx, "vdb"))
+	require.False(t, isPhysicalDiskCounter(ctx, ""))
+	require.False(t, isPhysicalDiskCounter(ctx, "loop0"))
+	require.False(t, isPhysicalDiskCounter(ctx, "zram0"))
+	require.False(t, isPhysicalDiskCounter(ctx, "dm-0"))
+	require.False(t, isPhysicalDiskCounter(ctx, "md127"))
+	require.False(t, isPhysicalDiskCounter(ctx, "sr0"))
+	require.False(t, isPhysicalDiskCounter(ctx, "sda/queue"))
+	require.False(t, isPhysicalDiskCounter(ctx, "sda1"))
 }

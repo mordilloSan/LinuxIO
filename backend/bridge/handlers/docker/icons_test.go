@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func TestDerivedIconUsesSimpleIconCache(t *testing.T) {
 		t.Fatalf("WriteFile(simple icon cache) error = %v", err)
 	}
 
-	gotPath, ok := getCachedIcon(IconTypeDerived, "postgresql")
+	gotPath, ok := getCachedIcon(context.Background(), IconTypeDerived, "postgresql")
 	if !ok {
 		t.Fatalf("getCachedIcon(derived simple icon) found = false, want true")
 	}

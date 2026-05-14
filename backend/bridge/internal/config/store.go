@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -83,14 +84,14 @@ func (s *UserStore) LockPath() string {
 }
 
 // SnapshotForUser returns config from the per-user bridge store.
-func SnapshotForUser(username string, store *UserStore) (*Settings, string, error) {
+func SnapshotForUser(ctx context.Context, username string, store *UserStore) (*Settings, string, error) {
 	if store == nil {
 		return nil, "", errors.New("config store is nil")
 	}
 	if store.username != username {
 		return nil, "", fmt.Errorf("config store user mismatch: store=%q requested=%q", store.username, username)
 	}
-	cfg, err := store.Snapshot()
+	cfg, err := store.Snapshot(ctx)
 	if err != nil {
 		return nil, "", err
 	}
@@ -98,7 +99,7 @@ func SnapshotForUser(username string, store *UserStore) (*Settings, string, erro
 }
 
 // UpdateForUser applies mutate through the per-user bridge store.
-func UpdateForUser(username string, store *UserStore, mutate func(*Settings) error) (*Settings, string, error) {
+func UpdateForUser(ctx context.Context, username string, store *UserStore, mutate func(*Settings) error) (*Settings, string, error) {
 	if mutate == nil {
 		return nil, "", errors.New("config update function is nil")
 	}
@@ -108,15 +109,19 @@ func UpdateForUser(username string, store *UserStore, mutate func(*Settings) err
 	if store.username != username {
 		return nil, "", fmt.Errorf("config store user mismatch: store=%q requested=%q", store.username, username)
 	}
-	cfg, err := store.Update(mutate)
+	cfg, err := store.Update(ctx, mutate)
 	return cfg, store.Path(), err
 }
 
 // Snapshot returns a copy of the current in-memory config.
-func (s *UserStore) Snapshot() (*Settings, error) {
+func (s *UserStore) Snapshot(ctx context.Context) (*Settings, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// sync.RWMutex.RLock is not cancellable once entered.
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return cloneSettings(&s.cfg), nil
@@ -124,19 +129,29 @@ func (s *UserStore) Snapshot() (*Settings, error) {
 
 // Update applies mutate to the latest on-disk config under an exclusive sidecar
 // lock, writes it atomically, then refreshes the in-memory snapshot.
-func (s *UserStore) Update(mutate func(*Settings) error) (*Settings, error) {
+func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*Settings, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
 	}
 	if mutate == nil {
 		return nil, errors.New("config update function is nil")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
+	// sync.Mutex.Lock is not cancellable once entered.
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	var updated *Settings
-	if err := withExclusiveConfigLock(s.lockPath, func() error {
+	if err := withExclusiveConfigLock(ctx, s.lockPath, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		current, err := readConfigStrict(s.path)
 		if err != nil {
 			return fmt.Errorf("read config: %w", err)
@@ -148,6 +163,9 @@ func (s *UserStore) Update(mutate func(*Settings) error) (*Settings, error) {
 		}
 		if errs := ValidateConfig(next); len(errs) > 0 {
 			return fmt.Errorf("validate config: %s", strings.Join(errs, "; "))
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if err := writeConfigFrom(s.path, *next); err != nil {
 			return fmt.Errorf("write config: %w", err)
@@ -169,17 +187,30 @@ func (s *UserStore) Update(mutate func(*Settings) error) (*Settings, error) {
 	return cloneSettings(updated), nil
 }
 
-func withExclusiveConfigLock(lockPath string, fn func() error) error {
+func withExclusiveConfigLock(ctx context.Context, lockPath string, fn func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	lockFile, err := openConfigLockFile(lockPath)
 	if err != nil {
 		return err
 	}
 
+	if ctx.Err() != nil {
+		closeErr := lockFile.Close()
+		return errors.Join(ctx.Err(), closeErr)
+	}
+	// syscall.Flock is not cancellable once entered.
 	if err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
 		closeErr := lockFile.Close()
 		return errors.Join(fmt.Errorf("lock config: %w", err), closeErr)
 	}
 
+	if ctx.Err() != nil {
+		unlockErr := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		closeErr := lockFile.Close()
+		return errors.Join(ctx.Err(), unlockErr, closeErr)
+	}
 	fnErr := fn()
 	unlockErr := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
 	closeErr := lockFile.Close()

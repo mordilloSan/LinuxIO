@@ -110,7 +110,7 @@ func handleResizeLV(ctx context.Context, args []string, emit bridgeipc.Events) e
 
 func handleListNFSMounts(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS mounts")
-	mounts, err := ListNFSMounts()
+	mounts, err := ListNFSMounts(ctx)
 	if err != nil {
 		slog.Error("failed to list NFS mounts", "error", err)
 		return err

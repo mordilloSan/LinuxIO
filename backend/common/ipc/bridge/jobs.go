@@ -367,6 +367,34 @@ func (j *Job) Snapshot() Snapshot {
 
 func (j *Job) Cancel() {
 	j.cancel()
+	j.mu.Lock()
+	queued := j.state == StateQueued
+	j.mu.Unlock()
+	if queued {
+		j.markCanceled()
+	}
+}
+
+// CancelForSession cancels all non-terminal jobs belonging to the given session.
+// The session ID must not be logged by callers.
+func (r *Registry) CancelForSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	r.mu.RLock()
+	jobs := make([]*Job, 0, len(r.jobs))
+	for _, job := range r.jobs {
+		if job.owner.SessionID == sessionID {
+			jobs = append(jobs, job)
+		}
+	}
+	r.mu.RUnlock()
+	for _, job := range jobs {
+		if job.IsTerminal() {
+			continue
+		}
+		job.Cancel()
+	}
 }
 
 func (j *Job) Done() <-chan struct{} {

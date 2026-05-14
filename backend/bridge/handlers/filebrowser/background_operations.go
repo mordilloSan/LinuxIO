@@ -172,11 +172,11 @@ func (l *countProgressLimiter) Set(processed, total int64) (int64, int, bool) {
 	return l.processed, pct, true
 }
 
-func jobSettingsForJob(job *bridgejobs.Job, store *config.UserStore) config.JobSettings {
+func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore) config.JobSettings {
 	if job == nil || strings.TrimSpace(job.Owner().Username) == "" {
 		return config.DefaultJobSettings()
 	}
-	cfg, _, err := config.SnapshotForUser(job.Owner().Username, store)
+	cfg, _, err := config.SnapshotForUser(ctx, job.Owner().Username, store)
 	if err != nil || cfg == nil {
 		return config.DefaultJobSettings()
 	}
@@ -240,7 +240,7 @@ func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
 }
 
 func newJobPhaseCallbacks(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {
-	limiter := newProgressLimiter(jobSettingsForJob(job, store), totalSize)
+	limiter := newProgressLimiter(jobSettingsForJob(ctx, job, store), totalSize)
 	cancelFn := func() bool {
 		select {
 		case <-ctx.Done():
@@ -484,7 +484,7 @@ func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *confi
 	}
 
 	realPath := filepath.Clean(path)
-	settings := jobSettingsForJob(job, store)
+	settings := jobSettingsForJob(ctx, job, store)
 	job.ReportProgress(ChmodProgress{Phase: "preparing"})
 
 	if err := services.ChangePermissionsCtx(ctx, realPath, os.FileMode(mode), recursive, newChmodProgressReporter(job, settings, "chmod")); err != nil {
@@ -539,7 +539,7 @@ func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *co
 	if err != nil {
 		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", format), 400)
 	}
-	settings := jobSettingsForJob(job, store)
+	settings := jobSettingsForJob(ctx, job, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
 		return nil, context.Canceled
@@ -618,7 +618,7 @@ func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 		return nil, bridgejobs.NewError("path is a directory, not an archive", 400)
 	}
 
-	settings := jobSettingsForJob(job, store)
+	settings := jobSettingsForJob(ctx, job, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
 		return nil, context.Canceled

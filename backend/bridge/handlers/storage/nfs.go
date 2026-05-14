@@ -329,13 +329,19 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 
 // ListNFSMounts returns all NFS mount entries, including active mounts and
 // persistent /etc/fstab entries that are currently inactive.
-func ListNFSMounts() ([]NFSMount, error) {
-	partitions, err := disk.Partitions(true)
+func ListNFSMounts(ctx context.Context) ([]NFSMount, error) {
+	partitions, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	fstabEntries := getFstabEntries()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	managedEntries, err := loadManagedNFSMountEntries()
 	if err != nil {
 		slog.Warn("failed to read managed NFS mount registry", "error", err)

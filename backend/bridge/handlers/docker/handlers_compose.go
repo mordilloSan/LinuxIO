@@ -75,7 +75,7 @@ func (h dockerHandlers) handleDeleteStack(ctx context.Context, args []string, em
 }
 
 func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := GetDockerFoldersWithStore(h.username, h.store)
+	result, err := GetDockerFoldersWithStore(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
@@ -93,7 +93,7 @@ func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, args []strin
 	if err != nil {
 		return err
 	}
-	normalized, err := NormalizeComposeFile(content)
+	normalized, err := NormalizeComposeFile(ctx, content)
 	return bridgeipc.EmitResult(emit, map[string]string{"content": normalized}, err)
 }
 
@@ -111,7 +111,7 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, args [
 	if err != nil {
 		return err
 	}
-	result, err := ValidateStackDirectory(dirPath)
+	result, err := ValidateStackDirectory(ctx, dirPath)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 

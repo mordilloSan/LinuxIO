@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -8,8 +9,8 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func GetConfigForUser(username string, store *bridgeconfig.UserStore) (*bridgeconfig.Settings, error) {
-	cfg, cfgPath, err := bridgeconfig.SnapshotForUser(username, store)
+func GetConfigForUser(ctx context.Context, username string, store *bridgeconfig.UserStore) (*bridgeconfig.Settings, error) {
+	cfg, cfgPath, err := bridgeconfig.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -18,14 +19,14 @@ func GetConfigForUser(username string, store *bridgeconfig.UserStore) (*bridgeco
 	return cfg, nil
 }
 
-func SetConfigForUser(args []string, username string, store *bridgeconfig.UserStore) (map[string]any, error) {
+func SetConfigForUser(ctx context.Context, args []string, username string, store *bridgeconfig.UserStore) (map[string]any, error) {
 	payload, err := bridgeipc.DecodeJSONArg[configSetPayload](args, 0)
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("config update requested", "component", "config", "user", username)
 
-	_, cfgPath, err := bridgeconfig.UpdateForUser(username, store, func(cfg *bridgeconfig.Settings) error {
+	_, cfgPath, err := bridgeconfig.UpdateForUser(ctx, username, store, func(cfg *bridgeconfig.Settings) error {
 		return applyConfigPayload(cfg, &payload)
 	})
 	if err != nil {

@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -38,13 +39,13 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 		},
 	}
 	sampleIndex := 0
-	netCounterSampler = func() map[string]gopsnet.IOCountersStat {
+	netCounterSampler = func(ctx context.Context) map[string]gopsnet.IOCountersStat {
 		sample := samples[sampleIndex]
 		sampleIndex++
 		return sample
 	}
 
-	netInterfaceReader = func() ([]gopsnet.InterfaceStat, error) {
+	netInterfaceReader = func(ctx context.Context) ([]gopsnet.InterfaceStat, error) {
 		return []gopsnet.InterfaceStat{
 			{
 				Name:         "eth0",
@@ -59,7 +60,7 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 		}, nil
 	}
 
-	netSpeedReader = func(name string) string {
+	netSpeedReader = func(ctx context.Context, name string) string {
 		require.Equal(t, "eth0", name)
 		return "1000 Mbps"
 	}
@@ -75,7 +76,7 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 		return ts
 	}
 
-	first, err := FetchNetworks()
+	first, err := FetchNetworks(context.Background())
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Equal(t, "eth0", first[0].Name)
@@ -85,7 +86,7 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 	require.Zero(t, first[0].RxKBs)
 	require.Zero(t, first[0].TxKBs)
 
-	second, err := FetchNetworks()
+	second, err := FetchNetworks(context.Background())
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, 2.0, second[0].RxKBs)

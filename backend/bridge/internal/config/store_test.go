@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +13,7 @@ func TestUserStoreSnapshotReturnsIsolatedCopy(t *testing.T) {
 	cfgPath, cfg := writeTestConfig(t)
 	store := newUserStore("miguel", cfgPath, cfg)
 
-	snapshot, err := store.Snapshot()
+	snapshot, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	snapshot.AppSettings.Theme = ThemeLight
 	snapshot.AppSettings.DashboardOrder[0] = "mutated"
@@ -20,7 +21,7 @@ func TestUserStoreSnapshotReturnsIsolatedCopy(t *testing.T) {
 	*snapshot.AppSettings.ThemeColors.Dark.BackgroundDefault = "#ffffff"
 	snapshot.Docker.Folders[0] = "/tmp/mutated"
 
-	next, err := store.Snapshot()
+	next, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, ThemeDark, next.AppSettings.Theme)
 	require.Equal(t, "overview", next.AppSettings.DashboardOrder[0])
@@ -33,7 +34,7 @@ func TestUserStoreUpdatePersistsAndRefreshesMemory(t *testing.T) {
 	cfgPath, cfg := writeTestConfig(t)
 	store := newUserStore("miguel", cfgPath, cfg)
 
-	updated, err := store.Update(func(settings *Settings) error {
+	updated, err := store.Update(context.Background(), func(settings *Settings) error {
 		settings.AppSettings.Theme = ThemeLight
 		settings.Docker.AutoUpdateStacks = append(settings.Docker.AutoUpdateStacks, "app")
 		return nil
@@ -42,7 +43,7 @@ func TestUserStoreUpdatePersistsAndRefreshesMemory(t *testing.T) {
 	require.Equal(t, ThemeLight, updated.AppSettings.Theme)
 	require.Equal(t, []string{"app"}, updated.Docker.AutoUpdateStacks)
 
-	snapshot, err := store.Snapshot()
+	snapshot, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, ThemeLight, snapshot.AppSettings.Theme)
 	require.Equal(t, []string{"app"}, snapshot.Docker.AutoUpdateStacks)
@@ -62,7 +63,7 @@ func TestUserStoreUpdateStartsFromLatestDiskConfig(t *testing.T) {
 	external.AppSettings.PrimaryColor = "#00ff00"
 	require.NoError(t, writeConfigFrom(cfgPath, *external))
 
-	updated, err := store.Update(func(settings *Settings) error {
+	updated, err := store.Update(context.Background(), func(settings *Settings) error {
 		settings.AppSettings.ShowHiddenFiles = false
 		return nil
 	})
@@ -70,7 +71,7 @@ func TestUserStoreUpdateStartsFromLatestDiskConfig(t *testing.T) {
 	require.Equal(t, CSSColor("#00ff00"), updated.AppSettings.PrimaryColor)
 	require.False(t, updated.AppSettings.ShowHiddenFiles)
 
-	snapshot, err := store.Snapshot()
+	snapshot, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, CSSColor("#00ff00"), snapshot.AppSettings.PrimaryColor)
 	require.False(t, snapshot.AppSettings.ShowHiddenFiles)
@@ -80,13 +81,13 @@ func TestUserStoreUpdateRejectsInvalidConfig(t *testing.T) {
 	cfgPath, cfg := writeTestConfig(t)
 	store := newUserStore("miguel", cfgPath, cfg)
 
-	_, err := store.Update(func(settings *Settings) error {
+	_, err := store.Update(context.Background(), func(settings *Settings) error {
 		settings.AppSettings.PrimaryColor = "nope"
 		return nil
 	})
 	require.Error(t, err)
 
-	snapshot, snapErr := store.Snapshot()
+	snapshot, snapErr := store.Snapshot(context.Background())
 	require.NoError(t, snapErr)
 	require.Equal(t, CSSColor("#2196f3"), snapshot.AppSettings.PrimaryColor)
 

@@ -109,7 +109,7 @@ func resolveComposeJobPaths(ctx context.Context, username string, store *config.
 }
 
 func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {
-	dockerFolders, err := configuredDockerFolders(username, store)
+	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to load user config", 500)
 	}

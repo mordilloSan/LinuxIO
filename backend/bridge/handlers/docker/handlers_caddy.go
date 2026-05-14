@@ -15,7 +15,7 @@ type autoUpdatePayload struct {
 }
 
 func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	cfg, _, err := config.SnapshotForUser(h.username, h.store)
+	cfg, _, err := config.SnapshotForUser(ctx, h.username, h.store)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, args []string, 
 	}
 	slog.Info("set_auto_update requested", "component", "docker", "container", payload.Container, "mode", payload.Enabled, "user", h.username)
 
-	if _, _, err := config.UpdateForUser(h.username, h.store, func(cfg *config.Settings) error {
+	if _, _, err := config.UpdateForUser(ctx, h.username, h.store, func(cfg *config.Settings) error {
 		if payload.Enabled {
 			if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Container) {
 				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Container)

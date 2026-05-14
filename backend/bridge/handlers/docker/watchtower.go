@@ -36,7 +36,7 @@ func detachedWatchtowerContext() (context.Context, context.CancelFunc) {
 }
 
 func SyncWatchtowerStackWithStore(ctx context.Context, username string, store *config.UserStore) {
-	cfg, _, err := config.SnapshotForUser(username, store)
+	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		slog.Warn("failed to load docker config for watchtower", "component", "docker", "subsystem", "watchtower", "user", username, "error", err)
 		return

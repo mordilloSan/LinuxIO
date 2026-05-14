@@ -36,33 +36,10 @@ func ListGroups(ctx context.Context) ([]Group, error) {
 			continue
 		}
 
-		parts := strings.Split(line, ":")
-		if len(parts) < 4 {
+		group, ok := parseGroupLine(line)
+		if !ok {
 			continue
 		}
-
-		gid, err := strconv.Atoi(parts[2])
-		if err != nil {
-			continue
-		}
-
-		members := []string{}
-		if parts[3] != "" {
-			for member := range strings.SplitSeq(parts[3], ",") {
-				member = strings.TrimSpace(member)
-				if member != "" {
-					members = append(members, member)
-				}
-			}
-		}
-
-		group := Group{
-			Name:     parts[0],
-			GID:      gid,
-			Members:  members,
-			IsSystem: gid < systemGID,
-		}
-
 		groups = append(groups, group)
 	}
 
@@ -71,6 +48,36 @@ func ListGroups(ctx context.Context) ([]Group, error) {
 	}
 
 	return groups, nil
+}
+
+func parseGroupLine(line string) (Group, bool) {
+	parts := strings.Split(line, ":")
+	if len(parts) < 4 {
+		return Group{}, false
+	}
+
+	gid, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return Group{}, false
+	}
+
+	return Group{
+		Name:     parts[0],
+		GID:      gid,
+		Members:  parseGroupMembers(parts[3]),
+		IsSystem: gid < systemGID,
+	}, true
+}
+
+func parseGroupMembers(raw string) []string {
+	members := []string{}
+	for member := range strings.SplitSeq(raw, ",") {
+		member = strings.TrimSpace(member)
+		if member != "" {
+			members = append(members, member)
+		}
+	}
+	return members
 }
 
 // GetGroup returns a single group by name

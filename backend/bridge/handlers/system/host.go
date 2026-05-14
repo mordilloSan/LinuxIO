@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"io/fs"
 	"path/filepath"
 	"sort"
@@ -10,22 +11,25 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 )
 
-func FetchHostInfo() (*host.InfoStat, error) {
-	return host.Info()
+func FetchHostInfo(ctx context.Context) (*host.InfoStat, error) {
+	return host.InfoWithContext(ctx)
 }
 
-func FetchUptimeSeconds() (uint64, error) {
-	return host.Uptime()
+func FetchUptimeSeconds(ctx context.Context) (uint64, error) {
+	return host.UptimeWithContext(ctx)
 }
 
-func GetCurrentServerTime() string {
+func GetCurrentServerTime(ctx context.Context) string {
 	return time.Now().Format(time.RFC3339)
 }
 
-func GetTimezones() ([]string, error) {
+func GetTimezones(ctx context.Context) ([]string, error) {
 	const root = "/usr/share/zoneinfo"
 	var zones []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if err != nil || d.IsDir() {
 			return err
 		}

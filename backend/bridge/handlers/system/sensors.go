@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -9,7 +10,7 @@ import (
 	"strings"
 )
 
-var sensorsCommand = exec.Command
+var sensorsCommand = exec.CommandContext
 
 type SensorReadingKind string
 
@@ -33,8 +34,8 @@ type SensorGroup struct {
 
 // FetchSensorsInfo returns sensor readings parsed from `sensors -j`.
 // Each SensorGroup.Adapter is the chip name (e.g. "coretemp-isa-0000").
-func FetchSensorsInfo() []SensorGroup {
-	out, err := sensorsCommand("sensors", "-j").Output()
+func FetchSensorsInfo(ctx context.Context) []SensorGroup {
+	out, err := sensorsCommand(ctx, "sensors", "-j").Output()
 	if err != nil {
 		return nil
 	}
@@ -248,8 +249,8 @@ func sensorUnit(prefix string) string {
 	}
 }
 
-func getTemperatureMap() map[string]float64 {
-	groups := FetchSensorsInfo()
+func getTemperatureMap(ctx context.Context) map[string]float64 {
+	groups := FetchSensorsInfo(ctx)
 	temps := make(map[string]float64)
 	indices := temperatureIndexes{}
 

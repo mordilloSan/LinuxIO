@@ -173,6 +173,6 @@ func handleModifyGroupMembers(ctx context.Context, args []string, emit bridgeipc
 }
 
 func handleListShells(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListShells()
+	result, err := ListShells(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
