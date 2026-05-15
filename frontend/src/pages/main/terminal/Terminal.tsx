@@ -121,9 +121,9 @@ const TerminalXTerm: React.FC = () => {
       if (!xterm.current || !isOpen) return;
 
       // Check for existing terminal stream first
-      let stream = getStream("terminal");
+      let stream = getStream("terminal.open");
       console.log(
-        "[Terminal] getStream('terminal'):",
+        "[Terminal] getStream('terminal.open'):",
         stream ? `found (id=${stream.id})` : "null",
       );
 

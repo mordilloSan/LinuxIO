@@ -79,15 +79,14 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   card: <Icon icon="mdi:view-grid" width={20} height={20} />,
   list: <Icon icon="mdi:view-list" width={20} height={20} />,
 };
-const JOB_TYPE_FILE_UPLOAD = "file.upload";
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
 const FileBrowser: React.FC = () => {
   const { config } = useConfig();
   const chunkSize =
-    (config.chunkSizeMB ?? 0) > 0
-      ? (config.chunkSizeMB as number) * 1024 * 1024
+    (config.appSettings.chunkSizeMB ?? 0) > 0
+      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
       : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
   const theme = useAppTheme();
   const location = useLocation();
@@ -599,8 +598,7 @@ const FileBrowser: React.FC = () => {
     setRenamingPath(null);
   }, []);
 
-  // Keep dialog-based rename for backward compatibility (context menu)
-  const handleRename = useCallback(() => {
+  const handleContextMenuRename = useCallback(() => {
     handleStartInlineRename();
   }, [handleStartInlineRename]);
   const handleDelete = useCallback(() => {
@@ -769,8 +767,7 @@ const FileBrowser: React.FC = () => {
   );
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
-      const job = await linuxio.jobs.start.call(
-        JOB_TYPE_FILE_UPLOAD,
+      const job = await linuxio.filebrowser.upload.call(
         path,
         String(contentBytes.length),
       );
@@ -1212,7 +1209,7 @@ const FileBrowser: React.FC = () => {
         onChangePermissions={handleChangePermissions}
         onCopy={handleCopy}
         onCut={handleCut}
-        onRename={handleRename}
+        onRename={handleContextMenuRename}
         onPaste={handlePaste}
         onDelete={handleDelete}
         onDownload={handleDownloadSelected}

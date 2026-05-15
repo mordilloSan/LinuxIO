@@ -680,24 +680,6 @@ static int validate_parent_dir_via_fd(int dfd, uid_t file_owner, uid_t user_uid)
   return validate_parent_dir_policy(&ds, file_owner, user_uid);
 }
 
-// Resource limits for the bridge process
-static void set_resource_limits(void)
-{
-  struct rlimit rl;
-  rl.rlim_cur = rl.rlim_max = 10UL * 60;
-  (void)setrlimit(RLIMIT_CPU, &rl);
-
-  rl.rlim_cur = rl.rlim_max = 2048;
-  (void)setrlimit(RLIMIT_NOFILE, &rl);
-
-  int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 1024, 10, 4096);
-  rl.rlim_cur = rl.rlim_max = (rlim_t)nproc_limit;
-  (void)setrlimit(RLIMIT_NPROC, &rl);
-
-  rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024;
-  (void)setrlimit(RLIMIT_AS, &rl);
-}
-
 static int open_and_validate_bridge(const char *bridge_path, uid_t required_owner, int *out_fd)
 {
   int fd = open(bridge_path, O_PATH | O_CLOEXEC | O_NOFOLLOW);
@@ -1357,7 +1339,6 @@ static pid_t spawn_bridge_process(
   }
 
   umask(077);
-  set_resource_limits();
 
   // Preserve and validate environment variables before clearenv()
   const char *preserve_lang = getenv("LANG");
@@ -1440,7 +1421,7 @@ static pid_t spawn_bridge_process(
     }
   }
 
-  // All config is passed via binary bootstrap on stdin - no env vars needed
+  // Application config is passed via binary bootstrap on stdin.
 
   // Close all file descriptors >= 6 (keeping 0-5 as set up above)
   // Uses close_range() syscall (Linux 5.9+) with fallback for older kernels
@@ -1462,7 +1443,7 @@ static pid_t spawn_bridge_process(
     }
   }
 
-  // All config passed via binary bootstrap on stdin - minimal argv
+  // Application config passed via binary bootstrap on stdin - minimal argv
   const char *argv_child[] = {"linuxio-bridge", NULL};
 
   // Mark BRIDGE_FD as close-on-exec so it doesn't leak into the bridge process

@@ -1,6 +1,7 @@
 package shares
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -17,16 +18,16 @@ func TestReloadSambaUsesSmbcontrolWhenAvailable(t *testing.T) {
 	smbcontrolCalls := 0
 	systemdCalls := 0
 
-	smbcontrolReload = func() ([]byte, error) {
+	smbcontrolReload = func(context.Context) ([]byte, error) {
 		smbcontrolCalls++
 		return nil, nil
 	}
-	systemdReloadUnit = func(string) error {
+	systemdReloadUnit = func(context.Context, string) error {
 		systemdCalls++
 		return nil
 	}
 
-	if err := reloadSamba(); err != nil {
+	if err := reloadSamba(context.Background()); err != nil {
 		t.Fatalf("reloadSamba() error = %v", err)
 	}
 	if smbcontrolCalls != 1 {
@@ -47,10 +48,10 @@ func TestReloadSambaFallsBackToSystemdUnits(t *testing.T) {
 
 	var gotUnits []string
 
-	smbcontrolReload = func() ([]byte, error) {
+	smbcontrolReload = func(context.Context) ([]byte, error) {
 		return []byte("smbcontrol failed"), errors.New("boom")
 	}
-	systemdReloadUnit = func(name string) error {
+	systemdReloadUnit = func(_ context.Context, name string) error {
 		gotUnits = append(gotUnits, name)
 		if name == "smb.service" {
 			return nil
@@ -58,7 +59,7 @@ func TestReloadSambaFallsBackToSystemdUnits(t *testing.T) {
 		return errors.New("missing unit")
 	}
 
-	if err := reloadSamba(); err != nil {
+	if err := reloadSamba(context.Background()); err != nil {
 		t.Fatalf("reloadSamba() error = %v", err)
 	}
 
@@ -78,15 +79,15 @@ func TestReloadSambaReturnsErrorWhenAllMethodsFail(t *testing.T) {
 
 	var gotUnits []string
 
-	smbcontrolReload = func() ([]byte, error) {
+	smbcontrolReload = func(context.Context) ([]byte, error) {
 		return []byte("smbcontrol failed"), errors.New("boom")
 	}
-	systemdReloadUnit = func(name string) error {
+	systemdReloadUnit = func(_ context.Context, name string) error {
 		gotUnits = append(gotUnits, name)
 		return errors.New("missing unit")
 	}
 
-	err := reloadSamba()
+	err := reloadSamba(context.Background())
 	if err == nil {
 		t.Fatal("reloadSamba() error = nil, want non-nil")
 	}

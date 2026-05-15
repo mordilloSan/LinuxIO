@@ -2,74 +2,76 @@ package filebrowser
 
 import (
 	"context"
-	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-type filebrowserRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
-
 // RegisterHandlers registers all filebrowser handlers with the global registry
-func RegisterHandlers() {
-	RegisterJobRunners()
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	store := rt.Store
+	RegisterJobRoutes(router, store)
 
-	registerFilebrowserHandlers([]filebrowserRegistration{
-		{command: "resource_get", handler: emitFilebrowserArgsResult(resourceGet)},
-		{command: "resource_stat", handler: emitFilebrowserArgsResult(resourceStat)},
-		{command: "resource_delete", handler: emitFilebrowserLoggedArgsResult("resource_delete requested", resourceDelete)},
-		{command: "resource_post", handler: emitFilebrowserLoggedArgsResult("resource_post requested", resourcePost)},
-		{command: "resource_patch", handler: handleResourcePatch},
-		{command: "dir_size", handler: emitFilebrowserArgsResult(dirSize)},
-		{command: "indexer_status", handler: emitFilebrowserArgsResult(indexerStatus)},
-		{command: "subfolders", handler: emitFilebrowserArgsResult(subfolders)},
-		{command: "search", handler: emitFilebrowserArgsResult(searchFiles)},
-		{command: "users_groups", handler: handleUsersGroups},
+	bridgeipc.RegisterRoutes(router, "filebrowser", []bridgeipc.Command{
+		{Name: "resource_get", Mode: bridgeipc.ModeQuery, Handler: handleResourceGet},
+		{Name: "resource_stat", Mode: bridgeipc.ModeQuery, Handler: handleResourceStat},
+		{Name: "resource_delete", Mode: bridgeipc.ModeJob, Handler: handleResourceDelete},
+		{Name: "resource_post", Mode: bridgeipc.ModeJob, Handler: handleResourcePost},
+		{Name: "resource_patch", Mode: bridgeipc.ModeJob, Handler: handleResourcePatch},
+		{Name: "dir_size", Mode: bridgeipc.ModeQuery, Handler: handleDirSize},
+		{Name: "indexer_status", Mode: bridgeipc.ModeQuery, Handler: handleIndexerStatus},
+		{Name: "subfolders", Mode: bridgeipc.ModeQuery, Handler: handleSubfolders},
+		{Name: "search", Mode: bridgeipc.ModeQuery, Handler: handleSearch},
+		{Name: "users_groups", Mode: bridgeipc.ModeQuery, Handler: handleUsersGroups},
 	})
 }
 
-func registerFilebrowserHandlers(registrations []filebrowserRegistration) {
-	for _, registration := range registrations {
-		ipc.RegisterFunc("filebrowser", registration.command, registration.handler)
-	}
+func handleResourceGet(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := resourceGet(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func emitFilebrowserArgsResult(fn func([]string) (any, error)) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := fn(args)
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	}
+func handleResourceStat(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := resourceStat(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func emitFilebrowserLoggedArgsResult(message string, fn func([]string) (any, error)) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		slog.Info(message, "component", "filebrowser")
-		result, err := fn(args)
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	}
+func handleResourceDelete(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := resourceDelete(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleResourcePatch(ctx context.Context, args []string, emit ipc.Events) error {
-	slog.Info("resource_patch requested")
+func handleResourcePost(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := resourcePost(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleResourcePatch(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	result, err := resourcePatchWithProgress(ctx, args, emit)
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleUsersGroups(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := usersGroups()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+func handleDirSize(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := dirSize(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleIndexerStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := indexerStatus(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleSubfolders(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := subfolders(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleSearch(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := searchFiles(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleUsersGroups(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := usersGroups(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/disk"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 )
 
 // Validation patterns for NFS
@@ -231,27 +233,7 @@ func saveManagedNFSMountEntries(entries map[string]managedNFSMountEntry) error {
 	}
 	data = append(data, '\n')
 
-	dir := filepath.Dir(managedNFSMountsPath)
-	if err = os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	tmpFile, err := os.CreateTemp(dir, "nfs-mounts-*.json")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpPath, managedNFSMountsPath)
+	return fsutil.WriteFileAtomic(managedNFSMountsPath, data, 0o644)
 }
 
 func upsertManagedNFSMount(source, mountpoint, fstype string, options []string) error {
@@ -347,13 +329,19 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 
 // ListNFSMounts returns all NFS mount entries, including active mounts and
 // persistent /etc/fstab entries that are currently inactive.
-func ListNFSMounts() ([]NFSMount, error) {
-	partitions, err := disk.Partitions(true)
+func ListNFSMounts(ctx context.Context) ([]NFSMount, error) {
+	partitions, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	fstabEntries := getFstabEntries()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	managedEntries, err := loadManagedNFSMountEntries()
 	if err != nil {
 		slog.Warn("failed to read managed NFS mount registry", "error", err)
@@ -899,9 +887,6 @@ func runNFSCombinedOutput(parent context.Context, timeout time.Duration, name st
 }
 
 func withNFSCommandTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	if parent == nil {
-		parent = context.Background()
-	}
 	return context.WithTimeout(parent, timeout)
 }
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
 )
 
 type SystemHealthSummary struct {
@@ -55,12 +55,12 @@ var healthRunCommand = func(ctx context.Context, name string, args ...string) ([
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
-func FetchSystemHealthSummary(username string, privileged bool, sessionStartedAt time.Time) (*SystemHealthSummary, error) {
+func FetchSystemHealthSummary(ctx context.Context, username string, privileged bool, sessionStartedAt time.Time) (*SystemHealthSummary, error) {
 	summary := &SystemHealthSummary{
 		UpToDate: true,
 	}
 
-	if services, err := FetchServices(); err == nil {
+	if services, err := FetchServices(ctx); err == nil {
 		for _, service := range services {
 			if service.Failed {
 				summary.FailedServicesCount++
@@ -72,23 +72,23 @@ func FetchSystemHealthSummary(username string, privileged bool, sessionStartedAt
 		}
 	}
 
-	if updates, err := GetUpdatesFast(); err == nil && updates != nil {
+	if updates, err := GetUpdatesFast(ctx); err == nil && updates != nil {
 		summary.UpdatesAvailable = len(updates.Updates)
 		summary.UpToDate = summary.UpdatesAvailable == 0
 	}
 
-	if login, err := FetchLastSuccessfulLogin(username); err == nil {
+	if login, err := FetchLastSuccessfulLogin(ctx, username); err == nil {
 		summary.LastLogin = login
 	}
 
 	if privileged {
-		alert, err := FetchSystemFailedLoginAlert(username, sessionStartedAt)
+		alert, err := FetchSystemFailedLoginAlert(ctx, username, sessionStartedAt)
 		if err == nil {
 			summary.FailedLoginAlert = alert
 		}
 	}
 
-	if unclean, bootID, err := DetectUncleanShutdown(); err == nil {
+	if unclean, bootID, err := DetectUncleanShutdown(ctx); err == nil {
 		summary.UncleanShutdown = unclean
 		summary.UncleanShutdownBootID = bootID
 	}
@@ -96,13 +96,13 @@ func FetchSystemHealthSummary(username string, privileged bool, sessionStartedAt
 	return summary, nil
 }
 
-func FetchLastSuccessfulLogin(username string) (*SystemLastLogin, error) {
+func FetchLastSuccessfulLogin(parent context.Context, username string) (*SystemLastLogin, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	login, err := loginhistory.FetchLast(ctx, username)
@@ -118,25 +118,25 @@ func FetchLastSuccessfulLogin(username string) (*SystemLastLogin, error) {
 	}, nil
 }
 
-func FetchFailedLoginAttempts(username string, sessionStartedAt time.Time) (int, error) {
+func FetchFailedLoginAttempts(parent context.Context, username string, sessionStartedAt time.Time) (int, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return 0, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	return loginhistory.FetchFailedAttempts(ctx, username, sessionStartedAt)
 }
 
-func FetchFailedLoginAlert(username string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
+func FetchFailedLoginAlert(parent context.Context, username string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	batch, err := loginhistory.FetchFailedAttemptBatch(ctx, username, sessionStartedAt)
@@ -156,13 +156,13 @@ func FetchFailedLoginAlert(username string, sessionStartedAt time.Time) (*Failed
 	return alert, nil
 }
 
-func FetchSystemFailedLoginAlert(boundaryUsername string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
+func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
 	boundaryUsername = strings.TrimSpace(boundaryUsername)
 	if boundaryUsername == "" {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	batch, err := loginhistory.FetchFailedAttemptBatchForAllUsers(ctx, boundaryUsername, sessionStartedAt)
@@ -229,8 +229,8 @@ func failedLoginAlertID(scope, username, latestEventID string) string {
 	return "failed_login_" + hex.EncodeToString(sum[:])
 }
 
-func DetectUncleanShutdown() (bool, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func DetectUncleanShutdown(parent context.Context) (bool, string, error) {
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	output, err := healthRunCommand(ctx, "last", "-x", "-F", "-n", "6", "reboot", "shutdown")

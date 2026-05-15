@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,11 @@ type MotherboardInfo struct {
 
 // ==== Logic ====
 
-func FetchBaseboardInfo() (MotherboardInfo, error) {
+func FetchBaseboardInfo(ctx context.Context) (MotherboardInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return MotherboardInfo{}, err
+	}
+
 	basePath := "/sys/class/dmi/id"
 
 	read := func(name string) string {
@@ -60,7 +65,7 @@ func FetchBaseboardInfo() (MotherboardInfo, error) {
 	}
 
 	// Include all temperature sensors except CPU-specific ones
-	tempMap := getTemperatureMap()
+	tempMap := getTemperatureMap(ctx)
 	mbTemps := make(map[string]float64)
 	for key, value := range tempMap {
 		if !strings.HasPrefix(key, "core") && key != "package" {

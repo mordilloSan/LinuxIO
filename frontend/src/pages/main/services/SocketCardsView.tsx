@@ -29,7 +29,7 @@ const SocketSummaryRows: React.FC<{ socket: Socket }> = ({ socket }) => (
 );
 
 const SocketSelectedRows: React.FC<{ socket: Socket }> = ({ socket }) => {
-  const { data: info } = linuxio.dbus.get_unit_info.useQuery(socket.name, {
+  const { data: info } = linuxio.systemd.get_unit_info.useQuery(socket.name, {
     refetchInterval: 2000,
   });
   const listen = Array.isArray(info?.Listen) ? info.Listen : socket.listen;
@@ -61,7 +61,7 @@ const SocketSelectedRows: React.FC<{ socket: Socket }> = ({ socket }) => {
 };
 
 const SocketActionsWrapper: React.FC<{ socket: Socket }> = ({ socket }) => {
-  const { data: info } = linuxio.dbus.get_unit_info.useQuery(socket.name, {
+  const { data: info } = linuxio.systemd.get_unit_info.useQuery(socket.name, {
     refetchInterval: 2000,
   });
   return (

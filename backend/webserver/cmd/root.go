@@ -192,7 +192,7 @@ func waitForServerShutdown(quit <-chan os.Signal, done <-chan struct{}) {
 func shutdownHTTPServer(srv *http.Server) {
 	srv.SetKeepAlivesEnabled(false)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := shutdownContext()
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -252,7 +252,7 @@ func startSocketIdleExitWatcher(
 			}
 
 			slog.Info("socket idle exit triggered", "idle_grace", idleGrace)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := shutdownContext()
 			if err := srv.Shutdown(ctx); err != nil {
 				slog.Warn("idle shutdown failed", "idle_grace", idleGrace, "error", err)
 			}
@@ -260,4 +260,8 @@ func startSocketIdleExitWatcher(
 			return
 		}
 	}()
+}
+
+func shutdownContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 5*time.Second)
 }

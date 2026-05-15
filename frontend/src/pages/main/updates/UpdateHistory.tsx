@@ -23,7 +23,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 const UpdateHistory: React.FC = () => {
   const theme = useAppTheme();
-  const { data: rows = [] } = linuxio.dbus.get_update_history.useQuery();
+  const { data: rows = [] } = linuxio.updates.get_update_history.useQuery();
   const columns: UnifiedTableColumn[] = [
     {
       field: "date",

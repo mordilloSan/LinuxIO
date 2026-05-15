@@ -76,12 +76,12 @@ async function executeCallAttempt<T>(
   args: string[],
   timeoutMs: number,
 ): Promise<T> {
-  // Build payload: "bridge\0handlerType\0command\0arg1\0arg2..."
-  const parts = ["bridge", handler, command, ...args];
+  const route = `${handler}.${command}`;
+  const parts = [route, ...args];
   const payload = encodeString(parts.join("\0"));
 
   const mux = await ensureCallMuxReady(timeoutMs);
-  const stream = mux.openStream("bridge", payload);
+  const stream = mux.openStream(route, payload);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,15 +40,18 @@ var (
 	diskClock           = time.Now
 )
 
-func sampleDiskCounters() map[string]gopsdisk.IOCountersStat {
-	stats, err := gopsdisk.IOCounters()
+func sampleDiskCounters(ctx context.Context) map[string]gopsdisk.IOCountersStat {
+	stats, err := gopsdisk.IOCountersWithContext(ctx)
 	if err != nil {
 		return map[string]gopsdisk.IOCountersStat{}
 	}
 
 	result := make(map[string]gopsdisk.IOCountersStat, len(stats))
 	for name, stat := range stats {
-		if !isPhysicalDiskCounter(name) {
+		if err := ctx.Err(); err != nil {
+			return result
+		}
+		if !isPhysicalDiskCounter(ctx, name) {
 			continue
 		}
 		result[name] = stat
@@ -56,9 +60,12 @@ func sampleDiskCounters() map[string]gopsdisk.IOCountersStat {
 	return result
 }
 
-func FetchDiskThroughput() (DiskThroughputResponse, error) {
+func FetchDiskThroughput(ctx context.Context) (DiskThroughputResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return DiskThroughputResponse{}, err
+	}
 	diskRateStateLock.Lock()
-	current := diskCounterSampler()
+	current := diskCounterSampler(ctx)
 	currentAt := diskClock()
 	previous := lastDiskCounters
 	previousAt := lastDiskSampleAt
@@ -115,7 +122,7 @@ func counterRate(previous, current uint64, intervalSeconds float64) float64 {
 	return float64(current-previous) / intervalSeconds
 }
 
-func isPhysicalDiskCounter(name string) bool {
+func isPhysicalDiskCounter(ctx context.Context, name string) bool {
 	if name == "" || strings.Contains(name, "/") {
 		return false
 	}
@@ -131,19 +138,31 @@ func isPhysicalDiskCounter(name string) bool {
 		return false
 	}
 
-	if !sysBlockExists(name) {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+	if !sysBlockExists(ctx, name) {
 		return false
 	}
 
-	return sysBlockDeviceExist(name)
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+	return sysBlockDeviceExist(ctx, name)
 }
 
-func defaultSysBlockExists(name string) bool {
+func defaultSysBlockExists(ctx context.Context, name string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
 	_, err := os.Stat(filepath.Join("/sys/block", name))
 	return err == nil
 }
 
-func defaultSysBlockDeviceExists(name string) bool {
+func defaultSysBlockDeviceExists(ctx context.Context, name string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
 	_, err := os.Stat(filepath.Join("/sys/block", name, "device"))
 	return err == nil
 }

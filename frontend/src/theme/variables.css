@@ -121,18 +121,28 @@ a {
   background: transparent;
 }
 
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
-}
-
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
+.custom-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Firefox-only fallback. Setting scrollbar-width on Chrome 121+ makes it
+   ignore the ::-webkit-scrollbar rules and fall back to the GTK theme. */
+@supports not selector(::-webkit-scrollbar) {
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(127, 127, 127, 0.5);
+  background-color: rgba(127, 127, 127, 0.15);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;

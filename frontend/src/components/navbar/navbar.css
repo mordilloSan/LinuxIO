@@ -30,7 +30,7 @@
 
 .app-navbar-search:hover,
 .app-navbar-search:focus-within {
-  background: var(--app-navbar-search-hover);
+  background: var(--app-header-search-bg-hover);
 }
 
 .app-navbar-search__icon {

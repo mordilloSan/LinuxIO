@@ -6,13 +6,12 @@ import (
 	"log/slog"
 	"os/exec"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/pkgkit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
 type capabilitiesResponse struct {
@@ -41,8 +40,7 @@ func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	return true, nil
 }
 
-func checkedCapability(check func() (bool, error), unavailable error) (bool, string) {
-	ok, err := check()
+func checkedCapability(ok bool, err error, unavailable error) (bool, string) {
 	if err != nil {
 		return false, err.Error()
 	}
@@ -50,12 +48,6 @@ func checkedCapability(check func() (bool, error), unavailable error) (bool, str
 		return false, unavailable.Error()
 	}
 	return ok, ""
-}
-
-func dependencyCommandCheck(command, dependencyName string) func() (bool, error) {
-	return func() (bool, error) {
-		return checkDependencyCommand(command, dependencyName)
-	}
 }
 
 func capabilityStatus(ok bool) string {
@@ -95,27 +87,36 @@ func logCapabilitiesSummary(out capabilitiesResponse) {
 	logUnavailableCapability("TuneD", out.TunedError)
 }
 
-func buildCapabilitiesResponse() capabilitiesResponse {
+func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
 	slog.Info("Checking system capabilities.")
 
 	var out capabilitiesResponse
 
-	out.DockerAvailable, out.DockerError = checkedCapability(docker.CheckDockerAvailability, nil)
-	out.IndexerAvailable, out.IndexerError = checkedCapability(filebrowser.CheckIndexerAvailability, nil)
-	out.LMSensorsAvailable, out.LMSensorsError = checkedCapability(dependencyCommandCheck("sensors", "lm-sensors"), nil)
-	out.SmartmontoolsAvailable, out.SmartmontoolsError = checkedCapability(dependencyCommandCheck("smartctl", "smartmontools"), nil)
-	out.PackageKitAvailable, out.PackageKitError = checkedCapability(pkgkit.Available, pkgkit.ErrUnavailable)
-	out.NFSClientAvailable, out.NFSClientError = checkedCapability(storage.CheckNFSClientAvailability, nil)
-	out.NFSServerAvailable, out.NFSServerError = checkedCapability(nfsshares.CheckNFSServerAvailability, nil)
-	out.TunedAvailable, out.TunedError = checkedCapability(power.Available, power.ErrUnavailable)
+	ok, err := docker.CheckDockerAvailability(ctx)
+	out.DockerAvailable, out.DockerError = checkedCapability(ok, err, nil)
+
+	ok, err = filebrowser.CheckIndexerAvailability(ctx)
+	out.IndexerAvailable, out.IndexerError = checkedCapability(ok, err, nil)
+
+	ok, err = checkDependencyCommand("sensors", "lm-sensors")
+	out.LMSensorsAvailable, out.LMSensorsError = checkedCapability(ok, err, nil)
+
+	ok, err = checkDependencyCommand("smartctl", "smartmontools")
+	out.SmartmontoolsAvailable, out.SmartmontoolsError = checkedCapability(ok, err, nil)
+
+	ok, err = dbusclient.PackageKit.Available(ctx)
+	out.PackageKitAvailable, out.PackageKitError = checkedCapability(ok, err, dbusclient.ErrPackageKitUnavailable)
+
+	ok, err = storage.CheckNFSClientAvailability()
+	out.NFSClientAvailable, out.NFSClientError = checkedCapability(ok, err, nil)
+
+	ok, err = nfsshares.CheckNFSServerAvailability()
+	out.NFSServerAvailable, out.NFSServerError = checkedCapability(ok, err, nil)
+
+	ok, err = power.Available(ctx)
+	out.TunedAvailable, out.TunedError = checkedCapability(ok, err, power.ErrUnavailable)
 
 	logCapabilitiesSummary(out)
 
 	return out
-}
-
-func registerCapabilitiesHandlers() {
-	ipc.RegisterFunc("system", "get_capabilities", func(ctx context.Context, args []string, emit ipc.Events) error {
-		return emit.Result(buildCapabilitiesResponse())
-	})
 }

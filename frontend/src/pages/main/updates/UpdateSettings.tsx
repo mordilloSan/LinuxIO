@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  jobSnapshotResult,
   linuxio,
   type AutoUpdateFrequency,
   type AutoUpdateOptions,
@@ -38,7 +39,7 @@ export const useUpdateSettingsState = (enabled = true) => {
     data: rawServerState,
     isPending: loading,
     refetch,
-  } = linuxio.dbus.get_auto_updates.useQuery({
+  } = linuxio.updates.get_auto_updates.useQuery({
     enabled,
   });
   const serverState = useMemo(
@@ -66,7 +67,7 @@ export const useUpdateSettingsState = (enabled = true) => {
     setExcludeInputOverride(null);
   };
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
-    linuxio.dbus.set_auto_updates.useMutation({
+    linuxio.updates.set_auto_updates.useMutation({
       onSuccess: () => {
         reset();
         refetch();
@@ -79,10 +80,12 @@ export const useUpdateSettingsState = (enabled = true) => {
       },
     });
   const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
-    linuxio.dbus.apply_offline_updates.useMutation({
+    linuxio.updates.apply_offline_updates.useMutation({
       onSuccess: (result) => {
-        if (result?.status && result.status !== "ok") {
-          const errMsg = result.error || "Failed to schedule offline update";
+        const updateResult = jobSnapshotResult(result);
+        if (updateResult?.status && updateResult.status !== "ok") {
+          const errMsg =
+            updateResult.error || "Failed to schedule offline update";
           if (
             errMsg.includes("no updates available") ||
             errMsg.includes("Prepared update not found")

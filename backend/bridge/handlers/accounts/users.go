@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	logindbus "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 )
 
 // ListUsers returns login users (root + users with UID >= 1000 and valid shell)
-func ListUsers() ([]User, error) {
+func ListUsers(ctx context.Context) ([]User, error) {
 	users := []User{}
 
 	file, err := os.Open(passwdFile)
@@ -39,10 +39,13 @@ func ListUsers() ([]User, error) {
 
 	lockedUsers := getLockedUsers()
 	userGroups, gidToGroup := parseGroupFile()
-	lastLogins := getLastLogins()
+	lastLogins := getLastLogins(ctx)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if user, ok := parsePasswdLine(scanner.Text(), lockedUsers, userGroups, gidToGroup, lastLogins); ok {
 			users = append(users, user)
 		}
@@ -127,8 +130,8 @@ func isNonLoginShell(shell string) bool {
 }
 
 // GetUser returns a single user by username
-func GetUser(username string) (*User, error) {
-	users, err := ListUsers()
+func GetUser(ctx context.Context, username string) (*User, error) {
+	users, err := ListUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +181,7 @@ func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogi
 
 // GetUserDetails returns security, runtime, and filesystem health for a user.
 func GetUserDetails(ctx context.Context, username string) (UserDetails, error) {
-	user, err := GetUser(username)
+	user, err := GetUser(ctx, username)
 	if err != nil {
 		return UserDetails{}, err
 	}
@@ -312,7 +315,7 @@ func TerminateSession(ctx context.Context, sessionID string, pid int) error {
 	defer cancel()
 
 	if sessionID != "" {
-		if err := logindbus.TerminateLogin1Session(cmdCtx, sessionID); err != nil {
+		if err := control.Logoff(cmdCtx, sessionID); err != nil {
 			slog.Warn("login1 TerminateSession failed, falling back to kill",
 				"sessionID", sessionID, "pid", pid, "err", err)
 		} else {
@@ -593,7 +596,7 @@ func formatFileMode(mode os.FileMode) string {
 }
 
 // CreateUser creates a new system user
-func CreateUser(req CreateUserRequest) error {
+func CreateUser(ctx context.Context, req CreateUserRequest) error {
 	if req.Username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -625,16 +628,16 @@ func CreateUser(req CreateUserRequest) error {
 
 	args = append(args, req.Username)
 
-	cmd := exec.Command("useradd", args...)
+	cmd := exec.CommandContext(ctx, "useradd", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to create user: %s", strings.TrimSpace(string(output)))
 	}
 
 	// Set the password
-	if err := setPassword(req.Username, req.Password); err != nil {
+	if err := setPassword(ctx, req.Username, req.Password); err != nil {
 		// Try to clean up the user if password setting fails
-		if cleanupErr := DeleteUser(req.Username); cleanupErr != nil {
+		if cleanupErr := DeleteUser(ctx, req.Username); cleanupErr != nil {
 			slog.Warn("failed to clean up user after password setup failure",
 				"user", req.Username,
 				"error", cleanupErr)
@@ -646,7 +649,7 @@ func CreateUser(req CreateUserRequest) error {
 }
 
 // DeleteUser deletes a system user
-func DeleteUser(username string) error {
+func DeleteUser(ctx context.Context, username string) error {
 	if username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -656,12 +659,12 @@ func DeleteUser(username string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(username)
+	_, err := GetUser(ctx, username)
 	if err != nil {
 		return err
 	}
 
-	cmd := exec.Command("userdel", "-r", username)
+	cmd := exec.CommandContext(ctx, "userdel", "-r", username)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to delete user: %s", strings.TrimSpace(string(output)))
@@ -671,7 +674,7 @@ func DeleteUser(username string) error {
 }
 
 // ModifyUser modifies user properties
-func ModifyUser(req ModifyUserRequest) error {
+func ModifyUser(ctx context.Context, req ModifyUserRequest) error {
 	if req.Username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -681,7 +684,7 @@ func ModifyUser(req ModifyUserRequest) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(req.Username)
+	_, err := GetUser(ctx, req.Username)
 	if err != nil {
 		return err
 	}
@@ -710,7 +713,7 @@ func ModifyUser(req ModifyUserRequest) error {
 
 	args = append(args, req.Username)
 
-	cmd := exec.Command("usermod", args...)
+	cmd := exec.CommandContext(ctx, "usermod", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to modify user: %s", strings.TrimSpace(string(output)))
@@ -720,7 +723,7 @@ func ModifyUser(req ModifyUserRequest) error {
 }
 
 // ChangePassword changes a user's password
-func ChangePassword(username, password string) error {
+func ChangePassword(ctx context.Context, username, password string) error {
 	if username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -729,16 +732,16 @@ func ChangePassword(username, password string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(username)
+	_, err := GetUser(ctx, username)
 	if err != nil {
 		return err
 	}
 
-	return setPassword(username, password)
+	return setPassword(ctx, username, password)
 }
 
 // LockUser locks a user account
-func LockUser(username string) error {
+func LockUser(ctx context.Context, username string) error {
 	if username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -748,12 +751,12 @@ func LockUser(username string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(username)
+	_, err := GetUser(ctx, username)
 	if err != nil {
 		return err
 	}
 
-	cmd := exec.Command("passwd", "-l", username)
+	cmd := exec.CommandContext(ctx, "passwd", "-l", username)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to lock user: %s", strings.TrimSpace(string(output)))
@@ -763,18 +766,18 @@ func LockUser(username string) error {
 }
 
 // UnlockUser unlocks a user account
-func UnlockUser(username string) error {
+func UnlockUser(ctx context.Context, username string) error {
 	if username == "" {
 		return fmt.Errorf("username is required")
 	}
 
 	// Check if user exists
-	_, err := GetUser(username)
+	_, err := GetUser(ctx, username)
 	if err != nil {
 		return err
 	}
 
-	cmd := exec.Command("passwd", "-u", username)
+	cmd := exec.CommandContext(ctx, "passwd", "-u", username)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to unlock user: %s", strings.TrimSpace(string(output)))
@@ -784,8 +787,11 @@ func UnlockUser(username string) error {
 }
 
 // ListShells returns available login shells
-func ListShells() ([]string, error) {
+func ListShells(ctx context.Context) ([]string, error) {
 	shells := []string{}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	file, err := os.Open(shellsFile)
 	if err != nil {
@@ -815,12 +821,12 @@ func ListShells() ([]string, error) {
 }
 
 // setPassword sets a user's password using chpasswd
-func setPassword(username, password string) error {
+func setPassword(ctx context.Context, username, password string) error {
 	if err := validateChpasswdInput(username, password); err != nil {
 		return err
 	}
 
-	cmd := exec.Command("chpasswd")
+	cmd := exec.CommandContext(ctx, "chpasswd")
 	cmd.Stdin = strings.NewReader(fmt.Sprintf("%s:%s\n", username, password))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -905,10 +911,10 @@ func parseGroupFile() (map[string][]string, map[int]string) {
 }
 
 // getLastLogins returns a map of usernames to their last login time
-func getLastLogins() map[string]string {
+func getLastLogins(parent context.Context) map[string]string {
 	lastLogins := make(map[string]string)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	logins, err := loginhistory.FetchByUser(ctx)

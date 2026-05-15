@@ -19,8 +19,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
 var validNetworkMode = regexp.MustCompile(`^(none|host|bridge|service:.+|container:.+)$`)
@@ -52,35 +52,36 @@ type ComposeProject struct {
 	WorkingDir  string                     `json:"working_dir"`
 }
 
-// ListComposeProjects discovers all compose projects by analyzing container labels and indexer
-func ListComposeProjects(username string) (any, error) {
+// ListComposeProjectsWithStore discovers all compose projects by analyzing container labels and indexer
+func ListComposeProjectsWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	projects := discoverComposeProjectsFromContainers(cli, containers)
+	projects := discoverComposeProjectsFromContainers(ctx, cli, containers)
 
 	// Query indexer for offline stacks (compose files without running containers)
-	if err := discoverOfflineStacks(username, projects); err != nil {
+	if err := discoverOfflineStacksWithStore(ctx, username, store, projects); err != nil {
 		slog.
 			// Log but don't fail - indexer might be unavailable
 			Debug("failed to discover offline stacks from indexer", "error", err)
 	}
 
 	// Load config once to check auto-update preferences.
-	cfg, _, _ := config.Load(username)
+	cfg, _, _ := config.SnapshotForUser(ctx, username, store)
 
 	return finalizeComposeProjects(projects, cfg), nil
 }
 
 func discoverComposeProjectsFromContainers(
+	ctx context.Context,
 	cli *client.Client,
 	containers []container.Summary,
 ) map[string]*ComposeProject {
@@ -90,13 +91,14 @@ func discoverComposeProjectsFromContainers(
 		if !ok {
 			continue
 		}
-		project := ensureComposeProject(cli, projects, projectName, ctr)
+		project := ensureComposeProject(ctx, cli, projects, projectName, ctr)
 		updateComposeProjectService(project, ctr)
 	}
 	return projects
 }
 
 func ensureComposeProject(
+	ctx context.Context,
 	cli *client.Client,
 	projects map[string]*ComposeProject,
 	projectName string,
@@ -107,6 +109,7 @@ func ensureComposeProject(
 	}
 
 	configFiles := resolveComposeConfigFiles(
+		ctx,
 		cli,
 		ctr.Labels["com.docker.compose.project.config_files"],
 		ctr.Labels["com.docker.compose.project.working_dir"],
@@ -122,22 +125,25 @@ func ensureComposeProject(
 	return project
 }
 
-func resolveComposeConfigFiles(cli *client.Client, configFilesLabel, workingDir string) []string {
-	configFiles := translateComposeConfigFiles(cli, parseConfigFiles(configFilesLabel))
+func resolveComposeConfigFiles(ctx context.Context, cli *client.Client, configFilesLabel, workingDir string) []string {
+	configFiles := translateComposeConfigFiles(ctx, cli, parseConfigFiles(configFilesLabel))
 	if len(configFiles) > 0 || workingDir == "" {
 		return configFiles
 	}
-	return inferComposeFilesFromWorkingDir(cli, workingDir)
+	return inferComposeFilesFromWorkingDir(ctx, cli, workingDir)
 }
 
-func translateComposeConfigFiles(cli *client.Client, configFiles []string) []string {
+func translateComposeConfigFiles(ctx context.Context, cli *client.Client, configFiles []string) []string {
 	translated := make([]string, 0, len(configFiles))
 	for _, configFile := range configFiles {
+		if ctx.Err() != nil {
+			return translated
+		}
 		if _, err := os.Stat(configFile); err == nil {
 			translated = append(translated, configFile)
 			continue
 		}
-		translatedPath := translateContainerPathToHost(cli, configFile)
+		translatedPath := translateContainerPathToHost(ctx, cli, configFile)
 		if translatedPath != configFile {
 			translated = append(translated, translatedPath)
 		}
@@ -145,8 +151,8 @@ func translateComposeConfigFiles(cli *client.Client, configFiles []string) []str
 	return translated
 }
 
-func inferComposeFilesFromWorkingDir(cli *client.Client, workingDir string) []string {
-	translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
+func inferComposeFilesFromWorkingDir(ctx context.Context, cli *client.Client, workingDir string) []string {
+	translatedWorkingDir := translateContainerPathToHost(ctx, cli, workingDir)
 	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 	for _, fileName := range composeFileNames {
 		possiblePath := filepath.Join(translatedWorkingDir, fileName)
@@ -221,9 +227,9 @@ func finalizeComposeProjects(projects map[string]*ComposeProject, cfg *config.Se
 	return result
 }
 
-// GetComposeProject returns detailed information about a specific compose project
-func GetComposeProject(username, projectName string) (any, error) {
-	projects, err := ListComposeProjects(username)
+// GetComposeProjectWithStore returns detailed information about a specific compose project
+func GetComposeProjectWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	projects, err := ListComposeProjectsWithStore(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -242,9 +248,8 @@ func GetComposeProject(username, projectName string) (any, error) {
 	return nil, fmt.Errorf("project '%s' not found", projectName)
 }
 
-// ComposeUp starts a compose project
-func ComposeUp(username, projectName, composePath string) (any, error) {
-	slog.Info("compose up requested", "user", username, "project", projectName, "compose_path", composePath)
+// ComposeUpWithStore starts a compose project
+func ComposeUpWithStore(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (any, error) {
 	var configFile string
 	var workingDir string
 
@@ -254,7 +259,7 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 		workingDir = filepath.Dir(composePath)
 	} else {
 		// Try to get the project from existing containers first
-		project, err := GetComposeProject(username, projectName)
+		project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 		if err == nil {
 			// Project exists with containers
 			composeProject, ok := project.(*ComposeProject)
@@ -274,7 +279,7 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 		} else {
 			// Project not found in containers - might be a new stack
 			// Try to find the compose file in standard locations
-			configFile, workingDir, err = findComposeFile(username, projectName)
+			configFile, workingDir, err = findComposeFileWithStore(ctx, username, store, projectName)
 			if err != nil {
 				return nil, fmt.Errorf("project '%s' not found and no compose file found: %w", projectName, err)
 			}
@@ -282,7 +287,7 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 	}
 
 	collector := &composeMessageCollector{}
-	err := composeUpWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
+	err := composeUpWithSDK(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
@@ -291,53 +296,52 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 	return map[string]string{"message": "Project started successfully", "output": collector.String()}, nil
 }
 
-// findComposeFile attempts to locate a compose file for a project
-func findComposeFile(username, projectName string) (string, string, error) {
-	// Common compose file names
+// findComposeFileWithStore attempts to locate a compose file for a project
+func findComposeFileWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
 	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+	sanitized := sanitizeStackName(projectName)
 
-	// Try to get user's Docker folders from config
-	dockerFolders, err := configuredDockerFolders(username)
+	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err == nil {
-		sanitized := sanitizeStackName(projectName)
-		for _, dockerFolder := range dockerFolders {
-			stackDir := filepath.Join(dockerFolder, sanitized)
-
-			for _, fileName := range composeFileNames {
-				composePath := filepath.Join(stackDir, fileName)
-				if _, err := os.Stat(composePath); err == nil {
-					return composePath, stackDir, nil
-				}
-			}
+		if composePath, stackDir, found, err := findComposeFileInBases(ctx, dockerFolders, sanitized, composeFileNames); err != nil {
+			return "", "", err
+		} else if found {
+			return composePath, stackDir, nil
 		}
 	}
 
-	// Fallback to common paths
 	commonBasePaths := []string{
 		filepath.Join(os.Getenv("HOME"), "docker"),
 		filepath.Join(os.Getenv("HOME"), "Docker"),
 		"/opt/docker",
 	}
-
-	sanitized := sanitizeStackName(projectName)
-
-	for _, basePath := range commonBasePaths {
-		stackDir := filepath.Join(basePath, sanitized)
-		for _, fileName := range composeFileNames {
-			composePath := filepath.Join(stackDir, fileName)
-			if _, err := os.Stat(composePath); err == nil {
-				return composePath, stackDir, nil
-			}
-		}
+	if composePath, stackDir, found, err := findComposeFileInBases(ctx, commonBasePaths, sanitized, composeFileNames); err != nil {
+		return "", "", err
+	} else if found {
+		return composePath, stackDir, nil
 	}
-
 	return "", "", fmt.Errorf("no compose file found for project '%s'", projectName)
 }
 
-// ComposeDown stops and removes a compose project
-func ComposeDown(username, projectName string) (any, error) {
-	slog.Info("compose down requested", "user", username, "project", projectName)
-	project, err := GetComposeProject(username, projectName)
+func findComposeFileInBases(ctx context.Context, basePaths []string, stackName string, composeFileNames []string) (string, string, bool, error) {
+	for _, basePath := range basePaths {
+		if err := ctx.Err(); err != nil {
+			return "", "", false, err
+		}
+		stackDir := filepath.Join(basePath, stackName)
+		for _, fileName := range composeFileNames {
+			composePath := filepath.Join(stackDir, fileName)
+			if _, err := os.Stat(composePath); err == nil {
+				return composePath, stackDir, true, nil
+			}
+		}
+	}
+	return "", "", false, nil
+}
+
+// ComposeDownWithStore stops and removes a compose project
+func ComposeDownWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +362,7 @@ func ComposeDown(username, projectName string) (any, error) {
 	}
 
 	collector := &composeMessageCollector{}
-	err = composeDownWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
+	err = composeDownWithSDK(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
@@ -373,25 +377,20 @@ type DeleteStackOptions struct {
 	DeleteDirectory bool `json:"delete_directory"` // Delete the entire stack directory
 }
 
-// DeleteStack removes a compose stack with options to delete files
-func DeleteStack(username, projectName string, options DeleteStackOptions) (any, error) {
-	slog.Info("delete stack requested",
-		"user", username,
-		"project", projectName,
-		"delete_file", options.DeleteFile,
-		"delete_directory", options.DeleteDirectory)
+// DeleteStackWithStore removes a compose stack with options to delete files
+func DeleteStackWithStore(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (any, error) {
 	// Get project info first
-	project, err := GetComposeProject(username, projectName)
+	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
 		// Project might not exist in Docker, but we might still have files to delete
 		// Try to find compose file via indexer
-		configFile, workingDir, findErr := findComposeFile(username, projectName)
+		configFile, workingDir, findErr := findComposeFileWithStore(ctx, username, store, projectName)
 		if findErr != nil {
 			return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
 		}
 
 		// No containers, just handle file deletion
-		result, delErr := deleteStackFiles(projectName, configFile, workingDir, options)
+		result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, options)
 		if delErr != nil {
 			return nil, delErr
 		}
@@ -418,7 +417,7 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 	// First, run docker compose down to remove containers and networks
 	if configFile != "" {
 		collector := &composeMessageCollector{}
-		cmdErr := composeDownWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
+		cmdErr := composeDownWithSDK(ctx, projectName, configFile, workingDir, false, collector.Emit)
 		if cmdErr != nil {
 			slog.Warn("docker compose down failed",
 				"project", projectName,
@@ -429,7 +428,7 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 	}
 
 	// Handle file deletion
-	result, delErr := deleteStackFiles(projectName, configFile, workingDir, options)
+	result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, options)
 	if delErr != nil {
 		return nil, delErr
 	}
@@ -438,7 +437,7 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 }
 
 // deleteStackFiles handles the file/directory deletion part of stack removal
-func deleteStackFiles(projectName, configFile, workingDir string, options DeleteStackOptions) (any, error) {
+func deleteStackFiles(ctx context.Context, projectName, configFile, workingDir string, options DeleteStackOptions) (any, error) {
 	result := map[string]any{
 		"message":       "Stack removed successfully",
 		"project":       projectName,
@@ -447,52 +446,62 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 		"deleted_path":  "",
 	}
 
-	// Delete entire directory
 	if options.DeleteDirectory && workingDir != "" {
-		// Safety check: don't delete root or home directories
-		if workingDir == "/" || workingDir == os.Getenv("HOME") || workingDir == "/home" {
-			return nil, fmt.Errorf("refusing to delete protected directory: %s", workingDir)
-		}
-
-		// Check if directory exists
-		if _, err := os.Stat(workingDir); err == nil {
-			if err := os.RemoveAll(workingDir); err != nil {
-				return nil, fmt.Errorf("failed to delete directory %s: %w", workingDir, err)
-			}
-			result["dir_deleted"] = true
-			result["deleted_path"] = workingDir
-			slog.Info("deleted stack directory", "project", projectName, "path", workingDir)
-		}
-
-		return result, nil
+		return deleteStackDirectory(ctx, result, projectName, workingDir)
 	}
 
-	// Delete only the compose file
 	if options.DeleteFile && configFile != "" {
-		if _, err := os.Stat(configFile); err == nil {
-			if err := os.Remove(configFile); err != nil {
-				return nil, fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
-			}
-			result["files_deleted"] = true
-			result["deleted_path"] = configFile
-			slog.Info("deleted compose file", "project", projectName, "path", configFile)
-		}
+		return deleteComposeFile(ctx, result, projectName, configFile)
 	}
 
 	return result, nil
 }
 
-// ComposeRestart restarts a compose project
-func ComposeRestart(username, projectName string) (any, error) {
-	slog.Info("compose restart requested", "user", username, "project", projectName)
-	configFile, workingDir, err := resolveComposeRestartTarget(username, projectName)
+func deleteStackDirectory(ctx context.Context, result map[string]any, projectName, workingDir string) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if workingDir == "/" || workingDir == os.Getenv("HOME") || workingDir == "/home" {
+		return nil, fmt.Errorf("refusing to delete protected directory: %s", workingDir)
+	}
+	if _, err := os.Stat(workingDir); err != nil {
+		return result, nil
+	}
+	if err := os.RemoveAll(workingDir); err != nil {
+		return nil, fmt.Errorf("failed to delete directory %s: %w", workingDir, err)
+	}
+	result["dir_deleted"] = true
+	result["deleted_path"] = workingDir
+	slog.Info("deleted stack directory", "project", projectName, "path", workingDir)
+	return result, nil
+}
+
+func deleteComposeFile(ctx context.Context, result map[string]any, projectName, configFile string) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(configFile); err != nil {
+		return result, nil
+	}
+	if err := os.Remove(configFile); err != nil {
+		return nil, fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
+	}
+	result["files_deleted"] = true
+	result["deleted_path"] = configFile
+	slog.Info("deleted compose file", "project", projectName, "path", configFile)
+	return result, nil
+}
+
+// ComposeRestartWithStore restarts a compose project
+func ComposeRestartWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	configFile, workingDir, err := resolveComposeRestartTarget(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
 	}
 
 	// Use up+remove-orphans semantics for restart so compose file changes are applied.
 	collector := &composeMessageCollector{}
-	err = composeUpWithSDK(context.Background(), projectName, configFile, workingDir, true, collector.Emit)
+	err = composeUpWithSDK(ctx, projectName, configFile, workingDir, true, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
@@ -501,17 +510,17 @@ func ComposeRestart(username, projectName string) (any, error) {
 	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
 }
 
-func resolveComposeRestartTarget(username, projectName string) (string, string, error) {
-	project, err := GetComposeProject(username, projectName)
+func resolveComposeRestartTarget(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
+	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err == nil {
 		if composeProject, ok := project.(*ComposeProject); ok {
-			if configFile, workingDir := resolveComposeRestartTargetFromProject(projectName, composeProject); configFile != "" {
+			if configFile, workingDir := resolveComposeRestartTargetFromProject(ctx, projectName, composeProject); configFile != "" {
 				return configFile, workingDir, nil
 			}
 		}
 	}
 
-	configFile, workingDir, err := findComposeFile(username, projectName)
+	configFile, workingDir, err := findComposeFileWithStore(ctx, username, store, projectName)
 	if err != nil {
 		return "", "", fmt.Errorf("compose file not found: %w", err)
 	}
@@ -519,7 +528,7 @@ func resolveComposeRestartTarget(username, projectName string) (string, string, 
 	return configFile, workingDir, nil
 }
 
-func resolveComposeRestartTargetFromProject(projectName string, composeProject *ComposeProject) (string, string) {
+func resolveComposeRestartTargetFromProject(ctx context.Context, projectName string, composeProject *ComposeProject) (string, string) {
 	cli, err := getClient()
 	if err != nil {
 		slog.Warn("failed to get Docker client for path translation", "project", projectName, "error", err.Error())
@@ -528,12 +537,12 @@ func resolveComposeRestartTargetFromProject(projectName string, composeProject *
 	defer releaseClient(cli)
 
 	if len(composeProject.ConfigFiles) > 0 {
-		return resolveComposeRestartFromConfigFiles(cli, projectName, composeProject)
+		return resolveComposeRestartFromConfigFiles(ctx, cli, projectName, composeProject)
 	}
 	if composeProject.WorkingDir == "" {
 		return "", ""
 	}
-	return resolveComposeRestartFromWorkingDir(cli, projectName, composeProject.WorkingDir)
+	return resolveComposeRestartFromWorkingDir(ctx, cli, projectName, composeProject.WorkingDir)
 }
 
 func resolveComposeRestartWithoutClient(projectName string, composeProject *ComposeProject) (string, string) {
@@ -551,6 +560,7 @@ func resolveComposeRestartWithoutClient(projectName string, composeProject *Comp
 }
 
 func resolveComposeRestartFromConfigFiles(
+	ctx context.Context,
 	cli *client.Client,
 	projectName string,
 	composeProject *ComposeProject,
@@ -561,7 +571,7 @@ func resolveComposeRestartFromConfigFiles(
 		return configFile, fallbackWorkingDir(workingDir, configFile)
 	}
 
-	translatedConfigFile := translateContainerPathToHost(cli, configFile)
+	translatedConfigFile := translateContainerPathToHost(ctx, cli, configFile)
 	if translatedConfigFile == configFile {
 		slog.Warn("compose file from container labels not found and translation failed",
 			"project", projectName,
@@ -577,13 +587,13 @@ func resolveComposeRestartFromConfigFiles(
 		"container_path", configFile,
 		"host_path", translatedConfigFile)
 	if workingDir != "" {
-		workingDir = translateContainerPathToHost(cli, workingDir)
+		workingDir = translateContainerPathToHost(ctx, cli, workingDir)
 	}
 	return translatedConfigFile, fallbackWorkingDir(workingDir, translatedConfigFile)
 }
 
-func resolveComposeRestartFromWorkingDir(cli *client.Client, projectName, workingDir string) (string, string) {
-	translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
+func resolveComposeRestartFromWorkingDir(ctx context.Context, cli *client.Client, projectName, workingDir string) (string, string) {
+	translatedWorkingDir := translateContainerPathToHost(ctx, cli, workingDir)
 	slog.Debug("translating working directory",
 		"project", projectName,
 		"container_path", workingDir,
@@ -606,10 +616,9 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 	return filepath.Dir(configFile)
 }
 
-// ComposeStop stops a compose project without removing containers
-func ComposeStop(username, projectName string) (any, error) {
-	slog.Info("compose stop requested", "user", username, "project", projectName)
-	project, err := GetComposeProject(username, projectName)
+// ComposeStopWithStore stops a compose project without removing containers
+func ComposeStopWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -630,7 +639,7 @@ func ComposeStop(username, projectName string) (any, error) {
 	}
 
 	collector := &composeMessageCollector{}
-	err = composeStopWithSDK(context.Background(), projectName, configFile, workingDir, collector.Emit)
+	err = composeStopWithSDK(ctx, projectName, configFile, workingDir, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
@@ -643,9 +652,9 @@ func ComposeStop(username, projectName string) (any, error) {
 
 // translateContainerPathToHost attempts to translate a container path to a host path
 // by inspecting volume mounts across all containers to find the correct mount source
-func translateContainerPathToHost(cli *client.Client, containerPath string) string {
+func translateContainerPathToHost(ctx context.Context, cli *client.Client, containerPath string) string {
 	// First, get all running containers to search for the correct mount
-	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		slog.Warn("failed to list containers for path translation", "error", err)
 		return containerPath
@@ -660,7 +669,7 @@ func translateContainerPathToHost(cli *client.Client, containerPath string) stri
 			// Check if container name contains the priority name
 			containerName := strings.TrimPrefix(ctr.Names[0], "/")
 			if strings.Contains(strings.ToLower(containerName), priorityName) {
-				if hostPath := tryTranslatePath(cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
+				if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
 					return hostPath
 				}
 			}
@@ -670,7 +679,7 @@ func translateContainerPathToHost(cli *client.Client, containerPath string) stri
 	// Check all other containers
 	for _, ctr := range containers {
 		containerName := strings.TrimPrefix(ctr.Names[0], "/")
-		if hostPath := tryTranslatePath(cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
+		if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
 			return hostPath
 		}
 	}
@@ -679,8 +688,8 @@ func translateContainerPathToHost(cli *client.Client, containerPath string) stri
 }
 
 // tryTranslatePath attempts to translate a path using a specific container's mounts
-func tryTranslatePath(cli *client.Client, containerID, containerPath, containerName string) string {
-	containerJSON, err := cli.ContainerInspect(context.Background(), containerID)
+func tryTranslatePath(ctx context.Context, cli *client.Client, containerID, containerPath, containerName string) string {
+	containerJSON, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return containerPath
 	}
@@ -785,7 +794,10 @@ type ComposeFilePathInfo struct {
 
 // NormalizeComposeFile automatically adds container_name to services that don't have it
 // This prevents Docker from using auto-generated names like "project-service-1"
-func NormalizeComposeFile(content string) (string, error) {
+func NormalizeComposeFile(ctx context.Context, content string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	var composeData map[string]any
 	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
 		// Return original content if we can't parse it (validation will catch this later)
@@ -806,6 +818,9 @@ func NormalizeComposeFile(content string) (string, error) {
 	// Add container_name to each service that doesn't have it
 	modified := false
 	for serviceName, serviceData := range servicesMap {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		serviceMap, ok := serviceData.(map[string]any)
 		if !ok {
 			continue
@@ -833,7 +848,7 @@ func NormalizeComposeFile(content string) (string, error) {
 }
 
 // ValidateComposeFile validates docker-compose YAML syntax and structure
-func ValidateComposeFile(content string) (any, error) {
+func ValidateComposeFile(ctx context.Context, content string) (any, error) {
 	result := ValidationResult{
 		Valid:  true,
 		Errors: []ValidationError{},
@@ -844,7 +859,7 @@ func ValidateComposeFile(content string) (any, error) {
 		return result, nil
 	}
 
-	if sdkErr := composeValidateContentWithSDK(context.Background(), content); sdkErr != nil {
+	if sdkErr := composeValidateContentWithSDK(ctx, content); sdkErr != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Message: strings.TrimPrefix(sdkErr.Error(), "load compose project: "),
@@ -860,7 +875,7 @@ func ValidateComposeFile(content string) (any, error) {
 	}
 
 	validateComposeVersionField(composeData, &result)
-	populateNormalizedComposeContent(content, &result)
+	populateNormalizedComposeContent(ctx, content, &result)
 
 	return result, nil
 }
@@ -1001,8 +1016,8 @@ func validateComposeVersionField(composeData map[string]any, result *ValidationR
 	}
 }
 
-func populateNormalizedComposeContent(content string, result *ValidationResult) {
-	normalized, err := NormalizeComposeFile(content)
+func populateNormalizedComposeContent(ctx context.Context, content string, result *ValidationResult) {
+	normalized, err := NormalizeComposeFile(ctx, content)
 	if err != nil {
 		result.NormalizedContent = content
 		return
@@ -1010,8 +1025,8 @@ func populateNormalizedComposeContent(content string, result *ValidationResult) 
 	result.NormalizedContent = normalized
 }
 
-func configuredDockerFolders(username string) ([]string, error) {
-	cfg, _, err := config.Load(username)
+func configuredDockerFolders(ctx context.Context, username string, store *config.UserStore) ([]string, error) {
+	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -1033,9 +1048,9 @@ func dockerFoldersFromConfig(cfg *config.Settings) []string {
 	return folders
 }
 
-// GetDockerFolders returns the configured Docker folder paths from user config.
-func GetDockerFolders(username string) (any, error) {
-	folders, err := configuredDockerFolders(username)
+// GetDockerFoldersWithStore returns the configured Docker folder paths from user config.
+func GetDockerFoldersWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+	folders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -1045,9 +1060,12 @@ func GetDockerFolders(username string) (any, error) {
 	}, nil
 }
 
-// GetComposeFilePath builds the full path for a compose file
-func GetComposeFilePath(username, stackName string) (any, error) {
-	cfg, _, err := config.Load(username)
+// GetComposeFilePathWithStore builds the full path for a compose file
+func GetComposeFilePathWithStore(ctx context.Context, username string, store *config.UserStore, stackName string) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -1189,61 +1207,55 @@ type DirectoryValidationResult struct {
 }
 
 // ValidateStackDirectory validates if a directory path is suitable for creating a stack
-func ValidateStackDirectory(dirPath string) (any, error) {
-	result := DirectoryValidationResult{
-		Valid:       false,
-		Exists:      false,
-		CanCreate:   false,
-		CanWrite:    false,
-		IsDirectory: false,
-	}
+func ValidateStackDirectory(ctx context.Context, dirPath string) (any, error) {
+	result := DirectoryValidationResult{}
 
-	// Check if path is absolute
 	if !filepath.IsAbs(dirPath) {
 		result.Error = "Path must be absolute"
 		return result, nil
 	}
-
-	// Clean the path
 	dirPath = filepath.Clean(dirPath)
 
-	// Check if path exists
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(dirPath)
 	if err == nil {
-		// Path exists
-		result.Exists = true
-
-		// Check if it's a directory
-		if !info.IsDir() {
-			result.Error = "Path exists but is not a directory"
-			return result, nil
-		}
-
-		result.IsDirectory = true
-
-		// Check write permissions by trying to create a temp file
-		testFile := filepath.Join(dirPath, ".linuxio-write-test")
-		f, createErr := os.Create(testFile)
-		if createErr != nil {
-			result.Error = "No write permission in directory"
-			return result, nil
-		}
-		f.Close()
-		os.Remove(testFile)
-
-		result.CanWrite = true
-		result.Valid = true
-		return result, nil
+		return validateExistingStackDirectory(ctx, dirPath, info)
 	}
-
-	// Path doesn't exist - check if we can create it
 	if !os.IsNotExist(err) {
 		result.Error = fmt.Sprintf("Error accessing path: %v", err)
 		return result, nil
 	}
+	return validateCreatableStackDirectory(ctx, dirPath)
+}
 
-	// Check parent directory
+func validateExistingStackDirectory(ctx context.Context, dirPath string, info os.FileInfo) (DirectoryValidationResult, error) {
+	result := DirectoryValidationResult{Exists: true}
+	if !info.IsDir() {
+		result.Error = "Path exists but is not a directory"
+		return result, nil
+	}
+
+	if err := writeTestFile(ctx, dirPath); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return result, ctxErr
+		}
+		result.Error = "No write permission in directory"
+		return result, nil
+	}
+	result.IsDirectory = true
+	result.CanWrite = true
+	result.Valid = true
+	return result, nil
+}
+
+func validateCreatableStackDirectory(ctx context.Context, dirPath string) (DirectoryValidationResult, error) {
+	result := DirectoryValidationResult{}
 	parentDir := filepath.Dir(dirPath)
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	parentInfo, err := os.Stat(parentDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1253,43 +1265,52 @@ func ValidateStackDirectory(dirPath string) (any, error) {
 		}
 		return result, nil
 	}
-
 	if !parentInfo.IsDir() {
 		result.Error = "Parent path is not a directory"
 		return result, nil
 	}
 
-	// Try to create the directory to verify permissions
-	err = os.MkdirAll(dirPath, 0755)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		result.Error = fmt.Sprintf("Cannot create directory: %v", err)
 		return result, nil
 	}
 
-	// Successfully created, now check write permissions
-	testFile := filepath.Join(dirPath, ".linuxio-write-test")
-	f, createErr := os.Create(testFile)
-	if createErr != nil {
+	if err := writeTestFile(ctx, dirPath); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return result, ctxErr
+		}
 		result.Error = "Cannot write to created directory"
-		// Clean up the directory we created
 		os.RemoveAll(dirPath)
 		return result, nil
 	}
-	f.Close()
-	os.Remove(testFile)
 
-	// Clean up the test directory - we only wanted to verify permissions
-	// The actual directory will be created when the stack is saved
-	err = os.RemoveAll(dirPath)
-	if err != nil {
+	if err := os.RemoveAll(dirPath); err != nil {
 		slog.Warn("failed to clean up test directory", "component", "docker", "subsystem", "compose", "path", dirPath, "error", err)
 	}
-
 	result.CanCreate = true
 	result.CanWrite = true
 	result.Valid = true
-
 	return result, nil
+}
+
+func writeTestFile(ctx context.Context, dirPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	testFile := filepath.Join(dirPath, ".linuxio-write-test")
+	f, err := os.Create(testFile)
+	if err != nil {
+		return err
+	}
+	closeErr := f.Close()
+	removeErr := os.Remove(testFile)
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
 }
 
 // indexerHTTPClient is a shared HTTP client for communicating with the indexer daemon.
@@ -1321,8 +1342,8 @@ const (
 	indexerEntriesMaxPages = 2000
 )
 
-func fetchIndexerEntriesPage(basePath string, limit, offset int) ([]indexerSearchResult, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/entries", nil)
+func fetchIndexerEntriesPage(ctx context.Context, basePath string, limit, offset int) ([]indexerSearchResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entries", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build indexer request: %w", err)
 	}
@@ -1353,7 +1374,7 @@ func fetchIndexerEntriesPage(basePath string, limit, offset int) ([]indexerSearc
 }
 
 // searchIndexerForYAML searches the indexer for YAML files in the specified base path
-func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
+func searchIndexerForYAML(ctx context.Context, basePath string) ([]indexerSearchResult, error) {
 	normPath := normalizeIndexerPath(basePath)
 
 	var yamlFiles []indexerSearchResult
@@ -1361,7 +1382,7 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	offset := 0
 
 	for range indexerEntriesMaxPages {
-		results, err := fetchIndexerEntriesPage(normPath, indexerEntriesPageSize, offset)
+		results, err := fetchIndexerEntriesPage(ctx, normPath, indexerEntriesPageSize, offset)
 		if err != nil {
 			slog.Debug("indexer search request failed", "component", "docker", "subsystem", "compose", "path", normPath, "error", err)
 			return nil, fmt.Errorf("indexer unavailable: %w", err)
@@ -1465,8 +1486,8 @@ func getProjectNameFromComposePath(composePath string) string {
 	return filepath.Base(dir)
 }
 
-func indexDockerFolderPath(username, dockerFolder string) error {
-	if err := indexer.StreamIndexer(context.Background(), dockerFolder, indexer.IndexerCallbacks{}); err != nil {
+func indexDockerFolderPath(ctx context.Context, username, dockerFolder string) error {
+	if err := indexer.StreamIndexer(ctx, dockerFolder, indexer.IndexerCallbacks{}); err != nil {
 		return fmt.Errorf("indexer request failed: %w", err)
 	}
 	slog.Info("triggered indexing of docker folder", "path", dockerFolder, "user", username)
@@ -1474,15 +1495,15 @@ func indexDockerFolderPath(username, dockerFolder string) error {
 	return nil
 }
 
-// IndexDockerFolders is the handler function for indexing all configured Docker folders.
-func IndexDockerFolders(username string) (any, error) {
-	dockerFolders, err := configuredDockerFolders(username)
+// IndexDockerFoldersWithStore is the handler function for indexing all configured Docker folders.
+func IndexDockerFoldersWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load user config: %w", err)
 	}
 
 	for _, dockerFolder := range dockerFolders {
-		if err := indexDockerFolderPath(username, dockerFolder); err != nil {
+		if err := indexDockerFolderPath(ctx, username, dockerFolder); err != nil {
 			return nil, err
 		}
 	}
@@ -1516,22 +1537,20 @@ func extractStackIcon(composePath string) (string, error) {
 	return "", nil
 }
 
-// discoverOfflineStacks searches the indexer for compose files and adds them as offline stacks
-// It merges with existing projects to handle duplicates
-func discoverOfflineStacks(username string, projects map[string]*ComposeProject) error {
-	cfg, _, err := config.Load(username)
+// discoverOfflineStacksWithStore searches the indexer for compose files and adds them as offline stacks.
+// It merges with existing projects to handle duplicates.
+func discoverOfflineStacksWithStore(ctx context.Context, username string, store *config.UserStore, projects map[string]*ComposeProject) error {
+	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return fmt.Errorf("failed to load user config: %w", err)
 	}
-
-	dockerFolders := dockerFoldersFromConfig(cfg)
 	if len(dockerFolders) == 0 {
 		slog.Debug("no docker folders configured; skipping offline stack discovery", "component", "docker", "subsystem", "compose", "user", username)
 		return nil
 	}
 
 	for _, dockerFolder := range dockerFolders {
-		yamlFiles, err := searchIndexerForYAML(dockerFolder)
+		yamlFiles, err := searchIndexerForYAML(ctx, dockerFolder)
 		if err != nil {
 			return fmt.Errorf("failed to search indexer: %w", err)
 		}
@@ -1605,11 +1624,10 @@ func extractComposeIcon(composePath string) string {
 	return icon
 }
 
-// DeleteComposeStack runs docker compose down and deletes the compose file(s)
-func DeleteComposeStack(username, projectName string) error {
-	slog.Info("delete compose stack requested", "component", "docker", "subsystem", "compose", "user", username, "service", projectName)
+// DeleteComposeStackWithStore runs docker compose down and deletes the compose file(s)
+func DeleteComposeStackWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) error {
 	// Get project details to find config files
-	projects, err := ListComposeProjects(username)
+	projects, err := ListComposeProjectsWithStore(ctx, username, store)
 	if err != nil {
 		return fmt.Errorf("failed to list compose projects: %w", err)
 	}
@@ -1640,7 +1658,7 @@ func DeleteComposeStack(username, projectName string) error {
 
 		collector := &composeMessageCollector{}
 		err := composeDownWithSDK(
-			context.Background(),
+			ctx,
 			projectName,
 			project.ConfigFiles[0],
 			project.WorkingDir,

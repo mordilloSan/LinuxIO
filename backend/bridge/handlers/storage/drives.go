@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,8 +47,8 @@ var (
 	nvmeStateRe       = regexp.MustCompile(`Power State:\s+(\d+)`)
 )
 
-func FetchDriveInfo() ([]DriveInfo, error) {
-	out, err := exec.Command("lsblk", "-d", "-O", "-J").Output()
+func FetchDriveInfo(ctx context.Context) ([]DriveInfo, error) {
+	out, err := exec.CommandContext(ctx, "lsblk", "-d", "-O", "-J").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute lsblk: %w", err)
 	}
@@ -59,16 +60,19 @@ func FetchDriveInfo() ([]DriveInfo, error) {
 
 	drives := make([]DriveInfo, 0, len(parsed.BlockDevices))
 	for _, dev := range parsed.BlockDevices {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if dev.Type != "disk" {
 			continue
 		}
-		drives = append(drives, buildDriveInfo(dev))
+		drives = append(drives, buildDriveInfo(ctx, dev))
 	}
 
 	return drives, nil
 }
 
-func buildDriveInfo(dev BlockDevice) DriveInfo {
+func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 	drive := DriveInfo{
 		Name:   dev.Name,
 		Model:  strings.TrimSpace(dev.Model),
@@ -79,7 +83,7 @@ func buildDriveInfo(dev BlockDevice) DriveInfo {
 		RO:     dev.RO,
 	}
 
-	if smart, err := FetchSmartInfo(dev.Name); err != nil {
+	if smart, err := FetchSmartInfo(ctx, dev.Name); err != nil {
 		drive.SmartError = err.Error()
 	} else {
 		drive.Smart = smart
@@ -93,7 +97,7 @@ func buildDriveInfo(dev BlockDevice) DriveInfo {
 	}
 
 	if isNVMeDevice(dev) {
-		if power, err := GetNVMePowerState(dev.Name); err != nil {
+		if power, err := GetNVMePowerState(ctx, dev.Name); err != nil {
 			drive.PowerError = err.Error()
 		} else {
 			drive.Power = power
@@ -111,7 +115,7 @@ func isNVMeDevice(dev BlockDevice) bool {
 	return dev.Tran == "nvme"
 }
 
-func FetchSmartInfo(device string) (map[string]any, error) {
+func FetchSmartInfo(ctx context.Context, device string) (map[string]any, error) {
 	if !validDeviceNameRe.MatchString(device) {
 		return nil, errors.New("invalid device name")
 	}
@@ -121,7 +125,7 @@ func FetchSmartInfo(device string) (map[string]any, error) {
 		return nil, fmt.Errorf("smartctl not found: %w", err)
 	}
 
-	cmd := exec.Command(smartctlPath, "--json", "-x", "/dev/"+device)
+	cmd := exec.CommandContext(ctx, smartctlPath, "--json", "-x", "/dev/"+device)
 	out, err := cmd.Output()
 	if err != nil {
 		// smartctl returns non-zero if drive doesn't support SMART, etc.
@@ -137,9 +141,9 @@ func FetchSmartInfo(device string) (map[string]any, error) {
 	return parsed, nil
 }
 
-func GetNVMePowerState(device string) (*InferredPowerData, error) {
+func GetNVMePowerState(ctx context.Context, device string) (*InferredPowerData, error) {
 	// Step 1: Get supported power states
-	cmd := exec.Command("nvme", "id-ctrl", "/dev/"+device)
+	cmd := exec.CommandContext(ctx, "nvme", "id-ctrl", "/dev/"+device)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run nvme id-ctrl for %s: %w", device, err)
@@ -172,7 +176,7 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 		return nil, fmt.Errorf("no power states found for %s", device)
 	}
 
-	currentState, estimated := resolveCurrentNVMePowerState(device, states)
+	currentState, estimated := resolveCurrentNVMePowerState(ctx, device, states)
 
 	return &InferredPowerData{
 		CurrentState: currentState,
@@ -181,8 +185,8 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 	}, nil
 }
 
-func resolveCurrentNVMePowerState(device string, states []PowerStateInfo) (int, float64) {
-	cmd := exec.Command("nvme", "smart-log", "/dev/"+device)
+func resolveCurrentNVMePowerState(ctx context.Context, device string, states []PowerStateInfo) (int, float64) {
+	cmd := exec.CommandContext(ctx, "nvme", "smart-log", "/dev/"+device)
 	out, err := cmd.Output()
 	if err != nil {
 		if len(states) > 0 {
@@ -211,7 +215,7 @@ func resolveCurrentNVMePowerState(device string, states []PowerStateInfo) (int, 
 
 // RunSmartTest starts a SMART self-test on the specified device.
 // testType can be "short" or "long" (extended).
-func RunSmartTest(device, testType string) (map[string]any, error) {
+func RunSmartTest(ctx context.Context, device, testType string) (map[string]any, error) {
 	if !validDeviceNameRe.MatchString(device) {
 		return nil, errors.New("invalid device name")
 	}
@@ -233,7 +237,7 @@ func RunSmartTest(device, testType string) (map[string]any, error) {
 	}
 
 	// Run the self-test
-	cmd := exec.Command(smartctlPath, "-t", smartTestArg, "/dev/"+device)
+	cmd := exec.CommandContext(ctx, smartctlPath, "-t", smartTestArg, "/dev/"+device)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// smartctl may return non-zero even on success for some operations

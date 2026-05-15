@@ -505,30 +505,28 @@ const useUpdateController = (): UpdateContextValue => {
 const useUpdateNavigationGuard = (isUpdating: boolean) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentPath = `${location.pathname}${location.search}${location.hash}`;
   const lastSafePathRef = useRef(
     `${location.pathname}${location.search}${location.hash}`,
   );
 
   useEffect(() => {
     if (!isUpdating) {
-      lastSafePathRef.current = `${location.pathname}${location.search}${location.hash}`;
+      lastSafePathRef.current = currentPath;
     }
-  }, [isUpdating, location.hash, location.pathname, location.search]);
+  }, [isUpdating, currentPath]);
 
   useEffect(() => {
     if (!isUpdating) return;
-    const currentPath = `${location.pathname}${location.search}${location.hash}`;
     if (currentPath !== lastSafePathRef.current) {
       navigate(lastSafePathRef.current, { replace: true });
     }
-  }, [isUpdating, location.hash, location.pathname, location.search, navigate]);
+  }, [isUpdating, currentPath, navigate]);
 
   const handleBeforeUnload = useCallback(
     (event: BeforeUnloadEvent) => {
       if (!isUpdating) return;
       event.preventDefault();
-      const legacyEvent: { returnValue?: string } = event;
-      legacyEvent.returnValue = "";
     },
     [isUpdating],
   );

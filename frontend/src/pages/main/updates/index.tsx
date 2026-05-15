@@ -26,7 +26,7 @@ const Updates: React.FC = () => {
     data: rawUpdates,
     isPending: isLoading,
     refetch,
-  } = linuxio.dbus.get_updates_basic.useQuery({
+  } = linuxio.updates.get_updates_basic.useQuery({
     enabled: !packageKitUnavailable,
     refetchInterval: 50000,
   });

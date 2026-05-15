@@ -2,36 +2,85 @@ package wireguard
 
 import (
 	"context"
-	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers wireguard handlers with the new handler system
-func RegisterHandlers() {
-	reg := func(action string, fn func([]string) (any, error)) {
-		ipc.RegisterFunc("wireguard", action, func(_ context.Context, args []string, emit ipc.Events) error {
-			if action != "list_interfaces" && action != "list_peers" && action != "peer_qrcode" && action != "peer_config_download" {
-				slog.Info("wireguard action requested", "component", "wireguard", "mode", action)
-			}
-			result, err := fn(args)
-			if err != nil {
-				return err
-			}
-			return emit.Result(result)
-		})
-	}
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "wireguard", []bridgeipc.Command{
+		{Name: "list_interfaces", Mode: bridgeipc.ModeQuery, Handler: handleListInterfaces},
+		{Name: "add_interface", Mode: bridgeipc.ModeJob, Handler: handleAddInterface},
+		{Name: "remove_interface", Mode: bridgeipc.ModeJob, Handler: handleRemoveInterface},
+		{Name: "list_peers", Mode: bridgeipc.ModeQuery, Handler: handleListPeers},
+		{Name: "add_peer", Mode: bridgeipc.ModeJob, Handler: handleAddPeer},
+		{Name: "remove_peer", Mode: bridgeipc.ModeJob, Handler: handleRemovePeer},
+		{Name: "peer_qrcode", Mode: bridgeipc.ModeQuery, Handler: handlePeerQRCode},
+		{Name: "peer_config_download", Mode: bridgeipc.ModeQuery, Handler: handlePeerConfigDownload},
+		{Name: "up_interface", Mode: bridgeipc.ModeJob, Handler: handleUpInterface},
+		{Name: "down_interface", Mode: bridgeipc.ModeJob, Handler: handleDownInterface},
+		{Name: "enable_interface", Mode: bridgeipc.ModeJob, Handler: handleEnableInterface},
+		{Name: "disable_interface", Mode: bridgeipc.ModeJob, Handler: handleDisableInterface},
+	})
+}
 
-	reg("list_interfaces", ListInterfaces)
-	reg("add_interface", AddInterface)
-	reg("remove_interface", RemoveInterface)
-	reg("list_peers", ListPeers)
-	reg("add_peer", AddPeer)
-	reg("remove_peer", RemovePeerByName)
-	reg("peer_qrcode", PeerQRCode)
-	reg("peer_config_download", PeerConfigDownload)
-	reg("up_interface", UpInterface)
-	reg("down_interface", DownInterface)
-	reg("enable_interface", EnableInterface)
-	reg("disable_interface", DisableInterface)
+func handleListInterfaces(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := ListInterfaces(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleAddInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := AddInterface(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleRemoveInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := RemoveInterface(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleListPeers(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := ListPeers(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleAddPeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := AddPeer(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleRemovePeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := RemovePeerByName(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handlePeerQRCode(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := PeerQRCode(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handlePeerConfigDownload(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := PeerConfigDownload(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleUpInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := UpInterface(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleDownInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := DownInterface(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleEnableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := EnableInterface(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleDisableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := DisableInterface(ctx, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }

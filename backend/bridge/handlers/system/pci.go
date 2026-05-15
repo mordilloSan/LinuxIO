@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jaypipes/ghw/pkg/pci"
@@ -13,7 +14,11 @@ type PCIDevice struct {
 	Slot   string `json:"slot"`
 }
 
-func FetchPCIDevices() ([]PCIDevice, error) {
+func FetchPCIDevices(ctx context.Context) ([]PCIDevice, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// ghw has no context support; ctx is accepted for consistent handler flow.
 	info, err := pci.New()
 	if err != nil || info == nil {
 		return nil, fmt.Errorf("failed to retrieve PCI information: %w", err)

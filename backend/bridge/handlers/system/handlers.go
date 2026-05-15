@@ -2,332 +2,149 @@ package system
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-	"strconv"
-	"strings"
-	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-type systemRegistration struct {
-	command    string
-	handler    ipc.HandlerFunc
-	privileged bool
-}
-
 // RegisterHandlers registers all system handlers with the global registry
-func RegisterHandlers(sess *session.Session) {
-	registerCapabilitiesHandlers()
-	registerSystemHandlers(sess, []systemRegistration{
-		{command: "get_cpu_info", handler: handleGetCPUInfo},
-		{command: "get_sensor_info", handler: handleGetSensorInfo},
-		{command: "get_motherboard_info", handler: handleGetMotherboardInfo},
-		{command: "get_memory_info", handler: handleGetMemoryInfo},
-		{command: "get_host_info", handler: handleGetHostInfo},
-		{command: "get_uptime", handler: handleGetUptime},
-		{command: "get_fs_info", handler: handleGetFilesystemInfo},
-		{command: "get_processes", handler: handleGetProcesses},
-		{command: "get_services", handler: handleGetServices},
-		{command: "get_gpu_info", handler: handleGetGPUInfo},
-		{command: "get_updates_fast", handler: handleGetUpdatesFast},
-		{command: "get_network_info", handler: handleGetNetworkInfo},
-		{command: "get_disk_throughput", handler: handleGetDiskThroughput},
-		{command: "get_system_info", handler: handleGetSystemInfo},
-		{command: "get_pci_devices", handler: handleGetPCIDevices},
-		{command: "get_memory_modules", handler: handleGetMemoryModules},
-		{command: "get_health_summary", handler: makeGetHealthSummaryHandler(sess)},
-		{command: "list_failed_login_events", handler: makeListFailedLoginEventsHandler(sess), privileged: true},
-		{command: "dismiss_unclean_shutdown", handler: makeDismissUncleanShutdownHandler(sess)},
-		{command: "dismiss_failed_login_alert", handler: makeDismissFailedLoginAlertHandler(sess)},
-		{command: "get_server_time", handler: handleGetServerTime},
-		{command: "get_timezones", handler: handleGetTimezones},
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	handlers := systemHandlers{rt: rt}
+	bridgeipc.RegisterRoutes(router, "system", []bridgeipc.Command{
+		{Name: "get_capabilities", Mode: bridgeipc.ModeQuery, Handler: handleGetCapabilities},
+		{Name: "get_cpu_info", Mode: bridgeipc.ModeQuery, Handler: handleGetCPUInfo},
+		{Name: "get_sensor_info", Mode: bridgeipc.ModeQuery, Handler: handleGetSensorInfo},
+		{Name: "get_motherboard_info", Mode: bridgeipc.ModeQuery, Handler: handleGetMotherboardInfo},
+		{Name: "get_memory_info", Mode: bridgeipc.ModeQuery, Handler: handleGetMemoryInfo},
+		{Name: "get_host_info", Mode: bridgeipc.ModeQuery, Handler: handleGetHostInfo},
+		{Name: "get_uptime", Mode: bridgeipc.ModeQuery, Handler: handleGetUptime},
+		{Name: "get_fs_info", Mode: bridgeipc.ModeQuery, Handler: handleGetFilesystemInfo},
+		{Name: "get_processes", Mode: bridgeipc.ModeQuery, Handler: handleGetProcesses},
+		{Name: "get_services", Mode: bridgeipc.ModeQuery, Handler: handleGetServices},
+		{Name: "get_gpu_info", Mode: bridgeipc.ModeQuery, Handler: handleGetGPUInfo},
+		{Name: "get_updates_fast", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesFast},
+		{Name: "get_network_info", Mode: bridgeipc.ModeQuery, Handler: handleGetNetworkInfo},
+		{Name: "get_disk_throughput", Mode: bridgeipc.ModeQuery, Handler: handleGetDiskThroughput},
+		{Name: "get_system_info", Mode: bridgeipc.ModeQuery, Handler: handleGetSystemInfo},
+		{Name: "get_pci_devices", Mode: bridgeipc.ModeQuery, Handler: handleGetPCIDevices},
+		{Name: "get_memory_modules", Mode: bridgeipc.ModeQuery, Handler: handleGetMemoryModules},
+		{Name: "get_health_summary", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetHealthSummary},
+		{Name: "list_failed_login_events", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListFailedLoginEvents, Privileged: true},
+		{Name: "dismiss_unclean_shutdown", Mode: bridgeipc.ModeJob, Handler: handlers.handleDismissUncleanShutdown},
+		{Name: "dismiss_failed_login_alert", Mode: bridgeipc.ModeJob, Handler: handlers.handleDismissFailedLoginAlert},
+		{Name: "get_server_time", Mode: bridgeipc.ModeQuery, Handler: handleGetServerTime},
+		{Name: "get_timezones", Mode: bridgeipc.ModeQuery, Handler: handleGetTimezones},
 	})
 }
 
-func registerSystemHandlers(sess *session.Session, registrations []systemRegistration) {
-	for _, registration := range registrations {
-		handler := registration.handler
-		if registration.privileged {
-			handler = privilege.RequirePrivilegedIPC(sess, handler)
-		}
-		ipc.RegisterFunc("system", registration.command, handler)
-	}
+func handleGetCapabilities(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, buildCapabilitiesResponse(ctx), nil)
 }
 
-func handleGetCPUInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchCPUInfo)
+func handleGetCPUInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchCPUInfo(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetSensorInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emit.Result(FetchSensorsInfo())
+func handleGetSensorInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, FetchSensorsInfo(ctx), nil)
 }
 
-func handleGetMotherboardInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchBaseboardInfo)
+func handleGetMotherboardInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchBaseboardInfo(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetMemoryInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchMemoryInfo)
+func handleGetMemoryInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchMemoryInfo(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetHostInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchHostInfo)
+func handleGetHostInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchHostInfo(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUptime(ctx context.Context, args []string, emit ipc.Events) error {
-	uptimeSeconds, err := FetchUptimeSeconds()
-	if err != nil {
-		return err
-	}
-	return emit.Result(uptimeSeconds)
+func handleGetUptime(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	uptimeSeconds, err := FetchUptimeSeconds(ctx)
+	return bridgeipc.EmitResult(emit, uptimeSeconds, err)
 }
 
-func handleGetFilesystemInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemArgCall(emit, parseIncludeAllArg(args), FetchFileSystemInfo)
+func handleGetFilesystemInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchFileSystemInfo(ctx, parseIncludeAllArg(args))
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetProcesses(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchProcesses)
+func handleGetProcesses(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchProcesses(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetServices(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchServices)
+func handleGetServices(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchServices(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetGPUInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchGPUInfo)
+func handleGetGPUInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchGPUInfo(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdatesFast(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, GetUpdatesFast)
+func handleGetUpdatesFast(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := GetUpdatesFast(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetNetworkInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchNetworks)
+func handleGetNetworkInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchNetworks(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetDiskThroughput(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchDiskThroughput)
+func handleGetDiskThroughput(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchDiskThroughput(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetSystemInfo(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchSystemInfo)
+func handleGetSystemInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchSystemInfo(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetPCIDevices(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchPCIDevices)
+func handleGetPCIDevices(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchPCIDevices(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetMemoryModules(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, FetchMemoryModules)
+func handleGetMemoryModules(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := FetchMemoryModules(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetServerTime(ctx context.Context, args []string, emit ipc.Events) error {
-	return emit.Result(time.Now().Format(time.RFC3339))
+func handleGetServerTime(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, GetCurrentServerTime(ctx), nil)
 }
 
-func handleGetTimezones(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitSystemCall(emit, GetTimezones)
+func handleGetTimezones(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := GetTimezones(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func makeGetHealthSummaryHandler(sess *session.Session) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := FetchSystemHealthSummary(sess.User.Username, sess.Privileged, sess.Timing.CreatedAt)
-		if err == nil && result != nil {
-			applyHealthDismissals(sess.User.Username, result)
-		}
-		return emitSystemResult(emit, result, err)
-	}
+func (h systemHandlers) handleGetHealthSummary(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := GetHealthSummaryForRuntime(ctx, h.rt)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func makeListFailedLoginEventsHandler(sess *session.Session) ipc.HandlerFunc {
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		limit := parsePositiveLimitArg(args, 24, 100)
-		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-
-		result, err := FetchFailedLoginEvents(ctx, sess.User.Username, sess.Timing.CreatedAt, limit)
-		return emitSystemResult(emit, result, err)
-	}
+func (h systemHandlers) handleListFailedLoginEvents(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := ListFailedLoginEventsForRuntime(ctx, h.rt, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-// applyHealthDismissals suppresses acknowledged one-shot health signals. Any
-// error reading the user's settings is treated as "not dismissed" so warnings
-// still surface.
-func applyHealthDismissals(username string, summary *SystemHealthSummary) {
-	if !hasDismissibleHealthSignal(summary) {
-		return
-	}
-	cfg, _, err := config.Load(username)
-	if err != nil {
-		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
-		return
-	}
-	if cfg.Dismissals == nil {
-		return
-	}
-	applyUncleanShutdownDismissal(summary, cfg.Dismissals)
-	applyFailedLoginAlertDismissal(summary, cfg.Dismissals)
+func (h systemHandlers) handleDismissUncleanShutdown(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := DismissUncleanShutdownForRuntime(ctx, h.rt, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func hasDismissibleHealthSignal(summary *SystemHealthSummary) bool {
-	return (summary.UncleanShutdown && summary.UncleanShutdownBootID != "") ||
-		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
-}
-
-func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
-	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
-		return
-	}
-	if dismissals.UncleanShutdownBootID == summary.UncleanShutdownBootID {
-		summary.UncleanShutdown = false
-		summary.UncleanShutdownBootID = ""
-	}
-}
-
-func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
-	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
-		return
-	}
-	if dismissals.FailedLoginAlertID == summary.FailedLoginAlert.ID {
-		summary.FailedLoginAlert = nil
-	}
-}
-
-func makeDismissUncleanShutdownHandler(sess *session.Session) ipc.HandlerFunc {
-	username := sess.User.Username
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) < 1 {
-			return ipc.ErrInvalidArgs
-		}
-		bootID := strings.TrimSpace(args[0])
-		if !isValidBootID(bootID) {
-			return ipc.ErrInvalidArgs
-		}
-
-		cfg, _, err := config.Load(username)
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.Dismissals{}
-		}
-		cfg.Dismissals.UncleanShutdownBootID = bootID
-
-		if _, err := config.Save(username, cfg); err != nil {
-			return fmt.Errorf("save config: %w", err)
-		}
-		slog.Info("dismissed unclean shutdown", "user", username, "bootId", bootID)
-		return emit.Result(map[string]any{"message": "dismissed"})
-	}
-}
-
-func makeDismissFailedLoginAlertHandler(sess *session.Session) ipc.HandlerFunc {
-	username := sess.User.Username
-	return func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) < 1 {
-			return ipc.ErrInvalidArgs
-		}
-		alertID := strings.TrimSpace(args[0])
-		if !isValidFailedLoginAlertID(alertID) {
-			return ipc.ErrInvalidArgs
-		}
-
-		cfg, _, err := config.Load(username)
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.Dismissals{}
-		}
-		cfg.Dismissals.FailedLoginAlertID = alertID
-
-		if _, err := config.Save(username, cfg); err != nil {
-			return fmt.Errorf("save config: %w", err)
-		}
-		slog.Info("dismissed failed login alert", "user", username, "alertId", alertID)
-		return emit.Result(map[string]any{"message": "dismissed"})
-	}
-}
-
-// isValidBootID guards against an unbounded write to the user's settings file.
-// Real boot IDs are short unix-epoch seconds strings (≤ 11 digits); allow up
-// to 32 digits for headroom.
-func isValidBootID(s string) bool {
-	if s == "" || len(s) > 32 {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func isValidFailedLoginAlertID(s string) bool {
-	const prefix = "failed_login_"
-	if !strings.HasPrefix(s, prefix) || len(s) != len(prefix)+64 {
-		return false
-	}
-	for _, r := range s[len(prefix):] {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
-			return false
-		}
-	}
-	return true
-}
-
-func parseIncludeAllArg(args []string) bool {
-	if len(args) == 0 {
-		return false
-	}
-	switch args[0] {
-	case "1", "true", "yes":
-		return true
-	default:
-		return false
-	}
-}
-
-func parsePositiveLimitArg(args []string, fallback, max int) int {
-	if fallback <= 0 {
-		fallback = 24
-	}
-	if max <= 0 {
-		max = fallback
-	}
-	if len(args) == 0 {
-		return fallback
-	}
-	value, err := strconv.Atoi(strings.TrimSpace(args[0]))
-	if err != nil || value <= 0 {
-		return fallback
-	}
-	if value > max {
-		return max
-	}
-	return value
-}
-
-func emitSystemResult(emit ipc.Events, result any, err error) error {
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
-}
-
-func emitSystemCall[T any](emit ipc.Events, fn func() (T, error)) error {
-	result, err := fn()
-	return emitSystemResult(emit, result, err)
-}
-
-func emitSystemArgCall[A any, T any](emit ipc.Events, arg A, fn func(A) (T, error)) error {
-	result, err := fn(arg)
-	return emitSystemResult(emit, result, err)
+func (h systemHandlers) handleDismissFailedLoginAlert(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := DismissFailedLoginAlertForRuntime(ctx, h.rt, args)
+	return bridgeipc.EmitResult(emit, result, err)
 }

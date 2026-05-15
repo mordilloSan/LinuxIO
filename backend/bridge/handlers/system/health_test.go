@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/stretchr/testify/require"
 )
 

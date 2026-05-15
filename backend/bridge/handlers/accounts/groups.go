@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,7 +17,7 @@ const (
 )
 
 // ListGroups returns all system groups
-func ListGroups() ([]Group, error) {
+func ListGroups(ctx context.Context) ([]Group, error) {
 	groups := []Group{}
 
 	file, err := os.Open(groupFile)
@@ -27,38 +28,18 @@ func ListGroups() ([]Group, error) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		line := scanner.Text()
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 
-		parts := strings.Split(line, ":")
-		if len(parts) < 4 {
+		group, ok := parseGroupLine(line)
+		if !ok {
 			continue
 		}
-
-		gid, err := strconv.Atoi(parts[2])
-		if err != nil {
-			continue
-		}
-
-		members := []string{}
-		if parts[3] != "" {
-			for member := range strings.SplitSeq(parts[3], ",") {
-				member = strings.TrimSpace(member)
-				if member != "" {
-					members = append(members, member)
-				}
-			}
-		}
-
-		group := Group{
-			Name:     parts[0],
-			GID:      gid,
-			Members:  members,
-			IsSystem: gid < systemGID,
-		}
-
 		groups = append(groups, group)
 	}
 
@@ -69,9 +50,39 @@ func ListGroups() ([]Group, error) {
 	return groups, nil
 }
 
+func parseGroupLine(line string) (Group, bool) {
+	parts := strings.Split(line, ":")
+	if len(parts) < 4 {
+		return Group{}, false
+	}
+
+	gid, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return Group{}, false
+	}
+
+	return Group{
+		Name:     parts[0],
+		GID:      gid,
+		Members:  parseGroupMembers(parts[3]),
+		IsSystem: gid < systemGID,
+	}, true
+}
+
+func parseGroupMembers(raw string) []string {
+	members := []string{}
+	for member := range strings.SplitSeq(raw, ",") {
+		member = strings.TrimSpace(member)
+		if member != "" {
+			members = append(members, member)
+		}
+	}
+	return members
+}
+
 // GetGroup returns a single group by name
-func GetGroup(name string) (*Group, error) {
-	groups, err := ListGroups()
+func GetGroup(ctx context.Context, name string) (*Group, error) {
+	groups, err := ListGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +97,7 @@ func GetGroup(name string) (*Group, error) {
 }
 
 // CreateGroup creates a new system group
-func CreateGroup(req CreateGroupRequest) error {
+func CreateGroup(ctx context.Context, req CreateGroupRequest) error {
 	if req.Name == "" {
 		return fmt.Errorf("group name is required")
 	}
@@ -99,7 +110,7 @@ func CreateGroup(req CreateGroupRequest) error {
 
 	args = append(args, req.Name)
 
-	cmd := exec.Command("groupadd", args...)
+	cmd := exec.CommandContext(ctx, "groupadd", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to create group: %s", strings.TrimSpace(string(output)))
@@ -109,7 +120,7 @@ func CreateGroup(req CreateGroupRequest) error {
 }
 
 // DeleteGroup deletes a system group
-func DeleteGroup(name string) error {
+func DeleteGroup(ctx context.Context, name string) error {
 	if name == "" {
 		return fmt.Errorf("group name is required")
 	}
@@ -119,25 +130,25 @@ func DeleteGroup(name string) error {
 	}
 
 	// Check if group exists
-	_, err := GetGroup(name)
+	_, err := GetGroup(ctx, name)
 	if err != nil {
 		return err
 	}
 
 	// Check if group is a primary group for any user
-	users, err := ListUsers()
+	users, err := ListUsers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check users: %w", err)
 	}
 
-	group, _ := GetGroup(name)
+	group, _ := GetGroup(ctx, name)
 	for _, user := range users {
 		if user.GID == group.GID {
 			return fmt.Errorf("cannot delete group: it is the primary group of user '%s'", user.Username)
 		}
 	}
 
-	cmd := exec.Command("groupdel", name)
+	cmd := exec.CommandContext(ctx, "groupdel", name)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to delete group: %s", strings.TrimSpace(string(output)))
@@ -190,7 +201,7 @@ func sameGroupMembers(current, desired []string) bool {
 }
 
 // ModifyGroupMembers sets the members of a group
-func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
+func ModifyGroupMembers(ctx context.Context, req ModifyGroupMembersRequest) error {
 	if req.GroupName == "" {
 		return fmt.Errorf("group name is required")
 	}
@@ -200,7 +211,7 @@ func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 	}
 
 	// Check if group exists
-	group, err := GetGroup(req.GroupName)
+	group, err := GetGroup(ctx, req.GroupName)
 	if err != nil {
 		return err
 	}
@@ -212,7 +223,7 @@ func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 
 	// Validate all users exist
 	for _, member := range members {
-		if _, userErr := GetUser(member); userErr != nil {
+		if _, userErr := GetUser(ctx, member); userErr != nil {
 			return fmt.Errorf("user not found: %s", member)
 		}
 	}
@@ -222,7 +233,7 @@ func ModifyGroupMembers(req ModifyGroupMembersRequest) error {
 		return nil
 	}
 
-	cmd := exec.Command("gpasswd", "-M", strings.Join(members, ","), req.GroupName)
+	cmd := exec.CommandContext(ctx, "gpasswd", "-M", strings.Join(members, ","), req.GroupName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set group members for %s: %s", req.GroupName, strings.TrimSpace(string(output)))

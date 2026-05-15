@@ -20,10 +20,8 @@ var (
 	dockerClientRefs int
 	dockerIdleTimer  *time.Timer
 	ensureNetOnce    sync.Once
-	// watchtowerOnce fires once per bridge session on the first Docker operation.
+	// watchtowerOnce fires once per bridge session.
 	watchtowerOnce sync.Once
-	// sessionUsername is set by RegisterHandlers and read by getClient.
-	sessionUsername string
 )
 
 // getClient returns the shared Docker client, creating it if necessary.
@@ -45,9 +43,11 @@ func getClient() (*client.Client, error) {
 		}
 		dockerClient = cli
 		// Ensure the shared Docker network exists once per client lifetime.
-		go ensureNetOnce.Do(EnsureLinuxIONetwork)
-		// Sync Watchtower once per session on first Docker operation.
-		go watchtowerOnce.Do(func() { SyncWatchtowerStack(sessionUsername) })
+		go ensureNetOnce.Do(func() {
+			ctx, cancel := detachedDockerStartupContext()
+			defer cancel()
+			EnsureLinuxIONetwork(ctx)
+		})
 	}
 
 	dockerClientRefs++
@@ -94,17 +94,22 @@ func releaseClient(_ *client.Client) {
 // It uses a short-lived throwaway client so that repeated capability polls
 // (which the frontend runs every ~minute) do not reset the shared client's
 // idle timer and prevent it from ever being released.
-func CheckDockerAvailability() (bool, error) {
+func CheckDockerAvailability(ctx context.Context) (bool, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
 	defer cli.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	if _, err := cli.Ping(ctx); err != nil {
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 	return true, nil
+}
+
+// detachedDockerStartupContext bounds Docker setup work started from client creation.
+func detachedDockerStartupContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 30*time.Second)
 }

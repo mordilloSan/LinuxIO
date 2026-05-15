@@ -13,18 +13,25 @@ import { linuxio, CACHE_TTL_MS, LinuxIOError, waitForStreamMux } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
+  AppSettings,
   AppViewModes,
-  BackendSettings,
+  ConfigPatch,
   ConfigContextType,
   ConfigProviderProps,
+  ConfigValueKey,
+  ConfigValueMap,
+  DockerDashboardSections,
+  HardwareSections,
   TableCardViewMode,
+  ThemeColors,
+  ThemeColorsByMode,
 } from "@/types/config";
 
 const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
   mode === "card" || mode === "table";
 
 const normalizeViewModes = (
-  viewModes: BackendSettings["appSettings"]["viewModes"] | undefined,
+  viewModes: AppSettings["viewModes"] | undefined,
 ): AppViewModes | undefined => {
   if (!viewModes) return undefined;
 
@@ -36,116 +43,252 @@ const normalizeViewModes = (
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 };
-// Transform backend settings to frontend flat config
-const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
-  theme: settings.appSettings.theme,
-  primaryColor: settings.appSettings.primaryColor,
-  themeColors: settings.appSettings.themeColors,
-  sidebarCollapsed: settings.appSettings.sidebarCollapsed,
-  showHiddenFiles: settings.appSettings.showHiddenFiles,
-  dashboardOrder: settings.appSettings.dashboardOrder,
-  hiddenCards: settings.appSettings.hiddenCards,
-  containerOrder: settings.appSettings.containerOrder,
-  dockerDashboardSections: settings.appSettings.dockerDashboardSections,
-  hardwareSections: settings.appSettings.hardwareSections,
-  viewModes: normalizeViewModes(settings.appSettings.viewModes),
-  chunkSizeMB: settings.appSettings.chunkSizeMB,
-  dockerFolders: settings.docker.folders,
-  jobs: settings.jobs,
-});
 
-// Transform frontend config to backend settings format (partial update)
-const toBackendSettings = (config: Partial<AppConfig>) => {
-  const payload: any = {};
-
-  // Map flat config to nested structure
-  if (
-    config.theme !== undefined ||
-    config.primaryColor !== undefined ||
-    config.themeColors !== undefined ||
-    config.sidebarCollapsed !== undefined ||
-    config.showHiddenFiles !== undefined ||
-    config.dashboardOrder !== undefined ||
-    config.hiddenCards !== undefined ||
-    config.containerOrder !== undefined ||
-    config.dockerDashboardSections !== undefined ||
-    config.hardwareSections !== undefined ||
-    config.viewModes !== undefined ||
-    config.chunkSizeMB !== undefined
-  ) {
-    payload.appSettings = {};
-    if (config.theme !== undefined) payload.appSettings.theme = config.theme;
-    if (config.primaryColor !== undefined)
-      payload.appSettings.primaryColor = config.primaryColor;
-    if (config.themeColors !== undefined)
-      payload.appSettings.themeColors = config.themeColors;
-    if (config.sidebarCollapsed !== undefined)
-      payload.appSettings.sidebarCollapsed = config.sidebarCollapsed;
-    if (config.showHiddenFiles !== undefined)
-      payload.appSettings.showHiddenFiles = config.showHiddenFiles;
-    if (config.dashboardOrder !== undefined)
-      payload.appSettings.dashboardOrder = config.dashboardOrder;
-    if (config.hiddenCards !== undefined)
-      payload.appSettings.hiddenCards = config.hiddenCards;
-    if (config.containerOrder !== undefined)
-      payload.appSettings.containerOrder = config.containerOrder;
-    if (config.dockerDashboardSections !== undefined)
-      payload.appSettings.dockerDashboardSections =
-        config.dockerDashboardSections;
-    if (config.hardwareSections !== undefined)
-      payload.appSettings.hardwareSections = config.hardwareSections;
-    if (config.viewModes !== undefined)
-      payload.appSettings.viewModes = config.viewModes;
-    if (config.chunkSizeMB !== undefined)
-      payload.appSettings.chunkSizeMB = config.chunkSizeMB;
-  }
-
-  if (config.dockerFolders !== undefined) {
-    payload.docker = { folders: config.dockerFolders };
-  }
-  if (config.jobs !== undefined) {
-    payload.jobs = config.jobs;
-  }
-
-  return payload;
+const defaultThemeColors: ThemeColorsByMode = {
+  light: {
+    backgroundDefault: "#F7F9FC",
+    backgroundPaper: "#FFFFFF",
+    headerBackground: "#F7F9FC",
+    footerBackground: "#F7F9FC",
+    sidebarBackground: "#F7F9FC",
+    cardBackground: "#FFFFFF",
+    dialogBorder: "#FFFFFF",
+    dialogGlow: "#FFFFFF",
+    dialogBackdrop: "#000000",
+    codeBackground: "#F5F5F5",
+    codeText: "#333333",
+    chartRx: "#8884D8",
+    chartTx: "#82CA9D",
+    chartNeutral: "#808080",
+    fileBrowserSurface: "#FFFFFF",
+    fileBrowserChrome: "#253137",
+    fileBrowserBreadcrumbBackground: "#D0D4D8",
+    fileBrowserBreadcrumbText: "#5A5A5A",
+  },
+  dark: {
+    backgroundDefault: "#1B2635",
+    backgroundPaper: "#233044",
+    headerBackground: "#1B2635",
+    footerBackground: "#1B2635",
+    sidebarBackground: "#1B2635",
+    cardBackground: "#11192A",
+    dialogBorder: "#FFFFFF",
+    dialogGlow: "#FFFFFF",
+    dialogBackdrop: "#000000",
+    codeBackground: "#1E1E1E",
+    codeText: "#D4D4D4",
+    chartRx: "#8884D8",
+    chartTx: "#82CA9D",
+    chartNeutral: "#808080",
+    fileBrowserSurface: "#20292F",
+    fileBrowserChrome: "#253137",
+    fileBrowserBreadcrumbBackground: "#283136",
+    fileBrowserBreadcrumbText: "#FFFFFF",
+  },
 };
 
 const defaultConfig: AppConfig = {
-  theme: "DARK",
-  primaryColor: "#2196f3",
-  themeColors: undefined,
-  sidebarCollapsed: false,
-  showHiddenFiles: true,
-  dockerFolders: undefined,
-  dashboardOrder: undefined,
-  hiddenCards: undefined,
-  containerOrder: undefined,
-  dockerDashboardSections: undefined,
-  hardwareSections: undefined,
-  viewModes: undefined,
-  chunkSizeMB: undefined,
-  jobs: undefined,
+  appSettings: {
+    theme: "DARK",
+    primaryColor: "#2196f3",
+    themeColors: defaultThemeColors,
+    sidebarCollapsed: false,
+    showHiddenFiles: true,
+    dashboardOrder: [
+      "overview",
+      "system",
+      "cpu",
+      "memory",
+      "docker",
+      "nic",
+      "fs",
+      "mb",
+      "gpu",
+      "drive",
+    ],
+    hiddenCards: [],
+    containerOrder: [],
+    dockerDashboardSections: {
+      overview: true,
+      daemon: true,
+      resources: true,
+    },
+    hardwareSections: {
+      overview: true,
+      hardware: true,
+      sensors: true,
+      systemInfo: true,
+      gpu: true,
+      pciDevices: true,
+      memoryModules: true,
+    },
+    viewModes: {
+      "accounts.groups": "card",
+      "accounts.users": "card",
+      "docker.containers": "card",
+      "docker.images": "card",
+      "docker.networks": "card",
+      "docker.stacks": "card",
+      "docker.volumes": "card",
+      "services.list": "card",
+      shares: "card",
+      "shares.mounts": "card",
+      "sockets.list": "card",
+      "timers.list": "card",
+    },
+    chunkSizeMB: 1,
+  },
+  docker: {
+    folders: ["/var/lib/linuxio/docker"],
+    autoUpdateStacks: [],
+    proxy: {
+      caddyEnabled: false,
+      baseDomain: "",
+      tlsEmail: "",
+    },
+  },
+  jobs: {
+    progressMinIntervalMs: 250,
+    notificationMinIntervalMs: 1000,
+    progressMinBytesMB: 16,
+    heavyArchiveConcurrency: 1,
+    archiveCompressionWorkers: 0,
+    archiveExtractWorkers: 0,
+  },
 };
 
+const cloneThemeColors = (colors?: ThemeColors): ThemeColors | undefined =>
+  colors ? { ...colors } : undefined;
+
+const cloneThemeColorsByMode = (
+  colors?: ThemeColorsByMode,
+): ThemeColorsByMode | undefined =>
+  colors
+    ? {
+        light: cloneThemeColors(colors.light),
+        dark: cloneThemeColors(colors.dark),
+      }
+    : undefined;
+
+const cloneArray = <T,>(items?: T[]): T[] | undefined =>
+  items ? [...items] : undefined;
+
+const cloneRecord = <T,>(
+  value?: Record<string, T>,
+): Record<string, T> | undefined => (value ? { ...value } : undefined);
+
+const cloneDockerDashboardSections = (
+  sections?: DockerDashboardSections,
+): DockerDashboardSections | undefined =>
+  sections ? { ...sections } : undefined;
+
+const cloneHardwareSections = (
+  sections?: HardwareSections,
+): HardwareSections | undefined => (sections ? { ...sections } : undefined);
+
 const applyDefaults = (
-  cfg: Partial<AppConfig> | undefined | null,
-): AppConfig => ({
-  theme: cfg?.theme ?? defaultConfig.theme,
-  primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
-  themeColors: cfg?.themeColors ?? defaultConfig.themeColors,
-  sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,
-  showHiddenFiles: cfg?.showHiddenFiles ?? defaultConfig.showHiddenFiles,
-  dashboardOrder: cfg?.dashboardOrder ?? defaultConfig.dashboardOrder,
-  hiddenCards: cfg?.hiddenCards ?? defaultConfig.hiddenCards,
-  containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
-  dockerDashboardSections:
-    cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
-  hardwareSections: cfg?.hardwareSections ?? defaultConfig.hardwareSections,
-  viewModes: cfg?.viewModes ?? defaultConfig.viewModes,
-  chunkSizeMB: cfg?.chunkSizeMB ?? defaultConfig.chunkSizeMB,
-  jobs: cfg?.jobs ?? defaultConfig.jobs,
-  dockerFolders: cfg?.dockerFolders ?? defaultConfig.dockerFolders,
-});
+  cfg: ConfigPatch | Partial<AppConfig> | null,
+): AppConfig => {
+  const app: Partial<AppSettings> = cfg?.appSettings ?? {};
+  const docker: NonNullable<ConfigPatch["docker"]> = cfg?.docker ?? {};
+  const jobs: Partial<AppConfig["jobs"]> = cfg?.jobs ?? {};
+  const viewModes =
+    normalizeViewModes(app.viewModes) ??
+    cloneRecord(defaultConfig.appSettings.viewModes);
+
+  return {
+    appSettings: {
+      theme: app.theme ?? defaultConfig.appSettings.theme,
+      primaryColor: app.primaryColor ?? defaultConfig.appSettings.primaryColor,
+      themeColors: cloneThemeColorsByMode(
+        app.themeColors ?? defaultConfig.appSettings.themeColors,
+      ),
+      sidebarCollapsed:
+        app.sidebarCollapsed ?? defaultConfig.appSettings.sidebarCollapsed,
+      showHiddenFiles:
+        app.showHiddenFiles ?? defaultConfig.appSettings.showHiddenFiles,
+      dashboardOrder:
+        cloneArray(app.dashboardOrder) ??
+        cloneArray(defaultConfig.appSettings.dashboardOrder),
+      hiddenCards:
+        cloneArray(app.hiddenCards) ??
+        cloneArray(defaultConfig.appSettings.hiddenCards),
+      containerOrder:
+        cloneArray(app.containerOrder) ??
+        cloneArray(defaultConfig.appSettings.containerOrder),
+      dockerDashboardSections:
+        cloneDockerDashboardSections(app.dockerDashboardSections) ??
+        cloneDockerDashboardSections(
+          defaultConfig.appSettings.dockerDashboardSections,
+        ),
+      hardwareSections:
+        cloneHardwareSections(app.hardwareSections) ??
+        cloneHardwareSections(defaultConfig.appSettings.hardwareSections),
+      viewModes,
+      chunkSizeMB: app.chunkSizeMB ?? defaultConfig.appSettings.chunkSizeMB,
+    },
+    docker: {
+      folders:
+        cloneArray(docker.folders) ??
+        cloneArray(defaultConfig.docker.folders) ??
+        [],
+      autoUpdateStacks:
+        cloneArray(docker.autoUpdateStacks) ??
+        cloneArray(defaultConfig.docker.autoUpdateStacks),
+      proxy: {
+        caddyEnabled:
+          docker.proxy?.caddyEnabled ?? defaultConfig.docker.proxy.caddyEnabled,
+        baseDomain:
+          docker.proxy?.baseDomain ?? defaultConfig.docker.proxy.baseDomain,
+        tlsEmail: docker.proxy?.tlsEmail ?? defaultConfig.docker.proxy.tlsEmail,
+      },
+    },
+    jobs: {
+      ...defaultConfig.jobs,
+      ...jobs,
+    },
+    dismissals: cfg?.dismissals ? { ...cfg.dismissals } : undefined,
+  };
+};
+
+const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig =>
+  applyDefaults({
+    appSettings: patch.appSettings
+      ? { ...prev.appSettings, ...patch.appSettings }
+      : prev.appSettings,
+    docker: patch.docker
+      ? {
+          ...prev.docker,
+          ...patch.docker,
+          proxy: patch.docker.proxy
+            ? { ...prev.docker.proxy, ...patch.docker.proxy }
+            : prev.docker.proxy,
+        }
+      : prev.docker,
+    jobs: patch.jobs ? { ...prev.jobs, ...patch.jobs } : prev.jobs,
+    dismissals:
+      patch.dismissals === undefined
+        ? prev.dismissals
+        : { ...prev.dismissals, ...patch.dismissals },
+  });
+
+const getConfigValue = <K extends ConfigValueKey>(
+  cfg: AppConfig,
+  key: K,
+): ConfigValueMap[K] => {
+  return cfg.appSettings[key as keyof AppSettings] as ConfigValueMap[K];
+};
+
+const patchConfigValue = <K extends ConfigValueKey>(
+  key: K,
+  value: ConfigValueMap[K],
+): ConfigPatch => {
+  return {
+    appSettings: {
+      [key]: value,
+    } as Partial<AppSettings>,
+  };
+};
 
 export const ConfigContext = createContext<ConfigContextType | undefined>(
   undefined,
@@ -185,12 +328,12 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const settings = await queryClient.fetchQuery<BackendSettings>(
+        const settings = await queryClient.fetchQuery<AppConfig>(
           linuxio.config.get.queryOptions({ staleTime: CACHE_TTL_MS.NONE }),
         );
 
         if (!cancelled) {
-          setConfig(applyDefaults(fromBackendSettings(settings)));
+          setConfig(applyDefaults(settings));
           setCanSave(true); // Successfully loaded from backend, allow saves
           setLoaded(true);
         }
@@ -229,10 +372,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   }, [queryClient, signOut]);
 
   const save = useCallback(
-    (cfg: AppConfig) => {
+    (patch: ConfigPatch) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
-      const payload = toBackendSettings(cfg);
-      setConfigRemote([JSON.stringify(payload)]);
+      setConfigRemote([patch]);
     },
     [canSave, setConfigRemote],
   );
@@ -240,10 +382,13 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
       setConfig((prev) => {
-        const nextVal = typeof value === "function" ? value(prev[key]) : value;
-        if (Object.is(prev[key], nextVal)) return prev;
-        const next = applyDefaults({ ...prev, [key]: nextVal });
-        save(next);
+        const current = getConfigValue(prev, key);
+        const nextVal =
+          typeof value === "function" ? (value as any)(current) : value;
+        if (Object.is(current, nextVal)) return prev;
+        const patch = patchConfigValue(key, nextVal);
+        const next = mergeConfig(prev, patch);
+        save(patch);
         return next;
       });
     },
@@ -254,8 +399,8 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     (patch) => {
       setConfig((prev) => {
         const partial = typeof patch === "function" ? patch(prev) : patch;
-        const next = applyDefaults({ ...prev, ...partial });
-        save(next);
+        const next = mergeConfig(prev, partial);
+        save(partial);
         return next;
       });
     },

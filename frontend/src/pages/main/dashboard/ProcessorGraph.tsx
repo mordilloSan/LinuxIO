@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
@@ -13,14 +13,13 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
-  const usageRef = useRef(usage);
   const theme = useAppTheme();
   const color = theme.palette.primary.main;
   const neutral = theme.chart.neutral;
 
-  useEffect(() => {
-    usageRef.current = usage;
-  }, [usage]);
+  const appendLatestUsage = useEffectEvent(() => {
+    seriesRef.current.append(Date.now(), usage);
+  });
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -69,7 +68,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
     chartRef.current = chart;
 
     const intervalId = setInterval(() => {
-      seriesRef.current.append(Date.now(), usageRef.current);
+      appendLatestUsage();
     }, 1000);
 
     return () => {

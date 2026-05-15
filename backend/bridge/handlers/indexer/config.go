@@ -10,17 +10,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const maxIndexerConfigPayloadBytes = 1 << 20
-
-type indexerRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
 
 // Config is the stable JSON configuration shape exposed by the indexer daemon.
 type Config struct {
@@ -66,57 +59,6 @@ type configPatch struct {
 type ConfigSetResult struct {
 	Config          Config `json:"config"`
 	RestartRequired bool   `json:"restart_required"`
-}
-
-// RegisterHandlers registers indexer admin handlers with the bridge.
-func RegisterHandlers(sess *session.Session) {
-	for _, registration := range []indexerRegistration{
-		{command: "get_config", handler: handleGetConfig},
-		{command: "get_status", handler: handleGetStatus},
-		{command: "set_config", handler: handleSetConfig},
-	} {
-		ipc.RegisterFunc(
-			"indexer",
-			registration.command,
-			privilege.RequirePrivilegedIPC(sess, registration.handler),
-		)
-	}
-}
-
-func handleGetConfig(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) != 0 {
-		return ipc.ErrInvalidArgs
-	}
-	cfg, err := FetchConfig(ctx)
-	if err != nil {
-		return err
-	}
-	return emit.Result(cfg)
-}
-
-func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) != 0 {
-		return ipc.ErrInvalidArgs
-	}
-	status, err := FetchStatus(ctx)
-	if err != nil {
-		return err
-	}
-	return emit.Result(status)
-}
-
-func handleSetConfig(ctx context.Context, args []string, emit ipc.Events) error {
-	if len(args) != 1 {
-		return ipc.ErrInvalidArgs
-	}
-	cfg, restartRequired, err := UpdateConfig(ctx, []byte(args[0]))
-	if err != nil {
-		return err
-	}
-	return emit.Result(ConfigSetResult{
-		Config:          cfg,
-		RestartRequired: restartRequired,
-	})
 }
 
 func FetchConfig(ctx context.Context) (Config, error) {
@@ -189,7 +131,7 @@ func decodeConfigResponse(resp *http.Response) (Config, error) {
 
 func normalizeConfigPatchPayload(payload []byte) ([]byte, error) {
 	if len(payload) == 0 || len(strings.TrimSpace(string(payload))) == 0 {
-		return nil, ipc.ErrInvalidArgs
+		return nil, bridgeipc.ErrInvalidArgs
 	}
 	if len(payload) > maxIndexerConfigPayloadBytes {
 		return nil, fmt.Errorf("indexer config payload is too large")

@@ -46,6 +46,7 @@ type streamRelay struct {
 	mu      sync.RWMutex
 	streams map[uint32]*relayStream
 	ws      *websocket.Conn
+	ctx     context.Context
 	wsMu    sync.Mutex
 	closed  atomic.Uint32
 	done    chan struct{} // Signal to stop ping goroutine
@@ -234,6 +235,7 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 		relay := &streamRelay{
 			streams: make(map[uint32]*relayStream),
 			ws:      conn,
+			ctx:     r.Context(),
 			done:    make(chan struct{}),
 		}
 
@@ -346,8 +348,9 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 		return
 	}
 
-	// Open new yamux stream
-	stream, err := yamuxSession.Open(context.Background())
+	openCtx, cancel := context.WithTimeout(r.ctx, 10*time.Second)
+	defer cancel()
+	stream, err := yamuxSession.Open(openCtx)
 	if err != nil {
 		slog.Error("failed to open yamux stream",
 			"session_id", sess.SessionID,

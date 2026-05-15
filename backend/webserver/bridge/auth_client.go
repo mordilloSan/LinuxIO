@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -29,7 +29,7 @@ type AuthResult struct {
 
 // AuthError carries a structured auth result from the auth daemon.
 type AuthError struct {
-	Code    ipc.AuthResultCode
+	Code    authipc.AuthResultCode
 	Message string
 }
 
@@ -48,7 +48,7 @@ func (e *AuthError) IsUnauthorized() bool {
 // On success, returns the connection which is now connected to the forked bridge
 // process (the auth daemon passed our FD to the bridge via dup2).
 // The caller owns the connection and must close it.
-func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
+func Authenticate(req *authipc.AuthRequest) (*AuthResult, error) {
 	// Connect to daemon
 	conn, err := net.DialTimeout("unix", DefaultAuthSocketPath, authDialTimeout)
 	if err != nil {
@@ -62,7 +62,7 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 	}
 
 	// Write binary request
-	if err = ipc.WriteAuthRequest(conn, req); err != nil {
+	if err = authipc.WriteAuthRequest(conn, req); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to send auth request: %w", err)
 	}
@@ -73,7 +73,7 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 		return nil, fmt.Errorf("failed to set read deadline: %w", err)
 	}
 
-	resp, err := ipc.ReadAuthResponse(conn)
+	resp, err := authipc.ReadAuthResponse(conn)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to read auth response: %w", err)
@@ -106,8 +106,8 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 }
 
 // BuildRequest creates a Request from auth parameters.
-func BuildRequest(username, sessionID, password, remoteHost string, verbose bool) *ipc.AuthRequest {
-	return &ipc.AuthRequest{
+func BuildRequest(username, sessionID, password, remoteHost string, verbose bool) *authipc.AuthRequest {
+	return &authipc.AuthRequest{
 		User:       username,
 		Password:   password,
 		SessionID:  sessionID,

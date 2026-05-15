@@ -26,7 +26,7 @@ function matchesSocketSearch(socket: Socket, search: string): boolean {
 }
 
 function useSocketsQuery(viewMode: TableCardViewMode) {
-  return linuxio.dbus.list_sockets.useQuery({
+  return linuxio.systemd.list_sockets.useQuery({
     refetchInterval: viewMode === "card" ? false : 5000,
   });
 }

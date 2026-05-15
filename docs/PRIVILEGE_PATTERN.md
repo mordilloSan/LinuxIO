@@ -1,149 +1,47 @@
 # Privilege Pattern
 
-## Overview
+Privilege is part of bridge route metadata. Handlers should not perform the normal route privilege gate themselves.
 
-LinuxIO has two separate privilege concepts:
+## Rule
 
-1. Frontend access policy
-2. Backend authorization
-
-They are related, but they are not the same thing.
-
-Frontend checks control what the UI shows. Backend checks control what an authenticated session is actually allowed to execute through the bridge. The backend check is the security boundary.
-
-## Frontend Access Policy
-
-Frontend privilege state is exposed through:
-
-- `frontend/src/contexts/AuthContext.tsx`
-- `frontend/src/hooks/useCapabilities.ts`
-- `frontend/src/routes.tsx`
-
-Examples:
-
-- `requiresPrivileged: true` on a route hides or blocks that page in the app
-- `useAccessContext()` exposes the current client-side `privileged` flag
-
-This is useful for UX, but it is not authorization. A hidden page does not prevent an authenticated client from calling a bridge command directly.
-
-## Backend Authorization
-
-Backend privilege enforcement is based on the bridge session created by the auth daemon:
-
-1. The auth daemon validates PAM credentials
-2. The auth daemon checks whether the user can successfully run `sudo -v`
-3. The bridge is spawned either privileged or unprivileged
-4. The session carries an immutable `sess.Privileged` flag
-
-That flag is the source of truth for privileged operations.
-
-## Current Backend Helpers
-
-The privilege helper lives here:
-
-- `backend/bridge/privilege/privilege.go`
-
-It provides:
+Declare privileged operations where the route is registered:
 
 ```go
-func RequirePrivilegedIPC(
-    sess *session.Session,
-    handler ipc.HandlerFunc,
-) ipc.HandlerFunc
+router.Job("control.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
 ```
 
-These helpers are valid when handler registration already has direct access to `sess *session.Session`.
-
-## Current IPC Handler Model
-
-The active bridge handler system is the `ipc.RegisterFunc(...)` model, not the older `JsonHandlers[...]` map style.
-
-## Pattern A: Registration-Time Enforcement
-
-Use this when the package registration function already receives `sess *session.Session`.
-
-This is the cleanest option for package-wide privilege rules, and it is the preferred pattern in the current codebase.
-
-Example shape:
+or in command tables:
 
 ```go
-func RegisterHandlers(sess *session.Session) {
-    ipc.RegisterFunc(
-        "example",
-        "dangerous",
-        privilege.RequirePrivilegedIPC(sess, handleDangerous),
-    )
-}
+bridgeipc.RegisterRoutes(router, "control", []bridgeipc.Command{
+    {Name: "reboot", Mode: bridgeipc.ModeJob, Handler: handleReboot, Privileged: true},
+})
 ```
 
-Use this when:
+The dispatcher checks `req.Session.Privileged` before the handler or runner starts. Forbidden starts are typed dispatcher errors and are logged centrally.
 
-- the whole package is privileged
-- the package already takes `sess`
-- you want the protection to be obvious at registration time
+## What Belongs In Handlers
 
-If a package does not currently receive `sess`, the preferred fix is to thread `sess` into that package's `RegisterHandlers(...)` function rather than rely on a frontend route guard.
+Handlers may still validate operation-specific policy:
 
-## Important Rule
+- whether a requested resource exists
+- whether an argument is allowed
+- whether a system capability is available
+- whether a user-visible operation should be rejected for domain reasons
 
-Do not treat frontend checks as security.
+Handlers should not duplicate the route-level admin check.
 
-This is not sufficient by itself:
+## Choosing Privileged Routes
 
-- `requiresPrivileged: true`
-- `useAccessContext().privileged`
-- client-side session state in `AuthContext`
-- `useSessionChecker`
+Mark a route privileged when it can alter host state, secrets, users, services, storage, networking, packages, containers, or daemon configuration.
 
-Those are UI and session-state conveniences. They do not protect bridge commands.
-
-## Current Reality in This Repo
-
-As of now:
-
-- `frontend/src/routes.tsx` marks WireGuard as `requiresPrivileged`
-- `frontend/src/hooks/useCapabilities.ts` enforces that policy in the UI
-- `backend/bridge/privilege/privilege.go` exists
-- `backend/bridge/handlers/wireguard/handlers.go` currently registers raw handlers directly with `ipc.RegisterFunc(...)`
-
-So WireGuard currently has frontend privilege gating, but this document should not assume that all WireGuard bridge commands are already backend-protected by the helper.
-
-If a handler must be privileged, the backend must check `sess.Privileged` explicitly through registration-time enforcement.
-
-## Recommended Usage
-
-For new work:
-
-- Always add frontend gating when the feature is privileged
-- Always add backend authorization for the actual bridge command
-
-For package-wide privileged modules:
-
-- pass `sess` into registration and use registration-time enforcement
-
-For mixed modules like `system`:
-
-- keep public reads public
-- gate sensitive operations in the backend at the individual handler level
-- thread `sess` into registration and wrap only the sensitive handlers
-
-## Audit Guidance
-
-To audit real privileged operations, do not rely on route metadata alone.
-
-Check:
-
-- calls to `RequirePrivilegedIPC(...)`
-- direct checks against `sess.Privileged`
+Read-only system inventory can usually remain unprivileged unless it exposes sensitive information.
 
 ## Testing
 
-To verify a privileged handler:
+Dispatcher tests should cover:
 
-1. Sign in as a user without sudo access
-2. Call the bridge command directly
-3. Expect `operation requires administrator privileges`
-4. Sign in as a privileged user
-5. Verify the same command succeeds
-
-The direct bridge/API call matters because it proves the backend check exists independently of the UI.
+- privileged route with unprivileged session returns forbidden
+- privileged route with privileged session runs
+- forbidden starts do not create jobs
+- forbidden starts are typed errors

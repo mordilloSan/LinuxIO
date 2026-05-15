@@ -215,9 +215,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
     if (isManagedContainer) return;
     setAutoUpdateLoading(true);
     try {
-      await linuxio.docker.set_auto_update.call(
-        JSON.stringify({ container: name, enabled }),
-      );
+      await linuxio.docker.set_auto_update.call({ container: name, enabled });
       queryClient.invalidateQueries({
         queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
       });

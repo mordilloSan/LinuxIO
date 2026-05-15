@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -16,8 +17,8 @@ type MemoryModule struct {
 	Speed      string `json:"speed"`
 }
 
-func FetchMemoryModules() ([]MemoryModule, error) {
-	out, err := exec.Command("dmidecode", "-t", "memory").Output()
+func FetchMemoryModules(ctx context.Context) ([]MemoryModule, error) {
+	out, err := exec.CommandContext(ctx, "dmidecode", "-t", "memory").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run dmidecode: %w", err)
 	}

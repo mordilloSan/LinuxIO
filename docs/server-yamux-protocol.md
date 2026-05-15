@@ -357,7 +357,7 @@ if err != nil {
 
 **After authentication:**
 - Server does not re-check permissions on each frame
-- Bridge handles authorization (`sess.Privileged` flag, `RequirePrivilegedIPC`)
+- Bridge route dispatch enforces authorization from the session privilege state (`sess.Privileged`) for routes registered with bridge privilege metadata
 - Stream isolation: each session has a separate bridge process and yamux session
 
 ### Payload Opacity

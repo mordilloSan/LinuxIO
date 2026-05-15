@@ -2,8 +2,6 @@ import React from "react";
 
 import "./app-typography.css";
 
-// Frozen compatibility wrapper: do not introduce new usages.
-
 type Variant =
   | "h1"
   | "h2"

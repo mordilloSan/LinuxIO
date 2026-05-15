@@ -11,7 +11,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import { shadowSm } from "@/constants";
 import { iconSize } from "@/constants";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { getHoverBackground } from "@/theme/components";
 
 interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;
@@ -46,7 +45,6 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
               style={
                 {
                   "--app-navbar-search-bg": theme.header.background,
-                  "--app-navbar-search-hover": getHoverBackground(theme),
                   "--app-navbar-search-text": theme.header.search.color,
                   "--app-navbar-search-icon": theme.header.color,
                   borderRadius: `${theme.shape.borderRadius * 2}px`,

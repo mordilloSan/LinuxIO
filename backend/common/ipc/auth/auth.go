@@ -1,0 +1,261 @@
+// Auth request/response protocol for LinuxIO auth communication.
+// Keep in sync with backend/auth/linuxio_protocol.h
+package auth
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+)
+
+// Max lengths for fields (used for validation)
+const (
+	MaxUsername   = 256
+	MaxPassword   = 2048
+	MaxSessionID  = 64
+	MaxRemoteHost = 256
+	MaxError      = 256
+)
+
+type AuthResultCode uint8
+
+// Auth request/response protocol constants
+const (
+	AuthReqHeaderSize  = 8
+	AuthRespHeaderSize = 8
+
+	// Request flags
+	ReqFlagVerbose = 0x01
+
+	// Status values
+	StatusOK    = 0
+	StatusError = 1
+
+	// Structured result codes
+	ResultOK              AuthResultCode = 0
+	ResultAuthFailed      AuthResultCode = 1
+	ResultPasswordExpired AuthResultCode = 2
+	ResultAccessDenied    AuthResultCode = 3
+	ResultBadRequest      AuthResultCode = 4
+	ResultInternalError   AuthResultCode = 5
+	ResultBridgeError     AuthResultCode = 6
+
+	// Mode values
+	ModeUnprivileged = 0
+	ModePrivileged   = 1
+)
+
+// AuthRequest is the binary request sent to the auth daemon (Server -> Auth)
+type AuthRequest struct {
+	Verbose    bool
+	User       string
+	Password   string
+	SessionID  string
+	RemoteHost string
+}
+
+// AuthResponse is the binary response from the auth daemon (Auth -> Server)
+type AuthResponse struct {
+	Status     uint8
+	Mode       uint8
+	ResultCode AuthResultCode
+	User       session.User
+	Error      string
+}
+
+// WriteAuthRequest writes a binary auth request to the writer.
+func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
+	// Write header
+	var header [AuthReqHeaderSize]byte
+	header[0] = ProtoMagic0
+	header[1] = ProtoMagic1
+	header[2] = ProtoMagic2
+	header[3] = ProtoVersion
+
+	var flags uint8
+	if req.Verbose {
+		flags |= ReqFlagVerbose
+	}
+	header[4] = flags
+	header[5] = 0 // reserved
+	header[6] = 0 // reserved
+	header[7] = 0 // reserved
+
+	if _, err := w.Write(header[:]); err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+
+	// Write variable-length fields
+	if err := writeLenStr(w, req.User); err != nil {
+		return fmt.Errorf("write user: %w", err)
+	}
+	if err := writeLenStr(w, req.Password); err != nil {
+		return fmt.Errorf("write password: %w", err)
+	}
+	if err := writeLenStr(w, req.SessionID); err != nil {
+		return fmt.Errorf("write session_id: %w", err)
+	}
+	if err := writeLenStr(w, req.RemoteHost); err != nil {
+		return fmt.Errorf("write remote_host: %w", err)
+	}
+
+	return nil
+}
+
+// ReadAuthResponse reads a binary auth response from the reader.
+func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
+	var header [AuthRespHeaderSize]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return nil, fmt.Errorf("read header: %w", err)
+	}
+
+	// Validate magic + version
+	if header[0] != ProtoMagic0 || header[1] != ProtoMagic1 || header[2] != ProtoMagic2 {
+		return nil, errors.New("invalid response magic")
+	}
+	if header[3] != ProtoVersion {
+		return nil, fmt.Errorf("unsupported auth protocol version: %d", header[3])
+	}
+
+	resp := &AuthResponse{
+		Status:     header[4],
+		Mode:       header[5],
+		ResultCode: AuthResultCode(header[6]),
+	}
+
+	if resp.Status == StatusOK {
+		uid, err := readU32(r)
+		if err != nil {
+			return nil, fmt.Errorf("read uid: %w", err)
+		}
+		gid, err := readU32(r)
+		if err != nil {
+			return nil, fmt.Errorf("read gid: %w", err)
+		}
+		username, err := readLenStr(r)
+		if err != nil {
+			return nil, fmt.Errorf("read username: %w", err)
+		}
+		resp.User = session.User{
+			Username: username,
+			UID:      uid,
+			GID:      gid,
+		}
+	}
+
+	// Read error message if status is error
+	if resp.Status == StatusError {
+		errStr, err := readLenStr(r)
+		if err != nil {
+			return nil, fmt.Errorf("read error: %w", err)
+		}
+		resp.Error = errStr
+	}
+
+	return resp, nil
+}
+
+func readU32(r io.Reader) (uint32, error) {
+	var buf [4]byte
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint32(buf[:]), nil
+}
+
+// readLenStr reads a length-prefixed string (2-byte length + data).
+func readLenStr(r io.Reader) (string, error) {
+	var lenBuf [2]byte
+	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
+		return "", err
+	}
+	length := binary.BigEndian.Uint16(lenBuf[:])
+	if length == 0 {
+		return "", nil
+	}
+	data := make([]byte, length)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// writeLenStr writes a length-prefixed string (2-byte length + data).
+func writeLenStr(w io.Writer, s string) error {
+	length := min(len(s), 0xFFFF)
+	var lenBuf [2]byte
+	binary.BigEndian.PutUint16(lenBuf[:], uint16(length))
+	if _, err := w.Write(lenBuf[:]); err != nil {
+		return err
+	}
+	if length > 0 {
+		if _, err := w.Write([]byte(s[:length])); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// IsPrivileged returns true if the mode indicates privileged access
+func (r *AuthResponse) IsPrivileged() bool {
+	return r.Mode == ModePrivileged
+}
+
+// IsOK returns true if the response status is OK
+func (r *AuthResponse) IsOK() bool {
+	return r.Status == StatusOK
+}
+
+func (c AuthResultCode) IsUnauthorized() bool {
+	switch c {
+	case ResultAuthFailed, ResultPasswordExpired, ResultAccessDenied:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c AuthResultCode) DefaultMessage() string {
+	switch c {
+	case ResultOK:
+		return ""
+	case ResultAuthFailed:
+		return "authentication failed"
+	case ResultPasswordExpired:
+		return "password expired"
+	case ResultAccessDenied:
+		return "access denied"
+	case ResultBadRequest:
+		return "invalid auth request"
+	case ResultInternalError:
+		return "internal auth error"
+	case ResultBridgeError:
+		return "failed to start bridge"
+	default:
+		return "authentication failed"
+	}
+}
+
+func (c AuthResultCode) APIName() string {
+	switch c {
+	case ResultOK:
+		return "ok"
+	case ResultAuthFailed:
+		return "authentication_failed"
+	case ResultPasswordExpired:
+		return "password_expired"
+	case ResultAccessDenied:
+		return "access_denied"
+	case ResultBadRequest:
+		return "invalid_request"
+	case ResultInternalError:
+		return "internal_error"
+	case ResultBridgeError:
+		return "bridge_error"
+	default:
+		return "login_failed"
+	}
+}

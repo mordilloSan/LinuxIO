@@ -72,7 +72,7 @@ export function UnitInfoPanel({
   title = "Unit file & dependencies",
   renderInfoRows,
 }: UnitInfoPanelProps) {
-  const { data: info, isPending } = linuxio.dbus.get_unit_info.useQuery(
+  const { data: info, isPending } = linuxio.systemd.get_unit_info.useQuery(
     unitName,
     {
       refetchInterval: 2000,

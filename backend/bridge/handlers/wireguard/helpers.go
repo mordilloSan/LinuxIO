@@ -1,7 +1,7 @@
 package wireguard
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -18,7 +18,8 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
@@ -64,9 +65,9 @@ func isInterfaceUp(name string) bool {
 	return err == nil
 }
 
-func isInterfaceEnabled(name string) bool {
+func isInterfaceEnabled(ctx context.Context, name string) bool {
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	state, err := systemd.GetUnitFileState(serviceName)
+	state, err := systemd.GetUnitFileState(ctx, serviceName)
 	if err != nil {
 		slog.Debug("failed to query interface enabled state", "component", "wireguard", "interface", name, "service", serviceName, "error", err)
 		return false
@@ -331,14 +332,15 @@ func parseOptionalInt(args []string, index int, defaultVal int) int {
 	return defaultVal
 }
 
-func parseOptionalPeers(args []string, index int) []PeerConfig {
-	if index < len(args) && args[index] != "" && args[index] != "null" && args[index] != "[]" {
-		var peers []PeerConfig
-		if err := json.Unmarshal([]byte(args[index]), &peers); err == nil {
-			return peers
-		}
+func parseOptionalPeers(args []string, index int) ([]PeerConfig, error) {
+	if index >= len(args) {
+		return nil, nil
 	}
-	return nil
+	switch args[index] {
+	case "", "null", "[]":
+		return nil, nil
+	}
+	return bridgeipc.DecodeJSONArg[[]PeerConfig](args, index)
 }
 
 func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {

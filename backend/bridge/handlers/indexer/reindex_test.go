@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func mustWrite(t *testing.T, w http.ResponseWriter, s string) {

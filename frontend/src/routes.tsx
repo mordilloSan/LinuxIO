@@ -27,28 +27,45 @@ import {
 } from "@/icons/svg";
 import { ConfiguredAppThemeProvider } from "@/theme";
 
+type LazyRouteModule<T extends React.ComponentType<any>> = { default: T };
+type LazyRouteImporter<T extends React.ComponentType<any>> = () => Promise<
+  LazyRouteModule<T>
+>;
+type PreloadableLazyRoute<T extends React.ComponentType<any>> =
+  React.LazyExoticComponent<T> & {
+    preload: LazyRouteImporter<T>;
+  };
+
+function lazyWithPreload<T extends React.ComponentType<any>>(
+  importer: LazyRouteImporter<T>,
+): PreloadableLazyRoute<T> {
+  const Component = lazy(importer) as PreloadableLazyRoute<T>;
+  Component.preload = importer;
+  return Component;
+}
+
 // Lazy load layouts
-const MainLayout = lazy(() => import("@/layouts/Main"));
-const AuthLayout = lazy(() => import("@/layouts/Auth"));
+const MainLayout = lazyWithPreload(() => import("@/layouts/Main"));
+const AuthLayout = lazyWithPreload(() => import("@/layouts/Auth"));
 
 // Lazy load core pages
-const Default = lazy(() => import("@/pages/main/dashboard"));
-const Updates = lazy(() => import("@/pages/main/updates"));
-const Docker = lazy(() => import("@/pages/main/docker"));
-const Services = lazy(() => import("@/pages/main/services"));
-const Logs = lazy(() => import("@/pages/main/logs"));
-const Network = lazy(() => import("@/pages/main/network"));
-const Hardware = lazy(() => import("@/pages/main/hardware"));
-const Wireguard = lazy(() => import("@/pages/main/wireguard"));
-const TerminalPage = lazy(() => import("@/pages/main/terminal"));
-const Shares = lazy(() => import("@/pages/main/shares"));
-const FileBrowser = lazy(() => import("@/pages/main/filebrowser"));
-const StoragePage = lazy(() => import("@/pages/main/storage"));
-const AccountsPage = lazy(() => import("@/pages/main/accounts"));
+const Default = lazyWithPreload(() => import("@/pages/main/dashboard"));
+const Updates = lazyWithPreload(() => import("@/pages/main/updates"));
+const Docker = lazyWithPreload(() => import("@/pages/main/docker"));
+const Services = lazyWithPreload(() => import("@/pages/main/services"));
+const Logs = lazyWithPreload(() => import("@/pages/main/logs"));
+const Network = lazyWithPreload(() => import("@/pages/main/network"));
+const Hardware = lazyWithPreload(() => import("@/pages/main/hardware"));
+const Wireguard = lazyWithPreload(() => import("@/pages/main/wireguard"));
+const TerminalPage = lazyWithPreload(() => import("@/pages/main/terminal"));
+const Shares = lazyWithPreload(() => import("@/pages/main/shares"));
+const FileBrowser = lazyWithPreload(() => import("@/pages/main/filebrowser"));
+const StoragePage = lazyWithPreload(() => import("@/pages/main/storage"));
+const AccountsPage = lazyWithPreload(() => import("@/pages/main/accounts"));
 
 // Auth pages
-const SignIn = lazy(() => import("@/pages/auth/Login"));
-const Page404 = lazy(() => import("@/pages/auth/Page404"));
+const SignIn = lazyWithPreload(() => import("@/pages/auth/Login"));
+const Page404 = lazyWithPreload(() => import("@/pages/auth/Page404"));
 
 // ============================================================================
 // Unified Route Configuration with Sidebar
@@ -57,6 +74,7 @@ const Page404 = lazy(() => import("@/pages/auth/Page404"));
 export interface RouteWithSidebar extends AccessPolicy {
   path?: string;
   element?: React.ReactNode;
+  preload?: () => Promise<unknown>;
   children?: RouteWithSidebar[];
   sidebar?: {
     title: string;
@@ -69,6 +87,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "",
     element: <Default />,
+    preload: Default.preload,
     sidebar: {
       title: "Dashboard",
       icon: HomeIcon,
@@ -78,6 +97,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "network",
     element: <Network />,
+    preload: Network.preload,
     sidebar: {
       title: "Network",
       icon: NetworkIcon,
@@ -87,6 +107,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "updates",
     element: <Updates />,
+    preload: Updates.preload,
     sidebar: {
       title: "Updates",
       icon: RefreshCcwIcon,
@@ -96,6 +117,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "services",
     element: <Services />,
+    preload: Services.preload,
     sidebar: {
       title: "Services",
       icon: ServerCogIcon,
@@ -105,6 +127,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "logs",
     element: <Logs />,
+    preload: Logs.preload,
     sidebar: {
       title: "Logs",
       icon: FileTextIcon,
@@ -114,6 +137,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "storage",
     element: <StoragePage />,
+    preload: StoragePage.preload,
     sidebar: {
       title: "Storage",
       icon: HardDriveIcon,
@@ -123,6 +147,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "docker",
     element: <Docker />,
+    preload: Docker.preload,
     requiredCapabilities: ["dockerAvailable"],
     sidebar: {
       title: "Docker",
@@ -133,6 +158,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "accounts",
     element: <AccountsPage />,
+    preload: AccountsPage.preload,
     sidebar: {
       title: "Accounts",
       icon: UsersIcon,
@@ -142,6 +168,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "shares",
     element: <Shares />,
+    preload: Shares.preload,
     sidebar: {
       title: "Shares",
       icon: ShareIcon,
@@ -151,6 +178,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "wireguard",
     element: <Wireguard />,
+    preload: Wireguard.preload,
     requiresPrivileged: true,
     sidebar: {
       title: "Wireguard",
@@ -161,6 +189,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "hardware",
     element: <Hardware />,
+    preload: Hardware.preload,
     requiredCapabilities: ["lmSensorsAvailable"],
     sidebar: {
       title: "Hardware",
@@ -171,6 +200,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "filebrowser/*",
     element: <FileBrowser />,
+    preload: FileBrowser.preload,
     sidebar: {
       title: "Navigator",
       icon: FolderIcon,
@@ -180,6 +210,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "terminal",
     element: <TerminalPage />,
+    preload: TerminalPage.preload,
     sidebar: {
       title: "Terminal",
       icon: TerminalIcon,
@@ -190,6 +221,18 @@ const coreRoutes: RouteWithSidebar[] = [
 
 function buildProtectedRoutes(access: AccessContext) {
   return coreRoutes.filter((route) => hasAccessPolicy(route, access));
+}
+
+export function usePreloadProtectedRouteChunks() {
+  const access = useAccessContext();
+
+  return useMemo(() => {
+    const preloaders = buildProtectedRoutes(access)
+      .map((route) => route.preload)
+      .filter((preload): preload is () => Promise<unknown> => Boolean(preload));
+
+    return () => Promise.allSettled(preloaders.map((preload) => preload()));
+  }, [access]);
 }
 
 // ============================================================================

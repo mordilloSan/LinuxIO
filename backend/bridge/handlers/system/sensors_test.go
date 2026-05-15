@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -51,7 +52,7 @@ const sensorsJSONFixture = `{
 func TestFetchSensorsInfoParsesJSONReadings(t *testing.T) {
 	stubSensorsCommand(t, "success")
 
-	groups := FetchSensorsInfo()
+	groups := FetchSensorsInfo(context.Background())
 	require.Len(t, groups, 2)
 
 	require.Equal(t, "coretemp-isa-0000", groups[0].Adapter)
@@ -82,19 +83,19 @@ func TestFetchSensorsInfoParsesJSONReadings(t *testing.T) {
 func TestFetchSensorsInfoReturnsNilOnMalformedJSON(t *testing.T) {
 	stubSensorsCommand(t, "malformed")
 
-	require.Nil(t, FetchSensorsInfo())
+	require.Nil(t, FetchSensorsInfo(context.Background()))
 }
 
 func TestFetchSensorsInfoReturnsNilOnCommandFailure(t *testing.T) {
 	stubSensorsCommand(t, "fail")
 
-	require.Nil(t, FetchSensorsInfo())
+	require.Nil(t, FetchSensorsInfo(context.Background()))
 }
 
 func TestGetTemperatureMapUsesInputReadingsOnly(t *testing.T) {
 	stubSensorsCommand(t, "success")
 
-	temps := getTemperatureMap()
+	temps := getTemperatureMap(context.Background())
 	require.Equal(t, map[string]float64{
 		"core0":   48.0,
 		"package": 55.5,
@@ -103,7 +104,7 @@ func TestGetTemperatureMapUsesInputReadingsOnly(t *testing.T) {
 
 func stubSensorsCommand(t *testing.T, mode string) {
 	original := sensorsCommand
-	sensorsCommand = func(name string, args ...string) *exec.Cmd {
+	sensorsCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		cmd := exec.Command(os.Args[0], "-test.run=TestHelperSensorsCommand", "--", mode)
 		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 		return cmd

@@ -32,7 +32,7 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isPending: networkLoading,
     error: networkError,
-  } = linuxio.dbus.get_network_info.useQuery();
+  } = linuxio.network.get_network_info.useQuery();
 
   // Fetch existing WireGuard interfaces via stream API
   const { data: wgInterfaces } = linuxio.wireguard.list_interfaces.useQuery();

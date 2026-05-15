@@ -8,6 +8,7 @@
  */
 
 import type { ContainerInfo } from "@/types/container";
+import type { AppConfig } from "@/types/config";
 import type { FilesystemInfo, ResourceStatData } from "@/types/fs";
 import type { Update } from "@/types/update";
 import type { WireGuardInterface } from "@/types/wireguard";
@@ -248,7 +249,7 @@ export interface DiskThroughputResponse {
   devices: DiskThroughputDevice[];
 }
 
-/** Full network interface info (from dbus GetNetworkInfo) */
+/** Full network interface info (from network.get_network_info) */
 export interface NetworkInterface {
   name: string;
   type: string;
@@ -834,18 +835,6 @@ export interface DeleteStackResult {
   deleted_path: string;
 }
 
-export interface ConfigSettings {
-  appSettings: {
-    theme: string;
-    primaryColor: string;
-    sidebarCollapsed: boolean;
-    showHiddenFiles: boolean;
-  };
-  docker: {
-    folders: string[];
-  };
-}
-
 export interface ConfigSetResult {
   message: string;
   path: string;
@@ -956,11 +945,13 @@ export interface JobEvent {
  */
 export interface LinuxIOSchema {
   jobs: {
-    start: { args: [jobType: string, ...args: string[]]; result: JobSnapshot };
-    recover: { args: [jobType: string]; result: JobSnapshot | null };
     list: { args: [status?: string]; result: JobSnapshot[] };
     get: { args: [jobId: string]; result: JobSnapshot };
     cancel: { args: [jobId: string]; result: JobSnapshot };
+  };
+
+  packages: {
+    update: { args: string[]; result: JobSnapshot };
   };
 
   system: {
@@ -999,6 +990,11 @@ export interface LinuxIOSchema {
 
   docker: {
     get_docker_info: { args: []; result: DockerSystemInfo };
+    compose: {
+      args: [action: string, projectName: string, composePath?: string];
+      result: JobSnapshot;
+    };
+    indexer: { args: []; result: JobSnapshot };
     list_containers: { args: []; result: ContainerInfo[] };
     start_container: { args: [containerId: string]; result: void };
     stop_container: { args: [containerId: string]; result: void };
@@ -1103,9 +1099,7 @@ export interface LinuxIOSchema {
     };
   };
 
-  dbus: {
-    reboot: { args: []; result: void };
-    power_off: { args: []; result: void };
+  updates: {
     get_updates_basic: { args: []; result: Update[] };
     get_update_detail: { args: [packageId: string]; result: Update };
     install_package: { args: [packageId: string]; result: void };
@@ -1119,6 +1113,9 @@ export interface LinuxIOSchema {
       result: { status?: string; error?: string };
     };
     get_update_history: { args: []; result: UpdateHistoryRow[] };
+  };
+
+  systemd: {
     list_services: { args: []; result: Service[] };
     get_unit_info: { args: [unitName: string]; result: UnitInfo };
     list_timers: { args: []; result: Timer[] };
@@ -1132,6 +1129,9 @@ export interface LinuxIOSchema {
     mask_service: { args: [serviceName: string]; result: void };
     unmask_service: { args: [serviceName: string]; result: void };
     reset_failed_service: { args: [serviceName: string]; result: void };
+  };
+
+  network: {
     get_network_info: { args: []; result: NetworkInterface[] };
     set_ipv4_manual: {
       args: [iface: string, address: string, gateway: string, dns: string];
@@ -1142,7 +1142,13 @@ export interface LinuxIOSchema {
     set_mtu: { args: [iface: string, mtu: string]; result: void };
     enable_connection: { args: [iface: string]; result: void };
     disable_connection: { args: [iface: string]; result: void };
+  };
+
+  hostname: {
     set_hostname: { args: [hostname: string]; result: void };
+  };
+
+  datetime: {
     get_ntp_status: { args: []; result: boolean };
     set_ntp: { args: [enabled: string]; result: void };
     set_server_time: { args: [isoTime: string]; result: void };
@@ -1164,6 +1170,36 @@ export interface LinuxIOSchema {
       args: [action: string, src: string, dst: string];
       result: void;
     };
+    compress: {
+      args: [format: string, targetPath: string, ...paths: string[]];
+      result: JobSnapshot;
+    };
+    extract: {
+      args: [archivePath: string, destination?: string];
+      result: JobSnapshot;
+    };
+    copy: { args: [source: string, destination: string]; result: JobSnapshot };
+    move: { args: [source: string, destination: string]; result: JobSnapshot };
+    index: { args: [path?: string]; result: JobSnapshot };
+    upload: {
+      args: [targetPath: string, size: string, overwrite?: string];
+      result: JobSnapshot;
+    };
+    download: { args: [path: string]; result: JobSnapshot };
+    archive: {
+      args: [format: string, ...paths: string[]];
+      result: JobSnapshot;
+    };
+    chmod: {
+      args: [
+        path: string,
+        mode: string,
+        owner: string,
+        group: string,
+        recursive?: string,
+      ];
+      result: JobSnapshot;
+    };
     indexer_status: { args: []; result: IndexerStatusResponse };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
@@ -1171,21 +1207,11 @@ export interface LinuxIOSchema {
       args: [query: string, limit?: string, basePath?: string];
       result: SearchResponse;
     };
-    chmod: {
-      args: [
-        path: string,
-        mode: string,
-        owner?: string,
-        group?: string,
-        recursive?: string,
-      ];
-      result: void;
-    };
     users_groups: { args: []; result: UsersGroupsResponse };
   };
 
   config: {
-    get: { args: []; result: ConfigSettings };
+    get: { args: []; result: AppConfig };
     set: { args: [payload: string]; result: ConfigSetResult };
   };
 
@@ -1200,6 +1226,9 @@ export interface LinuxIOSchema {
 
   control: {
     version: { args: []; result: VersionResponse };
+    reboot: { args: []; result: void };
+    power_off: { args: []; result: void };
+    logoff: { args: [sessionID: string]; result: void };
   };
 
   power: {
@@ -1327,12 +1356,7 @@ export interface LinuxIOSchema {
     get_drive_info: { args: []; result: ApiDisk[] };
     run_smart_test: {
       args: [device: string, testType: string];
-      result: {
-        success: boolean;
-        device: string;
-        test: string;
-        message: string;
-      };
+      result: JobSnapshot;
     };
     // NFS
     list_nfs_mounts: { args: []; result: NFSMount[] };

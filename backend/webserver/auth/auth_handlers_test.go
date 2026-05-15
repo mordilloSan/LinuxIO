@@ -2,13 +2,14 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 )
@@ -74,7 +75,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}()
 
 	var gotRemoteHost string
-	startBridge = func(sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
 		gotRemoteHost = remoteHost
 		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
@@ -227,7 +228,7 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
@@ -265,9 +266,9 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
-			Code:    ipc.ResultAuthFailed,
+			Code:    authipc.ResultAuthFailed,
 			Message: "authentication failed",
 		}
 	}
@@ -301,9 +302,9 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
-			Code:    ipc.ResultPasswordExpired,
+			Code:    authipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
 		}
 	}
@@ -335,7 +336,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 
 	// Bridge blocks forever — holds the semaphore slot
 	block := make(chan struct{})
-	startBridge = func(_ *session.Manager, _, _, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
 		<-block
 		return nil, fmt.Errorf("cancelled")
 	}
@@ -389,7 +390,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie

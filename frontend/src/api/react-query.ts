@@ -25,6 +25,7 @@ import {
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
 import { useStreamMux, useIsUpdating } from "./linuxio";
+import { getRouteMode, routeName } from "./route-metadata";
 import type {
   HandlerName,
   CommandName,
@@ -61,9 +62,10 @@ function getRetryPolicy(
   handler: string,
   command: string,
 ): core.CallOptions["retryPolicy"] {
+  const route = routeName(handler, command);
   if (
     RETRYABLE_COMMAND_PREFIXES.some((prefix) => command.startsWith(prefix)) ||
-    RETRYABLE_COMMANDS.has(`${handler}.${command}`)
+    RETRYABLE_COMMANDS.has(route)
   ) {
     return "connection_closed";
   }
@@ -238,6 +240,14 @@ function buildQueryOptions<TResult, TData = TResult>(
   options?: SelectableQueryOptions<TResult, TData>,
 ): UseQueryOptions<TResult, LinuxIOError, TData> {
   const serializedArgs = serializeArgs(rawArgs);
+  const route = routeName(handler, command);
+  const mode = getRouteMode(route);
+  if (mode && mode !== "query") {
+    throw new LinuxIOError(
+      `Route ${route} is ${mode}, not query`,
+      "invalid_route_mode",
+    );
+  }
 
   return {
     queryKey: ["linuxio", handler, command, ...serializedArgs],
@@ -324,6 +334,15 @@ function createEndpoint<TResult>(
     },
 
     useMutation(options?: MutationOptions<TResult>) {
+      const route = routeName(handler, command);
+      const mode = getRouteMode(route);
+      if (mode && mode !== "job") {
+        throw new LinuxIOError(
+          `Route ${route} is ${mode}, not mutation/job`,
+          "invalid_route_mode",
+        );
+      }
+
       return useMutation<TResult, LinuxIOError, unknown[]>({
         mutationFn: (args: unknown[]) => {
           const serializedArgs = serializeArgs(args ?? []);

@@ -1,6 +1,8 @@
 package system
 
 import (
+	"context"
+
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -12,17 +14,20 @@ type ProcInfo struct {
 	Running bool    `json:"running"`
 }
 
-func FetchProcesses() ([]ProcInfo, error) {
-	procs, err := process.Processes()
+func FetchProcesses(ctx context.Context) ([]ProcInfo, error) {
+	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]ProcInfo, 0, len(procs))
 	for _, p := range procs {
-		name, _ := p.Name()
-		cpu, _ := p.CPUPercent()
-		mem, _ := p.MemoryPercent()
-		running, _ := p.IsRunning()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		name, _ := p.NameWithContext(ctx)
+		cpu, _ := p.CPUPercentWithContext(ctx)
+		mem, _ := p.MemoryPercentWithContext(ctx)
+		running, _ := p.IsRunningWithContext(ctx)
 		result = append(result, ProcInfo{
 			Pid: p.Pid, Name: name, CPU: cpu, Memory: mem, Running: running,
 		})

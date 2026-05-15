@@ -34,8 +34,8 @@ type UpdatesFastResponse struct {
 	Updates []UpdateItem `json:"updates,omitempty"`
 }
 
-func GetUpdatesFast() (*UpdatesFastResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+func GetUpdatesFast(parent context.Context) (*UpdatesFastResponse, error) {
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 
 	mgr, cmd, args := pickCommand()

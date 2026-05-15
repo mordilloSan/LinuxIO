@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -15,12 +16,6 @@ import (
 )
 
 const (
-	iconCacheDir           = "/run/linuxio/icons"
-	dashboardIconsCacheDir = "/run/linuxio/icons/dashboard-icons"
-	simpleIconsCacheDir    = "/run/linuxio/icons/simple-icons"
-	urlCacheDir            = "/run/linuxio/icons/url-cache"
-	userIconsDir           = "/run/linuxio/icons/user"
-
 	// Dashboard Icons repository (homarr-labs). Some icons are SVG, others PNG.
 	dashboardIconsRawBase = "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main"
 	// Simple Icons CDN - for brand icons via si: prefix
@@ -33,6 +28,14 @@ const (
 var httpClient = &http.Client{
 	Timeout: httpClientTimeout,
 }
+
+var (
+	iconCacheDir           = "/run/linuxio/icons"
+	dashboardIconsCacheDir = "/run/linuxio/icons/dashboard-icons"
+	simpleIconsCacheDir    = "/run/linuxio/icons/simple-icons"
+	urlCacheDir            = "/run/linuxio/icons/url-cache"
+	userIconsDir           = "/run/linuxio/icons/user"
+)
 
 type IconType string
 
@@ -111,12 +114,15 @@ func parseIconIdentifier(identifier string) (IconType, string) {
 }
 
 // getCachedIcon checks if an icon is cached and returns its path
-func getCachedIcon(iconType IconType, identifier string) (string, bool) {
+func getCachedIcon(ctx context.Context, iconType IconType, identifier string) (string, bool) {
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
 	var cachePath string
 
 	switch iconType {
 	case IconTypeDashboardIcon:
-		return getDashboardCachedIcon(identifier)
+		return getDashboardCachedIcon(ctx, identifier)
 	case IconTypeSimpleIcon:
 		cachePath = filepath.Join(simpleIconsCacheDir, identifier+".svg")
 	case IconTypeURL:
@@ -127,12 +133,15 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	case IconTypeFile:
 		cachePath = filepath.Join(userIconsDir, identifier)
 	case IconTypeDerived:
-		return getDashboardCachedIcon(identifier)
+		return getDerivedCachedIcon(ctx, identifier)
 	default:
 		return "", false
 	}
 
 	// Check if file exists and is not too old
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
 	info, err := os.Stat(cachePath)
 	if err != nil {
 		return "", false
@@ -146,8 +155,11 @@ func getCachedIcon(iconType IconType, identifier string) (string, bool) {
 	return cachePath, true
 }
 
-func getDashboardCachedIcon(identifier string) (string, bool) {
+func getDashboardCachedIcon(ctx context.Context, identifier string) (string, bool) {
 	for _, ext := range []string{".svg", ".png", ".webp"} {
+		if err := ctx.Err(); err != nil {
+			return "", false
+		}
 		cachePath := filepath.Join(dashboardIconsCacheDir, identifier+ext)
 		info, err := os.Stat(cachePath)
 		if err != nil {
@@ -161,8 +173,27 @@ func getDashboardCachedIcon(identifier string) (string, bool) {
 	return "", false
 }
 
+func getDerivedCachedIcon(ctx context.Context, identifier string) (string, bool) {
+	if cachePath, found := getDashboardCachedIcon(ctx, identifier); found {
+		return cachePath, true
+	}
+
+	cachePath := filepath.Join(simpleIconsCacheDir, identifier+".svg")
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
+	info, err := os.Stat(cachePath)
+	if err != nil {
+		return "", false
+	}
+	if time.Since(info.ModTime()) > iconCacheDuration {
+		return "", false
+	}
+	return cachePath, true
+}
+
 // fetchDashboardIcon downloads an icon from Dashboard Icons CDN (homarr-labs)
-func fetchDashboardIcon(name string) ([]byte, error) {
+func fetchDashboardIcon(ctx context.Context, name string) ([]byte, error) {
 	var errs []error
 	candidates := []string{
 		fmt.Sprintf("%s/svg/%s.svg", dashboardIconsRawBase, name),
@@ -172,7 +203,12 @@ func fetchDashboardIcon(name string) ([]byte, error) {
 	for _, url := range candidates {
 		slog.Debug("fetching dashboard icon", "name", name, "url", url)
 
-		resp, err := httpClient.Get(url)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to build %s request: %w", url, err))
+			continue
+		}
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to fetch %s: %w", url, err))
 			continue
@@ -204,11 +240,15 @@ func fetchDashboardIcon(name string) ([]byte, error) {
 }
 
 // fetchSimpleIcon downloads an icon from Simple Icons CDN
-func fetchSimpleIcon(name string) ([]byte, error) {
+func fetchSimpleIcon(ctx context.Context, name string) ([]byte, error) {
 	url := fmt.Sprintf("%s/%s", simpleIconsCDN, name)
 	slog.Debug("fetching simple icon", "name", name, "url", url)
 
-	resp, err := httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build icon request: %w", err)
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
@@ -227,10 +267,14 @@ func fetchSimpleIcon(name string) ([]byte, error) {
 }
 
 // fetchURLIcon downloads an icon from an arbitrary URL
-func fetchURLIcon(url string) ([]byte, error) {
+func fetchURLIcon(ctx context.Context, url string) ([]byte, error) {
 	slog.Debug("fetching icon from URL", "url", url)
 
-	resp, err := httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build icon request: %w", err)
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
@@ -299,7 +343,7 @@ func detectIconExtension(data []byte) string {
 }
 
 // GetIcon retrieves an icon by identifier, fetching and caching if necessary
-func GetIcon(identifier string) ([]byte, error) {
+func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	if identifier == "" {
 		return nil, fmt.Errorf("empty icon identifier")
 	}
@@ -313,11 +357,11 @@ func GetIcon(identifier string) ([]byte, error) {
 	iconType, value := parseIconIdentifier(identifier)
 
 	// Check cache first
-	if data, found := readCachedIcon(iconType, value, identifier); found {
+	if data, found := readCachedIcon(ctx, iconType, value, identifier); found {
 		return data, nil
 	}
 
-	data, iconType, value, err := fetchIconData(iconType, value)
+	data, iconType, value, err := fetchIconData(ctx, iconType, value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
@@ -330,12 +374,15 @@ func GetIcon(identifier string) ([]byte, error) {
 	return data, nil
 }
 
-func readCachedIcon(iconType IconType, value, identifier string) ([]byte, bool) {
-	cachePath, found := getCachedIcon(iconType, value)
+func readCachedIcon(ctx context.Context, iconType IconType, value, identifier string) ([]byte, bool) {
+	cachePath, found := getCachedIcon(ctx, iconType, value)
 	if !found {
 		return nil, false
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, false
+	}
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
 		slog.Warn("failed to read cached icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "path", cachePath, "error", err)
@@ -345,67 +392,67 @@ func readCachedIcon(iconType IconType, value, identifier string) ([]byte, bool) 
 	return data, true
 }
 
-func fetchIconData(iconType IconType, value string) ([]byte, IconType, string, error) {
+func fetchIconData(ctx context.Context, iconType IconType, value string) ([]byte, IconType, string, error) {
 	switch iconType {
 	case IconTypeDashboardIcon:
-		return fetchDashboardIconWithFallback(value)
+		return fetchDashboardIconWithFallback(ctx, value)
 	case IconTypeSimpleIcon:
-		return fetchSimpleIconWithFallback(value)
+		return fetchSimpleIconWithFallback(ctx, value)
 	case IconTypeURL:
-		return fetchURLIconWithFallback(value)
+		return fetchURLIconWithFallback(ctx, value)
 	case IconTypeFile:
 		data, err := os.ReadFile(filepath.Join(userIconsDir, value))
 		return data, iconType, value, err
 	case IconTypeDerived:
-		return fetchDerivedIcon(value)
+		return fetchDerivedIcon(ctx, value)
 	default:
 		return nil, iconType, value, fmt.Errorf("unknown icon type: %s", iconType)
 	}
 }
 
-func fetchDashboardIconWithFallback(value string) ([]byte, IconType, string, error) {
-	data, err := fetchDashboardIcon(value)
+func fetchDashboardIconWithFallback(ctx context.Context, value string) ([]byte, IconType, string, error) {
+	data, err := fetchDashboardIcon(ctx, value)
 	if err == nil {
 		return data, IconTypeDashboardIcon, value, nil
 	}
 	slog.Debug("dashboard icon not found, falling back to docker icon", "identifier", value)
-	return fetchDockerFallback(err)
+	return fetchDockerFallback(ctx, err)
 }
 
-func fetchSimpleIconWithFallback(value string) ([]byte, IconType, string, error) {
-	data, err := fetchSimpleIcon(value)
+func fetchSimpleIconWithFallback(ctx context.Context, value string) ([]byte, IconType, string, error) {
+	data, err := fetchSimpleIcon(ctx, value)
 	if err == nil {
 		return data, IconTypeSimpleIcon, value, nil
 	}
 	slog.Debug("simple icon not found, falling back to docker icon", "identifier", value)
-	return fetchDockerFallback(err)
+	return fetchDockerFallback(ctx, err)
 }
 
-func fetchURLIconWithFallback(value string) ([]byte, IconType, string, error) {
-	data, err := fetchURLIcon(value)
+func fetchURLIconWithFallback(ctx context.Context, value string) ([]byte, IconType, string, error) {
+	data, err := fetchURLIcon(ctx, value)
 	if err == nil {
 		return data, IconTypeURL, value, nil
 	}
 	slog.Debug("url icon fetch failed, falling back to docker icon", "url", value, "error", err)
-	return fetchDockerFallback(err)
+	return fetchDockerFallback(ctx, err)
 }
 
-func fetchDerivedIcon(value string) ([]byte, IconType, string, error) {
-	data, err := fetchDashboardIcon(value)
+func fetchDerivedIcon(ctx context.Context, value string) ([]byte, IconType, string, error) {
+	data, err := fetchDashboardIcon(ctx, value)
 	if err == nil {
 		return data, IconTypeDerived, value, nil
 	}
 	slog.Debug("dashboard icon not found, trying simple icons", "identifier", value)
-	data, err = fetchSimpleIcon(value)
+	data, err = fetchSimpleIcon(ctx, value)
 	if err == nil {
 		return data, IconTypeSimpleIcon, value, nil
 	}
 	slog.Debug("simple icon not found, falling back to docker icon", "identifier", value)
-	return fetchDockerFallback(err)
+	return fetchDockerFallback(ctx, err)
 }
 
-func fetchDockerFallback(sourceErr error) ([]byte, IconType, string, error) {
-	data, err := fetchDashboardIcon("docker")
+func fetchDockerFallback(ctx context.Context, sourceErr error) ([]byte, IconType, string, error) {
+	data, err := fetchDashboardIcon(ctx, "docker")
 	if err != nil {
 		return nil, IconTypeDashboardIcon, "docker", errors.Join(sourceErr, err)
 	}
@@ -413,8 +460,8 @@ func fetchDockerFallback(sourceErr error) ([]byte, IconType, string, error) {
 }
 
 // GetIconURI retrieves an icon and returns it as a base64 data URI
-func GetIconURI(identifier string) (string, error) {
-	data, err := GetIcon(identifier)
+func GetIconURI(ctx context.Context, identifier string) (string, error) {
+	data, err := GetIcon(ctx, identifier)
 	if err != nil {
 		return "", err
 	}
@@ -435,9 +482,9 @@ func GetIconURI(identifier string) (string, error) {
 }
 
 // GetIconInfo returns metadata about an icon without fetching it
-func GetIconInfo(identifier string) IconInfo {
+func GetIconInfo(ctx context.Context, identifier string) IconInfo {
 	iconType, value := parseIconIdentifier(identifier)
-	_, cached := getCachedIcon(iconType, value)
+	_, cached := getCachedIcon(ctx, iconType, value)
 
 	return IconInfo{
 		Type:       iconType,
@@ -447,21 +494,27 @@ func GetIconInfo(identifier string) IconInfo {
 }
 
 // ClearIconCache removes all cached icons
-func ClearIconCache() error {
+func ClearIconCache(ctx context.Context) error {
 	slog.Info("clearing icon cache")
 
 	dirs := []string{dashboardIconsCacheDir, simpleIconsCacheDir, urlCacheDir}
 	for _, dir := range dirs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("failed to remove cache directory %s: %w", dir, err)
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// Recreate directories
 	return initIconCache()
 }
 
-// ResolveIconIdentifier resolves an icon identifier with fallback to image name, then service/container name
+// ResolveIconIdentifier resolves an explicit icon identifier, then falls back to the service/container name.
 func ResolveIconIdentifier(iconValue, serviceName string) string {
 	// If icon is explicitly set, use it
 	if iconValue != "" {

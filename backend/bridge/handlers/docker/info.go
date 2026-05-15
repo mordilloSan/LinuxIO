@@ -60,14 +60,12 @@ type DockerSystemInfo struct {
 }
 
 // GetDockerInfo returns combined system and version information from the Docker daemon.
-func GetDockerInfo() (*DockerSystemInfo, error) {
+func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
-
-	ctx := context.Background()
 
 	info, err := cli.Info(ctx)
 	if err != nil {

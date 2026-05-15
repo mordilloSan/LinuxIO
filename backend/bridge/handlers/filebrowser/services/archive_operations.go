@@ -2,7 +2,6 @@ package services
 
 import (
 	"archive/tar"
-	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -18,7 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func closeWithLog(name string, closer io.Closer) {
@@ -429,7 +428,7 @@ func extractZipFiles(root *fsroot.FSRoot, reader *zip.Reader, destination string
 		extractWorkers = runtime.GOMAXPROCS(0)
 	}
 
-	g, groupCtx := errgroup.WithContext(context.Background())
+	var g errgroup.Group
 	sem := make(chan struct{}, extractWorkers)
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
@@ -439,11 +438,7 @@ func extractZipFiles(root *fsroot.FSRoot, reader *zip.Reader, destination string
 			return ipc.ErrAborted
 		}
 		f := file
-		select {
-		case sem <- struct{}{}:
-		case <-groupCtx.Done():
-			return groupCtx.Err()
-		}
+		sem <- struct{}{}
 		g.Go(func() error {
 			defer func() { <-sem }()
 			if opts.IsCancelled() {

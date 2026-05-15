@@ -26,6 +26,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
+  const [isLoadingQrCode, setIsLoadingQrCode] = useState(false);
   const queryClient = useQueryClient();
   const interfaceName = params.id;
 
@@ -60,25 +61,6 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       );
     },
   });
-  const { mutate: downloadConfig } =
-    linuxio.wireguard.peer_config_download.useMutation({
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to download config"),
-          wireguardToastMeta,
-        );
-      },
-    });
-  const { mutate: getQrCode, isPending: isLoadingQrCode } =
-    linuxio.wireguard.peer_qrcode.useMutation({
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to load QR code"),
-          wireguardToastMeta,
-        );
-      },
-    });
-
   // Type-safe API returns Peer[] directly
   const peers: Peer[] = useMemo(() => peersData || [], [peersData]);
 
@@ -103,39 +85,55 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       },
     });
   };
-  const handleDownloadConfig = (peername: string) => {
-    downloadConfig([interfaceName, peername], {
-      onSuccess: (result) => {
-        // Create blob from config text
-        const blob = new Blob([result.content], {
-          type: "text/plain",
-        });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute("download", `${peername}.conf`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        toast.success(
-          `Config for '${peername}' downloaded successfully`,
-          wireguardToastMeta,
-        );
-      },
-    });
+  const handleDownloadConfig = async (peername: string) => {
+    try {
+      const result = await linuxio.wireguard.peer_config_download.call(
+        interfaceName,
+        peername,
+      );
+      const blob = new Blob([result.content], {
+        type: "text/plain",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${peername}.conf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(
+        `Config for '${peername}' downloaded successfully`,
+        wireguardToastMeta,
+      );
+    } catch (error) {
+      toast.error(
+        getMutationErrorMessage(error, "Failed to download config"),
+        wireguardToastMeta,
+      );
+    }
   };
-  const handleViewQrCode = (peername: string) => {
-    getQrCode([interfaceName, peername], {
-      onSuccess: (result) => {
-        setQrCode(result.qrcode);
-        setOpenDialog(true);
-        toast.success(
-          `QR code for '${peername}' loaded successfully`,
-          wireguardToastMeta,
-        );
-      },
-    });
+  const handleViewQrCode = async (peername: string) => {
+    setIsLoadingQrCode(true);
+    try {
+      const result = await linuxio.wireguard.peer_qrcode.call(
+        interfaceName,
+        peername,
+      );
+      setQrCode(result.qrcode);
+      setOpenDialog(true);
+      toast.success(
+        `QR code for '${peername}' loaded successfully`,
+        wireguardToastMeta,
+      );
+    } catch (error) {
+      toast.error(
+        getMutationErrorMessage(error, "Failed to load QR code"),
+        wireguardToastMeta,
+      );
+    } finally {
+      setIsLoadingQrCode(false);
+    }
   };
   if (isLoading) return <PageLoader />;
   if (isError)

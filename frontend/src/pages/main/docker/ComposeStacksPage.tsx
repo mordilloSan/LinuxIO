@@ -38,8 +38,6 @@ import {
 import { useConfig } from "@/hooks/useConfig";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
-const JOB_TYPE_FILE_UPLOAD = "file.upload";
-
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
   onMountIndexerHandler?: (handler: () => void) => void;
@@ -54,8 +52,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const queryClient = useQueryClient();
   const { config } = useConfig();
   const chunkSize =
-    (config.chunkSizeMB ?? 0) > 0
-      ? (config.chunkSizeMB as number) * 1024 * 1024
+    (config.appSettings.chunkSizeMB ?? 0) > 0
+      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
       : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
   const { runChunked: runChunkedStreamResult } = useStreamResult();
 
@@ -361,8 +359,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
-      const job = await linuxio.jobs.start.call(
-        JOB_TYPE_FILE_UPLOAD,
+      const job = await linuxio.filebrowser.upload.call(
         filePath,
         String(contentSize),
         ...(override ? ["true"] : []),
@@ -533,7 +530,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           open={setupDialogOpen}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
-          defaultWorkingDir={config.dockerFolders?.[0]}
+          defaultWorkingDir={config.docker.folders?.[0]}
         />
 
         <ComposeOperationDialog

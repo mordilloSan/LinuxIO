@@ -10,7 +10,7 @@ import UpdateBanner from "@/components/update/UpdateBanner";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
-import { useSidebarItems } from "@/routes";
+import { usePreloadProtectedRouteChunks, useSidebarItems } from "@/routes";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 const Dashboard: React.FC = () => {
@@ -22,10 +22,41 @@ const Dashboard: React.FC = () => {
     useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
+  const preloadProtectedRouteChunks = usePreloadProtectedRouteChunks();
 
   useEffect(() => {
     if (!isDesktop) setMobileOpen(false);
   }, [location.key, isDesktop, setMobileOpen]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    let cancelled = false;
+    let idleHandle: number | undefined;
+    let timeoutHandle: number | undefined;
+
+    const preload = () => {
+      if (cancelled) return;
+      void preloadProtectedRouteChunks();
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      idleHandle = window.requestIdleCallback(preload, { timeout: 3000 });
+    } else {
+      timeoutHandle = window.setTimeout(preload, 1200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (
+        idleHandle !== undefined &&
+        typeof window.cancelIdleCallback === "function"
+      ) {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
+    };
+  }, [isLoaded, preloadProtectedRouteChunks]);
 
   if (!isLoaded) return null;
 

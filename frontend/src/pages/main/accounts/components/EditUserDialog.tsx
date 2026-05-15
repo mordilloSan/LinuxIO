@@ -87,7 +87,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
       return;
     }
 
-    modifyUser([JSON.stringify(request)]);
+    modifyUser([request]);
   };
 
   return (

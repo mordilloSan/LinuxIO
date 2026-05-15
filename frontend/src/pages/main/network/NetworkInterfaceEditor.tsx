@@ -110,11 +110,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.dbus.set_ipv4.useMutation({
+    linuxio.network.set_ipv4.useMutation({
       onSuccess: () => {
         toast.success("Switched to DHCP mode");
         queryClient.invalidateQueries({
-          queryKey: linuxio.dbus.get_network_info.queryKey(),
+          queryKey: linuxio.network.get_network_info.queryKey(),
         });
         onSave(iface);
         onClose();
@@ -126,11 +126,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       },
     });
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.dbus.set_ipv4_manual.useMutation({
+    linuxio.network.set_ipv4_manual.useMutation({
       onSuccess: () => {
         toast.success("Manual configuration saved");
         queryClient.invalidateQueries({
-          queryKey: linuxio.dbus.get_network_info.queryKey(),
+          queryKey: linuxio.network.get_network_info.queryKey(),
         });
         onSave(iface);
         onClose();
@@ -145,11 +145,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       },
     });
   const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.dbus.enable_connection.useMutation({
+    linuxio.network.enable_connection.useMutation({
       onSuccess: () => {
         toast.success("Connection enabled");
         queryClient.invalidateQueries({
-          queryKey: linuxio.dbus.get_network_info.queryKey(),
+          queryKey: linuxio.network.get_network_info.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -159,11 +159,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       },
     });
   const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.dbus.disable_connection.useMutation({
+    linuxio.network.disable_connection.useMutation({
       onSuccess: () => {
         toast.success("Connection disabled");
         queryClient.invalidateQueries({
-          queryKey: linuxio.dbus.get_network_info.queryKey(),
+          queryKey: linuxio.network.get_network_info.queryKey(),
         });
       },
       onError: (error: Error) => {

@@ -2,67 +2,39 @@ package power
 
 import (
 	"context"
-	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/privilege"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-type powerRegistration struct {
-	command string
-	handler ipc.HandlerFunc
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "power", []bridgeipc.Command{
+		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
+		{Name: "start", Mode: bridgeipc.ModeJob, Handler: handleStart, Privileged: true},
+		{Name: "set_profile", Mode: bridgeipc.ModeJob, Handler: handleSetProfile, Privileged: true},
+		{Name: "disable", Mode: bridgeipc.ModeJob, Handler: handleDisable, Privileged: true},
+	})
 }
 
-func RegisterHandlers(sess *session.Session) {
-	for _, registration := range []powerRegistration{
-		{command: "get_status", handler: handleGetStatus},
-		{command: "start", handler: handleStart},
-		{command: "set_profile", handler: handleSetProfile},
-		{command: "disable", handler: handleDisable},
-	} {
-		ipc.RegisterFunc(
-			"power",
-			registration.command,
-			privilege.RequirePrivilegedIPC(sess, registration.handler),
-		)
-	}
+func handleGetStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := GetStatus(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetStatus(ctx context.Context, args []string, emit ipc.Events) error {
-	result, err := GetStatus()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+func handleStart(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := StartTuned(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleStart(ctx context.Context, args []string, emit ipc.Events) error {
-	slog.Info("TuneD start requested", "component", "power")
-	result, err := StartTuned()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
-}
-
-func handleSetProfile(ctx context.Context, args []string, emit ipc.Events) error {
+func handleSetProfile(ctx context.Context, args []string, emit bridgeipc.Events) error {
 	if len(args) != 1 {
-		return ipc.ErrInvalidArgs
+		return bridgeipc.ErrInvalidArgs
 	}
-	slog.Info("TuneD profile change requested", "component", "power", "profile", args[0])
-	result, err := SetProfile(args[0])
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+	result, err := SetProfile(ctx, args[0])
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleDisable(ctx context.Context, args []string, emit ipc.Events) error {
-	slog.Info("TuneD disable requested", "component", "power")
-	result, err := DisableTuned()
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
+func handleDisable(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := DisableTuned(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }

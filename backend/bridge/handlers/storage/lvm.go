@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -20,8 +21,8 @@ var (
 )
 
 // ListPhysicalVolumes returns all LVM physical volumes
-func ListPhysicalVolumes() ([]PhysicalVolume, error) {
-	cmd := exec.Command("pvs", "--reportformat", "json", "--units", "b", "--nosuffix",
+func ListPhysicalVolumes(ctx context.Context) ([]PhysicalVolume, error) {
+	cmd := exec.CommandContext(ctx, "pvs", "--reportformat", "json", "--units", "b", "--nosuffix",
 		"-o", "pv_name,vg_name,pv_size,pv_free,pv_attr,pv_fmt")
 	out, err := cmd.Output()
 	if err != nil {
@@ -59,8 +60,8 @@ func ListPhysicalVolumes() ([]PhysicalVolume, error) {
 }
 
 // ListVolumeGroups returns all LVM volume groups
-func ListVolumeGroups() ([]VolumeGroup, error) {
-	cmd := exec.Command("vgs", "--reportformat", "json", "--units", "b", "--nosuffix",
+func ListVolumeGroups(ctx context.Context) ([]VolumeGroup, error) {
+	cmd := exec.CommandContext(ctx, "vgs", "--reportformat", "json", "--units", "b", "--nosuffix",
 		"-o", "vg_name,vg_size,vg_free,pv_count,lv_count,vg_attr")
 	out, err := cmd.Output()
 	if err != nil {
@@ -72,7 +73,7 @@ func ListVolumeGroups() ([]VolumeGroup, error) {
 		return nil, fmt.Errorf("failed to parse vgs output: %w", err)
 	}
 
-	pvNamesByVG := getPVNamesByVG()
+	pvNamesByVG := getPVNamesByVG(ctx)
 
 	var vgs []VolumeGroup
 	for _, r := range report.Report {
@@ -97,8 +98,8 @@ func ListVolumeGroups() ([]VolumeGroup, error) {
 }
 
 // ListLogicalVolumes returns all LVM logical volumes with mount info
-func ListLogicalVolumes() ([]LogicalVolume, error) {
-	cmd := exec.Command("lvs", "--reportformat", "json", "--units", "b", "--nosuffix",
+func ListLogicalVolumes(ctx context.Context) ([]LogicalVolume, error) {
+	cmd := exec.CommandContext(ctx, "lvs", "--reportformat", "json", "--units", "b", "--nosuffix",
 		"-o", "lv_name,vg_name,lv_size,lv_path,lv_attr")
 	out, err := cmd.Output()
 	if err != nil {
@@ -148,7 +149,7 @@ func ListLogicalVolumes() ([]LogicalVolume, error) {
 }
 
 // CreateLogicalVolume creates a new logical volume
-func CreateLogicalVolume(vgName, lvName, size string) (LogicalVolumeCreateResult, error) {
+func CreateLogicalVolume(ctx context.Context, vgName, lvName, size string) (LogicalVolumeCreateResult, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
 		slog.Warn("invalid volume group name", "volume_group", vgName)
@@ -163,7 +164,7 @@ func CreateLogicalVolume(vgName, lvName, size string) (LogicalVolumeCreateResult
 		return LogicalVolumeCreateResult{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 	slog.Info("creating logical volume", "volume_group", vgName, "name", lvName, "size", size)
-	cmd := exec.Command("lvcreate", "-L", size, "-n", lvName, vgName)
+	cmd := exec.CommandContext(ctx, "lvcreate", "-L", size, "-n", lvName, vgName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("lvcreate failed", "volume_group", vgName, "name", lvName, "output", strings.TrimSpace(string(out)))
@@ -178,7 +179,7 @@ func CreateLogicalVolume(vgName, lvName, size string) (LogicalVolumeCreateResult
 }
 
 // DeleteLogicalVolume removes a logical volume
-func DeleteLogicalVolume(vgName, lvName string) (LogicalVolumeMutationResult, error) {
+func DeleteLogicalVolume(ctx context.Context, vgName, lvName string) (LogicalVolumeMutationResult, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
 		slog.Warn("invalid volume group name", "volume_group", vgName)
@@ -200,7 +201,7 @@ func DeleteLogicalVolume(vgName, lvName string) (LogicalVolumeMutationResult, er
 		}
 	}
 	slog.Info("deleting logical volume", "path", lvPath)
-	cmd := exec.Command("lvremove", "-f", lvPath)
+	cmd := exec.CommandContext(ctx, "lvremove", "-f", lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("lvremove failed", "path", lvPath, "output", strings.TrimSpace(string(out)))
@@ -211,7 +212,7 @@ func DeleteLogicalVolume(vgName, lvName string) (LogicalVolumeMutationResult, er
 }
 
 // ResizeLogicalVolume resizes a logical volume (and its filesystem if mounted)
-func ResizeLogicalVolume(vgName, lvName, newSize string) (LogicalVolumeMutationResult, error) {
+func ResizeLogicalVolume(ctx context.Context, vgName, lvName, newSize string) (LogicalVolumeMutationResult, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
 		slog.Warn("invalid volume group name", "volume_group", vgName)
@@ -229,7 +230,7 @@ func ResizeLogicalVolume(vgName, lvName, newSize string) (LogicalVolumeMutationR
 	lvPath := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
 	// Use lvresize -r to also resize filesystem if present.
 	slog.Info("resizing logical volume", "path", lvPath, "size", newSize)
-	cmd := exec.Command("lvresize", "-r", "-L", newSize, lvPath)
+	cmd := exec.CommandContext(ctx, "lvresize", "-r", "-L", newSize, lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("lvresize failed", "path", lvPath, "output", strings.TrimSpace(string(out)))
@@ -241,8 +242,8 @@ func ResizeLogicalVolume(vgName, lvName, newSize string) (LogicalVolumeMutationR
 
 // getPVNamesByVG returns the physical volume names for all volume groups with
 // a single pvs invocation, avoiding one subprocess per VG.
-func getPVNamesByVG() map[string][]string {
-	cmd := exec.Command("pvs", "--reportformat", "json", "-o", "pv_name,vg_name")
+func getPVNamesByVG(ctx context.Context) map[string][]string {
+	cmd := exec.CommandContext(ctx, "pvs", "--reportformat", "json", "-o", "pv_name,vg_name")
 	out, err := cmd.Output()
 	if err != nil {
 		return map[string][]string{}

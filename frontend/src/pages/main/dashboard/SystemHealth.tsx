@@ -110,10 +110,6 @@ const SystemHealth = () => {
     isFetching: fetchingHealth,
   } = linuxio.system.get_health_summary.useQuery({ refetchInterval: 50000 });
 
-  const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
-    refetchInterval: 50000,
-  });
-
   const {
     data: failedLoginEvents = [],
     isPending: failedLoginEventsPending,
@@ -480,7 +476,7 @@ const SystemHealth = () => {
         title="System Health"
         stats={stats}
         stats2={stats2}
-        avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
+        avatarIcon="mdi:heart-pulse"
         contentLayout={[1.5, 1]}
       />
 

@@ -56,13 +56,13 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
     enabled: open,
     staleTime: 60 * 60 * 1000,
   });
-  const { data: currentTimezone } = linuxio.dbus.get_timezone.useQuery({
+  const { data: currentTimezone } = linuxio.datetime.get_timezone.useQuery({
     enabled: open,
   });
-  const { data: ntpStatus } = linuxio.dbus.get_ntp_status.useQuery({
+  const { data: ntpStatus } = linuxio.datetime.get_ntp_status.useQuery({
     enabled: open,
   });
-  const { data: ntpServers } = linuxio.dbus.get_ntp_servers.useQuery({
+  const { data: ntpServers } = linuxio.datetime.get_ntp_servers.useQuery({
     enabled: open,
   });
   const { data: serverTime } = linuxio.system.get_server_time.useQuery({
@@ -111,22 +111,25 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
     setManualTime(toDatetimeLocal(serverTime));
   }
 
-  const { mutateAsync: setTz } = linuxio.dbus.set_timezone.useMutation({
+  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useMutation({
     onError: (e: Error) =>
       toast.error(getMutationErrorMessage(e, "Failed to set timezone")),
   });
-  const { mutateAsync: setNtp } = linuxio.dbus.set_ntp.useMutation({
+  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useMutation({
     onError: (e: Error) =>
       toast.error(getMutationErrorMessage(e, "Failed to update NTP")),
   });
-  const { mutateAsync: setServers } = linuxio.dbus.set_ntp_servers.useMutation({
-    onError: (e: Error) =>
-      toast.error(getMutationErrorMessage(e, "Failed to set NTP servers")),
-  });
-  const { mutateAsync: setTime } = linuxio.dbus.set_server_time.useMutation({
-    onError: (e: Error) =>
-      toast.error(getMutationErrorMessage(e, "Failed to set server time")),
-  });
+  const { mutateAsync: setServers } =
+    linuxio.datetime.set_ntp_servers.useMutation({
+      onError: (e: Error) =>
+        toast.error(getMutationErrorMessage(e, "Failed to set NTP servers")),
+    });
+  const { mutateAsync: setTime } = linuxio.datetime.set_server_time.useMutation(
+    {
+      onError: (e: Error) =>
+        toast.error(getMutationErrorMessage(e, "Failed to set server time")),
+    },
+  );
 
   const [isPending, setIsPending] = useState(false);
 
@@ -159,13 +162,13 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
         queryKey: linuxio.system.get_server_time.queryKey(),
       });
       queryClient.invalidateQueries({
-        queryKey: linuxio.dbus.get_ntp_status.queryKey(),
+        queryKey: linuxio.datetime.get_ntp_status.queryKey(),
       });
       queryClient.invalidateQueries({
-        queryKey: linuxio.dbus.get_ntp_servers.queryKey(),
+        queryKey: linuxio.datetime.get_ntp_servers.queryKey(),
       });
       queryClient.invalidateQueries({
-        queryKey: linuxio.dbus.get_timezone.queryKey(),
+        queryKey: linuxio.datetime.get_timezone.queryKey(),
       });
       onClose();
     } catch {

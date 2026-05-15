@@ -2,216 +2,166 @@ package accounts
 
 import (
 	"context"
-	"encoding/json"
-	"log/slog"
 	"strconv"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-type accountRegistration struct {
-	command string
-	handler ipc.HandlerFunc
-}
-
 // RegisterHandlers registers accounts handlers with the IPC system
-func RegisterHandlers() {
-	registerAccountHandlers([]accountRegistration{
-		{command: "list_users", handler: handleListUsers},
-		{command: "get_user_details", handler: handleGetUserDetails},
-		{command: "list_user_logins", handler: handleListUserLogins},
-		{command: "terminate_session", handler: handleTerminateSession},
-		{command: "create_user", handler: handleCreateUser},
-		{command: "delete_user", handler: handleDeleteUser},
-		{command: "modify_user", handler: handleModifyUser},
-		{command: "change_password", handler: handleChangePassword},
-		{command: "lock_user", handler: handleLockUser},
-		{command: "unlock_user", handler: handleUnlockUser},
-		{command: "list_groups", handler: handleListGroups},
-		{command: "create_group", handler: handleCreateGroup},
-		{command: "delete_group", handler: handleDeleteGroup},
-		{command: "modify_group_members", handler: handleModifyGroupMembers},
-		{command: "list_shells", handler: handleListShells},
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	bridgeipc.RegisterRoutes(router, "accounts", []bridgeipc.Command{
+		{Name: "list_users", Mode: bridgeipc.ModeQuery, Handler: handleListUsers},
+		{Name: "get_user_details", Mode: bridgeipc.ModeQuery, Handler: handleGetUserDetails},
+		{Name: "list_user_logins", Mode: bridgeipc.ModeQuery, Handler: handleListUserLogins},
+		{Name: "terminate_session", Mode: bridgeipc.ModeJob, Handler: handleTerminateSession},
+		{Name: "create_user", Mode: bridgeipc.ModeJob, Handler: handleCreateUser},
+		{Name: "delete_user", Mode: bridgeipc.ModeJob, Handler: handleDeleteUser},
+		{Name: "modify_user", Mode: bridgeipc.ModeJob, Handler: handleModifyUser},
+		{Name: "change_password", Mode: bridgeipc.ModeJob, Handler: handleChangePassword},
+		{Name: "lock_user", Mode: bridgeipc.ModeJob, Handler: handleLockUser},
+		{Name: "unlock_user", Mode: bridgeipc.ModeJob, Handler: handleUnlockUser},
+		{Name: "list_groups", Mode: bridgeipc.ModeQuery, Handler: handleListGroups},
+		{Name: "create_group", Mode: bridgeipc.ModeJob, Handler: handleCreateGroup},
+		{Name: "delete_group", Mode: bridgeipc.ModeJob, Handler: handleDeleteGroup},
+		{Name: "modify_group_members", Mode: bridgeipc.ModeJob, Handler: handleModifyGroupMembers},
+		{Name: "list_shells", Mode: bridgeipc.ModeQuery, Handler: handleListShells},
 	})
 }
 
-func registerAccountHandlers(registrations []accountRegistration) {
-	for _, registration := range registrations {
-		ipc.RegisterFunc("accounts", registration.command, registration.handler)
-	}
+func handleListUsers(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := ListUsers(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListUsers(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitAccountCall(emit, ListUsers)
-}
-
-func handleGetUserDetails(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+func handleGetUserDetails(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	result, err := GetUserDetails(ctx, args[0])
-	return emitAccountResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListUserLogins(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+func handleListUserLogins(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
 	result, err := ListUserLogins(ctx, args[0], 24)
-	return emitAccountResult(emit, result, err)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleTerminateSession(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 2); err != nil {
+func handleTerminateSession(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
 	sessionID := args[0]
 	pid, _ := strconv.Atoi(args[1])
-	slog.Info("terminate session requested", "sessionID", sessionID, "pid", pid)
 	if err := TerminateSession(ctx, sessionID, pid); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleCreateUser(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[CreateUserRequest](args)
+func handleCreateUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	req, err := bridgeipc.DecodeJSONArg[CreateUserRequest](args, 0)
 	if err != nil {
 		return err
 	}
-	slog.Info("create user requested", "user", req.Username)
-	if err := CreateUser(req); err != nil {
+	if err := CreateUser(ctx, req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleDeleteUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+func handleDeleteUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("delete user requested", "user", args[0])
-	if err := DeleteUser(args[0]); err != nil {
+	if err := DeleteUser(ctx, args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleModifyUser(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[ModifyUserRequest](args)
+func handleModifyUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	req, err := bridgeipc.DecodeJSONArg[ModifyUserRequest](args, 0)
 	if err != nil {
 		return err
 	}
-	slog.Info("modify user requested", "user", req.Username)
-	if err := ModifyUser(req); err != nil {
+	if err := ModifyUser(ctx, req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleChangePassword(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 2); err != nil {
+func handleChangePassword(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 2); err != nil {
 		return err
 	}
-	slog.Info("change password requested", "user", args[0])
-	if err := ChangePassword(args[0], args[1]); err != nil {
+	if err := ChangePassword(ctx, args[0], args[1]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleLockUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+func handleLockUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("lock user requested", "user", args[0])
-	if err := LockUser(args[0]); err != nil {
+	if err := LockUser(ctx, args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleUnlockUser(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+func handleUnlockUser(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("unlock user requested", "user", args[0])
-	if err := UnlockUser(args[0]); err != nil {
+	if err := UnlockUser(ctx, args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleListGroups(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitAccountCall(emit, ListGroups)
+func handleListGroups(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := ListGroups(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleCreateGroup(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[CreateGroupRequest](args)
+func handleCreateGroup(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	req, err := bridgeipc.DecodeJSONArg[CreateGroupRequest](args, 0)
 	if err != nil {
 		return err
 	}
-	slog.Info("create group requested", "group", req.Name)
-	if err := CreateGroup(req); err != nil {
+	if err := CreateGroup(ctx, req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleDeleteGroup(ctx context.Context, args []string, emit ipc.Events) error {
-	if err := requireAccountArgs(args, 1); err != nil {
+func handleDeleteGroup(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if err := bridgeipc.RequireArgs(args, 1); err != nil {
 		return err
 	}
-	slog.Info("delete group requested", "group", args[0])
-	if err := DeleteGroup(args[0]); err != nil {
+	if err := DeleteGroup(ctx, args[0]); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleModifyGroupMembers(ctx context.Context, args []string, emit ipc.Events) error {
-	req, err := decodeAccountJSON[ModifyGroupMembersRequest](args)
+func handleModifyGroupMembers(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	req, err := bridgeipc.DecodeJSONArg[ModifyGroupMembersRequest](args, 0)
 	if err != nil {
 		return err
 	}
-	slog.Info("modify group members requested", "group", req.GroupName)
-	if err := ModifyGroupMembers(req); err != nil {
+	if err := ModifyGroupMembers(ctx, req); err != nil {
 		return err
 	}
-	return emit.Result(nil)
+	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleListShells(ctx context.Context, args []string, emit ipc.Events) error {
-	return emitAccountCall(emit, ListShells)
-}
-
-func decodeAccountJSON[T any](args []string) (T, error) {
-	var zero T
-	if err := requireAccountArgs(args, 1); err != nil {
-		return zero, err
-	}
-	var payload T
-	if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-		return zero, err
-	}
-	return payload, nil
-}
-
-func requireAccountArgs(args []string, min int) error {
-	if len(args) < min {
-		return ipc.ErrInvalidArgs
-	}
-	return nil
-}
-
-func emitAccountResult(emit ipc.Events, result any, err error) error {
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
-}
-
-func emitAccountCall[T any](emit ipc.Events, fn func() (T, error)) error {
-	result, err := fn()
-	return emitAccountResult(emit, result, err)
+func handleListShells(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	result, err := ListShells(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
 }

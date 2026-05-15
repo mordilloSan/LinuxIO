@@ -5,12 +5,16 @@
 3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `eslint-plugin-react`
 
-4 - user config to match config in UI.
+4 - Session Activity And Job-Safe Idle Cleanup
+beware of ctx in handlers and if session dies bridge is orpahned doing work?
 
-5 - Make a global config?
+5 - values fixed in router.go should be set in global settings file?
 
-6 - session-activity-timeout-plan.md
+6 - protobuf and remove json all together from app? Remove DecodeJSONArg?
 
+7 - Config not loaded on every page load. go template?
+
+user config to match config in UI - DONE
 Fix NFS distro dependency - DONE
 Implement power management - DONE
 Review bridge and server logging - Done

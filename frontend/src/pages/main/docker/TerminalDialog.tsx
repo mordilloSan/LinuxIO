@@ -3,9 +3,9 @@ import { Terminal } from "@xterm/xterm";
 import React, {
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
-  useLayoutEffect,
 } from "react";
 
 import "@xterm/xterm/css/xterm.css";
@@ -46,9 +46,8 @@ const TerminalDialog: React.FC<Props> = ({
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const { streamRef, openStream, closeStream } = useLiveStream();
-  const onCloseRef = useRef(onClose);
-  useLayoutEffect(() => {
-    onCloseRef.current = onClose;
+  const handleClose = useEffectEvent(() => {
+    onClose();
   });
   const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
@@ -123,7 +122,7 @@ const TerminalDialog: React.FC<Props> = ({
     xterm.current.attachCustomKeyEventHandler((event) => {
       // Escape - close dialog
       if (event.key === "Escape" && event.type === "keydown") {
-        onCloseRef.current();
+        handleClose();
         return false;
       }
 

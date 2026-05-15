@@ -18,7 +18,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useConfigValue } from "@/hooks/useConfig";
+import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
 const normalizePathInput = (value: string): string => {
@@ -75,7 +75,12 @@ const validateDraftFolders = (
 
 const DockerFolderSettingsSection: React.FC = () => {
   const theme = useAppTheme();
-  const [dockerFolders, setDockerFolders] = useConfigValue("dockerFolders");
+  const { config, updateConfig } = useConfig();
+  const dockerFolders = config.docker.folders;
+  const setDockerFolders = useCallback(
+    (folders: string[]) => updateConfig({ docker: { folders } }),
+    [updateConfig],
+  );
   const {
     isEnabled: indexerEnabled,
     status: indexerStatus,

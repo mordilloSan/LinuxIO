@@ -127,6 +127,17 @@ func TestFormatJournalEntryIncludesErrorField(t *testing.T) {
 	}
 }
 
+func TestFormatJournalEntryIncludesBridgeRouteFields(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"7","MESSAGE":"route completed","LINUXIO_ROUTE":"system.get_timezones","LINUXIO_MODE":"query","LINUXIO_OUTCOME":"success","LINUXIO_DURATION":"3.2ms","LINUXIO_ARG_COUNT":"0","LINUXIO_USER":"miguelmariz"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	want := `route completed [arg_count=0 duration=3.2ms mode=query outcome=success route=system.get_timezones user=miguelmariz]`
+	if !containsSubstring(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	}
+}
+
 func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
 	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-auth","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"bridge exec failed","LINUXIO_SESSION_ID":"abc123","LINUXIO_COMPONENT":"auth"}`)
 	if got == "" {

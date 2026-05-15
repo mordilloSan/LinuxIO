@@ -10,7 +10,7 @@ import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
 
-import { linuxio } from "@/api";
+import { linuxio, jobSnapshotResult } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -44,7 +44,8 @@ const DockerPage: React.FC = () => {
   const { mutate: startAllStopped, isPending: isStartingAll } =
     linuxio.docker.start_all_stopped.useMutation({
       onSuccess: (data: any) => {
-        toast.success(`Started ${data.started} container(s)`);
+        const result = jobSnapshotResult<{ started: number }>(data);
+        toast.success(`Started ${result.started} container(s)`);
         queryClient.invalidateQueries({
           queryKey: linuxio.docker.list_containers.queryKey(),
         });
@@ -55,7 +56,8 @@ const DockerPage: React.FC = () => {
   const { mutate: stopAllRunning, isPending: isStoppingAll } =
     linuxio.docker.stop_all_running.useMutation({
       onSuccess: (data: any) => {
-        toast.success(`Stopped ${data.stopped} container(s)`);
+        const result = jobSnapshotResult<{ stopped: number }>(data);
+        toast.success(`Stopped ${result.stopped} container(s)`);
         queryClient.invalidateQueries({
           queryKey: linuxio.docker.list_containers.queryKey(),
         });
@@ -480,7 +482,7 @@ const DockerPage: React.FC = () => {
       <PruneDialog
         open={pruneDialogOpen}
         onClose={() => !isPruning && setPruneDialogOpen(false)}
-        onConfirm={(opts: PruneOptions) => systemPrune([JSON.stringify(opts)])}
+        onConfirm={(opts: PruneOptions) => systemPrune([opts])}
         isLoading={isPruning}
       />
     </>
