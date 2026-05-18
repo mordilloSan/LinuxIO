@@ -14,3 +14,12 @@ type FileProgress struct {
 	Pct   int    `json:"pct"`             // Percentage (0-100)
 	Phase string `json:"phase,omitempty"` // Optional phase description
 }
+
+// DeleteProgress represents item-count progress for delete jobs.
+type DeleteProgress struct {
+	Processed     int64  `json:"processed"`
+	Total         int64  `json:"total"`
+	Pct           int    `json:"pct"`
+	Phase         string `json:"phase,omitempty"`
+	Indeterminate bool   `json:"indeterminate,omitempty"`
+}

@@ -1164,7 +1164,7 @@ export interface LinuxIOSchema {
       result: ApiResource;
     };
     resource_stat: { args: [path: string]; result: ResourceStatData };
-    resource_delete: { args: [path: string]; result: void };
+    resource_delete: { args: [path: string]; result: JobSnapshot };
     resource_post: { args: [path: string, action?: string]; result: void };
     resource_patch: {
       args: [action: string, src: string, dst: string];

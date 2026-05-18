@@ -102,12 +102,16 @@ export const useFileMutations = ({
     [createFolderMutation, normalizedPath],
   );
 
-  const deleteItemMutation = linuxio.filebrowser.resource_delete.useMutation();
-
   const { mutate: deleteItems } = useMutation({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
-        paths.map((path) => deleteItemMutation.mutateAsync([path])),
+        paths.map(async (path) => {
+          const job = await linuxio.filebrowser.resource_delete.call(path);
+          await runStreamResult({
+            open: () => openJobAttachStream(job.id),
+            closeMessage: "Delete job stream closed before completion",
+          });
+        }),
       );
     },
     onSuccess: () => {

@@ -37,7 +37,7 @@ func handleResourceStat(ctx context.Context, args []string, emit bridgeipc.Event
 }
 
 func handleResourceDelete(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := resourceDelete(ctx, args)
+	result, err := resourceDelete(ctx, args, emit)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 

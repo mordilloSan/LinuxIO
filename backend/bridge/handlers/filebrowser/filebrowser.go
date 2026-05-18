@@ -32,6 +32,10 @@ var (
 )
 
 const indexerServiceName = "indexer.service"
+const (
+	deleteLocalPrescanMaxBytes           int64 = 512 * 1024 * 1024
+	deleteLocalPrescanMaxTopLevelEntries       = 1000
+)
 
 func init() {
 	indexerAvailable.Store(true)
@@ -121,7 +125,7 @@ func resourceStat(ctx context.Context, args []string) (any, error) {
 
 // resourceDelete deletes a resource
 // Args: [path]
-func resourceDelete(ctx context.Context, args []string) (any, error) {
+func resourceDelete(ctx context.Context, args []string, emit bridgeipc.Events) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
@@ -132,18 +136,22 @@ func resourceDelete(ctx context.Context, args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:cannot delete root")
 	}
 
-	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
-		Path:   path,
-		Expand: false,
-	})
+	isDir, err := deleteTargetIsDir(path)
 	if err != nil {
 		slog.Debug("error getting file info", "path", path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
-	err = services.DeleteFiles(fileInfo.RealPath)
+	deleteOpts := deleteOptionsForPath(ctx, path, isDir)
+	reportDeleteProgress(emit, 0, deleteOpts.Total, deleteOpts.Indeterminate, "preparing")
+	deleteOpts.Progress = newDeleteProgressReporter(emit)
+
+	processed, err := services.DeleteFilesWithProgress(ctx, path, deleteOpts)
 	if err != nil {
-		slog.Debug("error deleting file", "path", fileInfo.RealPath, "error", err)
+		if errors.Is(err, context.Canceled) {
+			return nil, err
+		}
+		slog.Debug("error deleting file", "path", path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
@@ -154,7 +162,111 @@ func resourceDelete(ctx context.Context, args []string) (any, error) {
 	}
 	slog.Info("delete complete", "path", path)
 
-	return map[string]any{"message": "deleted"}, nil
+	return map[string]any{
+		"message":   "deleted",
+		"processed": processed,
+	}, nil
+}
+
+func deleteTargetIsDir(path string) (bool, error) {
+	root, err := fsroot.Open()
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
+}
+
+func deleteOptionsForPath(ctx context.Context, path string, isDir bool) services.DeleteOptions {
+	if !isDir {
+		return services.DeleteOptions{Total: 1}
+	}
+
+	if total, err := fetchEntryCountFromIndexer(ctx, path); err == nil {
+		if total > 0 {
+			return services.DeleteOptions{Total: total}
+		}
+		if shouldPrescanDeletePath(path) {
+			return services.DeleteOptions{Prescan: true}
+		}
+		return services.DeleteOptions{Indeterminate: true}
+	} else {
+		slog.Debug("failed to get delete entry count from indexer", "path", path, "error", err)
+	}
+
+	if size, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
+		if size > deleteLocalPrescanMaxBytes {
+			return services.DeleteOptions{Indeterminate: true}
+		}
+		if size > 0 || shouldPrescanDeletePath(path) {
+			return services.DeleteOptions{Prescan: true}
+		}
+	} else {
+		slog.Debug("failed to get delete directory size from indexer", "path", path, "error", err)
+	}
+
+	if shouldPrescanDeletePath(path) {
+		return services.DeleteOptions{Prescan: true}
+	}
+	return services.DeleteOptions{Indeterminate: true}
+}
+
+func shouldPrescanDeletePath(path string) bool {
+	ok, err := services.TopLevelEntryCountWithin(path, deleteLocalPrescanMaxTopLevelEntries)
+	if err != nil {
+		slog.Debug("failed to inspect delete directory top-level entries", "path", path, "error", err)
+		return false
+	}
+	return ok
+}
+
+func newDeleteProgressReporter(emit bridgeipc.Events) func(processed, total int64, indeterminate bool) {
+	var lastProcessed int64 = -1
+	lastPct := -1
+	var lastAt time.Time
+	const minInterval = 250 * time.Millisecond
+
+	return func(processed, total int64, indeterminate bool) {
+		pct := deleteProgressPct(processed, total, indeterminate)
+		final := !indeterminate && total > 0 && processed >= total
+		firstItem := processed <= 1
+		now := time.Now()
+		if !final && !firstItem && !lastAt.IsZero() && now.Sub(lastAt) < minInterval {
+			return
+		}
+		if !final && processed == lastProcessed && pct == lastPct {
+			return
+		}
+		reportDeleteProgress(emit, processed, total, indeterminate, "deleting")
+		lastProcessed = processed
+		lastPct = pct
+		lastAt = now
+	}
+}
+
+func reportDeleteProgress(emit bridgeipc.Events, processed, total int64, indeterminate bool, phase string) {
+	if err := emit.Progress(DeleteProgress{
+		Processed:     processed,
+		Total:         total,
+		Pct:           deleteProgressPct(processed, total, indeterminate),
+		Phase:         phase,
+		Indeterminate: indeterminate,
+	}); err != nil {
+		slog.Debug("failed to write delete progress update", "phase", phase, "error", err)
+	}
+}
+
+func deleteProgressPct(processed, total int64, indeterminate bool) int {
+	if indeterminate || total <= 0 {
+		return 0
+	}
+	return min(int(processed*100/total), 100)
 }
 
 type resourcePostRequest struct {
@@ -725,6 +837,12 @@ type indexerDirSizeResponse struct {
 	Bytes int64  `json:"bytes"`
 }
 
+type indexerEntryCountResponse struct {
+	Path  string `json:"path"`
+	Files int64  `json:"files"`
+	Dirs  int64  `json:"dirs"`
+}
+
 type indexerStatusResponse struct {
 	Running      bool   `json:"running"`
 	Status       string `json:"status"`
@@ -773,6 +891,42 @@ func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
 		return payload.Size, nil
 	}
 	return payload.Bytes, nil
+}
+
+// fetchEntryCountFromIndexer queries the indexer daemon for cached recursive entry counts.
+func fetchEntryCountFromIndexer(ctx context.Context, path string) (int64, error) {
+	normPath := normalizeIndexerPath(path)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entrycount", nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build indexer entrycount request: %w", err)
+	}
+	q := req.URL.Query()
+	q.Set("path", normPath)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		setIndexerAvailability(false)
+		return 0, fmt.Errorf("%w: indexer entrycount request failed: %v", errIndexerUnavailable, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+			return 0, fmt.Errorf("%w: indexer entrycount returned status %s", errIndexerUnavailable, resp.Status)
+		}
+		return 0, fmt.Errorf("indexer entrycount returned status %s", resp.Status)
+	}
+
+	var payload indexerEntryCountResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("decode indexer entrycount response: %w", err)
+	}
+
+	setIndexerAvailability(true)
+	return payload.Files + payload.Dirs, nil
 }
 
 func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, error) {
