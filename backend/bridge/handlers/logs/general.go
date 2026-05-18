@@ -105,7 +105,12 @@ func parseGeneralLogsRequest(args []string) generalLogsRequest {
 
 func startGeneralLogsCommand(ctx context.Context, req generalLogsRequest) (*exec.Cmd, io.ReadCloser, error) {
 	cmdArgs := []string{"-f", "--no-pager", "-o", "json"}
-	if req.lines != "" && req.lines != "all" {
+	if req.lines == "all" {
+		// `-f` alone only emits the default tail (10 entries) of history before
+		// following; `--no-tail` is needed to actually get every entry in the
+		// (time-restricted) window.
+		cmdArgs = append(cmdArgs, "--no-tail")
+	} else if req.lines != "" {
 		cmdArgs = append([]string{"-n", req.lines}, cmdArgs...)
 	}
 	if req.timePeriod != "" {

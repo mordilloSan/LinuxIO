@@ -10,11 +10,13 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work?
 
 5 - Total review of jobs code. feels dirty. Vibe Coded this part.
 
-5 - values fixed in router.go should be set in global settings file?
+6 - values fixed in router.go should be set in global settings file?
 
-6 - protobuf and remove json all together from app? Remove DecodeJSONArg?
+7 - protobuf(?!) between go/react 
 
-7 - Config should not be loaded on every page load. go template?
+8 - Remove binary protocol. Lets just use json for all...
+
+9 - Config should not be loaded on every page load. go template?
 
 user config to match config in UI - DONE
 Fix NFS distro dependency - DONE
