@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +16,30 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
+
+// stripHeader drops the leading contiguous run of `#`-prefixed lines and a
+// single following blank line, returning the YAML body. It tolerates files
+// without a header (returns input unchanged) and files using either LF or CRLF.
+func stripHeader(b []byte) []byte {
+	i := 0
+	for i < len(b) {
+		if b[i] != '#' {
+			break
+		}
+		nl := bytes.IndexByte(b[i:], '\n')
+		if nl < 0 {
+			return nil
+		}
+		i += nl + 1
+	}
+	if i < len(b) && b[i] == '\r' {
+		i++
+	}
+	if i < len(b) && b[i] == '\n' {
+		i++
+	}
+	return b[i:]
+}
 
 func gitVersion() string {
 	// Try exact tag first, then branch name
@@ -41,6 +66,13 @@ func main() {
 	data, err := yaml.Marshal(config.ExampleDefaults())
 	if err != nil {
 		log.Fatalf("marshal: %v", err)
+	}
+
+	if existing, err := os.ReadFile(out); err == nil {
+		if bytes.Equal(stripHeader(existing), data) {
+			log.Printf("%s unchanged, skipping write", out)
+			return
+		}
 	}
 
 	now := time.Now().Format("15:04:05 02/01/2006")
