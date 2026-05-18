@@ -549,7 +549,7 @@ func newJobEmitter(job *Job) *jobEmitter {
 }
 
 func (e *jobEmitter) Data(chunk []byte) error {
-	e.job.ReportProgress(map[string]any{"type": "data", "data": string(chunk)})
+	e.job.ReportData(string(chunk))
 	return nil
 }
 

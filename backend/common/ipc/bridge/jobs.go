@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -88,11 +89,12 @@ const (
 )
 
 type Event struct {
-	Type     EventType `json:"type"`
-	Job      Snapshot  `json:"job"`
-	Progress any       `json:"progress,omitempty"`
-	Result   any       `json:"result,omitempty"`
-	Error    *Error    `json:"error,omitempty"`
+	Type      EventType `json:"type"`
+	Job       Snapshot  `json:"job"`
+	Progress  any       `json:"progress,omitempty"`
+	Result    any       `json:"result,omitempty"`
+	Error     *Error    `json:"error,omitempty"`
+	transient bool
 }
 
 type Runner func(ctx context.Context, job *Job, args []string) (any, error)
@@ -102,7 +104,7 @@ type Registry struct {
 	mu            sync.RWMutex
 	dataAttachers map[string]DataAttacher
 	jobs          map[string]*Job
-	subscribers   map[chan Event]struct{}
+	subscribers   map[chan Event]*eventSubscriber
 	nextID        uint64
 	cleanupStop   chan struct{}
 	cleanupOnce   sync.Once
@@ -129,7 +131,7 @@ type Job struct {
 	cancel      context.CancelFunc
 	done        chan struct{}
 	doneOnce    sync.Once
-	subscribers map[chan Event]struct{}
+	subscribers map[chan Event]*eventSubscriber
 }
 
 var DefaultRegistry = NewRegistry()
@@ -138,14 +140,21 @@ const (
 	DefaultTerminalJobTTL         = 30 * time.Minute
 	DefaultTerminalJobSweepPeriod = time.Minute
 	DefaultJobProgressReplayLimit = 1024
+	slowSubscriberLogInterval     = 30 * time.Second
 )
+
+type eventSubscriber struct {
+	ch          chan Event
+	dropped     atomic.Uint64
+	lastDropLog atomic.Int64
+}
 
 // NewRegistry creates a new job registry with automatic cleanup of terminal jobs.
 func NewRegistry() *Registry {
 	r := &Registry{
 		dataAttachers: make(map[string]DataAttacher),
 		jobs:          make(map[string]*Job),
-		subscribers:   make(map[chan Event]struct{}),
+		subscribers:   make(map[chan Event]*eventSubscriber),
 		cleanupStop:   make(chan struct{}),
 	}
 	r.startCleanupLoop(DefaultTerminalJobTTL, DefaultTerminalJobSweepPeriod)
@@ -256,7 +265,7 @@ func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*
 		updatedAt:   now,
 		cancel:      cancel,
 		done:        make(chan struct{}),
-		subscribers: make(map[chan Event]struct{}),
+		subscribers: make(map[chan Event]*eventSubscriber),
 	}
 	r.jobs[id] = job
 	r.mu.Unlock()
@@ -344,7 +353,7 @@ func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
 	}
 	ch := make(chan Event, buffer)
 	r.mu.Lock()
-	r.subscribers[ch] = struct{}{}
+	r.subscribers[ch] = &eventSubscriber{ch: ch}
 	r.mu.Unlock()
 
 	unsubscribe := func() {
@@ -451,9 +460,15 @@ func (j *Job) IsTerminal() bool {
 	return j.isTerminalLocked()
 }
 
-// ReportProgress updates the job's progress. The progress is broadcast to all
-// subscribers and recorded in the job's progress log for replay to future subscribers.
+// ReportProgress updates the job's durable progress. The progress is broadcast
+// to direct job subscribers and the registry, and recorded for replay to future
+// direct subscribers.
 func (j *Job) ReportProgress(progress any) {
+	if isJobDataProgress(progress) {
+		j.ReportTransientProgress(progress)
+		return
+	}
+
 	j.mu.Lock()
 	if j.isTerminalLocked() {
 		j.mu.Unlock()
@@ -466,12 +481,44 @@ func (j *Job) ReportProgress(progress any) {
 		Job:      j.snapshotLocked(),
 		Progress: progress,
 	}
+	j.appendProgressLogLocked(event)
+	j.mu.Unlock()
+	j.broadcast(event)
+}
+
+// ReportData emits transient stream data to direct job subscribers only. Data
+// events are replayed to future direct subscribers to cover the start-job/attach
+// race, but they are not exposed through jobs.events or stored as snapshot
+// progress.
+func (j *Job) ReportData(data string) {
+	j.ReportTransientProgress(map[string]any{"type": "data", "data": data})
+}
+
+// ReportTransientProgress emits a progress-shaped event to direct job
+// subscribers only. Use it for stream output that should reach jobs.attach but
+// should not become durable job state or a jobs.events notification.
+func (j *Job) ReportTransientProgress(progress any) {
+	j.mu.Lock()
+	if j.isTerminalLocked() {
+		j.mu.Unlock()
+		return
+	}
+	event := Event{
+		Type:      EventProgress,
+		Job:       j.snapshotLocked(),
+		Progress:  progress,
+		transient: true,
+	}
+	j.appendProgressLogLocked(event)
+	j.mu.Unlock()
+	j.broadcastLocal(event)
+}
+
+func (j *Job) appendProgressLogLocked(event Event) {
 	j.progressLog = append(j.progressLog, event)
 	if limit := DefaultJobProgressReplayLimit; limit > 0 && len(j.progressLog) > limit {
 		j.progressLog = append([]Event(nil), j.progressLog[len(j.progressLog)-limit:]...)
 	}
-	j.mu.Unlock()
-	j.broadcast(event)
 }
 
 // Subscribe returns a channel that receives job events, and an unsubscribe function.
@@ -490,7 +537,7 @@ func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 	ch := make(chan Event, buffer)
 	j.mu.Lock()
 	replay := append([]Event(nil), j.progressLog...)
-	j.subscribers[ch] = struct{}{}
+	j.subscribers[ch] = &eventSubscriber{ch: ch}
 	j.mu.Unlock()
 
 	unsubscribe := func() {
@@ -599,51 +646,102 @@ func (j *Job) signalDone() {
 }
 
 func (j *Job) broadcast(event Event) {
-	j.mu.RLock()
-	subscribers := make([]chan Event, 0, len(j.subscribers))
-	for ch := range j.subscribers {
-		subscribers = append(subscribers, ch)
-	}
-	j.mu.RUnlock()
-
-	for _, ch := range subscribers {
-		select {
-		case ch <- event:
-		default:
-			slog.Debug("dropping job event for slow subscriber", "job_id", j.id, "job_type", j.typ)
-		}
-	}
+	j.broadcastLocal(event)
 
 	if j.registry != nil {
 		j.registry.broadcast(event)
 	}
 }
 
+func (j *Job) broadcastLocal(event Event) {
+	j.mu.RLock()
+	for _, subscriber := range j.subscribers {
+		subscriber.send(event, "job")
+	}
+	j.mu.RUnlock()
+}
+
 func (r *Registry) broadcast(event Event) {
 	r.mu.RLock()
-	subscribers := make([]chan Event, 0, len(r.subscribers))
-	for ch := range r.subscribers {
-		subscribers = append(subscribers, ch)
+	for _, subscriber := range r.subscribers {
+		subscriber.send(event, "registry")
 	}
 	r.mu.RUnlock()
-
-	for _, ch := range subscribers {
-		select {
-		case ch <- event:
-		default:
-			slog.Debug("dropping registry job event for slow subscriber", "job_id", event.Job.ID, "job_type", event.Job.Type)
-		}
-	}
 }
 
 func (j *Job) closeSubscribers() {
 	j.mu.Lock()
 	subscribers := j.subscribers
-	j.subscribers = make(map[chan Event]struct{})
+	j.subscribers = make(map[chan Event]*eventSubscriber)
 	for ch := range subscribers {
 		close(ch)
 	}
 	j.mu.Unlock()
+}
+
+func (s *eventSubscriber) send(event Event, scope string) bool {
+	select {
+	case s.ch <- event:
+		return true
+	default:
+	}
+
+	if event.Type != EventProgress && s.dropOldest() {
+		select {
+		case s.ch <- event:
+			s.logDropped(event, scope)
+			return true
+		default:
+		}
+	}
+
+	s.logDropped(event, scope)
+	return false
+}
+
+func (s *eventSubscriber) dropOldest() bool {
+	select {
+	case _, ok := <-s.ch:
+		return ok
+	default:
+		return false
+	}
+}
+
+func (s *eventSubscriber) logDropped(event Event, scope string) {
+	if event.transient || isJobDataProgress(event.Progress) {
+		return
+	}
+
+	s.dropped.Add(1)
+	now := time.Now()
+	last := s.lastDropLog.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < slowSubscriberLogInterval {
+		return
+	}
+	if !s.lastDropLog.CompareAndSwap(last, now.UnixNano()) {
+		return
+	}
+	dropped := s.dropped.Swap(0)
+	slog.Debug(
+		"dropping job events for slow subscriber",
+		"scope", scope,
+		"dropped", dropped,
+		"job_id", event.Job.ID,
+		"job_type", event.Job.Type,
+	)
+}
+
+func isJobDataProgress(progress any) bool {
+	switch p := progress.(type) {
+	case map[string]any:
+		value, _ := p["type"].(string)
+		return value == "data"
+	case map[string]string:
+		return p["type"] == "data"
+	default:
+		return false
+	}
 }
 
 func (j *Job) isTerminalLocked() bool {

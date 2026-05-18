@@ -212,11 +212,146 @@ func TestRegistrySubscribeReceivesLiveEvents(t *testing.T) {
 	}
 }
 
+func TestSlowRegistrySubscriberStillReceivesTerminalEvent(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	events, unsubscribe := registry.Subscribe(1)
+	defer unsubscribe()
+
+	job, err := startTestJob(registry, "test.slow.registry", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+		for i := range 20 {
+			job.ReportProgress(map[string]any{"pct": i})
+		}
+		return map[string]any{"ok": true}, nil
+	})
+	if err != nil {
+		t.Fatalf("startTestJob returned error: %v", err)
+	}
+
+	waitForState(t, job, StateCompleted)
+	event := waitForJobEvent(t, events, job.ID(), EventResult)
+	if event.Job.State != StateCompleted {
+		t.Fatalf("event state = %q, want completed", event.Job.State)
+	}
+}
+
+func TestSlowJobSubscriberStillReceivesTerminalEvent(t *testing.T) {
+	registry := NewRegistry()
+	block := make(chan struct{})
+	job, err := startTestJob(registry, "test.slow.job", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+		<-block
+		for i := range 20 {
+			job.ReportProgress(map[string]any{"pct": i})
+		}
+		return map[string]any{"ok": true}, nil
+	})
+	if err != nil {
+		t.Fatalf("startTestJob returned error: %v", err)
+	}
+
+	events, unsubscribe := job.Subscribe(1)
+	defer unsubscribe()
+	close(block)
+
+	waitForState(t, job, StateCompleted)
+	event := waitForJobEvent(t, events, job.ID(), EventResult)
+	if event.Job.State != StateCompleted {
+		t.Fatalf("event state = %q, want completed", event.Job.State)
+	}
+}
+
+func TestReportDataDoesNotReachRegistryEvents(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	registryEvents, registryUnsubscribe := registry.Subscribe(8)
+	defer registryUnsubscribe()
+
+	job, err := registry.CreateForOwner("logs.general.follow", nil, owner)
+	if err != nil {
+		t.Fatalf("CreateForOwner returned error: %v", err)
+	}
+	jobEvents, jobUnsubscribe := job.Subscribe(8)
+	defer jobUnsubscribe()
+
+	job.ReportData("line\n")
+
+	event := waitForJobEvent(t, jobEvents, job.ID(), EventProgress)
+	progress, ok := event.Progress.(map[string]any)
+	if !ok {
+		t.Fatalf("progress = %#v, want map", event.Progress)
+	}
+	if progress["type"] != "data" || progress["data"] != "line\n" {
+		t.Fatalf("progress = %#v, want data line", progress)
+	}
+	assertNoJobEvent(t, registryEvents, job.ID(), EventProgress)
+	if snapshot := job.Snapshot(); snapshot.Progress != nil {
+		t.Fatalf("snapshot progress = %#v, want nil for transient data", snapshot.Progress)
+	}
+}
+
+func TestDataProgressMapDoesNotReachRegistryEvents(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	registryEvents, registryUnsubscribe := registry.Subscribe(8)
+	defer registryUnsubscribe()
+
+	job, err := registry.CreateForOwner("logs.service.follow", nil, owner)
+	if err != nil {
+		t.Fatalf("CreateForOwner returned error: %v", err)
+	}
+	jobEvents, jobUnsubscribe := job.Subscribe(8)
+	defer jobUnsubscribe()
+
+	job.ReportProgress(map[string]any{"type": "data", "data": "legacy\n"})
+
+	event := waitForJobEvent(t, jobEvents, job.ID(), EventProgress)
+	progress, ok := event.Progress.(map[string]any)
+	if !ok {
+		t.Fatalf("progress = %#v, want map", event.Progress)
+	}
+	if progress["data"] != "legacy\n" {
+		t.Fatalf("progress data = %#v, want legacy line", progress["data"])
+	}
+	assertNoJobEvent(t, registryEvents, job.ID(), EventProgress)
+	if snapshot := job.Snapshot(); snapshot.Progress != nil {
+		t.Fatalf("snapshot progress = %#v, want nil for transient data", snapshot.Progress)
+	}
+}
+
+func TestTransientProgressDoesNotReachRegistryEvents(t *testing.T) {
+	registry := NewRegistry()
+	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
+	registryEvents, registryUnsubscribe := registry.Subscribe(8)
+	defer registryUnsubscribe()
+
+	job, err := registry.CreateForOwner("docker.compose", nil, owner)
+	if err != nil {
+		t.Fatalf("CreateForOwner returned error: %v", err)
+	}
+	jobEvents, jobUnsubscribe := job.Subscribe(8)
+	defer jobUnsubscribe()
+
+	job.ReportTransientProgress(map[string]any{"type": "stdout", "message": "creating container"})
+
+	event := waitForJobEvent(t, jobEvents, job.ID(), EventProgress)
+	progress, ok := event.Progress.(map[string]any)
+	if !ok {
+		t.Fatalf("progress = %#v, want map", event.Progress)
+	}
+	if progress["message"] != "creating container" {
+		t.Fatalf("progress message = %#v, want compose output", progress["message"])
+	}
+	assertNoJobEvent(t, registryEvents, job.ID(), EventProgress)
+	if snapshot := job.Snapshot(); snapshot.Progress != nil {
+		t.Fatalf("snapshot progress = %#v, want nil for transient progress", snapshot.Progress)
+	}
+}
+
 func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	registry := NewRegistry()
 	job, err := startTestJob(registry, "test.attach.replay", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
-		job.ReportProgress(map[string]any{"type": "data", "data": "first\n"})
-		job.ReportProgress(map[string]any{"type": "data", "data": "second\n"})
+		job.ReportData("first\n")
+		job.ReportData("second\n")
 		return map[string]any{"ok": true}, nil
 	})
 	if err != nil {

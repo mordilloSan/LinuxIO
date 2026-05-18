@@ -169,7 +169,7 @@ func writeUpdateStatusWithLog(runID, status string, exitCode *int, errMsg string
 	}
 }
 
-// jobOutputWriter writes output as job progress data events.
+// jobOutputWriter writes process output as transient job data events.
 // Safe for concurrent use by multiple goroutines (stdout + stderr).
 type jobOutputWriter struct {
 	mu  sync.Mutex
@@ -179,7 +179,7 @@ type jobOutputWriter struct {
 func (r *jobOutputWriter) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.job.ReportProgress(map[string]any{"type": "data", "data": string(p)})
+	r.job.ReportData(string(p))
 	return len(p), nil
 }
 

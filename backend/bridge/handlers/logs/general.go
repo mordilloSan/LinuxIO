@@ -104,7 +104,10 @@ func parseGeneralLogsRequest(args []string) generalLogsRequest {
 }
 
 func startGeneralLogsCommand(ctx context.Context, req generalLogsRequest) (*exec.Cmd, io.ReadCloser, error) {
-	cmdArgs := []string{"-n", req.lines, "-f", "--no-pager", "-o", "json"}
+	cmdArgs := []string{"-f", "--no-pager", "-o", "json"}
+	if req.lines != "" && req.lines != "all" {
+		cmdArgs = append([]string{"-n", req.lines}, cmdArgs...)
+	}
 	if req.timePeriod != "" {
 		cmdArgs = append(cmdArgs, "--since", req.timePeriod+" ago")
 	}
@@ -143,7 +146,7 @@ func streamJournalLinesToJob(ctx context.Context, job *bridgeipc.Job, stdout io.
 			}
 			return nil
 		}
-		job.ReportProgress(map[string]any{"type": "data", "data": line})
+		job.ReportData(line)
 	}
 }
 
