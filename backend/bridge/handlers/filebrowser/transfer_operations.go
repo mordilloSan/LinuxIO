@@ -402,10 +402,10 @@ func (t *uploadTransferJob) attach(stream net.Conn, args []string) error {
 	}
 
 	t.writeProgress(stream, "uploading")
-	return t.receiveUpload(stream, root, file)
+	return t.receiveUpload(stream, root, file, newTransferProgressGate(uploadProgressAckIntervalBytes))
 }
 
-func (t *uploadTransferJob) receiveUpload(stream net.Conn, root *fsroot.FSRoot, file *os.File) error {
+func (t *uploadTransferJob) receiveUpload(stream net.Conn, root *fsroot.FSRoot, file *os.File, progressGate *transferProgressGate) error {
 	for {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil {
@@ -418,7 +418,7 @@ func (t *uploadTransferJob) receiveUpload(stream net.Conn, root *fsroot.FSRoot, 
 			if len(frame.Payload) == 0 {
 				continue
 			}
-			if err := t.writeUploadChunk(stream, file, frame.Payload); err != nil {
+			if err := t.writeUploadChunk(stream, file, frame.Payload, progressGate); err != nil {
 				return err
 			}
 		case ipc.OpStreamClose:
@@ -500,7 +500,7 @@ func (t *uploadTransferJob) prepare(root *fsroot.FSRoot) error {
 	return nil
 }
 
-func (t *uploadTransferJob) writeUploadChunk(stream net.Conn, file *os.File, payload []byte) error {
+func (t *uploadTransferJob) writeUploadChunk(stream net.Conn, file *os.File, payload []byte, progressGate *transferProgressGate) error {
 	n, err := file.Write(payload)
 	if err != nil {
 		return t.fail(stream, fmt.Sprintf("write error: %v", err), 500, err)
@@ -518,7 +518,7 @@ func (t *uploadTransferJob) writeUploadChunk(stream net.Conn, file *os.File, pay
 	if total >= 0 && bytes > total {
 		return t.fail(stream, fmt.Sprintf("size mismatch: expected %d, got at least %d", total, bytes), 400, fmt.Errorf("size mismatch"))
 	}
-	if bytes%uploadProgressAckIntervalBytes < int64(n) || bytes == total {
+	if progressGate.ShouldReport(bytes, total) {
 		t.writeProgress(stream, "uploading")
 	}
 	return nil
@@ -718,7 +718,7 @@ func (t *downloadTransferJob) endAttach(stream net.Conn) {
 
 func (t *downloadTransferJob) streamChunks(stream net.Conn, file io.Reader) error {
 	buf := make([]byte, progressReportIntervalBytes)
-	var lastProgress int64
+	progressGate := newTransferProgressGate(transferProgressMaxBytes)
 
 	for {
 		n, readErr := file.Read(buf)
@@ -738,9 +738,8 @@ func (t *downloadTransferJob) streamChunks(stream net.Conn, file io.Reader) erro
 			total := t.total
 			t.mu.Unlock()
 
-			if bytes-lastProgress >= progressReportIntervalBytes || bytes == total {
+			if progressGate.ShouldReport(bytes, total) {
 				t.writeProgress(stream, "streaming")
-				lastProgress = bytes
 			}
 		}
 
@@ -892,7 +891,7 @@ func (t *archiveTransferJob) endAttach(stream net.Conn) {
 
 func (t *archiveTransferJob) streamChunks(stream net.Conn, file io.Reader) error {
 	buf := make([]byte, progressReportIntervalBytes)
-	var lastProgress int64
+	progressGate := newTransferProgressGate(transferProgressMaxBytes)
 
 	for {
 		n, readErr := file.Read(buf)
@@ -912,9 +911,8 @@ func (t *archiveTransferJob) streamChunks(stream net.Conn, file io.Reader) error
 			total := t.archiveSize
 			t.mu.Unlock()
 
-			if bytes-lastProgress >= progressReportIntervalBytes || bytes == total {
+			if progressGate.ShouldReport(bytes, total) {
 				t.writeProgress(stream, "streaming")
-				lastProgress = bytes
 			}
 		}
 
