@@ -71,40 +71,30 @@ const TerminalXTerm: React.FC = () => {
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
 
-    // Handle copy/paste with Shift+C/V
+    // Handle Ctrl+Shift+C to copy the xterm selection.
+    // Paste is handled natively: pressing Ctrl+Shift+V (or Ctrl+V) makes the
+    // browser paste into xterm's hidden textarea, which fires onData below.
     xterm.current.attachCustomKeyEventHandler((event) => {
-      // Shift+C - Copy
+      if (event.type !== "keydown") return true;
+
       if (
+        event.ctrlKey &&
         event.shiftKey &&
         event.key === "C" &&
-        !event.ctrlKey &&
         !event.altKey &&
         !event.metaKey
       ) {
+        // preventDefault stops Chrome from opening the DevTools inspector.
+        event.preventDefault();
+        event.stopPropagation();
         const selection = xterm.current?.getSelection();
         if (selection) {
           navigator.clipboard.writeText(selection);
         }
-        return false; // Prevent default behavior
+        return false;
       }
 
-      // Shift+V - Paste
-      if (
-        event.shiftKey &&
-        event.key === "V" &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
-        navigator.clipboard.readText().then((text) => {
-          if (streamRef.current) {
-            streamRef.current.write(encodeString(text));
-          }
-        });
-        return false; // Prevent default behavior
-      }
-
-      return true; // Allow default behavior for other keys
+      return true;
     });
 
     // Set custom scrollbar and connect to stream after DOM is ready
@@ -415,7 +405,7 @@ const TerminalXTerm: React.FC = () => {
               color="text.secondary"
               style={{ marginLeft: 8 }}
             >
-              Shift+C
+              Ctrl+Shift+C
             </AppTypography>
           }
         >
@@ -429,7 +419,7 @@ const TerminalXTerm: React.FC = () => {
               color="text.secondary"
               style={{ marginLeft: 8 }}
             >
-              Shift+V
+              Ctrl+Shift+V
             </AppTypography>
           }
         >

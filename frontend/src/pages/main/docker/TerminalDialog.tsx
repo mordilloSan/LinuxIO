@@ -118,45 +118,37 @@ const TerminalDialog: React.FC<Props> = ({
     xterm.current.open(termRef.current);
     fitAddon.current.fit();
 
-    // Handle special keys
+    // Handle Escape (close) and Ctrl+Shift+C (copy xterm selection).
+    // Paste is handled natively: Ctrl+Shift+V (or Ctrl+V) makes the browser
+    // paste into xterm's hidden textarea, which fires onData below.
     xterm.current.attachCustomKeyEventHandler((event) => {
-      // Escape - close dialog
-      if (event.key === "Escape" && event.type === "keydown") {
+      // attachCustomKeyEventHandler fires for both keydown and keyup;
+      // ignore keyup so handlers don't run twice per keystroke.
+      if (event.type !== "keydown") return true;
+
+      if (event.key === "Escape") {
         handleClose();
         return false;
       }
 
-      // Shift+C - Copy
       if (
+        event.ctrlKey &&
         event.shiftKey &&
         event.key === "C" &&
-        !event.ctrlKey &&
         !event.altKey &&
         !event.metaKey
       ) {
+        // preventDefault stops Chrome from opening the DevTools inspector.
+        event.preventDefault();
+        event.stopPropagation();
         const selection = xterm.current?.getSelection();
         if (selection) {
           navigator.clipboard.writeText(selection);
         }
-        return false; // Prevent default behavior
+        return false;
       }
 
-      // Shift+V - Paste
-      if (
-        event.shiftKey &&
-        event.key === "V" &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
-        navigator.clipboard.readText().then((text) => {
-          if (streamRef.current) {
-            streamRef.current.write(encodeString(text));
-          }
-        });
-        return false; // Prevent default behavior
-      }
-      return true; // Allow default behavior for other keys
+      return true;
     });
     setTimeout(() => {
       // xterm.js 6.0 still uses .xterm-viewport for scrolling
@@ -400,7 +392,7 @@ const TerminalDialog: React.FC<Props> = ({
                   marginLeft: 8,
                 }}
               >
-                Shift+C
+                Ctrl+Shift+C
               </AppTypography>
             }
           >
@@ -416,7 +408,7 @@ const TerminalDialog: React.FC<Props> = ({
                   marginLeft: 8,
                 }}
               >
-                Shift+V
+                Ctrl+Shift+V
               </AppTypography>
             }
           >
