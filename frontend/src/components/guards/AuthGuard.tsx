@@ -4,6 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import PageLoader from "@/components/loaders/PageLoader";
 import { ConfigProvider } from "@/contexts/ConfigContext";
 import { FileTransferProvider } from "@/contexts/FileTransferContext";
+import { JobsEventsListener } from "@/contexts/JobsEventsListener";
 import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
@@ -63,6 +64,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
     <ToastProvider>
       <ConfigProvider>
         <FileTransferProvider>
+          <JobsEventsListener />
           <AuthedThemeShell>
             <PowerActionProvider>
               <UpdateProvider>

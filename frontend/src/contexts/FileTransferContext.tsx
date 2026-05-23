@@ -13,6 +13,7 @@ import {
   linuxio,
   bindStreamHandlers,
   isConnected,
+  isTerminalJobState,
   openJobAttachStream,
   openJobDataStream,
   openJobEventsStream,
@@ -177,10 +178,6 @@ type Transfer =
 
 function jobIdentityKey(type: string, args: readonly string[] = []) {
   return JSON.stringify([type, ...args]);
-}
-
-function isTerminalJobState(state: JobSnapshot["state"]) {
-  return state === "completed" || state === "failed" || state === "canceled";
 }
 
 function makeCountedSet() {

@@ -19,6 +19,7 @@ import {
   type StreamType,
   encodeString,
 } from "./StreamMultiplexer";
+import { isTerminalJobState } from "./job-state";
 import { call as bridgeCall } from "./linuxio-core";
 import type { JobSnapshot } from "./linuxio-types";
 
@@ -39,10 +40,6 @@ type JobDataProgress = {
   type?: unknown;
   data?: unknown;
 };
-
-function isTerminalJobState(state: JobSnapshot["state"]): boolean {
-  return state === "completed" || state === "failed" || state === "canceled";
-}
 
 function routeParts(route: string): [string, string] {
   const dot = route.indexOf(".");
