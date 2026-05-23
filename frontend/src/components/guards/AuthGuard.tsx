@@ -35,7 +35,7 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
 }
 
 export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
-  const { isAuthenticated, isInitialized } = useAuth();
+  const { isAuthenticated, isInitialized, user } = useAuth();
   const location = useLocation();
 
   // Block everything until we know the auth state
@@ -62,7 +62,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   // Only now mount Config + Theme + Sidebar and the children (or nested routes)
   return (
     <ToastProvider>
-      <ConfigProvider>
+      <ConfigProvider key={user?.id ?? "anonymous"}>
         <FileTransferProvider>
           <JobsEventsListener />
           <AuthedThemeShell>

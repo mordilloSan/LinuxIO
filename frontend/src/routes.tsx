@@ -2,8 +2,6 @@ import React, { lazy, useMemo } from "react";
 
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
-import { ConfigProvider } from "@/contexts/ConfigContext";
-import { SidebarProvider } from "@/contexts/SidebarContext";
 import {
   type AccessContext,
   type AccessPolicy,
@@ -25,7 +23,6 @@ import {
   UsersIcon,
   WireguardIcon,
 } from "@/icons/svg";
-import { ConfiguredAppThemeProvider } from "@/theme";
 
 type LazyRouteModule<T extends React.ComponentType<any>> = { default: T };
 type LazyRouteImporter<T extends React.ComponentType<any>> = () => Promise<
@@ -251,13 +248,7 @@ export function useAppRoutes() {
         path: "/",
         element: (
           <AuthGuard>
-            <ConfigProvider>
-              <ConfiguredAppThemeProvider>
-                <SidebarProvider>
-                  <MainLayout />
-                </SidebarProvider>
-              </ConfiguredAppThemeProvider>
-            </ConfigProvider>
+            <MainLayout />
           </AuthGuard>
         ),
         children: [...allProtectedRoutes, { path: "*", element: <Page404 /> }],

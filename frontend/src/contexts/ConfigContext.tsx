@@ -26,6 +26,7 @@ import {
   ThemeColors,
   ThemeColorsByMode,
 } from "@/types/config";
+import { readConfigCache, writeConfigCache } from "@/utils/configCache";
 
 const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
   mode === "card" || mode === "table";
@@ -295,11 +296,14 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(
 );
 
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
-  const [config, setConfig] = useState<AppConfig>(defaultConfig);
+  const { signOut, user } = useAuth();
+  const username = user?.id;
+  const [config, setConfig] = useState<AppConfig>(() =>
+    applyDefaults(readConfigCache(username)),
+  );
   const [isLoaded, setLoaded] = useState(false);
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
-  const { signOut } = useAuth();
   const queryClient = useQueryClient();
   const { mutate: setConfigRemote } = linuxio.config.set.useMutation();
 
@@ -321,10 +325,16 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
             retryTimeout = setTimeout(() => fetchConfig(attempt + 1), 100);
             return;
           }
-          // After 5 attempts, use defaults but don't allow saving
-          console.warn("Stream mux not ready, using default config");
+          // After 5 attempts, use cached/default config but don't allow saving
+          console.warn("Stream mux not ready, using cached/default config");
           setLoaded(true);
           // canSave stays false - prevent overwriting backend config with defaults
+          return;
+        }
+
+        if (readConfigCache(username)) {
+          setCanSave(true);
+          setLoaded(true);
           return;
         }
 
@@ -333,7 +343,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         );
 
         if (!cancelled) {
-          setConfig(applyDefaults(settings));
+          const nextConfig = applyDefaults(settings);
+          setConfig(nextConfig);
+          writeConfigCache(username, nextConfig);
           setCanSave(true); // Successfully loaded from backend, allow saves
           setLoaded(true);
         }
@@ -369,7 +381,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       cancelled = true;
       if (retryTimeout) clearTimeout(retryTimeout);
     };
-  }, [queryClient, signOut]);
+  }, [queryClient, signOut, username]);
 
   const save = useCallback(
     (patch: ConfigPatch) => {
@@ -388,11 +400,12 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         if (Object.is(current, nextVal)) return prev;
         const patch = patchConfigValue(key, nextVal);
         const next = mergeConfig(prev, patch);
+        if (canSave) writeConfigCache(username, next);
         save(patch);
         return next;
       });
     },
-    [save],
+    [canSave, save, username],
   );
 
   const updateConfig: ConfigContextType["updateConfig"] = useCallback(
@@ -400,11 +413,12 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       setConfig((prev) => {
         const partial = typeof patch === "function" ? patch(prev) : patch;
         const next = mergeConfig(prev, partial);
+        if (canSave) writeConfigCache(username, next);
         save(partial);
         return next;
       });
     },
-    [save],
+    [canSave, save, username],
   );
 
   const value = useMemo(
