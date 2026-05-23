@@ -20,6 +20,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work?
 
 10 - Higher-level mutation API: implement `useJobAction` on CommandEndpoint (typed args/result, `invalidates`/`success`/`error` config, mode guard for job-only routes), then migrate existing `.useMutation()` job-route call sites (~80) to `.useJobAction()`.
 
+11 - Bridge Handler Pattern - See docs
+
 user config to match config in UI - DONE
 Fix NFS distro dependency - DONE
 Implement power management - DONE
