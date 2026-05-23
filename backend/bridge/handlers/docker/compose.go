@@ -1348,30 +1348,47 @@ func findComposeFileCandidates(ctx context.Context, basePath string) ([]composeF
 			return nil
 		}
 
-		depth := relativePathDepth(normPath, path)
-		if entry.IsDir() {
-			if depth > composeStackDirMaxDepth {
-				return fs.SkipDir
-			}
-			candidate, found, err := findCanonicalComposeFileInDir(path)
-			if err == nil && found {
-				if _, exists := seenPaths[candidate.Path]; !exists {
-					seenPaths[candidate.Path] = struct{}{}
-					candidates = append(candidates, candidate)
-				}
-			}
-			if depth >= composeStackDirMaxDepth {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		return nil
+		return collectComposeCandidateFromDir(normPath, path, entry, seenPaths, &candidates)
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return candidates, nil
+}
+
+func collectComposeCandidateFromDir(
+	basePath string,
+	path string,
+	entry fs.DirEntry,
+	seenPaths map[string]struct{},
+	candidates *[]composeFileCandidate,
+) error {
+	if !entry.IsDir() {
+		return nil
+	}
+
+	depth := relativePathDepth(basePath, path)
+	if depth > composeStackDirMaxDepth {
+		return fs.SkipDir
+	}
+	addComposeCandidate(path, seenPaths, candidates)
+	if depth >= composeStackDirMaxDepth {
+		return fs.SkipDir
+	}
+	return nil
+}
+
+func addComposeCandidate(path string, seenPaths map[string]struct{}, candidates *[]composeFileCandidate) {
+	candidate, found, err := findCanonicalComposeFileInDir(path)
+	if err != nil || !found {
+		return
+	}
+	if _, exists := seenPaths[candidate.Path]; exists {
+		return
+	}
+	seenPaths[candidate.Path] = struct{}{}
+	*candidates = append(*candidates, candidate)
 }
 
 func relativePathDepth(basePath, path string) int {
