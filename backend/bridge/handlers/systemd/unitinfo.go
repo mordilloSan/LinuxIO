@@ -127,17 +127,8 @@ func enrichServiceUnitInfo(session dbusclient.SystemSession, unit dbusclient.Bus
 }
 
 func enrichTimerUnitInfo(session dbusclient.SystemSession, unit dbusclient.BusObject, info map[string]any) {
-	if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdTimerIface, "NextElapseUSecRealtime"); err == nil {
-		if v, ok := val.Value().(uint64); ok && v > 0 {
-			info["NextElapseUSec"] = v
-		}
-	}
-	if _, ok := info["NextElapseUSec"]; !ok {
-		if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdTimerIface, "NextElapseUSecMonotonic"); err == nil {
-			if v, ok := val.Value().(uint64); ok {
-				info["NextElapseUSec"] = v
-			}
-		}
+	if next, ok := timerNextElapseVariantUsec(session, unit); ok {
+		info["NextElapseUSec"] = next
 	}
 	if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdTimerIface, "LastTriggerUSec"); err == nil {
 		info["LastTriggerUSec"] = val.Value()
