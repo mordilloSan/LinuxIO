@@ -2,11 +2,9 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,7 +50,7 @@ type ComposeProject struct {
 	WorkingDir  string                     `json:"working_dir"`
 }
 
-// ListComposeProjectsWithStore discovers all compose projects by analyzing container labels and indexer
+// ListComposeProjectsWithStore discovers all compose projects by analyzing container labels and configured Docker folders.
 func ListComposeProjectsWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cli, err := getClient()
 	if err != nil {
@@ -67,11 +65,11 @@ func ListComposeProjectsWithStore(ctx context.Context, username string, store *c
 
 	projects := discoverComposeProjectsFromContainers(ctx, cli, containers)
 
-	// Query indexer for offline stacks (compose files without running containers)
+	// Search configured folders for offline stacks (compose files without running containers).
 	if err := discoverOfflineStacksWithStore(ctx, username, store, projects); err != nil {
 		slog.
-			// Log but don't fail - indexer might be unavailable
-			Debug("failed to discover offline stacks from indexer", "error", err)
+			// Log but don't fail - offline discovery is best effort.
+			Debug("failed to discover offline stacks from docker folders", "error", err)
 	}
 
 	// Load config once to check auto-update preferences.
@@ -298,12 +296,11 @@ func ComposeUpWithStore(ctx context.Context, username string, store *config.User
 
 // findComposeFileWithStore attempts to locate a compose file for a project
 func findComposeFileWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
-	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 	sanitized := sanitizeStackName(projectName)
 
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err == nil {
-		if composePath, stackDir, found, err := findComposeFileInBases(ctx, dockerFolders, sanitized, composeFileNames); err != nil {
+		if composePath, stackDir, found, err := findComposeFileInBases(ctx, dockerFolders, sanitized, composeFileNamePriority); err != nil {
 			return "", "", err
 		} else if found {
 			return composePath, stackDir, nil
@@ -315,7 +312,7 @@ func findComposeFileWithStore(ctx context.Context, username string, store *confi
 		filepath.Join(os.Getenv("HOME"), "Docker"),
 		"/opt/docker",
 	}
-	if composePath, stackDir, found, err := findComposeFileInBases(ctx, commonBasePaths, sanitized, composeFileNames); err != nil {
+	if composePath, stackDir, found, err := findComposeFileInBases(ctx, commonBasePaths, sanitized, composeFileNamePriority); err != nil {
 		return "", "", err
 	} else if found {
 		return composePath, stackDir, nil
@@ -383,7 +380,7 @@ func DeleteStackWithStore(ctx context.Context, username string, store *config.Us
 	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
 	if err != nil {
 		// Project might not exist in Docker, but we might still have files to delete
-		// Try to find compose file via indexer
+		// Try to find compose file in configured Docker folders.
 		configFile, workingDir, findErr := findComposeFileWithStore(ctx, username, store, projectName)
 		if findErr != nil {
 			return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
@@ -1313,22 +1310,8 @@ func writeTestFile(ctx context.Context, dirPath string) error {
 	return removeErr
 }
 
-// indexerHTTPClient is a shared HTTP client for communicating with the indexer daemon.
-var indexerHTTPClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialer := &net.Dialer{
-				Timeout:   2 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}
-			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
-		},
-	},
-	Timeout: 10 * time.Second,
-}
-
-// indexerSearchResult represents a search result from the indexer
-type indexerSearchResult struct {
+// composeFileCandidate represents a possible compose YAML file discovered in a Docker folder.
+type composeFileCandidate struct {
 	Path    string `json:"path"`
 	Name    string `json:"name"`
 	Type    string `json:"type"`
@@ -1337,82 +1320,102 @@ type indexerSearchResult struct {
 	IsDir   bool   `json:"isDir"`
 }
 
-const (
-	// Indexer v2 caps /entries pages at 200 results.
-	indexerEntriesPageSize = 200
-	indexerEntriesMaxPages = 2000
-)
+// LinuxIO stacks normally live at <docker-folder>/<stack>/docker-compose.yml.
+const composeStackDirMaxDepth = 1
 
-func fetchIndexerEntriesPage(ctx context.Context, basePath string, limit, offset int) ([]indexerSearchResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entries", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build indexer request: %w", err)
-	}
+var composeFileNamePriority = []string{
+	"docker-compose.yml",
+	"docker-compose.yaml",
+	"compose.yml",
+	"compose.yaml",
+}
 
-	q := req.URL.Query()
-	q.Set("path", basePath)
-	q.Set("recursive", "true")
-	q.Set("limit", fmt.Sprintf("%d", limit))
-	q.Set("offset", fmt.Sprintf("%d", offset))
-	req.URL.RawQuery = q.Encode()
+// findComposeFileCandidates finds at most one canonical compose file per stack directory.
+func findComposeFileCandidates(ctx context.Context, basePath string) ([]composeFileCandidate, error) {
+	normPath := normalizeIndexerPath(basePath)
 
-	resp, err := indexerHTTPClient.Do(req)
+	var candidates []composeFileCandidate
+	seenPaths := make(map[string]struct{})
+
+	err := filepath.WalkDir(normPath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil {
+			if entry != nil && entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		depth := relativePathDepth(normPath, path)
+		if entry.IsDir() {
+			if depth > composeStackDirMaxDepth {
+				return fs.SkipDir
+			}
+			candidate, found, err := findCanonicalComposeFileInDir(path)
+			if err == nil && found {
+				if _, exists := seenPaths[candidate.Path]; !exists {
+					seenPaths[candidate.Path] = struct{}{}
+					candidates = append(candidates, candidate)
+				}
+			}
+			if depth >= composeStackDirMaxDepth {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("indexer returned status %s", resp.Status)
-	}
-
-	var results []indexerSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, fmt.Errorf("failed to decode indexer response: %w", err)
-	}
-
-	return results, nil
+	return candidates, nil
 }
 
-// searchIndexerForYAML searches the indexer for YAML files in the specified base path
-func searchIndexerForYAML(ctx context.Context, basePath string) ([]indexerSearchResult, error) {
-	normPath := normalizeIndexerPath(basePath)
+func relativePathDepth(basePath, path string) int {
+	rel, err := filepath.Rel(basePath, path)
+	if err != nil || rel == "." {
+		return 0
+	}
+	rel = filepath.Clean(rel)
+	if rel == "." {
+		return 0
+	}
+	return strings.Count(rel, string(os.PathSeparator)) + 1
+}
 
-	var yamlFiles []indexerSearchResult
-	seenPaths := make(map[string]struct{})
-	offset := 0
-
-	for range indexerEntriesMaxPages {
-		results, err := fetchIndexerEntriesPage(ctx, normPath, indexerEntriesPageSize, offset)
-		if err != nil {
-			slog.Debug("indexer search request failed", "component", "docker", "subsystem", "compose", "path", normPath, "error", err)
-			return nil, fmt.Errorf("indexer unavailable: %w", err)
+func findCanonicalComposeFileInDir(dir string) (composeFileCandidate, bool, error) {
+	for _, fileName := range composeFileNamePriority {
+		composePath := filepath.Join(dir, fileName)
+		candidate, err := composeCandidateFromPath(composePath)
+		if err == nil {
+			return candidate, true, nil
 		}
-
-		if len(results) == 0 {
-			break
-		}
-
-		for _, result := range results {
-			if isYAMLFile(result) {
-				if _, exists := seenPaths[result.Path]; !exists {
-					seenPaths[result.Path] = struct{}{}
-					yamlFiles = append(yamlFiles, result)
-				}
-			}
-		}
-
-		offset += len(results)
-		if len(results) < indexerEntriesPageSize {
-			break
+		if !os.IsNotExist(err) {
+			return composeFileCandidate{}, false, err
 		}
 	}
+	return composeFileCandidate{}, false, nil
+}
 
-	if offset >= indexerEntriesPageSize*indexerEntriesMaxPages {
-		slog.Warn("indexer YAML scan reached max pages", "component", "docker", "subsystem", "compose", "path", normPath)
+func composeCandidateFromPath(path string) (composeFileCandidate, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return composeFileCandidate{}, err
 	}
-
-	return yamlFiles, nil
+	if info.IsDir() {
+		return composeFileCandidate{}, fs.ErrInvalid
+	}
+	return composeFileCandidate{
+		Path:    path,
+		Name:    filepath.Base(path),
+		Type:    "file",
+		Size:    info.Size(),
+		ModTime: info.ModTime().Format(time.RFC3339),
+		IsDir:   false,
+	}, nil
 }
 
 func normalizeIndexerPath(path string) string {
@@ -1424,14 +1427,6 @@ func normalizeIndexerPath(path string) string {
 		path = "/" + path
 	}
 	return path
-}
-
-func isYAMLFile(r indexerSearchResult) bool {
-	if r.IsDir {
-		return false
-	}
-	lower := strings.ToLower(r.Name)
-	return strings.HasSuffix(lower, ".yml") || strings.HasSuffix(lower, ".yaml")
 }
 
 // isValidComposeFile checks if a file is a valid docker-compose file
@@ -1538,8 +1533,8 @@ func extractStackIcon(composePath string) (string, error) {
 	return "", nil
 }
 
-// discoverOfflineStacksWithStore searches the indexer for compose files and adds them as offline stacks.
-// It merges with existing projects to handle duplicates.
+// discoverOfflineStacksWithStore searches configured Docker folders for compose files and adds them as offline stacks.
+// Each stack directory contributes at most one canonical compose file.
 func discoverOfflineStacksWithStore(ctx context.Context, username string, store *config.UserStore, projects map[string]*ComposeProject) error {
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
@@ -1551,22 +1546,22 @@ func discoverOfflineStacksWithStore(ctx context.Context, username string, store 
 	}
 
 	for _, dockerFolder := range dockerFolders {
-		yamlFiles, err := searchIndexerForYAML(ctx, dockerFolder)
+		composeFiles, err := findComposeFileCandidates(ctx, dockerFolder)
 		if err != nil {
-			return fmt.Errorf("failed to search indexer: %w", err)
+			return fmt.Errorf("failed to search docker folder: %w", err)
 		}
-		slog.Debug("found YAML files in docker folder via indexer", "component", "docker", "subsystem", "compose", "user", username, "path", dockerFolder, "file_count", len(yamlFiles))
+		slog.Debug("found compose files in docker folder", "component", "docker", "subsystem", "compose", "user", username, "path", dockerFolder, "file_count", len(composeFiles))
 
-		for _, yamlFile := range yamlFiles {
-			if !isValidComposeFile(yamlFile.Path) {
+		for _, composeFile := range composeFiles {
+			if !isValidComposeFile(composeFile.Path) {
 				continue
 			}
-			existingProject := findOfflineComposeProjectMatch(projects, yamlFile.Path)
+			existingProject := findOfflineComposeProjectMatch(projects, composeFile.Path)
 			if existingProject != nil {
-				mergeOfflineComposeFile(existingProject, yamlFile.Path)
+				fillMissingComposeProjectFile(existingProject, composeFile.Path)
 				continue
 			}
-			addOfflineComposeProject(projects, yamlFile.Path)
+			addOfflineComposeProject(projects, composeFile.Path)
 		}
 	}
 
@@ -1586,9 +1581,9 @@ func findOfflineComposeProjectMatch(projects map[string]*ComposeProject, compose
 	return nil
 }
 
-func mergeOfflineComposeFile(project *ComposeProject, composePath string) {
-	if !slices.Contains(project.ConfigFiles, composePath) {
-		project.ConfigFiles = append(project.ConfigFiles, composePath)
+func fillMissingComposeProjectFile(project *ComposeProject, composePath string) {
+	if len(project.ConfigFiles) == 0 {
+		project.ConfigFiles = []string{composePath}
 	}
 	if project.WorkingDir == "" {
 		project.WorkingDir = filepath.Dir(composePath)
@@ -1606,7 +1601,8 @@ func addOfflineComposeProject(projects map[string]*ComposeProject, composePath s
 	if projectName == "" {
 		return
 	}
-	slog.Info("discovered offline stack via indexer", "project", projectName, "compose_file", composePath)
+	projectName = uniqueComposeProjectName(projectName, projects)
+	slog.Info("discovered offline stack", "project", projectName, "compose_file", composePath)
 	projects[projectName] = &ComposeProject{
 		Name:        projectName,
 		Icon:        extractComposeIcon(composePath),
@@ -1614,6 +1610,18 @@ func addOfflineComposeProject(projects map[string]*ComposeProject, composePath s
 		Services:    make(map[string]*ComposeService),
 		ConfigFiles: []string{composePath},
 		WorkingDir:  filepath.Dir(composePath),
+	}
+}
+
+func uniqueComposeProjectName(baseName string, projects map[string]*ComposeProject) string {
+	if _, exists := projects[baseName]; !exists {
+		return baseName
+	}
+	for index := 2; ; index++ {
+		candidate := fmt.Sprintf("%s-%d", baseName, index)
+		if _, exists := projects[candidate]; !exists {
+			return candidate
+		}
 	}
 }
 

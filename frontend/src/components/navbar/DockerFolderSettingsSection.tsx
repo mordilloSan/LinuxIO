@@ -10,14 +10,11 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
-import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
@@ -81,12 +78,6 @@ const DockerFolderSettingsSection: React.FC = () => {
     (folders: string[]) => updateConfig({ docker: { folders } }),
     [updateConfig],
   );
-  const {
-    isEnabled: indexerEnabled,
-    status: indexerStatus,
-    reason: indexerReason,
-  } = useCapability("indexerAvailable");
-
   const configuredFolders = useMemo(
     () => normalizeFolderList(dockerFolders ?? []),
     [dockerFolders],
@@ -101,15 +92,10 @@ const DockerFolderSettingsSection: React.FC = () => {
 
   const [createPromptOpen, setCreatePromptOpen] = useState(false);
   const [createPromptPath, setCreatePromptPath] = useState<string | null>(null);
-  const [reindexPromptOpen, setReindexPromptOpen] = useState(false);
-  const [indexerDialogOpen, setIndexerDialogOpen] = useState(false);
 
   const createPromptResolverRef = useRef<((confirmed: boolean) => void) | null>(
     null,
   );
-  const reindexPromptResolverRef = useRef<
-    ((confirmed: boolean) => void) | null
-  >(null);
 
   const [prevConfiguredFoldersKey, setPrevConfiguredFoldersKey] =
     useState(configuredFoldersKey);
@@ -135,13 +121,6 @@ const DockerFolderSettingsSection: React.FC = () => {
     resolve?.(confirmed);
   }, []);
 
-  const resolveReindexPrompt = useCallback((confirmed: boolean) => {
-    setReindexPromptOpen(false);
-    const resolve = reindexPromptResolverRef.current;
-    reindexPromptResolverRef.current = null;
-    resolve?.(confirmed);
-  }, []);
-
   const askCreatePrompt = useCallback(
     async (path: string): Promise<boolean> => {
       if (createPromptResolverRef.current) {
@@ -156,25 +135,11 @@ const DockerFolderSettingsSection: React.FC = () => {
     [],
   );
 
-  const askReindexPrompt = useCallback(async (): Promise<boolean> => {
-    if (reindexPromptResolverRef.current) {
-      reindexPromptResolverRef.current(false);
-    }
-    return new Promise((resolve) => {
-      reindexPromptResolverRef.current = resolve;
-      setReindexPromptOpen(true);
-    });
-  }, []);
-
   useEffect(
     () => () => {
       if (createPromptResolverRef.current) {
         createPromptResolverRef.current(false);
         createPromptResolverRef.current = null;
-      }
-      if (reindexPromptResolverRef.current) {
-        reindexPromptResolverRef.current(false);
-        reindexPromptResolverRef.current = null;
       }
     },
     [],
@@ -245,16 +210,6 @@ const DockerFolderSettingsSection: React.FC = () => {
       setDockerFolders(folders);
       setDrafts(folders);
       toast.success("Docker folders saved.");
-
-      if (!indexerEnabled) {
-        toast.info(`${indexerReason} Reindex later from the Docker page.`);
-        return;
-      }
-
-      const shouldReindex = await askReindexPrompt();
-      if (shouldReindex) {
-        setIndexerDialogOpen(true);
-      }
     } catch (error: unknown) {
       const message =
         error instanceof Error
@@ -264,14 +219,7 @@ const DockerFolderSettingsSection: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [
-    askCreatePrompt,
-    askReindexPrompt,
-    drafts,
-    indexerEnabled,
-    indexerReason,
-    setDockerFolders,
-  ]);
+  }, [askCreatePrompt, drafts, setDockerFolders]);
 
   const folderIconStyle: React.CSSProperties = {
     display: "inline-flex",
@@ -382,19 +330,11 @@ const DockerFolderSettingsSection: React.FC = () => {
                 Add Docker folder
               </AppTypography>
               <AppTypography variant="caption" color="text.secondary">
-                Scan another directory for compose stacks.
+                Add another directory for compose stacks.
               </AppTypography>
             </div>
           </div>
         </FrostedCard>
-
-        {!indexerEnabled && (
-          <AppAlert severity="info">
-            {indexerStatus === "unknown"
-              ? "Indexer availability is being checked. You can still save these paths and reindex later."
-              : "Indexer API is unavailable. You can still save these paths and reindex later."}
-          </AppAlert>
-        )}
 
         <div
           style={{
@@ -425,24 +365,6 @@ const DockerFolderSettingsSection: React.FC = () => {
         message={`This directory does not exist yet: "${createPromptPath ?? ""}". Create it now?`}
         confirmText="Create"
         cancelText="Cancel"
-      />
-
-      <ConfirmDialog
-        open={reindexPromptOpen}
-        onClose={() => resolveReindexPrompt(false)}
-        onConfirm={() => resolveReindexPrompt(true)}
-        title="Reindex Docker Folders?"
-        message="Docker folders updated successfully. Start a new scan now?"
-        confirmText="Scan Now"
-        cancelText="Later"
-      />
-
-      <DockerIndexerDialog
-        open={indexerDialogOpen}
-        onClose={() => setIndexerDialogOpen(false)}
-        onComplete={() => {
-          toast.success("Docker folders indexed successfully.");
-        }}
       />
     </>
   );
