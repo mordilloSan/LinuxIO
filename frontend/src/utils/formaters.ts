@@ -1,3 +1,17 @@
+export const formatThroughput = (bytesPerSec: number): string => {
+  if (!isFinite(bytesPerSec) || bytesPerSec <= 0) return "0 B/s";
+  if (bytesPerSec >= 1024 * 1024 * 1024) {
+    return `${(bytesPerSec / (1024 * 1024 * 1024)).toFixed(1)} GB/s`;
+  }
+  if (bytesPerSec >= 1024 * 1024) {
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(bytesPerSec >= 10 * 1024 * 1024 ? 0 : 1)} MB/s`;
+  }
+  if (bytesPerSec >= 1024) {
+    return `${(bytesPerSec / 1024).toFixed(bytesPerSec >= 10 * 1024 ? 0 : 1)} kB/s`;
+  }
+  return `${bytesPerSec.toFixed(0)} B/s`;
+};
+
 export const formatFileSize = (
   bytes?: number | null,
   decimals = 2,
