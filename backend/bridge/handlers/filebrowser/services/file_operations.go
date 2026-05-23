@@ -396,10 +396,15 @@ func ComputeCopySize(path string) (int64, error) {
 	return totalSize, err
 }
 
+type MoveFileOptions struct {
+	KnownSize    int64
+	HasKnownSize bool
+}
+
 // MoveFileWithCallbacks moves a file from src to dst with progress callbacks.
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy with callbacks is used as a fallback, followed by deletion of the source.
-func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks) error {
+func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) error {
 	src = cleanAbsPath(src)
 	dst = cleanAbsPath(dst)
 
@@ -427,7 +432,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return destErr
 	}
 
-	if moved, err := tryRenameMove(root, src, dst, opts); moved {
+	if moved, err := tryRenameMove(root, src, dst, opts, moveOpts); moved {
 		return err
 	} else if err != nil {
 		return nil
@@ -451,15 +456,19 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	return nil
 }
 
-func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks) (bool, error) {
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) (bool, error) {
 	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
 		return false, nil
 	}
 
-	totalSize, sizeErr := ComputeCopySize(dst)
-	if sizeErr != nil {
-		slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
-		return true, nil
+	totalSize := moveOpts.KnownSize
+	if !moveOpts.HasKnownSize {
+		var sizeErr error
+		totalSize, sizeErr = ComputeCopySize(dst)
+		if sizeErr != nil {
+			slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
+			return true, nil
+		}
 	}
 
 	reportOperationProgress(opts, totalSize)

@@ -290,6 +290,11 @@ type resourcePatchRequest struct {
 	overwrite bool
 }
 
+type computedTransferSize struct {
+	total int64
+	known bool
+}
+
 func parseResourcePostArgs(args []string) (resourcePostRequest, error) {
 	if len(args) < 1 {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:missing path")
@@ -453,13 +458,56 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest, src
 	return nil
 }
 
-func computePatchSize(realSrc string) int64 {
-	totalSize, err := services.ComputeCopySize(realSrc)
+func computeTransferSize(ctx context.Context, path string, info os.FileInfo) computedTransferSize {
+	if info != nil && !info.IsDir() {
+		return computedTransferSize{total: info.Size(), known: true}
+	}
+
+	if info != nil && info.IsDir() {
+		if totalSize, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
+			if totalSize > 0 || indexerHasEntry(ctx, path) {
+				return computedTransferSize{total: totalSize, known: true}
+			}
+		} else {
+			slog.Debug("failed to get transfer size from indexer", "path", path, "error", err)
+		}
+	}
+
+	totalSize, err := services.ComputeCopySize(path)
 	if err != nil {
-		slog.Debug("failed to compute filebrowser operation size", "path", realSrc, "error", err)
+		slog.Debug("failed to compute filebrowser operation size", "path", path, "error", err)
+		return computedTransferSize{}
+	}
+	return computedTransferSize{total: totalSize, known: true}
+}
+
+func indexerHasEntry(ctx context.Context, path string) bool {
+	total, err := fetchEntryCountFromIndexer(ctx, path)
+	if err != nil {
+		slog.Debug("failed to confirm indexed transfer path", "path", path, "error", err)
+		return false
+	}
+	return total > 0
+}
+
+func indexerEntrySize(info os.FileInfo, size computedTransferSize) int64 {
+	if info == nil {
 		return 0
 	}
-	return totalSize
+	if info.IsDir() && size.known {
+		return size.total
+	}
+	return info.Size()
+}
+
+func moveFileOptions(size computedTransferSize) services.MoveFileOptions {
+	if !size.known {
+		return services.MoveFileOptions{}
+	}
+	return services.MoveFileOptions{
+		KnownSize:    size.total,
+		HasKnownSize: true,
+	}
 }
 
 func newPatchCallbacks(ctx context.Context, emit bridgeipc.Events, action string, totalSize int64) *ipc.OperationCallbacks {
@@ -507,33 +555,30 @@ func newPatchCallbacks(ctx context.Context, emit bridgeipc.Events, action string
 	}
 }
 
-func executeResourcePatch(req resourcePatchRequest, opts *ipc.OperationCallbacks) error {
+func executeResourcePatch(req resourcePatchRequest, opts *ipc.OperationCallbacks, size computedTransferSize) error {
 	switch req.action {
 	case "copy":
 		return services.CopyFileWithCallbacks(req.realSrc, req.realDest, req.overwrite, opts)
 	case "rename", "move":
-		return services.MoveFileWithCallbacks(req.realSrc, req.realDest, req.overwrite, opts)
+		return services.MoveFileWithCallbacks(req.realSrc, req.realDest, req.overwrite, opts, moveFileOptions(size))
 	default:
 		return fmt.Errorf("bad_request:unsupported action: %s", req.action)
 	}
 }
 
-func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resourcePatchRequest) {
+func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resourcePatchRequest, size computedTransferSize, destExisted bool) {
 	switch req.action {
 	case "copy":
 		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
-			if err := addToIndexer(ctx, req.dst, info); err != nil {
-				slog.Debug("failed to update indexer after copy", "path", req.dst, "error", err)
+			if err := addCopiedPathToIndexer(ctx, req.realDest, info, size, destExisted && req.overwrite); err != nil {
+				slog.Debug("failed to update indexer after copy", "path", req.realDest, "error", err)
 			}
 		}
 	case "rename", "move":
-		if err := deleteFromIndexer(ctx, req.src); err != nil {
-			slog.Debug("failed to update indexer after move delete", "path", req.src, "error", err)
-		}
-		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
-			if err := addToIndexer(ctx, req.dst, info); err != nil {
-				slog.Debug("failed to update indexer after move add", "path", req.dst, "error", err)
-			}
+		if err := movePathInIndexer(ctx, req.realSrc, req.realDest, size, destExisted && req.overwrite, func() (os.FileInfo, error) {
+			return root.Root.Stat(fsroot.ToRel(req.realDest))
+		}); err != nil {
+			slog.Debug("failed to update indexer after move", "source", req.realSrc, "destination", req.realDest, "error", err)
 		}
 	}
 }
@@ -589,27 +634,35 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit bridgeip
 		return nil, err
 	}
 
-	totalSize := computePatchSize(req.realSrc)
+	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
+	if err != nil {
+		slog.Debug("error getting source info", "path", req.realSrc, "error", err)
+		return nil, fmt.Errorf("bad_request:source not found")
+	}
+	_, destStatErr := root.Root.Stat(fsroot.ToRel(req.realDest))
+	destExisted := destStatErr == nil
+
+	size := computeTransferSize(ctx, req.realSrc, srcInfo)
 	// Send initial progress.
 	slog.Info("starting filebrowser operation",
 		"action", req.action,
 		"source", req.realSrc,
 		"destination", req.realDest,
-		"size", totalSize)
+		"size", size.total)
 	if err := emit.Progress(FileProgress{
-		Total: totalSize,
+		Total: size.total,
 		Phase: "preparing",
 	}); err != nil {
 		return nil, fmt.Errorf("write progress: %w", err)
 	}
 
-	opts := newPatchCallbacks(ctx, emit, req.action, totalSize)
-	if err := executeResourcePatch(req, opts); err != nil {
+	opts := newPatchCallbacks(ctx, emit, req.action, size.total)
+	if err := executeResourcePatch(req, opts, size); err != nil {
 		slog.Debug("error patching resource", "action", req.action, "source", req.realSrc, "destination", req.realDest, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
-	notifyIndexerAfterPatch(ctx, root, req)
+	notifyIndexerAfterPatch(ctx, root, req, size, destExisted)
 	return map[string]any{"message": "operation completed"}, nil
 }
 
@@ -691,8 +744,21 @@ type indexerEntry struct {
 // addToIndexer notifies the indexer daemon about a new or updated file/directory.
 // This updates the cached directory sizes in the indexer.
 func addToIndexer(ctx context.Context, path string, info os.FileInfo) error {
+	if info == nil {
+		return nil
+	}
+	return addToIndexerWithSize(ctx, path, info, info.Size())
+}
+
+func addToIndexerWithSize(ctx context.Context, path string, info os.FileInfo, size int64) error {
 	if !isIndexerEnabled() {
 		return nil
+	}
+	if info == nil {
+		return nil
+	}
+	if !info.IsDir() || size < 0 {
+		size = info.Size()
 	}
 
 	// Get inode number
@@ -705,7 +771,7 @@ func addToIndexer(ctx context.Context, path string, info os.FileInfo) error {
 		Path:    normalizeIndexerPath(path),
 		AbsPath: path,
 		Name:    filepath.Base(path),
-		Size:    info.Size(),
+		Size:    size,
 		IsDir:   info.IsDir(),
 		Type: func() string {
 			if info.IsDir() {
@@ -760,6 +826,79 @@ func addToIndexer(ctx context.Context, path string, info os.FileInfo) error {
 		"size", entry.Size)
 
 	return nil
+}
+
+func addCopiedPathToIndexer(ctx context.Context, path string, info os.FileInfo, size computedTransferSize, removeExisting bool) error {
+	if removeExisting {
+		if err := deleteFromIndexer(ctx, path); err != nil {
+			slog.Debug("failed to remove overwritten indexer entry", "path", path, "error", err)
+		}
+	}
+	if info == nil {
+		return nil
+	}
+	if err := addToIndexerWithSize(ctx, path, info, indexerEntrySize(info, size)); err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := requestIndexerReindex(ctx, path); err != nil {
+			slog.Debug("failed to request indexer refresh", "path", path, "error", err)
+		}
+	}
+	return nil
+}
+
+func movePathInIndexer(ctx context.Context, source, destination string, size computedTransferSize, removeExistingDestination bool, statDestination func() (os.FileInfo, error)) error {
+	if err := deleteFromIndexer(ctx, source); err != nil {
+		slog.Debug("failed to delete source from indexer after move", "source", source, "error", err)
+	}
+	if removeExistingDestination {
+		if err := deleteFromIndexer(ctx, destination); err != nil {
+			slog.Debug("failed to delete overwritten destination from indexer after move", "destination", destination, "error", err)
+		}
+	}
+
+	info, err := statDestination()
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Debug("failed to stat destination for indexer update", "destination", destination, "error", err)
+		}
+		return nil
+	}
+	return addCopiedPathToIndexer(ctx, destination, info, size, false)
+}
+
+func requestIndexerReindex(ctx context.Context, path string) error {
+	if !isIndexerEnabled() {
+		return nil
+	}
+
+	query := url.Values{}
+	query.Set("path", normalizeIndexerPath(path))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex?"+query.Encode(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to build indexer reindex request: %w", err)
+	}
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		setIndexerAvailability(false)
+		return fmt.Errorf("%w: indexer reindex request failed: %v", errIndexerUnavailable, err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusAccepted, http.StatusOK:
+		setIndexerAvailability(true)
+		return nil
+	case http.StatusConflict:
+		return nil
+	default:
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
+		return fmt.Errorf("indexer reindex returned status %s", resp.Status)
+	}
 }
 
 // deleteFromIndexer notifies the indexer daemon about a deleted file/directory.

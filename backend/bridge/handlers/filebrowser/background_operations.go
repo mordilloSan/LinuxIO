@@ -674,6 +674,7 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 		destInfo, destErr = root.Root.Stat(fsroot.ToRel(destination))
 	}
 
+	destExisted := destErr == nil
 	if destErr == nil {
 		if !overwrite {
 			return nil, bridgejobs.NewError("destination already exists", 409)
@@ -683,14 +684,10 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 		}
 	}
 
-	totalSize, err := services.ComputeCopySize(source)
-	if err != nil {
-		slog.Debug("failed to compute copy size", "source", source, "error", err)
-		totalSize = 0
-	}
-	writeJobPhaseProgress(job, totalSize, "preparing")
+	size := computeTransferSize(ctx, source, sourceInfo)
+	writeJobPhaseProgress(job, size.total, "preparing")
 
-	opts := newJobPhaseCallbacks(ctx, job, store, totalSize, "copying")
+	opts := newJobPhaseCallbacks(ctx, job, store, size.total, "copying")
 	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
 	if err == ipc.ErrAborted {
 		slog.Info("copy aborted", "source", source, "destination", destination)
@@ -702,15 +699,15 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 
 	if info, err := root.Root.Stat(fsroot.ToRel(destination)); err == nil {
 		runDetachedIndexerUpdate("copy", func(ctx context.Context) error {
-			return addToIndexer(ctx, destination, info)
+			return addCopiedPathToIndexer(ctx, destination, info, size, destExisted && overwrite)
 		})
 	}
 
-	slog.Info("copy complete", "source", source, "destination", destination, "size", totalSize)
+	slog.Info("copy complete", "source", source, "destination", destination, "size", size.total)
 	return map[string]any{
 		"source":      source,
 		"destination": destination,
-		"size":        totalSize,
+		"size":        size.total,
 	}, nil
 }
 
@@ -742,15 +739,21 @@ func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 		return nil, bridgejobs.NewError(message, code)
 	}
 
-	totalSize, err := services.ComputeCopySize(req.source)
+	sourceInfo, err := root.Root.Stat(fsroot.ToRel(req.source))
 	if err != nil {
-		slog.Debug("failed to compute move size", "source", req.source, "error", err)
-		totalSize = 0
+		return nil, bridgejobs.NewError(fmt.Sprintf("source not found: %v", err), 404)
 	}
-	writeJobPhaseProgress(job, totalSize, "preparing")
+	_, destStatErr := root.Root.Stat(fsroot.ToRel(req.destination))
+	destExisted := destStatErr == nil
+	if destStatErr != nil && !errors.Is(destStatErr, os.ErrNotExist) {
+		slog.Debug("failed to stat move destination before move", "destination", req.destination, "error", destStatErr)
+	}
 
-	opts := newJobPhaseCallbacks(ctx, job, store, totalSize, "moving")
-	err = services.MoveFileWithCallbacks(req.source, req.destination, req.overwrite, opts)
+	size := computeTransferSize(ctx, req.source, sourceInfo)
+	writeJobPhaseProgress(job, size.total, "preparing")
+
+	opts := newJobPhaseCallbacks(ctx, job, store, size.total, "moving")
+	err = services.MoveFileWithCallbacks(req.source, req.destination, req.overwrite, opts, moveFileOptions(size))
 	if err == ipc.ErrAborted {
 		slog.Info("move aborted", "source", req.source, "destination", req.destination)
 		return nil, abortErr(ctx)
@@ -764,22 +767,19 @@ func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 		slog.Debug("failed to stat move destination", "destination", req.destination, "error", statErr)
 	}
 	runDetachedIndexerUpdate("move", func(ctx context.Context) error {
-		if err := deleteFromIndexer(ctx, req.source); err != nil {
-			slog.Debug("failed to delete from indexer after move", "source", req.source, "error", err)
-		}
-		if destInfoAfterMove != nil {
-			if err := addToIndexer(ctx, req.destination, destInfoAfterMove); err != nil {
-				slog.Debug("failed to update indexer after move", "destination", req.destination, "error", err)
+		return movePathInIndexer(ctx, req.source, req.destination, size, destExisted && req.overwrite, func() (os.FileInfo, error) {
+			if destInfoAfterMove == nil {
+				return nil, os.ErrNotExist
 			}
-		}
-		return nil
+			return destInfoAfterMove, nil
+		})
 	})
 
-	slog.Info("move complete", "source", req.source, "destination", req.destination, "size", totalSize)
+	slog.Info("move complete", "source", req.source, "destination", req.destination, "size", size.total)
 	return map[string]any{
 		"source":      req.source,
 		"destination": req.destination,
-		"size":        totalSize,
+		"size":        size.total,
 	}, nil
 }
 

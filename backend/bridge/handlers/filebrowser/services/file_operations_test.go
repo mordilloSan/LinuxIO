@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestMoveFile(t *testing.T) {
@@ -65,6 +66,21 @@ func TestMoveFile(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []byte("new"), content, "destination should be overwritten")
 	})
+}
+
+func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcFile := createTestFile(t, tmpDir, "source-known-size.txt", []byte("content"))
+	dstPath := filepath.Join(tmpDir, "destination-known-size.txt")
+
+	var reported []int64
+	err := MoveFileWithCallbacks(srcFile, dstPath, false, &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			reported = append(reported, n)
+		},
+	}, MoveFileOptions{KnownSize: 12345, HasKnownSize: true})
+	assert.NoError(t, err)
+	assert.Equal(t, []int64{12345}, reported)
 }
 
 func TestCopyFile(t *testing.T) {
