@@ -9,6 +9,7 @@ import {
   linuxio,
   type IndexerConfig,
   type IndexerDaemonStatus,
+  type UnitInfo,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -68,6 +69,7 @@ const RESTART_FIELDS: DraftKey[] = [
   "socket_path",
   "listen_addr",
 ];
+const INDEXER_TIMER_UNIT = "indexer-index.timer";
 
 const GO_DURATION_PART_PATTERN = /(-?\d+(?:\.\d+)?)(ns|us|µs|μs|ms|s|m|h)/g;
 
@@ -100,27 +102,82 @@ const toDraft = (config: IndexerConfig): DraftConfig => ({
   db_max_idle_conns: String(config.db_max_idle_conns),
 });
 
-const toPayload = (draft: DraftConfig): IndexerConfig => ({
-  ...draft,
-  index_path: draft.index_path.trim(),
-  index_name: draft.index_name.trim(),
-  keep_indexes: Number(draft.keep_indexes),
-  db_path: draft.db_path.trim(),
-  db_busy_timeout: draft.db_busy_timeout.trim(),
-  db_journal_mode: draft.db_journal_mode.trim(),
-  db_synchronous: draft.db_synchronous.trim(),
-  db_auto_vacuum: draft.db_auto_vacuum.trim(),
-  db_max_open_conns: Number(draft.db_max_open_conns),
-  db_max_idle_conns: Number(draft.db_max_idle_conns),
-  db_conn_max_idle_time: draft.db_conn_max_idle_time.trim(),
-  socket_path: draft.socket_path.trim(),
-  listen_addr: draft.listen_addr.trim(),
-  interval: draft.interval.trim(),
-});
+const toPatchPayload = (
+  patch: Partial<DraftConfig>,
+): Partial<IndexerConfig> => {
+  const payload: Partial<IndexerConfig> = {};
+
+  if (patch.index_path !== undefined) {
+    payload.index_path = patch.index_path.trim();
+  }
+  if (patch.index_name !== undefined) {
+    payload.index_name = patch.index_name.trim();
+  }
+  if (patch.include_hidden !== undefined) {
+    payload.include_hidden = patch.include_hidden;
+  }
+  if (patch.include_network_mounts !== undefined) {
+    payload.include_network_mounts = patch.include_network_mounts;
+  }
+  if (patch.fresh_index !== undefined) {
+    payload.fresh_index = patch.fresh_index;
+  }
+  if (patch.keep_indexes !== undefined) {
+    payload.keep_indexes = Number(patch.keep_indexes);
+  }
+  if (patch.db_path !== undefined) {
+    payload.db_path = patch.db_path.trim();
+  }
+  if (patch.db_busy_timeout !== undefined) {
+    payload.db_busy_timeout = patch.db_busy_timeout.trim();
+  }
+  if (patch.db_journal_mode !== undefined) {
+    payload.db_journal_mode = patch.db_journal_mode.trim();
+  }
+  if (patch.db_synchronous !== undefined) {
+    payload.db_synchronous = patch.db_synchronous.trim();
+  }
+  if (patch.db_auto_vacuum !== undefined) {
+    payload.db_auto_vacuum = patch.db_auto_vacuum.trim();
+  }
+  if (patch.db_max_open_conns !== undefined) {
+    payload.db_max_open_conns = Number(patch.db_max_open_conns);
+  }
+  if (patch.db_max_idle_conns !== undefined) {
+    payload.db_max_idle_conns = Number(patch.db_max_idle_conns);
+  }
+  if (patch.db_conn_max_idle_time !== undefined) {
+    payload.db_conn_max_idle_time = patch.db_conn_max_idle_time.trim();
+  }
+  if (patch.socket_path !== undefined) {
+    payload.socket_path = patch.socket_path.trim();
+  }
+  if (patch.listen_addr !== undefined) {
+    payload.listen_addr = patch.listen_addr.trim();
+  }
+
+  return payload;
+};
 
 const isAbsolutePath = (value: string) => value.trim().startsWith("/");
 
 const isNonNegativeInteger = (value: string) => /^\d+$/.test(value.trim());
+
+const isGoDuration = (value: string) => {
+  const trimmed = value.trim();
+  if (trimmed === "0") return true;
+
+  let index = 0;
+  let matched = false;
+  for (const match of trimmed.matchAll(GO_DURATION_PART_PATTERN)) {
+    const matchIndex = match.index ?? -1;
+    matched = true;
+    if (matchIndex !== index || Number(match[1]) < 0) return false;
+    index = matchIndex + match[0].length;
+  }
+
+  return matched && index === trimmed.length;
+};
 
 const validateDraft = (draft: DraftConfig): DraftErrors => {
   const errors: DraftErrors = {};
@@ -135,12 +192,14 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
     errors.index_name = "Index name is required.";
   }
 
-  if (!draft.interval.trim()) {
-    errors.interval = "Interval is required. Use 0 to disable.";
-  }
-
   if (!isNonNegativeInteger(draft.keep_indexes)) {
     errors.keep_indexes = "Use a non-negative whole number.";
+  }
+
+  if (!draft.interval.trim()) {
+    errors.interval = "Timer interval is required.";
+  } else if (!isGoDuration(draft.interval)) {
+    errors.interval = "Use a duration like 30m, 6h, or 0.";
   }
 
   if (!draft.db_path.trim()) {
@@ -194,6 +253,42 @@ const formatStatusLabel = (value?: string | null) => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+};
+
+const formatActiveIndexerStatus = (status: IndexerDaemonStatus) =>
+  formatStatusLabel(status.active_operation || status.status);
+
+const formatTimerTimestamp = (usec: unknown, fallback: string): string => {
+  const value = Number(usec ?? 0);
+  if (!value || !Number.isFinite(value) || value >= Number.MAX_SAFE_INTEGER) {
+    return fallback;
+  }
+  const date = new Date(value / 1000);
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString();
+};
+
+const formatTimerState = (info: UnitInfo | undefined) => {
+  const activeState = String(info?.ActiveState ?? "unknown");
+  const subState = String(info?.SubState ?? "");
+  const activeLabel = formatStatusLabel(activeState);
+  const subLabel = formatStatusLabel(subState);
+  return subState && subState !== activeState
+    ? `${activeLabel} (${subLabel})`
+    : activeLabel;
+};
+
+const getTimerColor = (info: UnitInfo | undefined, theme: AppTheme) => {
+  const activeState = String(info?.ActiveState ?? "").toLowerCase();
+  if (activeState === "active") {
+    return theme.palette.success.main;
+  }
+  if (activeState === "activating") {
+    return theme.palette.info.main;
+  }
+  if (activeState === "failed") {
+    return theme.palette.error.main;
+  }
+  return theme.palette.warning.main;
 };
 
 const getStatusColor = (
@@ -364,28 +459,18 @@ const IndexerSettingsSection: React.FC = () => {
     enabled: indexerEnabled,
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
-
-  const setConfigMutation = linuxio.indexer.set_config.useMutation({
-    onSuccess: (result) => {
-      const configResult = jobSnapshotResult(result);
-      queryClient.setQueryData(
-        linuxio.indexer.get_config.queryKey(),
-        configResult.config,
-      );
-      setDraftPatch({});
-      setErrors({});
-      setRestartRequired(configResult.restart_required);
-      toast.success("Indexer settings saved");
-      if (configResult.restart_required) {
-        toast.info("Restart indexer to apply database or listener changes.");
-      }
-    },
-    onError: (err) => {
-      toast.error(
-        getMutationErrorMessage(err, "Failed to save indexer settings"),
-      );
-    },
+  const {
+    data: timerInfo,
+    error: timerError,
+    refetch: refetchTimer,
+    isFetching: isTimerFetching,
+  } = linuxio.systemd.get_unit_info.useQuery(INDEXER_TIMER_UNIT, {
+    enabled: indexerEnabled,
+    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
+
+  const setConfigMutation = linuxio.indexer.set_config.useMutation();
+  const setTimerMutation = linuxio.indexer.set_timer_interval.useMutation();
 
   const savedDraft = useMemo(() => (config ? toDraft(config) : null), [config]);
   const draft = useMemo(
@@ -393,9 +478,11 @@ const IndexerSettingsSection: React.FC = () => {
     [draftPatch, savedDraft],
   );
   const isDirty = !draftsEqual(draft, savedDraft);
-  const busy = isFetching || setConfigMutation.isPending;
-  const refreshing = busy || isStatusFetching;
+  const busy =
+    isFetching || setConfigMutation.isPending || setTimerMutation.isPending;
+  const refreshing = busy || isStatusFetching || isTimerFetching;
   const statusTooltip = formatStatusLabel(daemonStatus?.status);
+  const timerTooltip = formatTimerState(timerInfo);
   const willRequireRestart = useMemo(() => {
     if (!draft || !savedDraft) return false;
     return RESTART_FIELDS.some((key) => draft[key] !== savedDraft[key]);
@@ -421,19 +508,78 @@ const IndexerSettingsSection: React.FC = () => {
     setRestartRequired(false);
   };
 
-  const handleSave = () => {
+  const saveChanges = async () => {
     if (!draft) return;
     const nextErrors = validateDraft(draft);
     if (hasErrors(nextErrors)) {
       setErrors(nextErrors);
       return;
     }
-    setConfigMutation.mutate([toPayload(draft)]);
+
+    const configPatch = { ...draftPatch };
+    delete configPatch.interval;
+    const payload = toPatchPayload(configPatch);
+    const hasConfigChanges = Object.keys(payload).length > 0;
+    const hasTimerChange = draftPatch.interval !== undefined;
+
+    if (!hasConfigChanges && !hasTimerChange) return;
+
+    try {
+      let nextConfig: IndexerConfig | undefined;
+      let nextRestartRequired = false;
+
+      if (hasConfigChanges) {
+        const configResult = jobSnapshotResult(
+          await setConfigMutation.mutateAsync([payload]),
+        );
+        nextConfig = configResult.config;
+        nextRestartRequired = configResult.restart_required;
+      }
+
+      if (hasTimerChange) {
+        const timerResult = jobSnapshotResult(
+          await setTimerMutation.mutateAsync([draft.interval.trim()]),
+        );
+        nextConfig = timerResult.config;
+        void queryClient.invalidateQueries({
+          queryKey: linuxio.systemd.get_unit_info.queryKey(INDEXER_TIMER_UNIT),
+        });
+      }
+
+      if (nextConfig) {
+        queryClient.setQueryData(
+          linuxio.indexer.get_config.queryKey(),
+          nextConfig,
+        );
+      }
+      setDraftPatch({});
+      setErrors({});
+      setRestartRequired(nextRestartRequired);
+      toast.success(
+        hasTimerChange && !hasConfigChanges
+          ? "Indexer timer saved"
+          : "Indexer settings saved",
+      );
+      if (nextRestartRequired) {
+        toast.info("Restart indexer to apply database or listener changes.");
+      }
+      void refetchStatus();
+      void refetchTimer();
+    } catch (err) {
+      toast.error(
+        getMutationErrorMessage(err, "Failed to save indexer settings"),
+      );
+    }
+  };
+
+  const handleSave = () => {
+    void saveChanges();
   };
 
   const handleRefresh = () => {
     void refetch();
     void refetchStatus();
+    void refetchTimer();
   };
 
   const renderGrid = (
@@ -569,7 +715,7 @@ const IndexerSettingsSection: React.FC = () => {
       {restartRequired ? (
         <AppAlert severity="info">
           <AppAlertTitle>Restart required</AppAlertTitle>
-          Some saved settings need the indexer service to restart before they
+          Some saved settings need the indexer daemon to restart before they
           fully apply.
         </AppAlert>
       ) : willRequireRestart ? (
@@ -602,6 +748,11 @@ const IndexerSettingsSection: React.FC = () => {
           <>
             {renderStatusGrid(
               <>
+                <StatusMetric
+                  label="State"
+                  value={formatActiveIndexerStatus(daemonStatus)}
+                  detail={daemonStatus.active_path}
+                />
                 <StatusMetric
                   label="Files"
                   value={formatCount(daemonStatus.num_files)}
@@ -664,7 +815,7 @@ const IndexerSettingsSection: React.FC = () => {
       <SectionCard
         icon="mdi:magnify-scan"
         title="Index Scope"
-        subtitle="Root path, scan cadence, and inclusion rules"
+        subtitle="Root path, index name, and retention"
       >
         {renderGrid(
           <>
@@ -696,28 +847,6 @@ const IndexerSettingsSection: React.FC = () => {
                 fullWidth
               />
             </AppTooltip>
-            <AppTooltip
-              title={
-                <>
-                  Auto-index interval: 30m, 1h, or 6h.
-                  <br />
-                  Use 0 to disable.
-                </>
-              }
-            >
-              <AppTextField
-                label="Interval"
-                size="small"
-                value={draft.interval}
-                onChange={(event) =>
-                  updateDraft("interval", event.target.value)
-                }
-                error={Boolean(errors.interval)}
-                helperText={errors.interval}
-                disabled={busy}
-                fullWidth
-              />
-            </AppTooltip>
             <AppTooltip title="0 disables pruning">
               <AppTextField
                 label="Keep indexes"
@@ -736,6 +865,82 @@ const IndexerSettingsSection: React.FC = () => {
           </>,
           180,
         )}
+      </SectionCard>
+
+      <SectionCard
+        icon="mdi:timer-cog-outline"
+        title="Auto-Index Timer"
+        subtitle={INDEXER_TIMER_UNIT}
+        indicator={
+          timerInfo ? (
+            <StatusDot
+              color={getTimerColor(timerInfo, theme)}
+              tooltip={timerTooltip}
+              absolute
+              style={{ top: 16, right: 12 }}
+            />
+          ) : null
+        }
+      >
+        {renderGrid(
+          <>
+            <AppTooltip title="Systemd timer cadence; use 0 to disable">
+              <AppTextField
+                label="Timer interval"
+                size="small"
+                value={draft.interval}
+                onChange={(event) =>
+                  updateDraft("interval", event.target.value)
+                }
+                error={Boolean(errors.interval)}
+                helperText={errors.interval}
+                disabled={busy}
+                fullWidth
+              />
+            </AppTooltip>
+            {timerInfo ? (
+              <>
+                <StatusMetric
+                  label="State"
+                  value={formatTimerState(timerInfo)}
+                />
+                <StatusMetric
+                  label="Auto-start"
+                  value={formatStatusLabel(
+                    String(timerInfo.UnitFileState ?? ""),
+                  )}
+                />
+                <StatusMetric
+                  label="Next run"
+                  value={formatTimerTimestamp(
+                    timerInfo.NextElapseUSec,
+                    "Not scheduled",
+                  )}
+                />
+                <StatusMetric
+                  label="Last run"
+                  value={formatTimerTimestamp(
+                    timerInfo.LastTriggerUSec,
+                    "Never",
+                  )}
+                />
+              </>
+            ) : null}
+          </>,
+          160,
+        )}
+        {timerError ? (
+          <div style={{ marginTop: theme.spacing(1.5) }}>
+            <AppAlert severity="warning">
+              <AppAlertTitle>Timer unavailable</AppAlertTitle>
+              {timerError.message}
+            </AppAlert>
+          </div>
+        ) : !timerInfo ? (
+          <div style={{ padding: theme.spacing(1) }}>
+            <ComponentLoader />
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
@@ -908,7 +1113,9 @@ const IndexerSettingsSection: React.FC = () => {
             <Icon icon="mdi:content-save-outline" width={18} height={18} />
           }
         >
-          {setConfigMutation.isPending ? "Saving..." : "Save"}
+          {setConfigMutation.isPending || setTimerMutation.isPending
+            ? "Saving..."
+            : "Save"}
         </AppButton>
       </div>
     </div>

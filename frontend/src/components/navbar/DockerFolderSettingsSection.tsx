@@ -392,7 +392,7 @@ const DockerFolderSettingsSection: React.FC = () => {
           <AppAlert severity="info">
             {indexerStatus === "unknown"
               ? "Indexer availability is being checked. You can still save these paths and reindex later."
-              : "Indexer service is unavailable. You can still save these paths and reindex later."}
+              : "Indexer API is unavailable. You can still save these paths and reindex later."}
           </AppAlert>
         )}
 

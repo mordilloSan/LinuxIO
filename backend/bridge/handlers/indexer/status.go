@@ -25,6 +25,8 @@ type Status struct {
 	WALSize      int64  `json:"wal_size"`
 	SHMSize      int64  `json:"shm_size"`
 	TotalOnDisk  int64  `json:"total_on_disk"`
+	ActiveOp     string `json:"active_operation,omitempty"`
+	ActivePath   string `json:"active_path,omitempty"`
 	Warning      string `json:"warning,omitempty"`
 }
 

@@ -51,7 +51,7 @@ export const getCapabilityReason = (
   if (capability === "indexerAvailable") {
     return status === "unknown"
       ? "Indexer availability is still being checked."
-      : "Indexer service is unavailable.";
+      : "Indexer API is unavailable.";
   }
 
   if (capability === "lmSensorsAvailable") {

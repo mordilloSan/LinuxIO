@@ -73,7 +73,7 @@ const CAPABILITY_ITEMS: CapabilityItem[] = [
     errorKey: "indexer_error",
     label: "Indexer",
     description: "Search, folder sizes, and Docker stack indexing",
-    readyText: "Indexer service is reachable.",
+    readyText: "Indexer API is reachable.",
     dependency: "linuxio indexer",
     icon: "mdi:magnify-scan",
   },

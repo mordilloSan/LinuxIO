@@ -1338,7 +1338,8 @@ type indexerSearchResult struct {
 }
 
 const (
-	indexerEntriesPageSize = 5000
+	// Indexer v2 caps /entries pages at 200 results.
+	indexerEntriesPageSize = 200
 	indexerEntriesMaxPages = 2000
 )
 

@@ -144,6 +144,7 @@ export const ROUTE_MODES = {
   "indexer.get_config": "query",
   "indexer.get_status": "query",
   "indexer.set_config": "job",
+  "indexer.set_timer_interval": "job",
   "control.version": "query",
   "control.app_update": "job",
 

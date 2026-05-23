@@ -31,11 +31,16 @@ var (
 	errIndexerUnavailable = errors.New("indexer unavailable")
 )
 
-const indexerServiceName = "indexer.service"
+const (
+	indexerServiceName = "indexer.service"
+	indexerSocketName  = "indexer.socket"
+)
 const (
 	deleteLocalPrescanMaxBytes           int64 = 512 * 1024 * 1024
 	deleteLocalPrescanMaxTopLevelEntries       = 1000
 )
+
+var getIndexerUnitInfo = systemdapi.GetUnitInfo
 
 func init() {
 	indexerAvailable.Store(true)
@@ -799,36 +804,93 @@ func deleteFromIndexer(ctx context.Context, path string) error {
 	return nil
 }
 
-// CheckIndexerAvailability checks if the indexer daemon is running via systemd.
-// Returns true if the service is active.
+// CheckIndexerAvailability checks whether the indexer API entrypoint is
+// available. Newer indexer installs are socket activated, so the socket unit is
+// the primary availability signal; the service check remains for older installs.
 func CheckIndexerAvailability(ctx context.Context) (bool, error) {
-	info, err := systemdapi.GetUnitInfo(ctx, indexerServiceName)
-	if err != nil {
-		setIndexerAvailability(false)
-		return false, err
+	var socketErr error
+	if ok, err := checkIndexerSocketAvailability(ctx); err == nil && ok {
+		setIndexerAvailability(true)
+		return true, nil
+	} else {
+		socketErr = err
 	}
 
+	var serviceErr error
+	if ok, err := checkIndexerServiceAvailability(ctx); err == nil && ok {
+		setIndexerAvailability(true)
+		return true, nil
+	} else {
+		serviceErr = err
+	}
+
+	setIndexerAvailability(false)
+
+	switch {
+	case socketErr != nil && serviceErr != nil:
+		return false, fmt.Errorf("%v; %v", socketErr, serviceErr)
+	case socketErr != nil:
+		return false, socketErr
+	case serviceErr != nil:
+		return false, serviceErr
+	default:
+		return false, fmt.Errorf("indexer socket and service are unavailable")
+	}
+}
+
+func checkIndexerSocketAvailability(ctx context.Context) (bool, error) {
+	info, err := getIndexerUnitInfo(ctx, indexerSocketName)
+	if err != nil {
+		return false, fmt.Errorf("indexer socket unavailable: %w", err)
+	}
+
+	activeState, subState, ok := indexerUnitStates(info)
+	if !ok {
+		return false, fmt.Errorf("indexer socket state unavailable")
+	}
+	if activeState != "active" {
+		return false, indexerUnitStateError("socket", activeState, subState)
+	}
+
+	return true, nil
+}
+
+func checkIndexerServiceAvailability(ctx context.Context) (bool, error) {
+	info, err := getIndexerUnitInfo(ctx, indexerServiceName)
+	if err != nil {
+		return false, fmt.Errorf("indexer service unavailable: %w", err)
+	}
+
+	activeState, subState, ok := indexerUnitStates(info)
+	if !ok {
+		return false, fmt.Errorf("indexer service state unavailable")
+	}
+	if activeState != "active" || subState != "running" {
+		return false, indexerUnitStateError("service", activeState, subState)
+	}
+
+	return true, nil
+}
+
+func indexerUnitStates(info map[string]any) (string, string, bool) {
 	activeState, ok := info["ActiveState"].(string)
 	if !ok || activeState == "" {
-		setIndexerAvailability(false)
-		return false, fmt.Errorf("indexer service state unavailable")
+		return "", "", false
 	}
 
 	subState, subStateOK := info["SubState"].(string)
 	if !subStateOK {
 		subState = ""
 	}
-	if activeState != "active" || subState != "running" {
-		setIndexerAvailability(false)
-		if subState != "" {
-			return false, fmt.Errorf("indexer service not running: %s (%s)", activeState, subState)
-		}
-		return false, fmt.Errorf("indexer service not running: %s", activeState)
+
+	return activeState, subState, true
+}
+
+func indexerUnitStateError(label, activeState, subState string) error {
+	if subState != "" {
+		return fmt.Errorf("indexer %s not active: %s (%s)", label, activeState, subState)
 	}
-
-	setIndexerAvailability(true)
-
-	return true, nil
+	return fmt.Errorf("indexer %s not active: %s", label, activeState)
 }
 
 type indexerDirSizeResponse struct {

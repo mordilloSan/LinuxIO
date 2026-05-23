@@ -13,6 +13,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 		{Name: "get_config", Mode: bridgeipc.ModeQuery, Handler: handleGetConfig, Privileged: true},
 		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
 		{Name: "set_config", Mode: bridgeipc.ModeJob, Handler: handleSetConfig, Privileged: true},
+		{Name: "set_timer_interval", Mode: bridgeipc.ModeJob, Handler: handleSetTimerInterval, Privileged: true},
 	})
 }
 
@@ -44,4 +45,12 @@ func handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) 
 		Config:          cfg,
 		RestartRequired: restartRequired,
 	}, nil)
+}
+
+func handleSetTimerInterval(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	if len(args) != 1 {
+		return bridgeipc.ErrInvalidArgs
+	}
+	result, err := SetTimerInterval(ctx, args[0])
+	return bridgeipc.EmitResult(emit, result, err)
 }

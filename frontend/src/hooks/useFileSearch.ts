@@ -7,7 +7,9 @@ export interface SearchResult {
   size: number;
   type?: string;
   isDir?: boolean;
+  mod_time?: string;
   modTime?: string;
+  modified?: string;
 }
 
 export interface SearchResponse {
