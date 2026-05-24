@@ -126,6 +126,7 @@ function TransferItem({
     speed?: unknown;
     bytes?: unknown;
     total?: unknown;
+    indeterminate?: boolean;
   };
   iconSize: number;
   getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
@@ -138,6 +139,7 @@ function TransferItem({
     ? removePercentage(transfer.label)
     : getTransferTitle(transfer.type);
 
+  const isIndeterminate = transfer.indeterminate === true;
   const percentText = `${Math.round(transfer.progress)}%`;
   const speedText =
     typeof transfer.speed === "number" ? formatSpeed(transfer.speed) : null;
@@ -155,7 +157,7 @@ function TransferItem({
     timeRemainingText = formatTimeRemaining(secondsRemaining);
   }
 
-  const detailParts = [percentText];
+  const detailParts = isIndeterminate ? ["In progress"] : [percentText];
   if (speedText) detailParts.push(speedText);
   if (timeRemainingText) detailParts.push(timeRemainingText);
   const detailText = detailParts.join(" \u2022 ");
@@ -188,7 +190,7 @@ function TransferItem({
         <div className="app-navbar-notifications__meta">
           <AppTooltip title={detailText} arrow placement="top">
             <AppLinearProgress
-              variant="determinate"
+              variant={isIndeterminate ? "indeterminate" : "determinate"}
               value={transfer.progress}
               style={{ height: 5, borderRadius: 1, marginBottom: 2 }}
             />

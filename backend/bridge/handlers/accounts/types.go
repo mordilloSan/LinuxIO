@@ -114,34 +114,54 @@ type Group struct {
 	IsSystem bool     `json:"isSystem"`
 }
 
-// CreateUserRequest contains the fields for creating a new user
-type CreateUserRequest struct {
-	Username   string   `json:"username"`
-	Password   string   `json:"password"`
-	FullName   string   `json:"fullName"`
-	HomeDir    string   `json:"homeDir"`
-	Shell      string   `json:"shell"`
-	Groups     []string `json:"groups"`
-	CreateHome bool     `json:"createHome"`
+// UsernameRef identifies a user by username.
+type UsernameRef struct {
+	Username string `json:"username"`
 }
 
-// ModifyUserRequest contains the fields for modifying a user
-type ModifyUserRequest struct {
-	Username string   `json:"username"`
+// GroupNameRef identifies a group by name.
+type GroupNameRef struct {
+	GroupName string `json:"groupName"`
+}
+
+// UserProfileFields contains profile fields used when creating a user.
+type UserProfileFields struct {
+	FullName string   `json:"fullName"`
+	HomeDir  string   `json:"homeDir"`
+	Shell    string   `json:"shell"`
+	Groups   []string `json:"groups"`
+}
+
+// UserProfilePatch contains optional profile fields used when modifying a user.
+type UserProfilePatch struct {
 	FullName *string  `json:"fullName,omitempty"`
 	HomeDir  *string  `json:"homeDir,omitempty"`
 	Shell    *string  `json:"shell,omitempty"`
 	Groups   []string `json:"groups,omitempty"`
 }
 
-// CreateGroupRequest contains the fields for creating a new group
+// CreateUserRequest contains the fields for creating a new user.
+type CreateUserRequest struct {
+	UsernameRef
+	Password string `json:"password"`
+	UserProfileFields
+	CreateHome bool `json:"createHome"`
+}
+
+// ModifyUserRequest contains the fields for modifying a user.
+type ModifyUserRequest struct {
+	UsernameRef
+	UserProfilePatch
+}
+
+// CreateGroupRequest contains the fields for creating a new group.
 type CreateGroupRequest struct {
 	Name string `json:"name"`
 	GID  *int   `json:"gid,omitempty"`
 }
 
-// ModifyGroupMembersRequest contains the fields for modifying group members
+// ModifyGroupMembersRequest contains the fields for modifying group members.
 type ModifyGroupMembersRequest struct {
-	GroupName string   `json:"groupName"`
-	Members   []string `json:"members"`
+	GroupNameRef
+	Members []string `json:"members"`
 }

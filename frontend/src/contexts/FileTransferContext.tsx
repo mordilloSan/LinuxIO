@@ -13,6 +13,7 @@ import {
   linuxio,
   bindStreamHandlers,
   isConnected,
+  isTerminalJobState,
   openJobAttachStream,
   openJobDataStream,
   openJobEventsStream,
@@ -35,6 +36,7 @@ const JOB_TYPE_FILE_UPLOAD = "filebrowser.upload";
 const JOB_TYPE_FILE_DOWNLOAD = "filebrowser.download";
 const JOB_TYPE_FILE_ARCHIVE = "filebrowser.archive";
 const JOB_TYPE_FILE_CHMOD = "filebrowser.chmod";
+const JOB_TYPE_FILE_DELETE = "filebrowser.resource_delete";
 const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
 const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
 const JOB_TYPE_PACKAGE_UPDATE = "packages.update";
@@ -158,6 +160,8 @@ interface BackgroundJob {
   jobType: string;
   progress: number;
   label: string;
+  indeterminate?: boolean;
+  processed?: number;
   abortController: AbortController;
   stream?: Stream | null;
 }
@@ -176,8 +180,21 @@ function jobIdentityKey(type: string, args: readonly string[] = []) {
   return JSON.stringify([type, ...args]);
 }
 
-function isTerminalJobState(state: JobSnapshot["state"]) {
-  return state === "completed" || state === "failed" || state === "canceled";
+function makeCountedSet() {
+  const counts = new Map<string, number>();
+  return {
+    add(key: string) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    },
+    delete(key: string) {
+      const n = counts.get(key) ?? 0;
+      if (n <= 1) counts.delete(key);
+      else counts.set(key, n - 1);
+    },
+    has(key: string) {
+      return counts.has(key);
+    },
+  };
 }
 
 function createProgressSpeedCalculator(minWindowMs = 500, alpha = 0.3) {
@@ -305,7 +322,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const activeBackgroundJobIdsRef = useRef<Set<string>>(new Set());
   const activeFileTransferJobIdsRef = useRef<Set<string>>(new Set());
   const recoveringJobIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalJobKeysRef = useRef<Set<string>>(new Set());
+  const pendingLocalJobKeysRef = useRef(makeCountedSet());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<
@@ -403,8 +420,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const transfers = useMemo<Transfer[]>(
-    () => [
+  const transfers = useMemo<Transfer[]>(() => {
+    const addIds = (ids: Set<string>, ...values: (string | undefined)[]) => {
+      for (const v of values) if (v) ids.add(v);
+    };
+    const localTransferIds = new Set<string>();
+    for (const d of downloads) addIds(localTransferIds, d.id);
+    for (const u of uploads) addIds(localTransferIds, u.id, u.jobId);
+    for (const c of compressions) addIds(localTransferIds, c.id);
+    for (const e of extractions) addIds(localTransferIds, e.id);
+    for (const i of indexers) addIds(localTransferIds, i.id);
+    for (const c of copies) addIds(localTransferIds, c.id);
+    for (const m of moves) addIds(localTransferIds, m.id);
+    return [
       ...downloads,
       ...uploads,
       ...compressions,
@@ -412,19 +440,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       ...indexers,
       ...copies,
       ...moves,
-      ...backgroundJobs,
-    ],
-    [
-      downloads,
-      uploads,
-      compressions,
-      extractions,
-      indexers,
-      copies,
-      moves,
-      backgroundJobs,
-    ],
-  );
+      ...backgroundJobs.filter((j) => !localTransferIds.has(j.id)),
+    ];
+  }, [
+    downloads,
+    uploads,
+    compressions,
+    extractions,
+    indexers,
+    copies,
+    moves,
+    backgroundJobs,
+  ]);
 
   const isIndexing = indexers.length > 0;
 
@@ -569,11 +596,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
+      const pendingKey = isSingleFile
+        ? jobIdentityKey(JOB_TYPE_FILE_DOWNLOAD, [paths[0]])
+        : jobIdentityKey(JOB_TYPE_FILE_ARCHIVE, ["zip", ...paths]);
+      pendingLocalJobKeysRef.current.add(pendingKey);
+      let pendingKeyHeld = true;
+
       try {
         const activeDownloadJob = isSingleFile
           ? await linuxio.filebrowser.download.call(paths[0])
           : await linuxio.filebrowser.archive.call("zip", ...paths);
         activeFileTransferJobIdsRef.current.add(activeDownloadJob.id);
+        pendingLocalJobKeysRef.current.delete(pendingKey);
+        pendingKeyHeld = false;
         releaseDownloadLabelBase(reqId);
         reqId = activeDownloadJob.id;
         downloadLabelBase = allocateDownloadLabelBase(
@@ -669,6 +704,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         );
         setTimeout(() => removeDownload(reqId), 1000);
       } catch (err: any) {
+        if (pendingKeyHeld) {
+          pendingLocalJobKeysRef.current.delete(pendingKey);
+        }
         if (err?.name === "AbortError" || err?.name === "CanceledError") {
           console.log("Download cancelled by user");
         } else {
@@ -753,6 +791,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const fullDestination = destination.endsWith("/")
         ? `${destination}${archiveName}`
         : `${destination}/${archiveName}`;
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_COMPRESS, [
+        format,
+        fullDestination,
+        ...paths,
+      ]);
+      pendingLocalJobKeysRef.current.add(pendingKey);
       let job: JobSnapshot;
       try {
         job = await linuxio.filebrowser.compress.call(
@@ -761,6 +805,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           ...paths,
         );
       } catch (error) {
+        pendingLocalJobKeysRef.current.delete(pendingKey);
         toast.error(
           error instanceof Error
             ? error.message
@@ -790,6 +835,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setCompressions((prev) => [...prev, compression]);
       activeCompressionIdsRef.current.add(id);
+      pendingLocalJobKeysRef.current.delete(pendingKey);
 
       void runStreamResult<void, ProgressFrame>({
         open: () => openJobAttachStream(id),
@@ -902,10 +948,15 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const jobArgs = destination ? [archivePath, destination] : [archivePath];
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_EXTRACT, jobArgs);
+      pendingLocalJobKeysRef.current.add(pendingKey);
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.extract.call(jobArgs[0], jobArgs[1]);
+        job = destination
+          ? await linuxio.filebrowser.extract.call(archivePath, destination)
+          : await linuxio.filebrowser.extract.call(archivePath);
       } catch (error) {
+        pendingLocalJobKeysRef.current.delete(pendingKey);
         toast.error(
           error instanceof Error ? error.message : "Failed to start extraction",
         );
@@ -947,6 +998,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setExtractions((prev) => [...prev, extraction]);
       activeExtractionIdsRef.current.add(id);
+      pendingLocalJobKeysRef.current.delete(pendingKey);
 
       void runStreamResult<void, ProgressFrame>({
         open: () => openJobAttachStream(id),
@@ -1084,11 +1136,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setLastIndexerResult(null);
       setLastIndexerError(null);
 
+      const jobArgs = path && path !== "/" ? [path] : [];
+      const pendingKey = jobIdentityKey(JOB_TYPE_FILE_INDEXER, jobArgs);
+      pendingLocalJobKeysRef.current.add(pendingKey);
+
       let job: JobSnapshot;
       try {
-        const jobArgs = path && path !== "/" ? [path] : [];
-        job = await linuxio.filebrowser.index.call(jobArgs[0]);
+        job =
+          path && path !== "/"
+            ? await linuxio.filebrowser.index.call(path)
+            : await linuxio.filebrowser.index.call();
       } catch (error) {
+        pendingLocalJobKeysRef.current.delete(pendingKey);
         const message =
           error instanceof Error ? error.message : "Failed to start indexer";
         setLastIndexerError(message);
@@ -1116,6 +1175,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setIndexers((prev) => [...prev, indexerTask]);
       activeIndexerIdsRef.current.add(id);
+      pendingLocalJobKeysRef.current.delete(pendingKey);
 
       void runStreamResult<
         | {
@@ -1240,6 +1300,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return { success: false, error: "Stream connection not ready" };
       }
 
+      const pendingUploadKey = jobIdentityKey(JOB_TYPE_FILE_UPLOAD, [
+        targetPath,
+        String(file.size),
+      ]);
+      pendingLocalJobKeysRef.current.add(pendingUploadKey);
+
       let job: JobSnapshot;
       try {
         job = await linuxio.filebrowser.upload.call(
@@ -1247,6 +1313,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           String(file.size),
         );
       } catch (error) {
+        pendingLocalJobKeysRef.current.delete(pendingUploadKey);
         return {
           success: false,
           error:
@@ -1256,6 +1323,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       updateUpload(uploadId, { jobId: job.id });
       activeFileTransferJobIdsRef.current.add(job.id);
+      pendingLocalJobKeysRef.current.delete(pendingUploadKey);
 
       const stream = openJobDataStream(job.id, 0);
       if (!stream) {
@@ -2003,12 +2071,27 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const args = job.args ?? [];
       const genericProgressPct = (value: unknown) => {
         const data = value as
-          | { pct?: number; percentage?: number; item_pct?: number }
+          | {
+              pct?: number;
+              percentage?: number;
+              item_pct?: number;
+              indeterminate?: boolean;
+            }
           | undefined;
+        if (data?.indeterminate) return 0;
         return Math.min(
           99,
           data?.pct ?? data?.percentage ?? data?.item_pct ?? 0,
         );
+      };
+      const genericProgressMeta = (value: unknown) => {
+        const data = value as
+          | { indeterminate?: boolean; processed?: number }
+          | undefined;
+        return {
+          indeterminate: data?.indeterminate,
+          processed: data?.processed,
+        };
       };
       const genericLabel = (value: unknown) => {
         const data = value as
@@ -2021,6 +2104,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               dirs_indexed?: number;
               phase?: string;
               pct?: number;
+              processed?: number;
+              indeterminate?: boolean;
             }
           | undefined;
         switch (job.type) {
@@ -2042,6 +2127,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           case JOB_TYPE_FILE_CHMOD:
             return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          case JOB_TYPE_FILE_DELETE: {
+            const name = getName(args[0], "item");
+            if (data?.indeterminate) {
+              const processed = data.processed ?? 0;
+              return `Deleting ${name} (${processed} item${processed === 1 ? "" : "s"})`;
+            }
+            return `Deleting ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          }
           case JOB_TYPE_DOCKER_COMPOSE:
             return data?.message ?? `Docker compose ${args[0] ?? "operation"}`;
           case JOB_TYPE_DOCKER_INDEXER:
@@ -2370,12 +2463,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         case JOB_TYPE_FILE_UPLOAD:
         case JOB_TYPE_FILE_DOWNLOAD:
         case JOB_TYPE_FILE_ARCHIVE:
-        case JOB_TYPE_FILE_CHMOD: {
+        case JOB_TYPE_FILE_CHMOD:
+        case JOB_TYPE_FILE_DELETE: {
           if (activeFileTransferJobIdsRef.current.has(job.id)) {
             return;
           }
           if (activeBackgroundJobIdsRef.current.has(job.id)) return;
           const initialProgress = genericProgressPct(job.progress);
+          const initialMeta = genericProgressMeta(job.progress);
           activeBackgroundJobIdsRef.current.add(job.id);
           setBackgroundJobs((prev) => [
             ...prev,
@@ -2385,6 +2480,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               jobType: job.type,
               progress: initialProgress,
               label: genericLabel(job.progress),
+              indeterminate: initialMeta.indeterminate,
+              processed: initialMeta.processed,
               abortController,
             },
           ]);
@@ -2400,6 +2497,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
                           genericProgressPct(nextProgress),
                         ),
                         label: genericLabel(nextProgress),
+                        ...genericProgressMeta(nextProgress),
                       }
                     : item,
                 ),

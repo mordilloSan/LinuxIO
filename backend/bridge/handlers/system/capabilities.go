@@ -78,7 +78,7 @@ func logCapabilitiesSummary(out capabilitiesResponse) {
 	))
 
 	logUnavailableCapability("Docker service", out.DockerError)
-	logUnavailableCapability("Indexer service", out.IndexerError)
+	logUnavailableCapability("Indexer API", out.IndexerError)
 	logUnavailableCapability("lm-sensors", out.LMSensorsError)
 	logUnavailableCapability("smartmontools", out.SmartmontoolsError)
 	logUnavailableCapability("PackageKit", out.PackageKitError)

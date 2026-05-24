@@ -266,7 +266,7 @@ const FileBrowser: React.FC = () => {
             : normalizedType && normalizedType !== "file"
               ? (result.type ?? "file")
               : "file",
-          modTime: result.modTime || "",
+          modTime: result.mod_time || result.modTime || result.modified || "",
           isDirectory,
           extension: isDirectory ? "" : result.name.split(".").pop() || "",
           showFullPath: true, // Show directory path in search results
@@ -1010,7 +1010,7 @@ const FileBrowser: React.FC = () => {
             <AppAlertTitle>
               {indexerStatus === "unknown"
                 ? "Checking Indexer Availability"
-                : "Indexer Service Unavailable"}
+                : "Indexer API Unavailable"}
             </AppAlertTitle>
             {indexerStatus === "unknown" ? (
               <AppTypography variant="body2">
@@ -1020,8 +1020,8 @@ const FileBrowser: React.FC = () => {
             ) : (
               <AppTypography variant="body2">
                 Directory size calculations and file search are disabled. Start
-                the <strong>linuxio-indexer.service</strong> to enable these
-                features.
+                the <strong>indexer.target</strong> or{" "}
+                <strong>indexer.socket</strong> to enable these features.
               </AppTypography>
             )}
           </AppAlert>

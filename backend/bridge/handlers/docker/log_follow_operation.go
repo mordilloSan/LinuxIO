@@ -87,7 +87,7 @@ func streamDockerLogs(ctx context.Context, job *bridgeipc.Job, reader io.Reader)
 		if len(payload) == 0 {
 			continue
 		}
-		job.ReportProgress(map[string]any{"type": "data", "data": string(payload)})
+		job.ReportData(string(payload))
 	}
 
 	return nil

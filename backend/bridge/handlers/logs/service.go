@@ -117,7 +117,7 @@ func streamServiceLogs(ctx context.Context, job *bridgeipc.Job, stdout io.Reader
 			return sentData, nil
 		}
 		sentData = true
-		job.ReportProgress(map[string]any{"type": "data", "data": line})
+		job.ReportData(line)
 	}
 }
 

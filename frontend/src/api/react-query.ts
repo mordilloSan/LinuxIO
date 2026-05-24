@@ -24,6 +24,7 @@ import {
 
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
+import { isJobSnapshot, waitForJobCompletion } from "./jobs";
 import { useStreamMux, useIsUpdating } from "./linuxio";
 import { getRouteMode, routeName } from "./route-metadata";
 import type {
@@ -344,11 +345,18 @@ function createEndpoint<TResult>(
       }
 
       return useMutation<TResult, LinuxIOError, unknown[]>({
-        mutationFn: (args: unknown[]) => {
+        mutationFn: async (args: unknown[]) => {
           const serializedArgs = serializeArgs(args ?? []);
-          return core.call<TResult>(handler, command, serializedArgs, {
-            retryPolicy,
-          });
+          const result = await core.call<TResult>(
+            handler,
+            command,
+            serializedArgs,
+            { retryPolicy },
+          );
+          if (isJobSnapshot(result)) {
+            return (await waitForJobCompletion(result)) as TResult;
+          }
+          return result;
         },
         ...options,
       });

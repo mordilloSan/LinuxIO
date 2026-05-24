@@ -8,7 +8,14 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
+import {
+  useStreamMux,
+  openGeneralLogsStream,
+  decodeString,
+  linuxio,
+  CACHE_TTL_MS,
+} from "@/api";
+import type { Service } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
@@ -29,6 +36,14 @@ import { useLiveStream } from "@/hooks/useLiveStream";
 import { useAppTheme } from "@/theme";
 
 const DEFAULT_TAIL = "200";
+// Hard cap on in-memory buffer. Protects against the "All in window" tail blowing
+// up memory on busy systems; oldest entries are dropped beyond this.
+const MAX_BUFFER = 5000;
+// Hard cap on how many rows we actually feed to the table. Each row carries
+// an always-mounted AppCollapse + motion.div, so render cost is proportional
+// to the array, not to visible rows. Copy / Download still operate on the
+// full matched set.
+const DISPLAY_LIMIT = 1000;
 
 // Log priority levels (syslog standard)
 enum LogPriority {
@@ -182,6 +197,8 @@ const GeneralLogsPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [timePeriod, setTimePeriod] = useState("24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [tailSize, setTailSize] = useState<string>(DEFAULT_TAIL);
+  const [unitStatusFilter, setUnitStatusFilter] = useState<string>("all");
   const [identifierFilter, setIdentifierFilter] = useState("all");
   const [identifierIsExact, setIdentifierIsExact] = useState(true);
   // identifierInput tracks the live autocomplete input value (every keystroke).
@@ -194,6 +211,11 @@ const GeneralLogsPage: React.FC = () => {
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const hasReceivedData = useRef(false);
   const hasOpenedOnce = useRef(false);
+  // Pending log entries waiting for the next animation-frame flush. Buffering
+  // here turns a per-line setState (potentially thousands per second on a
+  // chatty journal) into ~60 batched updates per second.
+  const pendingLogsRef = useRef<LogEntry[]>([]);
+  const flushScheduledRef = useRef(false);
   const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
@@ -291,12 +313,66 @@ const GeneralLogsPage: React.FC = () => {
     return Array.from(identifiers).sort();
   }, [logs]);
 
+  // Current systemd unit states, used by the unit-status filter below.
+  const { data: services = [] } = linuxio.systemd.list_services.useQuery({
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
+
+  // Set of unit names matching the selected status. `null` means the filter is
+  // either "all" (no filter) or "no_unit" (which is handled by checking for an
+  // empty _SYSTEMD_UNIT field, not by Set membership).
+  const matchingUnitNames = useMemo<Set<string> | null>(() => {
+    if (unitStatusFilter === "all" || unitStatusFilter === "no_unit") {
+      return null;
+    }
+    const wanted = new Set<string>();
+    for (const svc of services as Service[]) {
+      if (unitStatusFilter === "running" && svc.sub_state === "running") {
+        wanted.add(svc.name);
+      } else if (
+        unitStatusFilter === "failed" &&
+        (svc.active_state === "failed" || svc.sub_state === "failed")
+      ) {
+        wanted.add(svc.name);
+      } else if (
+        unitStatusFilter === "inactive" &&
+        svc.active_state === "inactive"
+      ) {
+        wanted.add(svc.name);
+      }
+    }
+    return wanted;
+  }, [services, unitStatusFilter]);
+
   // Scroll to top when new logs arrive
   useEffect(() => {
     if (liveMode && logsBoxRef.current) {
       logsBoxRef.current.scrollTop = 0;
     }
   }, [logs, liveMode]);
+
+  // Flush queued log entries on the next animation frame. Coalesces bursts so
+  // we don't pay React reconciliation cost per arriving line.
+  const scheduleFlush = useCallback(() => {
+    if (flushScheduledRef.current) return;
+    flushScheduledRef.current = true;
+    requestAnimationFrame(() => {
+      flushScheduledRef.current = false;
+      const pending = pendingLogsRef.current;
+      if (pending.length === 0) return;
+      pendingLogsRef.current = [];
+      // Pending arrived in chronological order; the table renders newest-first,
+      // so reverse before prepending.
+      const reversed = pending.reverse();
+      setLogs((prev) => {
+        const combined =
+          reversed.length + prev.length > MAX_BUFFER
+            ? [...reversed, ...prev].slice(0, MAX_BUFFER)
+            : [...reversed, ...prev];
+        return combined;
+      });
+    });
+  }, []);
 
   const openLogsStream = useCallback(
     (
@@ -334,7 +410,8 @@ const GeneralLogsPage: React.FC = () => {
           }
           const logEntry = parseLogEntry(text.trimEnd());
           if (logEntry) {
-            setLogs((prev) => [logEntry, ...prev]);
+            pendingLogsRef.current.push(logEntry);
+            scheduleFlush();
           }
         },
         onClose: () => {
@@ -344,7 +421,7 @@ const GeneralLogsPage: React.FC = () => {
         },
       });
     },
-    [muxIsOpen, parseLogEntry, openStream],
+    [muxIsOpen, parseLogEntry, openStream, scheduleFlush],
   );
 
   // Open stream on mount and when filters change
@@ -353,7 +430,7 @@ const GeneralLogsPage: React.FC = () => {
       return;
     }
 
-    const tail = hasOpenedOnce.current ? "0" : DEFAULT_TAIL;
+    const tail = hasOpenedOnce.current ? "0" : tailSize;
     const backendIdentifier =
       identifierFilter === "all"
         ? ""
@@ -377,6 +454,7 @@ const GeneralLogsPage: React.FC = () => {
     streamRef,
     timePeriod,
     priorityFilter,
+    tailSize,
     identifierFilter,
     identifierIsExact,
     fieldFilters,
@@ -398,19 +476,29 @@ const GeneralLogsPage: React.FC = () => {
     setError(null);
   };
 
-  // Filter change handlers
-  const handleTimePeriodChange = (value: string) => {
+  // Close the stream and drop both rendered logs and queued (pre-flush) logs.
+  // Used by every filter change that needs to re-issue the backend stream.
+  const resetBuffer = useCallback(() => {
     closeStream();
     setLogs([]);
+    pendingLogsRef.current = [];
     hasOpenedOnce.current = false;
+  }, [closeStream]);
+
+  // Filter change handlers
+  const handleTimePeriodChange = (value: string) => {
+    resetBuffer();
     setTimePeriod(value);
   };
 
   const handlePriorityFilterChange = (value: string) => {
-    closeStream();
-    setLogs([]);
-    hasOpenedOnce.current = false;
+    resetBuffer();
     setPriorityFilter(value);
+  };
+
+  const handleTailSizeChange = (value: string) => {
+    resetBuffer();
+    setTailSize(value);
   };
 
   // Apply an identifier value as the active filter. Re-streams the backend
@@ -433,15 +521,13 @@ const GeneralLogsPage: React.FC = () => {
       const newBackend = newValue === "all" ? "" : isExact ? newValue : "";
 
       if (oldBackend !== newBackend) {
-        closeStream();
-        setLogs([]);
-        hasOpenedOnce.current = false;
+        resetBuffer();
       }
 
       setIdentifierIsExact(isExact);
       setIdentifierFilter(newValue);
     },
-    [identifierFilter, identifierIsExact, uniqueIdentifiers, closeStream],
+    [identifierFilter, identifierIsExact, uniqueIdentifiers, resetBuffer],
   );
 
   // Debounce: when the autocomplete input settles, apply it.
@@ -459,32 +545,26 @@ const GeneralLogsPage: React.FC = () => {
 
   const addFieldFilter = useCallback(
     (filter: string) => {
-      closeStream();
-      setLogs([]);
-      hasOpenedOnce.current = false;
+      resetBuffer();
       setFieldFilters((prev) =>
         prev.includes(filter) ? prev : [...prev, filter],
       );
     },
-    [closeStream],
+    [resetBuffer],
   );
 
   const removeFieldFilter = useCallback(
     (filter: string) => {
-      closeStream();
-      setLogs([]);
-      hasOpenedOnce.current = false;
+      resetBuffer();
       setFieldFilters((prev) => prev.filter((f) => f !== filter));
     },
-    [closeStream],
+    [resetBuffer],
   );
 
   const clearFieldFilters = useCallback(() => {
-    closeStream();
-    setLogs([]);
-    hasOpenedOnce.current = false;
+    resetBuffer();
     setFieldFilters([]);
-  }, [closeStream]);
+  }, [resetBuffer]);
 
   // Cleanup stream
   useEffect(() => {
@@ -509,6 +589,31 @@ const GeneralLogsPage: React.FC = () => {
       );
     }
 
+    if (unitStatusFilter !== "all") {
+      filtered = filtered.filter((log) => {
+        // _SYSTEMD_UNIT is the trusted source-process unit; UNIT is set by
+        // systemd[1] when it logs *about* a unit (e.g. "Started foo.service").
+        // Check both so manager-emitted entries about a failed/running unit
+        // still match the corresponding status filter — mirrors the
+        // `resolveUnitTarget` logic for the row-click → services navigation.
+        const raw = log.rawJson;
+        const systemdUnit =
+          typeof raw?._SYSTEMD_UNIT === "string"
+            ? (raw._SYSTEMD_UNIT as string)
+            : "";
+        const aboutUnit =
+          typeof raw?.UNIT === "string" ? (raw.UNIT as string) : "";
+        if (unitStatusFilter === "no_unit") {
+          return systemdUnit === "" && aboutUnit === "";
+        }
+        return (
+          matchingUnitNames !== null &&
+          (matchingUnitNames.has(systemdUnit) ||
+            matchingUnitNames.has(aboutUnit))
+        );
+      });
+    }
+
     const trimmed = search.trim();
     if (trimmed) {
       const needle = trimmed.toLowerCase();
@@ -520,7 +625,15 @@ const GeneralLogsPage: React.FC = () => {
     }
 
     return filtered;
-  }, [logs, search, identifierInput]);
+  }, [logs, search, identifierInput, unitStatusFilter, matchingUnitNames]);
+
+  // Cap what we actually feed the table. Copy/Download still use the full
+  // matched set above — the cap is purely a render-cost guard.
+  const displayedLogs = useMemo(
+    () => filteredLogs.slice(0, DISPLAY_LIMIT),
+    [filteredLogs],
+  );
+  const isTruncated = filteredLogs.length > DISPLAY_LIMIT;
 
   const handleCopy = () => {
     if (filteredLogs.length === 0) return;
@@ -786,6 +899,33 @@ const GeneralLogsPage: React.FC = () => {
           <option value="7">Debug and above</option>
         </AppSelect>
 
+        <AppSelect
+          label="Lines"
+          size="small"
+          style={{ minWidth: 130 }}
+          value={tailSize}
+          onChange={(e) => handleTailSizeChange(e.target.value)}
+        >
+          <option value="200">200</option>
+          <option value="500">500</option>
+          <option value="2000">2000</option>
+          <option value="all">All in window</option>
+        </AppSelect>
+
+        <AppSelect
+          label="Service status"
+          size="small"
+          style={{ minWidth: 160 }}
+          value={unitStatusFilter}
+          onChange={(e) => setUnitStatusFilter(e.target.value)}
+        >
+          <option value="all">All</option>
+          <option value="running">Running</option>
+          <option value="failed">Failed</option>
+          <option value="inactive">Inactive</option>
+          <option value="no_unit">Not in systemd</option>
+        </AppSelect>
+
         <AppAutocomplete
           size="small"
           freeSolo
@@ -852,7 +992,9 @@ const GeneralLogsPage: React.FC = () => {
           />
         </AppTooltip>
         <AppTypography fontWeight={700}>
-          {filteredLogs.length} shown
+          {isTruncated
+            ? `${DISPLAY_LIMIT} of ${filteredLogs.length} shown`
+            : `${filteredLogs.length} shown`}
         </AppTypography>
       </div>
 
@@ -899,7 +1041,7 @@ const GeneralLogsPage: React.FC = () => {
       {!isLoading && !error && (
         <div ref={logsBoxRef}>
           <UnifiedCollapsibleTable
-            data={filteredLogs}
+            data={displayedLogs}
             columns={columns}
             getRowKey={(_, index) => index}
             renderFirstCell={renderIcon}

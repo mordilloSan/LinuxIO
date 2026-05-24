@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestMoveFile(t *testing.T) {
@@ -64,6 +66,21 @@ func TestMoveFile(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []byte("new"), content, "destination should be overwritten")
 	})
+}
+
+func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcFile := createTestFile(t, tmpDir, "source-known-size.txt", []byte("content"))
+	dstPath := filepath.Join(tmpDir, "destination-known-size.txt")
+
+	var reported []int64
+	err := MoveFileWithCallbacks(srcFile, dstPath, false, &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			reported = append(reported, n)
+		},
+	}, MoveFileOptions{KnownSize: 12345, HasKnownSize: true})
+	assert.NoError(t, err)
+	assert.Equal(t, []int64{12345}, reported)
 }
 
 func TestCopyFile(t *testing.T) {
@@ -183,6 +200,108 @@ func TestDeleteFiles(t *testing.T) {
 
 		_, err = os.Stat(dirPath)
 		assert.Error(t, err)
+	})
+}
+
+func TestDeleteFilesWithProgress(t *testing.T) {
+	t.Run("single_file_reports_one_item", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		filePath := createTestFile(t, tmpDir, "large.bin", []byte("data"))
+		var progress []int64
+
+		processed, err := DeleteFilesWithProgress(context.Background(), filePath, DeleteOptions{
+			Total: 1,
+			Progress: func(processed, _ int64, _ bool) {
+				progress = append(progress, processed)
+			},
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, int64(1), processed)
+		assert.Equal(t, []int64{1}, progress)
+		_, err = os.Lstat(filePath)
+		assert.Error(t, err)
+	})
+
+	t.Run("directory_known_total_reports_all_entries", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "tree")
+		subDir := createTestDir(t, dirPath, "subdir")
+		createTestFile(t, dirPath, "file1.txt", []byte("root"))
+		createTestFile(t, subDir, "file2.txt", []byte("nested"))
+		var lastProcessed, lastTotal int64
+
+		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{
+			Total: 4,
+			Progress: func(processed, total int64, indeterminate bool) {
+				lastProcessed = processed
+				lastTotal = total
+				assert.False(t, indeterminate)
+			},
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, int64(4), processed)
+		assert.Equal(t, int64(4), lastProcessed)
+		assert.Equal(t, int64(4), lastTotal)
+		_, err = os.Lstat(dirPath)
+		assert.Error(t, err)
+	})
+
+	t.Run("empty_directory_prescan_counts_directory_itself", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "empty")
+		var lastProcessed, lastTotal int64
+
+		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{
+			Prescan: true,
+			Progress: func(processed, total int64, _ bool) {
+				lastProcessed = processed
+				lastTotal = total
+			},
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, int64(1), processed)
+		assert.Equal(t, int64(1), lastProcessed)
+		assert.Equal(t, int64(1), lastTotal)
+	})
+
+	t.Run("directory_indeterminate_reports_item_count", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "unknown")
+		createTestFile(t, dirPath, "file.txt", []byte("data"))
+		var lastProcessed, lastTotal int64
+		var lastIndeterminate bool
+
+		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{
+			Indeterminate: true,
+			Progress: func(processed, total int64, indeterminate bool) {
+				lastProcessed = processed
+				lastTotal = total
+				lastIndeterminate = indeterminate
+			},
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, int64(2), processed)
+		assert.Equal(t, int64(2), lastProcessed)
+		assert.Equal(t, int64(0), lastTotal)
+		assert.True(t, lastIndeterminate)
+	})
+
+	t.Run("symlink_delete_does_not_follow_target", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		targetDir := createTestDir(t, tmpDir, "target")
+		targetFile := createTestFile(t, targetDir, "kept.txt", []byte("keep"))
+		linkPath := filepath.Join(tmpDir, "target-link")
+		if err := os.Symlink(targetDir, linkPath); err != nil {
+			t.Skipf("symlink not supported: %v", err)
+		}
+
+		processed, err := DeleteFilesWithProgress(context.Background(), linkPath, DeleteOptions{Total: 1})
+		assert.NoError(t, err)
+		assert.Equal(t, int64(1), processed)
+		_, err = os.Lstat(linkPath)
+		assert.Error(t, err)
+		_, err = os.Lstat(targetFile)
+		assert.NoError(t, err)
 	})
 }
 

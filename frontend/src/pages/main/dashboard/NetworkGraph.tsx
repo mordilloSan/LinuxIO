@@ -4,6 +4,7 @@ import { SmoothieChart, TimeSeries } from "smoothie";
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+import { formatThroughput } from "@/utils/formaters";
 
 interface NetworkGraphProps {
   rx: number;
@@ -53,7 +54,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         return data
           .map(
             (d, i) =>
-              `<span style="color:${colors[i]}; font-size: 13px; line-height: 1.3;">${labels[i]}: ${d.value.toFixed(2)} kB/s</span>`,
+              `<span style="color:${colors[i]}; font-size: 13px; line-height: 1.3;">${labels[i]}: ${formatThroughput(d.value * 1024)}</span>`,
           )
           .join("<br/>");
       },
@@ -113,10 +114,10 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         }}
       >
         <div style={{ color: rxColor, fontWeight: 600 }}>
-          Rx: {rx.toFixed(2)} kB/s
+          Rx: {formatThroughput(rx * 1024)}
         </div>
         <div style={{ color: txColor, fontWeight: 600 }}>
-          Tx: {tx.toFixed(2)} kB/s
+          Tx: {formatThroughput(tx * 1024)}
         </div>
       </div>
     </div>

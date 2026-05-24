@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -20,6 +21,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func (h configHandlers) handleGetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
+	slog.Debug("config.get requested", "component", "config", "user", h.username)
 	result, err := GetConfigForUser(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

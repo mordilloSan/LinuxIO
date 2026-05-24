@@ -63,13 +63,8 @@ func fetchTimerStatus(session dbusclient.SystemSession, entry listedUnit) TimerS
 	if ts, ok := getUint64Property(session, unit, dbusclient.SystemdUnitIface, "InactiveEnterTimestamp"); ok {
 		timer.InactiveEnterTimestamp = ts
 	}
-	if next, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "NextElapseUSecRealtime"); ok && next > 0 {
+	if next, ok := timerNextElapseUsec(session, unit); ok {
 		timer.NextElapseUSec = next
-	}
-	if timer.NextElapseUSec == 0 {
-		if next, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "NextElapseUSecMonotonic"); ok {
-			timer.NextElapseUSec = next
-		}
 	}
 	if last, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "LastTriggerUSec"); ok {
 		timer.LastTriggerUSec = last

@@ -24,7 +24,6 @@ body.dialog-open #root {
 .app-dialog__backdrop {
   position: fixed;
   inset: 0;
-  z-index: -1;
   background-color: rgba(0, 0, 0, 0.5);
   -webkit-tap-highlight-color: transparent;
   animation: app-dialog-fadein 225ms cubic-bezier(0, 0, 0.2, 1);

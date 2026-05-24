@@ -76,6 +76,10 @@ func runCompose(ctx context.Context, projectName, configFile, workingDir string,
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scanner error: %w", err)
+	}
+
 	return cmd.Wait()
 }
 

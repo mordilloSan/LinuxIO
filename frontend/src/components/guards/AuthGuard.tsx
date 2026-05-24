@@ -4,6 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import PageLoader from "@/components/loaders/PageLoader";
 import { ConfigProvider } from "@/contexts/ConfigContext";
 import { FileTransferProvider } from "@/contexts/FileTransferContext";
+import { JobsEventsListener } from "@/contexts/JobsEventsListener";
 import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
@@ -34,7 +35,7 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
 }
 
 export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
-  const { isAuthenticated, isInitialized } = useAuth();
+  const { isAuthenticated, isInitialized, user } = useAuth();
   const location = useLocation();
 
   // Block everything until we know the auth state
@@ -61,8 +62,9 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   // Only now mount Config + Theme + Sidebar and the children (or nested routes)
   return (
     <ToastProvider>
-      <ConfigProvider>
+      <ConfigProvider key={user?.id ?? "anonymous"}>
         <FileTransferProvider>
+          <JobsEventsListener />
           <AuthedThemeShell>
             <PowerActionProvider>
               <UpdateProvider>

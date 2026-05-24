@@ -562,9 +562,12 @@ export interface SearchResponse {
   results: {
     path: string;
     name: string;
-    isDir: boolean;
+    type?: string;
+    isDir?: boolean;
     size: number;
-    modified: string;
+    mod_time?: string;
+    modTime?: string;
+    modified?: string;
   }[];
   count: number;
 }
@@ -865,6 +868,12 @@ export interface IndexerConfigSetResult {
   restart_required: boolean;
 }
 
+export interface IndexerTimerSetResult {
+  config: IndexerConfig;
+  interval: string;
+  timer_unit: string;
+}
+
 export interface IndexerDaemonStatus {
   running: boolean;
   status: string;
@@ -878,6 +887,8 @@ export interface IndexerDaemonStatus {
   wal_size: number;
   shm_size: number;
   total_on_disk: number;
+  active_operation?: string;
+  active_path?: string;
   warning?: string;
 }
 
@@ -1164,7 +1175,7 @@ export interface LinuxIOSchema {
       result: ApiResource;
     };
     resource_stat: { args: [path: string]; result: ResourceStatData };
-    resource_delete: { args: [path: string]; result: void };
+    resource_delete: { args: [path: string]; result: JobSnapshot };
     resource_post: { args: [path: string, action?: string]; result: void };
     resource_patch: {
       args: [action: string, src: string, dst: string];
@@ -1221,6 +1232,10 @@ export interface LinuxIOSchema {
     set_config: {
       args: [payload: Partial<IndexerConfig>];
       result: IndexerConfigSetResult;
+    };
+    set_timer_interval: {
+      args: [interval: string];
+      result: IndexerTimerSetResult;
     };
   };
 

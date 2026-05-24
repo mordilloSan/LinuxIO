@@ -25,8 +25,6 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 const DockerPage: React.FC = () => {
   const theme = useAppTheme();
   const { status: dockerStatus } = useCapability("dockerAvailable");
-  const { isEnabled: indexerEnabled, reason: indexerReason } =
-    useCapability("indexerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
@@ -98,9 +96,6 @@ const DockerPage: React.FC = () => {
   const [volumesView, setVolumesView] = useViewMode("docker.volumes", "table");
   const [imagesView, setImagesView] = useViewMode("docker.images", "table");
   const [createStackHandler, setCreateStackHandler] = useState<
-    (() => void) | null
-  >(null);
-  const [reindexStackHandler, setReindexStackHandler] = useState<
     (() => void) | null
   >(null);
   const [createNetworkHandler, setCreateNetworkHandler] = useState<
@@ -272,9 +267,6 @@ const DockerPage: React.FC = () => {
                 onMountCreateHandler={(handler) =>
                   setCreateStackHandler(() => handler)
                 }
-                onMountIndexerHandler={(handler) =>
-                  setReindexStackHandler(() => handler)
-                }
                 viewMode={stacksView}
               />
             ),
@@ -300,28 +292,6 @@ const DockerPage: React.FC = () => {
                     )}
                   </AppIconButton>
                 </AppTooltip>
-                {reindexStackHandler && (
-                  <AppTooltip
-                    title={
-                      !indexerEnabled
-                        ? indexerReason
-                        : "Scan Docker folder for compose stacks"
-                    }
-                    arrow
-                  >
-                    <span>
-                      <AppButton
-                        variant="outlined"
-                        size="small"
-                        onClick={reindexStackHandler}
-                        disabled={!indexerEnabled}
-                        style={{ marginRight: 8 }}
-                      >
-                        Scan
-                      </AppButton>
-                    </span>
-                  </AppTooltip>
-                )}
                 {createStackHandler && (
                   <AppButton
                     variant="contained"

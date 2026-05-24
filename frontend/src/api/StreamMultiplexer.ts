@@ -25,6 +25,8 @@ export interface ProgressFrame {
   total: number;
   pct: number;
   phase?: string;
+  processed?: number;
+  indeterminate?: boolean;
 }
 
 export interface ResultFrame {

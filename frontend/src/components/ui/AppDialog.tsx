@@ -164,7 +164,16 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   };
 
   return createPortal(
-    <div ref={rootRef} className="app-dialog-root" role="presentation">
+    <div
+      ref={rootRef}
+      className="app-dialog-root"
+      role="presentation"
+      // React synthetic events bubble through the React tree, so a dialog
+      // rendered inside e.g. a clickable card would still trigger that card's
+      // onClick / onMouseDown. Stop those at the portal root.
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       <div
         className="app-dialog__backdrop"
         style={mergedBackdropStyle}

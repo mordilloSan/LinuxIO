@@ -35,6 +35,12 @@ var (
 	ErrReservedJobRoute = errors.New("reserved jobs route")
 )
 
+// NoRequest marks a route that takes no request payload.
+type NoRequest struct{}
+
+// NoResponse marks a route that returns no result payload.
+type NoResponse struct{}
+
 type HandlerFunc func(ctx context.Context, args []string, emit Events) error
 type DuplexFunc func(ctx context.Context, stream net.Conn, args []string) error
 
@@ -543,7 +549,7 @@ func newJobEmitter(job *Job) *jobEmitter {
 }
 
 func (e *jobEmitter) Data(chunk []byte) error {
-	e.job.ReportProgress(map[string]any{"type": "data", "data": string(chunk)})
+	e.job.ReportData(string(chunk))
 	return nil
 }
 

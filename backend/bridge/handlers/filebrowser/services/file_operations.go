@@ -396,10 +396,15 @@ func ComputeCopySize(path string) (int64, error) {
 	return totalSize, err
 }
 
+type MoveFileOptions struct {
+	KnownSize    int64
+	HasKnownSize bool
+}
+
 // MoveFileWithCallbacks moves a file from src to dst with progress callbacks.
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy with callbacks is used as a fallback, followed by deletion of the source.
-func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks) error {
+func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) error {
 	src = cleanAbsPath(src)
 	dst = cleanAbsPath(dst)
 
@@ -427,7 +432,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return destErr
 	}
 
-	if moved, err := tryRenameMove(root, src, dst, opts); moved {
+	if moved, err := tryRenameMove(root, src, dst, opts, moveOpts); moved {
 		return err
 	} else if err != nil {
 		return nil
@@ -451,15 +456,19 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	return nil
 }
 
-func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks) (bool, error) {
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) (bool, error) {
 	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
 		return false, nil
 	}
 
-	totalSize, sizeErr := ComputeCopySize(dst)
-	if sizeErr != nil {
-		slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
-		return true, nil
+	totalSize := moveOpts.KnownSize
+	if !moveOpts.HasKnownSize {
+		var sizeErr error
+		totalSize, sizeErr = ComputeCopySize(dst)
+		if sizeErr != nil {
+			slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
+			return true, nil
+		}
 	}
 
 	reportOperationProgress(opts, totalSize)
@@ -485,6 +494,191 @@ func DeleteFiles(absPath string) error {
 	defer root.Close()
 
 	return root.Root.RemoveAll(relPath(absPath))
+}
+
+type DeleteOptions struct {
+	Total         int64
+	Indeterminate bool
+	Prescan       bool
+	Progress      func(processed, total int64, indeterminate bool)
+}
+
+// TopLevelEntryCountWithin reports whether a directory has at most maxEntries direct children.
+func TopLevelEntryCountWithin(absPath string, maxEntries int) (bool, error) {
+	root, err := fsroot.Open()
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+
+	dir, err := root.Root.Open(relPath(absPath))
+	if err != nil {
+		return false, err
+	}
+	defer dir.Close()
+
+	entries, err := dir.ReadDir(maxEntries + 1)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) <= maxEntries, nil
+}
+
+// DeleteFilesWithProgress removes a file or directory while reporting item-count progress.
+func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
+	absPath = cleanAbsPath(absPath)
+	root, err := fsroot.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+
+	targetRel := relPath(absPath)
+	if targetRel == "." {
+		return 0, fmt.Errorf("cannot delete root")
+	}
+
+	info, err := root.Root.Lstat(targetRel)
+	if err != nil {
+		return 0, err
+	}
+
+	if !info.IsDir() {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		if err := root.Root.Remove(targetRel); err != nil {
+			return 0, err
+		}
+		reportDeleteProgress(opts, 1, 1, false)
+		return 1, nil
+	}
+
+	total := opts.Total
+	indeterminate := opts.Indeterminate
+	if opts.Prescan && total <= 0 {
+		var countErr error
+		total, countErr = countRecursiveEntries(ctx, root, absPath, true)
+		if countErr != nil {
+			return 0, countErr
+		}
+		indeterminate = false
+	}
+	if total <= 0 {
+		indeterminate = true
+	}
+
+	return deleteDirectoryWithProgress(ctx, root, absPath, total, indeterminate, opts.Progress)
+}
+
+func deleteDirectoryWithProgress(
+	ctx context.Context,
+	root *fsroot.FSRoot,
+	absPath string,
+	total int64,
+	indeterminate bool,
+	progress func(processed, total int64, indeterminate bool),
+) (int64, error) {
+	reporter := deleteItemReporter{
+		total:         total,
+		indeterminate: indeterminate,
+		progress:      progress,
+	}
+
+	dirs, err := deleteFilesDuringWalk(ctx, root, absPath, &reporter)
+	if err != nil {
+		return reporter.processed, err
+	}
+	sortDeleteDirsDeepestFirst(dirs)
+
+	if err := removeDeleteDirs(ctx, root, dirs, &reporter); err != nil {
+		return reporter.processed, err
+	}
+
+	return reporter.processed, nil
+}
+
+type deleteItemReporter struct {
+	processed     int64
+	total         int64
+	indeterminate bool
+	progress      func(processed, total int64, indeterminate bool)
+}
+
+func (r *deleteItemReporter) report() {
+	r.processed++
+	if r.progress != nil {
+		r.progress(r.processed, r.total, r.indeterminate)
+	}
+}
+
+func deleteFilesDuringWalk(ctx context.Context, root *fsroot.FSRoot, absPath string, reporter *deleteItemReporter) ([]string, error) {
+	dirs := make([]string, 0)
+	err := root.WalkDir(absPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
+		return deleteWalkEntry(ctx, root, walkRel, entry, walkErr, &dirs, reporter)
+	})
+	return dirs, err
+}
+
+func deleteWalkEntry(
+	ctx context.Context,
+	root *fsroot.FSRoot,
+	walkRel string,
+	entry fs.DirEntry,
+	walkErr error,
+	dirs *[]string,
+	reporter *deleteItemReporter,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if walkErr != nil {
+		return walkErr
+	}
+	if entry.IsDir() {
+		*dirs = append(*dirs, walkRel)
+		return nil
+	}
+	if err := root.Root.Remove(walkRel); err != nil {
+		return err
+	}
+	reporter.report()
+	return nil
+}
+
+func sortDeleteDirsDeepestFirst(dirs []string) {
+	slices.SortFunc(dirs, compareDeleteDirs)
+}
+
+func compareDeleteDirs(a, b string) int {
+	depthA := strings.Count(a, "/")
+	depthB := strings.Count(b, "/")
+	if depthA != depthB {
+		return depthB - depthA
+	}
+	if len(a) != len(b) {
+		return len(b) - len(a)
+	}
+	return strings.Compare(a, b)
+}
+
+func removeDeleteDirs(ctx context.Context, root *fsroot.FSRoot, dirs []string, reporter *deleteItemReporter) error {
+	for _, dir := range dirs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := root.Root.Remove(dir); err != nil {
+			return err
+		}
+		reporter.report()
+	}
+	return nil
+}
+
+func reportDeleteProgress(opts DeleteOptions, processed, total int64, indeterminate bool) {
+	if opts.Progress != nil {
+		opts.Progress(processed, total, indeterminate)
+	}
 }
 
 // CreateDirectory creates a directory with proper permissions

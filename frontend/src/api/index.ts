@@ -14,7 +14,12 @@
 export { default as linuxio, CACHE_TTL_MS } from "./react-query";
 export { ROUTE_MODES, getRouteMode, routeName } from "./route-metadata";
 export type { RouteMode } from "./route-metadata";
-export { isJobSnapshot, jobSnapshotResult } from "./jobs";
+export {
+  isJobSnapshot,
+  isJobLocallyHandled,
+  isTerminalJobState,
+  jobSnapshotResult,
+} from "./jobs";
 
 // === Core API (Promise-based, used by React Query internally) ===
 export { LinuxIOError } from "./linuxio-core";

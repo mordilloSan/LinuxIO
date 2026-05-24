@@ -26,6 +26,7 @@ import {
   LoginErrorResponse,
   LoginResponse,
 } from "@/types/auth";
+import { clearConfigCache } from "@/utils/configCache";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 const AUTH_CAPABILITIES_KEY = "auth_capabilities";
@@ -312,6 +313,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     // Clear update info and user data on logout
     try {
       sessionStorage.removeItem("update_info");
+      clearConfigCache();
       localStorage.removeItem("auth_username");
       localStorage.removeItem("auth_privileged");
       localStorage.removeItem(AUTH_CAPABILITIES_KEY);
@@ -390,6 +392,8 @@ function AuthProvider({ children }: AuthProviderProps) {
     }
     const data: LoginResponse = await res.json();
     const capabilities = capabilitiesFromLoginResponse(data);
+
+    clearConfigCache();
 
     // Store update info if present
     if (data.update) {

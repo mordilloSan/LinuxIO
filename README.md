@@ -163,7 +163,7 @@ make build-vite         # Frontend static assets
 
 ```bash
 make ensure-node       # Install/activate Node.js 24 via nvm
-make ensure-go         # Install/activate Go from backend/go.mod (currently 1.26.0)
+make ensure-go         # Install/activate Go from backend/go.mod
 make setup             # Install frontend dependencies (npm install)
 ```
 

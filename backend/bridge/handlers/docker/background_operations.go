@@ -68,7 +68,12 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 			return
 		}
 		reportMu.Lock()
-		job.ReportProgress(ComposeJobMessage{Type: msgType, Message: message})
+		msg := ComposeJobMessage{Type: msgType, Message: message}
+		if msgType == "stdout" || msgType == "stderr" {
+			job.ReportTransientProgress(msg)
+		} else {
+			job.ReportProgress(msg)
+		}
 		reportMu.Unlock()
 	}
 

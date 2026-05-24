@@ -25,7 +25,6 @@ import { ValidationResult } from "@/components/docker/ComposeValidationFeedback"
 import DeleteStackDialog, {
   type DeleteOption,
 } from "@/components/docker/DeleteStackDialog";
-import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppButton from "@/components/ui/AppButton";
@@ -40,13 +39,11 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
-  onMountIndexerHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
 
 const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
-  onMountIndexerHandler,
   viewMode = "table",
 }) => {
   const queryClient = useQueryClient();
@@ -93,9 +90,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const [operationComposePath, setOperationComposePath] = useState<
     string | undefined
   >(undefined);
-
-  // Indexer dialog state
-  const [indexerDialogOpen, setIndexerDialogOpen] = useState(false);
 
   // Delete stack dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -210,16 +204,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     }
   }, [deleteLoading]);
 
-  const handleIndexer = useCallback(() => {
-    setIndexerDialogOpen(true);
-  }, []);
-
-  const handleIndexerComplete = useCallback(() => {
-    refetch();
-    toast.success("Docker folder indexed successfully");
-  }, [refetch]);
-
-  const isLoading = operationDialogOpen || indexerDialogOpen;
+  const isLoading = operationDialogOpen;
 
   // Create stack handler - open setup dialog first
   const handleCreateStack = useCallback(() => {
@@ -245,12 +230,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       onMountCreateHandler(handleCreateStack);
     }
   }, [onMountCreateHandler, handleCreateStack]);
-
-  useEffect(() => {
-    if (onMountIndexerHandler) {
-      onMountIndexerHandler(handleIndexer);
-    }
-  }, [onMountIndexerHandler, handleIndexer]);
 
   // Edit stack handler
   const handleEditStack = useCallback(
@@ -539,12 +518,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           action={operationAction}
           projectName={operationProjectName}
           composePath={operationComposePath}
-        />
-
-        <DockerIndexerDialog
-          open={indexerDialogOpen}
-          onClose={() => setIndexerDialogOpen(false)}
-          onComplete={handleIndexerComplete}
         />
 
         <DeleteStackDialog
