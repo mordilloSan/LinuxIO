@@ -51,7 +51,7 @@ COLOR_RED    := \033[1;31m
 PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
 
-MODULE_PATH = $(shell cd "$(BACKEND_DIR)" && go list -m 2>/dev/null || echo "github.com/mordilloSan/LinuxIO")
+MODULE_PATH = $(shell awk '/^module / {print $$2; exit}' "$(BACKEND_DIR)/go.mod" 2>/dev/null || echo "github.com/mordilloSan/LinuxIO/backend")
 
 # --- Git metadata ---
 GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -79,15 +79,22 @@ else
   GIT_VERSION := $(GIT_TAG)
 endif
 
-GO_BIN := $(GO_TOOLCHAIN_CURRENT)/bin/go
 GO_TOOLCHAIN ?= auto
-GO_CMD_ENV = PATH="$(GO_TOOLCHAIN_CURRENT)/bin:$(GO_TOOLS_DIR)/bin:$$PATH" GOTOOLCHAIN=$(GO_TOOLCHAIN)
+SKIP_ENSURE_GO ?= 0
+ifeq ($(SKIP_ENSURE_GO),1)
+GO_BIN ?= $(if $(CODEQL_ACTION_GO_BINARY),$(CODEQL_ACTION_GO_BINARY),$(shell command -v go 2>/dev/null || printf 'go'))
+GO_BIN_DIR := $(if $(CODEQL_ACTION_GO_BINARY),$(dir $(CODEQL_ACTION_GO_BINARY)),$(dir $(GO_BIN)))
+GO_PATH_PREFIX := $(GO_BIN_DIR):$(GO_TOOLS_DIR)/bin
+else
+GO_BIN ?= $(GO_TOOLCHAIN_CURRENT)/bin/go
+GO_PATH_PREFIX := $(GO_TOOLCHAIN_CURRENT)/bin:$(GO_TOOLS_DIR)/bin
+endif
+GO_CMD_ENV = PATH="$(GO_PATH_PREFIX):$$PATH" GOTOOLCHAIN=$(GO_TOOLCHAIN)
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_TOOLS_DIR)/bin/golangci-lint
 MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
 MODERNIZE_VERSION     ?= latest
-SKIP_ENSURE_GO ?= 0
 GO_BUILD_PREREQ := ensure-go
 ifeq ($(SKIP_ENSURE_GO),1)
 GO_BUILD_PREREQ :=
