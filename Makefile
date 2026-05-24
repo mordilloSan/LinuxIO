@@ -26,15 +26,17 @@ endif
 
 # Toolchain versions (sourced from repo files)
 GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' "$(BACKEND_DIR)/go.mod")
-GO_MAJOR_MINOR := $(shell echo "$(GO_VERSION)" | cut -d. -f1,2)
 NODE_VERSION ?= $(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('frontend/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null)
 CC ?= cc
 
 # Helpers
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
-GO_INSTALL_DIR := $(HOME)/.go
+GO_TOOLS_DIR ?= $(HOME)/.go
+GO_TOOLCHAIN_VERSIONS_DIR ?= $(HOME)/.go-versions
+GO_TOOLCHAIN_DIR := $(GO_TOOLCHAIN_VERSIONS_DIR)/go$(GO_VERSION)
+GO_TOOLCHAIN_CURRENT := $(GO_TOOLCHAIN_VERSIONS_DIR)/current
 NVM_DIR ?= $(HOME)/.nvm
-export PATH := $(GO_INSTALL_DIR)/bin:$(NVM_DIR)/versions/node/current/bin:$(PATH)
+export PATH := $(GO_TOOLCHAIN_CURRENT)/bin:$(GO_TOOLS_DIR)/bin:$(NVM_DIR)/versions/node/current/bin:$(PATH)
 NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
             [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
 
@@ -77,12 +79,12 @@ else
   GIT_VERSION := $(GIT_TAG)
 endif
 
-GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
+GO_BIN := $(GO_TOOLCHAIN_CURRENT)/bin/go
 GO_TOOLCHAIN ?= auto
-GO_CMD_ENV = PATH="$(GO_INSTALL_DIR)/bin:$$PATH" GOTOOLCHAIN=$(GO_TOOLCHAIN)
+GO_CMD_ENV = PATH="$(GO_TOOLCHAIN_CURRENT)/bin:$(GO_TOOLS_DIR)/bin:$$PATH" GOTOOLCHAIN=$(GO_TOOLCHAIN)
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
-GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
+GOLANGCI_LINT         := $(GO_TOOLS_DIR)/bin/golangci-lint
 MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
 MODERNIZE_VERSION     ?= latest
 SKIP_ENSURE_GO ?= 0
@@ -184,66 +186,56 @@ ensure-go:
 	@bash -lc '\
 		set -euo pipefail; \
 		DESIRED="$(GO_VERSION)"; \
-		GO_DIR="$(GO_INSTALL_DIR)"; \
-		ACTIVE_ROOT=""; \
+		GO_DIR="$(GO_TOOLCHAIN_DIR)"; \
+		GO_CURRENT="$(GO_TOOLCHAIN_CURRENT)"; \
+		TOOLS_DIR="$(GO_TOOLS_DIR)"; \
 		ARCH="$$(uname -m)"; \
 		case "$$ARCH" in \
 		  x86_64|amd64) GOARCH=amd64 ;; \
 		  aarch64|arm64) GOARCH=arm64 ;; \
 		  *) GOARCH=amd64 ;; \
 		esac; \
-		TMP="$$(mktemp -d)"; \
 		TARBALL="go$${DESIRED}.linux-$${GOARCH}.tar.gz"; \
 		URL="https://go.dev/dl/$${TARBALL}"; \
 		\
-		CUR=""; \
-		for CANDIDATE in "$$GO_DIR" /usr/local/go; do \
-		  if [ -f "$$CANDIDATE/VERSION" ]; then \
-		    ACTIVE_ROOT="$$CANDIDATE"; \
-		    CUR="$$(sed -n "1s/^go//p" "$$CANDIDATE/VERSION" 2>/dev/null)"; \
-		    break; \
-		  elif [ -x "$$CANDIDATE/bin/go" ]; then \
-		    ACTIVE_ROOT="$$CANDIDATE"; \
-		    CUR="$$( "$$CANDIDATE/bin/go" version 2>/dev/null | awk "{print \$$3}" | sed "s/^go//" )"; \
-		    break; \
+		read_go_version() { \
+		  root="$$1"; \
+		  if [ -f "$$root/VERSION" ]; then \
+		    sed -n "1s/^go//p" "$$root/VERSION" 2>/dev/null; \
+		  elif [ -x "$$root/bin/go" ]; then \
+		    "$$root/bin/go" version 2>/dev/null | awk "{print \$$3}" | sed "s/^go//"; \
 		  fi; \
-		done; \
+		}; \
+		CUR=""; \
+		if [ -x "$$GO_DIR/bin/go" ]; then \
+		  CUR="$$(read_go_version "$$GO_DIR")"; \
+		fi; \
 		if [ "$$CUR" = "$$DESIRED" ]; then \
-		  echo "✅ Go $$CUR already active at $$ACTIVE_ROOT"; \
+		  echo "✅ Go $$CUR already available at $$GO_DIR"; \
 		else \
 		  echo "📥 Downloading $$URL"; \
+		  TMP="$$(mktemp -d)"; \
+		  trap "rm -rf \"$$TMP\"" EXIT; \
 		  curl -fsSL "$$URL" -o "$$TMP/$$TARBALL"; \
-		  if [ -w /usr/local ]; then \
-		    rm -rf /usr/local/go; \
-		    tar -C /usr/local -xzf "$$TMP/$$TARBALL"; \
-		    echo "✅ Installed Go $$DESIRED to /usr/local/go"; \
-		  else \
-		    VERSIONS_DIR="$$HOME/.go-versions"; \
-		    DEST_VER_DIR="$$VERSIONS_DIR/go$${DESIRED}"; \
-		    mkdir -p "$$VERSIONS_DIR"; \
-		    rm -rf "$$DEST_VER_DIR"; \
-		    tar -C "$$TMP" -xzf "$$TMP/$$TARBALL"; \
-		    mv "$$TMP/go" "$$DEST_VER_DIR"; \
-		    ln -sfn "$$DEST_VER_DIR" "$$GO_DIR"; \
-		    if ! grep -q "$$GO_DIR/bin" "$$HOME/.bashrc" 2>/dev/null; then \
-		      echo "export PATH=$$GO_DIR/bin:\$$PATH" >> "$$HOME/.bashrc"; \
-		    fi; \
-		  fi; \
+		  mkdir -p "$$(dirname "$$GO_DIR")"; \
+		  rm -rf "$$GO_DIR"; \
+		  tar -C "$$TMP" -xzf "$$TMP/$$TARBALL"; \
+		  mv "$$TMP/go" "$$GO_DIR"; \
+		  echo "✅ Installed Go $$DESIRED to $$GO_DIR"; \
 		fi; \
-		FINAL_ROOT=""; \
-		if [ -x "$$GO_DIR/bin/go" ]; then FINAL_ROOT="$$GO_DIR"; \
-		elif [ -x /usr/local/go/bin/go ]; then FINAL_ROOT="/usr/local/go"; \
+		mkdir -p "$$(dirname "$$GO_CURRENT")" "$$TOOLS_DIR/bin"; \
+		ln -sfnT "$$GO_DIR" "$$GO_CURRENT"; \
+		if ! grep -Fq "$$GO_CURRENT/bin" "$$HOME/.bashrc" 2>/dev/null; then \
+		  echo "export PATH=$$GO_CURRENT/bin:$$TOOLS_DIR/bin:\$$PATH" >> "$$HOME/.bashrc"; \
 		fi; \
-		if [ -n "$$FINAL_ROOT" ]; then \
-		  "$$FINAL_ROOT/bin/go" version || true; \
-		  META="$$(sed -n "1p" "$$FINAL_ROOT/VERSION" 2>/dev/null || true)"; \
-		  if [ -n "$$META" ] && ! "$$FINAL_ROOT/bin/go" version 2>/dev/null | grep -Fq "$$META"; then \
-		    echo "note: $$FINAL_ROOT/VERSION reports $$META"; \
-		  fi; \
-		else \
-		  echo "  Go not found on expected paths; check PATH."; \
+		FINAL_VERSION="$$( "$$GO_CURRENT/bin/go" version 2>/dev/null || true )"; \
+		echo "   Go root: $$GO_CURRENT -> $$GO_DIR"; \
+		echo "   Go binary: $$GO_CURRENT/bin/go"; \
+		echo "   Go version: $$FINAL_VERSION"; \
+		if ! printf "%s\n" "$$FINAL_VERSION" | grep -Fq "go$$DESIRED "; then \
+		  echo "❌ Expected Go $$DESIRED, got: $${FINAL_VERSION:-not found}"; \
+		  exit 1; \
 		fi; \
-		rm -rf "$$TMP"; \
 		echo "✅ Go is ready!"; \
 	'
 
@@ -254,13 +246,13 @@ ensure-golint: ensure-go
 	     out="$$( "$$bin" version 2>/dev/null || true)"; \
 	     ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	     ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
-	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' && echo yes || echo no )"; \
+	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_VERSION))([[:space:]]|$$)' && echo yes || echo no )"; \
 	     if [ "$$major" = "2" ] && [ "$$built_ok" = "yes" ]; then need=0; fi; \
 	   fi; \
 	   if [ $$need -eq 1 ]; then \
 	     echo "📥 Installing golangci-lint $(GOLANGCI_LINT_VERSION) (v2) with local Go ($(GO_BIN))..."; \
 	     rm -f "$$bin" || true; \
-	     $(GO_CMD_ENV) GOBIN="$(GO_INSTALL_DIR)/bin" GOFLAGS="-buildvcs=false" \
+	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(GOLANGCI_LINT_MODULE)@$(GOLANGCI_LINT_VERSION)"; \
 	   fi; \
 	   "$$bin" version | head -n1; \
@@ -268,7 +260,7 @@ ensure-golint: ensure-go
 	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	   ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
 	   [ "$$major" = "2" ] || { echo " not a v2 golangci-lint"; exit 1; }; \
-	   echo "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' || { echo " golangci-lint not built with Go $(GO_MAJOR_MINOR)"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_VERSION))([[:space:]]|$$)' || { echo " golangci-lint not built with Go $(GO_VERSION)"; exit 1; }; \
 	   echo "✅ golangci-lint v2 ready."; \
 	}
 
@@ -357,7 +349,7 @@ endif
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
-test-backend:
+test-backend: ensure-go
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		out="$$( $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... -count=1 -timeout 5m 2>&1)"; \
@@ -617,7 +609,7 @@ build: generate test build-vite build-bridge _build-binaries
 
 fastbuild: generate build-bridge _build-binaries
 
-generate:
+generate: ensure-go
 	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/internal/config/init.go
 
 clean:
@@ -660,7 +652,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Toolchain setup$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node      $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.26)"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
