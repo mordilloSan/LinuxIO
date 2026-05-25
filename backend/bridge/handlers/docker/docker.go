@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 const dockerIdleTimeout = 5 * time.Minute
@@ -37,7 +37,7 @@ func getClient() (*client.Client, error) {
 	}
 
 	if dockerClient == nil {
-		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		cli, err := client.New(client.FromEnv)
 		if err != nil {
 			return nil, err
 		}
@@ -95,7 +95,7 @@ func releaseClient(_ *client.Client) {
 // (which the frontend runs every ~minute) do not reset the shared client's
 // idle timer and prevent it from ever being released.
 func CheckDockerAvailability(ctx context.Context) (bool, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
@@ -103,7 +103,7 @@ func CheckDockerAvailability(ctx context.Context) (bool, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	if _, err := cli.Ping(ctx); err != nil {
+	if _, err := cli.Ping(ctx, client.PingOptions{}); err != nil {
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 	return true, nil

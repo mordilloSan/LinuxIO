@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"regexp"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -36,7 +36,7 @@ func runDockerLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job
 	}
 	defer releaseClient(cli)
 
-	options := container.LogsOptions{
+	options := client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Timestamps: false,

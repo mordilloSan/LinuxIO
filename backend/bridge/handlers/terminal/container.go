@@ -6,13 +6,12 @@ import (
 	"io"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // ListContainerShells returns a list of available shells in a container.
 func ListContainerShells(ctx context.Context, containerID string) ([]string, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
@@ -24,7 +23,7 @@ func ListContainerShells(ctx context.Context, containerID string) ([]string, err
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		execResp, err := cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+		execResp, err := cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 			AttachStdout: true,
 			AttachStderr: true,
 			Cmd:          []string{"which", sh},
@@ -33,7 +32,7 @@ func ListContainerShells(ctx context.Context, containerID string) ([]string, err
 			continue
 		}
 
-		attachResp, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
+		attachResp, err := cli.ExecAttach(ctx, execResp.ID, client.ExecAttachOptions{})
 		if err != nil {
 			continue
 		}
@@ -41,7 +40,7 @@ func ListContainerShells(ctx context.Context, containerID string) ([]string, err
 		out, _ := io.ReadAll(attachResp.Reader)
 		attachResp.Close()
 
-		inspect, err := cli.ContainerExecInspect(ctx, execResp.ID)
+		inspect, err := cli.ExecInspect(ctx, execResp.ID, client.ExecInspectOptions{})
 		if err == nil && inspect.ExitCode == 0 && strings.TrimSpace(string(out)) != "" {
 			available = append(available, sh)
 		}

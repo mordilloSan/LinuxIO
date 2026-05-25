@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/goccy/go-yaml"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
@@ -58,12 +58,12 @@ func ListComposeProjectsWithStore(ctx context.Context, username string, store *c
 	}
 	defer releaseClient(cli)
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	projects := discoverComposeProjectsFromContainers(ctx, cli, containers)
+	projects := discoverComposeProjectsFromContainers(ctx, cli, containers.Items)
 
 	// Search configured folders for offline stacks (compose files without running containers).
 	if err := discoverOfflineStacksWithStore(ctx, username, store, projects); err != nil {
@@ -176,7 +176,7 @@ func updateComposeProjectService(project *ComposeProject, ctr container.Summary)
 	service.ContainerIDs = append(service.ContainerIDs, ctr.ID)
 	service.ContainerCount++
 	service.Image = ctr.Image
-	service.State = ctr.State
+	service.State = string(ctr.State)
 	service.Status = ctr.Status
 	if service.Icon == "" {
 		service.Icon = ResolveIconIdentifier(ctr.Labels["io.linuxio.container.icon"], serviceName)
@@ -651,7 +651,7 @@ func ComposeStopWithStore(ctx context.Context, username string, store *config.Us
 // by inspecting volume mounts across all containers to find the correct mount source
 func translateContainerPathToHost(ctx context.Context, cli *client.Client, containerPath string) string {
 	// First, get all running containers to search for the correct mount
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		slog.Warn("failed to list containers for path translation", "error", err)
 		return containerPath
@@ -662,7 +662,7 @@ func translateContainerPathToHost(ctx context.Context, cli *client.Client, conta
 
 	// Check priority containers first
 	for _, priorityName := range priorityNames {
-		for _, ctr := range containers {
+		for _, ctr := range containers.Items {
 			// Check if container name contains the priority name
 			containerName := strings.TrimPrefix(ctr.Names[0], "/")
 			if strings.Contains(strings.ToLower(containerName), priorityName) {
@@ -674,7 +674,7 @@ func translateContainerPathToHost(ctx context.Context, cli *client.Client, conta
 	}
 
 	// Check all other containers
-	for _, ctr := range containers {
+	for _, ctr := range containers.Items {
 		containerName := strings.TrimPrefix(ctr.Names[0], "/")
 		if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
 			return hostPath
@@ -686,10 +686,11 @@ func translateContainerPathToHost(ctx context.Context, cli *client.Client, conta
 
 // tryTranslatePath attempts to translate a path using a specific container's mounts
 func tryTranslatePath(ctx context.Context, cli *client.Client, containerID, containerPath, containerName string) string {
-	containerJSON, err := cli.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return containerPath
 	}
+	containerJSON := inspect.Container
 
 	for _, mount := range containerJSON.Mounts {
 		if hostPath, ok := translateMountPath(mount, containerPath, containerName); ok {

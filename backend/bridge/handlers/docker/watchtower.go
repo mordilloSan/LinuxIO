@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
@@ -93,14 +93,14 @@ func collectContainerNames(ctx context.Context, autoUpdateContainers []string) [
 	}
 	defer releaseClient(cli)
 
-	running, err := cli.ContainerList(ctx, container.ListOptions{All: false})
+	running, err := cli.ContainerList(ctx, client.ContainerListOptions{All: false})
 	if err != nil {
 		slog.Warn("failed to list running containers for watchtower sync", "component", "docker", "subsystem", "watchtower", "error", err)
 		return autoUpdateContainers
 	}
 
-	runningNames := make(map[string]bool, len(running))
-	for _, ctr := range running {
+	runningNames := make(map[string]bool, len(running.Items))
+	for _, ctr := range running.Items {
 		if len(ctr.Names) > 0 {
 			runningNames[strings.TrimPrefix(ctr.Names[0], "/")] = true
 		}

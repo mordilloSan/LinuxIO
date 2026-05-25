@@ -9,8 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
@@ -78,10 +77,7 @@ var (
 
 func dockerClient() (*client.Client, error) {
 	dockerOnce.Do(func() {
-		dockerCli, dockerErr = client.NewClientWithOpts(
-			client.FromEnv,
-			client.WithAPIVersionNegotiation(),
-		)
+		dockerCli, dockerErr = client.New(client.FromEnv)
 	})
 	return dockerCli, dockerErr
 }
@@ -97,11 +93,11 @@ func getDockerMemoryUsage(parent context.Context) (uint64, error) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return 0, err
 	}
-	if len(containers) == 0 {
+	if len(containers.Items) == 0 {
 		return 0, nil
 	}
 
@@ -109,10 +105,10 @@ func getDockerMemoryUsage(parent context.Context) (uint64, error) {
 	var (
 		wg  sync.WaitGroup
 		sem = make(chan struct{}, 8) // bound concurrency
-		ch  = make(chan agg, len(containers))
+		ch  = make(chan agg, len(containers.Items))
 	)
 
-	for _, ctr := range containers {
+	for _, ctr := range containers.Items {
 		id := ctr.ID
 
 		wg.Go(func() {
@@ -122,7 +118,7 @@ func getDockerMemoryUsage(parent context.Context) (uint64, error) {
 			statsCtx, cancelStats := context.WithTimeout(ctx, 1500*time.Millisecond)
 			defer cancelStats()
 
-			stats, err := cli.ContainerStatsOneShot(statsCtx, id)
+			stats, err := cli.ContainerStats(statsCtx, id, client.ContainerStatsOptions{})
 			if err != nil {
 				return
 			}

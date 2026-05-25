@@ -2,7 +2,7 @@ package docker
 
 import "testing"
 
-func TestVolumePruneFilters(t *testing.T) {
+func TestVolumePruneOptions(t *testing.T) {
 	tests := []struct {
 		name       string
 		apiVersion string
@@ -16,16 +16,9 @@ func TestVolumePruneFilters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := volumePruneFilters(tt.apiVersion)
-			if args.Contains("all") != tt.expectAll {
-				t.Fatalf("all filter presence = %v, want %v", args.Contains("all"), tt.expectAll)
-			}
-
-			if tt.expectAll {
-				values := args.Get("all")
-				if len(values) != 1 || values[0] != "true" {
-					t.Fatalf("all filter values = %v, want [true]", values)
-				}
+			opts := volumePruneOptions(tt.apiVersion)
+			if opts.All != tt.expectAll {
+				t.Fatalf("all option = %v, want %v", opts.All, tt.expectAll)
 			}
 		})
 	}
