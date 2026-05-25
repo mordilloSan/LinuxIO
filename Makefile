@@ -236,9 +236,6 @@ ensure-go:
 		  echo "export PATH=$$GO_CURRENT/bin:$$TOOLS_DIR/bin:\$$PATH" >> "$$HOME/.bashrc"; \
 		fi; \
 		FINAL_VERSION="$$( "$$GO_CURRENT/bin/go" version 2>/dev/null || true )"; \
-		echo "   Go root: $$GO_CURRENT -> $$GO_DIR"; \
-		echo "   Go binary: $$GO_CURRENT/bin/go"; \
-		echo "   Go version: $$FINAL_VERSION"; \
 		if ! printf "%s\n" "$$FINAL_VERSION" | grep -Fq "go$$DESIRED "; then \
 		  echo "❌ Expected Go $$DESIRED, got: $${FINAL_VERSION:-not found}"; \
 		  exit 1; \
@@ -295,7 +292,7 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	  $(MAKE) --no-print-directory tsc-only & \
 	  $(MAKE) --no-print-directory golint-only & \
 	  wait; \
-	} && $(MAKE) --no-print-directory test-backend
+	} && $(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -356,7 +353,7 @@ endif
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
-test-backend: ensure-go
+test-backend: $(GO_BUILD_PREREQ)
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		out="$$( $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... -count=1 -timeout 5m 2>&1)"; \
