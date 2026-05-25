@@ -128,8 +128,12 @@ func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
 	return out
 }
 
-var errAvahiUnavailable = fmt.Errorf("avahi D-Bus service is unavailable")
+var errAvahiUnavailable = fmt.Errorf("avahi-daemon is not running")
 
+// checkAvahiAvailability uses BusNameActive (not Available) because Avahi only
+// publishes mDNS records while the daemon is actually running. An activatable-
+// but-stopped daemon would satisfy the looser check yet leave <hostname>.local
+// unreachable from the LAN.
 func checkAvahiAvailability(ctx context.Context) (bool, error) {
-	return dbusclient.BusNameAvailable(ctx, "org.freedesktop.Avahi")
+	return dbusclient.BusNameActive(ctx, "org.freedesktop.Avahi")
 }
