@@ -151,6 +151,9 @@ const FileBrowser: React.FC = () => {
   } = useFileUpload();
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [unsupportedEditPath, setUnsupportedEditPath] = useState<string | null>(
+    null,
+  );
   const [compressFormatDialog, setCompressFormatDialog] = useState<{
     paths: string[];
     baseName: string;
@@ -408,7 +411,7 @@ const FileBrowser: React.FC = () => {
       if (isEditableFile(item.name)) {
         setEditingPath(item.path);
       } else {
-        toast.warning("This file type cannot be edited");
+        setUnsupportedEditPath(item.path);
       }
     },
     [setEditingPath],
@@ -760,8 +763,13 @@ const FileBrowser: React.FC = () => {
   );
   const handleEditFile = useCallback(
     (filePath: string) => {
-      setEditingPath(filePath);
-      setDetailTarget(null); // Close the detail dialog
+      const fileName = filePath.split("/").pop() ?? filePath;
+      if (isEditableFile(fileName)) {
+        setEditingPath(filePath);
+        setDetailTarget(null); // Close the detail dialog
+      } else {
+        setUnsupportedEditPath(filePath);
+      }
     },
     [setDetailTarget, setEditingPath],
   );
@@ -1311,6 +1319,21 @@ const FileBrowser: React.FC = () => {
         confirmText="Delete"
         onClose={handleCloseDeleteDialog}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(unsupportedEditPath)}
+        title="Edit Unsupported File?"
+        message={`"${unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
+        confirmText="Edit Anyway"
+        onClose={() => setUnsupportedEditPath(null)}
+        onConfirm={() => {
+          if (unsupportedEditPath) {
+            setEditingPath(unsupportedEditPath);
+          }
+          setUnsupportedEditPath(null);
+          setDetailTarget(null);
+        }}
       />
 
       {permissionsDialog && (

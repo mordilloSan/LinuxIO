@@ -3,7 +3,6 @@ import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
-import { isEditableFile } from "@/components/filebrowser/utils";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
@@ -95,8 +94,9 @@ const FileDetail: React.FC<FileDetailProps> = ({
     );
   }
   const isSymlink = resource.symlink;
-  // Show edit button only for text-based files that can be edited
-  const canEdit = !isDirectory && isEditableFile(resource.name);
+  // Show edit button for any non-directory; the parent handler asks for
+  // confirmation when the file isn't in the editable allowlist.
+  const canEdit = !isDirectory;
   const getTypeIcon = () => {
     if (isSymlink) return <Icon icon="mdi:link" width={28} height={28} />;
     if (isDirectory) return <Icon icon="mdi:folder" width={28} height={28} />;
