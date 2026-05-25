@@ -17,9 +17,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	dockertypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -269,7 +267,7 @@ func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		slog.Error("container terminal docker client error", "error", err)
 		writeContainerTerminalClose(stream)
@@ -319,25 +317,26 @@ func parseContainerTerminalArgs(args []string) (string, string, int, int, error)
 	return args[0], args[1], cols, rows, nil
 }
 
-func createContainerExec(ctx context.Context, cli *client.Client, containerID, shell string, cols, rows int) (container.ExecCreateResponse, error) {
-	consoleSize := [2]uint{uint(rows), uint(cols)}
-	return cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
-		Tty:          true,
+func createContainerExec(ctx context.Context, cli *client.Client, containerID, shell string, cols, rows int) (client.ExecCreateResult, error) {
+	consoleSize := client.ConsoleSize{Height: uint(rows), Width: uint(cols)}
+	return cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
+		TTY:          true,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 		Env:          []string{"TERM=xterm-256color"},
-		ConsoleSize:  &consoleSize,
+		ConsoleSize:  consoleSize,
 		Cmd:          containerShellArgs(shell),
 	})
 }
 
-func attachContainerExec(ctx context.Context, cli *client.Client, execID string, cols, rows int) (dockertypes.HijackedResponse, error) {
-	consoleSize := [2]uint{uint(rows), uint(cols)}
-	return cli.ContainerExecAttach(ctx, execID, container.ExecAttachOptions{
-		Tty:         true,
-		ConsoleSize: &consoleSize,
+func attachContainerExec(ctx context.Context, cli *client.Client, execID string, cols, rows int) (client.HijackedResponse, error) {
+	consoleSize := client.ConsoleSize{Height: uint(rows), Width: uint(cols)}
+	result, err := cli.ExecAttach(ctx, execID, client.ExecAttachOptions{
+		TTY:         true,
+		ConsoleSize: consoleSize,
 	})
+	return result.HijackedResponse, err
 }
 
 func containerShellArgs(shell string) []string {
@@ -348,7 +347,7 @@ func containerShellArgs(shell string) []string {
 }
 
 func resizeContainerExec(ctx context.Context, cli *client.Client, execID string, cols, rows int) {
-	if err := cli.ContainerExecResize(ctx, execID, container.ResizeOptions{
+	if _, err := cli.ExecResize(ctx, execID, client.ExecResizeOptions{
 		Width:  uint(cols),
 		Height: uint(rows),
 	}); err != nil {

@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -83,7 +83,7 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 // resolveContainerTarget looks up the container by name, finds its IP on the
 // linuxio-docker bridge, and returns the proxy target URL.
 func resolveContainerTarget(ctx context.Context, name string) (*url.URL, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
 	}
@@ -95,10 +95,11 @@ func resolveContainerTarget(ctx context.Context, name string) (*url.URL, error) 
 		}
 	}()
 
-	info, err := cli.ContainerInspect(ctx, name)
+	inspect, err := cli.ContainerInspect(ctx, name, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("inspect container: %w", err)
 	}
+	info := inspect.Container
 
 	port, ok := info.Config.Labels[proxyPortLabel]
 	if !ok || port == "" {
@@ -126,7 +127,9 @@ func containerTargetURL(ip, port string) *url.URL {
 func containerNetworkIP(info container.InspectResponse) string {
 	if info.NetworkSettings != nil {
 		if nw, found := info.NetworkSettings.Networks[proxyNetwork]; found {
-			return nw.IPAddress
+			if nw.IPAddress.IsValid() {
+				return nw.IPAddress.String()
+			}
 		}
 	}
 	return ""
@@ -136,17 +139,18 @@ func connectAndResolveIP(ctx context.Context, cli *client.Client, name string, i
 	if info.State == nil || !info.State.Running {
 		return "", fmt.Errorf("container not connected to %s network", proxyNetwork)
 	}
-	if connectErr := cli.NetworkConnect(ctx, proxyNetwork, info.ID, nil); connectErr != nil {
+	if _, connectErr := cli.NetworkConnect(ctx, proxyNetwork, client.NetworkConnectOptions{Container: info.ID}); connectErr != nil {
 		slog.Debug("network connect returned error",
 			"component", "proxy",
 			"container", name,
 			"network", proxyNetwork,
 			"error", connectErr)
 	}
-	info, err := cli.ContainerInspect(ctx, info.ID)
+	inspect, err := cli.ContainerInspect(ctx, info.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("inspect container after connect: %w", err)
 	}
+	info = inspect.Container
 	ip := containerNetworkIP(info)
 	if ip == "" {
 		return "", fmt.Errorf("container not connected to %s network", proxyNetwork)

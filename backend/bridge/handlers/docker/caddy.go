@@ -6,18 +6,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/strslice"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
@@ -149,24 +147,24 @@ func deployCaddyContainer(ctx context.Context) error {
 	defer releaseClient(cli)
 
 	// Remove any existing (stopped) container first
-	_ = cli.ContainerRemove(ctx, caddyContainerName, container.RemoveOptions{Force: true})
+	_, _ = cli.ContainerRemove(ctx, caddyContainerName, client.ContainerRemoveOptions{Force: true})
 
 	// Pull image
-	rc, pullErr := cli.ImagePull(ctx, caddyImage, image.PullOptions{})
+	rc, pullErr := cli.ImagePull(ctx, caddyImage, client.ImagePullOptions{})
 	if pullErr != nil {
 		slog.Warn("failed to pull caddy image", "component", "docker", "subsystem", "caddy", "image", caddyImage, "error", pullErr)
 	} else {
 		_ = rc.Close()
 	}
 
-	portSet := nat.PortSet{
-		"80/tcp":   struct{}{},
-		"443/tcp":  struct{}{},
-		"2019/tcp": struct{}{},
+	portSet := network.PortSet{
+		network.MustParsePort("80/tcp"):   struct{}{},
+		network.MustParsePort("443/tcp"):  struct{}{},
+		network.MustParsePort("2019/tcp"): struct{}{},
 	}
 
-	resp, err := cli.ContainerCreate(ctx,
-		&container.Config{
+	resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
 			Image:        caddyImage,
 			ExposedPorts: portSet,
 			Labels: map[string]string{
@@ -174,13 +172,22 @@ func deployCaddyContainer(ctx context.Context) error {
 				"com.docker.compose.project": "linuxio",
 				"io.linuxio.container.icon":  "di:caddy",
 			},
-			Cmd: strslice.StrSlice{"caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"},
+			Cmd: []string{"caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"},
 		},
-		&container.HostConfig{
-			PortBindings: nat.PortMap{
-				"80/tcp":   []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "80"}},
-				"443/tcp":  []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "443"}},
-				"2019/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: "2019"}},
+		HostConfig: &container.HostConfig{
+			PortBindings: network.PortMap{
+				network.MustParsePort("80/tcp"): []network.PortBinding{{
+					HostIP:   netip.MustParseAddr("0.0.0.0"),
+					HostPort: "80",
+				}},
+				network.MustParsePort("443/tcp"): []network.PortBinding{{
+					HostIP:   netip.MustParseAddr("0.0.0.0"),
+					HostPort: "443",
+				}},
+				network.MustParsePort("2019/tcp"): []network.PortBinding{{
+					HostIP:   netip.MustParseAddr("127.0.0.1"),
+					HostPort: "2019",
+				}},
 			},
 			Mounts: []mount.Mount{
 				{Type: mount.TypeBind, Source: caddyConfigDir, Target: "/etc/caddy"},
@@ -188,19 +195,18 @@ func deployCaddyContainer(ctx context.Context) error {
 			},
 			RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
 		},
-		&network.NetworkingConfig{
+		NetworkingConfig: &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
 				linuxIONetworkName: {},
 			},
 		},
-		nil,
-		caddyContainerName,
-	)
+		Name: caddyContainerName,
+	})
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		return fmt.Errorf("start container: %w", err)
 	}
 	slog.Info("caddy container started", "component", "docker", "subsystem", "caddy", "container", resp.ID[:12])
@@ -214,7 +220,8 @@ func removeCaddyContainer(ctx context.Context) error {
 	}
 	defer releaseClient(cli)
 
-	return cli.ContainerRemove(ctx, caddyContainerName, container.RemoveOptions{Force: true})
+	_, err = cli.ContainerRemove(ctx, caddyContainerName, client.ContainerRemoveOptions{Force: true})
+	return err
 }
 
 func isCaddyRunning(ctx context.Context) bool {
@@ -224,13 +231,13 @@ func isCaddyRunning(ctx context.Context) bool {
 	}
 	defer releaseClient(cli)
 
-	list, err := cli.ContainerList(ctx, container.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", caddyContainerName)),
+	list, err := cli.ContainerList(ctx, client.ContainerListOptions{
+		Filters: client.Filters{}.Add("name", caddyContainerName),
 	})
 	if err != nil {
 		return false
 	}
-	for _, c := range list {
+	for _, c := range list.Items {
 		if c.State == "running" {
 			return true
 		}
@@ -246,13 +253,13 @@ func buildRoutes(ctx context.Context, proxyCfg config.DockerProxy) ([]CaddyRoute
 	}
 	defer releaseClient(cli)
 
-	list, err := cli.ContainerList(ctx, container.ListOptions{All: false})
+	list, err := cli.ContainerList(ctx, client.ContainerListOptions{All: false})
 	if err != nil {
 		return nil, err
 	}
 
 	var routes []CaddyRoute
-	for _, c := range list {
+	for _, c := range list.Items {
 		port := c.Labels[ProxyPortLabel]
 		if port == "" {
 			continue

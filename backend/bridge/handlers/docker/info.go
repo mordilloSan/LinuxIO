@@ -6,7 +6,8 @@ import (
 	"sort"
 	"syscall"
 
-	dockertypes "github.com/docker/docker/api/types"
+	"github.com/moby/moby/api/types/system"
+	"github.com/moby/moby/client"
 )
 
 // DockerSystemInfo holds the flattened Docker daemon system and version info.
@@ -67,14 +68,20 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 	}
 	defer releaseClient(cli)
 
-	info, err := cli.Info(ctx)
+	infoResult, err := cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get docker info: %w", err)
 	}
+	info := infoResult.Info
 
-	version, err := cli.ServerVersion(ctx)
+	version, err := cli.ServerVersion(ctx, client.ServerVersionOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get docker version: %w", err)
+	}
+	goVersion, gitCommit, buildTime := dockerVersionDetails(version.Components)
+	experimental := false
+	if ping, err := cli.Ping(ctx, client.PingOptions{}); err == nil {
+		experimental = ping.Experimental
 	}
 
 	// Collect runtime names, sorted for stable output.
@@ -100,10 +107,10 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 		// Version
 		ServerVersion: version.Version,
 		APIVersion:    version.APIVersion,
-		GoVersion:     version.GoVersion,
-		GitCommit:     version.GitCommit,
-		BuildTime:     version.BuildTime,
-		Experimental:  version.Experimental,
+		GoVersion:     goVersion,
+		GitCommit:     gitCommit,
+		BuildTime:     buildTime,
+		Experimental:  experimental,
 
 		// Configuration
 		StorageDriver:  info.Driver,
@@ -130,11 +137,8 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 	}
 
 	// Disk usage: sum image layers + build cache.
-	if du, err := cli.DiskUsage(ctx, dockertypes.DiskUsageOptions{}); err == nil {
-		result.DiskUsed = du.LayersSize
-		for _, bc := range du.BuildCache {
-			result.DiskUsed += int64(bc.Size)
-		}
+	if du, err := cli.DiskUsage(ctx, client.DiskUsageOptions{Images: true, BuildCache: true}); err == nil {
+		result.DiskUsed = du.Images.TotalSize + du.BuildCache.TotalSize
 	}
 
 	// Filesystem capacity for the Docker root dir.
@@ -144,4 +148,17 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 	}
 
 	return result, nil
+}
+
+func dockerVersionDetails(components []system.ComponentVersion) (goVersion, gitCommit, buildTime string) {
+	for _, component := range components {
+		if component.Name != "Engine" && component.Name != "Docker Engine" {
+			continue
+		}
+		goVersion = component.Details["GoVersion"]
+		gitCommit = component.Details["GitCommit"]
+		buildTime = component.Details["BuildTime"]
+		return goVersion, gitCommit, buildTime
+	}
+	return "", "", ""
 }

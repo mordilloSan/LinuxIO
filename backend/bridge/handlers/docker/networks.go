@@ -6,8 +6,7 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 const linuxIONetworkName = "linuxio-docker"
@@ -23,8 +22,8 @@ func EnsureLinuxIONetwork(ctx context.Context) {
 	}
 	defer releaseClient(cli)
 
-	networks, err := cli.NetworkList(ctx, network.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", linuxIONetworkName)),
+	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{
+		Filters: client.Filters{}.Add("name", linuxIONetworkName),
 	})
 	if err != nil {
 		slog.Warn("failed to list docker networks", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
@@ -32,14 +31,14 @@ func EnsureLinuxIONetwork(ctx context.Context) {
 	}
 
 	// NetworkList filter is a substring match — verify exact name.
-	for _, nw := range networks {
+	for _, nw := range networks.Items {
 		if nw.Name == linuxIONetworkName {
 			slog.Debug("docker network already exists", "component", "docker", "subsystem", "network", "network", linuxIONetworkName)
 			return
 		}
 	}
 
-	_, err = cli.NetworkCreate(ctx, linuxIONetworkName, network.CreateOptions{
+	_, err = cli.NetworkCreate(ctx, linuxIONetworkName, client.NetworkCreateOptions{
 		Driver: "bridge",
 		Labels: map[string]string{
 			"io.linuxio.managed": "true",
@@ -60,7 +59,7 @@ func connectToProxyNetwork(ctx context.Context, containerID string) {
 	}
 	defer releaseClient(cli)
 
-	err = cli.NetworkConnect(ctx, linuxIONetworkName, containerID, nil)
+	_, err = cli.NetworkConnect(ctx, linuxIONetworkName, client.NetworkConnectOptions{Container: containerID})
 	if err != nil {
 		// "already connected" is expected and harmless
 		slog.Debug("docker proxy network connect returned error", "component", "docker", "subsystem", "network", "container", containerID, "network", linuxIONetworkName, "error", err)
@@ -82,15 +81,15 @@ func ListDockerNetworks(ctx context.Context) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	networks, err := cli.NetworkList(ctx, network.ListOptions{})
+	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
 
-	results := make([]map[string]any, 0, len(networks))
+	results := make([]map[string]any, 0, len(networks.Items))
 
-	for _, nw := range networks {
-		inspect, err := cli.NetworkInspect(ctx, nw.ID, network.InspectOptions{})
+	for _, nw := range networks.Items {
+		inspect, err := cli.NetworkInspect(ctx, nw.ID, client.NetworkInspectOptions{})
 		if err != nil {
 			slog.
 				// Log warning but continue
@@ -114,7 +113,7 @@ func ListDockerNetworks(ctx context.Context) (any, error) {
 			"Labels":     nw.Labels,
 			"Options":    nw.Options,
 			"Created":    nw.Created,
-			"Containers": inspect.Containers, // <-- Now you have the attached containers!
+			"Containers": inspect.Network.Containers, // <-- Now you have the attached containers!
 		}
 		results = append(results, result)
 	}
@@ -143,7 +142,7 @@ func DeleteDockerNetwork(ctx context.Context, name string) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	if err := cli.NetworkRemove(ctx, name); err != nil {
+	if _, err := cli.NetworkRemove(ctx, name, client.NetworkRemoveOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to remove network: %w", err)
 	}
 
@@ -158,7 +157,7 @@ func CreateDockerNetwork(ctx context.Context, name string) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	network, err := cli.NetworkCreate(ctx, name, network.CreateOptions{})
+	network, err := cli.NetworkCreate(ctx, name, client.NetworkCreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}

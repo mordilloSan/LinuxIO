@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/docker/docker/api/types/build"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/versions"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/versions"
 )
 
 // PruneOptions controls which Docker resources are pruned.
@@ -28,12 +26,12 @@ type PruneResult struct {
 	SpaceReclaimed    uint64   `json:"spaceReclaimed"`
 }
 
-func volumePruneFilters(apiVersion string) filters.Args {
+func volumePruneOptions(apiVersion string) client.VolumePruneOptions {
 	if versions.GreaterThanOrEqualTo(apiVersion, "1.42") {
-		return filters.NewArgs(filters.Arg("all", "true"))
+		return client.VolumePruneOptions{All: true}
 	}
 
-	return filters.Args{}
+	return client.VolumePruneOptions{}
 }
 
 // SystemPrune removes unused Docker resources according to opts.
@@ -69,12 +67,12 @@ func pruneContainers(ctx context.Context, cli *client.Client, opts PruneOptions,
 	if !opts.Containers {
 		return nil
 	}
-	report, err := cli.ContainersPrune(ctx, filters.Args{})
+	report, err := cli.ContainerPrune(ctx, client.ContainerPruneOptions{})
 	if err != nil {
 		return fmt.Errorf("container prune failed: %w", err)
 	}
-	result.ContainersDeleted = report.ContainersDeleted
-	result.SpaceReclaimed += report.SpaceReclaimed
+	result.ContainersDeleted = report.Report.ContainersDeleted
+	result.SpaceReclaimed += report.Report.SpaceReclaimed
 	return nil
 }
 
@@ -82,16 +80,18 @@ func pruneImages(ctx context.Context, cli *client.Client, opts PruneOptions, res
 	if !opts.Images {
 		return nil
 	}
-	report, err := cli.ImagesPrune(ctx, filters.NewArgs(filters.Arg("dangling", "false")))
+	report, err := cli.ImagePrune(ctx, client.ImagePruneOptions{
+		Filters: client.Filters{}.Add("dangling", "false"),
+	})
 	if err != nil {
 		return fmt.Errorf("image prune failed: %w", err)
 	}
-	for _, img := range report.ImagesDeleted {
+	for _, img := range report.Report.ImagesDeleted {
 		if img.Deleted != "" {
 			result.ImagesDeleted = append(result.ImagesDeleted, img.Deleted)
 		}
 	}
-	result.SpaceReclaimed += report.SpaceReclaimed
+	result.SpaceReclaimed += report.Report.SpaceReclaimed
 	return nil
 }
 
@@ -99,11 +99,11 @@ func pruneBuildCache(ctx context.Context, cli *client.Client, opts PruneOptions,
 	if !opts.BuildCache {
 		return nil
 	}
-	report, err := cli.BuildCachePrune(ctx, build.CachePruneOptions{All: true})
+	report, err := cli.BuildCachePrune(ctx, client.BuildCachePruneOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("build cache prune failed: %w", err)
 	}
-	result.SpaceReclaimed += report.SpaceReclaimed
+	result.SpaceReclaimed += report.Report.SpaceReclaimed
 	return nil
 }
 
@@ -111,11 +111,11 @@ func pruneNetworks(ctx context.Context, cli *client.Client, opts PruneOptions, r
 	if !opts.Networks {
 		return nil
 	}
-	report, err := cli.NetworksPrune(ctx, filters.Args{})
+	report, err := cli.NetworkPrune(ctx, client.NetworkPruneOptions{})
 	if err != nil {
 		return fmt.Errorf("network prune failed: %w", err)
 	}
-	result.NetworksDeleted = report.NetworksDeleted
+	result.NetworksDeleted = report.Report.NetworksDeleted
 	return nil
 }
 
@@ -123,15 +123,15 @@ func pruneVolumes(ctx context.Context, cli *client.Client, opts PruneOptions, re
 	if !opts.Volumes {
 		return nil
 	}
-	volumeFilters := volumePruneFilters(cli.ClientVersion())
-	report, err := cli.VolumesPrune(ctx, volumeFilters)
-	if err != nil && volumeFilters.Contains("all") {
-		report, err = cli.VolumesPrune(ctx, filters.Args{})
+	volumeOptions := volumePruneOptions(cli.ClientVersion())
+	report, err := cli.VolumePrune(ctx, volumeOptions)
+	if err != nil && volumeOptions.All {
+		report, err = cli.VolumePrune(ctx, client.VolumePruneOptions{})
 	}
 	if err != nil {
 		return fmt.Errorf("volume prune failed: %w", err)
 	}
-	result.VolumesDeleted = report.VolumesDeleted
-	result.SpaceReclaimed += report.SpaceReclaimed
+	result.VolumesDeleted = report.Report.VolumesDeleted
+	result.SpaceReclaimed += report.Report.SpaceReclaimed
 	return nil
 }

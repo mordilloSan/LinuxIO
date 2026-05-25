@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 type Metrics struct {
@@ -62,14 +62,14 @@ func ListContainers(ctx context.Context) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	enriched := make([]ContainerWithMetrics, 0, len(containers))
+	enriched := make([]ContainerWithMetrics, 0, len(containers.Items))
 
-	for _, ctr := range containers {
+	for _, ctr := range containers.Items {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -90,7 +90,7 @@ func ListContainers(ctx context.Context) (any, error) {
 
 func collectContainerMetrics(ctx context.Context, cli *client.Client, containerID string) *Metrics {
 	metrics := &Metrics{}
-	statsResp, err := cli.ContainerStatsOneShot(ctx, containerID)
+	statsResp, err := cli.ContainerStats(ctx, containerID, client.ContainerStatsOptions{})
 	if err != nil {
 		return metrics
 	}
@@ -184,7 +184,7 @@ func StartContainer(ctx context.Context, id string) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
@@ -199,7 +199,7 @@ func StopContainer(ctx context.Context, id string) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	if err := cli.ContainerStop(ctx, id, container.StopOptions{}); err != nil {
+	if _, err := cli.ContainerStop(ctx, id, client.ContainerStopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to stop container: %w", err)
 	}
 
@@ -214,7 +214,7 @@ func RemoveContainer(ctx context.Context, id string) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	if err := cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil {
+	if _, err := cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true}); err != nil {
 		return nil, fmt.Errorf("failed to remove container: %w", err)
 	}
 
@@ -229,7 +229,7 @@ func RestartContainer(ctx context.Context, id string) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	if err := cli.ContainerRestart(ctx, id, container.StopOptions{}); err != nil {
+	if _, err := cli.ContainerRestart(ctx, id, client.ContainerRestartOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to restart container: %w", err)
 	}
 
@@ -244,18 +244,18 @@ func StartAllStopped(ctx context.Context) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	started, failed := 0, 0
-	for _, c := range containers {
+	for _, c := range containers.Items {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		if c.State == "exited" || c.State == "dead" {
-			if err := cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
+			if _, err := cli.ContainerStart(ctx, c.ID, client.ContainerStartOptions{}); err != nil {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
@@ -278,18 +278,18 @@ func StopAllRunning(ctx context.Context) (any, error) {
 	}
 	defer releaseClient(cli)
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	stopped, failed := 0, 0
-	for _, c := range containers {
+	for _, c := range containers.Items {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		if c.State == "running" {
-			if err := cli.ContainerStop(ctx, c.ID, container.StopOptions{}); err != nil {
+			if _, err := cli.ContainerStop(ctx, c.ID, client.ContainerStopOptions{}); err != nil {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
