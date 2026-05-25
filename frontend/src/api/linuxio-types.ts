@@ -191,24 +191,7 @@ export interface MemoryModule {
   speed: string;
 }
 
-export interface CapabilitiesResponse {
-  docker_available: boolean;
-  indexer_available: boolean;
-  lm_sensors_available: boolean;
-  smartmontools_available: boolean;
-  packagekit_available: boolean;
-  nfs_client_available: boolean;
-  nfs_server_available: boolean;
-  tuned_available: boolean;
-  docker_error?: string;
-  indexer_error?: string;
-  lm_sensors_error?: string;
-  smartmontools_error?: string;
-  packagekit_error?: string;
-  nfs_client_error?: string;
-  nfs_server_error?: string;
-  tuned_error?: string;
-}
+import type { CapabilitiesResponse } from "./capabilities";
 
 export interface DistroInfo {
   name: string;

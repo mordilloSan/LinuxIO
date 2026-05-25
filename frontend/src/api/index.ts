@@ -72,3 +72,14 @@ export type * from "./StreamMultiplexer";
 
 // === Domain Types ===
 export type * from "./linuxio-types";
+
+// === Capabilities (manifest, types, helpers) ===
+export type * from "./capabilities";
+export {
+  CAPABILITIES,
+  CAPABILITY_KEYS,
+  capabilityStateFromWire,
+  emptyCapabilityState,
+  parseCapabilityState,
+  pickCapabilityState,
+} from "./capabilities";

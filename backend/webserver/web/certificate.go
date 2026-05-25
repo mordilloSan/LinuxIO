@@ -8,6 +8,8 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -19,6 +21,14 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 
 	serial := big.NewInt(time.Now().UnixNano())
 
+	dnsNames := []string{"localhost"}
+	if h, hostErr := os.Hostname(); hostErr == nil {
+		h = strings.TrimSpace(h)
+		if h != "" && h != "localhost" {
+			dnsNames = append(dnsNames, h, h+".local")
+		}
+	}
+
 	template := x509.Certificate{
 		SerialNumber:          serial,
 		NotBefore:             time.Now(),
@@ -26,7 +36,7 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{"localhost"},
+		DNSNames:              dnsNames,
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 	}
 

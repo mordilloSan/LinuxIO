@@ -1,0 +1,10 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi.dtd">
+<service-group>
+  <name replace-wildcards="yes">LinuxIO on %h</name>
+  <service>
+    <type>_https._tcp</type>
+    <port>8090</port>
+    <txt-record>path=/</txt-record>
+  </service>
+</service-group>

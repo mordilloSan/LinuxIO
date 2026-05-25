@@ -169,6 +169,17 @@ install_tuned() {
     install_pkg "TuneD" "tuned" "tuned"
 }
 
+install_avahi() {
+    install_pkg "Avahi mDNS responder" "avahi-daemon" "avahi" \
+        "<hostname>.local discovery disabled"
+    # nss-mdns lets THIS host resolve other .local names (useful for cross-host NFS/Docker browsing)
+    install_pkg "mDNS NSS plugin" "libnss-mdns" "nss-mdns" \
+        "this host won't resolve other .local names"
+    if command -v systemctl &>/dev/null; then
+        systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+    fi
+}
+
 install_docker() {
     if command -v docker &>/dev/null; then
         Show 0 "Docker ${GREY}already installed ($(docker --version 2>/dev/null | sed 's/Docker version //'))${COLOUR_RESET}"
@@ -214,6 +225,7 @@ install_all_optional() {
     install_tuned
     install_docker
     install_indexer
+    install_avahi
 }
 
 # ---------- Optional prompt ----------
@@ -227,6 +239,7 @@ OPT_LABELS=(
     "TuneD"
     "Docker"
     "Indexer"
+    "Avahi (mDNS)"
 )
 OPT_DESCS=(
     "hardware temperature/voltage monitoring"
@@ -236,6 +249,7 @@ OPT_DESCS=(
     "power and performance profile management"
     "container management"
     "file search and directory size indexing"
+    "reach this host at <hostname>.local from other LAN devices"
 )
 OPT_FUNCS=(
     "install_lm_sensors"
@@ -245,6 +259,7 @@ OPT_FUNCS=(
     "install_tuned"
     "install_docker"
     "install_indexer"
+    "install_avahi"
 )
 
 run_selected_optional() {
@@ -425,6 +440,7 @@ Optional (prompted interactively, or use --all):
   - TuneD            (power and performance profile management)
   - Docker           (container management)
   - Indexer          (file search and directory size indexing)
+  - Avahi (mDNS)     (reach this host at <hostname>.local from the LAN)
 
 This script must be run as root.
 EOF

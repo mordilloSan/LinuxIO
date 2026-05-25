@@ -98,6 +98,7 @@ type Capabilities struct {
 	NFSClientAvailable     bool `json:"nfs_client_available"`
 	NFSServerAvailable     bool `json:"nfs_server_available"`
 	TunedAvailable         bool `json:"tuned_available"`
+	AvahiAvailable         bool `json:"avahi_available"`
 }
 
 type Session struct {

@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 
-import type { CapabilitiesResponse } from "@/api/linuxio-types";
+import type { CapabilitiesResponse, CapabilityState } from "@/api/capabilities";
 
 /**
  * Generic utility for creating discriminated union action types.
@@ -25,37 +25,21 @@ export interface AuthUser {
 /**
  * Reducer-managed state representing the authentication context.
  */
-export interface AuthState {
+export interface AuthState extends CapabilityState {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
   privileged: boolean;
-  dockerAvailable: boolean | null;
-  indexerAvailable: boolean | null;
-  lmSensorsAvailable: boolean | null;
-  smartmontoolsAvailable: boolean | null;
-  packageKitAvailable: boolean | null;
-  nfsClientAvailable: boolean | null;
-  nfsServerAvailable: boolean | null;
-  tunedAvailable: boolean | null;
 }
 
 /**
  * The shape of the public API exposed by `useAuth()` or `AuthContext`.
  */
-export interface AuthContextType {
+export interface AuthContextType extends CapabilityState {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
   privileged: boolean;
-  dockerAvailable: boolean | null;
-  indexerAvailable: boolean | null;
-  lmSensorsAvailable: boolean | null;
-  smartmontoolsAvailable: boolean | null;
-  packageKitAvailable: boolean | null;
-  nfsClientAvailable: boolean | null;
-  nfsServerAvailable: boolean | null;
-  tunedAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -95,38 +79,13 @@ export interface AuthActionTypes {
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;
     privileged: boolean;
-    dockerAvailable?: boolean | null;
-    indexerAvailable?: boolean | null;
-    lmSensorsAvailable?: boolean | null;
-    smartmontoolsAvailable?: boolean | null;
-    packageKitAvailable?: boolean | null;
-    nfsClientAvailable?: boolean | null;
-    nfsServerAvailable?: boolean | null;
-    tunedAvailable?: boolean | null;
-  };
+  } & Partial<CapabilityState>;
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
-    dockerAvailable?: boolean | null;
-    indexerAvailable?: boolean | null;
-    lmSensorsAvailable?: boolean | null;
-    smartmontoolsAvailable?: boolean | null;
-    packageKitAvailable?: boolean | null;
-    nfsClientAvailable?: boolean | null;
-    nfsServerAvailable?: boolean | null;
-    tunedAvailable?: boolean | null;
-  };
-  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: {
-    dockerAvailable?: boolean | null;
-    indexerAvailable?: boolean | null;
-    lmSensorsAvailable?: boolean | null;
-    smartmontoolsAvailable?: boolean | null;
-    packageKitAvailable?: boolean | null;
-    nfsClientAvailable?: boolean | null;
-    nfsServerAvailable?: boolean | null;
-    tunedAvailable?: boolean | null;
-  };
+  } & Partial<CapabilityState>;
+  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: Partial<CapabilityState>;
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
 
@@ -139,18 +98,10 @@ export interface UpdateInfo {
   release_url?: string;
 }
 
-export interface LoginResponse {
+export interface LoginResponse extends CapabilitiesResponse {
   success: boolean;
   privileged: boolean;
   update?: UpdateInfo;
-  docker_available: boolean;
-  indexer_available: boolean;
-  lm_sensors_available: boolean;
-  smartmontools_available: boolean;
-  packagekit_available: boolean;
-  nfs_client_available: boolean;
-  nfs_server_available: boolean;
-  tuned_available: boolean;
 }
 
 export type LoginErrorCode =

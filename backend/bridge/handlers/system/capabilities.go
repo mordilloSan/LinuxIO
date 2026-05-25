@@ -23,6 +23,7 @@ type capabilitiesResponse struct {
 	NFSClientAvailable     bool   `json:"nfs_client_available"`
 	NFSServerAvailable     bool   `json:"nfs_server_available"`
 	TunedAvailable         bool   `json:"tuned_available"`
+	AvahiAvailable         bool   `json:"avahi_available"`
 	DockerError            string `json:"docker_error,omitempty"`
 	IndexerError           string `json:"indexer_error,omitempty"`
 	LMSensorsError         string `json:"lm_sensors_error,omitempty"`
@@ -31,6 +32,7 @@ type capabilitiesResponse struct {
 	NFSClientError         string `json:"nfs_client_error,omitempty"`
 	NFSServerError         string `json:"nfs_server_error,omitempty"`
 	TunedError             string `json:"tuned_error,omitempty"`
+	AvahiError             string `json:"avahi_error,omitempty"`
 }
 
 func checkDependencyCommand(command, dependencyName string) (bool, error) {
@@ -66,7 +68,7 @@ func logUnavailableCapability(name, message string) {
 
 func logCapabilitiesSummary(out capabilitiesResponse) {
 	slog.Info(fmt.Sprintf(
-		"Capabilities: docker=%s indexer=%s sensors=%s smart=%s packagekit=%s nfs-client=%s nfs-server=%s tuned=%s.",
+		"Capabilities: docker=%s indexer=%s sensors=%s smart=%s packagekit=%s nfs-client=%s nfs-server=%s tuned=%s avahi=%s.",
 		capabilityStatus(out.DockerAvailable),
 		capabilityStatus(out.IndexerAvailable),
 		capabilityStatus(out.LMSensorsAvailable),
@@ -75,6 +77,7 @@ func logCapabilitiesSummary(out capabilitiesResponse) {
 		capabilityStatus(out.NFSClientAvailable),
 		capabilityStatus(out.NFSServerAvailable),
 		capabilityStatus(out.TunedAvailable),
+		capabilityStatus(out.AvahiAvailable),
 	))
 
 	logUnavailableCapability("Docker service", out.DockerError)
@@ -85,6 +88,7 @@ func logCapabilitiesSummary(out capabilitiesResponse) {
 	logUnavailableCapability("NFS client", out.NFSClientError)
 	logUnavailableCapability("NFS server", out.NFSServerError)
 	logUnavailableCapability("TuneD", out.TunedError)
+	logUnavailableCapability("Avahi mDNS", out.AvahiError)
 }
 
 func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
@@ -116,7 +120,16 @@ func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
 	ok, err = power.Available(ctx)
 	out.TunedAvailable, out.TunedError = checkedCapability(ok, err, power.ErrUnavailable)
 
+	ok, err = checkAvahiAvailability(ctx)
+	out.AvahiAvailable, out.AvahiError = checkedCapability(ok, err, errAvahiUnavailable)
+
 	logCapabilitiesSummary(out)
 
 	return out
+}
+
+var errAvahiUnavailable = fmt.Errorf("avahi D-Bus service is unavailable")
+
+func checkAvahiAvailability(ctx context.Context) (bool, error) {
+	return dbusclient.BusNameAvailable(ctx, "org.freedesktop.Avahi")
 }

@@ -10,7 +10,13 @@ import { toast } from "sonner";
 
 import "./capability-manager-section.css";
 
-import type { CapabilitiesResponse } from "@/api";
+import {
+  CAPABILITIES,
+  type CapabilitiesResponse,
+  type CapabilityErrorKey,
+  type CapabilityKey,
+  type CapabilityValueKey,
+} from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
@@ -19,125 +25,10 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import {
-  type CapabilityKey,
   type CapabilityStatus,
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
-
-type CapabilityValueKey =
-  | "docker_available"
-  | "indexer_available"
-  | "lm_sensors_available"
-  | "smartmontools_available"
-  | "packagekit_available"
-  | "nfs_client_available"
-  | "nfs_server_available"
-  | "tuned_available";
-
-type CapabilityErrorKey =
-  | "docker_error"
-  | "indexer_error"
-  | "lm_sensors_error"
-  | "smartmontools_error"
-  | "packagekit_error"
-  | "nfs_client_error"
-  | "nfs_server_error"
-  | "tuned_error";
-
-interface CapabilityItem {
-  authKey: CapabilityKey;
-  valueKey: CapabilityValueKey;
-  errorKey: CapabilityErrorKey;
-  label: string;
-  description: string;
-  readyText: string;
-  dependency: string;
-  icon: string;
-}
-
-const CAPABILITY_ITEMS: CapabilityItem[] = [
-  {
-    authKey: "dockerAvailable",
-    valueKey: "docker_available",
-    errorKey: "docker_error",
-    label: "Docker",
-    description: "Container dashboard and compose stack controls",
-    readyText: "Docker is reachable.",
-    dependency: "docker",
-    icon: "mdi:docker",
-  },
-  {
-    authKey: "indexerAvailable",
-    valueKey: "indexer_available",
-    errorKey: "indexer_error",
-    label: "Indexer",
-    description: "Search, folder sizes, and Docker stack indexing",
-    readyText: "Indexer API is reachable.",
-    dependency: "linuxio indexer",
-    icon: "mdi:magnify-scan",
-  },
-  {
-    authKey: "lmSensorsAvailable",
-    valueKey: "lm_sensors_available",
-    errorKey: "lm_sensors_error",
-    label: "lm-sensors",
-    description: "Hardware sensors and thermal readings",
-    readyText: "sensors command is available.",
-    dependency: "sensors",
-    icon: "mdi:thermometer-lines",
-  },
-  {
-    authKey: "smartmontoolsAvailable",
-    valueKey: "smartmontools_available",
-    errorKey: "smartmontools_error",
-    label: "smartmontools",
-    description: "Drive SMART attributes and self-tests",
-    readyText: "smartctl command is available.",
-    dependency: "smartctl",
-    icon: "mdi:harddisk",
-  },
-  {
-    authKey: "packageKitAvailable",
-    valueKey: "packagekit_available",
-    errorKey: "packagekit_error",
-    label: "PackageKit",
-    description: "Package update checks and package operations",
-    readyText: "PackageKit D-Bus service is reachable.",
-    dependency: "PackageKit",
-    icon: "mdi:package-variant-closed",
-  },
-  {
-    authKey: "nfsClientAvailable",
-    valueKey: "nfs_client_available",
-    errorKey: "nfs_client_error",
-    label: "NFS client",
-    description: "Mount external NFS exports",
-    readyText: "NFS client utilities are available.",
-    dependency: "nfs utilities",
-    icon: "mdi:folder-network-outline",
-  },
-  {
-    authKey: "nfsServerAvailable",
-    valueKey: "nfs_server_available",
-    errorKey: "nfs_server_error",
-    label: "NFS server",
-    description: "Create and manage exported NFS shares",
-    readyText: "NFS server utilities are available.",
-    dependency: "exportfs",
-    icon: "mdi:server-network",
-  },
-  {
-    authKey: "tunedAvailable",
-    valueKey: "tuned_available",
-    errorKey: "tuned_error",
-    label: "TuneD",
-    description: "Power profile management",
-    readyText: "TuneD D-Bus service is reachable.",
-    dependency: "TuneD",
-    icon: "mdi:lightning-bolt-outline",
-  },
-];
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -158,17 +49,8 @@ const formatLastChecked = (value: Date | null) => {
 };
 
 const CapabilityManagerSection: React.FC = () => {
-  const {
-    dockerAvailable,
-    indexerAvailable,
-    lmSensorsAvailable,
-    smartmontoolsAvailable,
-    packageKitAvailable,
-    nfsClientAvailable,
-    nfsServerAvailable,
-    tunedAvailable,
-    refreshCapabilities,
-  } = useAuth();
+  const auth = useAuth();
+  const { refreshCapabilities } = auth;
 
   const [latest, setLatest] = useState<CapabilitiesResponse | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -178,24 +60,17 @@ const CapabilityManagerSection: React.FC = () => {
 
   const rows = useMemo(
     () =>
-      CAPABILITY_ITEMS.map((item) => {
-        const authValue = {
-          dockerAvailable,
-          indexerAvailable,
-          lmSensorsAvailable,
-          smartmontoolsAvailable,
-          packageKitAvailable,
-          nfsClientAvailable,
-          nfsServerAvailable,
-          tunedAvailable,
-        }[item.authKey];
-        const value = latest?.[item.valueKey] ?? authValue;
+      CAPABILITIES.map((item) => {
+        const valueKey = `${item.wire}_available` as CapabilityValueKey;
+        const errorKey = `${item.wire}_error` as CapabilityErrorKey;
+        const authValue = auth[item.state as CapabilityKey];
+        const value = latest?.[valueKey] ?? authValue;
         const status = getCapabilityStatus(value);
         const detail =
-          latest?.[item.errorKey] ||
+          latest?.[errorKey] ||
           (status === "available"
             ? item.readyText
-            : getCapabilityReason(item.authKey, status));
+            : getCapabilityReason(item.state as CapabilityKey, status));
 
         return {
           ...item,
@@ -203,17 +78,7 @@ const CapabilityManagerSection: React.FC = () => {
           detail,
         };
       }),
-    [
-      dockerAvailable,
-      indexerAvailable,
-      lmSensorsAvailable,
-      smartmontoolsAvailable,
-      packageKitAvailable,
-      nfsClientAvailable,
-      nfsServerAvailable,
-      tunedAvailable,
-      latest,
-    ],
+    [auth, latest],
   );
 
   const handleRefresh = useCallback(
@@ -322,7 +187,7 @@ const CapabilityManagerSection: React.FC = () => {
           const status = STATUS_DETAILS[row.status];
           return (
             <FrostedCard
-              key={row.authKey}
+              key={row.state}
               className="capability-manager__row"
               hoverLift
             >

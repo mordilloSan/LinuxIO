@@ -42,6 +42,7 @@ type loginSuccessResponse struct {
 	NFSClientAvailable     bool        `json:"nfs_client_available"`
 	NFSServerAvailable     bool        `json:"nfs_server_available"`
 	TunedAvailable         bool        `json:"tuned_available"`
+	AvahiAvailable         bool        `json:"avahi_available"`
 	Update                 *UpdateInfo `json:"update,omitempty"`
 }
 
@@ -126,6 +127,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		NFSClientAvailable:     sess.Capabilities.NFSClientAvailable,
 		NFSServerAvailable:     sess.Capabilities.NFSServerAvailable,
 		TunedAvailable:         sess.Capabilities.TunedAvailable,
+		AvahiAvailable:         sess.Capabilities.AvahiAvailable,
 	}
 
 	// Only check for updates if user is privileged
