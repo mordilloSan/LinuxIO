@@ -61,11 +61,56 @@ GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unk
 BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
 BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# For code counting (cloc)
-CLOC_INCLUDE_EXT := js,jsx,ts,tsx,css,scss,html,go
-CLOC_EXCLUDE_DIR := node_modules
-CLOC_EXCLUDE_BUILD_REGEX := '(^|/)backend/webserver/web/frontend($|/)'
-CLOC_EXCLUDE_GEN_REGEX := '(routeTree\.gen\.ts|\.min\.js$$)'
+# For code counting (built-in find + wc + awk; no external `cloc` dependency)
+LOC_INCLUDE_EXT := js,jsx,ts,tsx,css,scss,html,go
+
+define LOC_COUNT_SCRIPT
+loc_count() {
+  local root="$$1"; local exts_csv="$$2"; local exclude_gen="$$3"
+  if [ ! -d "$$root" ]; then echo "(skipped: $$root does not exist)"; return 0; fi
+  local -a find_ext_args=()
+  local first=1
+  local IFS=','
+  for ext in $$exts_csv; do
+    if [ $$first -eq 1 ]; then first=0; else find_ext_args+=( -o ); fi
+    find_ext_args+=( -name "*.$$ext" )
+  done
+  unset IFS
+  find "$$root" \
+    \( -type d \( -name node_modules \
+                  -o -path "*/backend/webserver/web/frontend" \
+                  -o -path "*/backend/webserver/web/frontend/*" \) -prune \) \
+    -o -type f \( "$${find_ext_args[@]}" \) -print0 \
+    | { if [ "$$exclude_gen" = "1" ]; then \
+          grep -zvE '(routeTree\.gen\.ts|\.min\.js)$$'; \
+        else cat; fi; } \
+    | xargs -0 -r wc -l 2>/dev/null \
+    | awk '
+        function basename_ext(p,   n, parts) {
+          n = split(p, parts, ".");
+          return (n > 1 ? parts[n] : "");
+        }
+        $$1 ~ /^[0-9]+$$/ {
+          count = $$1;
+          match($$0, /^[ \t]*[0-9]+[ \t]+/);
+          path = substr($$0, RSTART+RLENGTH);
+          if (path == "total") next;
+          ext = basename_ext(path);
+          if (ext == "") next;
+          lines[ext] += count; files[ext] += 1;
+          total += count; total_files += 1;
+        }
+        END {
+          if (total_files == 0) { print "(no files matched)"; exit }
+          printf "%-10s %10s %10s\n", "Language", "Files", "Lines";
+          printf "%-10s %10s %10s\n", "--------", "-----", "-----";
+          for (e in lines) printf "%-10s %10d %10d\n", e, files[e], lines[e];
+          printf "%-10s %10s %10s\n", "--------", "-----", "-----";
+          printf "%-10s %10d %10d\n", "TOTAL", total_files, total;
+        }'
+}
+endef
+export LOC_COUNT_SCRIPT
 
 # Determine version: prioritize dev branch, then tag, then commit
 ifneq ($(findstring dev/,$(GIT_BRANCH)),)
@@ -696,19 +741,11 @@ help:
 
 cloc:
 	@echo "==> Total LOC (excluding node_modules and embedded frontend build)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		.
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
 
 cloc-clean:
 	@echo "==> Handwritten LOC (also excluding generated/minified files)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath \
-		--not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		--not-match-f=$(CLOC_EXCLUDE_GEN_REGEX) \
-		.
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 1'
 
 cloc-breakdown:
 	@echo "============================================================"
@@ -716,30 +753,19 @@ cloc-breakdown:
 	@echo "============================================================"
 	@echo
 	@echo "==> Frontend (Vite/React source)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		frontend/src || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count frontend/src "$(LOC_INCLUDE_EXT)" 0'
 	@echo
 	@echo "==> Go backend (entire backend tree, excluding embedded frontend build)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		backend || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend "$(LOC_INCLUDE_EXT)" 0'
 	@echo
 	@echo "==> Embedded frontend build inside backend (for visibility)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		backend/webserver/web/frontend 2>/dev/null || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend/webserver/web/frontend "$(LOC_INCLUDE_EXT)" 0'
 	@echo
 	@echo "==> Packaging / helper C code (if present)"
-	@cloc --include-ext=c,h \
-		packaging 2>/dev/null || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count packaging "c,h" 0'
 	@echo
 	@echo "==> TOTAL (same as make cloc)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		.
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
 
 .PHONY: \
   default help clean run \
