@@ -509,7 +509,7 @@ function NavbarNotificationsDropdown() {
               </p>
             </div>
 
-            <ul className="app-navbar-notifications__list">
+            <ul className="app-navbar-notifications__list custom-scrollbar">
               {totalItems === 0 ? (
                 <li className="app-navbar-notifications__item">
                   <div className="app-navbar-notifications__content">
