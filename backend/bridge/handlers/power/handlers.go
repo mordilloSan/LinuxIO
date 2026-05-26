@@ -3,12 +3,13 @@ package power
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "power", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "power", []bridgeipc.Command{
 		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
 		{Name: "start", Mode: bridgeipc.ModeJob, Handler: handleStart, Privileged: true},
 		{Name: "set_profile", Mode: bridgeipc.ModeJob, Handler: handleSetProfile, Privileged: true},

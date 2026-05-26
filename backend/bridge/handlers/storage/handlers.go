@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -12,7 +13,7 @@ import (
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 
-	bridgeipc.RegisterRoutes(router, "storage", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "storage", []bridgeipc.Command{
 		{Name: "list_pvs", Mode: bridgeipc.ModeQuery, Handler: handleListPVs},
 		{Name: "list_vgs", Mode: bridgeipc.ModeQuery, Handler: handleListVGs},
 		{Name: "list_lvs", Mode: bridgeipc.ModeQuery, Handler: handleListLVs},

@@ -3,6 +3,7 @@ package updates
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -11,7 +12,7 @@ import (
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 
-	bridgeipc.RegisterRoutes(router, "updates", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "updates", []bridgeipc.Command{
 		{Name: "get_updates_basic", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesBasic},
 		{Name: "get_update_detail", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdateDetail},
 		{Name: "install_package", Mode: bridgeipc.ModeJob, Handler: handleInstallPackage},

@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -10,7 +11,7 @@ import (
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := systemHandlers{rt: rt}
-	bridgeipc.RegisterRoutes(router, "system", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "system", []bridgeipc.Command{
 		{Name: "get_capabilities", Mode: bridgeipc.ModeQuery, Handler: handleGetCapabilities},
 		{Name: "get_cpu_info", Mode: bridgeipc.ModeQuery, Handler: handleGetCPUInfo},
 		{Name: "get_sensor_info", Mode: bridgeipc.ModeQuery, Handler: handleGetSensorInfo},

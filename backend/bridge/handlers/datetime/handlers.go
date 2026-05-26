@@ -3,12 +3,13 @@ package datetime
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "datetime", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "datetime", []bridgeipc.Command{
 		{Name: "get_ntp_status", Mode: bridgeipc.ModeQuery, Handler: handleGetNTPStatus},
 		{Name: "set_ntp", Mode: bridgeipc.ModeJob, Handler: handleSetNTP},
 		{Name: "set_server_time", Mode: bridgeipc.ModeJob, Handler: handleSetServerTime},

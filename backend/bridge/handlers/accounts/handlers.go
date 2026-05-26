@@ -4,13 +4,14 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers accounts handlers with the IPC system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "accounts", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "accounts", []bridgeipc.Command{
 		{Name: "list_users", Mode: bridgeipc.ModeQuery, Handler: handleListUsers},
 		{Name: "get_user_details", Mode: bridgeipc.ModeQuery, Handler: handleGetUserDetails},
 		{Name: "list_user_logins", Mode: bridgeipc.ModeQuery, Handler: handleListUserLogins},

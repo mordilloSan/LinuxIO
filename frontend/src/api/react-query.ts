@@ -26,13 +26,13 @@ import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
 import { isJobSnapshot, waitForJobCompletion } from "./jobs";
 import { useStreamMux, useIsUpdating } from "./linuxio";
-import { getRouteMode, routeName } from "./route-metadata";
+import { getRouteMode, routeName } from "./generated/route-metadata";
 import type {
   HandlerName,
   CommandName,
   CommandArgs,
   CommandResult,
-} from "./linuxio-types";
+} from "./generated/linuxio-types";
 
 // Cache TTL presets for staleTime / gcTime options
 export const CACHE_TTL_MS = {
@@ -125,7 +125,7 @@ type MutationOptions<TResult> = Omit<
 /**
  * Command endpoint interface
  */
-interface CommandEndpoint<TResult> {
+export interface CommandEndpoint<TResult> {
   /**
    * Framework-agnostic call (Promise-based) using the same argument serialization
    * and cache key scheme as the React Query hooks.
@@ -263,7 +263,7 @@ function buildQueryOptions<TResult, TData = TResult>(
 /**
  * Create a command endpoint factory
  */
-function createEndpoint<TResult>(
+export function createEndpoint<TResult>(
   handler: string,
   command: string,
 ): CommandEndpoint<TResult> {
@@ -371,7 +371,7 @@ function createEndpoint<TResult>(
 /**
  * Maps a handler's commands to their endpoints
  */
-type HandlerEndpoints<H extends HandlerName> = {
+export type HandlerEndpoints<H extends HandlerName> = {
   [C in CommandName<H>]: CommandEndpoint<CommandResult<H, C>> & {
     call: (...args: CommandArgs<H, C>) => Promise<CommandResult<H, C>>;
     queryKey: (...args: CommandArgs<H, C>) => QueryKey;
@@ -402,61 +402,9 @@ type HandlerEndpoints<H extends HandlerName> = {
 /**
  * Full typed API structure
  */
-type TypedAPI = {
+export type TypedAPI = {
   [H in HandlerName]: HandlerEndpoints<H>;
 };
-
-/**
- * Create handler namespace via Proxy
- */
-function createHandlerNamespace<H extends HandlerName>(
-  handler: H,
-): HandlerEndpoints<H> {
-  const cache = new Map<string, CommandEndpoint<unknown>>();
-
-  return new Proxy({} as HandlerEndpoints<H>, {
-    get(_, command: string) {
-      if (!cache.has(command)) {
-        cache.set(command, createEndpoint(handler, command));
-      }
-      return cache.get(command);
-    },
-  });
-}
-
-// ============================================================================
-// Export
-// ============================================================================
-
-// Handler namespace cache
-const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
-
-/**
- * LinuxIO API
- *
- * @example
- * // TYPE-SAFE API (for built-in handlers)
- * const { data } = linuxio.storage.get_drive_info.useQuery();
- * const { mutate } = linuxio.docker.start_container.useMutation();
- *
- * // CORE API (non-React, Promise-based)
- * const drives = await linuxio.storage.get_drive_info.call();
- */
-const linuxio = new Proxy({} as TypedAPI, {
-  get(_, prop: string) {
-    // `linuxio.call()` alias is intentionally removed.
-    if (prop === "call") {
-      return undefined;
-    }
-    // Return handler namespace (lazily created)
-    if (!handlerCache.has(prop)) {
-      handlerCache.set(prop, createHandlerNamespace(prop as HandlerName));
-    }
-    return handlerCache.get(prop);
-  },
-});
-
-export default linuxio;
 
 // Re-export types for convenience
 export type {
@@ -464,4 +412,4 @@ export type {
   HandlerName,
   CommandName,
   CommandResult,
-} from "./linuxio-types";
+} from "./generated/linuxio-types";

@@ -3,13 +3,14 @@ package wireguard
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers wireguard handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "wireguard", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "wireguard", []bridgeipc.Command{
 		{Name: "list_interfaces", Mode: bridgeipc.ModeQuery, Handler: handleListInterfaces},
 		{Name: "add_interface", Mode: bridgeipc.ModeJob, Handler: handleAddInterface},
 		{Name: "remove_interface", Mode: bridgeipc.ModeJob, Handler: handleRemoveInterface},

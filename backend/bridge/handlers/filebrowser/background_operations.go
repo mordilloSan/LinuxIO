@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
@@ -213,27 +214,63 @@ type ChmodProgress struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
-	router.JobRunner(JobTypeFileCompress, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runCompressJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileExtract, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runExtractJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileCopy, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runCopyJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileMove, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runMoveJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileIndexer, runIndexerJob, bridgejobs.SingletonSystem)
-	router.JobRunner(JobTypeFileUpload, runUploadJob, bridgejobs.StreamDefault)
-	router.JobRunner(JobTypeFileDownload, runDownloadJob, bridgejobs.StreamDefault)
-	router.JobRunner(JobTypeFileArchive, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runArchiveJobWithStore(ctx, job, store, args)
-	}, bridgejobs.StreamDefault)
-	router.JobRunner(JobTypeFileChmod, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runChmodJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileCompress,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runCompressJobWithStore(ctx, job, store, args)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileExtract,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runExtractJobWithStore(ctx, job, store, args)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileCopy,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runCopyJobWithStore(ctx, job, store, args)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileMove,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runMoveJobWithStore(ctx, job, store, args)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeFileIndexer,
+		Runner: runIndexerJob,
+		Policy: bridgejobs.SingletonSystem,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeFileUpload,
+		Runner: runUploadJob,
+		Policy: bridgejobs.StreamDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeFileDownload,
+		Runner: runDownloadJob,
+		Policy: bridgejobs.StreamDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileArchive,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runArchiveJobWithStore(ctx, job, store, args)
+		},
+		Policy: bridgejobs.StreamDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileChmod,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runChmodJobWithStore(ctx, job, store, args)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
 	bridgejobs.RegisterDataAttacher(JobTypeFileUpload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(JobTypeFileDownload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(JobTypeFileArchive, attachFileTransferData)

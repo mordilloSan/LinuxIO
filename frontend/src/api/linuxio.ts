@@ -21,7 +21,7 @@ import {
 } from "./StreamMultiplexer";
 import { isTerminalJobState } from "./job-state";
 import { call as bridgeCall } from "./linuxio-core";
-import type { JobSnapshot } from "./linuxio-types";
+import type { JobSnapshot } from "./generated/linuxio-types";
 
 function openMuxStream(
   type: StreamType,

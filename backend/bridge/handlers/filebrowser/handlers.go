@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -12,7 +13,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	store := rt.Store
 	RegisterJobRoutes(router, store)
 
-	bridgeipc.RegisterRoutes(router, "filebrowser", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "filebrowser", []bridgeipc.Command{
 		{Name: "resource_get", Mode: bridgeipc.ModeQuery, Handler: handleResourceGet},
 		{Name: "resource_stat", Mode: bridgeipc.ModeQuery, Handler: handleResourceStat},
 		{Name: "resource_delete", Mode: bridgeipc.ModeJob, Handler: handleResourceDelete},

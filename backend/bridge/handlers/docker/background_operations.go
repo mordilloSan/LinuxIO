@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -36,12 +37,20 @@ type DockerIndexerJobResult struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router, username string, store *config.UserStore) {
-	router.JobRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runDockerComposeJob(ctx, job, username, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeDockerIndexer, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runDockerIndexerJob(ctx, job, username, store)
-	}, bridgejobs.SingletonSystem)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeDockerCompose,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runDockerComposeJob(ctx, job, username, store, args)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeDockerIndexer,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+			return runDockerIndexerJob(ctx, job, username, store)
+		},
+		Policy: bridgejobs.SingletonSystem,
+	})
 }
 
 func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, args []string) (any, error) {

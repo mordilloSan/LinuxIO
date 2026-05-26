@@ -10,10 +10,15 @@
  *   stream.onData = (data) => ...;
  */
 
-// === JSON API (React Query type-safe proxy) ===
-export { default as linuxio, CACHE_TTL_MS } from "./react-query";
-export { ROUTE_MODES, getRouteMode, routeName } from "./route-metadata";
-export type { RouteMode } from "./route-metadata";
+// === JSON API (generated type-safe endpoints) ===
+export { default as linuxio } from "./generated/client";
+export { CACHE_TTL_MS } from "./react-query";
+export {
+  ROUTE_MODES,
+  getRouteMode,
+  routeName,
+} from "./generated/route-metadata";
+export type { RouteMode } from "./generated/route-metadata";
 export {
   isJobSnapshot,
   isJobLocallyHandled,
@@ -70,8 +75,8 @@ export type * from "./stream-helpers";
 // === Stream Types ===
 export type * from "./StreamMultiplexer";
 
-// === Domain Types ===
-export type * from "./linuxio-types";
+// === Domain/API Types ===
+export type * from "./generated/linuxio-types";
 
 // === Capabilities (manifest, types, helpers) ===
 export type * from "./capabilities";

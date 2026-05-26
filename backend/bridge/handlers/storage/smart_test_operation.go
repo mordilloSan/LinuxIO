@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -18,7 +19,11 @@ type SmartTestProgress struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router) {
-	router.JobRunner(JobTypeStorageSmartTest, runSmartTestJob, bridgejobs.ActionDefault)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeStorageSmartTest,
+		Runner: runSmartTestJob,
+		Policy: bridgejobs.ActionDefault,
+	})
 }
 
 func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {

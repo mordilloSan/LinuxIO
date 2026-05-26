@@ -3,12 +3,13 @@ package hostname
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "hostname", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "hostname", []bridgeipc.Command{
 		{Name: "set_hostname", Mode: bridgeipc.ModeJob, Handler: handleSetHostname},
 	})
 }

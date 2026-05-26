@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -16,7 +17,11 @@ const JobTypePackageUpdate = "packages.update"
 func RegisterJobRoutes(router *bridgejobs.Router) {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
-	router.JobRunner(JobTypePackageUpdate, runPackageUpdateJob, policy)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypePackageUpdate,
+		Runner: runPackageUpdateJob,
+		Policy: policy,
+	})
 }
 
 // PkgUpdateProgress represents progress for package update operations.
