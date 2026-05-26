@@ -40,73 +40,64 @@ func pollInterval(testType string) time.Duration {
 }
 
 func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-	if len(args) < 2 {
-		return nil, bridgejobs.NewError("run_smart_test requires device name and test type (short/long)", 400)
+	device, testType, err := smartTestJobArgs(args)
+	if err != nil {
+		return nil, err
 	}
-	device := args[0]
-	testType := args[1]
 
-	job.ReportProgress(SmartTestProgress{
-		Type:     "status",
-		Device:   device,
-		TestType: testType,
-		Status:   "starting",
-		Message:  fmt.Sprintf("Starting SMART %s self-test", testType),
-	})
+	state := smartTestJobState{
+		job:      job,
+		device:   device,
+		testType: testType,
+	}
+	state.reportStart()
 
 	if _, err := RunSmartTest(ctx, device, testType); err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 500)
 	}
 
-	// seenInProgress gates two specific hazards:
-	//   - An immediate post-`-t` poll can return the *previous* test's
-	//     terminal status before the drive has picked up the new one.
-	//   - When the drive eventually clears its self-test log, an "idle"
-	//     state after a real completion should be treated as completed,
-	//     not as a fresh start.
-	seenInProgress := false
+	state.pollInitial(ctx)
+	return state.pollUntilDone(ctx)
+}
 
-	emit := func(st SmartTestStatus) {
-		status := st.State
-		if status == "idle" {
-			if seenInProgress {
-				status = "completed"
-			} else {
-				status = "starting"
-			}
-		}
-		pct := st.PercentComplete
-		job.ReportProgress(SmartTestProgress{
-			Type:       "status",
-			Device:     device,
-			TestType:   testType,
-			Status:     status,
-			Message:    st.Message,
-			Percentage: &pct,
-		})
+func smartTestJobArgs(args []string) (string, string, error) {
+	if len(args) < 2 {
+		return "", "", bridgejobs.NewError("run_smart_test requires device name and test type (short/long)", 400)
 	}
+	return args[0], args[1], nil
+}
 
-	resultMap := func(st SmartTestStatus) map[string]any {
-		return map[string]any{
-			"success":  true,
-			"device":   device,
-			"test":     testType,
-			"status":   "completed",
-			"message":  st.Message,
-			"duration": nil,
-		}
-	}
+type smartTestJobState struct {
+	job             *bridgejobs.Job
+	device          string
+	testType        string
+	seenInProgress  bool
+	consecutiveErrs int
+}
 
+func (s *smartTestJobState) reportStart() {
+	s.job.ReportProgress(SmartTestProgress{
+		Type:     "status",
+		Device:   s.device,
+		TestType: s.testType,
+		Status:   "starting",
+		Message:  fmt.Sprintf("Starting SMART %s self-test", s.testType),
+	})
+}
+
+func (s *smartTestJobState) pollInitial(ctx context.Context) {
 	// Immediate first poll, but only emit if it observes in_progress.
 	// Anything else here is almost certainly stale residue.
-	if st, err := PollSmartTestStatus(ctx, device); err == nil && st.State == "in_progress" {
-		seenInProgress = true
-		emit(st)
+	if st, err := PollSmartTestStatus(ctx, s.device); err == nil && st.State == "in_progress" {
+		s.seenInProgress = true
+		s.emit(st)
 	}
+}
 
-	ticker := time.NewTicker(pollInterval(testType))
+func (s *smartTestJobState) pollUntilDone(ctx context.Context) (any, error) {
+	ticker := time.NewTicker(pollInterval(s.testType))
 	defer ticker.Stop()
-	consecutiveErrs := 0
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,35 +105,86 @@ func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, args []string) (a
 			// not markFailed.
 			return nil, ctx.Err()
 		case <-ticker.C:
-			st, err := PollSmartTestStatus(ctx, device)
+			result, done, err := s.poll(ctx)
 			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil, ctx.Err()
-				}
-				consecutiveErrs++
-				if consecutiveErrs >= 3 {
-					return nil, bridgejobs.NewError(err.Error(), 500)
-				}
-				continue
+				return nil, err
 			}
-			consecutiveErrs = 0
-
-			// Don't accept terminal status until we've actually seen the test run.
-			if !seenInProgress && st.State != "in_progress" {
-				emit(st)
-				continue
+			if done {
+				return result, nil
 			}
-			if st.State == "in_progress" {
-				seenInProgress = true
-				emit(st)
-				continue
-			}
-
-			emit(st)
-			if st.State == "completed" || (st.State == "idle" && seenInProgress) {
-				return resultMap(st), nil
-			}
-			return nil, bridgejobs.NewError(st.Message, 500)
 		}
+	}
+}
+
+func (s *smartTestJobState) poll(ctx context.Context) (any, bool, error) {
+	st, err := PollSmartTestStatus(ctx, s.device)
+	if err != nil {
+		return nil, false, s.handlePollError(ctx, err)
+	}
+	s.consecutiveErrs = 0
+
+	// Don't accept terminal status until we've actually seen the test run.
+	if !s.seenInProgress && st.State != "in_progress" {
+		s.emit(st)
+		return nil, false, nil
+	}
+	if st.State == "in_progress" {
+		s.seenInProgress = true
+		s.emit(st)
+		return nil, false, nil
+	}
+
+	s.emit(st)
+	if s.completed(st) {
+		return s.result(st), true, nil
+	}
+	return nil, false, bridgejobs.NewError(st.Message, 500)
+}
+
+func (s *smartTestJobState) handlePollError(ctx context.Context, err error) error {
+	if errors.Is(err, context.Canceled) {
+		return ctx.Err()
+	}
+	s.consecutiveErrs++
+	if s.consecutiveErrs >= 3 {
+		return bridgejobs.NewError(err.Error(), 500)
+	}
+	return nil
+}
+
+func (s *smartTestJobState) emit(st SmartTestStatus) {
+	pct := st.PercentComplete
+	s.job.ReportProgress(SmartTestProgress{
+		Type:       "status",
+		Device:     s.device,
+		TestType:   s.testType,
+		Status:     s.progressStatus(st.State),
+		Message:    st.Message,
+		Percentage: &pct,
+	})
+}
+
+func (s *smartTestJobState) progressStatus(status string) string {
+	if status != "idle" {
+		return status
+	}
+	if s.seenInProgress {
+		return "completed"
+	}
+	return "starting"
+}
+
+func (s *smartTestJobState) completed(st SmartTestStatus) bool {
+	return st.State == "completed" || (st.State == "idle" && s.seenInProgress)
+}
+
+func (s *smartTestJobState) result(st SmartTestStatus) map[string]any {
+	return map[string]any{
+		"success":  true,
+		"device":   s.device,
+		"test":     s.testType,
+		"status":   "completed",
+		"message":  st.Message,
+		"duration": nil,
 	}
 }

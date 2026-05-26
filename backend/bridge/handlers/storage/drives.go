@@ -271,30 +271,42 @@ type SmartTestStatus struct {
 // current_self_test_completion_percent. Older / fully-scalar / fully-object
 // variants are also supported via custom unmarshalling below.
 type smartctlOutput struct {
-	ATA *struct {
-		SelfTest *struct {
-			Status *struct {
-				Value            *int   `json:"value"`
-				String           string `json:"string"`
-				Passed           *bool  `json:"passed"`
-				RemainingPercent *int   `json:"remaining_percent"`
-			} `json:"status"`
-		} `json:"self_test"`
-	} `json:"ata_smart_data"`
-	NVMe *struct {
-		// Newer smartctl: scalar.
-		CurrentSelfTestOp                *intOrObj `json:"current_self_test_op"`
-		CurrentSelfTestCompletionPercent *intOrObj `json:"current_self_test_completion_percent"`
-		// Older / object form.
-		CurrentSelfTestOperation  *intOrObj `json:"current_self_test_operation"`
-		CurrentSelfTestCompletion *intOrObj `json:"current_self_test_completion"`
-		Table                     []struct {
-			SelfTestResult *struct {
-				Value  *int   `json:"value"`
-				String string `json:"string"`
-			} `json:"self_test_result"`
-		} `json:"table"`
-	} `json:"nvme_self_test_log"`
+	ATA  *ataSmartData    `json:"ata_smart_data"`
+	NVMe *nvmeSelfTestLog `json:"nvme_self_test_log"`
+}
+
+type ataSmartData struct {
+	SelfTest *ataSelfTest `json:"self_test"`
+}
+
+type ataSelfTest struct {
+	Status *ataSelfTestStatus `json:"status"`
+}
+
+type ataSelfTestStatus struct {
+	Value            *int   `json:"value"`
+	String           string `json:"string"`
+	Passed           *bool  `json:"passed"`
+	RemainingPercent *int   `json:"remaining_percent"`
+}
+
+type nvmeSelfTestLog struct {
+	// Newer smartctl: scalar.
+	CurrentSelfTestOp                *intOrObj `json:"current_self_test_op"`
+	CurrentSelfTestCompletionPercent *intOrObj `json:"current_self_test_completion_percent"`
+	// Older / object form.
+	CurrentSelfTestOperation  *intOrObj              `json:"current_self_test_operation"`
+	CurrentSelfTestCompletion *intOrObj              `json:"current_self_test_completion"`
+	Table                     []nvmeSelfTestLogEntry `json:"table"`
+}
+
+type nvmeSelfTestLogEntry struct {
+	SelfTestResult *nvmeSelfTestResult `json:"self_test_result"`
+}
+
+type nvmeSelfTestResult struct {
+	Value  *int   `json:"value"`
+	String string `json:"string"`
 }
 
 // intOrObj decodes either a JSON number or an object with a `value` field.
@@ -331,80 +343,79 @@ func parseSmartTestJSON(b []byte) (SmartTestStatus, error) {
 		return SmartTestStatus{}, fmt.Errorf("parse smartctl json: %w", err)
 	}
 
-	// ATA path.
-	if out.ATA != nil && out.ATA.SelfTest != nil && out.ATA.SelfTest.Status != nil {
-		st := out.ATA.SelfTest.Status
-		// Prefer documented fields. `remaining_percent` is present only while in progress.
-		if st.RemainingPercent != nil {
-			rem := min(max(*st.RemainingPercent, 0), 100)
-			return SmartTestStatus{
-				State:           "in_progress",
-				PercentComplete: 100 - rem,
-				Message:         st.String,
-			}, nil
-		}
-		if st.Passed != nil {
-			if *st.Passed {
-				return SmartTestStatus{State: "completed", PercentComplete: 100, Message: st.String}, nil
-			}
-			return SmartTestStatus{State: "failed", PercentComplete: 0, Message: st.String}, nil
-		}
-		// Status block present but no actionable fields → idle.
-		return SmartTestStatus{State: "idle", Message: st.String}, nil
+	if st, ok := parseATASmartTestStatus(out.ATA); ok {
+		return st, nil
 	}
-
-	// NVMe path.
 	if out.NVMe != nil {
-		// Op code: prefer scalar form, fall back to object form.
-		var (
-			opSet    bool
-			opCode   int
-			pctSet   bool
-			pctValue int
-		)
-		if out.NVMe.CurrentSelfTestOp != nil {
-			opCode = out.NVMe.CurrentSelfTestOp.Value
-			opSet = true
-		} else if out.NVMe.CurrentSelfTestOperation != nil {
-			opCode = out.NVMe.CurrentSelfTestOperation.Value
-			opSet = true
-		}
-		if out.NVMe.CurrentSelfTestCompletionPercent != nil {
-			pctValue = out.NVMe.CurrentSelfTestCompletionPercent.Value
-			pctSet = true
-		} else if out.NVMe.CurrentSelfTestCompletion != nil {
-			pctValue = out.NVMe.CurrentSelfTestCompletion.Value
-			pctSet = true
-		}
-
-		if opSet && opCode != 0 {
-			pct := 0
-			if pctSet {
-				pct = pctValue
-			}
-			if pct < 0 {
-				pct = 0
-			}
-			if pct > 100 {
-				pct = 100
-			}
-			return SmartTestStatus{State: "in_progress", PercentComplete: pct}, nil
-		}
-
-		// Op = 0 or absent → look at the latest log entry (table[0]).
-		if len(out.NVMe.Table) > 0 && out.NVMe.Table[0].SelfTestResult != nil &&
-			out.NVMe.Table[0].SelfTestResult.Value != nil {
-			code := *out.NVMe.Table[0].SelfTestResult.Value
-			msg := out.NVMe.Table[0].SelfTestResult.String
-			return nvmeResultCodeToStatus(code, msg), nil
-		}
-
-		// NVMe block present but no actionable info → idle.
-		return SmartTestStatus{State: "idle"}, nil
+		return parseNVMeSmartTestStatus(out.NVMe), nil
 	}
 
 	// Neither block present.
 	return SmartTestStatus{State: "idle"}, nil
+}
+
+func parseATASmartTestStatus(ata *ataSmartData) (SmartTestStatus, bool) {
+	if ata == nil || ata.SelfTest == nil || ata.SelfTest.Status == nil {
+		return SmartTestStatus{}, false
+	}
+
+	st := ata.SelfTest.Status
+	// Prefer documented fields. `remaining_percent` is present only while in progress.
+	if st.RemainingPercent != nil {
+		rem := min(max(*st.RemainingPercent, 0), 100)
+		return SmartTestStatus{
+			State:           "in_progress",
+			PercentComplete: 100 - rem,
+			Message:         st.String,
+		}, true
+	}
+	if st.Passed == nil {
+		// Status block present but no actionable fields -> idle.
+		return SmartTestStatus{State: "idle", Message: st.String}, true
+	}
+	if *st.Passed {
+		return SmartTestStatus{State: "completed", PercentComplete: 100, Message: st.String}, true
+	}
+	return SmartTestStatus{State: "failed", PercentComplete: 0, Message: st.String}, true
+}
+
+func parseNVMeSmartTestStatus(log *nvmeSelfTestLog) SmartTestStatus {
+	if opCode, ok := firstIntOrObjValue(log.CurrentSelfTestOp, log.CurrentSelfTestOperation); ok && opCode != 0 {
+		return SmartTestStatus{
+			State:           "in_progress",
+			PercentComplete: nvmeCompletionPercent(log),
+		}
+	}
+	if result, ok := latestNVMeSelfTestResult(log); ok {
+		return nvmeResultCodeToStatus(*result.Value, result.String)
+	}
+	// NVMe block present but no actionable info -> idle.
+	return SmartTestStatus{State: "idle"}
+}
+
+func nvmeCompletionPercent(log *nvmeSelfTestLog) int {
+	pct, ok := firstIntOrObjValue(log.CurrentSelfTestCompletionPercent, log.CurrentSelfTestCompletion)
+	if !ok {
+		return 0
+	}
+	return min(max(pct, 0), 100)
+}
+
+func firstIntOrObjValue(values ...*intOrObj) (int, bool) {
+	for _, value := range values {
+		if value != nil {
+			return value.Value, true
+		}
+	}
+	return 0, false
+}
+
+func latestNVMeSelfTestResult(log *nvmeSelfTestLog) (*nvmeSelfTestResult, bool) {
+	if len(log.Table) == 0 || log.Table[0].SelfTestResult == nil ||
+		log.Table[0].SelfTestResult.Value == nil {
+		return nil, false
+	}
+	return log.Table[0].SelfTestResult, true
 }
 
 // nvmeResultCodeToStatus maps the NVMe self-test result code to a status.
