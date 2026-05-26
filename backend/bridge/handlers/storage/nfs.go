@@ -78,6 +78,9 @@ func getFstabEntries() map[string]fstabEntry {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("error reading /etc/fstab", "error", err)
+	}
 	return fstabEntries
 }
 
