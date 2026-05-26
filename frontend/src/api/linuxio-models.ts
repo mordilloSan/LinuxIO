@@ -823,6 +823,11 @@ export interface ConfigSetResult {
   path: string;
 }
 
+export interface InstallCapabilityResult {
+  available: boolean;
+  error?: string;
+}
+
 export interface IndexerConfig {
   index_path: string;
   index_name: string;

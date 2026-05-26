@@ -379,8 +379,59 @@ func GetUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
 	return details, nil
 }
 
-func InstallPackage(ctx context.Context, packageID string) error {
-	return installPackage(ctx, packageID)
+// InstallByName resolves a package by name via PackageKit and installs it.
+// Returns nil (no-op) if the package is already installed. Returns an error
+// if the package cannot be found in any enabled repository.
+func InstallByName(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("package name is required")
+	}
+
+	notInstalled, err := resolvePackageIDs(ctx, name, pkgkitFilterNotInstalled|pkgkitFilterNewest)
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", name, err)
+	}
+	if len(notInstalled) == 0 {
+		installed, err := resolvePackageIDs(ctx, name, pkgkitFilterInstalled|pkgkitFilterNewest)
+		if err != nil {
+			return fmt.Errorf("resolve %s (installed): %w", name, err)
+		}
+		if len(installed) > 0 {
+			return nil // already installed
+		}
+		return fmt.Errorf("package %q not found in any enabled repository", name)
+	}
+	return InstallPackage(ctx, notInstalled[0])
+}
+
+// PackageKit filter bitmask values. See
+// https://www.freedesktop.org/software/PackageKit/gtk-doc/PackageKit-pk-enum.html#PkBitfield
+const (
+	pkgkitFilterInstalled    uint64 = 1 << 2
+	pkgkitFilterNotInstalled uint64 = 1 << 3
+	pkgkitFilterNewest       uint64 = 1 << 16
+)
+
+func resolvePackageIDs(ctx context.Context, name string, filter uint64) ([]string, error) {
+	var ids []string
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
+		trans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
+		}
+		defer pkgkit.LogClose(session.Context(), trans)
+
+		if err = trans.Call("Resolve", filter, []string{name}); err != nil {
+			return err
+		}
+
+		waitCtx, cancel := context.WithTimeout(session.Context(), 30*time.Second)
+		defer cancel()
+		ids, err = pkgkit.CollectPackageIDs(waitCtx, trans.Signals(), "resolve "+name)
+		return err
+	})
+	return ids, err
 }
 
 // GetSingleUpdateDetail returns detailed info for a single package.
@@ -557,6 +608,9 @@ func parseDpkgLogFile(
 		}
 		applyDpkgLogLine(scanner.Text(), patterns, historyMap, pendingPackages)
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("error scanning update log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
+	}
 }
 
 func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
@@ -639,6 +693,9 @@ func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
 			})
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("error scanning DNF log", "component", "dbus", "subsystem", "updates", "path", logPath, "error", err)
+	}
 
 	return mapToSortedHistory(historyMap)
 }
@@ -660,7 +717,9 @@ func mapToSortedHistory(historyMap map[string][]UpgradeItem) []UpdateHistoryEntr
 	return history
 }
 
-func installPackage(ctx context.Context, packageID string) error {
+// InstallPackage installs a specific PackageKit package by package ID
+// (typically obtained from a previous Resolve or GetUpdates response).
+func InstallPackage(ctx context.Context, packageID string) error {
 	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
 		trans, err := session.CreateTransaction(20)
 		if err != nil {

@@ -419,6 +419,7 @@ export interface LinuxIOSchema {
     get_timezones: { args: []; result: string[] };
     get_updates_fast: { args: []; result: Update[] };
     get_uptime: { args: []; result: number };
+    install_capability: { args: [capability: string]; result: JobSnapshot };
     list_failed_login_events: {
       args: [limit?: string];
       result: AccountUserLogin[];

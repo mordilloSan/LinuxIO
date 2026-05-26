@@ -13,12 +13,17 @@ import "./capability-manager-section.css";
 import {
   CAPABILITIES,
   type CapabilitiesResponse,
+  type CapabilityDef,
   type CapabilityErrorKey,
   type CapabilityKey,
   type CapabilityValueKey,
+  type InstallCapabilityResult,
+  linuxio,
+  openJobAttachStream,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -29,6 +34,12 @@ import {
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
+import { useStreamResult } from "@/hooks/useStreamResult";
+
+interface InstallCapabilityProgress {
+  stage: string;
+  message: string;
+}
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -56,7 +67,13 @@ const CapabilityManagerSection: React.FC = () => {
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [installingWire, setInstallingWire] = useState<string | null>(null);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const { run: runStreamResult } = useStreamResult();
+
+  const packageKitAvailable =
+    latest?.packagekit_available ?? auth.packageKitAvailable ?? false;
 
   const rows = useMemo(
     () =>
@@ -71,9 +88,11 @@ const CapabilityManagerSection: React.FC = () => {
           (status === "available"
             ? item.readyText
             : getCapabilityReason(item.state as CapabilityKey, status));
+        const installable = (item as CapabilityDef).installable;
 
         return {
           ...item,
+          installable,
           status,
           detail,
         };
@@ -111,6 +130,53 @@ const CapabilityManagerSection: React.FC = () => {
       }
     },
     [refreshCapabilities],
+  );
+
+  const handleInstall = useCallback(
+    async (wire: string, label: string) => {
+      setInstallingWire(wire);
+      setInstallStatus("Starting…");
+      try {
+        const job = await linuxio.system.install_capability.call(wire);
+        const result = await runStreamResult<
+          InstallCapabilityResult,
+          InstallCapabilityProgress
+        >({
+          open: () => openJobAttachStream(job.id),
+          onProgress: (progress) => {
+            if (!mountedRef.current) return;
+            if (progress?.message) {
+              setInstallStatus(progress.message);
+            }
+          },
+        });
+        if (!mountedRef.current) return;
+        setLatest((previous) => ({
+          ...(previous ?? ({} as CapabilitiesResponse)),
+          [`${wire}_available`]: result.available,
+          [`${wire}_error`]: result.error ?? "",
+        }));
+        setLastChecked(new Date());
+        if (result.available) {
+          toast.success(`${label} installed`);
+        } else {
+          const reason = result.error ? `: ${result.error}` : ".";
+          toast.warning(`${label} installed but is still unavailable${reason}`);
+        }
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : `Failed to install ${label}`;
+        if (mountedRef.current) {
+          toast.error(message);
+        }
+      } finally {
+        if (mountedRef.current) {
+          setInstallingWire(null);
+          setInstallStatus(null);
+        }
+      }
+    },
+    [runStreamResult],
   );
 
   useEffect(
@@ -185,6 +251,21 @@ const CapabilityManagerSection: React.FC = () => {
       <div className="capability-manager__list">
         {rows.map((row) => {
           const status = STATUS_DETAILS[row.status];
+          const showInstall =
+            row.status === "unavailable" && row.installable !== undefined;
+          const blockedByPackageKit =
+            showInstall &&
+            row.installable?.requiresPackageKit === true &&
+            !packageKitAvailable;
+          const installing = installingWire === row.wire;
+          const installDisabled =
+            installingWire !== null || blockedByPackageKit;
+          const installTooltip = blockedByPackageKit
+            ? "Install requires PackageKit, which is itself unavailable. Install PackageKit from a shell first."
+            : installing
+              ? "Installing…"
+              : `Install ${row.label}`;
+
           return (
             <FrostedCard
               key={row.state}
@@ -208,18 +289,53 @@ const CapabilityManagerSection: React.FC = () => {
                       {row.description}
                     </AppTypography>
                   </div>
-                  <AppChip
-                    size="small"
-                    variant="soft"
-                    color={status.color}
-                    label={status.label}
-                  />
+                  <div className="capability-manager__row-actions">
+                    {showInstall ? (
+                      <AppTooltip title={installTooltip}>
+                        <span>
+                          <AppButton
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            disabled={installDisabled}
+                            onClick={() =>
+                              void handleInstall(row.wire, row.label)
+                            }
+                            startIcon={
+                              <Icon
+                                icon={
+                                  installing ? "mdi:loading" : "mdi:download"
+                                }
+                                width={16}
+                                height={16}
+                                className={
+                                  installing
+                                    ? "capability-manager__spin"
+                                    : undefined
+                                }
+                              />
+                            }
+                          >
+                            {installing ? "Installing…" : "Install"}
+                          </AppButton>
+                        </span>
+                      </AppTooltip>
+                    ) : null}
+                    <AppChip
+                      size="small"
+                      variant="soft"
+                      color={status.color}
+                      label={status.label}
+                    />
+                  </div>
                 </div>
                 <div className="capability-manager__detail">
                   <span className="capability-manager__dependency">
                     {row.dependency}
                   </span>
-                  <span>{row.detail}</span>
+                  <span>
+                    {installing && installStatus ? installStatus : row.detail}
+                  </span>
                 </div>
               </div>
             </FrostedCard>

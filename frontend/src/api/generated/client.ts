@@ -197,6 +197,7 @@ const linuxio = {
     get_timezones: createEndpoint("system", "get_timezones"),
     get_updates_fast: createEndpoint("system", "get_updates_fast"),
     get_uptime: createEndpoint("system", "get_uptime"),
+    install_capability: createEndpoint("system", "install_capability"),
     list_failed_login_events: createEndpoint(
       "system",
       "list_failed_login_events",

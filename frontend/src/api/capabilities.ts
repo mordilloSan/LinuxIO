@@ -25,6 +25,17 @@ export interface CapabilityDef {
   reasonUnknown: string;
   /** Message when status is "unavailable". */
   reasonUnavailable: string;
+  /**
+   * Whether the backend can install this capability via
+   * `system.install_capability`. Omit for capabilities that have no
+   * install path (Docker, the LinuxIO indexer, PackageKit itself).
+   */
+  installable?: {
+    /** True when installing also requires PackageKit (i.e. there is a
+     *  package step). The Install button is disabled when PackageKit is
+     *  unavailable. False for pure service-start actions. */
+    requiresPackageKit: boolean;
+  };
 }
 
 export const CAPABILITIES = [
@@ -60,6 +71,7 @@ export const CAPABILITIES = [
     icon: "mdi:thermometer-lines",
     reasonUnknown: "lm-sensors dependency check is still running.",
     reasonUnavailable: "lm-sensors dependency is unavailable.",
+    installable: { requiresPackageKit: true },
   },
   {
     wire: "smartmontools",
@@ -71,6 +83,7 @@ export const CAPABILITIES = [
     icon: "mdi:harddisk",
     reasonUnknown: "smartmontools dependency check is still running.",
     reasonUnavailable: "smartmontools dependency is unavailable.",
+    installable: { requiresPackageKit: true },
   },
   {
     wire: "packagekit",
@@ -93,6 +106,7 @@ export const CAPABILITIES = [
     icon: "mdi:folder-network-outline",
     reasonUnknown: "NFS client utilities availability is still being checked.",
     reasonUnavailable: "NFS client utilities are unavailable.",
+    installable: { requiresPackageKit: true },
   },
   {
     wire: "nfs_server",
@@ -104,6 +118,7 @@ export const CAPABILITIES = [
     icon: "mdi:server-network",
     reasonUnknown: "NFS server utilities availability is still being checked.",
     reasonUnavailable: "NFS server utilities are unavailable.",
+    installable: { requiresPackageKit: true },
   },
   {
     wire: "tuned",
@@ -115,6 +130,7 @@ export const CAPABILITIES = [
     icon: "mdi:lightning-bolt-outline",
     reasonUnknown: "TuneD availability is still being checked.",
     reasonUnavailable: "TuneD D-Bus service is unavailable.",
+    installable: { requiresPackageKit: true },
   },
   {
     wire: "avahi",
@@ -126,6 +142,7 @@ export const CAPABILITIES = [
     icon: "mdi:lan-connect",
     reasonUnknown: "Avahi availability is still being checked.",
     reasonUnavailable: "Avahi mDNS daemon is unavailable.",
+    installable: { requiresPackageKit: true },
   },
 ] as const satisfies readonly CapabilityDef[];
 

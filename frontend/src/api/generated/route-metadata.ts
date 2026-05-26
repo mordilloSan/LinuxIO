@@ -167,6 +167,7 @@ export const ROUTE_MODES = {
   "system.get_timezones": "query",
   "system.get_updates_fast": "query",
   "system.get_uptime": "query",
+  "system.install_capability": "job",
   "system.list_failed_login_events": "query",
   "systemd.disable_service": "job",
   "systemd.enable_service": "job",

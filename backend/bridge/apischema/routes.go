@@ -168,6 +168,7 @@ var Routes = []RouteSpec{
 	{Kind: KindHandler, Route: "system.get_timezones", Mode: bridgeipc.Mode("query"), ArgsTS: "[]", ResultTS: "string[]"},
 	{Kind: KindHandler, Route: "system.get_updates_fast", Mode: bridgeipc.Mode("query"), ArgsTS: "[]", ResultTS: "Update[]"},
 	{Kind: KindHandler, Route: "system.get_uptime", Mode: bridgeipc.Mode("query"), ArgsTS: "[]", ResultTS: "number"},
+	{Kind: KindRunner, Route: "system.install_capability", Privileged: true, Mode: bridgeipc.Mode("job"), ArgsTS: "[capability: string]", ResultTS: "JobSnapshot"},
 	{Kind: KindHandler, Route: "system.list_failed_login_events", Privileged: true, Mode: bridgeipc.Mode("query"), ArgsTS: "[limit?: string]", ResultTS: "AccountUserLogin[]"},
 	{Kind: KindHandler, Route: "systemd.disable_service", Mode: bridgeipc.Mode("job"), ArgsTS: "[serviceName: string]", ResultTS: "void"},
 	{Kind: KindHandler, Route: "systemd.enable_service", Mode: bridgeipc.Mode("job"), ArgsTS: "[serviceName: string]", ResultTS: "void"},

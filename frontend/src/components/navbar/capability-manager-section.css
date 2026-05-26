@@ -53,6 +53,13 @@
   min-width: 0;
 }
 
+.capability-manager__row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .capability-manager__title-block {
   min-width: 0;
 }

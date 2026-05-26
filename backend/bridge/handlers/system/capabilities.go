@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
@@ -35,6 +36,134 @@ type capabilitiesResponse struct {
 	AvahiError             string `json:"avahi_error,omitempty"`
 }
 
+// capabilitySpec describes a single capability: how to detect it, how to
+// install it from the UI (if installable), and how to label it in logs.
+type capabilitySpec struct {
+	Name    string // wire prefix, e.g. "avahi"
+	LogName string // human-friendly name for logs, e.g. "Avahi mDNS"
+	Detect  func(ctx context.Context) (bool, string)
+	Install *installSpec // nil = "not installable from the UI"
+}
+
+// installSpec describes what `system.install_capability` should do for one
+// capability. Either or both of the package/service halves may be set.
+type installSpec struct {
+	// PackageDebian / PackageRHEL: name of the package to install on each
+	// distro family (looked up via PackageKit Resolve). Empty = no package
+	// step.
+	PackageDebian string
+	PackageRHEL   string
+	// ServiceDebian / ServiceRHEL: systemd unit to enable+start after install.
+	// Empty = no service step.
+	ServiceDebian string
+	ServiceRHEL   string
+	// EnableService: when true, also `systemctl enable` the unit, not just
+	// start it.
+	EnableService bool
+}
+
+var capabilityRegistry = []capabilitySpec{
+	{
+		Name:    "docker",
+		LogName: "Docker service",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(docker.CheckDockerAvailability(ctx))
+		},
+	},
+	{
+		Name:    "indexer",
+		LogName: "Indexer API",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(filebrowser.CheckIndexerAvailability(ctx))
+		},
+	},
+	{
+		Name:    "lm_sensors",
+		LogName: "lm-sensors",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("sensors", "lm-sensors"))
+		},
+		Install: &installSpec{PackageDebian: "lm-sensors", PackageRHEL: "lm_sensors"},
+	},
+	{
+		Name:    "smartmontools",
+		LogName: "smartmontools",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("smartctl", "smartmontools"))
+		},
+		Install: &installSpec{PackageDebian: "smartmontools", PackageRHEL: "smartmontools"},
+	},
+	{
+		Name:    "packagekit",
+		LogName: "PackageKit",
+		Detect: func(ctx context.Context) (bool, string) {
+			ok, err := dbusclient.PackageKit.Available(ctx)
+			return checkedCapabilityErr(ok, err, dbusclient.ErrPackageKitUnavailable)
+		},
+	},
+	{
+		Name:    "nfs_client",
+		LogName: "NFS client",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(storage.CheckNFSClientAvailability())
+		},
+		Install: &installSpec{PackageDebian: "nfs-common", PackageRHEL: "nfs-utils"},
+	},
+	{
+		Name:    "nfs_server",
+		LogName: "NFS server",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(nfsshares.CheckNFSServerAvailability())
+		},
+		Install: &installSpec{
+			PackageDebian: "nfs-kernel-server",
+			PackageRHEL:   "nfs-utils",
+			ServiceDebian: "nfs-kernel-server.service",
+			ServiceRHEL:   "nfs-server.service",
+			EnableService: true,
+		},
+	},
+	{
+		Name:    "tuned",
+		LogName: "TuneD",
+		Detect: func(ctx context.Context) (bool, string) {
+			ok, err := power.Available(ctx)
+			return checkedCapabilityErr(ok, err, power.ErrUnavailable)
+		},
+		Install: &installSpec{
+			PackageDebian: "tuned",
+			PackageRHEL:   "tuned",
+			ServiceDebian: "tuned.service",
+			ServiceRHEL:   "tuned.service",
+			EnableService: true,
+		},
+	},
+	{
+		Name:    "avahi",
+		LogName: "Avahi mDNS",
+		Detect: func(ctx context.Context) (bool, string) {
+			ok, err := checkAvahiAvailability(ctx)
+			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
+		},
+		Install: &installSpec{
+			PackageDebian: "avahi-daemon",
+			PackageRHEL:   "avahi",
+			ServiceDebian: "avahi-daemon.service",
+			ServiceRHEL:   "avahi-daemon.service",
+			EnableService: true,
+		},
+	},
+}
+
+func capabilitySpecByName(name string) (capabilitySpec, bool) {
+	for _, spec := range capabilityRegistry {
+		if spec.Name == name {
+			return spec, true
+		}
+	}
+	return capabilitySpec{}, false
+}
+
 func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	if _, err := exec.LookPath(command); err != nil {
 		return false, fmt.Errorf("%s not found (missing %s dependency)", command, dependencyName)
@@ -42,7 +171,11 @@ func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	return true, nil
 }
 
-func checkedCapability(ok bool, err error, unavailable error) (bool, string) {
+func checkedCapability(ok bool, err error) (bool, string) {
+	return checkedCapabilityErr(ok, err, nil)
+}
+
+func checkedCapabilityErr(ok bool, err error, unavailable error) (bool, string) {
 	if err != nil {
 		return false, err.Error()
 	}
@@ -66,64 +199,49 @@ func logUnavailableCapability(name, message string) {
 	slog.Info(name+" unavailable.", "error", message)
 }
 
-func logCapabilitiesSummary(out capabilitiesResponse) {
-	slog.Info(fmt.Sprintf(
-		"Capabilities: docker=%s indexer=%s sensors=%s smart=%s packagekit=%s nfs-client=%s nfs-server=%s tuned=%s avahi=%s.",
-		capabilityStatus(out.DockerAvailable),
-		capabilityStatus(out.IndexerAvailable),
-		capabilityStatus(out.LMSensorsAvailable),
-		capabilityStatus(out.SmartmontoolsAvailable),
-		capabilityStatus(out.PackageKitAvailable),
-		capabilityStatus(out.NFSClientAvailable),
-		capabilityStatus(out.NFSServerAvailable),
-		capabilityStatus(out.TunedAvailable),
-		capabilityStatus(out.AvahiAvailable),
-	))
-
-	logUnavailableCapability("Docker service", out.DockerError)
-	logUnavailableCapability("Indexer API", out.IndexerError)
-	logUnavailableCapability("lm-sensors", out.LMSensorsError)
-	logUnavailableCapability("smartmontools", out.SmartmontoolsError)
-	logUnavailableCapability("PackageKit", out.PackageKitError)
-	logUnavailableCapability("NFS client", out.NFSClientError)
-	logUnavailableCapability("NFS server", out.NFSServerError)
-	logUnavailableCapability("TuneD", out.TunedError)
-	logUnavailableCapability("Avahi mDNS", out.AvahiError)
+// setCapabilityField writes (ok, errMsg) into the matching fields of out for
+// the given wire name. A bare switch keeps the wire struct strongly typed; the
+// anti-drift test guarantees every wire field has a registry entry, so no
+// silent misses are possible.
+func setCapabilityField(out *capabilitiesResponse, name string, ok bool, errMsg string) {
+	switch name {
+	case "docker":
+		out.DockerAvailable, out.DockerError = ok, errMsg
+	case "indexer":
+		out.IndexerAvailable, out.IndexerError = ok, errMsg
+	case "lm_sensors":
+		out.LMSensorsAvailable, out.LMSensorsError = ok, errMsg
+	case "smartmontools":
+		out.SmartmontoolsAvailable, out.SmartmontoolsError = ok, errMsg
+	case "packagekit":
+		out.PackageKitAvailable, out.PackageKitError = ok, errMsg
+	case "nfs_client":
+		out.NFSClientAvailable, out.NFSClientError = ok, errMsg
+	case "nfs_server":
+		out.NFSServerAvailable, out.NFSServerError = ok, errMsg
+	case "tuned":
+		out.TunedAvailable, out.TunedError = ok, errMsg
+	case "avahi":
+		out.AvahiAvailable, out.AvahiError = ok, errMsg
+	default:
+		panic("system: unknown capability wire name " + name)
+	}
 }
 
 func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
 	slog.Info("Checking system capabilities.")
 
 	var out capabilitiesResponse
+	summary := make([]string, 0, len(capabilityRegistry))
 
-	ok, err := docker.CheckDockerAvailability(ctx)
-	out.DockerAvailable, out.DockerError = checkedCapability(ok, err, nil)
+	for _, spec := range capabilityRegistry {
+		ok, errMsg := spec.Detect(ctx)
+		setCapabilityField(&out, spec.Name, ok, errMsg)
+		summary = append(summary, fmt.Sprintf("%s=%s", strings.ReplaceAll(spec.Name, "_", "-"), capabilityStatus(ok)))
+		logUnavailableCapability(spec.LogName, errMsg)
+	}
 
-	ok, err = filebrowser.CheckIndexerAvailability(ctx)
-	out.IndexerAvailable, out.IndexerError = checkedCapability(ok, err, nil)
-
-	ok, err = checkDependencyCommand("sensors", "lm-sensors")
-	out.LMSensorsAvailable, out.LMSensorsError = checkedCapability(ok, err, nil)
-
-	ok, err = checkDependencyCommand("smartctl", "smartmontools")
-	out.SmartmontoolsAvailable, out.SmartmontoolsError = checkedCapability(ok, err, nil)
-
-	ok, err = dbusclient.PackageKit.Available(ctx)
-	out.PackageKitAvailable, out.PackageKitError = checkedCapability(ok, err, dbusclient.ErrPackageKitUnavailable)
-
-	ok, err = storage.CheckNFSClientAvailability()
-	out.NFSClientAvailable, out.NFSClientError = checkedCapability(ok, err, nil)
-
-	ok, err = nfsshares.CheckNFSServerAvailability()
-	out.NFSServerAvailable, out.NFSServerError = checkedCapability(ok, err, nil)
-
-	ok, err = power.Available(ctx)
-	out.TunedAvailable, out.TunedError = checkedCapability(ok, err, power.ErrUnavailable)
-
-	ok, err = checkAvahiAvailability(ctx)
-	out.AvahiAvailable, out.AvahiError = checkedCapability(ok, err, errAvahiUnavailable)
-
-	logCapabilitiesSummary(out)
+	slog.Info("Capabilities: " + strings.Join(summary, " ") + ".")
 
 	return out
 }
