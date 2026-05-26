@@ -240,7 +240,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         setAutoUpdateLoading(false);
       }
     },
-    [isManagedContainer, name, queryClient],
+    [isManagedContainer, name, queryClient, toast],
   );
 
   // ---- metrics ----

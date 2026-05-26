@@ -2511,11 +2511,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               );
             },
             onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error ? error.message : "Job failed",
-                );
-              }
+              if (abortController.signal.aborted) return;
+              // SMART self-tests fire their own scoped error toast from
+              // DiskOverview (links back to /storage). Skip the generic
+              // one here to avoid duplicates.
+              if (job.type === JOB_TYPE_STORAGE_SMART_TEST) return;
+              toast.error(
+                error instanceof Error ? error.message : "Job failed",
+              );
             },
             onFinally: () => removeBackgroundJob(job.id),
           });

@@ -109,6 +109,93 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       }
     };
   }, []);
+
+  // Refresh recovery: if a SMART self-test job for this drive is already running
+  // (e.g. user refreshed the page mid-test), find it and re-attach so the UI
+  // keeps the buttons disabled and progress bar updating.
+  useEffect(() => {
+    const deviceName = rawDrive?.name;
+    if (!deviceName) return;
+    let canceled = false;
+    void (async () => {
+      try {
+        const jobs = await linuxio.jobs.list.call("active");
+        if (canceled) return;
+        const mine = jobs.find(
+          (j) =>
+            j.type === "storage.run_smart_test" &&
+            j.args?.[0] === deviceName &&
+            (j.state === "running" || j.state === "queued"),
+        );
+        if (!mine) return;
+        const testType: "short" | "long" =
+          mine.args?.[1] === "long" ? "long" : "short";
+        setStartPending(testType);
+        setTestProgress({
+          type: "status",
+          status: "in_progress",
+          test_type: testType,
+          device: deviceName,
+          message: "Resuming SMART self-test",
+        });
+        const label = testType === "short" ? "Short" : "Extended";
+        void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
+          open: () => openJobAttachStream(mine.id),
+          onOpen: (stream) => {
+            streamRef.current = stream;
+          },
+          onProgress: (data) => {
+            setTestProgress((prev) => ({
+              ...(prev || {}),
+              ...data,
+              test_type: data.test_type ?? prev?.test_type ?? testType,
+              device: data.device ?? prev?.device ?? deviceName,
+            }));
+          },
+          closeMessage: "SMART self-test stream closed unexpectedly",
+        })
+          .then((data) => {
+            const finalStatus = data?.status ?? "completed";
+            setTestProgress((prev) => ({
+              ...(prev || {}),
+              type: "status",
+              status: finalStatus as SmartTestProgressEvent["status"],
+              message: data?.message ?? prev?.message,
+              test_type: data?.test_type ?? prev?.test_type ?? testType,
+              device: data?.device ?? prev?.device ?? deviceName,
+            }));
+            if (finalStatus === "completed") {
+              toast.success(
+                `${label} self-test completed on /dev/${deviceName}`,
+              );
+            } else if (finalStatus === "aborted") {
+              toast.error(`${label} self-test aborted on /dev/${deviceName}`);
+            } else {
+              const detail = data?.message ? `: ${data.message}` : "";
+              toast.error(
+                `${label} self-test failed on /dev/${deviceName}${detail}`,
+              );
+            }
+          })
+          .catch((error: unknown) => {
+            if (error instanceof Error && error.name === "AbortError") return;
+            const errorMessage =
+              error instanceof Error ? error.message : "SMART self-test failed";
+            toast.error(errorMessage);
+          })
+          .finally(() => {
+            streamRef.current = null;
+            setStartPending(null);
+          });
+      } catch {
+        // ignore — refresh recovery is best-effort
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [rawDrive?.name, runStreamResult, toast]);
+
   const handleRunTest = (testType: "short" | "long") => {
     if (!rawDrive) return;
     if (!smartmontoolsAvailable) {
@@ -170,9 +257,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             test_type: data.test_type ?? prev?.test_type ?? testType,
             device: data.device ?? prev?.device ?? rawDrive.name,
           }));
-          if (data.status && data.status !== "starting") {
-            setStartPending(null);
-          }
         },
         closeMessage: "SMART self-test stream closed unexpectedly",
       })
@@ -186,13 +270,17 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             test_type: data?.test_type ?? prev?.test_type ?? testType,
             device: data?.device ?? prev?.device ?? rawDrive.name,
           }));
+          const label = testType === "short" ? "Short" : "Extended";
           if (finalStatus === "completed") {
             toast.success(
-              `${testType === "short" ? "Short" : "Extended"} self-test completed on /dev/${rawDrive.name}`,
+              `${label} self-test completed on /dev/${rawDrive.name}`,
             );
+          } else if (finalStatus === "aborted") {
+            toast.error(`${label} self-test aborted on /dev/${rawDrive.name}`);
           } else {
+            const detail = data?.message ? `: ${data.message}` : "";
             toast.error(
-              `${testType === "short" ? "Short" : "Extended"} self-test ${finalStatus}`,
+              `${label} self-test failed on /dev/${rawDrive.name}${detail}`,
             );
           }
         })
@@ -308,6 +396,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         <TabPanel value={tabIndex} index={isNvme && power ? 4 : 3}>
           <SelfTestsTab
             startPending={startPending}
+            percentage={testProgress?.percentage}
             onRunTest={handleRunTest}
             selfTestLog={selfTestLog}
             nvmeSelfTestLog={nvmeSelfTestLog}

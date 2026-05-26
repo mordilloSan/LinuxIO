@@ -2,6 +2,7 @@ import React from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import {
   AppTable,
   AppTableBody,
@@ -14,6 +15,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 interface SelfTestsTabProps {
   startPending: "short" | "long" | null;
+  percentage?: number;
   onRunTest: (testType: "short" | "long") => void;
   selfTestLog?: {
     standard?: {
@@ -28,6 +30,7 @@ interface SelfTestsTabProps {
 }
 export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   startPending,
+  percentage,
   onRunTest,
   selfTestLog,
   nvmeSelfTestLog,
@@ -36,6 +39,8 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
 }) => {
   const theme = useAppTheme();
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
+  const displayPercent =
+    percentage !== undefined ? Math.max(0, Math.min(100, percentage)) : 0;
   return (
     <>
       <div
@@ -86,6 +91,25 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             {startPending === "long" ? "Starting..." : "Extended Test"}
           </AppButton>
         </div>
+        {startPending !== null && (
+          <div
+            style={{
+              marginTop: theme.spacing(1.5),
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1.5),
+            }}
+          >
+            <AppLinearProgress
+              variant="determinate"
+              value={displayPercent}
+              style={{ flex: 1 }}
+            />
+            <AppTypography variant="caption" color="text.secondary">
+              {displayPercent}%
+            </AppTypography>
+          </div>
+        )}
         <AppTypography
           variant="caption"
           color="text.secondary"

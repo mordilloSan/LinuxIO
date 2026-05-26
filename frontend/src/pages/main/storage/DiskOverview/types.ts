@@ -54,6 +54,7 @@ export interface SmartTestProgressEvent {
   status?:
     | "starting"
     | "running"
+    | "in_progress"
     | "completed"
     | "aborted"
     | "failed"
