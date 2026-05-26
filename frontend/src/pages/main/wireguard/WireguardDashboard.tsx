@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
-import { toast } from "sonner";
 
 import InterfaceDetails from "./InterfaceClients";
 
@@ -9,16 +8,14 @@ import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-const wireguardToastMeta = {
-  meta: { href: "/wireguard", label: "Open WireGuard" },
-};
-
 const WireGuardDashboard: React.FC = () => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );
@@ -40,10 +37,7 @@ const WireGuardDashboard: React.FC = () => {
     linuxio.wireguard.remove_interface.useMutation({
       onSuccess: (_, variables) => {
         const [interfaceName] = variables;
-        toast.success(
-          `WireGuard interface '${interfaceName}' deleted`,
-          wireguardToastMeta,
-        );
+        toast.success(`WireGuard interface '${interfaceName}' deleted`);
         setSelectedInterface(null);
         refetch();
       },
@@ -53,7 +47,6 @@ const WireGuardDashboard: React.FC = () => {
             error,
             "Failed to remove WireGuard interface",
           ),
-          wireguardToastMeta,
         );
       },
     });
@@ -61,30 +54,23 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: addPeer } = linuxio.wireguard.add_peer.useMutation({
     onSuccess: (_, variables) => {
       const [interfaceName] = variables;
-      toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
+      toast.success(`Peer added to '${interfaceName}'`);
       refetch();
     },
     onError: (error: Error) => {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to add peer"),
-        wireguardToastMeta,
-      );
+      toast.error(getMutationErrorMessage(error, "Failed to add peer"));
     },
   });
 
   const { mutate: upInterface } = linuxio.wireguard.up_interface.useMutation({
     onSuccess: (_, variables) => {
       const [interfaceName] = variables;
-      toast.success(
-        `WireGuard interface "${interfaceName}" turned on.`,
-        wireguardToastMeta,
-      );
+      toast.success(`WireGuard interface "${interfaceName}" turned on.`);
       refetch();
     },
     onError: (error: Error) => {
       toast.error(
         getMutationErrorMessage(error, "Failed to bring interface up"),
-        wireguardToastMeta,
       );
     },
   });
@@ -93,16 +79,12 @@ const WireGuardDashboard: React.FC = () => {
     linuxio.wireguard.down_interface.useMutation({
       onSuccess: (_, variables) => {
         const [interfaceName] = variables;
-        toast.success(
-          `WireGuard interface "${interfaceName}" turned off.`,
-          wireguardToastMeta,
-        );
+        toast.success(`WireGuard interface "${interfaceName}" turned off.`);
         refetch();
       },
       onError: (error: Error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to bring interface down"),
-          wireguardToastMeta,
         );
       },
     });
@@ -113,14 +95,12 @@ const WireGuardDashboard: React.FC = () => {
         const [interfaceName] = variables;
         toast.success(
           `WireGuard interface "${interfaceName}" enabled for boot persistence.`,
-          wireguardToastMeta,
         );
         refetch();
       },
       onError: (error: Error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to enable boot persistence"),
-          wireguardToastMeta,
         );
       },
     });
@@ -131,14 +111,12 @@ const WireGuardDashboard: React.FC = () => {
         const [interfaceName] = variables;
         toast.success(
           `WireGuard interface "${interfaceName}" disabled for boot persistence.`,
-          wireguardToastMeta,
         );
         refetch();
       },
       onError: (error: Error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to disable boot persistence"),
-          wireguardToastMeta,
         );
       },
     });

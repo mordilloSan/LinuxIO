@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -12,6 +11,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
@@ -27,6 +27,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
   defaultWorkingDir,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [isWorkingDirManuallyEdited, setIsWorkingDirManuallyEdited] =

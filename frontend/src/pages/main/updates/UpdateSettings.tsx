@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import {
   jobSnapshotResult,
@@ -17,14 +16,9 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-const updatesToastMeta = {
-  meta: {
-    href: "/updates",
-    label: "Open updates",
-  },
-};
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
@@ -42,6 +36,7 @@ export const useUpdateSettingsState = (enabled = true) => {
   } = linuxio.updates.get_auto_updates.useQuery({
     enabled,
   });
+  const toast = useScopedToast({ href: "/updates", label: "Open updates" });
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
     [rawServerState],
@@ -71,7 +66,7 @@ export const useUpdateSettingsState = (enabled = true) => {
       onSuccess: () => {
         reset();
         refetch();
-        toast.success("Automatic Updates Settings saved", updatesToastMeta);
+        toast.success("Automatic Updates Settings saved");
       },
       onError: (error: Error) => {
         toast.error(
@@ -90,14 +85,11 @@ export const useUpdateSettingsState = (enabled = true) => {
             errMsg.includes("no updates available") ||
             errMsg.includes("Prepared update not found")
           ) {
-            toast.info("No updates available to schedule", updatesToastMeta);
+            toast.info("No updates available to schedule");
           }
           return;
         }
-        toast.success(
-          "Offline update scheduled for next reboot",
-          updatesToastMeta,
-        );
+        toast.success("Offline update scheduled for next reboot");
       },
       onError: (error: Error) => {
         const errMsg = error?.message || String(error);
@@ -105,7 +97,7 @@ export const useUpdateSettingsState = (enabled = true) => {
           errMsg.includes("no updates available") ||
           errMsg.includes("Prepared update not found")
         ) {
-          toast.info("No updates available to schedule", updatesToastMeta);
+          toast.info("No updates available to schedule");
         } else {
           toast.error(
             getMutationErrorMessage(error, "Failed to schedule offline update"),

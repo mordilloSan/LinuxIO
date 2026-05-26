@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import CreateUserDialog from "./components/CreateUserDialog";
@@ -20,6 +19,7 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface UsersTabProps {
@@ -31,6 +31,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { data: users = [] } = linuxio.accounts.list_users.useQuery({

@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
@@ -32,6 +31,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
   responsiveTextStyles,
@@ -59,6 +59,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
@@ -177,6 +178,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
 
   const { mutateAsync: deleteNetwork, isPending: isDeleting } =
     linuxio.docker.delete_network.useMutation({

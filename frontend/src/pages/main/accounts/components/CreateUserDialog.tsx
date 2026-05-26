@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio, type CreateUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTextField from "@/components/ui/AppTextField";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {
@@ -26,6 +26,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   open,
   onClose,
 }) => {
+  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

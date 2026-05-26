@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { toast } from "sonner";
 
 import { linuxio, useStreamMux, openJobAttachStream, type Stream } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -12,6 +11,7 @@ import {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 
@@ -36,6 +36,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   composePath,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const [output, setOutput] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +153,15 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, action, projectName, composePath, muxIsOpen, runStreamResult]);
+  }, [
+    open,
+    action,
+    projectName,
+    composePath,
+    muxIsOpen,
+    runStreamResult,
+    toast,
+  ]);
 
   const getActionLabel = () => {
     switch (action) {

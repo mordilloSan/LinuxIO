@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -12,6 +11,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
@@ -28,6 +28,7 @@ const getCollectionCount = <T,>(items: T[] | null | undefined) =>
   items?.length ?? 0;
 const DockerInfo: React.FC = () => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -130,6 +131,7 @@ const DockerInfo: React.FC = () => {
       removeContainer,
       handleMenuClose,
       invalidateContainers,
+      toast,
     ],
   );
   const {

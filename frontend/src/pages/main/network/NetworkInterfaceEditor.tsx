@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
@@ -12,6 +11,7 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -90,6 +90,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onSave,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/network", label: "Open network" });
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
   const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);

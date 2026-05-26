@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
@@ -22,6 +21,7 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
   responsiveTextStyles,
@@ -47,6 +47,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
     linuxio.docker.delete_volume.useMutation({
       onError: (error: Error) => {

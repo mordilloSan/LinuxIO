@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
 
+import { useScopedToast } from "@/hooks/useScopedToast";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 
 type ClipboardOperation = "copy" | "cut";
@@ -46,6 +46,7 @@ export const useFileSelection = ({
   moveItems,
   onContextMenuClose,
 }: useFileSelectionParams): useFileSelectionResult => {
+  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
 

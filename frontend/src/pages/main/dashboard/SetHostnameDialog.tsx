@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,6 +10,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface Props {
@@ -20,6 +20,7 @@ interface Props {
 }
 
 const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
+  const toast = useScopedToast({ href: "/", label: "Open dashboard" });
   const queryClient = useQueryClient();
   const [hostname, setHostname] = useState(current);
 

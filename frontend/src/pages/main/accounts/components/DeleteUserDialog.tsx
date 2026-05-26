@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -12,6 +11,7 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -29,6 +29,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
   onSuccess,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
   const queryClient = useQueryClient();
 
   const { mutateAsync: deleteUser, isPending: isDeleting } =

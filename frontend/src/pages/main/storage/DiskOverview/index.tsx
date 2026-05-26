@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 
 import {
   DriveInfoTab,
@@ -35,6 +34,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
@@ -84,11 +84,13 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   smartmontoolsReason,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
   );
-  const [, setTestProgress] = useState<SmartTestProgressEvent | null>(null);
+  const [testProgress, setTestProgress] =
+    useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const { run: runStreamResult } = useStreamResult();
   const { mutate: runSmartTest } = linuxio.storage.run_smart_test.useMutation({
@@ -322,6 +324,7 @@ const DiskOverview: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const expanded = searchParams.get("drive");
   const selectedMountpoint = searchParams.get("fs");
   const [creatingSubvolumeMountpoint, setCreatingSubvolumeMountpoint] =

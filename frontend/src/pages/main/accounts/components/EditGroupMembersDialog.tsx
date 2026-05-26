@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import {
   linuxio,
@@ -16,6 +15,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -29,6 +29,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   onClose,
   group,
 }) => {
+  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
   const queryClient = useQueryClient();
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,

@@ -11,7 +11,6 @@ import React, {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 
 import {
   linuxio,
@@ -66,6 +65,7 @@ import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useFileViewState } from "@/hooks/useFileViewState";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { ViewMode, FileItem } from "@/types/filebrowser";
@@ -83,6 +83,7 @@ const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
 const FileBrowser: React.FC = () => {
+  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const { config } = useConfig();
   const chunkSize =
     (config.appSettings.chunkSizeMB ?? 0) > 0
@@ -561,6 +562,7 @@ const FileBrowser: React.FC = () => {
     selectedPaths,
     selectedItems,
     setPermissionsDialog,
+    toast,
   ]);
   const handleStartInlineRename = useCallback(() => {
     handleCloseContextMenu();
@@ -618,6 +620,7 @@ const FileBrowser: React.FC = () => {
     selectedPaths,
     setDeleteDialog,
     setPendingDeletePaths,
+    toast,
   ]);
   const handleConfirmDelete = useCallback(() => {
     if (!pendingDeletePaths.length) {
@@ -706,7 +709,7 @@ const FileBrowser: React.FC = () => {
         pendingArchiveNamesRef.current.delete(archiveName);
       }
     },
-    [compressFormatDialog, compressItems, getUniqueName, normalizedPath],
+    [compressFormatDialog, compressItems, getUniqueName, normalizedPath, toast],
   );
   const handleExtractSelection = useCallback(async () => {
     handleCloseContextMenu();
@@ -826,6 +829,7 @@ const FileBrowser: React.FC = () => {
     saveContentViaStream,
     setIsEditorDirty,
     setIsSavingFile,
+    toast,
   ]);
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
@@ -880,6 +884,7 @@ const FileBrowser: React.FC = () => {
     setIsEditorDirty,
     setIsSavingFile,
     saveContentViaStream,
+    toast,
   ]);
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
@@ -920,7 +925,7 @@ const FileBrowser: React.FC = () => {
       setUploadEntries((prev) => mergeDroppedEntries(prev, entries));
       event.target.value = "";
     },
-    [setUploadEntries],
+    [setUploadEntries, toast],
   );
   const handleCloseUploadDialog = useCallback(() => {
     if (isUploadProcessing) return;
@@ -973,6 +978,7 @@ const FileBrowser: React.FC = () => {
     setIsUploadProcessing,
     setUploadDialogOpen,
     setUploadEntries,
+    toast,
   ]);
   return (
     <>

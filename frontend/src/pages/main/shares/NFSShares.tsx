@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio, type NFSExport, type NFSClient } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";
@@ -27,6 +26,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import DirectoryTree from "@/components/ui/DirectoryTree";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NFSSharesProps {
@@ -309,6 +309,7 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const queryClient = useQueryClient();
   const [path, setPath] = useState("");
   const [clients, setClients] = useState<ClientRow[]>([
@@ -437,6 +438,7 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
   share,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const queryClient = useQueryClient();
   const [clients, setClients] = useState<ClientRow[]>(() =>
     share
@@ -565,6 +567,7 @@ export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
   share,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const queryClient = useQueryClient();
   const { mutate: deleteShare, isPending } =
     linuxio.shares.delete_nfs_share.useMutation({
@@ -635,6 +638,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   onCreateHandler,
   viewMode = "table",
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
@@ -657,7 +661,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
       return;
     }
     setCreateOpen(true);
-  }, [nfsUnavailable, nfsReason]);
+  }, [nfsUnavailable, nfsReason, toast]);
 
   useEffect(() => {
     if (onCreateHandler) {

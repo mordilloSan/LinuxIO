@@ -1,22 +1,19 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback, useMemo } from "react";
-import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-const wireguardToastMeta = {
-  meta: { href: "/wireguard", label: "Open WireGuard" },
-};
 
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
 
 const CreateInterfaceButton = () => {
+  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
   const [serverName, setServerName] = useState("");
   const [port, setPort] = useState(0);
   const [CIDR, setCIDR] = useState("");
@@ -186,10 +183,7 @@ const CreateInterfaceButton = () => {
 
     addInterface(args, {
       onSuccess: () => {
-        toast.success(
-          `WireGuard interface '${serverName}' created`,
-          wireguardToastMeta,
-        );
+        toast.success(`WireGuard interface '${serverName}' created`);
         setShowDialog(false);
         setDns("");
       },

@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio, type CreateGroupRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,6 +10,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {
@@ -22,6 +22,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   open,
   onClose,
 }) => {
+  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [gid, setGid] = useState("");

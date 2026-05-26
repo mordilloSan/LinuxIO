@@ -4,7 +4,6 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import ActionButton from "./ActionButton";
 
@@ -26,6 +25,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
@@ -88,6 +88,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   editMode,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const {

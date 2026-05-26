@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
-import { toast } from "sonner";
 
 import { DeleteNFSShareDialog } from "./NFSShares";
 import { DeleteSambaShareDialog } from "./SambaShares";
@@ -39,6 +38,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import DirectoryTree from "@/components/ui/DirectoryTree";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -396,6 +396,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
@@ -645,6 +646,7 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   onSuccess,
   group,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";

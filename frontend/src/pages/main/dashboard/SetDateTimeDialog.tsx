@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -50,6 +50,7 @@ interface Props {
 
 const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/", label: "Open dashboard" });
   const queryClient = useQueryClient();
 
   const { data: timezones = [] } = linuxio.system.get_timezones.useQuery({

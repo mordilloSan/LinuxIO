@@ -1,8 +1,8 @@
 import type React from "react";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
 
 import { FileTransferContextValue } from "@/contexts/FileTransferContext";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { FileResource } from "@/types/filebrowser";
 
 import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
@@ -34,6 +34,7 @@ export const useFileDragAndDrop = ({
   startUpload,
   onUploadComplete,
 }: UseDragAndDropUploadParams): UseDragAndDropUploadResult => {
+  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const [isDragOver, setIsDragOver] = useState(false);
   const [overwriteTargets, setOverwriteTargets] = useState<
     DroppedEntry[] | null

@@ -6,7 +6,6 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { toast } from "sonner";
 
 import ComposeList, { type ComposeProject } from "./ComposeList";
 
@@ -35,6 +34,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ComposeStacksPageProps {
@@ -47,6 +47,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   viewMode = "table",
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { config } = useConfig();
   const chunkSize =
     (config.appSettings.chunkSizeMB ?? 0) > 0
@@ -194,7 +195,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         setDeleteLoading(false);
       }
     },
-    [deleteDialogProject, deleteStack, refetch],
+    [deleteDialogProject, deleteStack, refetch, toast],
   );
 
   const handleDeleteDialogClose = useCallback(() => {
@@ -263,7 +264,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [queryClient],
+    [queryClient, toast],
   );
 
   // Preview stack handler (read-only)
@@ -297,7 +298,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [queryClient],
+    [queryClient, toast],
   );
 
   // Validate compose file
@@ -378,7 +379,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [chunkSize, projects, refetch, runChunkedStreamResult],
+    [chunkSize, projects, refetch, runChunkedStreamResult, toast],
   );
 
   // Save compose file with overwrite protection
@@ -417,7 +418,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         }
       }
     },
-    [editorMode, performSave, queryClient],
+    [editorMode, performSave, queryClient, toast],
   );
 
   // Handle overwrite confirmation
@@ -440,7 +441,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     } finally {
       setPendingSaveData(null);
     }
-  }, [pendingSaveData, performSave]);
+  }, [pendingSaveData, performSave, toast]);
 
   // Handle overwrite cancellation
   const handleOverwriteCancel = useCallback(() => {

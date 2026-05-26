@@ -7,7 +7,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, jobSnapshotResult, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
@@ -37,6 +36,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface NFSMountsProps {
@@ -178,6 +178,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [server, setServer] = useState("");
   const [exportPath, setExportPath] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -392,6 +393,7 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const { mutate: removeEntry, isPending: isRemoving } =
     linuxio.storage.unmount_nfs.useMutation({
       onSuccess: (result) => {
@@ -476,6 +478,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   // Use server and exportPath directly from mount data
   const server = mount?.server || "";
   const exportPath = mount?.exportPath || "";
@@ -674,6 +677,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
@@ -728,7 +732,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       return;
     }
     setMountDialogOpen(true);
-  }, [nfsUnavailable, nfsReason]);
+  }, [nfsUnavailable, nfsReason, toast]);
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleMountNFS);

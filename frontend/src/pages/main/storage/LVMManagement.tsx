@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 
 import {
   linuxio,
@@ -34,6 +33,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -92,6 +92,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
@@ -220,6 +221,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [newSize, setNewSize] = useState(() =>
     lv ? `${Math.round(lv.size / (1024 * 1024 * 1024))}G` : "",
   );
@@ -329,6 +331,7 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const { mutate: deleteLV, isPending: isDeleting } =
     linuxio.storage.delete_lv.useMutation({
       onSuccess: () => {

@@ -4,9 +4,9 @@ import {
   QueryClient,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { linuxio, openJobAttachStream } from "@/api";
 import { useFileTransfers } from "./useFileTransfers";
 import { useStreamResult } from "./useStreamResult";
@@ -52,6 +52,7 @@ export const useFileMutations = ({
   queryClient: providedQueryClient,
   onDeleteSuccess,
 }: UseFileMutationsParams) => {
+  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
     useFileTransfers();

@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import type { UnitInfo } from "@/api";
@@ -18,6 +17,7 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -214,6 +214,7 @@ export const UnitCardActions: React.FC<{
   unitFileState: string;
   info: UnitInfo | undefined;
 }> = ({ unitName, activeState, unitFileState, info }) => {
+  const toast = useScopedToast({ href: "/services", label: "Open services" });
   const queryClient = useQueryClient();
 
   const invalidateUnit = React.useCallback(() => {
@@ -236,7 +237,7 @@ export const UnitCardActions: React.FC<{
           getMutationErrorMessage(err, `Failed to ${verb} ${unitName}`),
         ),
     }),
-    [unitName, invalidateUnit],
+    [unitName, invalidateUnit, toast],
   );
 
   const { mutate: startService, isPending: isStarting } =

@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
-import { toast } from "sonner";
 
 import { linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
@@ -9,13 +8,8 @@ import PageLoader from "@/components/loaders/PageLoader";
 import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
-const wireguardToastMeta = {
-  meta: {
-    href: "/wireguard",
-    label: "Open WireGuard",
-  },
-};
 interface InterfaceDetailsProps {
   params: {
     id: string;
@@ -23,6 +17,7 @@ interface InterfaceDetailsProps {
 }
 
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
+  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
@@ -55,10 +50,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       });
     },
     onError: (error: Error) => {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to delete peer"),
-        wireguardToastMeta,
-      );
+      toast.error(getMutationErrorMessage(error, "Failed to delete peer"));
     },
   });
   // Type-safe API returns Peer[] directly
@@ -78,10 +70,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleDeletePeer = (peerName: string) => {
     deletePeer([interfaceName, peerName], {
       onSuccess: () => {
-        toast.success(
-          `WireGuard Peer '${peerName}' deleted`,
-          wireguardToastMeta,
-        );
+        toast.success(`WireGuard Peer '${peerName}' deleted`);
       },
     });
   };
@@ -102,15 +91,9 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      toast.success(
-        `Config for '${peername}' downloaded successfully`,
-        wireguardToastMeta,
-      );
+      toast.success(`Config for '${peername}' downloaded successfully`);
     } catch (error) {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to download config"),
-        wireguardToastMeta,
-      );
+      toast.error(getMutationErrorMessage(error, "Failed to download config"));
     }
   };
   const handleViewQrCode = async (peername: string) => {
@@ -122,15 +105,9 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       );
       setQrCode(result.qrcode);
       setOpenDialog(true);
-      toast.success(
-        `QR code for '${peername}' loaded successfully`,
-        wireguardToastMeta,
-      );
+      toast.success(`QR code for '${peername}' loaded successfully`);
     } catch (error) {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to load QR code"),
-        wireguardToastMeta,
-      );
+      toast.error(getMutationErrorMessage(error, "Failed to load QR code"));
     } finally {
       setIsLoadingQrCode(false);
     }

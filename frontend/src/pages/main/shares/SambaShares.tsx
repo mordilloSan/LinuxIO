@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio, type SambaShare } from "@/api";
 import SambaShareCard from "@/components/cards/SambaShareCard";
@@ -25,6 +24,7 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import DirectoryTree from "@/components/ui/DirectoryTree";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface SambaSharesProps {
@@ -242,6 +242,7 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
@@ -370,6 +371,7 @@ export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
   share,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const queryClient = useQueryClient();
   const p = share?.properties;
   const [path, setPath] = useState(() => p?.["path"] || "");
@@ -489,6 +491,7 @@ export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
   share,
   onSuccess,
 }) => {
+  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const queryClient = useQueryClient();
   const { mutate: deleteShare, isPending } =
     linuxio.shares.delete_samba_share.useMutation({

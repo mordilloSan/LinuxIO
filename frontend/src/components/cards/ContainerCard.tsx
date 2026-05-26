@@ -6,7 +6,6 @@ import React, {
   useCallback,
   useEffect,
 } from "react";
-import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
 import AppCircularProgress from "../ui/AppCircularProgress";
@@ -22,6 +21,7 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
@@ -65,6 +65,7 @@ interface ContainerCardProps {
 
 const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const queryClient = useQueryClient();
 
   // dialogs
