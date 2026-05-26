@@ -1,7 +1,7 @@
 import type React from "react";
 import { useCallback, useState } from "react";
 
-import { FileTransferContextValue } from "@/contexts/FileTransferContext";
+import { BackgroundJobsContextValue } from "@/contexts/BackgroundJobsContext";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { FileResource } from "@/types/filebrowser";
 
@@ -11,7 +11,7 @@ interface UseDragAndDropUploadParams {
   normalizedPath: string;
   resource?: FileResource | null;
   editingPath?: string | null;
-  startUpload: FileTransferContextValue["startUpload"];
+  startUpload: BackgroundJobsContextValue["startUpload"];
   onUploadComplete: () => void;
 }
 

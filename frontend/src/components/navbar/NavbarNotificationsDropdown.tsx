@@ -8,8 +8,8 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
+import { useBackgroundJobs } from "@/hooks/useBackgroundJobs";
 import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { useAppTheme } from "@/theme";
 
@@ -240,7 +240,7 @@ function NavbarNotificationsDropdown() {
     cancelMove,
     cancelJob,
     openIndexerDialog,
-  } = useFileTransfers();
+  } = useBackgroundJobs();
 
   const [completedTransfers, setCompletedTransfers] = useState<
     CompletedTransfer[]

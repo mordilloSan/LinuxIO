@@ -11,8 +11,8 @@ import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
+import { useBackgroundJobs } from "@/hooks/useBackgroundJobs";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useAppTheme, useAppMediaQuery } from "@/theme";
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
@@ -51,7 +51,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
     React.useState<HTMLElement | null>(null);
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
-  const { startIndexer, isIndexing, openIndexerDialog } = useFileTransfers();
+  const { startIndexer, isIndexing, openIndexerDialog } = useBackgroundJobs();
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
     openIndexerDialog();

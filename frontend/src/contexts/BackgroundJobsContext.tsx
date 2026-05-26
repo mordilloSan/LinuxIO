@@ -1,3 +1,4 @@
+import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import React, {
   createContext,
   useContext,
@@ -13,6 +14,7 @@ import {
   linuxio,
   bindStreamHandlers,
   isConnected,
+  isJobLocallyHandled,
   isTerminalJobState,
   openJobAttachStream,
   openJobDataStream,
@@ -26,6 +28,61 @@ import {
 } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useStreamResult } from "@/hooks/useStreamResult";
+
+// Query keys to invalidate when a job of the given type reaches a terminal state.
+// Only listed types are auto-invalidated; jobs claimed by a local handler
+// (registered via markJobLocallyHandled) are skipped.
+const INVALIDATIONS_BY_JOB_TYPE: Record<string, () => QueryKey[]> = {
+  "docker.start_container": () => [linuxio.docker.list_containers.queryKey()],
+  "docker.stop_container": () => [linuxio.docker.list_containers.queryKey()],
+  "docker.restart_container": () => [linuxio.docker.list_containers.queryKey()],
+  "docker.remove_container": () => [linuxio.docker.list_containers.queryKey()],
+  "docker.start_all_stopped": () => [linuxio.docker.list_containers.queryKey()],
+  "docker.stop_all_running": () => [linuxio.docker.list_containers.queryKey()],
+
+  "docker.delete_image": () => [linuxio.docker.list_images.queryKey()],
+
+  "docker.create_network": () => [linuxio.docker.list_networks.queryKey()],
+  "docker.delete_network": () => [linuxio.docker.list_networks.queryKey()],
+
+  "docker.create_volume": () => [linuxio.docker.list_volumes.queryKey()],
+  "docker.delete_volume": () => [linuxio.docker.list_volumes.queryKey()],
+
+  "docker.compose_up": () => [
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_containers.queryKey(),
+  ],
+  "docker.compose_down": () => [
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_containers.queryKey(),
+  ],
+  "docker.compose_stop": () => [
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_containers.queryKey(),
+  ],
+  "docker.compose_restart": () => [
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_containers.queryKey(),
+  ],
+  "docker.delete_stack": () => [
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_containers.queryKey(),
+  ],
+
+  "accounts.create_user": () => [linuxio.accounts.list_users.queryKey()],
+  "accounts.delete_user": () => [linuxio.accounts.list_users.queryKey()],
+  "accounts.modify_user": () => [linuxio.accounts.list_users.queryKey()],
+  "accounts.lock_user": () => [linuxio.accounts.list_users.queryKey()],
+  "accounts.unlock_user": () => [linuxio.accounts.list_users.queryKey()],
+  "accounts.change_password": () => [linuxio.accounts.list_users.queryKey()],
+
+  "accounts.create_group": () => [linuxio.accounts.list_groups.queryKey()],
+  "accounts.delete_group": () => [linuxio.accounts.list_groups.queryKey()],
+  "accounts.modify_group_members": () => [
+    linuxio.accounts.list_groups.queryKey(),
+    linuxio.accounts.list_users.queryKey(),
+  ],
+};
 
 const JOB_TYPE_FILE_COMPRESS = "filebrowser.compress";
 const JOB_TYPE_FILE_EXTRACT = "filebrowser.extract";
@@ -222,7 +279,7 @@ function createProgressSpeedCalculator(minWindowMs = 500, alpha = 0.3) {
   };
 }
 
-export interface FileTransferContextValue {
+export interface BackgroundJobsContextValue {
   downloads: Download[];
   uploads: Upload[];
   compressions: Compression[];
@@ -286,12 +343,13 @@ export interface FileTransferContextValue {
   cancelUpload: (id: string) => void;
 }
 
-export const FileTransferContext =
-  createContext<FileTransferContextValue | null>(null);
+export const BackgroundJobsContext =
+  createContext<BackgroundJobsContextValue | null>(null);
 
-export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const BackgroundJobsProvider: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
+  const queryClient = useQueryClient();
   const { status: streamMuxStatus } = useStreamMux();
   const configCtx = useContext(ConfigContext);
   const chunkSize =
@@ -2552,7 +2610,22 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       cleanupEvents = bindStreamHandlers<JobEvent>(eventStream, {
         onProgress: (event) => {
           if (!event?.job || cancelled) return;
-          attachRecoveredJob(event.job);
+          const job = event.job;
+
+          // 1) Attach progress trackers to jobs that don't have a local handler.
+          attachRecoveredJob(job);
+
+          // 2) On terminal events, invalidate query caches for jobs whose type
+          //    has a mapping above and that aren't being tracked by a local
+          //    handler (those handlers are responsible for their own
+          //    invalidations).
+          if (!isTerminalJobState(job.state)) return;
+          if (isJobLocallyHandled(job.id)) return;
+          const keysFn = INVALIDATIONS_BY_JOB_TYPE[job.type];
+          if (!keysFn) return;
+          for (const queryKey of keysFn()) {
+            void queryClient.invalidateQueries({ queryKey });
+          }
         },
         onClose: () => {
           if (!cancelled) {
@@ -2569,7 +2642,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       cleanupEvents?.();
       eventStream?.close();
     };
-  }, [attachRecoveredJob, streamMuxStatus]);
+  }, [attachRecoveredJob, queryClient, streamMuxStatus]);
 
   const contextValue = useMemo(
     () => ({
@@ -2637,8 +2710,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   return (
-    <FileTransferContext.Provider value={contextValue}>
+    <BackgroundJobsContext.Provider value={contextValue}>
       {children}
-    </FileTransferContext.Provider>
+    </BackgroundJobsContext.Provider>
   );
 };

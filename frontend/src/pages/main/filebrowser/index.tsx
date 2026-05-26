@@ -51,6 +51,7 @@ import {
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useBackgroundJobs } from "@/hooks/useBackgroundJobs";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig } from "@/hooks/useConfig";
 import { useFileDialogs } from "@/hooks/useFileDialogs";
@@ -62,7 +63,6 @@ import { useFileQueries } from "@/hooks/useFileQueries";
 import { useFileSearch } from "@/hooks/useFileSearch";
 import { useFileSelection } from "@/hooks/useFileSelection";
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useFileViewState } from "@/hooks/useFileViewState";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -160,7 +160,7 @@ const FileBrowser: React.FC = () => {
     baseName: string;
   } | null>(null);
   const queryClient = useQueryClient();
-  const { startDownload, startUpload } = useFileTransfers();
+  const { startDownload, startUpload } = useBackgroundJobs();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");
   const { runChunked: runChunkedStreamResult } = useStreamResult();

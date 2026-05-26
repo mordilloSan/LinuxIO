@@ -3,7 +3,7 @@ import React from "react";
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
+import { useBackgroundJobs } from "@/hooks/useBackgroundJobs";
 
 const IndexerDialog: React.FC = () => {
   const {
@@ -12,7 +12,7 @@ const IndexerDialog: React.FC = () => {
     closeIndexerDialog,
     lastIndexerResult,
     lastIndexerError,
-  } = useFileTransfers();
+  } = useBackgroundJobs();
   const activeIndexer = indexers[0];
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);

@@ -1,15 +1,15 @@
 import { useContext } from "react";
 
-import { FileTransferContext } from "@/contexts/FileTransferContext";
+import { BackgroundJobsContext } from "@/contexts/BackgroundJobsContext";
 
-export const useFileTransfers = () => {
-  const context = useContext(FileTransferContext);
+export const useBackgroundJobs = () => {
+  const context = useContext(BackgroundJobsContext);
   if (!context) {
     throw new Error(
-      "useFileTransfers must be used within FileTransferProvider",
+      "useBackgroundJobs must be used within BackgroundJobsProvider",
     );
   }
   return context;
 };
 
-export default useFileTransfers;
+export default useBackgroundJobs;

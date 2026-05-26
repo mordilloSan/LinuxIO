@@ -8,7 +8,7 @@ import { useCallback } from "react";
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { linuxio, openJobAttachStream } from "@/api";
-import { useFileTransfers } from "./useFileTransfers";
+import { useBackgroundJobs } from "./useBackgroundJobs";
 import { useStreamResult } from "./useStreamResult";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -55,7 +55,7 @@ export const useFileMutations = ({
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
-    useFileTransfers();
+    useBackgroundJobs();
   const { run: runStreamResult } = useStreamResult();
 
   const invalidateListing = useCallback(() => {
@@ -157,7 +157,7 @@ export const useFileMutations = ({
       });
     },
     onError: (error: unknown) => {
-      // Note: errors are also handled by FileTransferContext
+      // Note: errors are also handled by BackgroundJobsContext
       toast.error(getMutationErrorMessage(error, "Failed to extract archive"));
     },
   });
