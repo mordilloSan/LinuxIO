@@ -22,16 +22,16 @@ export function alpha(color: string, opacity: number): string {
   }
 
   // rgb(r, g, b) or rgba(r, g, b, a)
-  const rgbMatch = color.match(
-    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/,
+  const rgbMatch = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(
+    color,
   );
   if (rgbMatch) {
     return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${clamped})`;
   }
 
   // hsl(h, s%, l%) or hsla(h, s%, l%, a)
-  const hslMatch = color.match(
-    /hsla?\(\s*([\d.]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)/,
+  const hslMatch = /hsla?\(\s*([\d.]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)/.exec(
+    color,
   );
   if (hslMatch) {
     return `hsla(${hslMatch[1]}, ${hslMatch[2]}, ${hslMatch[3]}, ${clamped})`;
@@ -77,7 +77,7 @@ function parseHexColor(color: string): RgbColor | null {
 }
 
 function parseRgbColor(color: string): RgbColor | null {
-  const match = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/);
+  const match = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(color);
 
   if (!match) {
     return null;

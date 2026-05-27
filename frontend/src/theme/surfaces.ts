@@ -48,19 +48,18 @@ export const getAccentCardHoverStyles = (
   marginBlockEnd: "-1px",
 });
 
+const CHROME_SURFACE_OPACITY = {
+  dark: { default: 0.18, hover: 0.28 },
+  light: { default: 0.08, hover: 0.14 },
+} as const;
+
 export const getChromeSurfaceColor = (
   theme: AppTheme,
   chromeColor: string,
   emphasis: "default" | "hover" = "default",
 ) => {
-  const opacity =
-    theme.palette.mode === "dark"
-      ? emphasis === "hover"
-        ? 0.28
-        : 0.18
-      : emphasis === "hover"
-        ? 0.14
-        : 0.08;
+  const mode = theme.palette.mode === "dark" ? "dark" : "light";
+  const opacity = CHROME_SURFACE_OPACITY[mode][emphasis];
 
   return mixWithTransparency(chromeColor, opacity);
 };

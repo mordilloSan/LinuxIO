@@ -12,7 +12,7 @@ interface ItemMetadata {
   type: string;
 }
 
-type ItemWithPath = ItemMetadata & {
+export type FileItem = ItemMetadata & {
   path: string;
 };
 
@@ -24,12 +24,10 @@ interface DirectoryListing {
   parentDirItems?: ApiItem[];
 }
 
-export type ApiResource = ItemWithPath &
+export type ApiResource = FileItem &
   DirectoryListing & {
     content?: string;
   };
-
-export type FileItem = ItemWithPath;
 
 export type FileResource = Omit<ApiResource, "files" | "folders"> & {
   items?: FileItem[];

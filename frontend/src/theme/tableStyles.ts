@@ -10,25 +10,27 @@ export const getTableHeaderStyles = (theme: AppTheme) => ({
   boxShadow: "none",
 });
 
-export const getTableRowStyles = (theme: AppTheme, index: number) => ({
-  "& .MuiTableCell-root": { borderBottom: "none" },
-  backgroundColor:
-    index % 2 === 0
-      ? "transparent"
-      : theme.palette.mode === "dark"
-        ? "rgba(255,255,255,0.04)"
-        : "rgba(0,0,0,0.05)",
-});
+export const getTableRowStyles = (theme: AppTheme, index: number) => {
+  const stripedColor =
+    theme.palette.mode === "dark"
+      ? "rgba(255,255,255,0.04)"
+      : "rgba(0,0,0,0.05)";
+  return {
+    "& .MuiTableCell-root": { borderBottom: "none" },
+    backgroundColor: index % 2 === 0 ? "transparent" : stripedColor,
+  };
+};
 
-export const getExpandedRowStyles = (theme: AppTheme, index: number) => ({
-  "& .MuiTableCell-root": { borderBottom: "none" },
-  backgroundColor:
-    index % 2 === 0
-      ? "transparent"
-      : theme.palette.mode === "dark"
-        ? "rgba(255,255,255,0.08)"
-        : "rgba(0,0,0,0.05)",
-});
+export const getExpandedRowStyles = (theme: AppTheme, index: number) => {
+  const stripedColor =
+    theme.palette.mode === "dark"
+      ? "rgba(255,255,255,0.08)"
+      : "rgba(0,0,0,0.05)";
+  return {
+    "& .MuiTableCell-root": { borderBottom: "none" },
+    backgroundColor: index % 2 === 0 ? "transparent" : stripedColor,
+  };
+};
 
 export const getExpandedContentStyles = (theme: AppTheme) => ({
   margin: 2,

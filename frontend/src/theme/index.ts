@@ -347,7 +347,7 @@ function toColorChannel(color: string) {
     }
   }
 
-  const rgbMatch = trimmed.match(/^rgba?\(([^)]+)\)$/i);
+  const rgbMatch = /^rgba?\(([^)]+)\)$/i.exec(trimmed);
 
   if (rgbMatch) {
     return rgbMatch[1]
