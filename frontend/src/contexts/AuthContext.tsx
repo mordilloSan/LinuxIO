@@ -1,31 +1,31 @@
 // src/contexts/AuthContext.tsx
 import {
   createContext,
-  useEffect,
-  useReducer,
   useCallback,
+  useEffect,
   useMemo,
+  useReducer,
 } from "react";
 import { toast } from "sonner";
 
 import {
-  capabilityStateFromWire,
-  emptyCapabilityState,
-  initStreamMux,
-  closeStreamMux,
-  linuxio,
-  parseCapabilityState,
-  pickCapabilityState,
   type CapabilitiesResponse,
   type CapabilityState,
+  capabilityStateFromWire,
+  closeStreamMux,
+  emptyCapabilityState,
+  initStreamMux,
+  linuxio,
   type MuxStatus,
+  parseCapabilityState,
+  pickCapabilityState,
 } from "@/api";
 import {
-  AuthContextType,
-  AuthState,
-  AuthActions,
-  AuthProviderProps,
   AUTH_ACTIONS,
+  AuthActions,
+  AuthContextType,
+  AuthProviderProps,
+  AuthState,
   AuthUser,
   LoginErrorCode,
   LoginErrorResponse,

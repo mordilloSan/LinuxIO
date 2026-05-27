@@ -1,8 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 
-import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
-
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -14,6 +12,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 /* ================= helpers ================= */
 
@@ -74,12 +74,12 @@ function getDNSv4List(i: any): string[] {
 /* ============================================ */
 
 interface Props {
-  iface: BaseNI;
-  expanded: boolean;
   editForm: Record<string, any>;
-  setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  expanded: boolean;
+  iface: BaseNI;
   onClose: () => void;
   onSave: (iface: BaseNI) => void;
+  setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }
 const NetworkInterfaceEditor: React.FC<Props> = ({
   iface,
@@ -339,8 +339,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             control={
               <AppSwitch
                 checked={isConnected || isConnecting}
-                onChange={handleConnectionToggle}
                 disabled={toggling}
+                onChange={handleConnectionToggle}
               />
             }
             label={
@@ -354,9 +354,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             }
           />
           <Chip
-            size="small"
             color="primary"
-            variant="soft"
             label={
               iface.ipv4_method === "manual"
                 ? "static IP"
@@ -366,21 +364,23 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
                     ? "IPv4 disabled"
                     : "IPv4: unknown"
             }
+            size="small"
+            variant="soft"
           />
         </div>
 
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <AppButton
             fullWidth
-            variant={mode === "auto" ? "contained" : "outlined"}
             onClick={() => handleModeChange("auto")}
+            variant={mode === "auto" ? "contained" : "outlined"}
           >
             Automatic
           </AppButton>
           <AppButton
             fullWidth
-            variant={mode === "manual" ? "contained" : "outlined"}
             onClick={() => handleModeChange("manual")}
+            variant={mode === "manual" ? "contained" : "outlined"}
           >
             Manual
           </AppButton>
@@ -389,11 +389,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         {mode === "auto" ? (
           <div>
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{
                 marginBottom: 8,
               }}
+              variant="body2"
             >
               The interface will automatically obtain IP address, gateway, and
               DNS from a DHCP server.
@@ -402,49 +402,49 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         ) : (
           <div>
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{
                 marginBottom: 8,
               }}
+              variant="body2"
             >
               Configure static network settings. All fields are required.
             </AppTypography>
 
             <AppTextField
               fullWidth
-              required
-              size="small"
-              label="IPv4 Address (CIDR)"
-              placeholder="192.168.1.10/24"
-              value={editForm.ipv4 ?? ""}
-              onChange={(e) => handleChange("ipv4", e.target.value)}
               helperText="Format: IP/prefix (e.g., 192.168.1.10/24)"
+              label="IPv4 Address (CIDR)"
+              onChange={(e) => handleChange("ipv4", e.target.value)}
+              placeholder="192.168.1.10/24"
+              required
+              size="small"
               style={{ marginBottom: 8 }}
+              value={editForm.ipv4 ?? ""}
             />
 
             <AppTextField
               fullWidth
-              required
-              size="small"
-              label="Gateway"
-              placeholder="192.168.1.1"
-              value={editForm.gateway ?? ""}
-              onChange={(e) => handleChange("gateway", e.target.value)}
               helperText="The IP address of your network gateway/router"
+              label="Gateway"
+              onChange={(e) => handleChange("gateway", e.target.value)}
+              placeholder="192.168.1.1"
+              required
+              size="small"
               style={{ marginBottom: 8 }}
+              value={editForm.gateway ?? ""}
             />
 
             <AppTextField
               fullWidth
+              helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
+              label="DNS Servers"
+              onChange={(e) => handleDNSChange(e.target.value)}
+              placeholder="8.8.8.8, 8.8.4.4"
               required
               size="small"
-              label="DNS Servers"
-              placeholder="8.8.8.8, 8.8.4.4"
-              value={editForm.dns ?? ""}
-              onChange={(e) => handleDNSChange(e.target.value)}
-              helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
               style={{ marginBottom: 8 }}
+              value={editForm.dns ?? ""}
             />
           </div>
         )}
@@ -457,10 +457,10 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             marginTop: theme.spacing(2),
           }}
         >
-          <AppButton onClick={onClose} disabled={saving}>
+          <AppButton disabled={saving} onClick={onClose}>
             Cancel
           </AppButton>
-          <AppButton variant="contained" onClick={handleSave} disabled={saving}>
+          <AppButton disabled={saving} onClick={handleSave} variant="contained">
             {saving ? "Saving…" : "Apply Configuration"}
           </AppButton>
         </div>

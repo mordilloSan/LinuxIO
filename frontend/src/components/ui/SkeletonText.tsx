@@ -19,6 +19,8 @@ const VARIANT_HEIGHT: Record<string, string> = {
 };
 
 export interface SkeletonTextProps {
+  className?: string;
+  style?: React.CSSProperties;
   /**
    * Matches the height of the given AppTypography variant.
    * Defaults to "body1".
@@ -26,8 +28,6 @@ export interface SkeletonTextProps {
   variant?: keyof typeof VARIANT_HEIGHT;
   /** Width of the skeleton bar. Use ch units (e.g. "12ch") to approximate character count. */
   width?: string | number;
-  className?: string;
-  style?: React.CSSProperties;
 }
 
 /**
@@ -45,11 +45,11 @@ const SkeletonText: React.FC<SkeletonTextProps> = ({
   style,
 }) => (
   <AppSkeleton
+    className={className}
+    height={VARIANT_HEIGHT[variant]}
+    style={style}
     variant="text"
     width={width}
-    height={VARIANT_HEIGHT[variant]}
-    className={className}
-    style={style}
   />
 );
 

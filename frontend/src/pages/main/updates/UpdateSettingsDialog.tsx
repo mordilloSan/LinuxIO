@@ -1,17 +1,17 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
-
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import Chip from "@/components/ui/AppChip";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
 interface UpdateSettingsDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   open,
@@ -20,7 +20,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   const theme = useAppTheme();
   const settingsState = useUpdateSettingsState(open);
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <GeneralDialog fullWidth maxWidth="md" onClose={onClose} open={open}>
       <AppDialogTitle
         style={{
           backgroundColor: theme.palette.background.paper,
@@ -39,26 +39,26 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
           }}
         >
           <AppTypography
-            variant="h6"
             style={{
               flexGrow: 1,
             }}
+            variant="h6"
           >
             Automatic Updates
           </AppTypography>
           {settingsState.serverState ? (
             <Chip
-              size="small"
               label={settingsState.serverState.backend}
+              size="small"
               variant="soft"
             />
           ) : null}
           <AppIconButton
-            size="small"
-            onClick={onClose}
             aria-label="Close update settings"
+            onClick={onClose}
+            size="small"
           >
-            <Icon icon="mdi:close" width={18} height={18} />
+            <Icon height={18} icon="mdi:close" width={18} />
           </AppIconButton>
         </div>
       </AppDialogTitle>

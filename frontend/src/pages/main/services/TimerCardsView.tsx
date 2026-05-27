@@ -1,31 +1,32 @@
 import React from "react";
 
-import {
-  DetailRow,
-  UnitCardActions,
-  UnitCardsView,
-  UnitStatusRows,
-  formatUsec,
-} from "./UnitViews";
-
 import type { Timer } from "@/api";
+
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 
+import {
+  DetailRow,
+  formatUsec,
+  UnitCardActions,
+  UnitCardsView,
+  UnitStatusRows,
+} from "./UnitViews";
+
 interface TimerCardsViewProps {
-  timers: Timer[];
   expanded: string | null;
   onExpand: (name: string | null) => void;
   renderDetailPanel: (timer: Timer) => React.ReactNode;
+  timers: Timer[];
 }
 
 const TimerSummaryRows: React.FC<{ timer: Timer }> = ({ timer }) => (
   <UnitStatusRows
+    activeEnterTimestamp={timer.active_enter_timestamp}
     activeState={timer.active_state}
+    inactiveEnterTimestamp={timer.inactive_enter_timestamp}
     subState={timer.sub_state}
     unitFileState={timer.unit_file_state}
-    activeEnterTimestamp={timer.active_enter_timestamp}
-    inactiveEnterTimestamp={timer.inactive_enter_timestamp}
   />
 );
 
@@ -66,10 +67,10 @@ const TimerActionsWrapper: React.FC<{ timer: Timer }> = ({ timer }) => {
   });
   return (
     <UnitCardActions
-      unitName={timer.name}
       activeState={timer.active_state}
-      unitFileState={timer.unit_file_state}
       info={info}
+      unitFileState={timer.unit_file_state}
+      unitName={timer.name}
     />
   );
 };
@@ -81,17 +82,17 @@ const TimerCardsView: React.FC<TimerCardsViewProps> = ({
   renderDetailPanel,
 }) => (
   <UnitCardsView
-    items={timers}
-    expanded={expanded}
-    onExpand={onExpand}
     emptyMessage="No timers found."
-    renderSummaryRows={(timer) => <TimerSummaryRows timer={timer} />}
-    renderSelectedRows={(timer) => <TimerSelectedRows timer={timer} />}
+    expanded={expanded}
+    items={timers}
+    onExpand={onExpand}
     renderActions={(timer) => <TimerActionsWrapper timer={timer} />}
-    renderDetailPanel={renderDetailPanel}
     renderBottomPanel={(timer) => (
-      <UnitLogsCard unitName={timer.name} title="Timer Logs" />
+      <UnitLogsCard title="Timer Logs" unitName={timer.name} />
     )}
+    renderDetailPanel={renderDetailPanel}
+    renderSelectedRows={(timer) => <TimerSelectedRows timer={timer} />}
+    renderSummaryRows={(timer) => <TimerSummaryRows timer={timer} />}
   />
 );
 

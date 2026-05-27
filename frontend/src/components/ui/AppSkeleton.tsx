@@ -5,11 +5,11 @@ import "./app-skeleton.css";
 type SkeletonVariant = "text" | "rectangular" | "circular";
 
 export interface AppSkeletonProps {
+  className?: string;
+  height?: number | string;
+  style?: React.CSSProperties;
   variant?: SkeletonVariant;
   width?: number | string;
-  height?: number | string;
-  className?: string;
-  style?: React.CSSProperties;
 }
 
 const AppSkeleton: React.FC<AppSkeletonProps> = ({
@@ -20,6 +20,7 @@ const AppSkeleton: React.FC<AppSkeletonProps> = ({
   style,
 }) => (
   <span
+    aria-hidden="true"
     className={["app-skeleton", `app-skeleton--${variant}`, className]
       .filter(Boolean)
       .join(" ")}
@@ -28,7 +29,6 @@ const AppSkeleton: React.FC<AppSkeletonProps> = ({
       height,
       ...style,
     }}
-    aria-hidden="true"
   />
 );
 

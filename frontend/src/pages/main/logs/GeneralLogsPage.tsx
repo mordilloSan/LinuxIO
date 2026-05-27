@@ -8,17 +8,18 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 
+import type { Service } from "@/api";
+import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+
 import {
-  useStreamMux,
-  openGeneralLogsStream,
+  CACHE_TTL_MS,
   decodeString,
   linuxio,
-  CACHE_TTL_MS,
+  openGeneralLogsStream,
+  useStreamMux,
 } from "@/api";
-import type { Service } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
-import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import Chip from "@/components/ui/AppChip";
@@ -58,11 +59,11 @@ enum LogPriority {
 }
 
 interface LogEntry {
-  timestamp: string;
-  priority: LogPriority;
   identifier: string;
   message: string;
+  priority: LogPriority;
   rawJson?: Record<string, unknown>;
+  timestamp: string;
 }
 
 const getPriorityLabel = (priority: LogPriority): string => {
@@ -146,16 +147,16 @@ const getPriorityIcon = (priority: LogPriority) => {
     case LogPriority.ALERT:
     case LogPriority.CRITICAL:
     case LogPriority.ERROR:
-      return <Icon icon="mdi:alert-circle" width={20} height={20} />;
+      return <Icon height={20} icon="mdi:alert-circle" width={20} />;
     case LogPriority.WARNING:
-      return <Icon icon="mdi:alert" width={20} height={20} />;
+      return <Icon height={20} icon="mdi:alert" width={20} />;
     case LogPriority.INFO:
     case LogPriority.NOTICE:
-      return <Icon icon="mdi:information" width={20} height={20} />;
+      return <Icon height={20} icon="mdi:information" width={20} />;
     case LogPriority.DEBUG:
-      return <Icon icon="mdi:bug" width={20} height={20} />;
+      return <Icon height={20} icon="mdi:bug" width={20} />;
     default:
-      return <Icon icon="mdi:information" width={20} height={20} />;
+      return <Icon height={20} icon="mdi:information" width={20} />;
   }
 };
 
@@ -704,35 +705,35 @@ const GeneralLogsPage: React.FC = () => {
             style={{ width: "1%" }}
           >
             <Chip
+              color={getPriorityColor(log.priority) as any}
               label={getPriorityLabel(log.priority)}
               size="small"
-              color={getPriorityColor(log.priority) as any}
-              variant="soft"
               style={{ fontSize: "0.7rem" }}
+              variant="soft"
             />
           </AppTableCell>
           <AppTableCell style={{ width: "1%" }}>
             {isLinkable ? (
               <AppTooltip title={`Open ${target!.unit} in services`}>
                 <AppTypography
-                  variant="body2"
-                  role="link"
-                  tabIndex={0}
                   className="log-identifier-link"
                   onClick={(e) => handleIdentifierClick(log, e)}
+                  role="link"
                   style={{
                     fontSize: "0.85rem",
                     whiteSpace: "nowrap",
                     display: "inline-block",
                   }}
+                  tabIndex={0}
+                  variant="body2"
                 >
                   {log.identifier}
                 </AppTypography>
               </AppTooltip>
             ) : (
               <AppTypography
-                variant="body2"
                 style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+                variant="body2"
               >
                 {log.identifier}
               </AppTypography>
@@ -740,18 +741,18 @@ const GeneralLogsPage: React.FC = () => {
           </AppTableCell>
           <AppTableCell style={{ width: "1%" }}>
             <AppTypography
-              variant="body2"
               style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
+              variant="body2"
             >
               {log.timestamp}
             </AppTypography>
           </AppTableCell>
           <AppTableCell style={{ maxWidth: 0 }}>
             <AppTypography
-              variant="body2"
               color="text.secondary"
               noWrap
               style={{ fontSize: "0.75rem" }}
+              variant="body2"
             >
               {log.message}
             </AppTypography>
@@ -786,20 +787,20 @@ const GeneralLogsPage: React.FC = () => {
                 const filter = `${key}=${value}`;
                 return (
                   <Chip
+                    color="primary"
                     key={filter}
                     label={`${key}=${value}`}
-                    size="small"
-                    variant="soft"
-                    color="primary"
                     onClick={() => addFieldFilter(filter)}
-                    title={`Filter to entries where ${key}=${value}`}
+                    size="small"
                     style={{ fontSize: "0.7rem", maxWidth: 360 }}
+                    title={`Filter to entries where ${key}=${value}`}
+                    variant="soft"
                   />
                 );
               })}
             </div>
           )}
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             <b>Full Message:</b>
           </AppTypography>
           <AppPaper
@@ -820,7 +821,7 @@ const GeneralLogsPage: React.FC = () => {
 
           {log.rawJson && (
             <>
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Raw Journal Entry:</b>
               </AppTypography>
               <AppPaper
@@ -869,10 +870,10 @@ const GeneralLogsPage: React.FC = () => {
       >
         <AppSelect
           label="Time Period"
+          onChange={(e) => handleTimePeriodChange(e.target.value)}
           size="small"
           style={{ minWidth: 150 }}
           value={timePeriod}
-          onChange={(e) => handleTimePeriodChange(e.target.value)}
         >
           <option value="1h">Last 1 hour</option>
           <option value="6h">Last 6 hours</option>
@@ -883,10 +884,10 @@ const GeneralLogsPage: React.FC = () => {
 
         <AppSelect
           label="Priority"
+          onChange={(e) => handlePriorityFilterChange(e.target.value)}
           size="small"
           style={{ minWidth: 180 }}
           value={priorityFilter}
-          onChange={(e) => handlePriorityFilterChange(e.target.value)}
         >
           <option value="all">All</option>
           <option value="0">Emergency and above</option>
@@ -901,10 +902,10 @@ const GeneralLogsPage: React.FC = () => {
 
         <AppSelect
           label="Lines"
+          onChange={(e) => handleTailSizeChange(e.target.value)}
           size="small"
           style={{ minWidth: 130 }}
           value={tailSize}
-          onChange={(e) => handleTailSizeChange(e.target.value)}
         >
           <option value="200">200</option>
           <option value="500">500</option>
@@ -914,10 +915,10 @@ const GeneralLogsPage: React.FC = () => {
 
         <AppSelect
           label="Service status"
+          onChange={(e) => setUnitStatusFilter(e.target.value)}
           size="small"
           style={{ minWidth: 160 }}
           value={unitStatusFilter}
-          onChange={(e) => setUnitStatusFilter(e.target.value)}
         >
           <option value="all">All</option>
           <option value="running">Running</option>
@@ -927,53 +928,53 @@ const GeneralLogsPage: React.FC = () => {
         </AppSelect>
 
         <AppAutocomplete
-          size="small"
-          freeSolo
-          options={uniqueIdentifiers}
-          value={identifierInput}
-          onInputChange={(value) => setIdentifierInput(value)}
-          onChange={(value) => {
-            const next = value || "";
-            setIdentifierInput(next);
-            applyIdentifierFilter(next);
-          }}
           filterOptions={(options, { inputValue }) => {
             if (!inputValue) return options;
             const lower = inputValue.toLowerCase();
             return options.filter((opt) => opt.toLowerCase().includes(lower));
           }}
+          freeSolo
           label="Identifier"
+          onChange={(value) => {
+            const next = value || "";
+            setIdentifierInput(next);
+            applyIdentifierFilter(next);
+          }}
+          onInputChange={(value) => setIdentifierInput(value)}
+          options={uniqueIdentifiers}
           placeholder="All"
           shrinkLabel={true}
+          size="small"
           style={{ minWidth: 180 }}
+          value={identifierInput}
         />
 
         <AppSearchField
           label="Search logs"
-          value={search}
           onChange={(event) => setSearch(event.target.value)}
+          startAdornment={<Icon height={20} icon="mdi:magnify" width={20} />}
           style={{ minWidth: 220, flex: "1 1 260px" }}
-          startAdornment={<Icon icon="mdi:magnify" width={20} height={20} />}
+          value={search}
         />
         <AppTooltip title="Copy logs">
           <span>
             <AppIconButton
+              disabled={filteredLogs.length === 0}
               onClick={handleCopy}
               size="small"
-              disabled={filteredLogs.length === 0}
             >
-              <Icon icon="mdi:content-copy" width={20} height={20} />
+              <Icon height={20} icon="mdi:content-copy" width={20} />
             </AppIconButton>
           </span>
         </AppTooltip>
         <AppTooltip title="Download logs">
           <span>
             <AppIconButton
+              disabled={filteredLogs.length === 0}
               onClick={handleDownload}
               size="small"
-              disabled={filteredLogs.length === 0}
             >
-              <Icon icon="mdi:download" width={20} height={20} />
+              <Icon height={20} icon="mdi:download" width={20} />
             </AppIconButton>
           </span>
         </AppTooltip>
@@ -1009,26 +1010,26 @@ const GeneralLogsPage: React.FC = () => {
           }}
         >
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{ fontSize: "0.8rem" }}
+            variant="body2"
           >
             Field filters:
           </AppTypography>
           {fieldFilters.map((filter) => (
             <Chip
+              color="primary"
               key={filter}
               label={filter}
-              size="small"
-              variant="soft"
-              color="primary"
               onDelete={() => removeFieldFilter(filter)}
+              size="small"
               style={{ fontSize: "0.7rem", maxWidth: 360 }}
+              variant="soft"
             />
           ))}
           <AppTooltip title="Clear all field filters">
             <AppIconButton onClick={clearFieldFilters} size="small">
-              <Icon icon="mdi:filter-remove" width={18} height={18} />
+              <Icon height={18} icon="mdi:filter-remove" width={18} />
             </AppIconButton>
           </AppTooltip>
         </div>
@@ -1041,15 +1042,15 @@ const GeneralLogsPage: React.FC = () => {
       {!isLoading && !error && (
         <div ref={logsBoxRef}>
           <UnifiedCollapsibleTable
-            data={displayedLogs}
             columns={columns}
-            getRowKey={(_, index) => index}
-            renderFirstCell={renderIcon}
-            renderMainRow={renderMainRow}
-            renderExpandedContent={renderExpandedContent}
+            data={displayedLogs}
             emptyMessage={
               logs.length === 0 ? "No logs available." : "No matching logs."
             }
+            getRowKey={(_, index) => index}
+            renderExpandedContent={renderExpandedContent}
+            renderFirstCell={renderIcon}
+            renderMainRow={renderMainRow}
           />
         </div>
       )}

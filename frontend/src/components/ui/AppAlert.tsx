@@ -16,9 +16,9 @@ export interface AppAlertProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "action"
 > {
-  severity?: AlertSeverity;
-  onClose?: () => void;
   action?: React.ReactNode;
+  onClose?: () => void;
+  severity?: AlertSeverity;
 }
 
 export const AppAlertTitle: React.FC<{ children: React.ReactNode }> = ({
@@ -35,23 +35,23 @@ const AppAlert = React.forwardRef<HTMLDivElement, AppAlertProps>(
       .join(" ");
 
     return (
-      <div ref={ref} role="alert" className={cls} {...rest}>
+      <div className={cls} ref={ref} role="alert" {...rest}>
         <Icon
-          icon={SEVERITY_ICONS[severity]}
           className="app-alert__icon"
-          width={22}
           height={22}
+          icon={SEVERITY_ICONS[severity]}
+          width={22}
         />
         <div className="app-alert__message">{children}</div>
         {action && <div className="app-alert__action">{action}</div>}
         {onClose && (
           <button
-            type="button"
+            aria-label="Close"
             className="app-alert__close"
             onClick={onClose}
-            aria-label="Close"
+            type="button"
           >
-            <Icon icon="mdi:close" width={18} height={18} />
+            <Icon height={18} icon="mdi:close" width={18} />
           </button>
         )}
       </div>

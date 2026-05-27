@@ -31,10 +31,10 @@ function parseHexInput(raw: string): string | null {
 }
 
 interface ColorEntry {
-  key: keyof ThemeColors;
-  label: string;
   description: string;
   effectiveColor: string;
+  key: keyof ThemeColors;
+  label: string;
 }
 
 function ThemeColorsSection() {
@@ -209,10 +209,10 @@ function ThemeColorsSection() {
         style={{ display: "flex", alignItems: "center", gap: theme.spacing(1) }}
       >
         <div style={{ flexGrow: 1 }}>
-          <AppTypography variant="body1" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="body1">
             Colors
           </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
+          <AppTypography color="text.secondary" variant="caption">
             Customize light and dark theme colors.
           </AppTypography>
         </div>
@@ -221,7 +221,6 @@ function ThemeColorsSection() {
           {(["light", "dark"] as const).map((m) => (
             <button
               key={m}
-              type="button"
               onClick={() => setEditMode(m)}
               style={{
                 padding: "2px 10px",
@@ -239,6 +238,7 @@ function ThemeColorsSection() {
                 fontFamily: "inherit",
                 transition: "background 120ms ease, color 120ms ease",
               }}
+              type="button"
             >
               {m === "light" ? "Light" : "Dark"}
             </button>
@@ -254,12 +254,12 @@ function ThemeColorsSection() {
         >
           <span>
             <AppIconButton
-              size="small"
-              onClick={() => setThemeColors(undefined)}
-              disabled={!hasAnyOverride}
               aria-label="Reset all colors to default"
+              disabled={!hasAnyOverride}
+              onClick={() => setThemeColors(undefined)}
+              size="small"
             >
-              <Icon icon="mdi:refresh" width={14} height={14} />
+              <Icon height={14} icon="mdi:refresh" width={14} />
             </AppIconButton>
           </span>
         </AppTooltip>
@@ -276,8 +276,8 @@ function ThemeColorsSection() {
           const isOverridden = themeColors?.[editMode]?.[key] != null;
           return (
             <FrostedCard
-              key={key}
               hoverLift
+              key={key}
               onClick={(e) => {
                 const target = e.target as HTMLElement;
                 if (target.closest("button, input")) return;
@@ -297,10 +297,10 @@ function ThemeColorsSection() {
               }}
             >
               <div>
-                <AppTypography variant="body2" fontWeight={600}>
+                <AppTypography fontWeight={600} variant="body2">
                   {label}
                 </AppTypography>
-                <AppTypography variant="caption" color="text.secondary">
+                <AppTypography color="text.secondary" variant="caption">
                   {description}
                 </AppTypography>
               </div>
@@ -315,18 +315,18 @@ function ThemeColorsSection() {
                 {isOverridden && (
                   <AppTooltip title="Reset to default">
                     <AppIconButton
-                      size="small"
-                      onClick={() => handleReset(key)}
                       aria-label={`Reset ${label} to default`}
+                      onClick={() => handleReset(key)}
+                      size="small"
                     >
-                      <Icon icon="mdi:refresh" width={14} height={14} />
+                      <Icon height={14} icon="mdi:refresh" width={14} />
                     </AppIconButton>
                   </AppTooltip>
                 )}
                 <ColorSwatch
                   color={effectiveColor}
-                  onChange={(val) => handleChange(key, val)}
                   label={label}
+                  onChange={(val) => handleChange(key, val)}
                 />
               </div>
             </FrostedCard>
@@ -339,8 +339,8 @@ function ThemeColorsSection() {
 
 interface ColorSwatchProps {
   color: string;
-  onChange: (value: string) => void;
   label: string;
+  onChange: (value: string) => void;
 }
 
 function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
@@ -375,24 +375,24 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "center",
         gap: theme.spacing(0.75),
         flexShrink: 0,
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       <input
-        type="text"
-        value={displayValue}
+        aria-label={`Hex color for ${label}`}
+        autoComplete="off"
+        onBlur={commitDraft}
         onChange={(e) => setDraft(e.target.value)}
         onFocus={(e) => {
           setDraft(normalized);
           e.target.select();
         }}
-        onBlur={commitDraft}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -404,8 +404,6 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           }
         }}
         spellCheck={false}
-        autoComplete="off"
-        aria-label={`Hex color for ${label}`}
         style={{
           width: 78,
           padding: "3px 6px",
@@ -428,11 +426,11 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           transition:
             "border-color 120ms ease, background 120ms ease, color 120ms ease",
         }}
+        type="text"
+        value={displayValue}
       />
       <div style={{ position: "relative" }}>
         <div
-          role="button"
-          tabIndex={0}
           aria-label={`Pick color for ${label}`}
           onClick={(e) => {
             e.stopPropagation();
@@ -444,6 +442,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
               colorInputRef.current?.click();
             }
           }}
+          role="button"
           style={{
             width: 28,
             height: 28,
@@ -453,12 +452,12 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             boxSizing: "border-box",
             cursor: "pointer",
           }}
+          tabIndex={0}
         />
         <input
-          ref={colorInputRef}
-          type="color"
-          value={normalized}
+          aria-hidden="true"
           onChange={(e) => onChange(e.target.value)}
+          ref={colorInputRef}
           style={{
             position: "fixed",
             left: "50%",
@@ -468,7 +467,8 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             height: 0,
             pointerEvents: "none",
           }}
-          aria-hidden="true"
+          type="color"
+          value={normalized}
         />
       </div>
     </div>

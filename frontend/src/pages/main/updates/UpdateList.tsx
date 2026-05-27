@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { linuxio, CACHE_TTL_MS } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import UpdateCard from "@/components/cards/UpdateCard";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
@@ -10,11 +10,11 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { Update } from "@/types/update";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface Props {
-  updates: Update[];
-  onUpdateClick: (pkg: string) => Promise<void>;
-  isUpdating?: boolean;
   currentPackage?: string | null;
   isLoading?: boolean;
+  isUpdating?: boolean;
+  onUpdateClick: (pkg: string) => Promise<void>;
+  updates: Update[];
 }
 const UpdateList: React.FC<Props> = ({
   updates,
@@ -96,23 +96,23 @@ const UpdateList: React.FC<Props> = ({
   return (
     <AppGrid
       container
+      ref={containerRef}
       spacing={2}
       style={{
         paddingBottom: 16,
       }}
-      ref={containerRef}
     >
       {updates.map((update, idx) => (
         <AppGrid key={idx} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
           <UpdateCard
-            update={update}
-            isExpanded={expandedIdx === idx}
-            isUpdating={!!isUpdating}
-            isCurrentPackage={currentPackage === update.package_id}
             changelog={changelogs[update.package_id]}
+            isCurrentPackage={currentPackage === update.package_id}
+            isExpanded={expandedIdx === idx}
             isLoadingChangelog={loadingChangelog === update.package_id}
+            isUpdating={!!isUpdating}
             onToggleChangelog={() => toggleExpanded(idx, update.package_id)}
             onUpdate={() => onUpdateClick(update.package_id)}
+            update={update}
           />
         </AppGrid>
       ))}

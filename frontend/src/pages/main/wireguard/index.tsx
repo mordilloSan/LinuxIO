@@ -1,10 +1,10 @@
 import { FC } from "react";
 
-import CreateInterfaceButton from "./CreateInterfaceButton";
-import WireGuardDashboard from "./WireguardDashboard";
-
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import CreateInterfaceButton from "./CreateInterfaceButton";
+import WireGuardDashboard from "./WireguardDashboard";
 
 const Page: FC = () => {
   const theme = useAppTheme();
@@ -18,7 +18,7 @@ const Page: FC = () => {
           marginBottom: theme.spacing(2),
         }}
       >
-        <AppTypography variant="h4" component="h1">
+        <AppTypography component="h1" variant="h4">
           Interface Dashboard
         </AppTypography>
         <CreateInterfaceButton />

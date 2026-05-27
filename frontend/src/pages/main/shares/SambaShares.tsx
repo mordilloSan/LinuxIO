@@ -38,8 +38,8 @@ interface SambaSharesProps {
 
 interface AccessOptions {
   browseable: boolean;
-  readOnly: boolean;
   guestOk: boolean;
+  readOnly: boolean;
 }
 
 const defaultAccessOpts: AccessOptions = {
@@ -112,34 +112,33 @@ const AccessOptionsDropdown: React.FC<{
     <>
       <div ref={anchorRef}>
         <AppTextField
-          label="Access Options"
-          value={accessOptsSummary(opts)}
-          size="small"
-          fullWidth
-          onClick={handleOpen}
-          style={{ cursor: "pointer" }}
           endAdornment={
             <Icon
               icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              width={18}
               style={{ opacity: 0.5 }}
+              width={18}
             />
           }
+          fullWidth
+          label="Access Options"
+          onClick={handleOpen}
+          size="small"
+          style={{ cursor: "pointer" }}
+          value={accessOptsSummary(opts)}
         />
       </div>
       <AppPopover
-        open={open}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
         <div style={{ padding: "6px 0" }}>
           {accessOptionLabels.map(({ key, label }) => (
             <button
               key={key}
-              type="button"
               onClick={() => toggle(key)}
               style={{
                 display: "flex",
@@ -154,6 +153,7 @@ const AccessOptionsDropdown: React.FC<{
                 color: "inherit",
                 textAlign: "left",
               }}
+              type="button"
             >
               <span
                 style={{
@@ -196,32 +196,32 @@ const PathPicker: React.FC<{
     <>
       <div ref={anchorRef}>
         <AppTextField
-          label={label}
-          value={value}
-          size="small"
-          fullWidth
-          shrinkLabel
-          onClick={handleOpen}
-          style={{ cursor: "pointer" }}
-          placeholder="Click to select a folder"
           endAdornment={
             <Icon
               icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              width={18}
               style={{ opacity: 0.5 }}
+              width={18}
             />
           }
+          fullWidth
+          label={label}
+          onClick={handleOpen}
+          placeholder="Click to select a folder"
+          shrinkLabel
+          size="small"
+          style={{ cursor: "pointer" }}
+          value={value}
         />
       </div>
       <AppPopover
-        open={open}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
-        <DirectoryTree selectedPath={value} onSelect={onChange} />
+        <DirectoryTree onSelect={onChange} selectedPath={value} />
       </AppPopover>
     </>
   );
@@ -232,9 +232,9 @@ const PathPicker: React.FC<{
 // ============================================================================
 
 interface CreateDialogProps {
-  open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
 export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
@@ -295,7 +295,7 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Samba Share</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -307,31 +307,31 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
           }}
         >
           <AppTextField
+            fullWidth
             label="Share Name"
-            value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., shared_data"
-            fullWidth
             size="small"
+            value={name}
           />
-          <PathPicker value={path} onChange={setPath} />
+          <PathPicker onChange={setPath} value={path} />
           <AppTextField
+            fullWidth
             label="Comment"
-            value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Optional description"
-            fullWidth
             size="small"
+            value={comment}
           />
-          <AccessOptionsDropdown opts={accessOpts} onChange={setAccessOpts} />
+          <AccessOptionsDropdown onChange={setAccessOpts} opts={accessOpts} />
           <AppTextField
+            fullWidth
+            helperText="Comma-separated users or @groups"
             label="Valid Users"
-            value={validUsers}
             onChange={(e) => setValidUsers(e.target.value)}
             placeholder="e.g., @staff, admin"
-            helperText="Comma-separated users or @groups"
-            fullWidth
             size="small"
+            value={validUsers}
           />
           {validationError && (
             <AppAlert severity="error">{validationError}</AppAlert>
@@ -339,13 +339,13 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleCreate}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Creating..." : "Create"}
         </AppButton>
@@ -359,10 +359,10 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
 // ============================================================================
 
 interface EditDialogProps {
-  open: boolean;
   onClose: () => void;
-  share: SambaShare | null;
   onSuccess: () => void;
+  open: boolean;
+  share: SambaShare | null;
 }
 
 export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
@@ -414,11 +414,11 @@ export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
 
   return (
     <GeneralDialog
-      key={share?.name}
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
       fullWidth
+      key={share?.name}
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
     >
       <AppDialogTitle>Edit Samba Share</AppDialogTitle>
       <AppDialogContent>
@@ -431,41 +431,41 @@ export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Share Name"
-            value={share?.name || ""}
             disabled
             fullWidth
+            label="Share Name"
             size="small"
+            value={share?.name || ""}
           />
-          <PathPicker value={path} onChange={setPath} />
+          <PathPicker onChange={setPath} value={path} />
           <AppTextField
+            fullWidth
             label="Comment"
-            value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Optional description"
-            fullWidth
             size="small"
+            value={comment}
           />
-          <AccessOptionsDropdown opts={accessOpts} onChange={setAccessOpts} />
+          <AccessOptionsDropdown onChange={setAccessOpts} opts={accessOpts} />
           <AppTextField
+            fullWidth
+            helperText="Comma-separated users or @groups"
             label="Valid Users"
-            value={validUsers}
             onChange={(e) => setValidUsers(e.target.value)}
             placeholder="e.g., @staff, admin"
-            helperText="Comma-separated users or @groups"
-            fullWidth
             size="small"
+            value={validUsers}
           />
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleSave}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Saving..." : "Save"}
         </AppButton>
@@ -479,10 +479,10 @@ export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
 // ============================================================================
 
 interface DeleteDialogProps {
-  open: boolean;
   onClose: () => void;
-  share: SambaShare | null;
   onSuccess: () => void;
+  open: boolean;
+  share: SambaShare | null;
 }
 
 export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
@@ -516,7 +516,7 @@ export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>Remove Samba Share</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
@@ -537,14 +537,14 @@ export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
         </AppAlert>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isPending}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isPending ? "Removing..." : "Remove"}
         </AppButton>
@@ -620,86 +620,34 @@ const SambaShares: React.FC<SambaSharesProps> = ({
             {sharesList.map((share) => (
               <AppGrid key={share.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <SambaShareCard
-                  share={share}
                   onEdit={() => handleEdit(share)}
                   onRemove={() => handleDelete(share)}
+                  share={share}
                 />
               </AppGrid>
             ))}
           </AppGrid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No Samba shares found. Click &quot;Add Share&quot; to create one.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={sharesList}
           columns={columns}
+          data={sharesList}
+          emptyMessage="No Samba shares found. Click 'Add Share' to create one."
           getRowKey={(share) => share.name}
-          renderMainRow={(share) => (
-            <>
-              <AppTableCell>
-                <AppTypography variant="body2" fontWeight={700}>
-                  {share.name}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography
-                  variant="body2"
-                  style={{ fontFamily: "monospace" }}
-                >
-                  {share.properties["path"]}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                  {share.properties["read only"] === "yes" ? (
-                    <Chip label="read only" size="small" variant="soft" />
-                  ) : (
-                    <Chip label="writable" size="small" variant="soft" />
-                  )}
-                  {share.properties["guest ok"] === "yes" && (
-                    <Chip label="guest" size="small" variant="soft" />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <AppButton
-                    size="small"
-                    variant="outlined"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit(share);
-                    }}
-                  >
-                    Edit
-                  </AppButton>
-                  <AppButton
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(share);
-                    }}
-                  >
-                    Remove
-                  </AppButton>
-                </div>
-              </AppTableCell>
-            </>
-          )}
           renderExpandedContent={(share) => (
             <div>
               {share.properties["comment"] && (
-                <AppTypography variant="subtitle2" gutterBottom>
+                <AppTypography gutterBottom variant="subtitle2">
                   <strong>Comment:</strong> {share.properties["comment"]}
                 </AppTypography>
               )}
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <strong>All Properties:</strong>
               </AppTypography>
               <div
@@ -722,26 +670,78 @@ const SambaShares: React.FC<SambaSharesProps> = ({
               </div>
             </div>
           )}
-          emptyMessage="No Samba shares found. Click 'Add Share' to create one."
+          renderMainRow={(share) => (
+            <>
+              <AppTableCell>
+                <AppTypography fontWeight={700} variant="body2">
+                  {share.name}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell>
+                <AppTypography
+                  style={{ fontFamily: "monospace" }}
+                  variant="body2"
+                >
+                  {share.properties["path"]}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                  {share.properties["read only"] === "yes" ? (
+                    <Chip label="read only" size="small" variant="soft" />
+                  ) : (
+                    <Chip label="writable" size="small" variant="soft" />
+                  )}
+                  {share.properties["guest ok"] === "yes" && (
+                    <Chip label="guest" size="small" variant="soft" />
+                  )}
+                </div>
+              </AppTableCell>
+              <AppTableCell>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <AppButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(share);
+                    }}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Edit
+                  </AppButton>
+                  <AppButton
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(share);
+                    }}
+                    size="small"
+                  >
+                    Remove
+                  </AppButton>
+                </div>
+              </AppTableCell>
+            </>
+          )}
         />
       )}
 
       <CreateSambaShareDialog
-        open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSuccess={() => refetch()}
+        open={createOpen}
       />
       <EditSambaShareDialog
-        open={editOpen}
         onClose={() => setEditOpen(false)}
-        share={selected}
         onSuccess={() => refetch()}
+        open={editOpen}
+        share={selected}
       />
       <DeleteSambaShareDialog
-        open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        share={selected}
         onSuccess={() => refetch()}
+        open={deleteOpen}
+        share={selected}
       />
     </div>
   );

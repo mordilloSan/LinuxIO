@@ -1,17 +1,19 @@
 import { Icon } from "@iconify/react";
-import React, { useState, useCallback } from "react";
-
-import SidebarNavList from "./SidebarNavList";
-import LogoDisplay from "../logo/LogoDisplay";
-import "./sidebar.css";
+import React, { useCallback, useState } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
+
+import "./sidebar.css";
+
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
 import { useAppTheme } from "@/theme";
 import { SidebarItemsType } from "@/types/sidebar";
+
+import LogoDisplay from "../logo/LogoDisplay";
+import SidebarNavList from "./SidebarNavList";
 
 export interface SidebarProps {
   items: SidebarItemsType[];
@@ -60,18 +62,18 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
     <>
       {!isDesktop && mobileOpen && (
         <button
-          type="button"
-          className="app-sidebar-backdrop"
           aria-label="Close navigation"
+          className="app-sidebar-backdrop"
           onClick={() => setMobileOpen(false)}
+          type="button"
         />
       )}
       <aside
-        className={sidebarClassName}
-        style={sidebarStyle}
         aria-label="Primary navigation"
+        className={sidebarClassName}
         onMouseEnter={isDesktop ? handleMouseEnter : undefined}
         onMouseLeave={isDesktop ? handleMouseLeave : undefined}
+        style={sidebarStyle}
       >
         <div className="app-sidebar__header">
           <LogoDisplay showText={showText} />
@@ -79,6 +81,8 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
           {isDesktop && (!collapsed || (hovered && collapsed)) && (
             <AppTooltip title={collapsed ? "Expand" : "Collapse"}>
               <AppIconButton
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                edge="end"
                 onClick={toggleCollapse}
                 size="small"
                 style={{
@@ -87,14 +91,12 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
                   top: "50%",
                   transform: "translateY(-50%)",
                 }}
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                edge="end"
               >
                 {!collapsed && (
-                  <Icon icon="mdi:chevron-left" width={22} height={22} />
+                  <Icon height={22} icon="mdi:chevron-left" width={22} />
                 )}
                 {hovered && collapsed && (
-                  <Icon icon="mdi:chevron-right" width={22} height={22} />
+                  <Icon height={22} icon="mdi:chevron-right" width={22} />
                 )}
               </AppIconButton>
             </AppTooltip>
@@ -105,12 +107,12 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
           <ul className="app-sidebar__list">
             {items.map((page) => (
               <SidebarNavList
-                key={page.title}
-                href={page.href}
-                icon={page.icon}
-                title={page.title}
                 collapsed={isDesktop && collapsed && !hovered}
                 disabled={!canNavigate}
+                href={page.href}
+                icon={page.icon}
+                key={page.title}
+                title={page.title}
               />
             ))}
           </ul>

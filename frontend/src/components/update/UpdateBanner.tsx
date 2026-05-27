@@ -1,12 +1,12 @@
 import { Icon } from "@iconify/react";
 
-import UpdateDialog from "./UpdateDialog";
-
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+
+import UpdateDialog from "./UpdateDialog";
 
 interface UpdateInfo {
   available: boolean;
@@ -16,8 +16,8 @@ interface UpdateInfo {
 }
 
 interface UpdateBannerProps {
-  updateInfo: UpdateInfo;
   onDismiss: () => void;
+  updateInfo: UpdateInfo;
 }
 
 const UpdateBanner: React.FC<UpdateBannerProps> = ({
@@ -70,20 +70,31 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   return (
     <>
       <UpdateDialog
-        open={phase !== "idle"}
-        status={error || status}
-        progress={progress}
-        output={output}
-        onClose={handleCloseDialog}
         canClose={!isUpdating && !updateSuccess}
+        onClose={handleCloseDialog}
+        onContinue={handleContinue}
+        open={phase !== "idle"}
+        output={output}
+        progress={progress}
+        status={error || status}
+        targetVersion={targetVersion}
         updateComplete={updateComplete}
         updateSuccess={updateSuccess}
-        onContinue={handleContinue}
-        targetVersion={targetVersion}
       />
       <AppAlert
-        severity="info"
+        action={
+          <AppIconButton
+            aria-label="close"
+            color="inherit"
+            disabled={isUpdating}
+            onClick={onDismiss}
+            size="small"
+          >
+            <Icon height={18} icon="mdi:close" width={18} />
+          </AppIconButton>
+        }
         className="app-alert--centered"
+        severity="info"
         style={{
           borderRadius: 16,
           alignItems: "center",
@@ -91,17 +102,6 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           color: "var(--update-banner-color)",
           padding: "3px 16px",
         }}
-        action={
-          <AppIconButton
-            aria-label="close"
-            color="inherit"
-            size="small"
-            onClick={onDismiss}
-            disabled={isUpdating}
-          >
-            <Icon icon="mdi:close" width={18} height={18} />
-          </AppIconButton>
-        }
       >
         <div
           style={{
@@ -129,16 +129,16 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             }}
           >
             <AppButton
-              variant="contained"
+              disabled={isUpdating}
+              onClick={handleUpdate}
               size="small"
               startIcon={
                 !isUpdating ? (
-                  <Icon icon="mdi:download" width={20} height={20} />
+                  <Icon height={20} icon="mdi:download" width={20} />
                 ) : null
               }
-              onClick={handleUpdate}
-              disabled={isUpdating}
               style={{ whiteSpace: "nowrap" }}
+              variant="contained"
             >
               {isUpdating ? "Updating..." : "Update Now"}
             </AppButton>
@@ -146,15 +146,15 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             {updateInfo.release_url && (
               <a
                 href={updateInfo.release_url}
-                target="_blank"
                 rel="noopener noreferrer"
                 style={{ textDecoration: "none" }}
+                target="_blank"
               >
                 <AppButton
-                  variant="outlined"
-                  size="small"
                   disabled={isUpdating}
+                  size="small"
                   style={{ whiteSpace: "nowrap" }}
+                  variant="outlined"
                 >
                   Release Notes
                 </AppButton>

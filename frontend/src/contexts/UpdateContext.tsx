@@ -40,27 +40,27 @@ export type UpdatePhase =
   | "failed";
 
 export interface UpdateContextValue {
-  phase: UpdatePhase;
-  status: string;
-  progress: number;
-  output: string[];
+  canNavigate: boolean;
   error: string | null;
-  targetVersion: string | null;
   isUpdating: boolean;
+  output: string[];
+  phase: UpdatePhase;
+  progress: number;
+  resetUpdate: () => void;
+  startUpdate: (targetVersion?: string) => void;
+  status: string;
+  targetVersion: string | null;
   updateComplete: boolean;
   updateSuccess: boolean;
-  canNavigate: boolean;
-  startUpdate: (targetVersion?: string) => void;
-  resetUpdate: () => void;
 }
 
 interface UpdateStatusResponse {
-  status: "unknown" | "running" | "ok" | "error";
-  id?: string;
   exit_code?: number;
-  started_at?: number;
   finished_at?: number;
+  id?: string;
   message?: string;
+  started_at?: number;
+  status: "unknown" | "running" | "ok" | "error";
 }
 
 export const UpdateContext = createContext<UpdateContextValue | null>(null);

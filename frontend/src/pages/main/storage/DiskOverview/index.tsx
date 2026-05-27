@@ -4,26 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
-  DriveInfoTab,
-  OverviewTab,
-  PowerStatesTab,
-  SelfTestsTab,
-  SmartAttributesTab,
-  TabPanel,
-} from "./components";
-import type {
-  DriveInfo,
-  SmartTestProgressEvent,
-  SmartTestResult,
-} from "./types";
-import { parseSizeToBytes } from "./utils";
-
-import {
+  type ApiDisk,
   jobSnapshotResult,
   linuxio,
   openJobAttachStream,
   type Stream,
-  type ApiDisk,
 } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
@@ -39,6 +24,22 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import type {
+  DriveInfo,
+  SmartTestProgressEvent,
+  SmartTestResult,
+} from "./types";
+
+import {
+  DriveInfoTab,
+  OverviewTab,
+  PowerStatesTab,
+  SelfTestsTab,
+  SmartAttributesTab,
+  TabPanel,
+} from "./components";
+import { parseSizeToBytes } from "./utils";
 
 interface DriveDetailsProps {
   drive: DriveInfo;
@@ -347,7 +348,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
           }}
         >
           <TabSelector
-            value={String(tabIndex)}
             onChange={(nextValue) => handleTabChange(Number(nextValue))}
             options={[
               { value: "0", label: "Overview" },
@@ -362,46 +362,47 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
               },
             ]}
             style={{ marginBottom: 0 }}
+            value={String(tabIndex)}
           />
         </div>
 
-        <TabPanel value={tabIndex} index={0}>
+        <TabPanel index={0} value={tabIndex}>
           <OverviewTab drive={drive} />
         </TabPanel>
 
-        <TabPanel value={tabIndex} index={1}>
+        <TabPanel index={1} value={tabIndex}>
           <SmartAttributesTab
+            ataAttrs={ataAttrs}
             isNvme={isNvme}
             nvmeHealthRaw={nvmeHealthRaw}
-            ataAttrs={ataAttrs}
           />
         </TabPanel>
 
-        <TabPanel value={tabIndex} index={2}>
+        <TabPanel index={2} value={tabIndex}>
           <DriveInfoTab
+            deviceInfo={deviceInfo}
             drive={drive}
             rawDriveSize={rawDrive?.size}
             smartData={smartData}
-            deviceInfo={deviceInfo}
             smartHealth={smartHealth}
           />
         </TabPanel>
 
         {isNvme && power && (
-          <TabPanel value={tabIndex} index={3}>
+          <TabPanel index={3} value={tabIndex}>
             <PowerStatesTab power={power} />
           </TabPanel>
         )}
 
-        <TabPanel value={tabIndex} index={isNvme && power ? 4 : 3}>
+        <TabPanel index={isNvme && power ? 4 : 3} value={tabIndex}>
           <SelfTestsTab
-            startPending={startPending}
-            percentage={testProgress?.percentage}
-            onRunTest={handleRunTest}
-            selfTestLog={selfTestLog}
             nvmeSelfTestLog={nvmeSelfTestLog}
+            onRunTest={handleRunTest}
+            percentage={testProgress?.percentage}
+            selfTestLog={selfTestLog}
             smartmontoolsAvailable={smartmontoolsAvailable}
             smartmontoolsReason={smartmontoolsReason}
+            startPending={startPending}
           />
         </TabPanel>
       </div>
@@ -612,11 +613,11 @@ const DiskOverview: React.FC = () => {
       {!selectedMountpoint && (
         <>
           <AppTypography
-            variant="h6"
             style={{
               marginBottom: 8,
               fontWeight: 600,
             }}
+            variant="h6"
           >
             Physical Drives
           </AppTypography>
@@ -642,28 +643,28 @@ const DiskOverview: React.FC = () => {
                 drives.map((drive) =>
                   expanded && expanded !== drive.name ? null : (
                     <AppGrid
+                      animate={{ opacity: 1, scale: 1 }}
+                      component={motion.div}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.95 }}
                       key={drive.name}
+                      layout
                       size={{
                         xs: 12,
                         sm: expanded === drive.name ? 12 : 6,
                         md: expanded === drive.name ? 6 : 4,
                         lg: expanded === drive.name ? 4 : 3,
                       }}
-                      component={motion.div}
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ duration: 0.2 }}
                     >
                       <DriveCard
-                        name={drive.name}
+                        expanded={expanded === drive.name}
                         model={drive.model}
-                        transport={drive.transport}
+                        name={drive.name}
+                        onClick={() => handleToggle(drive.name)}
                         sizeBytes={drive.sizeBytes}
                         smart={drive.smart}
-                        expanded={expanded === drive.name}
-                        onClick={() => handleToggle(drive.name)}
+                        transport={drive.transport}
                       >
                         <DriveDetails
                           drive={drive}
@@ -688,11 +689,11 @@ const DiskOverview: React.FC = () => {
       {!expanded && (
         <>
           <AppTypography
-            variant="h6"
             style={{
               marginBottom: 8,
               fontWeight: 600,
             }}
+            variant="h6"
           >
             Filesystems
           </AppTypography>
@@ -713,42 +714,42 @@ const DiskOverview: React.FC = () => {
                   selectedMountpoint &&
                   selectedMountpoint !== fs.mountpoint ? null : (
                     <AppGrid
+                      animate={{ opacity: 1, scale: 1 }}
+                      component={motion.div}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.95 }}
                       key={fs.mountpoint}
+                      layout
                       size={{
                         xs: 12,
                         sm: selectedMountpoint === fs.mountpoint ? 12 : 6,
                         md: selectedMountpoint === fs.mountpoint ? 8 : 4,
                         lg: selectedMountpoint === fs.mountpoint ? 6 : 4,
                       }}
-                      component={motion.div}
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ duration: 0.2 }}
                     >
                       <FilesystemCard
-                        filesystem={fs}
-                        selected={selectedMountpoint === fs.mountpoint}
                         backingDrive={(() => {
                           const bd = findBackingDrive(fs.device, drives);
                           return bd ? { name: bd.name, model: bd.model } : null;
                         })()}
-                        nfsMount={
-                          nfsMountByMountpoint.get(fs.mountpoint) ?? null
-                        }
-                        isUnmounting={isUnmounting}
+                        filesystem={fs}
                         isCreatingSubvolume={
                           creatingSubvolumeMountpoint === fs.mountpoint &&
                           isCreatingSubvolume
                         }
-                        subvolumeName={subvolumeDrafts[fs.mountpoint] ?? ""}
-                        onClick={() => handleFilesystemToggle(fs)}
+                        isUnmounting={isUnmounting}
+                        nfsMount={
+                          nfsMountByMountpoint.get(fs.mountpoint) ?? null
+                        }
                         onBrowse={handleBrowseFilesystem}
-                        onInspectDrive={handleInspectDrive}
-                        onUnmount={handleUnmountFilesystem}
-                        onSubvolumeNameChange={handleSubvolumeNameChange}
+                        onClick={() => handleFilesystemToggle(fs)}
                         onCreateSubvolume={handleCreateSubvolume}
+                        onInspectDrive={handleInspectDrive}
+                        onSubvolumeNameChange={handleSubvolumeNameChange}
+                        onUnmount={handleUnmountFilesystem}
+                        selected={selectedMountpoint === fs.mountpoint}
+                        subvolumeName={subvolumeDrafts[fs.mountpoint] ?? ""}
                       />
                     </AppGrid>
                   ),

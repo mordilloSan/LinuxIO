@@ -1,15 +1,16 @@
 import React from "react";
 
-import { UnitTableView, formatUsec, statusDot } from "./UnitViews";
-
 import type { Timer } from "@/api";
+
 import { AppTableCell } from "@/components/ui/AppTable";
 
+import { formatUsec, statusDot, UnitTableView } from "./UnitViews";
+
 interface TimerTableViewProps {
-  timers: Timer[];
-  selected?: string | null;
-  onSelect?: (name: string | null) => void;
   onDoubleClick?: (name: string) => void;
+  onSelect?: (name: string | null) => void;
+  selected?: string | null;
+  timers: Timer[];
 }
 
 const desktopColumns = [
@@ -51,15 +52,31 @@ const TimerTableView: React.FC<TimerTableViewProps> = ({
   <UnitTableView
     data={timers}
     desktopColumns={desktopColumns}
-    mobileColumns={mobileColumns}
+    emptyMessage="No timers found."
     getRowKey={(timer) => timer.name}
-    selected={selected}
-    onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
+    mobileColumns={mobileColumns}
     onDoubleClick={(key) => {
       if (typeof key === "string") {
         onDoubleClick?.(key);
       }
     }}
+    onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
+    renderMainRow={(timer, isMobile) => (
+      <>
+        <AppTableCell style={{ paddingLeft: 8 }}>
+          {statusDot(timer.active_state)}
+          {timer.active_state}
+        </AppTableCell>
+        <AppTableCell>{timer.name}</AppTableCell>
+        {!isMobile && (
+          <>
+            <AppTableCell>{timer.unit || "—"}</AppTableCell>
+            <AppTableCell>{formatUsec(timer.next_elapse_usec)}</AppTableCell>
+            <AppTableCell>{formatUsec(timer.last_trigger_usec)}</AppTableCell>
+          </>
+        )}
+      </>
+    )}
     renderMobileExpandedContent={(timer) => (
       <div
         style={{
@@ -93,23 +110,7 @@ const TimerTableView: React.FC<TimerTableViewProps> = ({
         ))}
       </div>
     )}
-    renderMainRow={(timer, isMobile) => (
-      <>
-        <AppTableCell style={{ paddingLeft: 8 }}>
-          {statusDot(timer.active_state)}
-          {timer.active_state}
-        </AppTableCell>
-        <AppTableCell>{timer.name}</AppTableCell>
-        {!isMobile && (
-          <>
-            <AppTableCell>{timer.unit || "—"}</AppTableCell>
-            <AppTableCell>{formatUsec(timer.next_elapse_usec)}</AppTableCell>
-            <AppTableCell>{formatUsec(timer.last_trigger_usec)}</AppTableCell>
-          </>
-        )}
-      </>
-    )}
-    emptyMessage="No timers found."
+    selected={selected}
   />
 );
 

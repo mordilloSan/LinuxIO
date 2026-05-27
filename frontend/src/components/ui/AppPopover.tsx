@@ -14,24 +14,24 @@ type VerticalOrigin = "top" | "center" | "bottom";
 type HorizontalOrigin = "left" | "center" | "right";
 
 export interface AppPopoverOrigin {
-  vertical: VerticalOrigin;
   horizontal: HorizontalOrigin;
+  vertical: VerticalOrigin;
 }
 
 export interface AppPopoverProps {
-  open: boolean;
-  onClose?: () => void;
   anchorEl?: HTMLElement | null;
-  anchorPosition?: { top: number; left: number } | null;
   anchorOrigin?: AppPopoverOrigin;
-  transformOrigin?: AppPopoverOrigin;
-  matchAnchorWidth?: boolean;
+  anchorPosition?: { top: number; left: number } | null;
   children: React.ReactNode;
   className?: string;
+  matchAnchorWidth?: boolean;
+  onClose?: () => void;
+  open: boolean;
   paperClassName?: string;
-  style?: React.CSSProperties;
-  paperStyle?: React.CSSProperties;
   paperRef?: React.Ref<HTMLDivElement>;
+  paperStyle?: React.CSSProperties;
+  style?: React.CSSProperties;
+  transformOrigin?: AppPopoverOrigin;
   zIndex?: number;
 }
 
@@ -268,8 +268,8 @@ const AppPopover: React.FC<AppPopoverProps> = ({
       style={{ zIndex, ...style }}
     >
       <div
-        ref={setPaperRef}
         className={`app-popover__paper ${paperClassName || ""}`.trim()}
+        ref={setPaperRef}
         style={{
           top: position.top,
           left: position.left,

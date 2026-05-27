@@ -5,16 +5,16 @@ import "./tab-panel.css";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 
 interface TabPanelProps {
-  /** The unique identifier for this tab */
-  value: string;
   /** The currently active tab identifier */
   activeTab: string;
-  /** Fade animation duration in milliseconds */
-  timeout: number;
-  /** Optional custom error fallback UI */
-  errorFallback?: React.ReactNode;
   /** The tab content to render */
   children: React.ReactNode;
+  /** Optional custom error fallback UI */
+  errorFallback?: React.ReactNode;
+  /** Fade animation duration in milliseconds */
+  timeout: number;
+  /** The unique identifier for this tab */
+  value: string;
 }
 
 /**
@@ -45,14 +45,14 @@ const TabPanel: React.FC<TabPanelProps> = ({
   return (
     <div
       className="tab-panel"
-      onAnimationStart={() => {
-        if (isActive) {
-          setIsPresent(true);
-        }
-      }}
       onAnimationEnd={() => {
         if (!isActive) {
           setIsPresent(false);
+        }
+      }}
+      onAnimationStart={() => {
+        if (isActive) {
+          setIsPresent(true);
         }
       }}
       style={{

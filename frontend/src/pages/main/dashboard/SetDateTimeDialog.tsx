@@ -44,8 +44,8 @@ function toDatetimeLocal(iso: string): string {
 }
 
 interface Props {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 
 const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
@@ -200,13 +200,13 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
   const addServer = () => setCustomServers((prev) => [...prev, ""]);
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Date &amp; Time Settings</AppDialogTitle>
       <AppDialogContent>
         {/* Sentinel captures initial focus so autocomplete dropdowns don't open automatically */}
         <span
-          tabIndex={-1}
           style={{ outline: "none", display: "block", height: 0 }}
+          tabIndex={-1}
         />
         <div
           style={{
@@ -216,27 +216,21 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
           }}
         >
           <AppAutocomplete
-            label="Time zone"
-            size="small"
-            options={timezones}
-            value={timezone}
-            onChange={(v) => setTimezone(v)}
-            fullWidth
             filterOptions={(opts, state) => {
               if (!state.inputValue || state.inputValue === timezone)
                 return opts;
               const q = state.inputValue.toLowerCase();
               return opts.filter((o) => o.toLowerCase().includes(q));
             }}
+            fullWidth
+            label="Time zone"
+            onChange={(v) => setTimezone(v)}
+            options={timezones}
+            size="small"
+            value={timezone}
           />
 
           <AppAutocomplete
-            label="Set time"
-            size="small"
-            options={TIME_MODE_OPTIONS}
-            value={TIME_MODE_LABELS[timeMode]}
-            onChange={handleModeChange}
-            fullWidth
             filterOptions={(opts, state) => {
               if (
                 !state.inputValue ||
@@ -246,6 +240,12 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
               const q = state.inputValue.toLowerCase();
               return opts.filter((o) => o.toLowerCase().includes(q));
             }}
+            fullWidth
+            label="Set time"
+            onChange={handleModeChange}
+            options={TIME_MODE_OPTIONS}
+            size="small"
+            value={TIME_MODE_LABELS[timeMode]}
           />
 
           {timeMode === "custom" && (
@@ -261,13 +261,13 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
                   }}
                 >
                   <AppTextField
-                    label={i === 0 ? "NTP server" : undefined}
-                    placeholder="e.g. time.cloudflare.com"
-                    value={server}
-                    onChange={(e) => updateServer(i, e.target.value)}
                     fullWidth
-                    variant="outlined"
+                    label={i === 0 ? "NTP server" : undefined}
+                    onChange={(e) => updateServer(i, e.target.value)}
+                    placeholder="e.g. time.cloudflare.com"
                     size="small"
+                    value={server}
+                    variant="outlined"
                   />
                   <AppIconButton
                     onClick={addServer}
@@ -290,13 +290,13 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
 
           {timeMode === "manual" && (
             <AppTextField
-              label="Date &amp; Time"
-              type="datetime-local"
               fullWidth
-              variant="outlined"
-              size="small"
-              value={manualTime}
+              label="Date &amp; Time"
               onChange={(e) => setManualTime(e.target.value)}
+              size="small"
+              type="datetime-local"
+              value={manualTime}
+              variant="outlined"
             />
           )}
         </div>
@@ -304,8 +304,8 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
       <AppDialogActions>
         <AppButton onClick={onClose}>Cancel</AppButton>
         <AppButton
-          onClick={handleSave}
           disabled={isPending}
+          onClick={handleSave}
           variant="contained"
         >
           Save

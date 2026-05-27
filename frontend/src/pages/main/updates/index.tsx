@@ -1,10 +1,6 @@
 import { Icon } from "@iconify/react";
 import React, { useMemo, useState } from "react";
 
-import UpdateHistory from "./UpdateHistory";
-import UpdateSettingsDialog from "./UpdateSettingsDialog";
-import UpdateStatus from "./UpdateStatus";
-
 import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -14,6 +10,10 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { useAppTheme } from "@/theme";
+
+import UpdateHistory from "./UpdateHistory";
+import UpdateSettingsDialog from "./UpdateSettingsDialog";
+import UpdateStatus from "./UpdateStatus";
 
 const Updates: React.FC = () => {
   const theme = useAppTheme();
@@ -47,6 +47,8 @@ const Updates: React.FC = () => {
   return (
     <>
       <TabContainer
+        containerStyle={{ paddingInline: 0 }}
+        defaultTab="updates"
         tabs={[
           {
             value: "updates",
@@ -58,16 +60,16 @@ const Updates: React.FC = () => {
               </AppAlert>
             ) : (
               <UpdateStatus
-                updates={updates}
+                error={error}
+                eventLog={eventLog}
                 isLoading={isLoading}
+                onCancel={cancelUpdate}
+                onClearError={clearError}
                 onUpdateOne={updateOne}
-                updatingPackage={updatingPackage}
                 progress={progress}
                 status={status}
-                eventLog={eventLog}
-                error={error}
-                onClearError={clearError}
-                onCancel={cancelUpdate}
+                updates={updates}
+                updatingPackage={updatingPackage}
               />
             ),
             rightContent: (
@@ -81,23 +83,23 @@ const Updates: React.FC = () => {
                 {!packageKitUnavailable ? (
                   <AppTooltip title="Update settings">
                     <AppIconButton
-                      size="small"
                       aria-label="Open update settings"
                       onClick={() => setSettingsOpen(true)}
+                      size="small"
                     >
-                      <Icon icon="mdi:cog" width={20} height={20} />
+                      <Icon height={20} icon="mdi:cog" width={20} />
                     </AppIconButton>
                   </AppTooltip>
                 ) : null}
                 {!packageKitUnavailable && updates.length > 0 ? (
                   <AppButton
-                    variant="contained"
-                    size="small"
-                    startIcon={
-                      <Icon icon="mdi:refresh" width={20} height={20} />
-                    }
                     disabled={!!updatingPackage || isLoading}
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
+                    size="small"
+                    startIcon={
+                      <Icon height={20} icon="mdi:refresh" width={20} />
+                    }
+                    variant="contained"
                   >
                     Update All ({updates.length})
                   </AppButton>
@@ -111,14 +113,12 @@ const Updates: React.FC = () => {
             component: <UpdateHistory />,
           },
         ]}
-        defaultTab="updates"
         urlParam="updateTab"
-        containerStyle={{ paddingInline: 0 }}
       />
 
       <UpdateSettingsDialog
-        open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        open={settingsOpen}
       />
     </>
   );

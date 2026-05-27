@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import "./power-settings.css";
 
-import { linuxio, jobSnapshotResult, type PowerStatus } from "@/api";
+import { jobSnapshotResult, linuxio, type PowerStatus } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -126,10 +126,10 @@ const PowerSettingsSection: React.FC = () => {
 
   const powerHeader = (
     <div className="power-settings__header">
-      <AppTypography variant="body1" fontWeight={600}>
+      <AppTypography fontWeight={600} variant="body1">
         Power
       </AppTypography>
-      <AppTypography variant="caption" color="text.secondary">
+      <AppTypography color="text.secondary" variant="caption">
         Manage TuneD status and power profiles.
       </AppTypography>
     </div>
@@ -137,7 +137,7 @@ const PowerSettingsSection: React.FC = () => {
 
   if (isPending) {
     return (
-      <div className="power-settings" aria-busy>
+      <div aria-busy className="power-settings">
         {powerHeader}
         <div className="power-settings__loading">
           <ComponentLoader />
@@ -187,7 +187,7 @@ const PowerSettingsSection: React.FC = () => {
   }
 
   return (
-    <div className="power-settings" aria-busy={busy}>
+    <div aria-busy={busy} className="power-settings">
       {powerHeader}
 
       {!status.tuned_available ? (
@@ -215,13 +215,13 @@ const PowerSettingsSection: React.FC = () => {
         <div className="power-settings__card-header">
           <div className="power-settings__card-title">
             <div className="power-settings__card-icon">
-              <Icon icon="mdi:tune-variant" width={22} height={22} />
+              <Icon height={22} icon="mdi:tune-variant" width={22} />
             </div>
             <div className="power-settings__title-block">
-              <AppTypography variant="body2" fontWeight={600} component="h3">
+              <AppTypography component="h3" fontWeight={600} variant="body2">
                 TuneD Status
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 System power tuning service.
               </AppTypography>
             </div>
@@ -240,6 +240,19 @@ const PowerSettingsSection: React.FC = () => {
               }
             >
               <AppIconButton
+                aria-label={
+                  status.tuned_active ? "Turn Off TuneD" : "Start TuneD"
+                }
+                disabled={
+                  busy ||
+                  !status.tuned_available ||
+                  (!status.tuned_active && !status.tuned_startable)
+                }
+                onClick={() =>
+                  status.tuned_active
+                    ? disableMutation.mutate([])
+                    : startMutation.mutate([])
+                }
                 style={{
                   color: status.tuned_active
                     ? "var(--app-palette-success-main)"
@@ -247,21 +260,8 @@ const PowerSettingsSection: React.FC = () => {
                       ? "var(--app-palette-error-main)"
                       : "var(--app-palette-text-disabled)",
                 }}
-                disabled={
-                  busy ||
-                  !status.tuned_available ||
-                  (!status.tuned_active && !status.tuned_startable)
-                }
-                aria-label={
-                  status.tuned_active ? "Turn Off TuneD" : "Start TuneD"
-                }
-                onClick={() =>
-                  status.tuned_active
-                    ? disableMutation.mutate([])
-                    : startMutation.mutate([])
-                }
               >
-                <Icon icon="mdi:power" width={22} height={22} />
+                <Icon height={22} icon="mdi:power" width={22} />
               </AppIconButton>
             </AppTooltip>
           </div>
@@ -291,13 +291,13 @@ const PowerSettingsSection: React.FC = () => {
         <div className="power-settings__card-header">
           <div className="power-settings__card-title">
             <div className="power-settings__card-icon">
-              <Icon icon="mdi:speedometer" width={22} height={22} />
+              <Icon height={22} icon="mdi:speedometer" width={22} />
             </div>
             <div className="power-settings__title-block">
-              <AppTypography variant="body2" fontWeight={600} component="h3">
+              <AppTypography component="h3" fontWeight={600} variant="body2">
                 Profile
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 Available TuneD profiles.
               </AppTypography>
             </div>
@@ -308,13 +308,13 @@ const PowerSettingsSection: React.FC = () => {
             Available profiles
           </span>
           <AppSelect
-            fullWidth
-            size="small"
-            value={resolvedProfile}
             disabled={busy || status.profiles.length === 0}
+            fullWidth
             onChange={(event) => setSelectedProfile(event.target.value)}
             renderOption={renderProfileOption}
             renderValue={renderProfileOption}
+            size="small"
+            value={resolvedProfile}
           >
             {status.profiles.length === 0 ? (
               <option value="">No profiles reported</option>
@@ -327,11 +327,11 @@ const PowerSettingsSection: React.FC = () => {
             )}
           </AppSelect>
           <AppButton
-            size="small"
-            variant={selectedIsActive ? "text" : "contained"}
             disabled={!canApplyProfile}
-            startIcon={<Icon icon="mdi:check" width={18} height={18} />}
             onClick={() => setProfileMutation.mutate([resolvedProfile])}
+            size="small"
+            startIcon={<Icon height={18} icon="mdi:check" width={18} />}
+            variant={selectedIsActive ? "text" : "contained"}
           >
             {profileActionLabel}
           </AppButton>

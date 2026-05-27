@@ -9,7 +9,7 @@ export const GuestGuard: React.FC<PropsWithChildren> = ({ children }) => {
   const redirect = searchParams.get("redirect") || "/";
 
   if (isInitialized && isAuthenticated) {
-    return <Navigate to={redirect} replace />;
+    return <Navigate replace to={redirect} />;
   }
 
   return <>{children}</>;

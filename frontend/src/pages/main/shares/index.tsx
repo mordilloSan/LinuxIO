@@ -1,10 +1,6 @@
 import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
 
-import { DeleteNFSShareDialog } from "./NFSShares";
-import { DeleteSambaShareDialog } from "./SambaShares";
-import NFSMounts from "../storage/NFSMounts";
-
 import {
   linuxio,
   type NFSClient,
@@ -42,6 +38,10 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+import NFSMounts from "../storage/NFSMounts";
+import { DeleteNFSShareDialog } from "./NFSShares";
+import { DeleteSambaShareDialog } from "./SambaShares";
+
 type ShareGroup = {
   id: string;
   name: string;
@@ -52,19 +52,19 @@ type ShareGroup = {
 };
 
 interface ClientOptions {
+  allSquash: boolean;
+  crossmnt: boolean;
+  insecure: boolean;
+  noRootSquash: boolean;
+  noSubtreeCheck: boolean;
   rw: boolean;
   sync: boolean;
-  noSubtreeCheck: boolean;
-  noRootSquash: boolean;
-  allSquash: boolean;
-  insecure: boolean;
-  crossmnt: boolean;
 }
 
 interface CreateFolderShareDialogProps {
-  open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
 interface EditFolderShareDialogProps extends CreateFolderShareDialogProps {
@@ -247,18 +247,18 @@ function renderProtocolSummary(group: ShareGroup): React.ReactNode {
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {group.samba ? (
         <Chip
+          color="primary"
           label={`SMB ${getSambaAccessLabel(group.samba)}`}
           size="small"
           variant="soft"
-          color="primary"
         />
       ) : null}
       {group.nfs ? (
         <Chip
+          color="primary"
           label={`NFS ${getNFSAccessLabel(group.nfs)}`}
           size="small"
           variant="soft"
-          color="primary"
         />
       ) : null}
     </div>
@@ -277,35 +277,35 @@ const FolderPathPicker: React.FC<{
     <>
       <div ref={anchorRef}>
         <AppTextField
-          label="Folder Path"
-          value={value}
-          size="small"
+          endAdornment={
+            <Icon
+              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
+              style={{ opacity: 0.5 }}
+              width={18}
+            />
+          }
           fullWidth
-          shrinkLabel
+          label="Folder Path"
           onClick={() => {
             setAnchorEl(anchorRef.current);
             setOpen(true);
           }}
-          style={{ cursor: "pointer" }}
           placeholder="Click to select a folder"
-          endAdornment={
-            <Icon
-              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              width={18}
-              style={{ opacity: 0.5 }}
-            />
-          }
+          shrinkLabel
+          size="small"
+          style={{ cursor: "pointer" }}
+          value={value}
         />
       </div>
       <AppPopover
-        open={open}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
-        <DirectoryTree selectedPath={value} onSelect={onChange} />
+        <DirectoryTree onSelect={onChange} selectedPath={value} />
       </AppPopover>
     </>
   );
@@ -326,37 +326,36 @@ const NFSOptionsDropdown: React.FC<{
     <>
       <div ref={anchorRef} style={{ flex: 1, minWidth: 220 }}>
         <AppTextField
-          label="Options"
-          value={nfsOptionsSummary(options)}
-          size="small"
+          endAdornment={
+            <Icon
+              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
+              style={{ opacity: 0.5 }}
+              width={18}
+            />
+          }
           fullWidth
+          label="Options"
           onClick={() => {
             setAnchorEl(anchorRef.current);
             setOpen(true);
           }}
+          size="small"
           style={{ cursor: "pointer" }}
-          endAdornment={
-            <Icon
-              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              width={18}
-              style={{ opacity: 0.5 }}
-            />
-          }
+          value={nfsOptionsSummary(options)}
         />
       </div>
       <AppPopover
-        open={open}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
         <div style={{ padding: "6px 0" }}>
           {nfsOptionLabels.map(({ key, label }) => (
             <button
               key={key}
-              type="button"
               onClick={() => toggle(key)}
               style={{
                 display: "flex",
@@ -371,6 +370,7 @@ const NFSOptionsDropdown: React.FC<{
                 color: "inherit",
                 textAlign: "left",
               }}
+              type="button"
             >
               <span
                 style={{
@@ -504,7 +504,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Add Folder Share</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -515,7 +515,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
             marginTop: 8,
           }}
         >
-          <FolderPathPicker value={path} onChange={setPath} />
+          <FolderPathPicker onChange={setPath} value={path} />
 
           <div
             style={{
@@ -539,22 +539,22 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
             {sambaEnabled ? (
               <>
                 <AppTextField
+                  className="app-text-field--compact-copy"
+                  fullWidth
                   label="Share Name"
-                  value={sambaName}
                   onChange={(event) => setSambaName(event.target.value)}
                   placeholder={inferShareName(path)}
                   size="small"
-                  className="app-text-field--compact-copy"
-                  fullWidth
+                  value={sambaName}
                 />
                 <AppTextField
+                  className="app-text-field--compact-copy"
+                  fullWidth
                   label="Comment"
-                  value={comment}
                   onChange={(event) => setComment(event.target.value)}
                   placeholder="Optional description"
                   size="small"
-                  className="app-text-field--compact-copy"
-                  fullWidth
+                  value={comment}
                 />
                 <AppFormControlLabel
                   control={
@@ -586,8 +586,8 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
                   onChange={(event) => setNFSEnabled(event.target.checked)}
                 />
               }
-              label="Enable NFS"
               disabled={nfsUnavailable}
+              label="Enable NFS"
             />
             {nfsUnavailable ? (
               <AppAlert severity="warning">{nfsReason}</AppAlert>
@@ -602,18 +602,18 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
                 }}
               >
                 <AppTextField
+                  fullWidth
+                  helperText="Use * for public access, or enter host/IP/CIDR values separated by commas."
                   label="Allowed NFS Clients"
-                  value={nfsClients}
                   onChange={(event) => setNFSClients(event.target.value)}
                   placeholder="* or 192.168.1.0/24"
-                  helperText="Use * for public access, or enter host/IP/CIDR values separated by commas."
                   size="small"
-                  fullWidth
                   style={{ flex: "2 1 260px" }}
+                  value={nfsClients}
                 />
                 <NFSOptionsDropdown
-                  options={nfsOptions}
                   onChange={setNFSOptions}
+                  options={nfsOptions}
                 />
               </div>
             ) : null}
@@ -625,13 +625,13 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleCreate}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Creating..." : "Create Share"}
         </AppButton>
@@ -772,7 +772,7 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>Edit Folder Share</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -784,12 +784,12 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Folder Path"
-            value={group.path}
-            size="small"
-            fullWidth
-            shrinkLabel
             disabled
+            fullWidth
+            label="Folder Path"
+            shrinkLabel
+            size="small"
+            value={group.path}
           />
 
           <div
@@ -814,22 +814,22 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
             {sambaEnabled ? (
               <>
                 <AppTextField
+                  className="app-text-field--compact-copy"
+                  fullWidth
                   label="Share Name"
-                  value={sambaName}
                   onChange={(event) => setSambaName(event.target.value)}
                   placeholder={inferShareName(group.path)}
                   size="small"
-                  className="app-text-field--compact-copy"
-                  fullWidth
+                  value={sambaName}
                 />
                 <AppTextField
+                  className="app-text-field--compact-copy"
+                  fullWidth
                   label="Comment"
-                  value={comment}
                   onChange={(event) => setComment(event.target.value)}
                   placeholder="Optional description"
                   size="small"
-                  className="app-text-field--compact-copy"
-                  fullWidth
+                  value={comment}
                 />
                 <AppFormControlLabel
                   control={
@@ -861,8 +861,8 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
                   onChange={(event) => setNFSEnabled(event.target.checked)}
                 />
               }
-              label="Enable NFS"
               disabled={nfsUnavailable && !nfsEnabled}
+              label="Enable NFS"
             />
             {nfsUnavailable ? (
               <AppAlert severity="warning">{nfsReason}</AppAlert>
@@ -877,18 +877,18 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
                 }}
               >
                 <AppTextField
+                  fullWidth
+                  helperText="Use * for public access, or enter host/IP/CIDR values separated by commas."
                   label="Allowed NFS Clients"
-                  value={nfsClients}
                   onChange={(event) => setNFSClients(event.target.value)}
                   placeholder="* or 192.168.1.0/24"
-                  helperText="Use * for public access, or enter host/IP/CIDR values separated by commas."
                   size="small"
-                  fullWidth
                   style={{ flex: "2 1 260px" }}
+                  value={nfsClients}
                 />
                 <NFSOptionsDropdown
-                  options={nfsOptions}
                   onChange={setNFSOptions}
+                  options={nfsOptions}
                 />
               </div>
             ) : null}
@@ -900,13 +900,13 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleSave}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Saving..." : "Save Share"}
         </AppButton>
@@ -929,30 +929,30 @@ const FolderShareCardActions: React.FC<{
     <div style={{ display: "flex", gap: 2 }}>
       <AppTooltip title="Edit Share">
         <AppIconButton
-          size="small"
           color="primary"
           onClick={() => onEditShare(group)}
+          size="small"
         >
           <Icon icon="mdi:pencil-outline" width={18} />
         </AppIconButton>
       </AppTooltip>
       <AppTooltip title="Remove Share">
         <AppIconButton
-          size="small"
           color="error"
           onClick={(event) => setRemoveAnchor(event.currentTarget)}
+          size="small"
         >
           <Icon icon="mdi:trash-can-outline" width={18} />
         </AppIconButton>
       </AppTooltip>
 
       <AppMenu
-        open={Boolean(removeAnchor)}
-        onClose={() => setRemoveAnchor(null)}
         anchorEl={removeAnchor}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
         minWidth={150}
+        onClose={() => setRemoveAnchor(null)}
+        open={Boolean(removeAnchor)}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
         {group.samba ? (
           <AppMenuItem
@@ -988,7 +988,7 @@ function renderExpandedContent(
   return (
     <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 280 }}>
-        <AppTypography variant="subtitle2" gutterBottom>
+        <AppTypography gutterBottom variant="subtitle2">
           <strong>Share Details:</strong>
         </AppTypography>
         <AppTypography variant="body2">
@@ -1000,9 +1000,9 @@ function renderExpandedContent(
         <div style={{ marginTop: 10 }}>{renderProtocolSummary(group)}</div>
         <div style={{ marginTop: 12 }}>
           <AppButton
+            onClick={() => setEditingShare(group)}
             size="small"
             variant="outlined"
-            onClick={() => setEditingShare(group)}
           >
             Edit Share
           </AppButton>
@@ -1011,7 +1011,7 @@ function renderExpandedContent(
 
       {group.samba ? (
         <div style={{ flex: 1, minWidth: 280 }}>
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             <strong>SMB</strong>
           </AppTypography>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -1025,10 +1025,10 @@ function renderExpandedContent(
             ))}
           </div>
           <AppButton
-            size="small"
             color="error"
-            style={{ marginTop: 12 }}
             onClick={() => setDeletingSamba(group.samba)}
+            size="small"
+            style={{ marginTop: 12 }}
           >
             Remove SMB
           </AppButton>
@@ -1037,7 +1037,7 @@ function renderExpandedContent(
 
       {group.nfs ? (
         <div style={{ flex: 1, minWidth: 280 }}>
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             <strong>NFS</strong>
           </AppTypography>
           {group.nfs.clients.length > 0 ? (
@@ -1064,7 +1064,7 @@ function renderExpandedContent(
                       />
                     ))
                   ) : (
-                    <AppTypography variant="body2" color="text.secondary">
+                    <AppTypography color="text.secondary" variant="body2">
                       (default options)
                     </AppTypography>
                   )}
@@ -1072,15 +1072,15 @@ function renderExpandedContent(
               </div>
             ))
           ) : (
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No NFS access rules configured
             </AppTypography>
           )}
           <AppButton
-            size="small"
             color="error"
-            style={{ marginTop: 12 }}
             onClick={() => setDeletingNFS(group.nfs)}
+            size="small"
+            style={{ marginTop: 12 }}
           >
             Remove NFS
           </AppButton>
@@ -1143,21 +1143,21 @@ const SharesPage: React.FC = () => {
         }
       >
         <AppIconButton
-          size="small"
           onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
+          size="small"
         >
           {viewMode === "table" ? (
-            <Icon icon="mdi:view-grid" width={20} height={20} />
+            <Icon height={20} icon="mdi:view-grid" width={20} />
           ) : (
-            <Icon icon="mdi:table-row" width={20} height={20} />
+            <Icon height={20} icon="mdi:table-row" width={20} />
           )}
         </AppIconButton>
       </AppTooltip>
       <AppButton
-        variant="contained"
-        size="small"
         onClick={() => setCreateDialogOpen(true)}
-        startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+        size="small"
+        startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+        variant="contained"
       >
         Add Share
       </AppButton>
@@ -1172,17 +1172,17 @@ const SharesPage: React.FC = () => {
             {shareGroups.map((group) => (
               <AppGrid key={group.id} size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
                 <FolderShareCard
-                  name={group.name}
-                  path={group.path}
-                  comment={group.comment}
                   actions={
                     <FolderShareCardActions
                       group={group}
-                      onEditShare={(shareGroup) => setEditingShare(shareGroup)}
-                      onDeleteSamba={(share) => setDeletingSamba(share)}
                       onDeleteNFS={(share) => setDeletingNFS(share)}
+                      onDeleteSamba={(share) => setDeletingSamba(share)}
+                      onEditShare={(shareGroup) => setEditingShare(shareGroup)}
                     />
                   }
+                  comment={group.comment}
+                  name={group.name}
+                  path={group.path}
                   protocolSummary={renderProtocolSummary(group)}
                 />
               </AppGrid>
@@ -1190,25 +1190,34 @@ const SharesPage: React.FC = () => {
           </AppGrid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 24 }}>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No shares configured. Add a folder share to get started.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={shareGroups}
           columns={tableColumns}
+          data={shareGroups}
+          emptyMessage="No shares configured. Add a folder share to get started."
           getRowKey={(group) => group.id}
+          renderExpandedContent={(group) =>
+            renderExpandedContent(
+              group,
+              setEditingShare,
+              setDeletingSamba,
+              setDeletingNFS,
+            )
+          }
           renderMainRow={(group) => (
             <>
               <AppTableCell>
-                <AppTypography variant="body2" fontWeight={700}>
+                <AppTypography fontWeight={700} variant="body2">
                   {group.name}
                 </AppTypography>
               </AppTableCell>
               <AppTableCell>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   {group.comment || "-"}
                 </AppTypography>
               </AppTableCell>
@@ -1224,23 +1233,14 @@ const SharesPage: React.FC = () => {
               </AppTableCell>
               <AppTableCell>
                 <AppTypography
-                  variant="body2"
                   style={{ fontFamily: "monospace" }}
+                  variant="body2"
                 >
                   {group.path}
                 </AppTypography>
               </AppTableCell>
             </>
           )}
-          renderExpandedContent={(group) =>
-            renderExpandedContent(
-              group,
-              setEditingShare,
-              setDeletingSamba,
-              setDeletingNFS,
-            )
-          }
-          emptyMessage="No shares configured. Add a folder share to get started."
         />
       )}
     </div>
@@ -1257,7 +1257,6 @@ const SharesPage: React.FC = () => {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <TabContainer
         defaultTab="shares"
-        urlParam="sharesTab"
         tabs={[
           {
             value: "shares",
@@ -1279,15 +1278,15 @@ const SharesPage: React.FC = () => {
                   }
                 >
                   <AppIconButton
-                    size="small"
                     onClick={() =>
                       setNfsView(nfsView === "table" ? "card" : "table")
                     }
+                    size="small"
                   >
                     {nfsView === "table" ? (
-                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                      <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon icon="mdi:table-row" width={20} height={20} />
+                      <Icon height={20} icon="mdi:table-row" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
@@ -1295,13 +1294,13 @@ const SharesPage: React.FC = () => {
                   <AppTooltip title={nfsUnavailable ? nfsReason : "Mount NFS"}>
                     <span>
                       <AppButton
-                        variant="contained"
-                        size="small"
-                        onClick={mountNFSHandler}
                         disabled={nfsUnavailable}
+                        onClick={mountNFSHandler}
+                        size="small"
                         startIcon={
-                          <Icon icon="mdi:plus" width={20} height={20} />
+                          <Icon height={20} icon="mdi:plus" width={20} />
                         }
+                        variant="contained"
                       >
                         Mount NFS
                       </AppButton>
@@ -1312,37 +1311,38 @@ const SharesPage: React.FC = () => {
             ),
           },
         ]}
+        urlParam="sharesTab"
       />
 
       <CreateFolderShareDialog
-        open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
         onSuccess={() => {
           refetchSamba();
           refetchNFS();
         }}
+        open={createDialogOpen}
       />
       <EditFolderShareDialog
-        key={editingShare?.id ?? "no-share"}
-        open={editingShare !== null}
-        onClose={() => setEditingShare(null)}
         group={editingShare}
+        key={editingShare?.id ?? "no-share"}
+        onClose={() => setEditingShare(null)}
         onSuccess={() => {
           refetchSamba();
           refetchNFS();
         }}
+        open={editingShare !== null}
       />
       <DeleteSambaShareDialog
-        open={deletingSamba !== null}
         onClose={() => setDeletingSamba(null)}
-        share={deletingSamba}
         onSuccess={() => refetchSamba()}
+        open={deletingSamba !== null}
+        share={deletingSamba}
       />
       <DeleteNFSShareDialog
-        open={deletingNFS !== null}
         onClose={() => setDeletingNFS(null)}
-        share={deletingNFS}
         onSuccess={() => refetchNFS()}
+        open={deletingNFS !== null}
+        share={deletingNFS}
       />
     </div>
   );

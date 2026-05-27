@@ -1,14 +1,15 @@
 import React from "react";
 
+import type { Socket, UnitInfo } from "@/api";
+import type { TableCardViewMode } from "@/types/config";
+
+import { linuxio } from "@/api";
+import { useViewMode } from "@/hooks/useViewMode";
+
 import SocketCardsView from "./SocketCardsView";
 import SocketTableView from "./SocketTableView";
 import UnitListTab from "./UnitListTab";
 import { UnitInfoPanel } from "./UnitViews";
-
-import { linuxio } from "@/api";
-import type { Socket, UnitInfo } from "@/api";
-import { useViewMode } from "@/hooks/useViewMode";
-import type { TableCardViewMode } from "@/types/config";
 
 function compareSocketsByName(a: Socket, b: Socket): number {
   return a.name.localeCompare(b.name, undefined, {
@@ -64,42 +65,42 @@ const SocketsTab: React.FC = () => {
 
   return (
     <UnitListTab
-      viewMode={viewMode}
-      setViewMode={setViewMode}
-      data={data}
-      isPending={isPending}
-      isError={isError}
-      error={error}
-      searchPlaceholder="Search sockets…"
-      errorMessage="Failed to load sockets"
       compareItems={compareSocketsByName}
+      data={data}
+      error={error}
+      errorMessage="Failed to load sockets"
+      isError={isError}
+      isPending={isPending}
       matchesSearch={matchesSocketSearch}
-      urlParam="socket"
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
-        <SocketTableView
-          sockets={items}
-          selected={selected}
-          onSelect={onSelect}
-          onDoubleClick={onDoubleClick}
-        />
-      )}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <SocketCardsView
-          sockets={items}
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
+          sockets={items}
         />
       )}
       renderDetailPanel={(socket, onClose) => (
         <UnitInfoPanel
-          unitName={socket.name}
           onClose={onClose}
           renderInfoRows={(info, isPending) =>
             buildSocketInfoRows(socket, info, isPending)
           }
+          unitName={socket.name}
         />
       )}
+      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+        <SocketTableView
+          onDoubleClick={onDoubleClick}
+          onSelect={onSelect}
+          selected={selected}
+          sockets={items}
+        />
+      )}
+      searchPlaceholder="Search sockets…"
+      setViewMode={setViewMode}
+      urlParam="socket"
+      viewMode={viewMode}
     />
   );
 };

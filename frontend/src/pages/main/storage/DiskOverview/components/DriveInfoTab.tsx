@@ -1,8 +1,5 @@
 import React from "react";
 
-import type { DriveInfo } from "../types";
-import { getSmartNumber, getSmartString } from "../utils";
-
 import {
   AppTable,
   AppTableBody,
@@ -12,11 +9,15 @@ import {
   AppTableRow,
 } from "@/components/ui/AppTable";
 
+import type { DriveInfo } from "../types";
+
+import { getSmartNumber, getSmartString } from "../utils";
+
 interface DriveInfoTabProps {
+  deviceInfo?: Record<string, unknown>;
   drive: DriveInfo;
   rawDriveSize?: string;
   smartData?: Record<string, unknown>;
-  deviceInfo?: Record<string, unknown>;
   smartHealth?: { passed?: boolean };
 }
 
@@ -35,7 +36,7 @@ export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
         <AppTableHead>
           <AppTableRow>
             <AppTableCell style={{ fontWeight: 600 }}>Property</AppTableCell>
-            <AppTableCell style={{ fontWeight: 600 }} align="right">
+            <AppTableCell align="right" style={{ fontWeight: 600 }}>
               Value
             </AppTableCell>
           </AppTableRow>

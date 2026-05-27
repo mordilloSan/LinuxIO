@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import type { ComposeProject } from "../../pages/main/docker/ComposeList";
-
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
@@ -14,6 +12,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import SkeletonText from "@/components/ui/SkeletonText";
 import { getComposeStatusColor } from "@/constants/statusColors";
 import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
+
+import type { ComposeProject } from "../../pages/main/docker/ComposeList";
 
 const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
@@ -48,10 +48,10 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
       >
         <div style={{ position: "absolute", top: 12, right: 12 }}>
           <AppSkeleton
-            variant="text"
-            width={56}
             height={22}
             style={{ borderRadius: 11 }}
+            variant="text"
+            width={56}
           />
         </div>
         <div
@@ -62,7 +62,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
             paddingRight: 32,
           }}
         >
-          <AppSkeleton variant="circular" width={36} height={36} />
+          <AppSkeleton height={36} variant="circular" width={36} />
           <SkeletonText variant="subtitle1" width="10ch" />
         </div>
         <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
@@ -70,10 +70,10 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
         </div>
         <AppDivider style={{ marginBlock: 12 }} />
         <div style={{ display: "flex", gap: 2 }}>
-          <AppSkeleton variant="circular" width={28} height={28} />
-          <AppSkeleton variant="circular" width={28} height={28} />
-          <AppSkeleton variant="circular" width={28} height={28} />
-          <AppSkeleton variant="circular" width={28} height={28} />
+          <AppSkeleton height={28} variant="circular" width={28} />
+          <AppSkeleton height={28} variant="circular" width={28} />
+          <AppSkeleton height={28} variant="circular" width={28} />
+          <AppSkeleton height={28} variant="circular" width={28} />
         </div>
       </FrostedCard>
     );
@@ -118,15 +118,15 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
       {/* Status chip top-right */}
       <div style={{ position: "absolute", top: 12, right: 12 }}>
         <Chip
+          color={statusColor}
           label={project.status}
           size="small"
-          color={statusColor}
-          variant="soft"
           sx={{
             textTransform: "capitalize",
             fontSize: "0.65rem",
             "& .MuiChip-label": { px: 1.5 },
           }}
+          variant="soft"
         />
       </div>
 
@@ -139,21 +139,21 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
           paddingRight: 32,
         }}
       >
-        <DockerIcon identifier={project.icon} size={36} alt={project.name} />
-        <AppTypography variant="subtitle1" fontWeight={600} noWrap>
+        <DockerIcon alt={project.name} identifier={project.icon} size={36} />
+        <AppTypography fontWeight={600} noWrap variant="subtitle1">
           {project.name}
         </AppTypography>
       </div>
 
       {/* Stats */}
       <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-        <AppTypography variant="body2" color="text.secondary">
+        <AppTypography color="text.secondary" variant="body2">
           {totalServices > 0
             ? `${runningServices}/${totalServices} services`
             : "No services"}
         </AppTypography>
         {totalContainers > 0 && (
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             {totalContainers} container{totalContainers !== 1 ? "s" : ""}
           </AppTypography>
         )}
@@ -173,15 +173,14 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
         {isLinuxIOManaged ? (
           <AppTooltip title="View compose file">
             <Chip
+              className="chip-interactive"
               label="Managed by LinuxIO"
-              size="small"
-              variant="soft"
               onClick={
                 onPreview && project.config_files.length > 0
                   ? () => onPreview(project.name, project.config_files[0])
                   : undefined
               }
-              className="chip-interactive"
+              size="small"
               style={{
                 fontSize: "0.68rem",
                 cursor:
@@ -189,6 +188,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
                     ? "pointer"
                     : "default",
               }}
+              variant="soft"
             />
           </AppTooltip>
         ) : (
@@ -197,13 +197,13 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
               {onEdit && project.config_files.length > 0 && (
                 <AppTooltip title="Edit">
                   <AppIconButton
-                    size="small"
+                    disabled={isLoading}
                     onClick={() =>
                       onEdit(project.name, project.config_files[0])
                     }
-                    disabled={isLoading}
+                    size="small"
                   >
-                    <Icon icon="mdi:pencil" width={20} height={20} />
+                    <Icon height={20} icon="mdi:pencil" width={20} />
                   </AppIconButton>
                 </AppTooltip>
               )}
@@ -211,41 +211,41 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
                 <>
                   <AppTooltip title="Restart">
                     <AppIconButton
-                      size="small"
-                      onClick={() => onRestart(project.name)}
                       disabled={isLoading}
+                      onClick={() => onRestart(project.name)}
+                      size="small"
                     >
-                      <Icon icon="mdi:restart" width={20} height={20} />
+                      <Icon height={20} icon="mdi:restart" width={20} />
                     </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title="Stop">
                     <AppIconButton
-                      size="small"
-                      onClick={() => onStop(project.name)}
                       disabled={isLoading}
+                      onClick={() => onStop(project.name)}
+                      size="small"
                     >
-                      <Icon icon="mdi:stop-circle" width={20} height={20} />
+                      <Icon height={20} icon="mdi:stop-circle" width={20} />
                     </AppIconButton>
                   </AppTooltip>
                 </>
               ) : (
                 <AppTooltip title="Start">
                   <AppIconButton
-                    size="small"
-                    onClick={() => onStart(project.name)}
                     disabled={isLoading}
+                    onClick={() => onStart(project.name)}
+                    size="small"
                   >
-                    <Icon icon="mdi:play" width={20} height={20} />
+                    <Icon height={20} icon="mdi:play" width={20} />
                   </AppIconButton>
                 </AppTooltip>
               )}
               <AppTooltip title="Delete">
                 <AppIconButton
-                  size="small"
-                  onClick={() => onDelete(project)}
                   disabled={isLoading}
+                  onClick={() => onDelete(project)}
+                  size="small"
                 >
-                  <Icon icon="mdi:delete" width={20} height={20} />
+                  <Icon height={20} icon="mdi:delete" width={20} />
                 </AppIconButton>
               </AppTooltip>
             </div>

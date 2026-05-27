@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import {
-  linuxio,
   type AccountActiveSession,
   type AccountHomeHealth,
   type AccountPasswordState,
@@ -13,6 +12,7 @@ import {
   type AccountUserDetails,
   type AccountUserLogin,
   type AccountUserProcess,
+  linuxio,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
@@ -36,9 +36,9 @@ import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 import "./user-account-details.css";
 
 interface UserDetailsPanelProps {
-  user: AccountUser;
   currentUsername?: string;
   onClose: () => void;
+  user: AccountUser;
 }
 
 function useAccountDetails(username: string) {
@@ -237,16 +237,16 @@ const TopCardHeader: React.FC<{
           flexShrink: 0,
         }}
       >
-        <Icon icon={icon} width={30} height={30} color={iconColor} />
+        <Icon color={iconColor} height={30} icon={icon} width={30} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <AppTypography variant="subtitle2" fontWeight={700} noWrap>
+        <AppTypography fontWeight={700} noWrap variant="subtitle2">
           {title}
         </AppTypography>
         <AppTypography
-          variant="caption"
           color="text.secondary"
           style={{ display: "block", marginTop: 2 }}
+          variant="caption"
         >
           {subtitle}
         </AppTypography>
@@ -274,11 +274,11 @@ const DetailText: React.FC<{
 );
 
 interface ActivityHeader {
-  label: string;
-  hiddenXs?: boolean;
-  onClick?: () => void;
   active?: boolean;
   direction?: "asc" | "desc";
+  hiddenXs?: boolean;
+  label: string;
+  onClick?: () => void;
 }
 
 const ActivitySection: React.FC<{
@@ -326,25 +326,25 @@ const ActivitySection: React.FC<{
               flexShrink: 0,
             }}
           >
-            <Icon icon={icon} width={26} height={26} color={iconColor} />
+            <Icon color={iconColor} height={26} icon={icon} width={26} />
           </div>
         )}
         <div style={{ minWidth: 0 }}>
-          <AppTypography variant="subtitle2" fontWeight={700} noWrap>
+          <AppTypography fontWeight={700} noWrap variant="subtitle2">
             {title}
           </AppTypography>
           {subtitle && (
             <AppTypography
-              variant="caption"
               color="text.secondary"
               style={{ display: "block", marginTop: 2 }}
+              variant="caption"
             >
               {subtitle}
             </AppTypography>
           )}
         </div>
       </div>
-      <AppTypography variant="caption" color="text.secondary" noWrap>
+      <AppTypography color="text.secondary" noWrap variant="caption">
         {metaText}
       </AppTypography>
     </div>
@@ -352,16 +352,16 @@ const ActivitySection: React.FC<{
     <div className={`${gridClassName} account-activity-column-header`}>
       {headers.map((header) => (
         <AppTypography
-          key={header.label}
-          variant="overline"
-          color="text.secondary"
           className={header.hiddenXs ? "account-hidden-xs" : undefined}
+          color="text.secondary"
+          key={header.label}
+          onClick={header.onClick}
           style={{
             fontSize: "0.65rem",
             cursor: header.onClick ? "pointer" : undefined,
             userSelect: header.onClick ? "none" : undefined,
           }}
-          onClick={header.onClick}
+          variant="overline"
         >
           {header.label}
           {header.active ? (header.direction === "asc" ? " ↑" : " ↓") : ""}
@@ -380,7 +380,7 @@ const ActivityEmpty: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => (
   <div style={{ paddingBlock: 14, textAlign: "center" }}>
-    <AppTypography variant="body2" color="text.secondary">
+    <AppTypography color="text.secondary" variant="body2">
       {children}
     </AppTypography>
   </div>
@@ -424,19 +424,19 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
       <TopCardHeader
         icon="mdi:shield-account"
         iconColor={securityIconColor}
-        title="Access & security"
-        subtitle="Admin privileges, password status, and elevated groups"
         right={
           <AppTooltip title="Close details">
             <AppIconButton
-              size="small"
               onClick={onClose}
+              size="small"
               style={{ flexShrink: 0 }}
             >
-              <Icon icon="mdi:close" width={20} height={20} />
+              <Icon height={20} icon="mdi:close" width={20} />
             </AppIconButton>
           </AppTooltip>
         }
+        subtitle="Admin privileges, password status, and elevated groups"
+        title="Access & security"
       />
 
       {isPending ? (
@@ -454,8 +454,8 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
       ) : (
         <>
           <div
-            style={{ flex: 1, overflowX: "auto" }}
             className="custom-scrollbar"
+            style={{ flex: 1, overflowX: "auto" }}
           >
             <div style={{ minWidth: "max-content" }}>
               <DetailRow label="Admin" noBorder>
@@ -501,9 +501,9 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
 
           <div style={{ marginTop: 12 }}>
             <AppTypography
-              variant="caption"
               color="text.secondary"
               style={{ display: "block", marginBottom: 6 }}
+              variant="caption"
             >
               Elevated groups
             </AppTypography>
@@ -511,20 +511,20 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
               {details.admin.groups.length ? (
                 details.admin.groups.map((group) => (
                   <Chip
+                    color="warning"
                     key={`${user.username}-${group}`}
                     label={group}
                     size="small"
-                    variant="soft"
-                    color="warning"
                     style={{ fontSize: "0.65rem", height: 20 }}
+                    variant="soft"
                   />
                 ))
               ) : (
                 <Chip
                   label="none"
                   size="small"
-                  variant="soft"
                   style={{ fontSize: "0.65rem", height: 20 }}
+                  variant="soft"
                 />
               )}
             </div>
@@ -656,22 +656,22 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
     <div className="account-activity-stack">
       <ActivitySection
         className="account-activity-card--sessions"
-        title="Active sessions"
-        subtitle="Current authenticated sessions"
-        icon="mdi:account-clock"
-        iconColor={theme.palette.primary.main}
+        gridClassName="account-events-grid"
         headers={[
           { label: "Started", hiddenXs: true },
           { label: "Terminal" },
           { label: "Source", hiddenXs: true },
           { label: "Status" },
         ]}
-        gridClassName="account-events-grid"
+        icon="mdi:account-clock"
+        iconColor={theme.palette.primary.main}
         metaText={
           detailsPending || !details
             ? "Checking sessions"
             : `${sessions.length} active ${sessions.length === 1 ? "session" : "sessions"}`
         }
+        subtitle="Current authenticated sessions"
+        title="Active sessions"
       >
         {detailsPending ? (
           <ActivityLoading rows={2} />
@@ -694,20 +694,20 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
             <React.Fragment key={`${session.terminal}-${session.startedAt}`}>
               <div className="account-events-grid account-activity-row">
                 <AppTypography
-                  variant="body2"
+                  className="account-hidden-xs"
                   fontWeight={500}
                   noWrap
-                  className="account-hidden-xs"
+                  variant="body2"
                 >
                   {session.startedAt || "-"}
                 </AppTypography>
                 <div className="account-session-terminal">
                   <div className="account-session-terminal-info">
-                    <AppTypography variant="body2" fontWeight={500} noWrap>
+                    <AppTypography fontWeight={500} noWrap variant="body2">
                       {session.terminal || "-"}
                     </AppTypography>
                     {session.pid ? (
-                      <AppTypography variant="body2" fontWeight={500} noWrap>
+                      <AppTypography fontWeight={500} noWrap variant="body2">
                         (PID {session.pid})
                       </AppTypography>
                     ) : null}
@@ -715,39 +715,39 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                   {session.pid || session.sessionId ? (
                     <AppTooltip title="Terminate session">
                       <AppIconButton
-                        size="small"
-                        className="account-session-kill"
                         aria-label={`Terminate session ${session.terminal}`}
+                        className="account-session-kill"
                         onClick={() => {
                           setKillError("");
                           setPendingKillSession(session);
                         }}
+                        size="small"
                       >
                         <Icon
+                          height={16}
                           icon="mdi:trash-can-outline"
                           width={16}
-                          height={16}
                         />
                       </AppIconButton>
                     </AppTooltip>
                   ) : null}
                 </div>
                 <AppTypography
-                  variant="body2"
+                  className="account-hidden-xs"
                   fontWeight={500}
                   noWrap
-                  className="account-hidden-xs"
+                  variant="body2"
                 >
                   {sessionLocation(session)}
                 </AppTypography>
                 <AppTooltip title={sessionStatusTooltip(session.idle)}>
                   <div>
                     <Chip
+                      color={sessionStatusColor()}
                       label={sessionStatusLabel()}
                       size="small"
-                      variant="soft"
-                      color={sessionStatusColor()}
                       style={activityChipStyle}
+                      variant="soft"
                     />
                   </div>
                 </AppTooltip>
@@ -760,22 +760,22 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
 
       <ActivitySection
         className="account-activity-card--logins"
-        title="Login history"
-        subtitle="Recent login events"
-        icon="mdi:history"
-        iconColor={theme.palette.primary.main}
+        gridClassName="account-events-grid"
         headers={[
           { label: "Time", hiddenXs: true },
           { label: "Terminal", hiddenXs: true },
           { label: "Source" },
           { label: "Result" },
         ]}
-        gridClassName="account-events-grid"
+        icon="mdi:history"
+        iconColor={theme.palette.primary.main}
         metaText={
           loginsPending
             ? "Loading login history"
             : `${logins.length} recent ${logins.length === 1 ? "event" : "events"}`
         }
+        subtitle="Recent login events"
+        title="Login history"
       >
         {loginsPending ? (
           <ActivityLoading rows={3} />
@@ -795,9 +795,6 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           logins.map((login, index) => (
             <React.Fragment key={loginEventKey(login)}>
               <div
-                ref={(node) => {
-                  loginRowRefs.current[loginEventKey(login)] = node;
-                }}
                 className={[
                   "account-events-grid",
                   "account-activity-row",
@@ -807,33 +804,36 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                ref={(node) => {
+                  loginRowRefs.current[loginEventKey(login)] = node;
+                }}
               >
                 <AppTypography
-                  variant="body2"
+                  className="account-hidden-xs"
                   fontWeight={500}
                   noWrap
-                  className="account-hidden-xs"
+                  variant="body2"
                 >
                   {login.time || "-"}
                 </AppTypography>
                 <AppTypography
-                  variant="body2"
+                  className="account-hidden-xs"
                   fontWeight={500}
                   noWrap
-                  className="account-hidden-xs"
+                  variant="body2"
                 >
                   {login.terminal || "-"}
                 </AppTypography>
-                <AppTypography variant="body2" fontWeight={500} noWrap>
+                <AppTypography fontWeight={500} noWrap variant="body2">
                   {getLoginLocation(login)}
                 </AppTypography>
                 <div>
                   <Chip
+                    color={loginStatusColor(login)}
                     label={loginStatusLabel(login)}
                     size="small"
-                    variant="soft"
-                    color={loginStatusColor(login)}
                     style={activityChipStyle}
+                    variant="soft"
                   />
                 </div>
               </div>
@@ -844,10 +844,10 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
       </ActivitySection>
 
       <GeneralDialog
-        open={pendingKillSession !== null}
-        onClose={cancelKill}
-        maxWidth="xs"
         fullWidth
+        maxWidth="xs"
+        onClose={cancelKill}
+        open={pendingKillSession !== null}
       >
         <AppDialogTitle
           style={{
@@ -858,15 +858,15 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           }}
         >
           <Icon
+            color={theme.palette.error.main}
+            height={22}
             icon="mdi:close-octagon"
             width={22}
-            height={22}
-            color={theme.palette.error.main}
           />
           <AppTypography variant="h6">Terminate session</AppTypography>
         </AppDialogTitle>
         <AppDialogContent style={{ paddingTop: 12 }}>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             End the active session for{" "}
             <strong>{pendingKillSession?.terminal || "this session"}</strong>
             {pendingKillSession?.source
@@ -876,18 +876,18 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           </AppTypography>
           {pendingKillSession?.sessionId ? (
             <AppTypography
-              variant="caption"
               color="text.disabled"
               style={{ display: "block", marginTop: 8 }}
+              variant="caption"
             >
               loginctl session {pendingKillSession.sessionId}
               {pendingKillSession.pid ? ` · PID ${pendingKillSession.pid}` : ""}
             </AppTypography>
           ) : pendingKillSession?.pid ? (
             <AppTypography
-              variant="caption"
               color="text.disabled"
               style={{ display: "block", marginTop: 8 }}
+              variant="caption"
             >
               PID {pendingKillSession.pid} (no logind session — will SIGHUP the
               leader)
@@ -906,18 +906,18 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
           }}
         >
           <AppButton
-            onClick={cancelKill}
-            disabled={terminateIsPending}
             color="inherit"
+            disabled={terminateIsPending}
+            onClick={cancelKill}
           >
             Cancel
           </AppButton>
           <AppButton
-            onClick={confirmKill}
-            disabled={terminateIsPending}
-            variant="contained"
             color="error"
-            startIcon={<Icon icon="mdi:close" width={18} height={18} />}
+            disabled={terminateIsPending}
+            onClick={confirmKill}
+            startIcon={<Icon height={18} icon="mdi:close" width={18} />}
+            variant="contained"
           >
             {terminateIsPending ? "Terminating..." : "Terminate"}
           </AppButton>
@@ -954,8 +954,8 @@ const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
       <TopCardHeader
         icon="mdi:home-lock"
         iconColor={theme.palette.primary.main}
-        title="Home & SSH access"
         subtitle="Directory ownership, permissions, and authorized keys"
+        title="Home & SSH access"
       />
 
       <DetailRow label="Home" noBorder>
@@ -1059,18 +1059,18 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   return (
     <ActivitySection
       className="account-activity-card--processes"
-      title="Owned processes"
-      subtitle="Current process's resource usage"
-      icon="mdi:application-cog"
-      iconColor={theme.palette.primary.main}
+      gridClassName="account-processes-grid"
       headers={[
         headerFor("PID", "pid"),
         headerFor("Command", "command"),
         headerFor("CPU", "cpu"),
         headerFor("MEM", "memory"),
       ]}
-      gridClassName="account-processes-grid"
+      icon="mdi:application-cog"
+      iconColor={theme.palette.primary.main}
       metaText={metaText}
+      subtitle="Current process's resource usage"
+      title="Owned processes"
     >
       {details.processes.error ? (
         <div style={{ padding: 12 }}>
@@ -1082,16 +1082,16 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
         processes.map((process, index) => (
           <React.Fragment key={process.pid}>
             <div className="account-processes-grid account-activity-row">
-              <AppTypography variant="body2" fontWeight={500} noWrap>
+              <AppTypography fontWeight={500} noWrap variant="body2">
                 {process.pid}
               </AppTypography>
-              <AppTypography variant="body2" noWrap>
+              <AppTypography noWrap variant="body2">
                 {process.command}
               </AppTypography>
-              <AppTypography variant="body2" noWrap>
+              <AppTypography noWrap variant="body2">
                 {process.cpu.toFixed(1)}%
               </AppTypography>
-              <AppTypography variant="body2" noWrap>
+              <AppTypography noWrap variant="body2">
                 {process.memory.toFixed(1)}%
               </AppTypography>
             </div>

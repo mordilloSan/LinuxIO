@@ -2,8 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import {
-  linuxio,
   type AccountGroup,
+  linuxio,
   type ModifyGroupMembersRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -19,9 +19,9 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
-  open: boolean;
-  onClose: () => void;
   group: AccountGroup;
+  onClose: () => void;
+  open: boolean;
 }
 
 const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
@@ -77,7 +77,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle
         style={{
           fontSize: "1rem",
@@ -98,20 +98,20 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
           }}
         >
           <AppAutocomplete
+            fullWidth
+            label="Members"
             multiple
-            size="small"
-            options={usersList
-              .map((u) => u.username)
-              .filter((u) => !selectedMembers.includes(u))}
-            value={[]}
             onChange={(values) => {
               const added = values[0];
               if (added && !selectedMembers.includes(added)) {
                 setSelectedMembers([...selectedMembers, added]);
               }
             }}
-            label="Members"
-            fullWidth
+            options={usersList
+              .map((u) => u.username)
+              .filter((u) => !selectedMembers.includes(u))}
+            size="small"
+            value={[]}
           />
           {selectedMembers.length > 0 && (
             <div
@@ -125,14 +125,14 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
                 <Chip
                   key={member}
                   label={member}
-                  size="small"
-                  variant="soft"
-                  style={{ fontSize: "0.7rem", height: 22 }}
                   onDelete={() =>
                     setSelectedMembers(
                       selectedMembers.filter((m) => m !== member),
                     )
                   }
+                  size="small"
+                  style={{ fontSize: "0.7rem", height: 22 }}
+                  variant="soft"
                 />
               ))}
             </div>
@@ -140,14 +140,14 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton size="small" onClick={onClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={onClose} size="small">
           Cancel
         </AppButton>
         <AppButton
-          size="small"
-          onClick={handleSubmit}
-          variant="contained"
           disabled={isPending}
+          onClick={handleSubmit}
+          size="small"
+          variant="contained"
         >
           {isPending ? "Saving..." : "Save"}
         </AppButton>

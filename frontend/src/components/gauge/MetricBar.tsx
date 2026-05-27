@@ -7,12 +7,12 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface MetricBarProps {
+  color: string;
+  icon?: React.ReactNode;
   label: string;
   percent: number;
-  color: string;
-  tooltip?: string;
   rightLabel?: React.ReactNode;
-  icon?: React.ReactNode;
+  tooltip?: string;
 }
 
 const MetricBar: React.FC<MetricBarProps> = ({
@@ -41,15 +41,13 @@ const MetricBar: React.FC<MetricBarProps> = ({
             <AppTypography variant="caption">{label}</AppTypography>
           </div>
           <AppTypography
-            variant="caption"
             style={{ fontVariantNumeric: "tabular-nums" }}
+            variant="caption"
           >
             {rightLabel}
           </AppTypography>
         </div>
         <AppLinearProgress
-          variant="determinate"
-          value={percent}
           style={
             {
               width: "100%",
@@ -63,6 +61,8 @@ const MetricBar: React.FC<MetricBarProps> = ({
               "--_lp-color": color,
             } as React.CSSProperties
           }
+          value={percent}
+          variant="determinate"
         />
       </div>
     </AppTooltip>

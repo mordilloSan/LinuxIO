@@ -1,28 +1,28 @@
 // src/types/fs.ts
 export interface FilesystemInfo {
   device: string;
+  free: number;
   fstype: string;
+  inodesFree?: number;
+  inodesTotal?: number;
+  inodesUsed?: number;
+  inodesUsedPercent?: number;
   mountpoint: string;
   readOnly?: boolean;
   total: number;
   used: number;
-  free: number;
   usedPercent: number;
-  inodesTotal?: number;
-  inodesUsed?: number;
-  inodesFree?: number;
-  inodesUsedPercent?: number;
 }
 
 export interface ResourceStatData {
-  mode: string;
-  owner: string;
   group: string;
-  size: number;
+  mode: string;
   modified: string;
-  raw: string;
-  permissions: string;
-  path: string;
-  realPath: string;
   name: string;
+  owner: string;
+  path: string;
+  permissions: string;
+  raw: string;
+  realPath: string;
+  size: number;
 }

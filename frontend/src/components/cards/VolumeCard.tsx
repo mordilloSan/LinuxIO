@@ -8,9 +8,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import { longTextStyles } from "@/theme/tableStyles";
 
 export interface VolumeCardProps {
-  volume: DockerVolume;
-  selected: boolean;
   onSelect: (checked: boolean) => void;
+  selected: boolean;
+  volume: DockerVolume;
 }
 
 const VolumeCard: React.FC<VolumeCardProps> = ({
@@ -33,31 +33,31 @@ const VolumeCard: React.FC<VolumeCardProps> = ({
         style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
       >
         <AppCheckbox
-          size="small"
           checked={selected}
           onChange={(e) => onSelect(e.target.checked)}
+          size="small"
         />
-        <AppTypography variant="body2" fontWeight={700} noWrap>
+        <AppTypography fontWeight={700} noWrap variant="body2">
           {volume.Name}
         </AppTypography>
       </div>
       <Chip
         label={volume.Driver}
         size="small"
-        variant="soft"
         style={{ fontSize: "0.75rem" }}
+        variant="soft"
       />
     </div>
 
     {/* Mountpoint */}
     <AppTypography
-      variant="body2"
       style={{
         marginBottom: 4,
         fontFamily: "monospace",
         fontSize: "0.8rem",
         ...longTextStyles,
       }}
+      variant="body2"
     >
       {volume.Mountpoint || "-"}
     </AppTypography>

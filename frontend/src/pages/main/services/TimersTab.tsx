@@ -1,14 +1,15 @@
 import React from "react";
 
+import type { Timer, UnitInfo } from "@/api";
+import type { TableCardViewMode } from "@/types/config";
+
+import { linuxio } from "@/api";
+import { useViewMode } from "@/hooks/useViewMode";
+
 import TimerCardsView from "./TimerCardsView";
 import TimerTableView from "./TimerTableView";
 import UnitListTab from "./UnitListTab";
-import { UnitInfoPanel, formatUsec } from "./UnitViews";
-
-import { linuxio } from "@/api";
-import type { Timer, UnitInfo } from "@/api";
-import { useViewMode } from "@/hooks/useViewMode";
-import type { TableCardViewMode } from "@/types/config";
+import { formatUsec, UnitInfoPanel } from "./UnitViews";
 
 function compareTimersByName(a: Timer, b: Timer): number {
   return a.name.localeCompare(b.name, undefined, {
@@ -59,42 +60,42 @@ const TimersTab: React.FC = () => {
 
   return (
     <UnitListTab
-      viewMode={viewMode}
-      setViewMode={setViewMode}
-      data={data}
-      isPending={isPending}
-      isError={isError}
-      error={error}
-      searchPlaceholder="Search timers…"
-      errorMessage="Failed to load timers"
       compareItems={compareTimersByName}
+      data={data}
+      error={error}
+      errorMessage="Failed to load timers"
+      isError={isError}
+      isPending={isPending}
       matchesSearch={matchesTimerSearch}
-      urlParam="timer"
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
-        <TimerTableView
-          timers={items}
-          selected={selected}
-          onSelect={onSelect}
-          onDoubleClick={onDoubleClick}
-        />
-      )}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <TimerCardsView
-          timers={items}
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
+          timers={items}
         />
       )}
       renderDetailPanel={(timer, onClose) => (
         <UnitInfoPanel
-          unitName={timer.name}
           onClose={onClose}
           renderInfoRows={(info, isPending) =>
             buildTimerInfoRows(timer, info, isPending)
           }
+          unitName={timer.name}
         />
       )}
+      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+        <TimerTableView
+          onDoubleClick={onDoubleClick}
+          onSelect={onSelect}
+          selected={selected}
+          timers={items}
+        />
+      )}
+      searchPlaceholder="Search timers…"
+      setViewMode={setViewMode}
+      urlParam="timer"
+      viewMode={viewMode}
     />
   );
 };

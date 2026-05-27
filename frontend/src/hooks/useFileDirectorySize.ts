@@ -1,19 +1,20 @@
 import { linuxio } from "@/api";
+
 import {
-  shouldSkipSizeCalculation,
-  getDirectorySizeQueryOptions,
-  useIndexerErrorHandler,
   getDirectorySizeError,
+  getDirectorySizeQueryOptions,
   isDirectorySizeUnavailable,
   shouldEnableDirectorySizeQuery,
+  shouldSkipSizeCalculation,
   useIndexerAvailability,
+  useIndexerErrorHandler,
 } from "./useFileDirectorySizeBase";
 
 interface UseDirectorySizeResult {
-  size: number | null;
-  isLoading: boolean;
   error: Error | null;
+  isLoading: boolean;
   isUnavailable: boolean;
+  size: number | null;
 }
 
 /**

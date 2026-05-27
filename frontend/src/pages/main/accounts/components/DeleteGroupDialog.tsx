@@ -16,10 +16,10 @@ import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteGroupDialogProps {
-  open: boolean;
-  onClose: () => void;
   groupNames: string[];
+  onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
 const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
@@ -58,7 +58,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>
         Delete Group{groupNames.length > 1 ? "s" : ""}
       </AppDialogTitle>
@@ -78,8 +78,8 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
               key={name}
               label={name}
               size="small"
-              variant="soft"
               style={{ marginRight: 4, marginBottom: 4 }}
+              variant="soft"
             />
           ))}
         </div>
@@ -91,14 +91,14 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
         </AppDialogContentText>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isDeleting}>
+        <AppButton disabled={isDeleting} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isDeleting}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>

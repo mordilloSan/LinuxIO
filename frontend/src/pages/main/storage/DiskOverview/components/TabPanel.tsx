@@ -17,8 +17,8 @@ export const TabPanel: React.FC<TabPanelProps> = ({
 
   return (
     <div
-      role="tabpanel"
       hidden={value !== index}
+      role="tabpanel"
       style={{
         paddingTop: theme.spacing(2),
         paddingBottom: theme.spacing(2),

@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 
-import ProcessorGraph from "./ProcessorGraph";
-
 import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
@@ -11,6 +9,8 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
+
+import ProcessorGraph from "./ProcessorGraph";
 
 const formatLoadAverage = (loadAverage?: {
   load1: number;
@@ -123,7 +123,6 @@ const Processor: React.FC = () => {
             }}
           >
             <AppTypography
-              variant="caption"
               color="text.secondary"
               style={{
                 textTransform: "uppercase",
@@ -131,10 +130,11 @@ const Processor: React.FC = () => {
                 fontSize: "0.62rem",
                 flexShrink: 0,
               }}
+              variant="caption"
             >
               {label}
             </AppTypography>
-            <AppTypography variant="body2" fontWeight={500} noWrap>
+            <AppTypography fontWeight={500} noWrap variant="body2">
               {value}
             </AppTypography>
           </div>

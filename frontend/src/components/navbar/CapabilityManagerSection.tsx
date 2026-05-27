@@ -37,8 +37,8 @@ import {
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface InstallCapabilityProgress {
-  stage: string;
   message: string;
+  stage: string;
 }
 
 const STATUS_DETAILS: Record<
@@ -211,31 +211,31 @@ const CapabilityManagerSection: React.FC = () => {
   }, [refreshCapabilities]);
 
   return (
-    <div className="capability-manager" aria-busy={isRefreshing}>
+    <div aria-busy={isRefreshing} className="capability-manager">
       <div className="capability-manager__header">
         <div>
-          <AppTypography variant="body1" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="body1">
             Capability Manager
           </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
+          <AppTypography color="text.secondary" variant="caption">
             Last check: {formatLastChecked(lastChecked)}
           </AppTypography>
         </div>
         <AppTooltip title={isRefreshing ? "Checking" : "Refresh"}>
           <AppIconButton
-            size="small"
-            color="default"
-            disabled={isRefreshing}
-            onClick={() => void handleRefresh()}
             aria-label={
               isRefreshing ? "Checking capabilities" : "Refresh capabilities"
             }
+            color="default"
+            disabled={isRefreshing}
+            onClick={() => void handleRefresh()}
+            size="small"
           >
             <Icon
+              className={isRefreshing ? "capability-manager__spin" : undefined}
+              height={18}
               icon={isRefreshing ? "mdi:loading" : "mdi:refresh"}
               width={18}
-              height={18}
-              className={isRefreshing ? "capability-manager__spin" : undefined}
             />
           </AppIconButton>
         </AppTooltip>
@@ -268,24 +268,24 @@ const CapabilityManagerSection: React.FC = () => {
 
           return (
             <FrostedCard
-              key={row.state}
               className="capability-manager__row"
               hoverLift
+              key={row.state}
             >
               <div className="capability-manager__icon">
-                <Icon icon={row.icon} width={22} height={22} />
+                <Icon height={22} icon={row.icon} width={22} />
               </div>
               <div className="capability-manager__body">
                 <div className="capability-manager__row-header">
                   <div className="capability-manager__title-block">
                     <AppTypography
-                      variant="body2"
-                      fontWeight={600}
                       component="h3"
+                      fontWeight={600}
+                      variant="body2"
                     >
                       {row.label}
                     </AppTypography>
-                    <AppTypography variant="caption" color="text.secondary">
+                    <AppTypography color="text.secondary" variant="caption">
                       {row.description}
                     </AppTypography>
                   </div>
@@ -294,27 +294,27 @@ const CapabilityManagerSection: React.FC = () => {
                       <AppTooltip title={installTooltip}>
                         <span>
                           <AppButton
-                            size="small"
-                            variant="outlined"
                             color="primary"
                             disabled={installDisabled}
                             onClick={() =>
                               void handleInstall(row.wire, row.label)
                             }
+                            size="small"
                             startIcon={
                               <Icon
-                                icon={
-                                  installing ? "mdi:loading" : "mdi:download"
-                                }
-                                width={16}
-                                height={16}
                                 className={
                                   installing
                                     ? "capability-manager__spin"
                                     : undefined
                                 }
+                                height={16}
+                                icon={
+                                  installing ? "mdi:loading" : "mdi:download"
+                                }
+                                width={16}
                               />
                             }
+                            variant="outlined"
                           >
                             {installing ? "Installing…" : "Install"}
                           </AppButton>
@@ -322,10 +322,10 @@ const CapabilityManagerSection: React.FC = () => {
                       </AppTooltip>
                     ) : null}
                     <AppChip
-                      size="small"
-                      variant="soft"
                       color={status.color}
                       label={status.label}
+                      size="small"
+                      variant="soft"
                     />
                   </div>
                 </div>

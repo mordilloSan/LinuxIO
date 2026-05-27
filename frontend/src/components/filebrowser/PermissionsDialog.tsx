@@ -1,6 +1,4 @@
-import React, { useState, useCallback } from "react";
-
-import AppCheckbox from "../ui/AppCheckbox";
+import React, { useCallback, useState } from "react";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
@@ -20,15 +18,13 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+
+import AppCheckbox from "../ui/AppCheckbox";
 interface PermissionsDialogProps {
-  open: boolean;
-  pathLabel: string;
-  selectionCount: number;
   currentMode: string; // e.g., "0755", "755", or "-rw-r--r--"
-  isDirectory: boolean;
-  owner?: string;
   group?: string;
+  isDirectory: boolean;
   onClose: () => void;
   onConfirm: (
     mode: string,
@@ -36,19 +32,23 @@ interface PermissionsDialogProps {
     owner?: string,
     group?: string,
   ) => void;
+  open: boolean;
+  owner?: string;
+  pathLabel: string;
+  selectionCount: number;
 }
 interface PermissionBits {
-  owner: {
-    read: boolean;
-    write: boolean;
-    execute: boolean;
-  };
   group: {
     read: boolean;
     write: boolean;
     execute: boolean;
   };
   others: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
+  owner: {
     read: boolean;
     write: boolean;
     execute: boolean;
@@ -174,11 +174,11 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   return (
     <FileBrowserDialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
       fullWidth
       key={open ? `${currentMode}-${owner}-${group}` : "closed"}
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
     >
       <AppDialogTitle
         style={{
@@ -192,12 +192,12 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           Change Permissions
         </AppTypography>
         <AppTypography
-          component="span"
-          variant="caption"
           color="text.secondary"
+          component="span"
           style={{
             textAlign: "right",
           }}
+          variant="caption"
         >
           {pathLabel}
         </AppTypography>
@@ -218,11 +218,11 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         >
           <AppTextField
             label="Owner"
-            size="small"
-            shrinkLabel
-            value={ownerInput}
-            onChange={(e) => setOwnerInput(e.target.value)}
             list="permissions-users-list"
+            onChange={(e) => setOwnerInput(e.target.value)}
+            shrinkLabel
+            size="small"
+            value={ownerInput}
           />
           <datalist id="permissions-users-list">
             {availableUsers.map((u) => (
@@ -232,11 +232,11 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
 
           <AppTextField
             label="Group"
-            size="small"
-            shrinkLabel
-            value={groupInput}
-            onChange={(e) => setGroupInput(e.target.value)}
             list="permissions-groups-list"
+            onChange={(e) => setGroupInput(e.target.value)}
+            shrinkLabel
+            size="small"
+            value={groupInput}
           />
           <datalist id="permissions-groups-list">
             {availableGroups.map((g) => (
@@ -261,7 +261,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
             >
               <AppTableCell>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   Owner
                 </AppTypography>
               </AppTableCell>
@@ -288,7 +288,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
             >
               <AppTableCell>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   Group
                 </AppTypography>
               </AppTableCell>
@@ -313,7 +313,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             </AppTableRow>
             <AppTableRow>
               <AppTableCell>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   Others
                 </AppTypography>
               </AppTableCell>

@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
 
-import TabPanel from "./TabPanel";
-import TabSelector from "./TabSelector";
-
 import { useTabUrlState } from "@/hooks/useTabUrlState";
 import { TabContainerProps } from "@/types/tabcontainer";
+
+import TabPanel from "./TabPanel";
+import TabSelector from "./TabSelector";
 
 /**
  * TabContainer - A declarative component for managing tabbed interfaces
@@ -70,21 +70,21 @@ const TabContainer: React.FC<TabContainerProps> = ({
     <div style={containerStyle}>
       {/* Tab selector with optional rightContent from active tab */}
       <TabSelector
-        value={validTab}
         onChange={setActiveTab}
         options={tabOptions}
         rightContent={activeTabConfig?.rightContent}
+        value={validTab}
       />
 
       {/* Container for tab panels with relative positioning for absolute children */}
       <div style={{ position: "relative", minHeight: 400 }}>
         {tabs.map((tab) => (
           <TabPanel
-            key={tab.value}
-            value={tab.value}
             activeTab={validTab}
-            timeout={fadeTimeout}
             errorFallback={errorFallback}
+            key={tab.value}
+            timeout={fadeTimeout}
+            value={tab.value}
           >
             {tab.component}
           </TabPanel>

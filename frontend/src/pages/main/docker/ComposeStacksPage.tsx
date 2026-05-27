@@ -7,12 +7,10 @@ import React, {
   useState,
 } from "react";
 
-import ComposeList, { type ComposeProject } from "./ComposeList";
-
 import {
-  linuxio,
   CACHE_TTL_MS,
   isConnected,
+  linuxio,
   openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
@@ -36,6 +34,8 @@ import {
 import { useConfig } from "@/hooks/useConfig";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
+
+import ComposeList, { type ComposeProject } from "./ComposeList";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -471,71 +471,71 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           <PageLoader />
         ) : (
           <ComposeList
-            projects={projects}
-            onStart={startProject}
-            onStop={stopProject}
-            onRestart={restartProject}
+            isLoading={isLoading}
+            isPending={isPending}
             onDelete={handleOpenDeleteDialog}
             onEdit={handleEditStack}
             onPreview={handlePreviewStack}
-            isLoading={isLoading}
-            isPending={isPending}
+            onRestart={restartProject}
+            onStart={startProject}
+            onStop={stopProject}
+            projects={projects}
             viewMode={viewMode}
           />
         )}
 
         <ComposeEditorDialog
-          open={editorOpen}
-          mode={editorMode}
-          readOnly={editorReadOnly}
-          stackName={editingStackName}
           filePath={editingFilePath}
           initialContent={editingContent}
+          mode={editorMode}
           onClose={() => setEditorOpen(false)}
           onSave={handleSave}
           onValidate={handleValidate}
+          open={editorOpen}
+          readOnly={editorReadOnly}
+          stackName={editingStackName}
         />
 
         <ComposePostSaveDialog
+          isExecuting={operationDialogOpen}
+          onDoNothing={handlePostSaveDoNothing}
+          onRestart={handlePostSaveRestart}
+          onStart={handlePostSaveStart}
           open={postSaveDialogOpen}
           stackName={postSaveStackName}
           stackState={postSaveStackState}
-          onStart={handlePostSaveStart}
-          onRestart={handlePostSaveRestart}
-          onDoNothing={handlePostSaveDoNothing}
-          isExecuting={operationDialogOpen}
         />
 
         <StackSetupDialog
-          open={setupDialogOpen}
+          defaultWorkingDir={config.docker.folders?.[0]}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
-          defaultWorkingDir={config.docker.folders?.[0]}
+          open={setupDialogOpen}
         />
 
         <ComposeOperationDialog
-          open={operationDialogOpen}
-          onClose={handleOperationDialogClose}
           action={operationAction}
-          projectName={operationProjectName}
           composePath={operationComposePath}
+          onClose={handleOperationDialogClose}
+          open={operationDialogOpen}
+          projectName={operationProjectName}
         />
 
         <DeleteStackDialog
-          open={deleteDialogOpen}
+          configFiles={deleteDialogProject?.config_files || []}
+          isLoading={deleteLoading}
           onClose={handleDeleteDialogClose}
           onConfirm={handleDeleteConfirm}
+          open={deleteDialogOpen}
           projectName={deleteDialogProject?.name || ""}
-          configFiles={deleteDialogProject?.config_files || []}
           workingDir={deleteDialogProject?.working_dir || ""}
-          isLoading={deleteLoading}
         />
 
         <GeneralDialog
-          open={overwriteDialogOpen}
-          onClose={handleOverwriteCancel}
-          maxWidth="sm"
           fullWidth
+          maxWidth="sm"
+          onClose={handleOverwriteCancel}
+          open={overwriteDialogOpen}
         >
           <AppDialogTitle>File Already Exists</AppDialogTitle>
           <AppDialogContent>
@@ -545,12 +545,12 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             </AppDialogContentText>
           </AppDialogContent>
           <AppDialogActions>
-            <AppButton onClick={handleOverwriteCancel} color="inherit">
+            <AppButton color="inherit" onClick={handleOverwriteCancel}>
               Cancel
             </AppButton>
             <AppButton
-              onClick={handleOverwriteConfirm}
               color="warning"
+              onClick={handleOverwriteConfirm}
               variant="contained"
             >
               Overwrite

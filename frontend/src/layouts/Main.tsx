@@ -123,7 +123,7 @@ const Dashboard: React.FC = () => {
                 paddingBottom: theme.spacing(1),
               }}
             >
-              <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
+              <UpdateBanner onDismiss={dismissUpdate} updateInfo={updateInfo} />
             </div>
           )}
 

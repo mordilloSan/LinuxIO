@@ -13,8 +13,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({ icon, onClick }) => {
 
   return (
     <div
-      onClick={onClick}
       className="action-btn"
+      onClick={onClick}
       style={
         {
           width: 18,
@@ -30,7 +30,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({ icon, onClick }) => {
         } as React.CSSProperties
       }
     >
-      <Icon icon={icon} width={16} height={16} />
+      <Icon height={16} icon={icon} width={16} />
     </div>
   );
 };

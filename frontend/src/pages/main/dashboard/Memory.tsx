@@ -38,15 +38,15 @@ const MemoryUsage = () => {
       <ComponentLoader />
     ) : (
       <GradientCircularGauge
-        value={ramUsagePercentage}
         gradientColors={[
           theme.chart.tx,
           theme.palette.warning.main,
           theme.palette.error.main,
         ]}
+        showPercentage={true}
         size={108}
         thickness={9.8}
-        showPercentage={true}
+        value={ramUsagePercentage}
       />
     ),
     stats: (
@@ -92,7 +92,6 @@ const MemoryUsage = () => {
             }}
           >
             <AppTypography
-              variant="caption"
               color="text.secondary"
               style={{
                 textTransform: "uppercase",
@@ -100,10 +99,11 @@ const MemoryUsage = () => {
                 fontSize: "0.62rem",
                 flexShrink: 0,
               }}
+              variant="caption"
             >
               {label}
             </AppTypography>
-            <AppTypography variant="body2" fontWeight={500} noWrap>
+            <AppTypography fontWeight={500} noWrap variant="body2">
               {value}
             </AppTypography>
           </div>

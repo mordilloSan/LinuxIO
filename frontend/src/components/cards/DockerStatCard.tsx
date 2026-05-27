@@ -4,10 +4,10 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface DockerStatCardProps {
-  label: string;
-  value: React.ReactNode;
   detail: React.ReactNode;
+  label: string;
   onClick: () => void;
+  value: React.ReactNode;
 }
 
 const DockerStatCard: React.FC<DockerStatCardProps> = ({
@@ -17,8 +17,8 @@ const DockerStatCard: React.FC<DockerStatCardProps> = ({
   onClick,
 }) => (
   <FrostedCard
-    onClick={onClick}
     className="fc-opacity-hover"
+    onClick={onClick}
     style={{
       paddingInline: 10,
       paddingBlock: 8,
@@ -27,9 +27,9 @@ const DockerStatCard: React.FC<DockerStatCardProps> = ({
     }}
   >
     <AppTypography
-      variant="overline"
       color="text.secondary"
       style={{ lineHeight: 1.6 }}
+      variant="overline"
     >
       {label}
     </AppTypography>
@@ -41,14 +41,14 @@ const DockerStatCard: React.FC<DockerStatCardProps> = ({
         marginTop: 1,
       }}
     >
-      <AppTypography variant="h6" fontWeight={700} style={{ lineHeight: 1.2 }}>
+      <AppTypography fontWeight={700} style={{ lineHeight: 1.2 }} variant="h6">
         {value}
       </AppTypography>
       <AppTypography
-        variant="caption"
         color="text.secondary"
         noWrap
         style={{ textAlign: "right" }}
+        variant="caption"
       >
         {detail}
       </AppTypography>

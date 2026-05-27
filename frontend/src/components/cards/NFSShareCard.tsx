@@ -7,9 +7,9 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface NFSShareCardProps {
-  share: NFSExport;
   onEdit: () => void;
   onRemove: () => void;
+  share: NFSExport;
 }
 
 const NFSShareCard: React.FC<NFSShareCardProps> = ({
@@ -32,9 +32,9 @@ const NFSShareCard: React.FC<NFSShareCardProps> = ({
         }}
       />
       <AppTypography
-        variant="body2"
         fontWeight={700}
         style={{ fontFamily: "monospace" }}
+        variant="body2"
       >
         {share.path}
       </AppTypography>
@@ -58,10 +58,10 @@ const NFSShareCard: React.FC<NFSShareCardProps> = ({
 
     {/* Actions */}
     <div style={{ display: "flex", gap: 4 }}>
-      <AppButton size="small" variant="outlined" onClick={onEdit}>
+      <AppButton onClick={onEdit} size="small" variant="outlined">
         Edit
       </AppButton>
-      <AppButton size="small" color="error" onClick={onRemove}>
+      <AppButton color="error" onClick={onRemove} size="small">
         Remove
       </AppButton>
     </div>

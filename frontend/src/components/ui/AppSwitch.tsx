@@ -6,11 +6,11 @@ export interface AppSwitchProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "size" | "type" | "onChange"
 > {
-  size?: "small" | "medium";
   onChange?: (
     event: React.ChangeEvent<HTMLInputElement>,
     checked: boolean,
   ) => void;
+  size?: "small" | "medium";
 }
 
 const AppSwitch = React.forwardRef<HTMLInputElement, AppSwitchProps>(
@@ -30,10 +30,10 @@ const AppSwitch = React.forwardRef<HTMLInputElement, AppSwitchProps>(
     return (
       <label className={cls}>
         <input
-          ref={ref}
-          type="checkbox"
           className="app-switch__input"
           onChange={handleChange}
+          ref={ref}
+          type="checkbox"
           {...rest}
         />
         <span className="app-switch__track" />

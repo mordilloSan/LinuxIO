@@ -4,8 +4,8 @@ import React from "react";
 import { type AccountGroup } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import {
-  SummaryRowsList,
   type SummaryRow,
+  SummaryRowsList,
 } from "@/components/cards/HardwareCard";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -16,8 +16,8 @@ import { GAP_SM } from "@/theme/constants";
 
 export interface GroupCardProps {
   group: AccountGroup;
-  onEditMembers: () => void;
   onDelete: () => void;
+  onEditMembers: () => void;
 }
 
 const GroupCard: React.FC<GroupCardProps> = ({
@@ -57,21 +57,21 @@ const GroupCard: React.FC<GroupCardProps> = ({
                 key={`${group.name}-${member}`}
                 label={member}
                 size="small"
-                variant="soft"
                 style={{ fontSize: "0.65rem", height: 20 }}
+                variant="soft"
               />
             ))}
             {overflow > 0 && (
               <Chip
                 label={`+${overflow}`}
                 size="small"
-                variant="soft"
                 style={{ fontSize: "0.65rem", height: 20 }}
+                variant="soft"
               />
             )}
           </div>
         ) : (
-          <AppTypography variant="caption" color="text.disabled">
+          <AppTypography color="text.disabled" variant="caption">
             None
           </AppTypography>
         ),
@@ -115,22 +115,22 @@ const GroupCard: React.FC<GroupCardProps> = ({
               flexShrink: 0,
             }}
           >
-            <Icon icon={icon} width={32} height={32} color={accentColor} />
+            <Icon color={accentColor} height={32} icon={icon} width={32} />
           </div>
           <div style={{ minWidth: 0 }}>
             <AppTypography
-              variant="subtitle1"
               fontWeight={700}
               noWrap
               style={{ lineHeight: 1.2 }}
+              variant="subtitle1"
             >
               {group.name}
             </AppTypography>
             <AppTypography
-              variant="caption"
               color="text.secondary"
               noWrap
               style={{ display: "block" }}
+              variant="caption"
             >
               {group.isSystem ? "System group" : "User group"}
             </AppTypography>
@@ -141,25 +141,25 @@ const GroupCard: React.FC<GroupCardProps> = ({
           <AppTooltip title="Edit Members">
             <span>
               <AppIconButton
-                size="small"
-                onClick={onEditMembers}
                 disabled={isRoot}
+                onClick={onEditMembers}
+                size="small"
               >
-                <Icon icon="mdi:pencil" width={18} height={18} />
+                <Icon height={18} icon="mdi:pencil" width={18} />
               </AppIconButton>
             </span>
           </AppTooltip>
           <AppTooltip title={isProtected ? "Cannot delete" : "Delete Group"}>
             <span>
               <AppIconButton
-                size="small"
-                onClick={onDelete}
                 disabled={isProtected}
+                onClick={onDelete}
+                size="small"
                 style={{
                   color: isProtected ? undefined : theme.palette.error.main,
                 }}
               >
-                <Icon icon="mdi:delete" width={18} height={18} />
+                <Icon height={18} icon="mdi:delete" width={18} />
               </AppIconButton>
             </span>
           </AppTooltip>

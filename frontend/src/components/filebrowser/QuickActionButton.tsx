@@ -6,11 +6,11 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface QuickActionButtonProps {
+  ariaLabel?: string;
+  disabled?: boolean;
   icon: ReactNode;
   label: string;
   onClick: () => void;
-  disabled?: boolean;
-  ariaLabel?: string;
 }
 
 const QuickActionButton: React.FC<QuickActionButtonProps> = ({
@@ -27,11 +27,11 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
     <AppTooltip title={label}>
       <span>
         <AppIconButton
-          className="quick-toggle action app-icon-btn--quick-action"
-          size="small"
-          onClick={onClick}
-          disabled={disabled}
           aria-label={ariaLabel ?? label}
+          className="quick-toggle action app-icon-btn--quick-action"
+          disabled={disabled}
+          onClick={onClick}
+          size="small"
           style={{
             backgroundColor: isDark
               ? alpha(theme.fileBrowser.chrome, 0.33)

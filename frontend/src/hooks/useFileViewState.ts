@@ -1,35 +1,36 @@
 import { Dispatch, SetStateAction, useCallback, useState } from "react";
 
+import type { SortField, SortOrder, ViewMode } from "@/types/filebrowser";
+
 import { useConfigValue } from "@/hooks/useConfig";
-import type { ViewMode, SortField, SortOrder } from "@/types/filebrowser";
 
 const viewModes: ViewMode[] = ["card", "list"];
 
 interface ContextMenuPosition {
-  top: number;
   left: number;
+  top: number;
 }
 
 interface useFileViewStateResult {
-  // View mode
-  viewMode: ViewMode;
-  setViewMode: Dispatch<SetStateAction<ViewMode>>;
-  handleSwitchView: () => void;
-
-  // Hidden files
-  showHiddenFiles: boolean;
-  setShowHiddenFiles: (show: boolean) => void;
-  handleToggleHiddenFiles: () => void;
-
-  // Sorting
-  sortField: SortField;
-  setSortField: Dispatch<SetStateAction<SortField>>;
-  sortOrder: SortOrder;
-  setSortOrder: Dispatch<SetStateAction<SortOrder>>;
-
   // Context menu
   contextMenuPosition: ContextMenuPosition | null;
+  handleSwitchView: () => void;
+  handleToggleHiddenFiles: () => void;
+
   setContextMenuPosition: Dispatch<SetStateAction<ContextMenuPosition | null>>;
+  setShowHiddenFiles: (show: boolean) => void;
+  setSortField: Dispatch<SetStateAction<SortField>>;
+
+  setSortOrder: Dispatch<SetStateAction<SortOrder>>;
+  setViewMode: Dispatch<SetStateAction<ViewMode>>;
+  // Hidden files
+  showHiddenFiles: boolean;
+  // Sorting
+  sortField: SortField;
+
+  sortOrder: SortOrder;
+  // View mode
+  viewMode: ViewMode;
 }
 
 /**

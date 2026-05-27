@@ -15,10 +15,10 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
-  open: boolean;
+  defaultWorkingDir?: string;
   onClose: () => void;
   onConfirm: (stackName: string, workingDir: string) => void;
-  defaultWorkingDir?: string;
+  open: boolean;
 }
 const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
   open,
@@ -135,10 +135,10 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
   };
   return (
     <GeneralDialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
       fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
       paperStyle={{
         backgroundColor: theme.palette.background.default,
       }}
@@ -167,30 +167,30 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Stack Name"
-            value={stackName}
-            onChange={handleStackNameChange}
+            autoFocus
+            error={!!errors.stackName}
             fullWidth
-            placeholder="my-stack"
             helperText={
               errors.stackName ||
               "Lowercase letters, numbers, hyphens, and underscores only (max 63 chars)"
             }
-            error={!!errors.stackName}
-            autoFocus
+            label="Stack Name"
+            onChange={handleStackNameChange}
+            placeholder="my-stack"
+            value={stackName}
           />
 
           <AppTextField
-            label="Working Directory"
-            value={workingDir}
-            onChange={handleWorkingDirChange}
+            error={!!errors.workingDir}
             fullWidth
-            placeholder="/path/to/stack"
             helperText={
               errors.workingDir ||
               "Absolute path where the docker-compose.yml file will be saved"
             }
-            error={!!errors.workingDir}
+            label="Working Directory"
+            onChange={handleWorkingDirChange}
+            placeholder="/path/to/stack"
+            value={workingDir}
           />
 
           <div
@@ -203,7 +203,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
               padding: theme.spacing(2),
             }}
           >
-            <AppTypography variant="caption" color="text.secondary">
+            <AppTypography color="text.secondary" variant="caption">
               <strong>File location:</strong>
               <br />
               {workingDir && stackName
@@ -221,17 +221,17 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           padding: 8,
         }}
       >
-        <AppButton onClick={onClose} disabled={isValidating}>
+        <AppButton disabled={isValidating} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleConfirm}
-          variant="contained"
           color="primary"
           disabled={isValidating}
+          onClick={handleConfirm}
           startIcon={
             isValidating ? <AppCircularProgress size={20} /> : undefined
           }
+          variant="contained"
         >
           {isValidating ? "Validating..." : "Next"}
         </AppButton>

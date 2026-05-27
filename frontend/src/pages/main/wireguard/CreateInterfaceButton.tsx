@@ -1,12 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useCallback, useMemo } from "react";
-
-import CreateInterfaceDialog from "./CreateInterfaceDialog";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
@@ -200,31 +200,31 @@ const CreateInterfaceButton = () => {
 
   return (
     <>
-      <AppButton variant="contained" color="primary" onClick={handleOpenDialog}>
+      <AppButton color="primary" onClick={handleOpenDialog} variant="contained">
         Create New Interface
       </AppButton>
       <CreateInterfaceDialog
-        open={showDialog}
-        onClose={() => setShowDialog(false)}
-        onCreate={handleCreateInterface}
-        loading={isAddingInterface}
-        error={error || undefined}
-        serverName={serverName}
-        setServerName={setServerName}
-        port={port}
-        setPort={setPort}
-        CIDR={CIDR}
-        setCIDR={setCIDR}
-        peers={peers}
-        setPeers={setPeers}
-        nic={nic}
-        setNic={setNic}
         availableNICs={availableNICs}
+        CIDR={CIDR}
+        dns={dns}
+        error={error || undefined}
+        existingCIDRs={existingCIDRs}
         existingNames={existingNames}
         existingPorts={existingPorts}
-        existingCIDRs={existingCIDRs}
-        dns={dns}
+        loading={isAddingInterface}
+        nic={nic}
+        onClose={() => setShowDialog(false)}
+        onCreate={handleCreateInterface}
+        open={showDialog}
+        peers={peers}
+        port={port}
+        serverName={serverName}
+        setCIDR={setCIDR}
         setDns={setDns}
+        setNic={setNic}
+        setPeers={setPeers}
+        setPort={setPort}
+        setServerName={setServerName}
       />
     </>
   );

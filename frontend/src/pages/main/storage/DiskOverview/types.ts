@@ -1,17 +1,13 @@
 export interface SmartAttribute {
   id: number;
   name: string;
+  raw: { value: number; string?: string };
+  thresh: number;
   value: number;
   worst: number;
-  thresh: number;
-  raw: { value: number; string?: string };
 }
 
 export interface SmartData {
-  smart_status?: { passed?: boolean };
-  temperature?: { current?: number };
-  power_on_time?: { hours?: number };
-  power_cycle_count?: number;
   ata_smart_attributes?: { table?: SmartAttribute[] };
   nvme_smart_health_information_log?: {
     temperature?: number;
@@ -21,12 +17,16 @@ export interface SmartData {
     data_units_read?: number;
     data_units_written?: number;
   };
+  power_cycle_count?: number;
+  power_on_time?: { hours?: number };
+  smart_status?: { passed?: boolean };
+  temperature?: { current?: number };
 }
 
 export interface PowerState {
-  state: number;
-  maxPowerW: number;
   description: string;
+  maxPowerW: number;
+  state: number;
 }
 
 export interface PowerData {
@@ -36,21 +36,23 @@ export interface PowerData {
 }
 
 export interface DriveInfo {
-  name: string;
   model: string;
+  name: string;
+  power?: PowerData;
+  ro?: boolean;
+  serial?: string;
   sizeBytes: number;
+  smart?: SmartData;
   transport: string;
   vendor?: string;
-  serial?: string;
-  ro?: boolean;
-  smart?: SmartData;
-  power?: PowerData;
 }
 
 export interface SmartTestProgressEvent {
-  type: "status" | "progress";
   device?: string;
-  test_type?: "short" | "long";
+  message?: string;
+  percentage?: number;
+  remaining_minutes?: number;
+  remaining_percent?: number;
   status?:
     | "starting"
     | "running"
@@ -60,16 +62,14 @@ export interface SmartTestProgressEvent {
     | "failed"
     | "error"
     | "unknown";
-  message?: string;
-  percentage?: number;
-  remaining_percent?: number;
-  remaining_minutes?: number;
+  test_type?: "short" | "long";
+  type: "status" | "progress";
 }
 
 export interface SmartTestResult {
   device?: string;
-  test_type?: "short" | "long";
-  status?: string;
-  message?: string;
   duration_ms?: number;
+  message?: string;
+  status?: string;
+  test_type?: "short" | "long";
 }

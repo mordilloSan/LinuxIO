@@ -57,10 +57,10 @@ const GpuInfo: React.FC = () => {
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <AppTypography variant="subtitle2" fontWeight={700} noWrap>
+              <AppTypography fontWeight={700} noWrap variant="subtitle2">
                 {gpu.model || `GPU ${idx + 1}`}
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary" noWrap>
+              <AppTypography color="text.secondary" noWrap variant="caption">
                 {getGpuVendorLabel(gpu)} • {getGpuType(gpu)}
               </AppTypography>
             </div>
@@ -74,9 +74,9 @@ const GpuInfo: React.FC = () => {
             >
               {hasGpuValue(gpu.runtime_status) && (
                 <Chip
-                  size="small"
-                  label={gpu.runtime_status}
                   color={gpu.runtime_status === "active" ? "success" : "info"}
+                  label={gpu.runtime_status}
+                  size="small"
                   variant="soft"
                 />
               )}
@@ -85,11 +85,11 @@ const GpuInfo: React.FC = () => {
 
           {hasGpuValue(gpu.utilization_percent) && (
             <MetricBar
+              color={theme.palette.primary.main}
               label="GPU Load"
               percent={gpu.utilization_percent}
-              color={theme.palette.primary.main}
-              tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
               rightLabel={formatGpuPercent(gpu.utilization_percent)}
+              tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
             />
           )}
         </div>
@@ -99,10 +99,10 @@ const GpuInfo: React.FC = () => {
 
   return (
     <DashboardCard
-      title="GPU"
-      stats={content}
-      icon="mdi:memory"
       avatarIcon="bi:gpu-card"
+      icon="mdi:memory"
+      stats={content}
+      title="GPU"
     />
   );
 };

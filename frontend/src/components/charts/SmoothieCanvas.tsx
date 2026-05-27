@@ -1,5 +1,6 @@
-import React, { useEffect, useImperativeHandle, useRef } from "react";
 import type { SmoothieChart } from "smoothie";
+
+import React, { useEffect, useImperativeHandle, useRef } from "react";
 
 type SmoothieChartWithTooltip = SmoothieChart & {
   tooltipEl?: HTMLElement;

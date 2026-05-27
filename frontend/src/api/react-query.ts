@@ -15,24 +15,25 @@
  */
 
 import {
-  useQuery,
-  useMutation,
   type QueryKey,
-  type UseQueryOptions,
+  useMutation,
   type UseMutationOptions,
+  useQuery,
+  type UseQueryOptions,
 } from "@tanstack/react-query";
 
+import type {
+  CommandArgs,
+  CommandName,
+  CommandResult,
+  HandlerName,
+} from "./generated/linuxio-types";
+
+import { getRouteMode, routeName } from "./generated/route-metadata";
+import { isJobSnapshot, waitForJobCompletion } from "./jobs";
+import { useIsUpdating, useStreamMux } from "./linuxio";
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
-import { isJobSnapshot, waitForJobCompletion } from "./jobs";
-import { useStreamMux, useIsUpdating } from "./linuxio";
-import { getRouteMode, routeName } from "./generated/route-metadata";
-import type {
-  HandlerName,
-  CommandName,
-  CommandArgs,
-  CommandResult,
-} from "./generated/linuxio-types";
 
 // Cache TTL presets for staleTime / gcTime options
 export const CACHE_TTL_MS = {
@@ -155,6 +156,23 @@ export interface CommandEndpoint<TResult> {
   ) => UseQueryOptions<TResult, LinuxIOError, TData>;
 
   /**
+   * React Query hook for mutations
+   *
+   * @example
+   * // Mutate with string args
+   * const { mutate } = useMutation();
+   * mutate(["arg1", "arg2"]);
+   *
+   * @example
+   * // Mutate with complex args (objects, arrays)
+   * const { mutate } = useMutation();
+   * mutate(["arg1", { complex: "object" }]);
+   */
+  useMutation: (
+    options?: MutationOptions<TResult>,
+  ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
+
+  /**
    * React Query hook for fetching data
    *
    * @example
@@ -187,23 +205,6 @@ export interface CommandEndpoint<TResult> {
       | SelectableQueryConfig<TResult, TData>
     )[]
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError, TData>>;
-
-  /**
-   * React Query hook for mutations
-   *
-   * @example
-   * // Mutate with string args
-   * const { mutate } = useMutation();
-   * mutate(["arg1", "arg2"]);
-   *
-   * @example
-   * // Mutate with complex args (objects, arrays)
-   * const { mutate } = useMutation();
-   * mutate(["arg1", { complex: "object" }]);
-   */
-  useMutation: (
-    options?: MutationOptions<TResult>,
-  ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
 }
 
 function hasExplicitArgs(value: unknown): value is { args?: unknown[] } {

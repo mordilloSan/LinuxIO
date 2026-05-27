@@ -22,43 +22,43 @@ export type StreamType = "terminal" | "container" | string;
 // Forward declare types used in Stream interface (full definitions below)
 export interface ProgressFrame {
   bytes: number;
-  total: number;
+  indeterminate?: boolean;
   pct: number;
   phase?: string;
   processed?: number;
-  indeterminate?: boolean;
+  total: number;
 }
 
 export interface ResultFrame {
-  status: "ok" | "error";
-  error?: string;
   code?: number;
   data?: unknown;
+  error?: string;
+  status: "ok" | "error";
 }
 
 export interface Stream {
-  readonly id: number;
-  readonly type: StreamType;
-  readonly status: StreamStatus;
-  write(data: Uint8Array): void;
-  resize(cols: number, rows: number): void;
-  close(): void;
   /** Abort the stream immediately (sends RST flag instead of FIN) */
   abort(): void;
-  onData: ((data: Uint8Array) => void) | null;
+  close(): void;
+  readonly id: number;
   onClose: (() => void) | null;
+  onData: ((data: Uint8Array) => void) | null;
   onProgress: ((progress: ProgressFrame) => void) | null;
   onResult: ((result: ResultFrame) => void) | null;
+  resize(cols: number, rows: number): void;
+  readonly status: StreamStatus;
+  readonly type: StreamType;
+  write(data: Uint8Array): void;
 }
 
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
 export interface StreamMultiplexerConfig {
-  scrollbackBytes: number;
+  defaultCallTimeoutMs: number;
   detachedBufferBytes: number;
+  scrollbackBytes: number;
   uploadChunkSize: number;
   uploadWindowChunks: number;
-  defaultCallTimeoutMs: number;
 }
 
 function readPositiveInt(

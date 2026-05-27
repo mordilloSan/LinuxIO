@@ -1,7 +1,5 @@
 import React from "react";
 
-import type { PowerData } from "../types";
-
 import Chip from "@/components/ui/AppChip";
 import {
   AppTable,
@@ -13,6 +11,8 @@ import {
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import type { PowerData } from "../types";
 interface PowerStatesTabProps {
   power: PowerData;
 }
@@ -25,7 +25,7 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
           marginBottom: theme.spacing(3),
         }}
       >
-        <AppTypography variant="subtitle2" gutterBottom>
+        <AppTypography gutterBottom variant="subtitle2">
           Current State
         </AppTypography>
         <div
@@ -36,17 +36,17 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
           }}
         >
           <Chip
-            label={`Power State ${power.currentState}`}
             color="primary"
+            label={`Power State ${power.currentState}`}
             variant="soft"
           />
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Estimated Power: ~{power.estimatedW.toFixed(2)}W
           </AppTypography>
         </div>
       </div>
 
-      <AppTypography variant="subtitle2" gutterBottom>
+      <AppTypography gutterBottom variant="subtitle2">
         Supported Power States
       </AppTypography>
       <AppTableContainer
@@ -60,7 +60,7 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
             <AppTableRow>
               <AppTableCell style={{ fontWeight: 600 }}>State</AppTableCell>
               <AppTableCell style={{ fontWeight: 600 }}>Op</AppTableCell>
-              <AppTableCell style={{ fontWeight: 600 }} align="right">
+              <AppTableCell align="right" style={{ fontWeight: 600 }}>
                 Max Power
               </AppTableCell>
               <AppTableCell style={{ fontWeight: 600 }}>

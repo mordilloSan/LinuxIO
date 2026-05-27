@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import { linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
@@ -139,11 +139,11 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
               size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
             >
               <WireguardPeerCard
-                peer={peer}
                 isOnline={peer.isOnline}
                 onDelete={() => handleDeletePeer(peer.name)}
                 onDownloadConfig={() => handleDownloadConfig(peer.name)}
                 onViewQrCode={() => handleViewQrCode(peer.name)}
+                peer={peer}
               />
             </AppGrid>
           ))
@@ -151,19 +151,19 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       </AppGrid>
 
       <GeneralDialog
-        open={openDialog}
         onClose={() => {
           setOpenDialog(false);
           setQrCode(null);
         }}
+        open={openDialog}
       >
         <AppDialogContent>
           {isLoadingQrCode ? (
             <AppTypography>Loading QR code...</AppTypography>
           ) : qrCode ? (
             <img
-              src={qrCode}
               alt="QR Code"
+              src={qrCode}
               style={{
                 width: 300,
                 height: 300,

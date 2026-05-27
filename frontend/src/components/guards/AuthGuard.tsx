@@ -9,7 +9,7 @@ import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { UpdateProvider } from "@/contexts/UpdateContext";
 import useAuth from "@/hooks/useAuth";
-import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
+import { useConfigReady, useConfigValue } from "@/hooks/useConfig";
 import { AppThemeProvider } from "@/theme";
 import buildAppTheme from "@/theme";
 
@@ -54,7 +54,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
       existing || `${location.pathname}${location.search}${location.hash}`;
     const to = `/sign-in${target ? `?redirect=${encodeURIComponent(target)}` : ""}`;
 
-    return <Navigate to={to} replace />;
+    return <Navigate replace to={to} />;
   }
 
   // Authenticated:

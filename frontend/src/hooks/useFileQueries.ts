@@ -1,23 +1,23 @@
-import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
+import { useMemo } from "react";
 
-import { normalizeResource } from "@/components/filebrowser/utils";
-import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
-import { FileResource } from "@/types/filebrowser";
 import {
-  linuxio,
   CACHE_TTL_MS,
+  linuxio,
   LinuxIOError,
   useIsUpdating,
   useStreamMux,
 } from "@/api";
+import { normalizeResource } from "@/components/filebrowser/utils";
+import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
+import { FileResource } from "@/types/filebrowser";
 
 interface useFileQueriesParams {
-  normalizedPath: string;
   detailTarget: string[] | null;
   editingPath: string | null;
-  hasSingleDetailTarget: boolean;
   hasMultipleDetailTargets: boolean;
+  hasSingleDetailTarget: boolean;
+  normalizedPath: string;
 }
 
 export const useFileQueries = ({

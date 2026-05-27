@@ -13,9 +13,9 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
-  linuxio,
   CACHE_TTL_MS,
   isConnected,
+  linuxio,
   openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
@@ -34,8 +34,8 @@ import PermissionsDialog from "@/components/filebrowser/PermissionsDialog";
 import SortBar, { SortField } from "@/components/filebrowser/SortBar";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import {
-  ensureZipExtension,
   ensureTarGzExtension,
+  ensureZipExtension,
   isArchiveFile,
   isEditableFile,
   stripArchiveExtension,
@@ -68,7 +68,7 @@ import { useFileViewState } from "@/hooks/useFileViewState";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
-import { ViewMode, FileItem } from "@/types/filebrowser";
+import { FileItem, ViewMode } from "@/types/filebrowser";
 import {
   buildEntriesFromFileList,
   mergeDroppedEntries,
@@ -76,8 +76,8 @@ import {
   stripNumericSuffix,
 } from "@/utils/fileUpload";
 const viewIconMap: Record<ViewMode, ReactNode> = {
-  card: <Icon icon="mdi:view-grid" width={20} height={20} />,
-  list: <Icon icon="mdi:view-list" width={20} height={20} />,
+  card: <Icon height={20} icon="mdi:view-grid" width={20} />,
+  list: <Icon height={20} icon="mdi:view-list" width={20} />,
 };
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
@@ -984,6 +984,11 @@ const FileBrowser: React.FC = () => {
     <>
       <div
         data-allow-context-menu="true"
+        onContextMenu={handleContextMenu}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         style={{
           height: "100%",
           width: "100%",
@@ -992,22 +997,17 @@ const FileBrowser: React.FC = () => {
           overflow: "hidden",
           position: "relative",
         }}
-        onContextMenu={handleContextMenu}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
       >
         {!editingPath && (
           <FileBrowserHeader
-            viewMode={viewMode}
-            showHiddenFiles={showHiddenFiles}
+            isSaving={isSavingFile}
+            onSearchChange={handleSearchChange}
             onSwitchView={handleSwitchView}
             onToggleHiddenFiles={handleToggleHiddenFiles}
-            isSaving={isSavingFile}
-            viewIcon={viewIcon}
             searchQuery={searchQuery}
-            onSearchChange={handleSearchChange}
+            showHiddenFiles={showHiddenFiles}
+            viewIcon={viewIcon}
+            viewMode={viewMode}
           />
         )}
 
@@ -1054,8 +1054,8 @@ const FileBrowser: React.FC = () => {
           {!editingPath && (
             <>
               <BreadcrumbsNav
-                path={normalizedPath}
                 onNavigate={handleOpenDirectory}
+                path={normalizedPath}
               />
 
               {!isPending &&
@@ -1063,8 +1063,8 @@ const FileBrowser: React.FC = () => {
                 resource &&
                 resource.type === "directory" && (
                   <SortBar
-                    sortOrder={sortOrder}
                     onSortChange={handleSortChange}
+                    sortOrder={sortOrder}
                   />
                 )}
             </>
@@ -1095,23 +1095,23 @@ const FileBrowser: React.FC = () => {
               filteredResource &&
               filteredResource.type === "directory" && (
                 <DirectoryListing
+                  cutPaths={cutPaths}
+                  isContextMenuOpen={Boolean(contextMenuPosition)}
                   key={normalizedPath}
+                  onCancelRename={handleCancelInlineRename}
+                  onConfirmRename={handleConfirmInlineRename}
+                  onDelete={handleDelete}
+                  onDownloadFile={handleDoubleClickFile}
+                  onOpenDirectory={handleOpenDirectory}
+                  onSelectedPathsChange={setSelectedPaths}
+                  onStartRename={handleStartInlineRename}
+                  renamingPath={renamingPath}
                   resource={filteredResource}
+                  selectedPaths={selectedPaths}
                   showHiddenFiles={showHiddenFiles}
-                  viewMode={viewMode}
                   sortField={sortField}
                   sortOrder={sortOrder}
-                  onOpenDirectory={handleOpenDirectory}
-                  onDownloadFile={handleDoubleClickFile}
-                  selectedPaths={selectedPaths}
-                  cutPaths={cutPaths}
-                  onSelectedPathsChange={setSelectedPaths}
-                  isContextMenuOpen={Boolean(contextMenuPosition)}
-                  onDelete={handleDelete}
-                  renamingPath={renamingPath}
-                  onStartRename={handleStartInlineRename}
-                  onConfirmRename={handleConfirmInlineRename}
-                  onCancelRename={handleCancelInlineRename}
+                  viewMode={viewMode}
                 />
               )}
 
@@ -1121,9 +1121,9 @@ const FileBrowser: React.FC = () => {
               resource &&
               resource.type !== "directory" && (
                 <FileDetail
-                  resource={resource}
                   onDownload={handleDownloadCurrent}
                   onEdit={handleEditFile}
+                  resource={resource}
                 />
               )}
           </div>
@@ -1147,7 +1147,7 @@ const FileBrowser: React.FC = () => {
             }}
           >
             <AppTypography variant="h6">Drop to upload</AppTypography>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               Files and folders will be copied to {normalizedPath}
             </AppTypography>
           </div>
@@ -1155,25 +1155,25 @@ const FileBrowser: React.FC = () => {
       </div>
 
       <AppFullscreenDialog
-        open={Boolean(editingPath)}
-        onClose={handleCloseEditor}
         contentStyle={{ backgroundColor: theme.palette.background.default }}
+        onClose={handleCloseEditor}
+        open={Boolean(editingPath)}
       >
         <FileBrowserHeader
-          viewMode={viewMode}
-          showHiddenFiles={showHiddenFiles}
-          showQuickSave={showQuickSave}
-          onSwitchView={handleSwitchView}
-          onToggleHiddenFiles={handleToggleHiddenFiles}
-          onSaveFile={handleSaveFile}
-          onCloseEditor={handleCloseEditor}
-          isSaving={isSavingFile}
-          viewIcon={viewIcon}
           editingFileName={editingFileResource?.name}
           editingFilePath={editingPath || undefined}
           isDirty={isEditorDirty}
-          searchQuery={searchQuery}
+          isSaving={isSavingFile}
+          onCloseEditor={handleCloseEditor}
+          onSaveFile={handleSaveFile}
           onSearchChange={handleSearchChange}
+          onSwitchView={handleSwitchView}
+          onToggleHiddenFiles={handleToggleHiddenFiles}
+          searchQuery={searchQuery}
+          showHiddenFiles={showHiddenFiles}
+          showQuickSave={showQuickSave}
+          viewIcon={viewIcon}
+          viewMode={viewMode}
         />
         <div
           style={{
@@ -1200,13 +1200,13 @@ const FileBrowser: React.FC = () => {
           {editingPath && !isEditingFileLoading && editingFileResource && (
             <Suspense fallback={<PageLoader />}>
               <FileEditor
-                ref={editorRef}
-                filePath={editingPath}
                 fileName={editingFileResource.name}
+                filePath={editingPath}
                 initialContent={editingFileResource.content || ""}
-                onSave={handleSaveFile}
                 isSaving={isSavingFile}
                 onDirtyChange={setIsEditorDirty}
+                onSave={handleSaveFile}
+                ref={editorRef}
               />
             </Suspense>
           )}
@@ -1215,43 +1215,43 @@ const FileBrowser: React.FC = () => {
 
       <ContextMenu
         anchorPosition={contextMenuPosition}
-        hasSelection={selectedPaths.size > 0}
-        hasClipboard={clipboard !== null}
-        onClose={handleCloseContextMenu}
-        onCreateFile={handleCreateFile}
-        onCreateFolder={handleCreateFolder}
-        onChangePermissions={handleChangePermissions}
-        onCopy={handleCopy}
-        onCut={handleCut}
-        onRename={handleContextMenuRename}
-        onPaste={handlePaste}
-        onDelete={handleDelete}
-        onDownload={handleDownloadSelected}
-        onUpload={handleUpload}
-        onShowDetails={handleShowDetails}
-        onCompress={handleCompressSelection}
-        onExtract={handleExtractSelection}
-        canShowDetails={canShowDetails}
         canCompress={canCompressSelection}
         canExtract={canExtractSelection}
-        canRename={selectedPaths.size === 1}
-        onOpenContainingFolder={handleOpenContainingFolder}
         canOpenContainingFolder={
           Boolean(searchQuery) && selectedPaths.size === 1
         }
+        canRename={selectedPaths.size === 1}
+        canShowDetails={canShowDetails}
+        hasClipboard={clipboard !== null}
+        hasSelection={selectedPaths.size > 0}
+        onChangePermissions={handleChangePermissions}
+        onClose={handleCloseContextMenu}
+        onCompress={handleCompressSelection}
+        onCopy={handleCopy}
+        onCreateFile={handleCreateFile}
+        onCreateFolder={handleCreateFolder}
+        onCut={handleCut}
+        onDelete={handleDelete}
+        onDownload={handleDownloadSelected}
+        onExtract={handleExtractSelection}
+        onOpenContainingFolder={handleOpenContainingFolder}
+        onPaste={handlePaste}
+        onRename={handleContextMenuRename}
+        onShowDetails={handleShowDetails}
+        onUpload={handleUpload}
       />
 
       <CompressFormatDialog
-        open={Boolean(compressFormatDialog)}
         onClose={() => setCompressFormatDialog(null)}
         onConfirm={handleCompressConfirm}
+        open={Boolean(compressFormatDialog)}
       />
 
       <FileBrowserDialog
-        open={Boolean(detailTarget)}
-        onClose={handleCloseDetailDialog}
-        maxWidth="md"
         fullWidth
+        maxWidth="md"
+        onClose={handleCloseDetailDialog}
+        open={Boolean(detailTarget)}
       >
         <AppDialogTitle
           style={{
@@ -1265,7 +1265,7 @@ const FileBrowser: React.FC = () => {
             ? "Multiple Items Details"
             : "File Details"}
           <AppIconButton onClick={handleCloseDetailDialog} size="small">
-            <Icon icon="mdi:close" width={18} height={18} />
+            <Icon height={18} icon="mdi:close" width={18} />
           </AppIconButton>
         </AppDialogTitle>
         <AppDialogContent
@@ -1284,54 +1284,52 @@ const FileBrowser: React.FC = () => {
           )}
           {detailResource && (
             <FileDetail
-              resource={detailResource}
+              isLoadingStat={isStatPending}
               onDownload={handleDownloadDetail}
               onEdit={handleEditFile}
+              resource={detailResource}
               statData={statData}
-              isLoadingStat={isStatPending}
             />
           )}
           {hasMultipleDetailTargets && multiItemsStats.items.length > 0 && (
             <MultiFileDetail
-              multiItems={multiItemsStats.items}
-              totalSize={multiItemsStats.totalSize}
-              onDownload={handleDownloadDetail}
               isLoadingDetails={multiItemsStats.isAnyLoading}
+              multiItems={multiItemsStats.items}
+              onDownload={handleDownloadDetail}
+              totalSize={multiItemsStats.totalSize}
             />
           )}
         </AppDialogContent>
       </FileBrowserDialog>
 
       <InputDialog
-        open={createFileDialog}
-        title="Create File"
         label="File Name"
         onClose={() => setCreateFileDialog(false)}
         onConfirm={handleConfirmCreateFile}
+        open={createFileDialog}
+        title="Create File"
       />
 
       <InputDialog
-        open={createFolderDialog}
-        title="Create Folder"
         label="Folder Name"
         onClose={() => setCreateFolderDialog(false)}
         onConfirm={handleConfirmCreateFolder}
+        open={createFolderDialog}
+        title="Create Folder"
       />
 
       <ConfirmDialog
-        open={deleteDialog}
-        title="Delete Items"
-        message={`Are you sure you want to delete ${pendingDeletePaths.length} item${pendingDeletePaths.length !== 1 ? "s" : ""}?`}
         confirmText="Delete"
+        message={`Are you sure you want to delete ${pendingDeletePaths.length} item${pendingDeletePaths.length !== 1 ? "s" : ""}?`}
         onClose={handleCloseDeleteDialog}
         onConfirm={handleConfirmDelete}
+        open={deleteDialog}
+        title="Delete Items"
       />
 
       <ConfirmDialog
-        open={Boolean(unsupportedEditPath)}
-        title="Edit Unsupported File?"
-        message={`"${unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
         confirmText="Edit Anyway"
+        message={`"${unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
         onClose={() => setUnsupportedEditPath(null)}
         onConfirm={() => {
           if (unsupportedEditPath) {
@@ -1340,34 +1338,36 @@ const FileBrowser: React.FC = () => {
           setUnsupportedEditPath(null);
           setDetailTarget(null);
         }}
+        open={Boolean(unsupportedEditPath)}
+        title="Edit Unsupported File?"
       />
 
       {permissionsDialog && (
         <PermissionsDialog
-          open
-          pathLabel={permissionsDialog.pathLabel}
-          selectionCount={permissionsDialog.selectionCount}
           currentMode={permissionsDialog.mode}
-          isDirectory={permissionsDialog.isDirectory}
-          owner={permissionsDialog.owner}
           group={permissionsDialog.group}
+          isDirectory={permissionsDialog.isDirectory}
           onClose={handleClosePermissionsDialog}
           onConfirm={handleConfirmPermissions}
+          open
+          owner={permissionsDialog.owner}
+          pathLabel={permissionsDialog.pathLabel}
+          selectionCount={permissionsDialog.selectionCount}
         />
       )}
 
       <FileBrowserDialog
-        open={uploadDialogOpen}
-        onClose={handleCloseUploadDialog}
-        maxWidth="sm"
-        fullWidth
         disableEscapeKeyDown={isUploadProcessing}
+        fullWidth
+        maxWidth="sm"
+        onClose={handleCloseUploadDialog}
+        open={uploadDialogOpen}
       >
         <AppDialogTitle>Upload files or folders</AppDialogTitle>
         <AppDialogContent
           style={{ borderTop: `1px solid ${theme.palette.divider}` }}
         >
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Items will be uploaded to {normalizedPath}
           </AppTypography>
           <div
@@ -1378,40 +1378,40 @@ const FileBrowser: React.FC = () => {
               flexWrap: "wrap",
             }}
           >
-            <AppButton variant="outlined" onClick={handlePickFiles}>
+            <AppButton onClick={handlePickFiles} variant="outlined">
               Select files
             </AppButton>
-            <AppButton variant="outlined" onClick={handlePickFolder}>
+            <AppButton onClick={handlePickFolder} variant="outlined">
               Select folders
             </AppButton>
           </div>
           <input
-            ref={fileInputRef}
-            type="file"
             multiple
+            onChange={handleUploadInputChange}
+            ref={fileInputRef}
             style={{
               display: "none",
             }}
-            onChange={handleUploadInputChange}
+            type="file"
           />
           <input
-            ref={folderInputRef}
-            type="file"
             multiple
+            onChange={handleUploadInputChange}
+            ref={folderInputRef}
             style={{
               display: "none",
             }}
-            onChange={handleUploadInputChange}
+            type="file"
             {...({
               webkitdirectory: true,
               mozdirectory: true,
             } as any)}
           />
           <AppTypography
-            variant="body2"
             style={{
               marginTop: 8,
             }}
+            variant="body2"
           >
             {uploadEntries.length
               ? `Selected ${uploadSummary.files} file${uploadSummary.files === 1 ? "" : "s"} and ${uploadSummary.folders} folder${uploadSummary.folders === 1 ? "" : "s"}.`
@@ -1419,6 +1419,7 @@ const FileBrowser: React.FC = () => {
           </AppTypography>
           {uploadEntries.length > 0 && (
             <ul
+              className="custom-scrollbar"
               style={{
                 margin: 0,
                 marginTop: 6,
@@ -1426,7 +1427,6 @@ const FileBrowser: React.FC = () => {
                 maxHeight: 240,
                 overflowY: "auto",
               }}
-              className="custom-scrollbar"
             >
               {uploadEntries.map((entry) => (
                 <li
@@ -1436,7 +1436,7 @@ const FileBrowser: React.FC = () => {
                   <AppTypography variant="body2">
                     {entry.relativePath}
                   </AppTypography>
-                  <AppTypography variant="caption" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="caption">
                     {entry.isDirectory ? "Folder" : "File"}
                   </AppTypography>
                 </li>
@@ -1446,21 +1446,21 @@ const FileBrowser: React.FC = () => {
         </AppDialogContent>
         <AppDialogActions>
           <AppButton
-            onClick={handleClearUploadSelection}
             disabled={!uploadEntries.length || isUploadProcessing}
+            onClick={handleClearUploadSelection}
           >
             Clear
           </AppButton>
           <AppButton
-            onClick={handleCloseUploadDialog}
             disabled={isUploadProcessing}
+            onClick={handleCloseUploadDialog}
           >
             Cancel
           </AppButton>
           <AppButton
+            disabled={!uploadEntries.length || isUploadProcessing}
             onClick={handleStartUpload}
             variant="contained"
-            disabled={!uploadEntries.length || isUploadProcessing}
           >
             {isUploadProcessing ? "Uploading..." : "Upload"}
           </AppButton>
@@ -1468,20 +1468,20 @@ const FileBrowser: React.FC = () => {
       </FileBrowserDialog>
 
       <FileBrowserDialog
-        open={Boolean(overwriteTargets?.length)}
-        onClose={handleCancelOverwrite}
-        maxWidth="sm"
         fullWidth
+        maxWidth="sm"
+        onClose={handleCancelOverwrite}
+        open={Boolean(overwriteTargets?.length)}
       >
         <AppDialogTitle>Overwrite existing items?</AppDialogTitle>
         <AppDialogContent
           style={{ borderTop: `1px solid ${theme.palette.divider}` }}
         >
           <AppTypography
-            variant="body2"
             style={{
               marginBottom: 4,
             }}
+            variant="body2"
           >
             These items already exist in {normalizedPath}. Do you want to
             overwrite them?
@@ -1502,9 +1502,9 @@ const FileBrowser: React.FC = () => {
         <AppDialogActions>
           <AppButton onClick={handleCancelOverwrite}>Skip</AppButton>
           <AppButton
+            color="warning"
             onClick={handleConfirmOverwrite}
             variant="contained"
-            color="warning"
           >
             Overwrite
           </AppButton>
@@ -1512,11 +1512,11 @@ const FileBrowser: React.FC = () => {
       </FileBrowserDialog>
 
       <UnsavedChangesDialog
-        open={closeEditorDialog}
-        onKeepEditing={handleKeepEditing}
-        onDiscardAndExit={handleDiscardAndExit}
-        onSaveAndExit={handleSaveAndExit}
         isSaving={isSavingFile}
+        onDiscardAndExit={handleDiscardAndExit}
+        onKeepEditing={handleKeepEditing}
+        onSaveAndExit={handleSaveAndExit}
+        open={closeEditorDialog}
       />
     </>
   );

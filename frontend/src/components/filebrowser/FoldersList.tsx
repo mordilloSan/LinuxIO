@@ -1,41 +1,41 @@
 import React from "react";
 
-import { FileItem, ViewMode } from "../../types/filebrowser";
-
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
 import { SubfolderData } from "@/hooks/useFileSubfolders";
 
+import { FileItem, ViewMode } from "../../types/filebrowser";
+
 interface FoldersListProps {
-  folders: FileItem[];
-  selectedPaths: Set<string>;
   cutPaths: Set<string>;
-  viewMode: ViewMode;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onOpenDirectory: (path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
-  isMarqueeSelecting?: boolean;
-  subfoldersMap: Map<string, SubfolderData>;
+  folders: FileItem[];
   isLoadingSubfolders: boolean;
-  renamingPath: string | null;
-  onConfirmRename: (path: string, newName: string) => void;
+  isMarqueeSelecting?: boolean;
   onCancelRename: () => void;
+  onConfirmRename: (path: string, newName: string) => void;
+  onFolderClick: (event: React.MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onOpenDirectory: (path: string) => void;
+  renamingPath: string | null;
+  selectedPaths: Set<string>;
+  subfoldersMap: Map<string, SubfolderData>;
+  viewMode: ViewMode;
 }
 
 interface FolderItemProps {
-  folder: FileItem;
-  selected: boolean;
-  isCut: boolean;
-  isRenaming: boolean;
-  viewMode: ViewMode;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onOpenDirectory: (path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
-  onConfirmRename: (newName: string) => void;
-  onCancelRename: () => void;
   disableHover?: boolean;
-  subfoldersMap: Map<string, SubfolderData>;
+  folder: FileItem;
+  isCut: boolean;
   isLoadingSubfolders: boolean;
+  isRenaming: boolean;
+  onCancelRename: () => void;
+  onConfirmRename: (newName: string) => void;
+  onFolderClick: (event: React.MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onOpenDirectory: (path: string) => void;
+  selected: boolean;
+  subfoldersMap: Map<string, SubfolderData>;
+  viewMode: ViewMode;
 }
 
 const FolderItem: React.FC<FolderItemProps> = React.memo(
@@ -82,28 +82,28 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
 
     return (
       <ItemComponent
-        key={`${folder.path}-${folder.name}`}
-        path={folder.path}
-        name={folder.name}
-        type={folder.type}
-        size={folder.symlink ? undefined : size === null ? undefined : size}
-        modTime={folder.modTime}
-        isDirectory={true}
-        isSymlink={folder.symlink}
-        hidden={folder.hidden}
-        selected={selected}
-        isCut={isCut}
-        isRenaming={isRenaming}
-        showFullPath={folder.showFullPath}
-        directorySizeLoading={sizeIsLoading}
         directorySizeError={null}
+        directorySizeLoading={sizeIsLoading}
         directorySizeUnavailable={sizeIsUnavailable}
-        onClick={(event) => onFolderClick(event, folder.path)}
-        onDoubleClick={() => onOpenDirectory(folder.path)}
-        onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
-        onConfirmRename={onConfirmRename}
-        onCancelRename={onCancelRename}
         disableHover={disableHover}
+        hidden={folder.hidden}
+        isCut={isCut}
+        isDirectory={true}
+        isRenaming={isRenaming}
+        isSymlink={folder.symlink}
+        key={`${folder.path}-${folder.name}`}
+        modTime={folder.modTime}
+        name={folder.name}
+        onCancelRename={onCancelRename}
+        onClick={(event) => onFolderClick(event, folder.path)}
+        onConfirmRename={onConfirmRename}
+        onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
+        onDoubleClick={() => onOpenDirectory(folder.path)}
+        path={folder.path}
+        selected={selected}
+        showFullPath={folder.showFullPath}
+        size={folder.symlink ? undefined : size === null ? undefined : size}
+        type={folder.type}
       />
     );
   },
@@ -159,22 +159,22 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
         >
           {folders.map((folder) => (
             <FolderItem
-              key={`${folder.path}-${folder.name}`}
+              disableHover={isMarqueeSelecting}
               folder={folder}
-              selected={selectedPaths.has(folder.path)}
               isCut={cutPaths.has(folder.path)}
+              isLoadingSubfolders={isLoadingSubfolders}
               isRenaming={renamingPath === folder.path}
-              viewMode={viewMode}
-              onFolderClick={onFolderClick}
-              onOpenDirectory={onOpenDirectory}
-              onFolderContextMenu={onFolderContextMenu}
+              key={`${folder.path}-${folder.name}`}
+              onCancelRename={onCancelRename}
               onConfirmRename={(newName) =>
                 onConfirmRename(folder.path, newName)
               }
-              onCancelRename={onCancelRename}
-              disableHover={isMarqueeSelecting}
+              onFolderClick={onFolderClick}
+              onFolderContextMenu={onFolderContextMenu}
+              onOpenDirectory={onOpenDirectory}
+              selected={selectedPaths.has(folder.path)}
               subfoldersMap={subfoldersMap}
-              isLoadingSubfolders={isLoadingSubfolders}
+              viewMode={viewMode}
             />
           ))}
         </div>

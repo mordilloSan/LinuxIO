@@ -19,19 +19,19 @@ const AceEditor =
     : ReactAce;
 
 interface FileEditorProps {
-  filePath: string;
   fileName: string;
+  filePath: string;
   initialContent: string;
-  onSave: (content: string) => Promise<void>;
   isSaving?: boolean;
-  readOnly?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
+  onSave: (content: string) => Promise<void>;
+  readOnly?: boolean;
 }
 
 export interface FileEditorHandle {
-  save: () => Promise<void>;
   getContent: () => string;
   isDirty: () => boolean;
+  save: () => Promise<void>;
 }
 
 const getLanguageMode = (fileName: string): string => {
@@ -87,9 +87,9 @@ const loadingAceModes = new Map<string, Promise<void>>();
 const loadingAceThemes = new Map<string, Promise<void>>();
 
 interface EditorState {
-  filePath: string;
   baseContent: string;
   content: string;
+  filePath: string;
   isDirty: boolean;
 }
 
@@ -287,16 +287,15 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
 
     return (
       <AceEditor
-        ref={editorRef}
-        mode={language}
-        theme={aceTheme}
-        onChange={handleContentChange}
-        value={content}
-        name="file-editor"
-        readOnly={isSaving || readOnly}
-        style={{ width: "100%", height: "100%" }}
+        editorProps={{
+          $blockScrolling: true,
+        }}
         fontSize={14}
-        showPrintMargin={false}
+        mode={language}
+        name="file-editor"
+        onChange={handleContentChange}
+        readOnly={isSaving || readOnly}
+        ref={editorRef}
         setOptions={{
           useWorker: true,
           enableBasicAutocompletion: true,
@@ -305,9 +304,10 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
           showLineNumbers: true,
           tabSize: 2,
         }}
-        editorProps={{
-          $blockScrolling: true,
-        }}
+        showPrintMargin={false}
+        style={{ width: "100%", height: "100%" }}
+        theme={aceTheme}
+        value={content}
       />
     );
   },

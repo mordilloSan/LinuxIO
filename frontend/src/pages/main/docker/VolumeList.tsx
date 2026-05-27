@@ -24,8 +24,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
-  responsiveTextStyles,
   longTextStyles,
+  responsiveTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -34,10 +34,10 @@ interface VolumeListProps {
   viewMode?: "table" | "card";
 }
 interface DeleteVolumeDialogProps {
-  open: boolean;
   onClose: () => void;
-  volumeNames: string[];
   onSuccess: () => void;
+  open: boolean;
+  volumeNames: string[];
 }
 const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   open,
@@ -76,7 +76,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
     onClose();
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>
         Delete Volume{volumeNames.length > 1 ? "s" : ""}
       </AppDialogTitle>
@@ -98,11 +98,11 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
               key={name}
               label={name}
               size="small"
-              variant="soft"
               style={{
                 marginRight: 4,
                 marginBottom: 4,
               }}
+              variant="soft"
             />
           ))}
         </div>
@@ -117,14 +117,14 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         </AppDialogContentText>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isDeleting}>
+        <AppButton disabled={isDeleting} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isDeleting}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
@@ -242,19 +242,19 @@ const VolumeList: React.FC<VolumeListProps> = ({
         }}
       >
         <AppSearchField
-          placeholder="Search volumes…"
-          value={search}
           onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search volumes…"
           style={{ width: 320 }}
+          value={search}
         />
         <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
           <AppButton
-            variant="contained"
             color="error"
-            size="small"
-            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
+            size="small"
+            startIcon={<Icon height={20} icon="mdi:delete" width={20} />}
+            variant="contained"
           >
             Delete ({effectiveSelected.size})
           </AppButton>
@@ -274,9 +274,9 @@ const VolumeList: React.FC<VolumeListProps> = ({
                 }}
               >
                 <VolumeCard
-                  volume={volume}
-                  selected={effectiveSelected.has(volume.Name)}
                   onSelect={(checked) => handleSelectOne(volume.Name, checked)}
+                  selected={effectiveSelected.has(volume.Name)}
+                  volume={volume}
                 />
               </AppGrid>
             ))}
@@ -289,107 +289,52 @@ const VolumeList: React.FC<VolumeListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No volumes found.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={filtered}
           columns={columns}
+          data={filtered}
+          emptyMessage="No volumes found."
           getRowKey={(volume) => volume.Name}
-          renderFirstCell={(volume) => (
-            <AppCheckbox
-              size="small"
-              checked={effectiveSelected.has(volume.Name)}
-              onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              size="small"
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-            />
-          )}
-          renderMainRow={(volume) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  variant="body2"
-                  fontWeight={500}
-                  style={responsiveTextStyles}
-                >
-                  {volume.Name}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <Chip
-                  label={volume.Driver}
-                  size="small"
-                  variant="soft"
-                  style={{
-                    fontSize: "0.75rem",
-                  }}
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography
-                  variant="body2"
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "0.85rem",
-                    ...longTextStyles,
-                  }}
-                >
-                  {volume.Mountpoint || "-"}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
-                  {volume.Scope || "local"}
-                </AppTypography>
-              </AppTableCell>
-            </>
-          )}
           renderExpandedContent={(volume) => (
             <>
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Full Mountpoint:</b>
               </AppTypography>
               <AppTypography
-                variant="body2"
                 style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
                   marginBottom: 8,
                   ...longTextStyles,
                 }}
+                variant="body2"
               >
                 {volume.Mountpoint || "-"}
               </AppTypography>
 
               {volume.CreatedAt && (
                 <>
-                  <AppTypography variant="subtitle2" gutterBottom>
+                  <AppTypography gutterBottom variant="subtitle2">
                     <b>Created:</b>
                   </AppTypography>
                   <AppTypography
-                    variant="body2"
                     style={{
                       marginBottom: 8,
                       fontSize: "0.85rem",
                     }}
+                    variant="body2"
                   >
                     {new Date(volume.CreatedAt).toLocaleString()}
                   </AppTypography>
                 </>
               )}
 
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Labels:</b>
               </AppTypography>
               <div
@@ -405,22 +350,22 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
-                      variant="soft"
                       sx={{
                         mr: 1,
                         mb: 1,
                         ...wrappableChipStyles,
                       }}
+                      variant="soft"
                     />
                   ))
                 ) : (
-                  <AppTypography variant="body2" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="body2">
                     (no labels)
                   </AppTypography>
                 )}
               </div>
 
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Options:</b>
               </AppTypography>
               <div>
@@ -430,31 +375,86 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
-                      variant="soft"
                       sx={{
                         mr: 1,
                         mb: 1,
                         ...wrappableChipStyles,
                       }}
+                      variant="soft"
                     />
                   ))
                 ) : (
-                  <AppTypography variant="body2" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="body2">
                     (no options)
                   </AppTypography>
                 )}
               </div>
             </>
           )}
-          emptyMessage="No volumes found."
+          renderFirstCell={(volume) => (
+            <AppCheckbox
+              checked={effectiveSelected.has(volume.Name)}
+              onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              size="small"
+            />
+          )}
+          renderHeaderFirstCell={() => (
+            <AppCheckbox
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={(e) => handleSelectAll(e.target.checked)}
+              size="small"
+            />
+          )}
+          renderMainRow={(volume) => (
+            <>
+              <AppTableCell>
+                <AppTypography
+                  fontWeight={500}
+                  style={responsiveTextStyles}
+                  variant="body2"
+                >
+                  {volume.Name}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <Chip
+                  label={volume.Driver}
+                  size="small"
+                  style={{
+                    fontSize: "0.75rem",
+                  }}
+                  variant="soft"
+                />
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                <AppTypography
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem",
+                    ...longTextStyles,
+                  }}
+                  variant="body2"
+                >
+                  {volume.Mountpoint || "-"}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <AppTypography style={responsiveTextStyles} variant="body2">
+                  {volume.Scope || "local"}
+                </AppTypography>
+              </AppTableCell>
+            </>
+          )}
         />
       )}
 
       <DeleteVolumeDialog
-        open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        volumeNames={selectedVolumes.map((v) => v.Name)}
         onSuccess={handleDeleteSuccess}
+        open={deleteDialogOpen}
+        volumeNames={selectedVolumes.map((v) => v.Name)}
       />
     </div>
   );

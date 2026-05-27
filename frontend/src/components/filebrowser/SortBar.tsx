@@ -9,8 +9,8 @@ export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
 export interface SortBarProps {
-  sortOrder: SortOrder;
   onSortChange: (field: SortField) => void;
+  sortOrder: SortOrder;
 }
 
 const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
@@ -31,17 +31,17 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
     // If hovering show current sort direction
     return sortOrder === "asc" ? (
       <Icon
-        icon="mdi:arrow-up"
-        width={18}
         height={18}
+        icon="mdi:arrow-up"
         style={{ marginLeft: 4, transition: "opacity 0.2s ease", opacity: 0.8 }}
+        width={18}
       />
     ) : (
       <Icon
-        icon="mdi:arrow-down"
-        width={18}
         height={18}
+        icon="mdi:arrow-down"
         style={{ marginLeft: 4, transition: "opacity 0.2s ease", opacity: 0.8 }}
+        width={18}
       />
     );
   };
@@ -67,10 +67,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
       }}
     >
       <div
-        style={columnStyle}
         onClick={() => onSortChange("name")}
-        role="button"
-        tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             onSortChange("name");
@@ -78,20 +75,20 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         }}
         onMouseEnter={() => setHoveredField("name")}
         onMouseLeave={() => setHoveredField(null)}
+        role="button"
+        style={columnStyle}
+        tabIndex={0}
       >
         <AppTypography
-          variant="h6"
           style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          variant="h6"
         >
           Name
           {renderSortIcon("name")}
         </AppTypography>
       </div>
       <div
-        style={columnStyle}
         onClick={() => onSortChange("size")}
-        role="button"
-        tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             onSortChange("size");
@@ -99,10 +96,13 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         }}
         onMouseEnter={() => setHoveredField("size")}
         onMouseLeave={() => setHoveredField(null)}
+        role="button"
+        style={columnStyle}
+        tabIndex={0}
       >
         <AppTypography
-          variant="h6"
           style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          variant="h6"
         >
           Size
           {renderSortIcon("size")}
@@ -110,8 +110,6 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
       </div>
       <div
         onClick={() => onSortChange("modTime")}
-        role="button"
-        tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             onSortChange("modTime");
@@ -119,14 +117,15 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         }}
         onMouseEnter={() => setHoveredField("modTime")}
         onMouseLeave={() => setHoveredField(null)}
+        role="button"
         style={{
           ...columnStyle,
           justifyContent: "center",
           textAlign: "center",
         }}
+        tabIndex={0}
       >
         <AppTypography
-          variant="h6"
           style={{
             display: "flex",
             alignItems: "center",
@@ -134,6 +133,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
             fontSize: "0.9rem",
             width: "100%",
           }}
+          variant="h6"
         >
           Last modified
           {renderSortIcon("modTime")}

@@ -6,13 +6,13 @@ export interface AppCheckboxProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "size" | "type" | "onChange"
 > {
-  size?: "small" | "medium";
-  indeterminate?: boolean;
   color?: "primary" | "error" | "default";
+  indeterminate?: boolean;
   onChange?: (
     event: React.ChangeEvent<HTMLInputElement>,
     checked: boolean,
   ) => void;
+  size?: "small" | "medium";
 }
 
 const AppCheckbox = React.forwardRef<HTMLInputElement, AppCheckboxProps>(
@@ -52,16 +52,16 @@ const AppCheckbox = React.forwardRef<HTMLInputElement, AppCheckboxProps>(
     return (
       <span className={cls}>
         <input
-          ref={inputRef}
-          type="checkbox"
           className="app-checkbox__input"
           onChange={handleChange}
+          ref={inputRef}
+          type="checkbox"
           {...rest}
         />
         <svg
+          aria-hidden="true"
           className="app-checkbox__icon"
           focusable="false"
-          aria-hidden="true"
           viewBox="0 0 24 24"
         >
           {/* unchecked — outline square */}

@@ -1,8 +1,8 @@
 // src/contexts/ReactQueryContext.tsx
 import {
+  QueryCache,
   QueryClient,
   QueryClientProvider,
-  QueryCache,
 } from "@tanstack/react-query";
 import React, { ReactNode } from "react";
 import { toast } from "sonner";

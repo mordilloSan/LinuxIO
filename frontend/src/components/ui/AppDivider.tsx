@@ -16,7 +16,7 @@ const AppDivider = React.forwardRef<HTMLHRElement, AppDividerProps>(
       .filter(Boolean)
       .join(" ");
 
-    return <hr ref={ref} className={cls} {...rest} />;
+    return <hr className={cls} ref={ref} {...rest} />;
   },
 );
 

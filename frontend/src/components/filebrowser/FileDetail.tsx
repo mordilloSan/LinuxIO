@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import { FileResource, ResourceStatData } from "../../types/filebrowser";
-
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
@@ -11,12 +9,14 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
+
+import { FileResource, ResourceStatData } from "../../types/filebrowser";
 interface FileDetailProps {
-  resource?: FileResource;
+  isLoadingStat?: boolean;
   onDownload: (path: string) => void;
   onEdit?: (path: string) => void;
+  resource?: FileResource;
   statData?: ResourceStatData | null;
-  isLoadingStat?: boolean;
 }
 const DetailRow: React.FC<{
   label: string;
@@ -31,22 +31,22 @@ const DetailRow: React.FC<{
       }}
     >
       <AppTypography
-        variant="body2"
-        fontWeight={600}
         color="text.secondary"
+        fontWeight={600}
         style={{
           minWidth: 100,
         }}
+        variant="body2"
       >
         {label}:
       </AppTypography>
       <AppTypography
         component="div"
-        variant="body2"
         style={{
           flex: 1,
           wordBreak: "break-all",
         }}
+        variant="body2"
       >
         {value}
       </AppTypography>
@@ -81,13 +81,13 @@ const FileDetail: React.FC<FileDetailProps> = ({
   if (!resource) {
     return (
       <AppPaper
-        variant="outlined"
         style={{
           borderRadius: 8,
           padding: 12,
         }}
+        variant="outlined"
       >
-        <AppTypography variant="body2" color="text.secondary">
+        <AppTypography color="text.secondary" variant="body2">
           Select an item to view its details.
         </AppTypography>
       </AppPaper>
@@ -98,9 +98,9 @@ const FileDetail: React.FC<FileDetailProps> = ({
   // confirmation when the file isn't in the editable allowlist.
   const canEdit = !isDirectory;
   const getTypeIcon = () => {
-    if (isSymlink) return <Icon icon="mdi:link" width={28} height={28} />;
-    if (isDirectory) return <Icon icon="mdi:folder" width={28} height={28} />;
-    return <Icon icon="mdi:file" width={28} height={28} />;
+    if (isSymlink) return <Icon height={28} icon="mdi:link" width={28} />;
+    if (isDirectory) return <Icon height={28} icon="mdi:folder" width={28} />;
+    return <Icon height={28} icon="mdi:file" width={28} />;
   };
   const getTypeLabel = () => {
     if (isSymlink) return "Symbolic Link";
@@ -109,7 +109,6 @@ const FileDetail: React.FC<FileDetailProps> = ({
   };
   return (
     <AppPaper
-      variant="outlined"
       style={{
         borderRadius: 8,
         display: "flex",
@@ -117,6 +116,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
         padding: 12,
         gap: 8,
       }}
+      variant="outlined"
     >
       {/* Header with icon and name */}
       <div
@@ -139,7 +139,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
             flex: 1,
           }}
         >
-          <AppTypography variant="h6" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="h6">
             {resource.name}
           </AppTypography>
           <div
@@ -150,12 +150,12 @@ const FileDetail: React.FC<FileDetailProps> = ({
               marginTop: theme.spacing(0.5),
             }}
           >
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               {getTypeLabel()}
             </AppTypography>
             {resource.hidden && (
               <>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   •
                 </AppTypography>
                 <div
@@ -165,8 +165,8 @@ const FileDetail: React.FC<FileDetailProps> = ({
                     gap: theme.spacing(0.5),
                   }}
                 >
-                  <Icon icon="mdi:eye-off" width={16} height={16} />
-                  <AppTypography variant="body2" color="text.secondary">
+                  <Icon height={16} icon="mdi:eye-off" width={16} />
+                  <AppTypography color="text.secondary" variant="body2">
                     Hidden
                   </AppTypography>
                 </div>
@@ -220,7 +220,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {statData && (
         <>
           <AppDivider />
-          <AppTypography variant="subtitle2" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="subtitle2">
             Permissions & Ownership
           </AppTypography>
           <div
@@ -266,17 +266,17 @@ const FileDetail: React.FC<FileDetailProps> = ({
             }}
           >
             <AppButton
-              variant="contained"
-              startIcon={<Icon icon="mdi:download" width={20} height={20} />}
               onClick={() => onDownload(resource.path)}
+              startIcon={<Icon height={20} icon="mdi:download" width={20} />}
+              variant="contained"
             >
               Download
             </AppButton>
             {canEdit && onEdit && (
               <AppButton
-                variant="outlined"
-                startIcon={<Icon icon="mdi:pencil" width={20} height={20} />}
                 onClick={() => onEdit(resource.path)}
+                startIcon={<Icon height={20} icon="mdi:pencil" width={20} />}
+                variant="outlined"
               >
                 Edit
               </AppButton>

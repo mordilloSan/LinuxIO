@@ -2,8 +2,8 @@ import { useCallback } from "react";
 
 interface DroppedEntry {
   file?: File;
-  relativePath: string;
   isDirectory: boolean;
+  relativePath: string;
 }
 
 const normalizeRelativePath = (path: string) =>

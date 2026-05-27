@@ -3,15 +3,15 @@ import { Dispatch, SetStateAction, useRef, useState } from "react";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 
 interface useFileEditorResult {
-  editingPath: string | null;
-  setEditingPath: Dispatch<SetStateAction<string | null>>;
-  isSavingFile: boolean;
-  setIsSavingFile: Dispatch<SetStateAction<boolean>>;
-  isEditorDirty: boolean;
-  setIsEditorDirty: Dispatch<SetStateAction<boolean>>;
   closeEditorDialog: boolean;
-  setCloseEditorDialog: Dispatch<SetStateAction<boolean>>;
+  editingPath: string | null;
   editorRef: React.RefObject<FileEditorHandle | null>;
+  isEditorDirty: boolean;
+  isSavingFile: boolean;
+  setCloseEditorDialog: Dispatch<SetStateAction<boolean>>;
+  setEditingPath: Dispatch<SetStateAction<string | null>>;
+  setIsEditorDirty: Dispatch<SetStateAction<boolean>>;
+  setIsSavingFile: Dispatch<SetStateAction<boolean>>;
   showQuickSave: boolean;
 }
 

@@ -3,7 +3,6 @@ import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import AppPopover from "./AppPopover";
 import AppTextField from "./AppTextField";
-
 import "./app-autocomplete.css";
 
 interface FilterState {
@@ -11,23 +10,23 @@ interface FilterState {
 }
 
 interface BaseAutocompleteProps {
-  options: string[];
-  label?: string;
-  placeholder?: string;
-  size?: "small" | "medium";
-  fullWidth?: boolean;
-  disabled?: boolean;
-  helperText?: React.ReactNode;
-  style?: React.CSSProperties;
-  className?: string;
-  freeSolo?: boolean;
-  loading?: boolean;
-  noOptionsText?: React.ReactNode;
-  shrinkLabel?: boolean;
   autoFocus?: boolean;
+  className?: string;
+  disabled?: boolean;
   endAdornment?: React.ReactNode;
   filterOptions?: (options: string[], state: FilterState) => string[];
+  freeSolo?: boolean;
+  fullWidth?: boolean;
+  helperText?: React.ReactNode;
+  label?: string;
+  loading?: boolean;
+  noOptionsText?: React.ReactNode;
   onInputChange?: (value: string) => void;
+  options: string[];
+  placeholder?: string;
+  shrinkLabel?: boolean;
+  size?: "small" | "medium";
+  style?: React.CSSProperties;
 }
 
 type RenderValueProps = (
@@ -266,15 +265,15 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
         onDelete: () => removeSelectedValue(index),
       })) ??
       selectedValues.map((option, index) => (
-        <span key={`${option}-${index}`} className="app-autocomplete__tag">
+        <span className="app-autocomplete__tag" key={`${option}-${index}`}>
           <span className="app-autocomplete__tag-label">{option}</span>
           <button
-            type="button"
+            aria-label={`Remove ${option}`}
             className="app-autocomplete__tag-remove"
             onClick={() => removeSelectedValue(index)}
-            aria-label={`Remove ${option}`}
+            type="button"
           >
-            <Icon icon="mdi:close-circle" width={16} height={16} />
+            <Icon height={16} icon="mdi:close-circle" width={16} />
           </button>
         </span>
       )))
@@ -282,7 +281,6 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
 
   return (
     <div
-      ref={setContainerNode}
       className={[
         "app-autocomplete",
         fullWidth && "app-autocomplete--fullwidth",
@@ -290,38 +288,39 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       ]
         .filter(Boolean)
         .join(" ")}
+      ref={setContainerNode}
       style={style}
     >
-      <div ref={setFieldAnchorNode} className="app-autocomplete__field">
+      <div className="app-autocomplete__field" ref={setFieldAnchorNode}>
         <AppTextField
-          ref={inputRef}
-          label={label}
-          value={inputValue}
-          placeholder={placeholder}
-          size={size}
-          fullWidth={fullWidth}
-          disabled={disabled}
-          helperText={helperText}
-          shrinkLabel={shrinkLabel || (isMultiple && selectedValues.length > 0)}
+          aria-autocomplete="list"
+          aria-controls={open ? listboxId : undefined}
+          aria-expanded={open}
           autoFocus={autoFocus}
+          disabled={disabled}
           endAdornment={
             <div className="app-autocomplete__end">
               {endAdornment}
-              <Icon icon="mdi:chevron-down" width={18} height={18} />
+              <Icon height={18} icon="mdi:chevron-down" width={18} />
             </div>
           }
-          onFocus={() => setOpen(true)}
+          fullWidth={fullWidth}
+          helperText={helperText}
+          label={label}
           onBlur={handleInputBlur}
-          onClick={() => setOpen(true)}
-          onKeyDown={handleInputKeyDown}
           onChange={(event) => {
             updateInputValue(event.target.value);
             setOpen(true);
           }}
+          onClick={() => setOpen(true)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleInputKeyDown}
+          placeholder={placeholder}
+          ref={inputRef}
           role="combobox"
-          aria-expanded={open}
-          aria-controls={open ? listboxId : undefined}
-          aria-autocomplete="list"
+          shrinkLabel={shrinkLabel || (isMultiple && selectedValues.length > 0)}
+          size={size}
+          value={inputValue}
         />
       </div>
 
@@ -330,18 +329,18 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
       ) : null}
 
       <AppPopover
-        open={open && !disabled && (loading || filteredOptions.length > 0)}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open && !disabled && (loading || filteredOptions.length > 0)}
         paperClassName="app-autocomplete__panel"
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
         <div
-          ref={listboxRef}
-          id={listboxId}
           className="app-autocomplete__listbox custom-scrollbar"
+          id={listboxId}
+          ref={listboxRef}
           role="listbox"
         >
           {loading ? (
@@ -349,9 +348,6 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
           ) : filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => (
               <button
-                key={option}
-                type="button"
-                role="option"
                 aria-selected={index === resolvedActiveIndex}
                 className={[
                   "app-autocomplete__option",
@@ -360,9 +356,12 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                key={option}
+                onClick={() => handleSelect(option)}
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => handleSelect(option)}
+                role="option"
+                type="button"
               >
                 {option}
               </button>

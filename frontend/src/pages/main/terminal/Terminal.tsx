@@ -2,15 +2,15 @@ import { Icon } from "@iconify/react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef, useState } from "react";
-
 import "@xterm/xterm/css/xterm.css";
+
 import {
-  useStreamMux,
   bindStreamHandlers,
-  encodeString,
   decodeString,
+  encodeString,
   openTerminalStream,
   type Stream,
+  useStreamMux,
 } from "@/api";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
@@ -331,53 +331,53 @@ const TerminalXTerm: React.FC = () => {
       >
         {/* Font Size Controls */}
         <AppTypography
-          variant="body2"
           color="text.secondary"
           fontWeight={500}
           style={{ marginRight: 8 }}
+          variant="body2"
         >
           Font
         </AppTypography>
         <AppIconButton
+          onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
           size="small"
           style={{ color: "var(--mui-palette-text-secondary)" }}
-          onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
         >
-          <Icon icon="mdi:minus" width={18} height={18} />
+          <Icon height={18} icon="mdi:minus" width={18} />
         </AppIconButton>
         <AppTypography
-          variant="body2"
-          color="text.secondary"
           align="center"
+          color="text.secondary"
           style={{ minWidth: 28 }}
+          variant="body2"
         >
           {fontSize}
         </AppTypography>
         <AppIconButton
+          onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
           size="small"
           style={{ color: "var(--mui-palette-text-secondary)" }}
-          onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
         >
-          <Icon icon="mdi:plus" width={18} height={18} />
+          <Icon height={18} icon="mdi:plus" width={18} />
         </AppIconButton>
 
         <div style={{ flex: 1 }} />
 
         {/* Reset Button */}
         <AppIconButton
+          onClick={handleReset}
           size="small"
           style={{ color: "var(--mui-palette-text-secondary)", marginLeft: 8 }}
-          onClick={handleReset}
           title="Reset Terminal"
         >
-          <Icon icon="mdi:restart" width={18} height={18} />
+          <Icon height={18} icon="mdi:restart" width={18} />
         </AppIconButton>
       </div>
       {/* TERMINAL */}
       <div
-        ref={termRef}
         className="my-terminal-root"
         onContextMenu={handleContextMenu}
+        ref={termRef}
         style={{
           flex: 1,
           overflow: "hidden",
@@ -387,8 +387,6 @@ const TerminalXTerm: React.FC = () => {
       />
       {/* CONTEXT MENU */}
       <AppMenu
-        open={contextMenu !== null}
-        onClose={handleCloseContextMenu}
         anchorPosition={
           contextMenu !== null
             ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
@@ -396,32 +394,34 @@ const TerminalXTerm: React.FC = () => {
         }
         autoFocus={false}
         minWidth={168}
+        onClose={handleCloseContextMenu}
+        open={contextMenu !== null}
       >
         <AppMenuItem
-          onClick={handleCopy}
           endAdornment={
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{ marginLeft: 8 }}
+              variant="body2"
             >
               Ctrl+Shift+C
             </AppTypography>
           }
+          onClick={handleCopy}
         >
           Copy
         </AppMenuItem>
         <AppMenuItem
-          onClick={handlePaste}
           endAdornment={
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{ marginLeft: 8 }}
+              variant="body2"
             >
               Ctrl+Shift+V
             </AppTypography>
           }
+          onClick={handlePaste}
         >
           Paste
         </AppMenuItem>

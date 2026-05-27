@@ -68,16 +68,16 @@ const IndexerDialog: React.FC = () => {
 
   return (
     <IndexerStatusDialog
-      open={isIndexerDialogOpen}
-      onClose={closeIndexerDialog}
-      title="Indexing Filesystem"
-      isRunning={isRunning}
-      success={success}
       error={error}
+      isRunning={isRunning}
+      onClose={closeIndexerDialog}
+      open={isIndexerDialogOpen}
       phaseLabel={getPhaseLabel()}
       progressStats={progressStats}
       showProgressStats={isRunning || success}
+      success={success}
       successDescription={successDescription}
+      title="Indexing Filesystem"
     />
   );
 };

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { AuthUser, AUTH_ACTIONS, AuthState, AuthActions } from "@/types/auth";
+
+import { AUTH_ACTIONS, AuthActions, AuthState, AuthUser } from "@/types/auth";
 
 function isSameUser(u1: AuthUser | null, u2: AuthUser | null): boolean {
   if (!u1 || !u2) return false;

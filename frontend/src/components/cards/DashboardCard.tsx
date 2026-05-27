@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
-import FrostedCard from "./FrostedCard";
-
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
@@ -15,14 +13,16 @@ import {
   getAccentCardStyles,
 } from "@/theme/surfaces";
 
+import FrostedCard from "./FrostedCard";
+
 /** A single option rendered inside the card's dropdown selector. */
 export interface SelectOption {
-  /** The internal value passed to `onSelect`. */
-  value: string;
-  /** The human-readable label shown in the dropdown. */
-  label: string;
   /** Optional stable key; falls back to array index when omitted. */
   id?: string;
+  /** The human-readable label shown in the dropdown. */
+  label: string;
+  /** The internal value passed to `onSelect`. */
+  value: string;
 }
 
 /**
@@ -140,18 +140,16 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
           ? theme.palette.success.main
           : theme.palette.error.main
       }
-      tooltip={connectionStatus === "online" ? "Connected" : "Disconnected"}
       style={{ marginBottom: 2 }}
+      tooltip={connectionStatus === "online" ? "Connected" : "Disconnected"}
     />
   );
 
   const renderSelect = selectOptions.length > 0 && (
     <AppSelect
-      size="small"
-      variant="standard"
       disableUnderline
-      value={selectedOption}
       onChange={handleSelectionChange}
+      size="small"
       style={
         {
           marginLeft: 0,
@@ -161,8 +159,10 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
           "--app-select-input-font-size": "0.75rem",
         } as React.CSSProperties
       }
+      value={selectedOption}
+      variant="standard"
     >
-      {!selectedOption && <option value="" disabled hidden></option>}
+      {!selectedOption && <option disabled hidden value=""></option>}
       {selectOptions.map((option, index) => (
         <option key={option.id ?? index} value={option.value}>
           {option.label}
@@ -198,12 +198,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
           {/* Title and optional extras */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <AppTypography
-              variant="h5"
               fontWeight={700}
               style={{
                 transform: "translateY(-1px)",
                 ...(titleColor && { color: titleColor }),
               }}
+              variant="h5"
             >
               {title}
             </AppTypography>
@@ -213,6 +213,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 
             {icon && icon_text && (
               <div
+                onClick={
+                  iconTextSelectOptions?.length
+                    ? (e) =>
+                        setIconTextMenuAnchor(e.currentTarget as HTMLElement)
+                    : undefined
+                }
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -223,12 +229,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                   cursor: iconTextSelectOptions?.length ? "pointer" : "default",
                   borderRadius: 4,
                 }}
-                onClick={
-                  iconTextSelectOptions?.length
-                    ? (e) =>
-                        setIconTextMenuAnchor(e.currentTarget as HTMLElement)
-                    : undefined
-                }
               >
                 <div
                   style={{
@@ -238,16 +238,16 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                   }}
                 >
                   <Icon
+                    color={primaryColor}
+                    height="24px"
                     icon={icon}
                     width="24px"
-                    height="24px"
-                    color={primaryColor}
                   />
                 </div>
                 <AppTypography
-                  variant="body2"
                   color="text.secondary"
                   style={{ marginLeft: 0, lineHeight: 1 }}
+                  variant="body2"
                 >
                   {icon_text}
                 </AppTypography>
@@ -256,20 +256,20 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
             {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (
               <AppMenu
                 anchorEl={iconTextMenuAnchor}
-                open={Boolean(iconTextMenuAnchor)}
-                onClose={() => setIconTextMenuAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-                transformOrigin={{ vertical: "top", horizontal: "left" }}
                 minWidth={180}
+                onClose={() => setIconTextMenuAnchor(null)}
+                open={Boolean(iconTextMenuAnchor)}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
               >
                 {iconTextSelectOptions.map((opt, i) => (
                   <AppMenuItem
                     key={opt.id ?? i}
-                    selected={opt.value === selectedIconTextOption}
                     onClick={() => {
                       onIconTextSelect?.(opt.value);
                       setIconTextMenuAnchor(null);
                     }}
+                    selected={opt.value === selectedIconTextOption}
                   >
                     {opt.label}
                   </AppMenuItem>
@@ -280,10 +280,10 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 
           {/* Avatar/Icon */}
           <Icon
+            color={primaryColor}
+            height="38px"
             icon={avatarIcon}
             width="38px"
-            height="38px"
-            color={primaryColor}
           />
         </div>
 

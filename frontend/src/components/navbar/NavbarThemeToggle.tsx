@@ -20,15 +20,15 @@ function NavbarThemeToggle() {
       <AppIconButton color="inherit" onClick={toggleTheme}>
         {isDark ? (
           <Icon
+            height={iconSize.md}
             icon="mdi:weather-night"
             width={iconSize.md}
-            height={iconSize.md}
           />
         ) : (
           <Icon
+            height={iconSize.md}
             icon="mdi:weather-sunny"
             width={iconSize.md}
-            height={iconSize.md}
           />
         )}
       </AppIconButton>

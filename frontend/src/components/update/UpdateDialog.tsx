@@ -13,16 +13,16 @@ import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 interface UpdateDialogProps {
-  open: boolean;
-  status: string;
-  progress: number;
-  output: string[];
-  onClose?: () => void;
   canClose: boolean;
+  onClose?: () => void;
+  onContinue?: () => void;
+  open: boolean;
+  output: string[];
+  progress: number;
+  status: string;
+  targetVersion?: string | null;
   updateComplete?: boolean;
   updateSuccess?: boolean;
-  onContinue?: () => void;
-  targetVersion?: string | null;
 }
 const UpdateDialog: React.FC<UpdateDialogProps> = ({
   open,
@@ -47,11 +47,11 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   }, [output]);
   return (
     <GeneralDialog
-      open={open}
-      maxWidth="md"
-      fullWidth
       disableEscapeKeyDown={!canClose}
+      fullWidth
+      maxWidth="md"
       onClose={canClose ? onClose : undefined}
+      open={open}
     >
       <AppDialogTitle>
         {updateComplete
@@ -83,12 +83,12 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
               }}
             >
               {updateSuccess ? (
-                <Icon icon="mdi:check-circle" width={28} height={28} />
+                <Icon height={28} icon="mdi:check-circle" width={28} />
               ) : (
-                <Icon icon="mdi:alert-circle" width={28} height={28} />
+                <Icon height={28} icon="mdi:alert-circle" width={28} />
               )}
               <div>
-                <AppTypography variant="h6" fontWeight={700}>
+                <AppTypography fontWeight={700} variant="h6">
                   {updateSuccess ? "Update Successful!" : "Update Failed"}
                 </AppTypography>
                 <AppTypography variant="body2">
@@ -114,15 +114,15 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
             status && (
               <div>
                 <AppTypography
-                  variant="body2"
                   color="text.secondary"
                   gutterBottom
+                  variant="body2"
                 >
                   {updateComplete && !updateSuccess
                     ? "Error Details"
                     : "Status"}
                 </AppTypography>
-                <AppTypography variant="body1" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body1">
                   {status || "Preparing..."}
                 </AppTypography>
               </div>
@@ -132,21 +132,21 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
           {!updateComplete && progress < 100 && (
             <div>
               <AppTypography
-                variant="body2"
                 color="text.secondary"
                 style={{
                   marginBottom: 4,
                 }}
+                variant="body2"
               >
                 Progress
               </AppTypography>
               <AppLinearProgress
-                variant={progress > 0 ? "determinate" : "indeterminate"}
-                value={progress}
                 style={{
                   height: 8,
                   borderRadius: 1,
                 }}
+                value={progress}
+                variant={progress > 0 ? "determinate" : "indeterminate"}
               />
             </div>
           )}
@@ -155,14 +155,13 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
           {output.length > 0 && (
             <div>
               <AppTypography
-                variant="body2"
                 color="text.secondary"
                 gutterBottom
+                variant="body2"
               >
                 Installation Output
               </AppTypography>
               <AppPaper
-                variant="outlined"
                 style={{
                   maxHeight: 300,
                   overflowY: "auto",
@@ -172,6 +171,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                   fontFamily: "monospace",
                   fontSize: "0.875rem",
                 }}
+                variant="outlined"
               >
                 {output.map((line, index) => (
                   <div
@@ -192,7 +192,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
       </AppDialogContent>
       <AppDialogActions>
         {updateComplete && updateSuccess && onContinue && (
-          <AppButton onClick={onContinue} variant="contained" color="success">
+          <AppButton color="success" onClick={onContinue} variant="contained">
             Continue to Login
           </AppButton>
         )}
@@ -208,12 +208,12 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
         )}
         {!updateComplete && !canClose && (
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{
               paddingLeft: 8,
               paddingRight: 8,
             }}
+            variant="body2"
           >
             Please wait...
           </AppTypography>

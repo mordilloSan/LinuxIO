@@ -1,16 +1,16 @@
-import React, { createContext, useState, useCallback, useMemo } from "react";
+import React, { createContext, useCallback, useMemo, useState } from "react";
 
-import { drawerWidth, collapsedDrawerWidth } from "@/constants";
+import { collapsedDrawerWidth, drawerWidth } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery } from "@/theme";
 import breakpoints from "@/theme/breakpoints";
 
 export interface SidebarContextType {
   collapsed: boolean;
-  mobileOpen: boolean;
   isDesktop: boolean;
-  sidebarWidth: number;
+  mobileOpen: boolean;
   setMobileOpen: (value: boolean) => void;
+  sidebarWidth: number;
   toggleCollapse: () => void;
   toggleMobileOpen: () => void;
 }

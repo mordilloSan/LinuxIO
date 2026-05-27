@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
-import { linuxio, type AccountUserLogin } from "@/api";
+import { type AccountUserLogin, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -23,16 +23,12 @@ import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
 interface HealthItem {
-  icon: string;
   color: string;
-  text: string;
-  to?: string;
-  onClick?: () => void;
   detail?: string;
-  textColor?: string;
   detailColor?: string;
-  spaceBefore?: boolean;
+  icon: string;
   iconStyle?: React.CSSProperties;
+  onClick?: () => void;
   secondaryAction?: {
     label: string;
     icon?: string;
@@ -40,6 +36,10 @@ interface HealthItem {
     onClick: (event: React.MouseEvent) => void;
     disabled?: boolean;
   };
+  spaceBefore?: boolean;
+  text: string;
+  textColor?: string;
+  to?: string;
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -296,10 +296,10 @@ const SystemHealth = () => {
   const stats2 = (
     <div>
       {!health && (loadingHealth || fetchingHealth) ? (
-        <AppSkeleton variant="circular" width={100} height={100} />
+        <AppSkeleton height={100} variant="circular" width={100} />
       ) : (
         <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
-          <Icon icon={iconName} width={100} height={100} color={statusColor} />
+          <Icon color={statusColor} height={100} icon={iconName} width={100} />
         </div>
       )}
     </div>
@@ -315,15 +315,14 @@ const SystemHealth = () => {
         }}
       >
         <Icon
-          icon={item.icon}
-          width={18}
-          height={18}
           color={item.color}
+          height={18}
+          icon={item.icon}
           style={{ flexShrink: 0, ...item.iconStyle }}
+          width={18}
         />
         <div style={{ minWidth: 0 }}>
           <AppTypography
-            variant="body2"
             fontWeight={500}
             style={{
               color:
@@ -333,12 +332,12 @@ const SystemHealth = () => {
                   : item.color),
               whiteSpace: "pre-line",
             }}
+            variant="body2"
           >
             {item.text}
           </AppTypography>
           {item.detail ? (
             <AppTypography
-              variant="caption"
               style={{
                 color: item.detailColor ?? theme.palette.text.secondary,
                 display: "block",
@@ -346,6 +345,7 @@ const SystemHealth = () => {
                 lineHeight: 1.2,
                 whiteSpace: "pre-line",
               }}
+              variant="caption"
             >
               {item.detail}
             </AppTypography>
@@ -353,13 +353,13 @@ const SystemHealth = () => {
         </div>
         {item.secondaryAction?.icon ? (
           <AppIconButton
-            size="small"
-            color="inherit"
             aria-label={
               item.secondaryAction.ariaLabel ?? item.secondaryAction.label
             }
+            color="inherit"
             disabled={item.secondaryAction.disabled}
             onClick={item.secondaryAction.onClick}
+            size="small"
             style={{
               marginLeft: theme.spacing(0.5),
               color: "#fff",
@@ -367,17 +367,17 @@ const SystemHealth = () => {
               flexShrink: 0,
             }}
           >
-            <Icon icon={item.secondaryAction.icon} width={18} height={18} />
+            <Icon height={18} icon={item.secondaryAction.icon} width={18} />
           </AppIconButton>
         ) : item.secondaryAction ? (
           <span
-            role="button"
             aria-disabled={item.secondaryAction.disabled || undefined}
             onClick={
               item.secondaryAction.disabled
                 ? undefined
                 : item.secondaryAction.onClick
             }
+            role="button"
             style={{
               marginLeft: theme.spacing(1),
               cursor: item.secondaryAction.disabled ? "default" : "pointer",
@@ -425,7 +425,7 @@ const SystemHealth = () => {
         ...(spaceBefore ? { marginTop: theme.spacing(1) } : undefined),
       }}
     >
-      <AppSkeleton variant="circular" width={18} height={18} />
+      <AppSkeleton height={18} variant="circular" width={18} />
       <SkeletonText variant="body2" width={width} />
     </div>
   );
@@ -473,18 +473,18 @@ const SystemHealth = () => {
   return (
     <>
       <DashboardCard
-        title="System Health"
-        stats={stats}
-        stats2={stats2}
         avatarIcon="mdi:heart-pulse"
         contentLayout={[1.5, 1]}
+        stats={stats}
+        stats2={stats2}
+        title="System Health"
       />
 
       <GeneralDialog
-        open={failedLoginsOpen}
-        onClose={() => setFailedLoginsOpen(false)}
-        maxWidth="md"
         fullWidth
+        maxWidth="md"
+        onClose={() => setFailedLoginsOpen(false)}
+        open={failedLoginsOpen}
       >
         <AppDialogTitle
           style={{
@@ -495,10 +495,10 @@ const SystemHealth = () => {
           }}
         >
           <Icon
+            color={theme.palette.warning.main}
+            height={22}
             icon="mdi:account-alert-outline"
             width={22}
-            height={22}
-            color={theme.palette.warning.main}
           />
           <AppTypography variant="h6">Failed logins</AppTypography>
         </AppDialogTitle>
@@ -516,7 +516,7 @@ const SystemHealth = () => {
                 : "Failed login history unavailable"}
             </AppAlert>
           ) : failedLoginEvents.length === 0 ? (
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No failed login attempts found before this session.
             </AppTypography>
           ) : (
@@ -531,10 +531,10 @@ const SystemHealth = () => {
               >
                 {["Time", "Username", "Source", "Result"].map((label) => (
                   <AppTypography
-                    key={label}
-                    variant="overline"
                     color="text.secondary"
+                    key={label}
                     style={{ fontSize: "0.65rem" }}
+                    variant="overline"
                   >
                     {label}
                   </AppTypography>
@@ -551,25 +551,25 @@ const SystemHealth = () => {
                       padding: "8px 0",
                     }}
                   >
-                    <AppTypography variant="body2" fontWeight={500} noWrap>
+                    <AppTypography fontWeight={500} noWrap variant="body2">
                       {login.time || "-"}
                     </AppTypography>
-                    <AppTypography variant="body2" fontWeight={500} noWrap>
+                    <AppTypography fontWeight={500} noWrap variant="body2">
                       {login.username || "unknown"}
                     </AppTypography>
                     <AppTypography
-                      variant="body2"
                       color="text.secondary"
                       noWrap
+                      variant="body2"
                     >
                       {loginAttemptLocation(login)}
                     </AppTypography>
                     <Chip
+                      color="error"
                       label="Failed"
                       size="small"
-                      variant="soft"
-                      color="error"
                       style={{ fontSize: "0.7rem" }}
+                      variant="soft"
                     />
                   </div>
                   {index < failedLoginEvents.length - 1 ? <AppDivider /> : null}
@@ -584,16 +584,16 @@ const SystemHealth = () => {
             borderTop: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <AppButton onClick={() => setFailedLoginsOpen(false)} color="inherit">
+          <AppButton color="inherit" onClick={() => setFailedLoginsOpen(false)}>
             Close
           </AppButton>
           {failedLoginAlert?.id ? (
             <AppButton
-              onClick={() => dismissFailedLoginAlert([failedLoginAlert.id])}
-              disabled={dismissingFailedLogin}
-              variant="contained"
               color="warning"
-              startIcon={<Icon icon="mdi:check" width={18} height={18} />}
+              disabled={dismissingFailedLogin}
+              onClick={() => dismissFailedLoginAlert([failedLoginAlert.id])}
+              startIcon={<Icon height={18} icon="mdi:check" width={18} />}
+              variant="contained"
             >
               {dismissingFailedLogin ? "Dismissing..." : "Dismiss alert"}
             </AppButton>

@@ -19,16 +19,15 @@ const DevToolsButton: React.FC = () => {
     <>
       <div style={{ position: "relative", display: "inline-flex" }}>
         <div
-          role="button"
-          tabIndex={0}
           className="devtools-btn"
+          onClick={() => setIsOpen((prev) => !prev)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               setIsOpen((prev) => !prev);
             }
           }}
-          onClick={() => setIsOpen((prev) => !prev)}
+          role="button"
           style={
             {
               cursor: "pointer",
@@ -47,14 +46,15 @@ const DevToolsButton: React.FC = () => {
               "--devtools-hover-shadow": shadowSm,
             } as React.CSSProperties
           }
+          tabIndex={0}
         >
           <Icon
-            icon="mdi:wrench"
-            width={16}
             height={16}
+            icon="mdi:wrench"
             style={{ color: theme.palette.primary.main }}
+            width={16}
           />
-          <AppTypography variant="caption" color="text.secondary">
+          <AppTypography color="text.secondary" variant="caption">
             Dev Tools
           </AppTypography>
         </div>

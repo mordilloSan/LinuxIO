@@ -6,31 +6,31 @@ import AppTypography from "@/components/ui/AppTypography";
 function Page500() {
   return (
     <div style={{ textAlign: "center" }}>
-      <AppTypography component="h1" variant="h1" align="center" gutterBottom>
+      <AppTypography align="center" component="h1" gutterBottom variant="h1">
         500
       </AppTypography>
-      <AppTypography component="h2" variant="h4" align="center" gutterBottom>
+      <AppTypography align="center" component="h2" gutterBottom variant="h4">
         Internal server error.
       </AppTypography>
       <AppTypography
-        component="h2"
-        variant="subtitle1"
         align="center"
+        component="h2"
         gutterBottom
+        variant="subtitle1"
       >
         The server encountered something unexpected that didn’t allow it to
         complete the request.
       </AppTypography>
 
       <Link
-        to="/"
         style={{
           textDecoration: "none",
           marginTop: 16,
           display: "inline-block",
         }}
+        to="/"
       >
-        <AppButton variant="contained" color="secondary">
+        <AppButton color="secondary" variant="contained">
           Return to website
         </AppButton>
       </Link>

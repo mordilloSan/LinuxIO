@@ -7,24 +7,12 @@
  */
 
 export interface CapabilityDef {
-  /** snake_case prefix used on the wire (e.g. "docker" -> "docker_available", "docker_error"). */
-  wire: string;
-  /** camelCase field used in auth state (e.g. "dockerAvailable"). */
-  state: string;
-  /** Display name in the capability manager. */
-  label: string;
-  /** One-line description shown under the label. */
-  description: string;
-  /** Text shown when the capability is reachable. */
-  readyText: string;
   /** Underlying dependency name (binary, package, or service). */
   dependency: string;
+  /** One-line description shown under the label. */
+  description: string;
   /** Iconify icon id. */
   icon: string;
-  /** Message when status is "unknown". */
-  reasonUnknown: string;
-  /** Message when status is "unavailable". */
-  reasonUnavailable: string;
   /**
    * Whether the backend can install this capability via
    * `system.install_capability`. Omit for capabilities that have no
@@ -36,6 +24,18 @@ export interface CapabilityDef {
      *  unavailable. False for pure service-start actions. */
     requiresPackageKit: boolean;
   };
+  /** Display name in the capability manager. */
+  label: string;
+  /** Text shown when the capability is reachable. */
+  readyText: string;
+  /** Message when status is "unavailable". */
+  reasonUnavailable: string;
+  /** Message when status is "unknown". */
+  reasonUnknown: string;
+  /** camelCase field used in auth state (e.g. "dockerAvailable"). */
+  state: string;
+  /** snake_case prefix used on the wire (e.g. "docker" -> "docker_available", "docker_error"). */
+  wire: string;
 }
 
 export const CAPABILITIES = [

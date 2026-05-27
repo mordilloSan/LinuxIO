@@ -5,10 +5,10 @@ import { toast } from "sonner";
 
 import {
   CACHE_TTL_MS,
-  jobSnapshotResult,
-  linuxio,
   type IndexerConfig,
   type IndexerDaemonStatus,
+  jobSnapshotResult,
+  linuxio,
   type UnitInfo,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -319,14 +319,14 @@ const StatusMetric: React.FC<{
       : undefined;
   return (
     <div style={{ minWidth: 0 }}>
-      <AppTypography variant="caption" color="text.secondary">
+      <AppTypography color="text.secondary" variant="caption">
         {label}
       </AppTypography>
-      <AppTypography variant="body2" fontWeight={600} noWrap title={title}>
+      <AppTypography fontWeight={600} noWrap title={title} variant="body2">
         {value}
       </AppTypography>
       {detail ? (
-        <AppTypography variant="caption" color="text.secondary" noWrap>
+        <AppTypography color="text.secondary" noWrap variant="caption">
           {detail}
         </AppTypography>
       ) : null}
@@ -366,13 +366,13 @@ const SectionCard: React.FC<{
             flexShrink: 0,
           }}
         >
-          <Icon icon={icon} width={22} height={22} />
+          <Icon height={22} icon={icon} width={22} />
         </div>
         <div>
-          <AppTypography variant="body2" fontWeight={600} component="h3">
+          <AppTypography component="h3" fontWeight={600} variant="body2">
             {title}
           </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
+          <AppTypography color="text.secondary" variant="caption">
             {subtitle}
           </AppTypography>
         </div>
@@ -403,26 +403,26 @@ const ToggleCard: React.FC<{
     >
       <div style={{ minWidth: 0 }}>
         <AppTypography
-          variant="body2"
           fontWeight={600}
           style={{ lineHeight: 1.25 }}
+          variant="body2"
         >
           {label}
         </AppTypography>
         <AppTypography
-          variant="caption"
           color="text.secondary"
           noWrap
           style={{ lineHeight: 1.35 }}
+          variant="caption"
         >
           {description}
         </AppTypography>
       </div>
       <AppSwitch
+        aria-label={label}
         checked={checked}
         disabled={disabled}
         onChange={(_, nextChecked) => onChange(nextChecked)}
-        aria-label={label}
       />
     </FrostedCard>
   );
@@ -621,24 +621,24 @@ const IndexerSettingsSection: React.FC = () => {
       }}
     >
       <div>
-        <AppTypography variant="body1" fontWeight={600}>
+        <AppTypography fontWeight={600} variant="body1">
           Indexer
         </AppTypography>
-        <AppTypography variant="caption" color="text.secondary">
+        <AppTypography color="text.secondary" variant="caption">
           Filesystem search, folder sizes, and index storage.
         </AppTypography>
       </div>
       <AppTooltip title={refreshing ? "Refreshing" : "Refresh"}>
         <AppIconButton
-          size="small"
-          disabled={refreshing || !indexerEnabled}
           aria-label="Refresh indexer settings"
+          disabled={refreshing || !indexerEnabled}
           onClick={handleRefresh}
+          size="small"
         >
           <Icon
+            height={18}
             icon={refreshing ? "mdi:loading" : "mdi:refresh"}
             width={18}
-            height={18}
           />
         </AppIconButton>
       </AppTooltip>
@@ -726,18 +726,18 @@ const IndexerSettingsSection: React.FC = () => {
 
       <SectionCard
         icon="mdi:chart-box-outline"
-        title="Indexer Status"
-        subtitle="Daemon state, indexed entries, storage info"
         indicator={
           daemonStatus ? (
             <StatusDot
-              color={getStatusColor(daemonStatus, theme)}
-              tooltip={statusTooltip}
               absolute
+              color={getStatusColor(daemonStatus, theme)}
               style={{ top: 16, right: 12 }}
+              tooltip={statusTooltip}
             />
           ) : null
         }
+        subtitle="Daemon state, indexed entries, storage info"
+        title="Indexer Status"
       >
         {statusError ? (
           <AppAlert severity="warning">
@@ -749,9 +749,9 @@ const IndexerSettingsSection: React.FC = () => {
             {renderStatusGrid(
               <>
                 <StatusMetric
+                  detail={daemonStatus.active_path}
                   label="State"
                   value={formatActiveIndexerStatus(daemonStatus)}
-                  detail={daemonStatus.active_path}
                 />
                 <StatusMetric
                   label="Files"
@@ -790,76 +790,76 @@ const IndexerSettingsSection: React.FC = () => {
 
       <div className="indexer-toggle-grid">
         <ToggleCard
-          label="Include hidden files"
-          description="Scan dotfiles and dot directories"
           checked={draft.include_hidden}
+          description="Scan dotfiles and dot directories"
           disabled={busy}
+          label="Include hidden files"
           onChange={(checked) => updateDraft("include_hidden", checked)}
         />
         <ToggleCard
-          label="Include network mounts"
-          description="Allows NFS, SMB and CIFS"
           checked={draft.include_network_mounts}
+          description="Allows NFS, SMB and CIFS"
           disabled={busy}
+          label="Include network mounts"
           onChange={(checked) => updateDraft("include_network_mounts", checked)}
         />
         <ToggleCard
-          label="Fresh index"
-          description="Clears database before indexing"
           checked={draft.fresh_index}
+          description="Clears database before indexing"
           disabled={busy}
+          label="Fresh index"
           onChange={(checked) => updateDraft("fresh_index", checked)}
         />
       </div>
 
       <SectionCard
         icon="mdi:magnify-scan"
-        title="Index Scope"
         subtitle="Root path, index name, and retention"
+        title="Index Scope"
       >
         {renderGrid(
           <>
             <AppTooltip title="Absolute filesystem path">
               <AppTextField
+                disabled={busy}
+                error={Boolean(errors.index_path)}
+                fullWidth
+                helperText={errors.index_path}
                 label="Index path"
-                size="small"
-                value={draft.index_path}
                 onChange={(event) =>
                   updateDraft("index_path", event.target.value)
                 }
-                error={Boolean(errors.index_path)}
-                helperText={errors.index_path}
-                disabled={busy}
-                fullWidth
+                size="small"
+                value={draft.index_path}
               />
             </AppTooltip>
             <AppTooltip title="Identifier shown in logs">
               <AppTextField
+                disabled={busy}
+                error={Boolean(errors.index_name)}
+                fullWidth
+                helperText={errors.index_name}
                 label="Index name"
-                size="small"
-                value={draft.index_name}
                 onChange={(event) =>
                   updateDraft("index_name", event.target.value)
                 }
-                error={Boolean(errors.index_name)}
-                helperText={errors.index_name}
-                disabled={busy}
-                fullWidth
+                size="small"
+                value={draft.index_name}
               />
             </AppTooltip>
             <AppTooltip title="0 disables pruning">
               <AppTextField
+                disabled={busy}
+                error={Boolean(errors.keep_indexes)}
+                fullWidth
+                helperText={errors.keep_indexes}
                 label="Keep indexes"
-                size="small"
-                type="number"
-                value={draft.keep_indexes}
                 onChange={(event) =>
                   updateDraft("keep_indexes", event.target.value)
                 }
-                error={Boolean(errors.keep_indexes)}
-                helperText={errors.keep_indexes}
-                disabled={busy}
-                fullWidth
+                size="small"
+                type="number"
+                value={draft.keep_indexes}
               />
             </AppTooltip>
           </>,
@@ -869,33 +869,33 @@ const IndexerSettingsSection: React.FC = () => {
 
       <SectionCard
         icon="mdi:timer-cog-outline"
-        title="Auto-Index Timer"
-        subtitle={INDEXER_TIMER_UNIT}
         indicator={
           timerInfo ? (
             <StatusDot
-              color={getTimerColor(timerInfo, theme)}
-              tooltip={timerTooltip}
               absolute
+              color={getTimerColor(timerInfo, theme)}
               style={{ top: 16, right: 12 }}
+              tooltip={timerTooltip}
             />
           ) : null
         }
+        subtitle={INDEXER_TIMER_UNIT}
+        title="Auto-Index Timer"
       >
         {renderGrid(
           <>
             <AppTooltip title="Systemd timer cadence; use 0 to disable">
               <AppTextField
+                disabled={busy}
+                error={Boolean(errors.interval)}
+                fullWidth
+                helperText={errors.interval}
                 label="Timer interval"
-                size="small"
-                value={draft.interval}
                 onChange={(event) =>
                   updateDraft("interval", event.target.value)
                 }
-                error={Boolean(errors.interval)}
-                helperText={errors.interval}
-                disabled={busy}
-                fullWidth
+                size="small"
+                value={draft.interval}
               />
             </AppTooltip>
             {timerInfo ? (
@@ -945,34 +945,34 @@ const IndexerSettingsSection: React.FC = () => {
 
       <SectionCard
         icon="mdi:connection"
-        title="Daemon Access"
         subtitle="Local socket and optional TCP listener"
+        title="Daemon Access"
       >
         {renderGrid(
           <>
             <AppTextField
+              disabled={busy}
+              error={Boolean(errors.socket_path)}
+              fullWidth
               label="Socket path"
-              size="small"
-              value={draft.socket_path}
               onChange={(event) =>
                 updateDraft("socket_path", event.target.value)
               }
-              error={Boolean(errors.socket_path)}
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.socket_path}
             />
             <AppTextField
+              disabled={busy}
+              error={Boolean(errors.listen_addr)}
+              fullWidth
               label="Listen address"
-              size="small"
-              value={draft.listen_addr}
               onChange={(event) =>
                 updateDraft("listen_addr", event.target.value)
               }
               placeholder=":8080"
               shrinkLabel
-              error={Boolean(errors.listen_addr)}
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.listen_addr}
             />
           </>,
         )}
@@ -980,75 +980,75 @@ const IndexerSettingsSection: React.FC = () => {
 
       <SectionCard
         icon="mdi:database-cog-outline"
-        title="Database"
         subtitle="SQLite path, durability, and connection pool."
+        title="Database"
       >
         {renderGrid(
           <>
             <AppTextField
+              disabled={busy}
+              error={Boolean(errors.db_path)}
+              fullWidth
               label="Database path"
+              onChange={(event) => updateDraft("db_path", event.target.value)}
               size="small"
               value={draft.db_path}
-              onChange={(event) => updateDraft("db_path", event.target.value)}
-              error={Boolean(errors.db_path)}
-              disabled={busy}
-              fullWidth
             />
             <AppTextField
+              disabled={busy}
+              error={Boolean(errors.db_busy_timeout)}
+              fullWidth
               label="Busy timeout"
-              size="small"
-              value={draft.db_busy_timeout}
               onChange={(event) =>
                 updateDraft("db_busy_timeout", event.target.value)
               }
-              error={Boolean(errors.db_busy_timeout)}
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.db_busy_timeout}
             />
             <AppTextField
+              disabled={busy}
+              error={Boolean(errors.db_max_open_conns)}
+              fullWidth
               label="Max open connections"
-              size="small"
-              type="number"
-              value={draft.db_max_open_conns}
               onChange={(event) =>
                 updateDraft("db_max_open_conns", event.target.value)
               }
-              error={Boolean(errors.db_max_open_conns)}
-              disabled={busy}
-              fullWidth
-            />
-            <AppTextField
-              label="Max idle connections"
               size="small"
               type="number"
-              value={draft.db_max_idle_conns}
+              value={draft.db_max_open_conns}
+            />
+            <AppTextField
+              disabled={busy}
+              error={Boolean(errors.db_max_idle_conns)}
+              fullWidth
+              label="Max idle connections"
               onChange={(event) =>
                 updateDraft("db_max_idle_conns", event.target.value)
               }
-              error={Boolean(errors.db_max_idle_conns)}
-              disabled={busy}
-              fullWidth
+              size="small"
+              type="number"
+              value={draft.db_max_idle_conns}
             />
             <AppTextField
+              disabled={busy}
+              error={Boolean(errors.db_conn_max_idle_time)}
+              fullWidth
               label="Connection idle time"
-              size="small"
-              value={draft.db_conn_max_idle_time}
               onChange={(event) =>
                 updateDraft("db_conn_max_idle_time", event.target.value)
               }
-              error={Boolean(errors.db_conn_max_idle_time)}
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.db_conn_max_idle_time}
             />
             <AppSelect
+              disabled={busy}
+              fullWidth
               label="Journal mode"
-              size="small"
-              value={draft.db_journal_mode}
               onChange={(event) =>
                 updateDraft("db_journal_mode", event.target.value)
               }
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.db_journal_mode}
             >
               {JOURNAL_MODES.map((mode) => (
                 <option key={mode} value={mode}>
@@ -1057,14 +1057,14 @@ const IndexerSettingsSection: React.FC = () => {
               ))}
             </AppSelect>
             <AppSelect
+              disabled={busy}
+              fullWidth
               label="Synchronous"
-              size="small"
-              value={draft.db_synchronous}
               onChange={(event) =>
                 updateDraft("db_synchronous", event.target.value)
               }
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.db_synchronous}
             >
               {SYNCHRONOUS_MODES.map((mode) => (
                 <option key={mode} value={mode}>
@@ -1073,14 +1073,14 @@ const IndexerSettingsSection: React.FC = () => {
               ))}
             </AppSelect>
             <AppSelect
+              disabled={busy}
+              fullWidth
               label="Auto vacuum"
-              size="small"
-              value={draft.db_auto_vacuum}
               onChange={(event) =>
                 updateDraft("db_auto_vacuum", event.target.value)
               }
-              disabled={busy}
-              fullWidth
+              size="small"
+              value={draft.db_auto_vacuum}
             >
               {AUTO_VACUUM_MODES.map((mode) => (
                 <option key={mode} value={mode}>
@@ -1102,16 +1102,16 @@ const IndexerSettingsSection: React.FC = () => {
           paddingTop: theme.spacing(0.5),
         }}
       >
-        <AppButton onClick={handleReset} disabled={!isDirty || busy}>
+        <AppButton disabled={!isDirty || busy} onClick={handleReset}>
           Reset
         </AppButton>
         <AppButton
-          variant="contained"
-          onClick={handleSave}
           disabled={!isDirty || busy || hasErrors(errors)}
+          onClick={handleSave}
           startIcon={
-            <Icon icon="mdi:content-save-outline" width={18} height={18} />
+            <Icon height={18} icon="mdi:content-save-outline" width={18} />
           }
+          variant="contained"
         >
           {setConfigMutation.isPending || setTimerMutation.isPending
             ? "Saving..."

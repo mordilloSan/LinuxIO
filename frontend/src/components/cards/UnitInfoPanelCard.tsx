@@ -1,25 +1,26 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import { linuxio } from "@/api";
 import type { UnitInfo } from "@/api";
+
+import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 
 export interface UnitInfoRow {
-  label: string;
-  value: React.ReactNode;
   hidden?: boolean;
+  label: string;
   noBorder?: boolean;
+  value: React.ReactNode;
 }
 
 interface UnitInfoPanelProps {
-  unitName: string;
   onClose: () => void;
-  title?: string;
   renderInfoRows?: (
     info: UnitInfo | undefined,
     isPending: boolean,
   ) => UnitInfoRow[];
+  title?: string;
+  unitName: string;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -129,7 +130,7 @@ export function UnitInfoPanel({
             flexShrink: 0,
           }}
         >
-          <Icon icon="mdi:close" width={20} height={20} />
+          <Icon height={20} icon="mdi:close" width={20} />
         </button>
       </div>
 

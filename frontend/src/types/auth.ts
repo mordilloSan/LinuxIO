@@ -28,8 +28,8 @@ export interface AuthUser {
 export interface AuthState extends CapabilityState {
   isAuthenticated: boolean;
   isInitialized: boolean;
-  user: AuthUser | null;
   privileged: boolean;
+  user: AuthUser | null;
 }
 
 /**
@@ -38,12 +38,12 @@ export interface AuthState extends CapabilityState {
 export interface AuthContextType extends CapabilityState {
   isAuthenticated: boolean;
   isInitialized: boolean;
-  user: AuthUser | null;
-  privileged: boolean;
   method: "session";
+  privileged: boolean;
+  refreshCapabilities: () => Promise<CapabilitiesResponse>;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshCapabilities: () => Promise<CapabilitiesResponse>;
+  user: AuthUser | null;
 }
 
 /**
@@ -75,17 +75,17 @@ export const AUTH_ACTIONS = {
  * Used to infer strong types for the reducer's action object.
  */
 export interface AuthActionTypes {
+  [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.INITIALIZE_START]: undefined;
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;
     privileged: boolean;
   } & Partial<CapabilityState>;
-  [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
+  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: Partial<CapabilityState>;
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
   } & Partial<CapabilityState>;
-  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: Partial<CapabilityState>;
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
 
@@ -99,8 +99,8 @@ export interface UpdateInfo {
 }
 
 export interface LoginResponse extends CapabilitiesResponse {
-  success: boolean;
   privileged: boolean;
+  success: boolean;
   update?: UpdateInfo;
 }
 
@@ -115,8 +115,8 @@ export type LoginErrorCode =
   | "login_failed";
 
 export interface LoginErrorResponse {
-  error?: string;
   code?: LoginErrorCode;
+  error?: string;
 }
 /**
  * Props accepted by the `<AuthProvider>` component.

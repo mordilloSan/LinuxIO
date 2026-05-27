@@ -16,7 +16,7 @@ export const SensorEmptyCard: React.FC<SensorEmptyCardProps> = ({
   ),
 }) => (
   <FrostedCard style={{ padding: 16, textAlign: "center" }}>
-    <AppTypography variant="body2" color="text.secondary">
+    <AppTypography color="text.secondary" variant="body2">
       {message}
     </AppTypography>
   </FrostedCard>

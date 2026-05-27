@@ -5,11 +5,11 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import { GAP_SM } from "@/theme/constants";
 
 export interface DockerSectionCardProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
   children: React.ReactNode;
   fullHeight?: boolean;
+  icon: React.ReactNode;
+  subtitle: string;
+  title: string;
 }
 
 const DockerSectionCard: React.FC<DockerSectionCardProps> = ({
@@ -24,9 +24,9 @@ const DockerSectionCard: React.FC<DockerSectionCardProps> = ({
   >
     <CardIconHeader
       icon={icon}
-      title={title}
-      subtitle={subtitle}
       style={{ marginBottom: GAP_SM }}
+      subtitle={subtitle}
+      title={title}
     />
     {children}
   </FrostedCard>

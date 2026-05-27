@@ -1,7 +1,5 @@
-import { motion, AnimatePresence } from "framer-motion";
-import React, { useState, useRef, useEffect, useEffectEvent } from "react";
-
-import InterfaceDetails from "./InterfaceClients";
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
@@ -12,6 +10,8 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import InterfaceDetails from "./InterfaceClients";
 
 const WireGuardDashboard: React.FC = () => {
   const theme = useAppTheme();
@@ -199,20 +199,20 @@ const WireGuardDashboard: React.FC = () => {
             <AppGrid container spacing={3}>
               {WGinterfaces.map((iface) => (
                 <AppGrid
-                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                   key={iface.name}
+                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                 >
                   <WireguardInterfaceCard
+                    handleAddPeer={handleAddPeer}
+                    handleDelete={handleDelete}
+                    handleSelectInterface={handleSelectInterface}
+                    handleToggleBootPersistence={handleToggleBootPersistence}
+                    handleToggleInterface={handleToggleInterface}
                     iface={iface}
-                    selectedInterface={selectedInterface}
                     selectedCardRef={
                       iface.name === selectedInterface ? selectedCardRef : null
                     }
-                    handleSelectInterface={handleSelectInterface}
-                    handleToggleInterface={handleToggleInterface}
-                    handleToggleBootPersistence={handleToggleBootPersistence}
-                    handleDelete={handleDelete}
-                    handleAddPeer={handleAddPeer}
+                    selectedInterface={selectedInterface}
                   />
                 </AppGrid>
               ))}
@@ -222,11 +222,11 @@ const WireGuardDashboard: React.FC = () => {
             <AppGrid container spacing={3}>
               <AppGrid size={{ xs: 12 }}>
                 <motion.div
-                  initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.5 }}
+                  initial={{ opacity: 0, x: -20 }}
                   layout
+                  transition={{ duration: 0.5 }}
                 >
                   <div
                     style={{
@@ -234,7 +234,7 @@ const WireGuardDashboard: React.FC = () => {
                       marginBottom: theme.spacing(2),
                     }}
                   >
-                    <AppTypography variant="h5" gutterBottom>
+                    <AppTypography gutterBottom variant="h5">
                       Clients for {selectedInterface}
                     </AppTypography>
                   </div>

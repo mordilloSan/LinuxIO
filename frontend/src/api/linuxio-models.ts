@@ -15,30 +15,30 @@ export type { WireGuardInterface } from "@/types/wireguard";
 // ============================================================================
 
 export interface CPUInfoResponse {
-  vendorId: string;
-  modelName: string;
-  family: string;
-  model: string;
-  mhz: number;
   cores: number;
+  family: string;
   loadAverage: {
     load1: number;
     load5: number;
     load15: number;
   };
+  mhz: number;
+  model: string;
+  modelName: string;
   perCoreUsage: number[];
   temperature: Record<string, number>;
+  vendorId: string;
 }
 
 export interface MemoryInfoResponse {
+  docker: {
+    used: number;
+  };
   system: {
     total: number;
     active: number;
     swapTotal: number;
     swapFree: number;
-  };
-  docker: {
-    used: number;
   };
   zfs: {
     arc: number;
@@ -46,8 +46,8 @@ export interface MemoryInfoResponse {
 }
 
 export interface GpuDevice {
-  address: string;
   actual_freq_mhz?: number;
+  address: string;
   boost_freq_mhz?: number;
   boot_vga?: boolean;
   class_name?: string;
@@ -55,10 +55,10 @@ export interface GpuDevice {
   current_freq_mhz?: number;
   device_id: string;
   display_names?: string[];
+  driver: string;
   driver_module?: string;
   driver_version?: string;
   drm_card?: string;
-  driver: string;
   fan_percent?: number;
   fan_rpm?: number;
   gtt_total_bytes?: number;
@@ -68,10 +68,10 @@ export interface GpuDevice {
   max_freq_mhz?: number;
   max_link_speed?: string;
   max_link_width?: string;
-  min_freq_mhz?: number;
   memory_free_bytes?: number;
   memory_total_bytes?: number;
   memory_used_bytes?: number;
+  min_freq_mhz?: number;
   model: string;
   numa_node?: number;
   power_draw_watts?: number;
@@ -79,16 +79,16 @@ export interface GpuDevice {
   power_state?: string;
   programming_interface?: string;
   raw_class?: string;
+  rc6_residency_ms?: number;
   requested_freq_mhz?: number;
   revision: string;
   rp0_freq_mhz?: number;
   rp1_freq_mhz?: number;
   rpn_freq_mhz?: number;
-  rc6_residency_ms?: number;
   runtime_status?: string;
+  subclass_name?: string;
   subsystem: string;
   subsystem_id: string;
-  subclass_name?: string;
   temperature_c?: number;
   utilization_percent?: number;
   vendor: string;
@@ -100,13 +100,13 @@ export interface GpuDevice {
 export interface ApiDisk {
   model: string;
   name: string;
+  power?: unknown;
   ro: boolean;
   serial?: string;
   size: string; // e.g. "0B", "953.9G"
+  smart?: unknown;
   type?: string; // e.g. "nvme", "usb", "sata"
   vendor?: string;
-  power?: unknown;
-  smart?: unknown;
 }
 
 export interface MotherboardInfo {
@@ -125,126 +125,126 @@ export interface MotherboardInfo {
 
 export interface HostInfo {
   hostname: string;
+  kernelArch: string;
+  kernelVersion: string;
   os: string;
   platform: string;
   platformVersion: string;
-  kernelVersion: string;
-  kernelArch: string;
 }
 
 export interface SystemInfo {
-  chassisType: string;
-  productName: string;
-  productVersion: string;
-  productVendor: string;
+  biosDate: string;
   biosVendor: string;
   biosVersion: string;
-  biosDate: string;
+  chassisType: string;
   cpuSummary: string;
+  productName: string;
+  productVendor: string;
+  productVersion: string;
 }
 
 export interface SystemLastLogin {
-  username: string;
-  terminal?: string;
   source?: string;
+  terminal?: string;
   time: string;
+  username: string;
 }
 
 export interface SystemFailedLoginAlert {
+  count: number;
   id: string;
+  latestEvent: AccountUserLogin;
+  latestEventId: string;
   scope?: "user" | "system";
   username: string;
-  count: number;
-  latestEventId: string;
-  latestEvent: AccountUserLogin;
 }
 
 export interface SystemHealthSummary {
-  failedServicesCount: number;
-  failedServices?: string[];
-  runningServicesCount: number;
   failedLoginAlert?: SystemFailedLoginAlert | null;
-  updatesAvailable: number;
-  upToDate: boolean;
+  failedServices?: string[];
+  failedServicesCount: number;
+  lastLogin?: SystemLastLogin | null;
+  runningServicesCount: number;
   uncleanShutdown: boolean;
   uncleanShutdownBootId?: string;
-  lastLogin?: SystemLastLogin | null;
+  updatesAvailable: number;
+  upToDate: boolean;
 }
 
 export interface PCIDevice {
   class: string;
   model: string;
-  vendor: string;
   slot: string;
+  vendor: string;
 }
 
 export interface MemoryModule {
   id: string;
+  rank: string;
+  size: string;
+  speed: string;
+  state: string;
   technology: string;
   type: string;
-  size: string;
-  state: string;
-  rank: string;
-  speed: string;
 }
 
 export type { CapabilitiesResponse } from "./capabilities";
 
 export interface DistroInfo {
-  name: string;
-  version: string;
   codename: string;
   logo: string;
+  name: string;
+  version: string;
 }
 
 export interface ProcessInfo {
-  running: boolean;
   [key: string]: unknown;
+  running: boolean;
 }
 
 /** Dashboard network interface stats (simplified) */
 export interface InterfaceStats {
-  name: string;
-  mac: string;
   ipv4: string[] | null;
+  mac: string;
+  name: string;
   rx_speed: number;
-  tx_speed: number;
   speed: string;
+  tx_speed: number;
 }
 
 export interface DiskThroughputDevice {
   name: string;
   readBytesPerSec: number;
-  writeBytesPerSec: number;
   readOpsPerSec: number;
+  writeBytesPerSec: number;
   writeOpsPerSec: number;
 }
 
 export interface DiskThroughputResponse {
-  readBytesPerSec: number;
-  writeBytesPerSec: number;
-  readOpsPerSec: number;
-  writeOpsPerSec: number;
-  intervalSeconds: number;
   devices: DiskThroughputDevice[];
+  intervalSeconds: number;
+  readBytesPerSec: number;
+  readOpsPerSec: number;
+  writeBytesPerSec: number;
+  writeOpsPerSec: number;
 }
 
 /** Full network interface info (from network.get_network_info) */
 export interface NetworkInterface {
-  name: string;
-  type: string;
+  dns: string[];
+  duplex: string;
+  gateway: string;
+  ipv4: string[];
+  ipv4_method?: "auto" | "manual" | "disabled" | "unknown";
+  ipv6: string[];
   mac: string;
   mtu: number;
-  speed: string;
-  duplex: string;
-  state: number;
-  ipv4: string[];
-  ipv6: string[];
+  name: string;
   rx_speed: number;
+  speed: string;
+  state: number;
   tx_speed: number;
-  dns: string[];
-  gateway: string;
-  ipv4_method?: "auto" | "manual" | "disabled" | "unknown";
+  type: string;
 }
 
 // ============================================================================
@@ -252,31 +252,16 @@ export interface NetworkInterface {
 // ============================================================================
 
 export interface DockerImage {
-  Id: string;
-  RepoTags: string[];
-  Size: number;
-  Created: number;
   Containers?: number;
+  Created: number;
+  Id: string;
   Labels?: Record<string, string>;
   RepoDigests?: string[];
+  RepoTags: string[];
+  Size: number;
 }
 
 export interface DockerNetwork {
-  Id: string;
-  Name: string;
-  Driver: string;
-  Scope: string;
-  Internal?: boolean;
-  EnableIPv4?: boolean;
-  EnableIPv6?: boolean;
-  IPAM?: {
-    Config?: {
-      Subnet: string;
-      Gateway: string;
-    }[];
-  };
-  Options?: Record<string, string>;
-  Labels?: Record<string, string>;
   Containers?: Record<
     string,
     {
@@ -286,77 +271,92 @@ export interface DockerNetwork {
       MacAddress?: string;
     }
   >;
+  Driver: string;
+  EnableIPv4?: boolean;
+  EnableIPv6?: boolean;
+  Id: string;
+  Internal?: boolean;
+  IPAM?: {
+    Config?: {
+      Subnet: string;
+      Gateway: string;
+    }[];
+  };
+  Labels?: Record<string, string>;
+  Name: string;
+  Options?: Record<string, string>;
+  Scope: string;
 }
 
 export interface DockerVolume {
-  Name: string;
-  Driver: string;
-  Mountpoint: string;
   CreatedAt?: string;
+  Driver: string;
   Labels?: Record<string, string>;
+  Mountpoint: string;
+  Name: string;
   Options?: Record<string, string>;
   Scope?: string;
 }
 
 export interface DockerSystemInfo {
-  // System
-  name: string;
-  id: string;
-  operating_system: string;
-  os_type: string;
-  architecture: string;
-  kernel_version: string;
-  system_time: string;
-  docker_root_dir: string;
-  ncpu: number;
-  mem_total: number;
-  // Version
-  server_version: string;
   api_version: string;
-  go_version: string;
-  git_commit: string;
+  architecture: string;
   build_time: string;
-  experimental: boolean;
-  // Configuration
-  storage_driver: string;
-  logging_driver: string;
   cgroup_driver: string;
   cgroup_version: string;
-  init_binary: string;
   default_runtime: string;
-  // Network & Proxy
-  ipv4_forwarding: boolean;
-  http_proxy: string;
-  https_proxy: string;
-  no_proxy: string;
-  // Security & Runtimes
-  security_options: string[];
-  runtimes: string[];
-  // Plugins
-  volume_plugins: string[];
-  network_plugins: string[];
-  log_plugins: string[];
+  disk_total: number;
   // Disk
   disk_used: number;
-  disk_total: number;
+  docker_root_dir: string;
+  experimental: boolean;
+  git_commit: string;
+  go_version: string;
+  http_proxy: string;
+  https_proxy: string;
+  id: string;
+  init_binary: string;
+  // Network & Proxy
+  ipv4_forwarding: boolean;
+  kernel_version: string;
+  log_plugins: string[];
+  logging_driver: string;
+  mem_total: number;
+  // System
+  name: string;
+  ncpu: number;
+  network_plugins: string[];
+  no_proxy: string;
+  operating_system: string;
+  os_type: string;
+  runtimes: string[];
+  // Security & Runtimes
+  security_options: string[];
+  // Version
+  server_version: string;
+  // Configuration
+  storage_driver: string;
+  system_time: string;
+  // Plugins
+  volume_plugins: string[];
 }
 
 export interface ComposeService {
-  name: string;
-  image: string;
-  status: string;
-  state: string;
   container_count: number;
   container_ids: string[];
+  image: string;
+  name: string;
   ports: string[];
+  state: string;
+  status: string;
 }
 
 export interface ComposeProject {
-  name: string;
-  status: string;
   auto_update?: boolean;
-  services: Record<string, ComposeService>;
   config_files: string[];
+  name: string;
+  services: Record<string, ComposeService>;
+  status: string;
   working_dir: string;
 }
 
@@ -373,88 +373,88 @@ export type AutoUpdateRebootPolicy =
   | "schedule";
 
 export interface AutoUpdateOptions {
-  enabled: boolean;
-  frequency: AutoUpdateFrequency;
-  scope: AutoUpdateScope;
   download_only: boolean;
-  reboot_policy: AutoUpdateRebootPolicy;
+  enabled: boolean;
   exclude_packages: string[];
+  frequency: AutoUpdateFrequency;
+  reboot_policy: AutoUpdateRebootPolicy;
+  scope: AutoUpdateScope;
 }
 
 export interface AutoUpdateState {
   backend: string;
-  options: AutoUpdateOptions;
   notes?: string[];
+  options: AutoUpdateOptions;
 }
 
 export interface Service {
-  name: string;
-  description?: string;
-  load_state: string;
+  [key: string]: unknown;
+  active_enter_timestamp: number;
   active_state: string;
+  description?: string;
+  inactive_enter_timestamp: number;
+  load_state: string;
+  name: string;
   sub_state: string;
   unit_file_state: string;
-  active_enter_timestamp: number;
-  inactive_enter_timestamp: number;
-  [key: string]: unknown;
 }
 
 export interface UnitInfo {
-  Id?: string;
-  Description?: string;
-  LoadState?: string;
-  ActiveState?: string;
-  SubState?: string;
-  UnitFileState?: string;
-  FragmentPath?: string;
+  [key: string]: unknown;
   ActiveEnterTimestamp?: number;
-  InactiveEnterTimestamp?: number;
-  Requires?: string[];
-  Wants?: string[];
-  WantedBy?: string[];
-  Before?: string[];
+  ActiveState?: string;
   After?: string[];
+  Before?: string[];
   Conflicts?: string[];
-  PartOf?: string[];
-  TriggeredBy?: string[];
+  Description?: string;
+  ExecMainStatus?: number;
+  FragmentPath?: string;
+  Id?: string;
+  InactiveEnterTimestamp?: number;
+  LastTriggerUSec?: number;
+  Listen?: string[];
+  LoadState?: string;
   MainPID?: number;
   MemoryCurrent?: number;
-  ExecMainStatus?: number;
-  NextElapseUSec?: number;
-  LastTriggerUSec?: number;
-  Unit?: string;
-  Listen?: string[];
-  NConnections?: number;
   NAccepted?: number;
-  [key: string]: unknown;
+  NConnections?: number;
+  NextElapseUSec?: number;
+  PartOf?: string[];
+  Requires?: string[];
+  SubState?: string;
+  TriggeredBy?: string[];
+  Unit?: string;
+  UnitFileState?: string;
+  WantedBy?: string[];
+  Wants?: string[];
 }
 
 export interface Timer {
-  name: string;
-  description?: string;
-  load_state: string;
-  active_state: string;
-  sub_state: string;
-  unit_file_state: string;
   active_enter_timestamp: number;
+  active_state: string;
+  description?: string;
   inactive_enter_timestamp: number;
-  next_elapse_usec: number;
   last_trigger_usec: number;
+  load_state: string;
+  name: string;
+  next_elapse_usec: number;
+  sub_state: string;
   unit: string;
+  unit_file_state: string;
 }
 
 export interface Socket {
-  name: string;
-  description?: string;
-  load_state: string;
-  active_state: string;
-  sub_state: string;
-  unit_file_state: string;
   active_enter_timestamp: number;
+  active_state: string;
+  description?: string;
   inactive_enter_timestamp: number;
   listen: string[];
-  n_connections: number;
+  load_state: string;
   n_accepted: number;
+  n_connections: number;
+  name: string;
+  sub_state: string;
+  unit_file_state: string;
 }
 
 export interface UpgradeItem {
@@ -471,28 +471,28 @@ export interface UpdateHistoryRow {
 // ============================================================================
 
 export interface TunedProfile {
-  name: string;
-  description?: string;
   active: boolean;
+  description?: string;
+  name: string;
   recommended: boolean;
 }
 
 export interface PowerStatus {
+  active_profile: string;
   backend: string;
-  tuned_available: boolean;
-  tuned_active: boolean;
+  error?: string;
+  install_command: string;
+  notes?: string[];
+  package_name: string;
+  power_profiles_daemon_active: boolean;
+  profiles: TunedProfile[];
+  recommended_profile: string;
   tuned_activatable: boolean;
+  tuned_active: boolean;
+  tuned_available: boolean;
   tuned_startable: boolean;
   tuned_unit_available: boolean;
   tuned_unit_file_state: string;
-  power_profiles_daemon_active: boolean;
-  package_name: string;
-  install_command: string;
-  active_profile: string;
-  recommended_profile: string;
-  profiles: TunedProfile[];
-  notes?: string[];
-  error?: string;
 }
 
 // ============================================================================
@@ -500,17 +500,17 @@ export interface PowerStatus {
 // ============================================================================
 
 export interface ApiResource {
-  name: string;
-  size: number;
+  content?: string;
   extension: string;
-  modified: string;
-  mode: string;
   isDir: boolean;
   isSymlink: boolean;
-  type: string;
   items?: ApiResource[];
+  mode: string;
+  modified: string;
+  name: string;
   path: string;
-  content?: string;
+  size: number;
+  type: string;
 }
 
 export interface FileResource {
@@ -525,19 +525,20 @@ export interface DirectorySizeData {
 }
 
 export interface SubfolderData {
-  path: string;
-  name: string;
-  size: number;
   mod_time: string;
+  name: string;
+  path: string;
+  size: number;
 }
 
 export interface SubfoldersResponse {
+  count: number;
   path: string;
   subfolders: SubfolderData[];
-  count: number;
 }
 
 export interface SearchResponse {
+  count: number;
   query: string;
   results: {
     path: string;
@@ -549,21 +550,20 @@ export interface SearchResponse {
     modTime?: string;
     modified?: string;
   }[];
-  count: number;
 }
 
 export interface UsersGroupsResponse {
-  users: string[];
   groups: string[];
+  users: string[];
 }
 
 export interface IndexerStatusResponse {
+  dirs_indexed: number;
+  files_indexed: number;
+  last_indexed?: string;
   running: boolean;
   status: string;
-  files_indexed: number;
-  dirs_indexed: number;
   total_size: number;
-  last_indexed?: string;
   warning?: string;
 }
 
@@ -572,129 +572,129 @@ export interface IndexerStatusResponse {
 // ============================================================================
 
 export interface AccountUser {
-  username: string;
-  uid: number;
-  gid: number;
   gecos: string;
-  homeDir: string;
-  shell: string;
-  primaryGroup: string;
+  gid: number;
   groups: string[];
-  isSystem: boolean;
+  homeDir: string;
   isLocked: boolean;
+  isSystem: boolean;
   lastLogin: string;
+  primaryGroup: string;
+  shell: string;
+  uid: number;
+  username: string;
 }
 
 export interface AccountUserLogin {
   id: string;
-  username: string;
-  terminal: string;
   source: string;
-  time: string;
   startedAt?: string;
   status: "success" | "failed";
+  terminal: string;
+  time: string;
+  username: string;
 }
 
 export interface AccountActiveSession {
-  terminal: string;
-  startedAt: string;
   idle?: string;
   pid?: number;
   sessionId?: string;
   source?: string;
+  startedAt: string;
+  terminal: string;
 }
 
 export interface AccountPasswordState {
-  locked: boolean;
-  hasPassword: boolean;
-  lastChanged?: string;
+  error?: string;
   expires?: string;
   expiresInDays?: number;
+  hasPassword: boolean;
+  lastChanged?: string;
+  locked: boolean;
   maxDays?: number;
   warningDays?: number;
-  error?: string;
 }
 
 export interface AccountAdminAccess {
-  isAdmin: boolean;
   groups: string[];
+  isAdmin: boolean;
 }
 
 export interface AccountHomeHealth {
+  error?: string;
   exists: boolean;
-  isDirectory: boolean;
-  ownerUid?: number;
   groupGid?: number;
   groupName?: string;
-  ownerMatches: boolean;
+  isDirectory: boolean;
   mode?: string;
-  error?: string;
+  ownerMatches: boolean;
+  ownerUid?: number;
 }
 
 export interface AccountSSHAccess {
-  sshDirExists: boolean;
-  authorizedKeysExists: boolean;
   authorizedKeysCount: number;
-  sshDirMode?: string;
+  authorizedKeysExists: boolean;
   authorizedKeysMode?: string;
   authorizedKeysOwnerMatches: boolean;
   error?: string;
+  sshDirExists: boolean;
+  sshDirMode?: string;
 }
 
 export interface AccountUserProcess {
-  pid: number;
   command: string;
   cpu: number;
   memory: number;
+  pid: number;
 }
 
 export interface AccountProcessSummary {
   count: number;
-  top: AccountUserProcess[];
   error?: string;
+  top: AccountUserProcess[];
 }
 
 export interface AccountUserDetails {
-  username: string;
   activeSessions: AccountActiveSession[];
+  admin: AccountAdminAccess;
   failedLoginAttempts: number;
   failedLoginAttemptsAvailable: boolean;
   failedLoginAttemptsError?: string;
-  password: AccountPasswordState;
-  admin: AccountAdminAccess;
   home: AccountHomeHealth;
-  ssh: AccountSSHAccess;
+  password: AccountPasswordState;
   processes: AccountProcessSummary;
+  ssh: AccountSSHAccess;
+  username: string;
 }
 
 export interface AccountGroup {
-  name: string;
   gid: number;
-  members: string[];
   isSystem: boolean;
+  members: string[];
+  name: string;
 }
 
 export interface CreateUserRequest {
-  username: string;
-  password: string;
-  fullName?: string;
-  homeDir?: string;
-  shell?: string;
-  groups?: string[];
   createHome?: boolean;
+  fullName?: string;
+  groups?: string[];
+  homeDir?: string;
+  password: string;
+  shell?: string;
+  username: string;
 }
 
 export interface ModifyUserRequest {
-  username: string;
   fullName?: string;
+  groups?: string[];
   homeDir?: string;
   shell?: string;
-  groups?: string[];
+  username: string;
 }
 
 export interface CreateGroupRequest {
-  name: string;
   gid?: number;
+  name: string;
 }
 
 export interface ModifyGroupMembersRequest {
@@ -712,9 +712,9 @@ export interface NFSClient {
 }
 
 export interface NFSExport {
-  path: string;
-  clients: NFSClient[];
   active: boolean;
+  clients: NFSClient[];
+  path: string;
 }
 
 export interface SambaShare {
@@ -727,48 +727,48 @@ export interface SambaShare {
 // ============================================================================
 
 export interface PhysicalVolume {
-  name: string;
-  vgName: string;
-  size: number;
-  free: number;
   attributes: string;
   format: string;
+  free: number;
+  name: string;
+  size: number;
+  vgName: string;
 }
 
 export interface VolumeGroup {
-  name: string;
-  size: number;
-  free: number;
-  pvCount: number;
-  lvCount: number;
   attributes: string;
+  free: number;
+  lvCount: number;
+  name: string;
+  pvCount: number;
   pvNames: string[];
+  size: number;
 }
 
 export interface LogicalVolume {
-  name: string;
-  vgName: string;
-  size: number;
-  path: string;
   attributes: string;
-  mountpoint: string;
   fsType: string;
+  mountpoint: string;
+  name: string;
+  path: string;
+  size: number;
   usedPct: number;
+  vgName: string;
 }
 
 export interface NFSMount {
-  source: string;
-  server: string;
   exportPath: string;
-  mountpoint: string;
-  fsType: string;
-  options: string[];
-  size: number;
-  used: number;
   free: number;
-  usedPct: number;
+  fsType: string;
   inFstab: boolean;
   mounted: boolean;
+  mountpoint: string;
+  options: string[];
+  server: string;
+  size: number;
+  source: string;
+  used: number;
+  usedPct: number;
 }
 
 // ============================================================================
@@ -787,23 +787,23 @@ export interface VersionResponse {
 // ============================================================================
 
 export interface Peer {
-  name: string;
-  public_key: string;
   allowed_ips?: string[];
   endpoint?: string;
-  preshared_key?: string;
-  persistent_keepalive?: number;
   last_handshake?: string; // RFC3339 or "never"
   last_handshake_unix?: number; // 0 if never
-  rx_bytes?: number;
-  tx_bytes?: number;
+  name: string;
+  persistent_keepalive?: number;
+  preshared_key?: string;
+  public_key: string;
   rx_bps?: number; // bytes/sec
+  rx_bytes?: number;
   tx_bps?: number; // bytes/sec
+  tx_bytes?: number;
 }
 
 export interface PeerConfigDownload {
-  filename: string;
   content: string;
+  filename: string;
 }
 
 export interface QRCodeResponse {
@@ -811,11 +811,11 @@ export interface QRCodeResponse {
 }
 
 export interface DeleteStackResult {
+  deleted_path: string;
+  dir_deleted: boolean;
+  files_deleted: boolean;
   message: string;
   project: string;
-  files_deleted: boolean;
-  dir_deleted: boolean;
-  deleted_path: string;
 }
 
 export interface ConfigSetResult {
@@ -829,23 +829,23 @@ export interface InstallCapabilityResult {
 }
 
 export interface IndexerConfig {
-  index_path: string;
-  index_name: string;
+  db_auto_vacuum: string;
+  db_busy_timeout: string;
+  db_conn_max_idle_time: string;
+  db_journal_mode: string;
+  db_max_idle_conns: number;
+  db_max_open_conns: number;
+  db_path: string;
+  db_synchronous: string;
+  fresh_index: boolean;
   include_hidden: boolean;
   include_network_mounts: boolean;
-  fresh_index: boolean;
-  keep_indexes: number;
-  db_path: string;
-  db_busy_timeout: string;
-  db_journal_mode: string;
-  db_synchronous: string;
-  db_auto_vacuum: string;
-  db_max_open_conns: number;
-  db_max_idle_conns: number;
-  db_conn_max_idle_time: string;
-  socket_path: string;
-  listen_addr: string;
+  index_name: string;
+  index_path: string;
   interval: string;
+  keep_indexes: number;
+  listen_addr: string;
+  socket_path: string;
 }
 
 export interface IndexerConfigSetResult {
@@ -860,30 +860,30 @@ export interface IndexerTimerSetResult {
 }
 
 export interface IndexerDaemonStatus {
-  running: boolean;
-  status: string;
-  num_dirs: number;
-  num_files: number;
-  total_size: number;
-  last_indexed?: string;
-  total_indexes: number;
-  total_entries: number;
-  database_size: number;
-  wal_size: number;
-  shm_size: number;
-  total_on_disk: number;
   active_operation?: string;
   active_path?: string;
+  database_size: number;
+  last_indexed?: string;
+  num_dirs: number;
+  num_files: number;
+  running: boolean;
+  shm_size: number;
+  status: string;
+  total_entries: number;
+  total_indexes: number;
+  total_on_disk: number;
+  total_size: number;
+  wal_size: number;
   warning?: string;
 }
 
 export interface DirectoryValidationResult {
-  valid: boolean;
-  exists: boolean;
   canCreate: boolean;
   canWrite: boolean;
   error?: string;
+  exists: boolean;
   isDirectory: boolean;
+  valid: boolean;
 }
 
 export type JobState =
@@ -894,30 +894,34 @@ export type JobState =
   | "canceled";
 
 export interface JobError {
-  message: string;
   code?: number;
+  message: string;
 }
 
 export interface JobSnapshot {
-  id: string;
-  type: string;
   args?: string[];
+  created_at: string;
+  error?: JobError;
+  finished_at?: string;
+  id: string;
   owner?: {
     session_id?: string;
     username?: string;
     uid?: number;
   };
-  state: JobState;
   progress?: unknown;
   result?: unknown;
-  error?: JobError;
-  created_at: string;
   started_at?: string;
+  state: JobState;
+  type: string;
   updated_at: string;
-  finished_at?: string;
 }
 
 export interface JobEvent {
+  error?: JobError;
+  job: JobSnapshot;
+  progress?: unknown;
+  result?: unknown;
   type:
     | "job.snapshot"
     | "job.started"
@@ -925,10 +929,6 @@ export interface JobEvent {
     | "job.result"
     | "job.error"
     | "job.canceled";
-  job: JobSnapshot;
-  progress?: unknown;
-  result?: unknown;
-  error?: JobError;
 }
 
 // ============================================================================

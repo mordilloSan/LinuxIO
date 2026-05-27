@@ -8,14 +8,14 @@ interface UploadSummary {
 }
 
 interface useFileUploadResult {
-  uploadDialogOpen: boolean;
-  setUploadDialogOpen: Dispatch<SetStateAction<boolean>>;
-  isUploadProcessing: boolean;
-  setIsUploadProcessing: Dispatch<SetStateAction<boolean>>;
-  uploadEntries: DroppedEntry[];
-  setUploadEntries: Dispatch<SetStateAction<DroppedEntry[]>>;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   folderInputRef: React.RefObject<HTMLInputElement | null>;
+  isUploadProcessing: boolean;
+  setIsUploadProcessing: Dispatch<SetStateAction<boolean>>;
+  setUploadDialogOpen: Dispatch<SetStateAction<boolean>>;
+  setUploadEntries: Dispatch<SetStateAction<DroppedEntry[]>>;
+  uploadDialogOpen: boolean;
+  uploadEntries: DroppedEntry[];
   uploadSummary: UploadSummary;
 }
 

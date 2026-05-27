@@ -99,8 +99,8 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       }}
     >
       <SmoothieCanvas
-        ref={canvasRef}
         chartRef={chartRef}
+        ref={canvasRef}
         style={{ width: "100%", flex: 1, minHeight: 0 }}
       />
       <div

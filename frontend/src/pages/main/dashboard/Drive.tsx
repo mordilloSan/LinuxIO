@@ -1,7 +1,5 @@
 import React, { useMemo, useState } from "react";
 
-import DriveGraph from "./DriveGraph";
-
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -9,9 +7,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
+import DriveGraph from "./DriveGraph";
+
 interface DriveInfo {
-  name: string;
   model: string;
+  name: string;
   sizeBytes: number;
   transport: string;
   vendor?: string;
@@ -84,13 +84,13 @@ const Drive: React.FC = () => {
   if (isLoading) {
     return (
       <DashboardCard
-        title="Drives"
         avatarIcon="mdi:harddisk"
-        stats={<ComponentLoader />}
-        selectOptions={[]}
+        onSelect={() => {}}
         selectedOption={selectedDriveName}
         selectedOptionLabel={selectedDriveName}
-        onSelect={() => {}}
+        selectOptions={[]}
+        stats={<ComponentLoader />}
+        title="Drives"
       />
     );
   }
@@ -98,13 +98,13 @@ const Drive: React.FC = () => {
   if (isError || drives.length === 0) {
     return (
       <DashboardCard
-        title="Drives"
         avatarIcon="mdi:harddisk"
-        stats={<AppTypography variant="body2">No drives found.</AppTypography>}
-        selectOptions={[]}
+        onSelect={() => {}}
         selectedOption=""
         selectedOptionLabel=""
-        onSelect={() => {}}
+        selectOptions={[]}
+        stats={<AppTypography variant="body2">No drives found.</AppTypography>}
+        title="Drives"
       />
     );
   }
@@ -146,7 +146,6 @@ const Drive: React.FC = () => {
           }}
         >
           <AppTypography
-            variant="caption"
             color="text.secondary"
             style={{
               textTransform: "uppercase",
@@ -154,10 +153,11 @@ const Drive: React.FC = () => {
               fontSize: "0.62rem",
               flexShrink: 0,
             }}
+            variant="caption"
           >
             {label}
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500} noWrap>
+          <AppTypography fontWeight={500} noWrap variant="body2">
             {value}
           </AppTypography>
         </div>
@@ -189,14 +189,14 @@ const Drive: React.FC = () => {
 
   return (
     <DashboardCard
-      title="Drives"
       avatarIcon="mdi:harddisk"
-      stats={content}
-      stats2={content2}
-      selectOptions={options}
+      onSelect={(val: string) => setSelected(val)}
       selectedOption={selectedDriveName}
       selectedOptionLabel={selectedDriveName}
-      onSelect={(val: string) => setSelected(val)}
+      selectOptions={options}
+      stats={content}
+      stats2={content2}
+      title="Drives"
     />
   );
 };

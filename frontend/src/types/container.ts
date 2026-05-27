@@ -6,39 +6,29 @@ export interface ContainerPort {
 }
 
 export interface ContainerMount {
-  Type: string;
-  Source: string;
   Destination: string;
   Mode: string;
   RW: boolean;
+  Source: string;
+  Type: string;
 }
 
 export interface ContainerEndpoint {
-  IPAddress: string;
   Gateway: string;
-  MacAddress?: string;
   GlobalIPv6Address?: string;
+  IPAddress: string;
+  MacAddress?: string;
 }
 
 export interface ContainerInfo {
-  Id: string;
-  Names: string[];
-  Image: string;
   Created: number;
-  State: string;
-  Status: string;
-  Ports?: ContainerPort[];
-  Labels?: Record<string, string>;
-  Mounts?: ContainerMount[];
-  NetworkSettings?: {
-    Networks?: Record<string, ContainerEndpoint>;
-  };
   HostConfig?: {
     NetworkMode?: string;
   };
   icon?: string;
-  url?: string;
-  proxyPort?: string;
+  Id: string;
+  Image: string;
+  Labels?: Record<string, string>;
   metrics?: {
     cpu_percent: number;
     mem_usage: number;
@@ -48,4 +38,14 @@ export interface ContainerInfo {
     block_read: number;
     block_write: number;
   };
+  Mounts?: ContainerMount[];
+  Names: string[];
+  NetworkSettings?: {
+    Networks?: Record<string, ContainerEndpoint>;
+  };
+  Ports?: ContainerPort[];
+  proxyPort?: string;
+  State: string;
+  Status: string;
+  url?: string;
 }

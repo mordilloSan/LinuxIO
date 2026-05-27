@@ -5,100 +5,100 @@ export type Theme = "LIGHT" | "DARK";
 export interface ThemeColors {
   backgroundDefault?: string;
   backgroundPaper?: string;
-  headerBackground?: string;
-  footerBackground?: string;
-  sidebarBackground?: string;
   cardBackground?: string;
-  dialogBorder?: string;
-  dialogGlow?: string;
-  dialogBackdrop?: string;
-  codeBackground?: string;
-  codeText?: string;
+  chartNeutral?: string;
   chartRx?: string;
   chartTx?: string;
-  chartNeutral?: string;
-  fileBrowserSurface?: string;
-  fileBrowserChrome?: string;
+  codeBackground?: string;
+  codeText?: string;
+  dialogBackdrop?: string;
+  dialogBorder?: string;
+  dialogGlow?: string;
   fileBrowserBreadcrumbBackground?: string;
   fileBrowserBreadcrumbText?: string;
+  fileBrowserChrome?: string;
+  fileBrowserSurface?: string;
+  footerBackground?: string;
+  headerBackground?: string;
+  sidebarBackground?: string;
 }
 
 export interface ThemeColorsByMode {
-  light?: ThemeColors;
   dark?: ThemeColors;
+  light?: ThemeColors;
 }
 
 export interface DockerDashboardSections {
-  overview: boolean;
   daemon: boolean;
+  overview: boolean;
   resources: boolean;
 }
 
 export interface HardwareSections {
-  overview: boolean;
+  gpu: boolean;
   hardware: boolean;
+  memoryModules: boolean;
+  overview: boolean;
+  pciDevices: boolean;
   sensors: boolean;
   systemInfo: boolean;
-  gpu: boolean;
-  pciDevices: boolean;
-  memoryModules: boolean;
 }
 
 export interface AppSettings {
-  theme: Theme;
-  primaryColor: string;
-  themeColors?: ThemeColorsByMode;
-  sidebarCollapsed: boolean;
-  showHiddenFiles: boolean;
-  dashboardOrder?: string[];
-  hiddenCards?: string[];
+  chunkSizeMB?: number;
   containerOrder?: string[];
+  dashboardOrder?: string[];
   dockerDashboardSections?: DockerDashboardSections;
   hardwareSections?: HardwareSections;
+  hiddenCards?: string[];
+  primaryColor: string;
+  showHiddenFiles: boolean;
+  sidebarCollapsed: boolean;
+  theme: Theme;
+  themeColors?: ThemeColorsByMode;
   viewModes?: AppViewModes;
-  chunkSizeMB?: number;
 }
 
 export interface DockerProxySettings {
-  caddyEnabled: boolean;
   baseDomain?: string;
+  caddyEnabled: boolean;
   tlsEmail?: string;
 }
 
 export interface DockerSettings {
-  folders: string[];
   autoUpdateStacks?: string[];
+  folders: string[];
   proxy: DockerProxySettings;
 }
 
 export interface JobSettings {
-  progressMinIntervalMs: number;
-  notificationMinIntervalMs: number;
-  progressMinBytesMB: number;
-  heavyArchiveConcurrency: number;
   archiveCompressionWorkers: number;
   archiveExtractWorkers: number;
+  heavyArchiveConcurrency: number;
+  notificationMinIntervalMs: number;
+  progressMinBytesMB: number;
+  progressMinIntervalMs: number;
 }
 
 export interface Dismissals {
-  uncleanShutdownBootId?: string;
   failedLoginAlertId?: string;
+  uncleanShutdownBootId?: string;
 }
 
 export interface AppConfig {
   appSettings: AppSettings;
+  dismissals?: Dismissals;
   docker: DockerSettings;
   jobs: JobSettings;
-  dismissals?: Dismissals;
 }
 
 export interface ConfigPatch {
   appSettings?: Partial<AppSettings>;
+  dismissals?: Partial<Dismissals>;
   docker?: Partial<Omit<DockerSettings, "proxy">> & {
     proxy?: Partial<DockerProxySettings>;
   };
   jobs?: Partial<JobSettings>;
-  dismissals?: Partial<Dismissals>;
 }
 
 export type ConfigValueMap = AppSettings;
@@ -106,14 +106,14 @@ export type ConfigValueKey = keyof AppSettings;
 
 export interface ConfigContextType {
   config: AppConfig;
-  updateConfig: (
-    patch: ConfigPatch | ((prev: AppConfig) => ConfigPatch),
-  ) => void;
+  isLoaded: boolean;
   setKey: <K extends ConfigValueKey>(
     key: K,
     value: ConfigValueMap[K] | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
   ) => void;
-  isLoaded: boolean;
+  updateConfig: (
+    patch: ConfigPatch | ((prev: AppConfig) => ConfigPatch),
+  ) => void;
 }
 
 export interface ConfigProviderProps {

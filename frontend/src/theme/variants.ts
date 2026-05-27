@@ -161,23 +161,22 @@ const variants: VariantType[] = [defaultVariant, darkVariant];
 export default variants;
 
 export interface VariantType {
-  name: string;
   card: {
     background: string;
-  };
-  dialog: {
-    border: string;
-    glow: string;
-    backdrop: string;
-  };
-  codeBlock: {
-    background: string;
-    color: string;
   };
   chart: {
     rx: string;
     tx: string;
     neutral: string;
+  };
+  codeBlock: {
+    background: string;
+    color: string;
+  };
+  dialog: {
+    border: string;
+    glow: string;
+    backdrop: string;
   };
   fileBrowser: {
     surface: string;
@@ -185,6 +184,16 @@ export interface VariantType {
     breadcrumbBackground: string;
     breadcrumbText: string;
   };
+  footer: ColorBgType;
+  header: ColorBgType & {
+    search: {
+      color: string;
+    };
+    indicator: {
+      background: string;
+    };
+  };
+  name: string;
   palette: {
     mode: "light" | "dark";
     primary: MainContrastTextType;
@@ -198,15 +207,6 @@ export interface VariantType {
       secondary: string;
     };
   };
-  header: ColorBgType & {
-    search: {
-      color: string;
-    };
-    indicator: {
-      background: string;
-    };
-  };
-  footer: ColorBgType;
   sidebar: ColorBgType & {
     header: ColorBgType & {
       brand: {
@@ -218,10 +218,10 @@ export interface VariantType {
 }
 
 interface MainContrastTextType {
-  main: string;
   contrastText: string;
+  main: string;
 }
 interface ColorBgType {
-  color: string;
   background: string;
+  color: string;
 }

@@ -2,9 +2,9 @@ import { useCallback } from "react";
 
 import {
   LinuxIOError,
-  type WaitForStreamResultOptions,
   type ProgressFrame,
   type Stream,
+  type WaitForStreamResultOptions,
 } from "@/api";
 import { streamWriteChunks, waitForStreamResult } from "@/api";
 
@@ -12,15 +12,15 @@ export interface RunStreamResultOptions<
   TResult = unknown,
   TProgress = ProgressFrame,
 > extends Omit<WaitForStreamResultOptions<TResult, TProgress>, "signal"> {
-  open: () => Stream | null;
-  signal?: AbortSignal;
-  onOpen?: (stream: Stream) => void;
-  onSuccess?: (result: TResult) => void;
   onError?: (error: unknown) => void;
   onFinally?: () => void;
-  throwOnError?: boolean;
-  openErrorMessage?: string;
+  onOpen?: (stream: Stream) => void;
+  onSuccess?: (result: TResult) => void;
+  open: () => Stream | null;
   openErrorCode?: string;
+  openErrorMessage?: string;
+  signal?: AbortSignal;
+  throwOnError?: boolean;
 }
 
 type RunStreamResultFn = {
@@ -38,10 +38,10 @@ export interface RunChunkedStreamResultOptions<
   TResult = unknown,
   TProgress = ProgressFrame,
 > extends RunStreamResultOptions<TResult, TProgress> {
-  data: Uint8Array;
   chunkSize?: number;
-  yieldMs?: number;
   closeAtEnd?: boolean;
+  data: Uint8Array;
+  yieldMs?: number;
 }
 
 type RunChunkedStreamResultFn = {

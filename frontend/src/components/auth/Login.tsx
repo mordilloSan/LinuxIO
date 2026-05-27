@@ -6,6 +6,7 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
+
 import "./login.css";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
@@ -57,8 +58,8 @@ function LogIn() {
     <form noValidate onSubmit={handleSubmit}>
       {error && (
         <AppAlert
-          severity="warning"
           className="login-alert login-reveal"
+          severity="warning"
           style={
             {
               "--login-reveal-delay": "60ms",
@@ -78,14 +79,14 @@ function LogIn() {
         style={{ "--login-reveal-delay": "140ms" } as React.CSSProperties}
       >
         <AppTextField
-          label="Username"
-          fullWidth
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
           className="login-field"
+          fullWidth
+          label="Username"
+          onChange={(e) => setUsername(e.target.value)}
           shrinkLabel
           style={fieldStyle}
+          value={username}
         />
       </div>
 
@@ -94,28 +95,28 @@ function LogIn() {
         style={{ "--login-reveal-delay": "220ms" } as React.CSSProperties}
       >
         <AppTextField
-          label="Password"
-          type={showPassword ? "text" : "password"}
-          fullWidth
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           className="login-field"
-          shrinkLabel
-          style={fieldStyle}
           endAdornment={
             <AppIconButton
-              onClick={() => setShowPassword((p) => !p)}
-              edge="end"
               className="login-password-toggle"
+              edge="end"
+              onClick={() => setShowPassword((p) => !p)}
             >
               {showPassword ? (
-                <Icon icon="mdi:eye-off" width={22} height={22} />
+                <Icon height={22} icon="mdi:eye-off" width={22} />
               ) : (
-                <Icon icon="mdi:eye" width={22} height={22} />
+                <Icon height={22} icon="mdi:eye" width={22} />
               )}
             </AppIconButton>
           }
+          fullWidth
+          label="Password"
+          onChange={(e) => setPassword(e.target.value)}
+          shrinkLabel
+          style={fieldStyle}
+          type={showPassword ? "text" : "password"}
+          value={password}
         />
       </div>
 
@@ -124,12 +125,12 @@ function LogIn() {
         style={{ "--login-reveal-delay": "300ms" } as React.CSSProperties}
       >
         <AppButton
-          type="submit"
-          variant="contained"
-          fullWidth
+          className="login-submit-btn"
           color="primary"
           disabled={loading}
-          className="login-submit-btn"
+          fullWidth
+          type="submit"
+          variant="contained"
         >
           Sign in
         </AppButton>

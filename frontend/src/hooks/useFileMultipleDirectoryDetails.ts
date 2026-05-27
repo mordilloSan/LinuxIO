@@ -1,27 +1,28 @@
 import { useQueries } from "@tanstack/react-query";
 
-import { MultiStatsItem } from "@/types/filebrowser";
 import {
+  type DirectorySizeData,
   linuxio,
   useIsUpdating,
   useStreamMux,
-  type DirectorySizeData,
 } from "@/api";
+import { MultiStatsItem } from "@/types/filebrowser";
+
 import {
-  shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
+  shouldSkipSizeCalculation,
   useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
 interface UseMultipleDirectoryDetailsResult {
+  isAnyError: boolean;
+  isAnyLoading: boolean;
   items: (MultiStatsItem & {
     isLoading: boolean;
     error: Error | null;
     aggregateSize?: number;
   })[];
   totalSize: number;
-  isAnyError: boolean;
-  isAnyLoading: boolean;
 }
 
 export const useFileMultipleDirectoryDetails = (

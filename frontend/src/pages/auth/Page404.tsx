@@ -20,14 +20,14 @@ function Page404() {
       </p>
 
       <Link
-        to="/"
         style={{
           textDecoration: "none",
           marginTop: 16,
           display: "inline-block",
         }}
+        to="/"
       >
-        <AppButton variant="contained" color="secondary">
+        <AppButton color="secondary" variant="contained">
           Return to website
         </AppButton>
       </Link>

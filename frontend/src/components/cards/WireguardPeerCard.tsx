@@ -54,9 +54,9 @@ function formatAgo(unix?: number): string {
 
 interface PeerCardRowProps {
   label: string;
+  noDivider?: boolean;
   value: React.ReactNode;
   wrap?: boolean;
-  noDivider?: boolean;
 }
 
 const PeerCardRow: React.FC<PeerCardRowProps> = ({
@@ -76,7 +76,6 @@ const PeerCardRow: React.FC<PeerCardRowProps> = ({
     }}
   >
     <AppTypography
-      variant="caption"
       color="text.secondary"
       style={{
         textTransform: "uppercase",
@@ -85,11 +84,11 @@ const PeerCardRow: React.FC<PeerCardRowProps> = ({
         flexShrink: 0,
         paddingTop: wrap ? 2 : 0,
       }}
+      variant="caption"
     >
       {label}
     </AppTypography>
     <AppTypography
-      variant="body2"
       fontWeight={500}
       noWrap={!wrap}
       style={{
@@ -98,6 +97,7 @@ const PeerCardRow: React.FC<PeerCardRowProps> = ({
         textAlign: "right",
         ...(wrap ? { whiteSpace: "normal", overflowWrap: "anywhere" } : {}),
       }}
+      variant="body2"
     >
       {value}
     </AppTypography>
@@ -107,11 +107,11 @@ const PeerCardRow: React.FC<PeerCardRowProps> = ({
 // ── WireguardPeerCard ─────────────────────────────────────────────────────────
 
 export interface WireguardPeerCardProps {
-  peer: Peer;
   isOnline: boolean;
   onDelete: () => void;
   onDownloadConfig: () => void;
   onViewQrCode: () => void;
+  peer: Peer;
 }
 
 const WireguardPeerCard: React.FC<WireguardPeerCardProps> = ({
@@ -132,32 +132,32 @@ const WireguardPeerCard: React.FC<WireguardPeerCardProps> = ({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <AppTypography variant="h6" style={{ fontSize: "1.1rem" }}>
+          <AppTypography style={{ fontSize: "1.1rem" }} variant="h6">
             {peer.name || "Peer"}
           </AppTypography>
           <AppTooltip
             title={isOnline ? "Handshake < 3 minutes" : "No recent handshake"}
           >
             <Chip
-              size="small"
-              label={isOnline ? "Online" : "Offline"}
               color={isOnline ? "success" : "default"}
+              label={isOnline ? "Online" : "Offline"}
+              size="small"
               variant="soft"
             />
           </AppTooltip>
         </div>
         <div style={{ display: "flex" }}>
-          <AppIconButton aria-label="Delete" onClick={onDelete} color="error">
-            <Icon icon="mdi:delete" width={22} height={22} />
+          <AppIconButton aria-label="Delete" color="error" onClick={onDelete}>
+            <Icon height={22} icon="mdi:delete" width={22} />
           </AppIconButton>
           <AppIconButton
             aria-label="Download Config"
             onClick={onDownloadConfig}
           >
-            <Icon icon="mdi:download" width={22} height={22} />
+            <Icon height={22} icon="mdi:download" width={22} />
           </AppIconButton>
           <AppIconButton aria-label="View QR Code" onClick={onViewQrCode}>
-            <Icon icon="mdi:qrcode" width={22} height={22} />
+            <Icon height={22} icon="mdi:qrcode" width={22} />
           </AppIconButton>
         </div>
       </div>
@@ -213,8 +213,8 @@ const WireguardPeerCard: React.FC<WireguardPeerCardProps> = ({
         />
         <PeerCardRow
           label="Keep Alive"
-          value={peer.persistent_keepalive ?? "-"}
           noDivider
+          value={peer.persistent_keepalive ?? "-"}
         />
       </div>
     </AppCardContent>

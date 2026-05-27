@@ -14,8 +14,8 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
   username: string;
 }
 
@@ -65,7 +65,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Change Password: {username}</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -77,38 +77,38 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
           }}
         >
           <AppTextField
+            autoFocus
+            fullWidth
             label="New Password"
+            onChange={(e) => setPassword(e.target.value)}
+            required
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            fullWidth
-            required
-            autoFocus
           />
           <AppTextField
-            label="Confirm Password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            fullWidth
-            required
             error={confirmPassword !== "" && password !== confirmPassword}
+            fullWidth
             helperText={
               confirmPassword !== "" && password !== confirmPassword
                 ? "Passwords do not match"
                 : ""
             }
+            label="Confirm Password"
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            type="password"
+            value={confirmPassword}
           />
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending || !password || password !== confirmPassword}
           onClick={handleSubmit}
           variant="contained"
-          disabled={isPending || !password || password !== confirmPassword}
         >
           {isPending ? "Changing..." : "Change Password"}
         </AppButton>

@@ -85,26 +85,26 @@ function NavbarUserDropdown() {
 
   return (
     <>
-      <div ref={layerRef} className="app-navbar-dropdown">
+      <div className="app-navbar-dropdown" ref={layerRef}>
         <AppTooltip title="Account">
           <AppIconButton
-            color="inherit"
-            ref={ref}
-            onClick={toggleMenu}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
             aria-controls={menuOpen ? "navbar-account-menu" : undefined}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            color="inherit"
+            onClick={toggleMenu}
+            ref={ref}
           >
-            <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
+            <Icon height={iconSize.md} icon="mdi:power" width={iconSize.md} />
           </AppIconButton>
         </AppTooltip>
 
         {menuOpen ? (
           <div
-            id="navbar-account-menu"
-            className="app-navbar-panel app-navbar-panel--compact"
-            role="menu"
             aria-label="Account actions"
+            className="app-navbar-panel app-navbar-panel--compact"
+            id="navbar-account-menu"
+            role="menu"
           >
             {user?.name ? (
               <div className="app-navbar-panel__header">
@@ -117,18 +117,18 @@ function NavbarUserDropdown() {
 
             <div className="app-navbar-menu">
               <button
-                type="button"
                 className="app-navbar-menu__item"
-                role="menuitem"
                 onClick={() => openConfirm("reboot")}
+                role="menuitem"
+                type="button"
               >
                 Reboot
               </button>
               <button
-                type="button"
                 className="app-navbar-menu__item"
-                role="menuitem"
                 onClick={() => openConfirm("poweroff")}
+                role="menuitem"
+                type="button"
               >
                 Power Down
               </button>
@@ -138,10 +138,10 @@ function NavbarUserDropdown() {
 
             <div className="app-navbar-menu">
               <button
-                type="button"
                 className="app-navbar-menu__item"
-                role="menuitem"
                 onClick={handleSignOut}
+                role="menuitem"
+                type="button"
               >
                 Sign out
               </button>
@@ -150,7 +150,7 @@ function NavbarUserDropdown() {
         ) : null}
       </div>
 
-      <GeneralDialog open={confirm !== null} onClose={closeConfirm}>
+      <GeneralDialog onClose={closeConfirm} open={confirm !== null}>
         <AppDialogTitle>
           {confirm === "reboot" ? "Confirm Reboot" : "Confirm Power Down"}
         </AppDialogTitle>
@@ -164,10 +164,10 @@ function NavbarUserDropdown() {
         <AppDialogActions>
           <AppButton onClick={closeConfirm}>Cancel</AppButton>
           <AppButton
-            onClick={handleConfirmedAction}
-            color="error"
-            variant="contained"
             autoFocus
+            color="error"
+            onClick={handleConfirmedAction}
+            variant="contained"
           >
             {confirm === "reboot" ? "Reboot" : "Power Down"}
           </AppButton>

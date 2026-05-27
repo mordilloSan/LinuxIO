@@ -1,16 +1,16 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
-import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
-import Settings from "./NavbarThemeToggle";
-import NavbarUserDropdown from "./NavbarUserDropdown";
-import "./navbar.css";
-
 import AppIconButton from "@/components/ui/AppIconButton";
 import { shadowSm } from "@/constants";
 import { iconSize } from "@/constants";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+
+import "./navbar.css";
+import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
+import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
+import Settings from "./NavbarThemeToggle";
+import NavbarUserDropdown from "./NavbarUserDropdown";
 
 interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;
@@ -30,11 +30,11 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
       <div className="app-navbar__inner">
         {!isDesktop && (
           <AppIconButton
-            color="inherit"
             aria-label="Open drawer"
+            color="inherit"
             onClick={onDrawerToggle}
           >
-            <Icon icon="mdi:menu" width={iconSize.md} height={iconSize.md} />
+            <Icon height={iconSize.md} icon="mdi:menu" width={iconSize.md} />
           </AppIconButton>
         )}
 
@@ -51,20 +51,20 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                 } as React.CSSProperties
               }
             >
-              <div className="app-navbar-search__icon" aria-hidden="true">
+              <div aria-hidden="true" className="app-navbar-search__icon">
                 <Icon
+                  height={iconSize.md}
                   icon="mdi:magnify"
                   width={iconSize.md}
-                  height={iconSize.md}
                 />
               </div>
               <input
+                aria-label="Search containers or services"
                 className="app-navbar-search__input"
-                placeholder="Search"
                 id="search-input"
                 name="search"
+                placeholder="Search"
                 type="search"
-                aria-label="Search containers or services"
               />
             </div>
           </div>

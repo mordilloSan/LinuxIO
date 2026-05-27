@@ -1,11 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
-import ComposeStackCard from "../../../components/cards/ComposeStackCard";
+import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
-import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -20,38 +19,40 @@ import {
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
+
+import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 interface ComposeService {
-  name: string;
-  image: string;
-  icon?: string;
-  url?: string;
-  status: string;
-  state: string;
   container_count: number;
   container_ids: string[];
+  icon?: string;
+  image: string;
+  name: string;
   ports: string[];
+  state: string;
+  status: string;
+  url?: string;
 }
 export interface ComposeProject {
-  name: string;
-  icon?: string;
-  status: string; // "running", "partial", "stopped"
   auto_update?: boolean;
-  services: Record<string, ComposeService>;
   config_files: string[];
+  icon?: string;
+  name: string;
+  services: Record<string, ComposeService>;
+  status: string; // "running", "partial", "stopped"
   working_dir: string;
 }
 interface ComposeListProps {
-  projects: ComposeProject[];
-  onStart: (projectName: string) => void;
-  onStop: (projectName: string) => void;
-  onRestart: (projectName: string) => void;
+  isLoading?: boolean;
+  isPending?: boolean;
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   onPreview?: (projectName: string, configPath: string) => void;
-  isLoading?: boolean;
-  isPending?: boolean;
+  onRestart: (projectName: string) => void;
+  onStart: (projectName: string) => void;
+  onStop: (projectName: string) => void;
+  projects: ComposeProject[];
   viewMode?: "table" | "card";
 }
 const ComposeList: React.FC<ComposeListProps> = ({
@@ -141,10 +142,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 }}
               />
               <Chip
+                color={statusColor}
                 label={project.status}
                 size="small"
-                color={statusColor}
-                variant="soft"
                 sx={{
                   display: {
                     xs: "none",
@@ -156,6 +156,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     px: 3,
                   },
                 }}
+                variant="soft"
               />
             </div>
           </AppTableCell>
@@ -168,11 +169,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
               }}
             >
               <DockerIcon
+                alt={project.name}
                 identifier={project.icon}
                 size={28}
-                alt={project.name}
               />
-              <AppTypography variant="body2" fontWeight={700}>
+              <AppTypography fontWeight={700} variant="body2">
                 {project.name}
               </AppTypography>
             </div>
@@ -189,20 +190,20 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 }}
               >
                 <Icon
-                  icon="mdi:folder-open"
-                  width={20}
                   height={20}
+                  icon="mdi:folder-open"
                   style={{
                     marginRight: 4,
                     opacity: 0.7,
                   }}
+                  width={20}
                 />
                 <AppTypography
-                  variant="body2"
                   noWrap
                   style={{
                     maxWidth: 200,
                   }}
+                  variant="body2"
                 >
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}
@@ -213,13 +214,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
           <AppTableCell className="app-table-hide-below-lg">
             <AppTooltip title={project.working_dir || "Unknown"}>
               <AppTypography
-                variant="body2"
                 noWrap
                 style={{
                   maxWidth: 600,
                   fontSize: "0.85rem",
                   color: "var(--mui-palette-text-secondary)",
                 }}
+                variant="body2"
               >
                 {project.working_dir || "-"}
               </AppTypography>
@@ -234,16 +235,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
               }}
             >
               {isLinuxIOManagedComposeProject(project.name) ? (
-                <AppTooltip title="View compose file" arrow>
+                <AppTooltip arrow title="View compose file">
                   <Chip
                     label="Managed by LinuxIO"
-                    size="small"
-                    variant="soft"
                     onClick={
                       onPreview && project.config_files.length > 0
                         ? () => onPreview(project.name, project.config_files[0])
                         : undefined
                     }
+                    size="small"
                     sx={{
                       fontSize: "0.68rem",
                       opacity: 0.7,
@@ -255,6 +255,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         opacity: 1,
                       },
                     }}
+                    variant="soft"
                   />
                 </AppTooltip>
               ) : (
@@ -262,13 +263,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   {onEdit && project.config_files.length > 0 && (
                     <AppTooltip title="Edit">
                       <AppIconButton
-                        size="small"
+                        disabled={isLoading}
                         onClick={() =>
                           onEdit(project.name, project.config_files[0])
                         }
-                        disabled={isLoading}
+                        size="small"
                       >
-                        <Icon icon="mdi:pencil" width={20} height={20} />
+                        <Icon height={20} icon="mdi:pencil" width={20} />
                       </AppIconButton>
                     </AppTooltip>
                   )}
@@ -277,29 +278,29 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     <>
                       <AppTooltip title="Restart">
                         <AppIconButton
-                          size="small"
-                          onClick={() => onRestart(project.name)}
                           disabled={isLoading}
+                          onClick={() => onRestart(project.name)}
+                          size="small"
                         >
-                          <Icon icon="mdi:restart" width={20} height={20} />
+                          <Icon height={20} icon="mdi:restart" width={20} />
                         </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Stop">
                         <AppIconButton
-                          size="small"
-                          onClick={() => onStop(project.name)}
                           disabled={isLoading}
+                          onClick={() => onStop(project.name)}
+                          size="small"
                         >
-                          <Icon icon="mdi:stop-circle" width={20} height={20} />
+                          <Icon height={20} icon="mdi:stop-circle" width={20} />
                         </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Delete">
                         <AppIconButton
-                          size="small"
-                          onClick={() => onDelete(project)}
                           disabled={isLoading}
+                          onClick={() => onDelete(project)}
+                          size="small"
                         >
-                          <Icon icon="mdi:delete" width={20} height={20} />
+                          <Icon height={20} icon="mdi:delete" width={20} />
                         </AppIconButton>
                       </AppTooltip>
                     </>
@@ -307,20 +308,20 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     <>
                       <AppTooltip title="Start">
                         <AppIconButton
-                          size="small"
-                          onClick={() => onStart(project.name)}
                           disabled={isLoading}
+                          onClick={() => onStart(project.name)}
+                          size="small"
                         >
-                          <Icon icon="mdi:play" width={20} height={20} />
+                          <Icon height={20} icon="mdi:play" width={20} />
                         </AppIconButton>
                       </AppTooltip>
                       <AppTooltip title="Delete">
                         <AppIconButton
-                          size="small"
-                          onClick={() => onDelete(project)}
                           disabled={isLoading}
+                          onClick={() => onDelete(project)}
+                          size="small"
                         >
-                          <Icon icon="mdi:delete" width={20} height={20} />
+                          <Icon height={20} icon="mdi:delete" width={20} />
                         </AppIconButton>
                       </AppTooltip>
                     </>
@@ -378,35 +379,35 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       }}
                     >
                       <DockerIcon
+                        alt={service.name}
                         identifier={service.icon}
                         size={20}
-                        alt={service.name}
                       />
                       {service.name}
                     </div>
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-sm">
                     <AppTypography
-                      variant="body2"
                       noWrap
                       style={{
                         maxWidth: 200,
                       }}
+                      variant="body2"
                     >
                       {service.image}
                     </AppTypography>
                   </AppTableCell>
                   <AppTableCell>
                     <Chip
-                      label={service.state}
-                      size="small"
                       color={
                         service.state === "running" ? "success" : "default"
                       }
-                      variant="soft"
+                      label={service.state}
+                      size="small"
                       sx={{
                         textTransform: "capitalize",
                       }}
+                      variant="soft"
                     />
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-md">
@@ -425,22 +426,22 @@ const ComposeList: React.FC<ComposeListProps> = ({
             }}
           >
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{
                 wordBreak: "break-word",
                 overflowWrap: "break-word",
               }}
+              variant="body2"
             >
               <b>Working Directory:</b> {project.working_dir || "-"}
             </AppTypography>
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{
                 wordBreak: "break-word",
                 overflowWrap: "break-word",
               }}
+              variant="body2"
             >
               <b>Config Files:</b> {project.config_files.join(", ") || "-"}
             </AppTypography>
@@ -461,14 +462,14 @@ const ComposeList: React.FC<ComposeListProps> = ({
       }}
     >
       <AppSearchField
-        placeholder="Search stacks…"
-        value={search}
         onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search stacks…"
         style={{
           flex: isSmallUp ? "0 0 320px" : "1 1 auto",
           minWidth: 0,
           width: isSmallUp ? 320 : undefined,
         }}
+        value={search}
       />
       <AppTypography
         fontWeight={700}
@@ -511,7 +512,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No compose stacks found. Start containers with docker compose to
               see them here.
             </AppTypography>
@@ -529,14 +530,14 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 }}
               >
                 <ComposeStackCard
-                  project={project}
-                  onStart={onStart}
-                  onStop={onStop}
-                  onRestart={onRestart}
+                  isLoading={isLoading}
                   onDelete={onDelete}
                   onEdit={onEdit}
                   onPreview={onPreview}
-                  isLoading={isLoading}
+                  onRestart={onRestart}
+                  onStart={onStart}
+                  onStop={onStop}
+                  project={project}
                 />
               </AppGrid>
             ))}
@@ -549,12 +550,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
     <div>
       {searchBar}
       <UnifiedCollapsibleTable
-        data={filtered}
         columns={columns}
-        getRowKey={(project) => project.name}
-        renderMainRow={renderMainRow}
-        renderExpandedContent={renderExpandedContent}
+        data={filtered}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
+        getRowKey={(project) => project.name}
+        renderExpandedContent={renderExpandedContent}
+        renderMainRow={renderMainRow}
       />
     </div>
   );

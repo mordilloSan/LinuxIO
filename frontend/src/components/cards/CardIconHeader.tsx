@@ -5,13 +5,13 @@ import { GAP_SM } from "@/theme/constants";
 
 export interface CardIconHeaderProps {
   icon: React.ReactNode;
-  title: React.ReactNode;
-  subtitle?: React.ReactNode;
-  /** Content rendered inline, immediately after the title. */
-  titleSuffix?: React.ReactNode;
   /** Content rendered on the right side (chips, buttons, dropdowns…). */
   right?: React.ReactNode;
   style?: React.CSSProperties;
+  subtitle?: React.ReactNode;
+  title: React.ReactNode;
+  /** Content rendered inline, immediately after the title. */
+  titleSuffix?: React.ReactNode;
 }
 
 const CardIconHeader: React.FC<CardIconHeaderProps> = ({
@@ -54,17 +54,17 @@ const CardIconHeader: React.FC<CardIconHeaderProps> = ({
       <div style={{ minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
           <AppTypography
-            variant="subtitle1"
             fontWeight={700}
-            style={{ lineHeight: 1.2 }}
             noWrap
+            style={{ lineHeight: 1.2 }}
+            variant="subtitle1"
           >
             {title}
           </AppTypography>
           {titleSuffix}
         </div>
         {subtitle !== undefined && (
-          <AppTypography variant="caption" color="text.secondary" noWrap>
+          <AppTypography color="text.secondary" noWrap variant="caption">
             {subtitle}
           </AppTypography>
         )}

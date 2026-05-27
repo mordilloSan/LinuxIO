@@ -1,36 +1,36 @@
-import { linuxio, CACHE_TTL_MS } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import { useCapability } from "@/hooks/useCapabilities";
 
 export interface SearchResult {
-  path: string;
-  name: string;
-  size: number;
-  type?: string;
   isDir?: boolean;
   mod_time?: string;
-  modTime?: string;
   modified?: string;
+  modTime?: string;
+  name: string;
+  path: string;
+  size: number;
+  type?: string;
 }
 
 export interface SearchResponse {
+  count: number;
   query: string;
   results: SearchResult[];
-  count: number;
 }
 
 interface UseFileSearchOptions {
-  query: string;
-  limit?: number;
   basePath?: string;
   enabled?: boolean;
+  limit?: number;
+  query: string;
 }
 
 interface UseFileSearchResult {
-  results: SearchResult[];
   count: number;
-  isLoading: boolean;
   error: Error | null;
+  isLoading: boolean;
   isUnavailable: boolean;
+  results: SearchResult[];
 }
 
 export const useFileSearch = ({

@@ -1,20 +1,22 @@
 import {
-  useState,
   useCallback,
-  useRef,
   useEffect,
   useEffectEvent,
+  useRef,
+  useState,
 } from "react";
+
 import { FileItem } from "@/types/filebrowser";
 
 interface MarqueeBox {
-  startX: number;
-  startY: number;
   currentX: number;
   currentY: number;
+  startX: number;
+  startY: number;
 }
 
 interface MarqueeSelectionResult {
+  handleMouseDown: (event: React.MouseEvent) => void;
   isSelecting: boolean;
   selectionBox: {
     left: number;
@@ -22,7 +24,6 @@ interface MarqueeSelectionResult {
     width: number;
     height: number;
   } | null;
-  handleMouseDown: (event: React.MouseEvent) => void;
 }
 
 /**

@@ -3,11 +3,11 @@ import React from "react";
 import "./app-form-control-label.css";
 
 export interface AppFormControlLabelProps {
+  className?: string;
   control: React.ReactElement;
+  disabled?: boolean;
   label: React.ReactNode;
   style?: React.CSSProperties;
-  className?: string;
-  disabled?: boolean;
   /** Passed through to the control child (e.g. Radio value for RadioGroup) */
   value?: string;
 }

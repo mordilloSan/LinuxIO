@@ -43,56 +43,13 @@ const UpdateHistory: React.FC = () => {
   ];
   return (
     <UnifiedCollapsibleTable
-      data={rows}
       columns={columns}
+      data={rows}
+      emptyMessage="No update history available."
       getRowKey={(row, index) => index}
-      renderFirstCell={() => (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            color: theme.palette.primary.main,
-          }}
-        >
-          <Icon icon="mdi:history" width={20} height={20} />
-        </div>
-      )}
-      renderMainRow={(row) => (
-        <>
-          <AppTableCell>
-            <AppTypography
-              variant="body2"
-              fontWeight={500}
-              style={{
-                wordBreak: "break-word",
-                overflowWrap: "break-word",
-              }}
-            >
-              {row.date}
-            </AppTypography>
-          </AppTableCell>
-          <AppTableCell
-            align="center"
-            style={{
-              width: 148,
-              minWidth: 112,
-            }}
-          >
-            <AppChip
-              label={row.upgrades.length}
-              size="small"
-              color="success"
-              variant="soft"
-              style={{
-                minWidth: 40,
-              }}
-            />
-          </AppTableCell>
-        </>
-      )}
       renderExpandedContent={(row) => (
         <>
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             <b>Packages Installed:</b>
           </AppTypography>
           <AppTable
@@ -134,7 +91,50 @@ const UpdateHistory: React.FC = () => {
           </AppTable>
         </>
       )}
-      emptyMessage="No update history available."
+      renderFirstCell={() => (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            color: theme.palette.primary.main,
+          }}
+        >
+          <Icon height={20} icon="mdi:history" width={20} />
+        </div>
+      )}
+      renderMainRow={(row) => (
+        <>
+          <AppTableCell>
+            <AppTypography
+              fontWeight={500}
+              style={{
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
+              variant="body2"
+            >
+              {row.date}
+            </AppTypography>
+          </AppTableCell>
+          <AppTableCell
+            align="center"
+            style={{
+              width: 148,
+              minWidth: 112,
+            }}
+          >
+            <AppChip
+              color="success"
+              label={row.upgrades.length}
+              size="small"
+              style={{
+                minWidth: 40,
+              }}
+              variant="soft"
+            />
+          </AppTableCell>
+        </>
+      )}
     />
   );
 };

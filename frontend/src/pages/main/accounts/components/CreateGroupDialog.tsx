@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
-import { linuxio, type CreateGroupRequest } from "@/api";
+import { type CreateGroupRequest, linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -14,8 +14,8 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 
 const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
@@ -62,7 +62,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Group</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -74,31 +74,31 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Group Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            fullWidth
-            required
             autoFocus
+            fullWidth
+            label="Group Name"
+            onChange={(e) => setName(e.target.value)}
+            required
+            value={name}
           />
           <AppTextField
-            label="GID (optional)"
-            value={gid}
-            onChange={(e) => setGid(e.target.value.replace(/\D/g, ""))}
             fullWidth
+            label="GID (optional)"
+            onChange={(e) => setGid(e.target.value.replace(/\D/g, ""))}
             placeholder="Auto-assigned if empty"
             type="number"
+            value={gid}
           />
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending || !name.trim()}
           onClick={handleSubmit}
           variant="contained"
-          disabled={isPending || !name.trim()}
         >
           {isPending ? "Creating..." : "Create"}
         </AppButton>

@@ -1,44 +1,44 @@
 import { Dispatch, SetStateAction, useState } from "react";
 
 interface PermissionsDialogState {
-  paths: string[];
-  pathLabel: string;
-  selectionCount: number;
-  mode: string;
-  isDirectory: boolean;
-  owner?: string;
   group?: string;
+  isDirectory: boolean;
+  mode: string;
+  owner?: string;
+  pathLabel: string;
+  paths: string[];
+  selectionCount: number;
 }
 
 interface RenameDialogState {
-  path: string;
-  name: string;
   isDirectory: boolean;
+  name: string;
+  path: string;
 }
 
 interface useFileDialogsResult {
   // Create dialogs
   createFileDialog: boolean;
-  setCreateFileDialog: Dispatch<SetStateAction<boolean>>;
   createFolderDialog: boolean;
-  setCreateFolderDialog: Dispatch<SetStateAction<boolean>>;
-
   // Delete dialog
   deleteDialog: boolean;
-  setDeleteDialog: Dispatch<SetStateAction<boolean>>;
-  pendingDeletePaths: string[];
-  setPendingDeletePaths: Dispatch<SetStateAction<string[]>>;
-
   // Detail dialog
   detailTarget: string[] | null;
-  setDetailTarget: Dispatch<SetStateAction<string[] | null>>;
 
+  pendingDeletePaths: string[];
   // Permissions dialog
   permissionsDialog: PermissionsDialogState | null;
-  setPermissionsDialog: Dispatch<SetStateAction<PermissionsDialogState | null>>;
-
   // Rename dialog
   renameDialog: RenameDialogState | null;
+  setCreateFileDialog: Dispatch<SetStateAction<boolean>>;
+
+  setCreateFolderDialog: Dispatch<SetStateAction<boolean>>;
+  setDeleteDialog: Dispatch<SetStateAction<boolean>>;
+
+  setDetailTarget: Dispatch<SetStateAction<string[] | null>>;
+  setPendingDeletePaths: Dispatch<SetStateAction<string[]>>;
+
+  setPermissionsDialog: Dispatch<SetStateAction<PermissionsDialogState | null>>;
   setRenameDialog: Dispatch<SetStateAction<RenameDialogState | null>>;
 }
 

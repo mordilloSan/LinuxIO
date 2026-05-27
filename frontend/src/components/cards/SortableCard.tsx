@@ -9,9 +9,9 @@ import { cardBorderRadius } from "@/theme/constants";
 import "./FrostedCard.css";
 
 interface SortableCardProps {
-  id: string;
-  editMode: boolean;
   children: React.ReactNode;
+  editMode: boolean;
+  id: string;
 }
 
 const SortableCard: React.FC<SortableCardProps> = ({
@@ -61,10 +61,10 @@ const SortableCard: React.FC<SortableCardProps> = ({
           }
         >
           <Icon
-            icon="mdi:drag"
-            width={40}
             height={40}
+            icon="mdi:drag"
             style={{ color: theme.palette.text.secondary, opacity: 0.7 }}
+            width={40}
           />
         </div>
       )}

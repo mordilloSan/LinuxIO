@@ -2,9 +2,9 @@ import { useMemo } from "react";
 
 import {
   CAPABILITIES,
-  pickCapabilityState,
   type CapabilityKey,
   type CapabilityState,
+  pickCapabilityState,
 } from "@/api/capabilities";
 import useAuth from "@/hooks/useAuth";
 
@@ -16,8 +16,8 @@ export type AccessContext = CapabilityState & {
 };
 
 export interface AccessPolicy {
-  requiresPrivileged?: boolean;
   requiredCapabilities?: CapabilityKey[];
+  requiresPrivileged?: boolean;
 }
 
 export const getCapabilityStatus = (

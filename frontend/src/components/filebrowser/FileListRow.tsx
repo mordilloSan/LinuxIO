@@ -1,10 +1,10 @@
 import React, {
   useCallback,
-  useMemo,
-  useState,
-  useRef,
   useEffect,
   useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -15,28 +15,28 @@ import { formatFileSize } from "@/utils/formaters";
 // Styles are injected by FileCard.tsx (shared animation)
 
 export interface FileListRowProps {
-  name: string;
-  type: string;
-  path?: string;
-  size?: number;
-  modTime?: string;
-  isDirectory: boolean;
-  isSymlink?: boolean;
-  selected?: boolean;
+  borderRadius?: number | string;
+  directorySizeError?: Error | null;
+  directorySizeLoading?: boolean;
+  directorySizeUnavailable?: boolean;
+  disableHover?: boolean;
   hidden?: boolean;
   isCut?: boolean;
+  isDirectory: boolean;
   isRenaming?: boolean;
-  showFullPath?: boolean; // Show full directory path (for search results)
-  directorySizeLoading?: boolean;
-  directorySizeError?: Error | null;
-  directorySizeUnavailable?: boolean;
-  onClick: (event: React.MouseEvent) => void;
-  onDoubleClick?: () => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
-  onConfirmRename?: (newName: string) => void;
+  isSymlink?: boolean;
+  modTime?: string;
+  name: string;
   onCancelRename?: () => void;
-  borderRadius?: number | string;
-  disableHover?: boolean;
+  onClick: (event: React.MouseEvent) => void;
+  onConfirmRename?: (newName: string) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
+  onDoubleClick?: () => void;
+  path?: string;
+  selected?: boolean;
+  showFullPath?: boolean; // Show full directory path (for search results)
+  size?: number;
+  type: string;
 }
 
 const COLUMN_TEMPLATE =
@@ -195,8 +195,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
         data-file-card="true"
         data-file-path={path}
         onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
+        onDoubleClick={handleDoubleClick}
         style={{
           display: "grid",
           gridTemplateColumns: COLUMN_TEMPLATE,
@@ -225,11 +225,11 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
         >
           <div style={{ flexShrink: 0 }}>
             <FileIcon
-              isDirectory={isDirectory}
               filename={name}
               hidden={hidden}
-              size={24}
+              isDirectory={isDirectory}
               isSymlink={isSymlink}
+              size={24}
             />
           </div>
           <div
@@ -249,14 +249,12 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             >
               {isRenaming ? (
                 <input
-                  ref={inputRef}
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={handleRenameKeyDown}
                   onBlur={handleRenameBlur}
+                  onChange={(e) => setRenameValue(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
+                  onKeyDown={handleRenameKeyDown}
+                  ref={inputRef}
                   style={{
                     fontSize: "0.9375rem",
                     fontWeight: 500,
@@ -269,6 +267,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
                     minWidth: 0,
                     boxSizing: "border-box",
                   }}
+                  type="text"
+                  value={renameValue}
                 />
               ) : (
                 <div

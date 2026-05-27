@@ -1,11 +1,12 @@
-import { LinuxIOError } from "./linuxio-core";
 import type { ProgressFrame, ResultFrame, Stream } from "./StreamMultiplexer";
 
+import { LinuxIOError } from "./linuxio-core";
+
 export interface StreamEventHandlers<TProgress = ProgressFrame> {
+  onClose?: () => void;
   onData?: (data: Uint8Array) => void;
   onProgress?: (progress: TProgress) => void;
   onResult?: (result: ResultFrame) => void;
-  onClose?: () => void;
 }
 
 /**
@@ -37,9 +38,9 @@ export interface WaitForStreamResultOptions<
   TProgress = ProgressFrame,
 > extends Omit<StreamEventHandlers<TProgress>, "onResult"> {
   /**
-   * Optional abort signal. By default, aborting triggers stream.abort().
+   * Custom message for close-before-result failures.
    */
-  signal?: AbortSignal;
+  closeMessage?: string;
   /**
    * Action to perform on abort signal.
    * - "abort": send RST (default)
@@ -48,13 +49,13 @@ export interface WaitForStreamResultOptions<
    */
   closeOnAbort?: "abort" | "close" | "none";
   /**
-   * Custom message for close-before-result failures.
-   */
-  closeMessage?: string;
-  /**
    * Transform result payload before resolving.
    */
   mapResult?: (data: unknown, frame: ResultFrame) => TResult;
+  /**
+   * Optional abort signal. By default, aborting triggers stream.abort().
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -153,9 +154,9 @@ export function waitForStreamResult<
 
 export interface WriteStreamChunksOptions {
   chunkSize?: number;
-  yieldMs?: number;
   closeAtEnd?: boolean;
   signal?: AbortSignal;
+  yieldMs?: number;
 }
 
 /**

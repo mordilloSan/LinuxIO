@@ -1,15 +1,15 @@
 export type ViewMode = "card" | "list";
 
 interface ItemMetadata {
-  name: string;
-  type: string;
-  size?: number;
-  modTime?: string;
-  modified?: string;
-  hidden?: boolean;
   hasPreview?: boolean;
-  symlink?: boolean;
+  hidden?: boolean;
+  modified?: string;
+  modTime?: string;
+  name: string;
   showFullPath?: boolean; // Show full directory path (for search results)
+  size?: number;
+  symlink?: boolean;
+  type: string;
 }
 
 type ItemWithPath = ItemMetadata & {
@@ -39,16 +39,16 @@ export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
 export interface ResourceStatData {
-  mode: string;
-  owner: string;
   group: string;
-  size: number;
+  mode: string;
   modified: string;
-  raw: string;
-  permissions: string;
-  path: string;
-  realPath: string;
   name: string;
+  owner: string;
+  path: string;
+  permissions: string;
+  raw: string;
+  realPath: string;
+  size: number;
 }
 
 export type MultiStatsItem = Pick<
@@ -61,9 +61,9 @@ export type MultiStatsItem = Pick<
 };
 
 export interface MultiStatsResponse {
-  totalSize: number;
+  count: number;
+  items: MultiStatsItem[];
   totalFiles: number;
   totalFolders: number;
-  items: MultiStatsItem[];
-  count: number;
+  totalSize: number;
 }

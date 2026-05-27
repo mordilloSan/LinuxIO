@@ -12,10 +12,10 @@ import { alpha } from "@/utils/color";
 // ─── types ───────────────────────────────────────────────────────────────────
 
 export interface SensorReading {
-  label: string;
-  value: number | boolean;
   kind: "number" | "boolean";
+  label: string;
   unit: string;
+  value: number | boolean;
 }
 
 export interface SensorGroup {
@@ -164,15 +164,15 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
       <CardIconHeader
         icon={
           <Icon
+            color={theme.palette.primary.main}
+            height={24}
             icon="mdi:chip"
             width={24}
-            height={24}
-            color={theme.palette.primary.main}
           />
         }
-        title={group.adapter}
-        subtitle={`${visibleReadings.length} reading${visibleReadings.length !== 1 ? "s" : ""}`}
         style={{ marginBottom: 8 }}
+        subtitle={`${visibleReadings.length} reading${visibleReadings.length !== 1 ? "s" : ""}`}
+        title={group.adapter}
       />
 
       {temps.length > 0 && (
@@ -186,16 +186,16 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
         >
           {temps.map((r, i) => (
             <MetricBar
-              key={`temp-${i}`}
-              label={getSensorDisplayLabel(r)}
-              percent={Math.min((r.value / 105) * 100, 100)}
               color={getTempColor(r.value, {
                 success: theme.palette.success.main,
                 warning: theme.palette.warning.main,
                 error: theme.palette.error.main,
               })}
-              tooltip={`${getSensorDisplayLabel(r)}: ${formatNumericSensorValue(r.value, r.unit)}`}
+              key={`temp-${i}`}
+              label={getSensorDisplayLabel(r)}
+              percent={Math.min((r.value / 105) * 100, 100)}
               rightLabel={formatNumericSensorValue(r.value, r.unit)}
+              tooltip={`${getSensorDisplayLabel(r)}: ${formatNumericSensorValue(r.value, r.unit)}`}
             />
           ))}
         </div>
@@ -220,22 +220,22 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon
-                  icon="mdi:fan"
-                  width={14}
-                  height={14}
                   color={
                     r.value > 0
                       ? theme.palette.info.main
                       : alpha(theme.palette.text.secondary, 0.4)
                   }
+                  height={14}
+                  icon="mdi:fan"
+                  width={14}
                 />
                 <AppTypography variant="caption">
                   {getSensorDisplayLabel(r)}
                 </AppTypography>
               </div>
               <AppTypography
-                variant="caption"
                 style={{ fontVariantNumeric: "tabular-nums" }}
+                variant="caption"
               >
                 {formatNumericSensorValue(r.value, r.unit)}
               </AppTypography>
@@ -259,18 +259,18 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon
+                  color={theme.palette.success.main}
+                  height={14}
                   icon="mdi:flash"
                   width={14}
-                  height={14}
-                  color={theme.palette.success.main}
                 />
                 <AppTypography variant="caption">
                   {getSensorDisplayLabel(r)}
                 </AppTypography>
               </div>
               <AppTypography
-                variant="caption"
                 style={{ fontVariantNumeric: "tabular-nums" }}
+                variant="caption"
               >
                 {formatNumericSensorValue(r.value, r.unit)}
               </AppTypography>
@@ -295,11 +295,11 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
               {getSensorDisplayLabel(r)}
             </AppTypography>
             <Chip
-              size="small"
-              label={formatSensorValue(r)}
               color={sensorChipColor(r)}
-              variant="soft"
+              label={formatSensorValue(r)}
+              size="small"
               style={{ height: 20, fontSize: "0.65rem" }}
+              variant="soft"
             />
           </div>
         ))}

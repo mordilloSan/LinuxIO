@@ -12,8 +12,8 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {
-  unitName: string;
   title: string;
+  unitName: string;
 }
 
 const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
@@ -36,10 +36,10 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon
+            color="var(--app-palette-text-secondary)"
+            height={20}
             icon="mdi:console"
             width={20}
-            height={20}
-            color="var(--app-palette-text-secondary)"
           />
           <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
         </div>
@@ -85,8 +85,8 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
           </div>
         )}
         <div
-          ref={logsBoxRef}
           className="custom-scrollbar"
+          ref={logsBoxRef}
           style={{
             padding: 16,
             overflow: "auto",

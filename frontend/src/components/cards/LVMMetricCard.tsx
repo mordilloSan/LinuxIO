@@ -7,11 +7,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import { GAP_SM } from "@/theme/constants";
 
 export interface LVMMetricCardProps {
+  color: string;
+  icon: string;
+  subtitle: string;
   title: string;
   value: string;
-  subtitle: string;
-  icon: string;
-  color: string;
 }
 
 const LVMMetricCard: React.FC<LVMMetricCardProps> = ({
@@ -23,18 +23,18 @@ const LVMMetricCard: React.FC<LVMMetricCardProps> = ({
 }) => (
   <FrostedCard style={{ padding: GAP_SM, minWidth: 0 }}>
     <CardIconHeader
-      icon={<Icon icon={icon} width={22} height={22} color={color} />}
-      title={title}
+      icon={<Icon color={color} height={22} icon={icon} width={22} />}
       style={{ marginBottom: GAP_SM }}
+      title={title}
     />
     <AppTypography
-      variant="subtitle1"
       fontWeight={800}
       style={{ marginBottom: 4 }}
+      variant="subtitle1"
     >
       {value}
     </AppTypography>
-    <AppTypography variant="body2" color="text.secondary">
+    <AppTypography color="text.secondary" variant="body2">
       {subtitle}
     </AppTypography>
   </FrostedCard>

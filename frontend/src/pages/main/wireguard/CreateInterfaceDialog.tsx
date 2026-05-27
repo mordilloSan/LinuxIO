@@ -13,27 +13,27 @@ import AppTextField from "@/components/ui/AppTextField";
 import { useAppTheme } from "@/theme";
 
 interface CreateInterfaceDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onCreate: () => void;
-  loading: boolean;
-  error?: string;
-  serverName: string;
-  setServerName: (name: string) => void;
-  port: string | number;
-  setPort: (port: number) => void;
-  CIDR: string;
-  setCIDR: (cidr: string) => void;
-  peers: number;
-  setPeers: (peers: number) => void;
-  nic: string;
-  setNic: (nic: string) => void;
   availableNICs: { name: string; label: string }[];
+  CIDR: string;
+  dns: string;
+  error?: string;
+  existingCIDRs: string[];
   existingNames: string[];
   existingPorts: number[];
-  existingCIDRs: string[];
-  dns: string;
+  loading: boolean;
+  nic: string;
+  onClose: () => void;
+  onCreate: () => void;
+  open: boolean;
+  peers: number;
+  port: string | number;
+  serverName: string;
+  setCIDR: (cidr: string) => void;
   setDns: (dns: string) => void;
+  setNic: (nic: string) => void;
+  setPeers: (peers: number) => void;
+  setPort: (port: number) => void;
+  setServerName: (name: string) => void;
 }
 
 const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
@@ -70,64 +70,64 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
     );
 
   return (
-    <GeneralDialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Create New Interface</AppDialogTitle>
       <AppDialogContent>
         <div style={{ marginTop: theme.spacing(2) }}>
           <AppTextField
-            label="Interface Name"
-            value={serverName}
-            onChange={(e) => setServerName(e.target.value)}
-            fullWidth
-            error={!!nameTaken}
-            helperText={nameTaken ? "This interface name already exists." : ""}
             disabled={loading}
+            error={!!nameTaken}
+            fullWidth
+            helperText={nameTaken ? "This interface name already exists." : ""}
+            label="Interface Name"
+            onChange={(e) => setServerName(e.target.value)}
+            value={serverName}
           />
           <AppTextField
+            disabled={loading}
+            error={!!portTaken}
+            fullWidth
+            helperText={portTaken ? "This port is already in use." : ""}
             label="Port"
+            onChange={(e) => setPort(Number(e.target.value))}
             type="number"
             value={port}
-            onChange={(e) => setPort(Number(e.target.value))}
-            fullWidth
-            error={!!portTaken}
-            helperText={portTaken ? "This port is already in use." : ""}
-            disabled={loading}
           />
           <AppTextField
-            label="CIDR"
-            value={CIDR}
-            onChange={(e) => setCIDR(e.target.value)}
-            fullWidth
+            disabled={loading}
             error={!!cidrTaken}
-            helperText={cidrTaken ? "This CIDR is already in use." : ""}
-            disabled={loading}
-          />
-          <AppTextField
-            label="DNS (optional, comma-separated)"
-            value={dns}
-            onChange={(e) => setDns(e.target.value)}
             fullWidth
-            disabled={loading}
-            placeholder="e.g. 192.168.1.1, 1.1.1.1"
+            helperText={cidrTaken ? "This CIDR is already in use." : ""}
+            label="CIDR"
+            onChange={(e) => setCIDR(e.target.value)}
+            value={CIDR}
           />
           <AppTextField
+            disabled={loading}
+            fullWidth
+            label="DNS (optional, comma-separated)"
+            onChange={(e) => setDns(e.target.value)}
+            placeholder="e.g. 192.168.1.1, 1.1.1.1"
+            value={dns}
+          />
+          <AppTextField
+            disabled={loading}
+            fullWidth
             label="Peers"
+            onChange={(e) => setPeers(Number(e.target.value))}
             type="number"
             value={peers}
-            onChange={(e) => setPeers(Number(e.target.value))}
-            fullWidth
-            disabled={loading}
           />
           <AppSelect
-            label="NIC"
-            fullWidth
-            value={nic}
-            onChange={(e) => setNic(e.target.value)}
             disabled={loading}
+            fullWidth
+            label="NIC"
+            onChange={(e) => setNic(e.target.value)}
             style={{ marginBlock: 8 }}
+            value={nic}
           >
             {availableNICs.length === 0 ? (
-              <option value="" disabled>
+              <option disabled value="">
                 No NICs Available
               </option>
             ) : (
@@ -146,11 +146,10 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} color="secondary" disabled={loading}>
+        <AppButton color="secondary" disabled={loading} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={onCreate}
           color="primary"
           disabled={
             !serverName ||
@@ -161,6 +160,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
             !!portTaken ||
             !!cidrTaken
           }
+          onClick={onCreate}
         >
           {loading ? "Creating..." : "Create Interface"}
         </AppButton>

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
-import { linuxio, type CreateUserRequest } from "@/api";
+import { type CreateUserRequest, linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -18,8 +18,8 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 
 const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
@@ -97,7 +97,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create User</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -109,71 +109,71 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            fullWidth
-            required
             autoFocus
-          />
-          <AppTextField
-            label="Full Name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
             fullWidth
+            label="Username"
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            value={username}
           />
           <AppTextField
+            fullWidth
+            label="Full Name"
+            onChange={(e) => setFullName(e.target.value)}
+            value={fullName}
+          />
+          <AppTextField
+            fullWidth
             label="Password"
+            onChange={(e) => setPassword(e.target.value)}
+            required
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            fullWidth
-            required
           />
           <AppTextField
-            label="Confirm Password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            fullWidth
-            required
             error={confirmPassword !== "" && password !== confirmPassword}
+            fullWidth
             helperText={
               confirmPassword !== "" && password !== confirmPassword
                 ? "Passwords do not match"
                 : ""
             }
+            label="Confirm Password"
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            type="password"
+            value={confirmPassword}
           />
           <AppTextField
-            label="Home Directory"
-            value={homeDir}
-            onChange={(e) => setHomeDir(e.target.value)}
             fullWidth
+            label="Home Directory"
+            onChange={(e) => setHomeDir(e.target.value)}
             placeholder={username ? `/home/${username}` : "/home/username"}
+            value={homeDir}
           />
           <AppAutocomplete
-            options={shellsList}
-            value={shell}
+            freeSolo
+            fullWidth
+            label="Shell"
             onChange={(value) => setShell(value || "/bin/bash")}
             onInputChange={setShell}
-            label="Shell"
-            fullWidth
-            freeSolo
+            options={shellsList}
+            value={shell}
           />
           <AppAutocomplete
+            fullWidth
+            label="Secondary Groups"
             multiple
-            options={groupsList
-              .map((g) => g.name)
-              .filter((g) => !selectedGroups.includes(g))}
-            value={[]}
             onChange={(values) => {
               const added = values[0];
               if (added && !selectedGroups.includes(added)) {
                 setSelectedGroups([...selectedGroups, added]);
               }
             }}
-            label="Secondary Groups"
-            fullWidth
+            options={groupsList
+              .map((g) => g.name)
+              .filter((g) => !selectedGroups.includes(g))}
+            value={[]}
           />
           {selectedGroups.length > 0 && (
             <div
@@ -187,11 +187,11 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
                 <Chip
                   key={group}
                   label={group}
-                  size="small"
-                  variant="soft"
                   onDelete={() =>
                     setSelectedGroups(selectedGroups.filter((g) => g !== group))
                   }
+                  size="small"
+                  variant="soft"
                 />
               ))}
             </div>
@@ -208,15 +208,15 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleSubmit}
-          variant="contained"
           disabled={
             isPending || !username || !password || password !== confirmPassword
           }
+          onClick={handleSubmit}
+          variant="contained"
         >
           {isPending ? "Creating..." : "Create"}
         </AppButton>

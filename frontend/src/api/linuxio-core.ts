@@ -5,14 +5,14 @@
  *
  */
 
+import { waitForStreamResult } from "./stream-helpers";
 import {
+  encodeString,
   getStreamMux,
   initStreamMux,
-  waitForStreamMux,
-  encodeString,
   STREAM_MULTIPLEXER_CONFIG,
+  waitForStreamMux,
 } from "./StreamMultiplexer";
-import { waitForStreamResult } from "./stream-helpers";
 
 /**
  * LinuxIOError - structured error with code
@@ -31,8 +31,8 @@ export class LinuxIOError extends Error {
  * CallOptions for simple request/response calls
  */
 export interface CallOptions {
-  timeout?: number; // Timeout in milliseconds (default: 30000)
   retryPolicy?: "connection_closed" | "none";
+  timeout?: number; // Timeout in milliseconds (default: 30000)
 }
 
 const MAX_CALL_ATTEMPTS = 2;

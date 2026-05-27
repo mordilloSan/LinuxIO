@@ -1,4 +1,5 @@
 import type { AppTheme } from "@/theme";
+
 import { alpha } from "@/utils/color";
 
 const mixWithTransparency = (color: string, opacity: number) => {

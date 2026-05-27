@@ -6,11 +6,11 @@ import { FILE_TYPE_COLORS } from "@/theme/colors";
 import { alpha } from "@/utils/color";
 
 interface FileIconProps {
-  isDirectory: boolean;
   filename?: string;
   hidden?: boolean;
-  size?: number;
+  isDirectory: boolean;
   isSymlink?: boolean;
+  size?: number;
 }
 
 const getIconForType = (filename?: string): string => {
@@ -193,11 +193,11 @@ const FileIcon = React.memo(
           }}
         >
           <Icon
-            icon={iconName}
-            width={size}
-            height={size}
             color={iconColor}
+            height={size}
+            icon={iconName}
             style={{ flexShrink: 0 }}
+            width={size}
           />
         </span>
       );
@@ -215,16 +215,15 @@ const FileIcon = React.memo(
         }}
       >
         <Icon
-          icon={iconName}
-          width={size}
-          height={size}
           color={iconColor}
+          height={size}
+          icon={iconName}
           style={{ flexShrink: 0 }}
+          width={size}
         />
         <Icon
-          icon="mdi:link"
-          width={size * 0.35}
           height={size * 0.35}
+          icon="mdi:link"
           style={{
             position: "absolute",
             color: theme.palette.text.secondary,
@@ -233,6 +232,7 @@ const FileIcon = React.memo(
             transform: "rotate(-45deg)",
             filter: `drop-shadow(0px 1px 2px ${alpha(theme.palette.common.black, 0.5)})`,
           }}
+          width={size * 0.35}
         />
       </div>
     );

@@ -1,16 +1,17 @@
 import { useEffect, useEffectEvent } from "react";
+
 import { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
-  containerRef: React.RefObject<HTMLDivElement>;
   allItems: FileItem[];
+  containerRef: React.RefObject<HTMLDivElement>;
   focusedIndex: number;
-  selectedPaths: Set<string>;
-  onFocusChange: (index: number) => void;
-  onSelectionChange: (paths: Set<string>) => void;
-  onDelete?: () => void;
-  onRename?: () => void;
   global?: boolean; // Listen to document events instead of container events
+  onDelete?: () => void;
+  onFocusChange: (index: number) => void;
+  onRename?: () => void;
+  onSelectionChange: (paths: Set<string>) => void;
+  selectedPaths: Set<string>;
 }
 
 export const useFileListKeyboardNavigation = ({

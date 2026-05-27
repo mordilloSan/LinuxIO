@@ -2,9 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
-import DeleteUserDialog from "./DeleteUserDialog";
-
-import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
+import { type AccountUser, linuxio, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -19,9 +17,11 @@ import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+import DeleteUserDialog from "./DeleteUserDialog";
+
 interface EditUserDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
   user: AccountUser;
 }
 
@@ -92,7 +92,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>Edit User: {user.username}</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -104,46 +104,46 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           }}
         >
           <AppTextField
+            disabled
+            fullWidth
             label="Username"
             value={user.username}
-            fullWidth
-            disabled
           />
           <AppTextField
+            fullWidth
             label="Full Name"
-            value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            fullWidth
+            value={fullName}
           />
           <AppTextField
-            label="Home Directory"
-            value={homeDir}
-            onChange={(e) => setHomeDir(e.target.value)}
             fullWidth
+            label="Home Directory"
+            onChange={(e) => setHomeDir(e.target.value)}
+            value={homeDir}
           />
           <AppAutocomplete
-            options={shellsList}
-            value={shell}
+            freeSolo
+            fullWidth
+            label="Shell"
             onChange={(value) => setShell(value || "/bin/bash")}
             onInputChange={setShell}
-            label="Shell"
-            fullWidth
-            freeSolo
+            options={shellsList}
+            value={shell}
           />
           <AppAutocomplete
+            fullWidth
+            label="Secondary Groups"
             multiple
-            options={groupsList
-              .map((g) => g.name)
-              .filter((g) => !selectedGroups.includes(g))}
-            value={[]}
             onChange={(values) => {
               const added = values[0];
               if (added && !selectedGroups.includes(added)) {
                 setSelectedGroups([...selectedGroups, added]);
               }
             }}
-            label="Secondary Groups"
-            fullWidth
+            options={groupsList
+              .map((g) => g.name)
+              .filter((g) => !selectedGroups.includes(g))}
+            value={[]}
           />
           {selectedGroups.length > 0 && (
             <div
@@ -157,11 +157,11 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
                 <Chip
                   key={group}
                   label={group}
-                  size="small"
-                  variant="soft"
                   onDelete={() =>
                     setSelectedGroups(selectedGroups.filter((g) => g !== group))
                   }
+                  size="small"
+                  variant="soft"
                 />
               ))}
             </div>
@@ -170,31 +170,31 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
       </AppDialogContent>
       <AppDialogActions>
         <AppButton
-          onClick={() => setDeleteDialogOpen(true)}
           color="error"
           disabled={isPending || isProtected}
-          startIcon={<Icon icon="mdi:delete" width={18} height={18} />}
+          onClick={() => setDeleteDialogOpen(true)}
+          startIcon={<Icon height={18} icon="mdi:delete" width={18} />}
           style={{ marginRight: "auto" }}
         >
           Delete
         </AppButton>
-        <AppButton onClick={onClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleSubmit}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Saving..." : "Save"}
         </AppButton>
       </AppDialogActions>
 
       <DeleteUserDialog
-        open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        usernames={[user.username]}
         onSuccess={onClose}
+        open={deleteDialogOpen}
+        usernames={[user.username]}
       />
     </GeneralDialog>
   );

@@ -16,10 +16,10 @@ import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteUserDialogProps {
-  open: boolean;
   onClose: () => void;
-  usernames: string[];
   onSuccess: () => void;
+  open: boolean;
+  usernames: string[];
 }
 
 const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
@@ -56,7 +56,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>
         Delete User{usernames.length > 1 ? "s" : ""}
       </AppDialogTitle>
@@ -76,8 +76,8 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
               key={name}
               label={name}
               size="small"
-              variant="soft"
               style={{ marginRight: 4, marginBottom: 4 }}
+              variant="soft"
             />
           ))}
         </div>
@@ -89,14 +89,14 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
         </AppDialogContentText>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isDeleting}>
+        <AppButton disabled={isDeleting} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isDeleting}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>

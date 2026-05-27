@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { linuxio, type NFSExport, type NFSClient } from "@/api";
+import { linuxio, type NFSClient, type NFSExport } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -39,13 +39,13 @@ interface NFSSharesProps {
 // ============================================================================
 
 interface ClientOptions {
+  allSquash: boolean; // all_squash — overrides root squash when on
+  crossmnt: boolean; // crossmnt
+  insecure: boolean; // insecure (true) vs secure (default)
+  noRootSquash: boolean; // no_root_squash (true) vs root_squash
+  noSubtreeCheck: boolean; // no_subtree_check (true) vs subtree_check
   rw: boolean; // rw (true) vs ro (false)
   sync: boolean; // sync (true) vs async (false)
-  noSubtreeCheck: boolean; // no_subtree_check (true) vs subtree_check
-  noRootSquash: boolean; // no_root_squash (true) vs root_squash
-  allSquash: boolean; // all_squash — overrides root squash when on
-  insecure: boolean; // insecure (true) vs secure (default)
-  crossmnt: boolean; // crossmnt
 }
 
 interface ClientRow {
@@ -144,34 +144,33 @@ const OptionsDropdown: React.FC<{
     <>
       <div ref={anchorRef} style={{ flex: 1 }}>
         <AppTextField
-          label="Options"
-          value={optsSummary(opts)}
-          size="small"
-          fullWidth
-          onClick={handleOpen}
-          style={{ cursor: "pointer" }}
           endAdornment={
             <Icon
               icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              width={18}
               style={{ opacity: 0.5 }}
+              width={18}
             />
           }
+          fullWidth
+          label="Options"
+          onClick={handleOpen}
+          size="small"
+          style={{ cursor: "pointer" }}
+          value={optsSummary(opts)}
         />
       </div>
       <AppPopover
-        open={open}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
         <div style={{ padding: "6px 0" }}>
           {optionLabels.map(({ key, label }) => (
             <button
               key={key}
-              type="button"
               onClick={() => toggle(key)}
               style={{
                 display: "flex",
@@ -186,6 +185,7 @@ const OptionsDropdown: React.FC<{
                 color: "inherit",
                 textAlign: "left",
               }}
+              type="button"
             >
               <span
                 style={{
@@ -220,18 +220,18 @@ const ClientRowEditor: React.FC<{
   <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
     <AppTextField
       label="Host"
-      value={client.host}
       onChange={(e) => onChange(index, { ...client, host: e.target.value })}
       placeholder="e.g., 192.168.1.0/24 or *"
       size="small"
       style={{ flex: 1 }}
+      value={client.host}
     />
     <OptionsDropdown
-      opts={client.opts}
       onChange={(next) => onChange(index, { ...client, opts: next })}
+      opts={client.opts}
     />
     {canRemove && (
-      <AppIconButton size="small" onClick={() => onRemove(index)}>
+      <AppIconButton onClick={() => onRemove(index)} size="small">
         &times;
       </AppIconButton>
     )}
@@ -263,32 +263,32 @@ const PathPicker: React.FC<{
     <>
       <div ref={anchorRef}>
         <AppTextField
-          label="Export Path"
-          value={value}
-          size="small"
-          fullWidth
-          shrinkLabel
-          onClick={handleOpen}
-          style={{ cursor: "pointer" }}
-          placeholder="Click to select a folder"
           endAdornment={
             <Icon
               icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              width={18}
               style={{ opacity: 0.5 }}
+              width={18}
             />
           }
+          fullWidth
+          label="Export Path"
+          onClick={handleOpen}
+          placeholder="Click to select a folder"
+          shrinkLabel
+          size="small"
+          style={{ cursor: "pointer" }}
+          value={value}
         />
       </div>
       <AppPopover
-        open={open}
-        onClose={() => setOpen(false)}
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
         matchAnchorWidth
+        onClose={() => setOpen(false)}
+        open={open}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
-        <DirectoryTree selectedPath={value} onSelect={handleSelect} />
+        <DirectoryTree onSelect={handleSelect} selectedPath={value} />
       </AppPopover>
     </>
   );
@@ -299,9 +299,9 @@ const PathPicker: React.FC<{
 // ============================================================================
 
 interface CreateDialogProps {
-  open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
 export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
@@ -362,7 +362,7 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
     setClients((prev) => prev.filter((_, idx) => idx !== i));
 
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create NFS Export</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -373,30 +373,30 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
             marginTop: 8,
           }}
         >
-          <PathPicker value={path} onChange={setPath} />
-          <AppTypography variant="subtitle2" style={{ marginTop: 4 }}>
+          <PathPicker onChange={setPath} value={path} />
+          <AppTypography style={{ marginTop: 4 }} variant="subtitle2">
             Client Access Rules
           </AppTypography>
           {clients.map((client, i) => (
             <ClientRowEditor
-              key={i}
+              canRemove={clients.length > 1}
               client={client}
               index={i}
-              canRemove={clients.length > 1}
+              key={i}
               onChange={handleClientChange}
               onRemove={handleClientRemove}
             />
           ))}
           <AppButton
-            size="small"
-            variant="outlined"
             onClick={() =>
               setClients((prev) => [
                 ...prev,
                 { host: "", opts: { ...defaultOpts } },
               ])
             }
+            size="small"
             style={{ alignSelf: "flex-start" }}
+            variant="outlined"
           >
             Add Client
           </AppButton>
@@ -406,13 +406,13 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleCreate}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Creating..." : "Create"}
         </AppButton>
@@ -426,10 +426,10 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
 // ============================================================================
 
 interface EditDialogProps {
-  open: boolean;
   onClose: () => void;
-  share: NFSExport | null;
   onSuccess: () => void;
+  open: boolean;
+  share: NFSExport | null;
 }
 
 export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
@@ -483,11 +483,11 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
 
   return (
     <GeneralDialog
-      key={share?.path}
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
       fullWidth
+      key={share?.path}
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
     >
       <AppDialogTitle>Edit NFS Export</AppDialogTitle>
       <AppDialogContent>
@@ -500,48 +500,48 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Export Path"
-            value={share?.path || ""}
             disabled
             fullWidth
+            label="Export Path"
             size="small"
+            value={share?.path || ""}
           />
-          <AppTypography variant="subtitle2" style={{ marginTop: 4 }}>
+          <AppTypography style={{ marginTop: 4 }} variant="subtitle2">
             Client Access Rules
           </AppTypography>
           {clients.map((client, i) => (
             <ClientRowEditor
-              key={i}
+              canRemove={clients.length > 1}
               client={client}
               index={i}
-              canRemove={clients.length > 1}
+              key={i}
               onChange={handleClientChange}
               onRemove={handleClientRemove}
             />
           ))}
           <AppButton
-            size="small"
-            variant="outlined"
             onClick={() =>
               setClients((prev) => [
                 ...prev,
                 { host: "", opts: { ...defaultOpts } },
               ])
             }
+            size="small"
             style={{ alignSelf: "flex-start" }}
+            variant="outlined"
           >
             Add Client
           </AppButton>
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isPending}
           onClick={handleSave}
           variant="contained"
-          disabled={isPending}
         >
           {isPending ? "Saving..." : "Save"}
         </AppButton>
@@ -555,10 +555,10 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
 // ============================================================================
 
 interface DeleteDialogProps {
-  open: boolean;
   onClose: () => void;
-  share: NFSExport | null;
   onSuccess: () => void;
+  open: boolean;
+  share: NFSExport | null;
 }
 
 export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
@@ -592,7 +592,7 @@ export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>Remove NFS Export</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
@@ -614,14 +614,14 @@ export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
         </AppAlert>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isPending}>
+        <AppButton disabled={isPending} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isPending}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isPending ? "Removing..." : "Remove"}
         </AppButton>
@@ -709,79 +709,29 @@ const NFSShares: React.FC<NFSSharesProps> = ({
             {sharesList.map((share) => (
               <AppGrid key={share.path} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <NFSShareCard
-                  share={share}
                   onEdit={() => handleEdit(share)}
                   onRemove={() => handleDelete(share)}
+                  share={share}
                 />
               </AppGrid>
             ))}
           </AppGrid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No NFS exports found. Click &quot;Add Export&quot; to create one.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={sharesList}
           columns={columns}
+          data={sharesList}
+          emptyMessage="No NFS exports found. Click 'Add Export' to create one."
           getRowKey={(share) => share.path}
-          renderMainRow={(share) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  variant="body2"
-                  style={{ fontFamily: "monospace" }}
-                >
-                  {share.path}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                  {share.clients.map((c, i) => (
-                    <Chip key={i} label={c.host} size="small" variant="soft" />
-                  ))}
-                </div>
-              </AppTableCell>
-              <AppTableCell style={{ textAlign: "center" }}>
-                <Chip
-                  label={share.active ? "Active" : "Inactive"}
-                  size="small"
-                  variant="soft"
-                  color={share.active ? "success" : "default"}
-                />
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <AppButton
-                    size="small"
-                    variant="outlined"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit(share);
-                    }}
-                  >
-                    Edit
-                  </AppButton>
-                  <AppButton
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(share);
-                    }}
-                  >
-                    Remove
-                  </AppButton>
-                </div>
-              </AppTableCell>
-            </>
-          )}
           renderExpandedContent={(share) => (
             <div>
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <strong>Client Access Rules:</strong>
               </AppTypography>
               {share.clients.map((client: NFSClient, i: number) => (
@@ -802,7 +752,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
                         <Chip key={j} label={opt} size="small" variant="soft" />
                       ))
                     ) : (
-                      <AppTypography variant="body2" color="text.secondary">
+                      <AppTypography color="text.secondary" variant="body2">
                         (default options)
                       </AppTypography>
                     )}
@@ -811,26 +761,76 @@ const NFSShares: React.FC<NFSSharesProps> = ({
               ))}
             </div>
           )}
-          emptyMessage="No NFS exports found. Click 'Add Export' to create one."
+          renderMainRow={(share) => (
+            <>
+              <AppTableCell>
+                <AppTypography
+                  style={{ fontFamily: "monospace" }}
+                  variant="body2"
+                >
+                  {share.path}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                  {share.clients.map((c, i) => (
+                    <Chip key={i} label={c.host} size="small" variant="soft" />
+                  ))}
+                </div>
+              </AppTableCell>
+              <AppTableCell style={{ textAlign: "center" }}>
+                <Chip
+                  color={share.active ? "success" : "default"}
+                  label={share.active ? "Active" : "Inactive"}
+                  size="small"
+                  variant="soft"
+                />
+              </AppTableCell>
+              <AppTableCell>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <AppButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(share);
+                    }}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Edit
+                  </AppButton>
+                  <AppButton
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(share);
+                    }}
+                    size="small"
+                  >
+                    Remove
+                  </AppButton>
+                </div>
+              </AppTableCell>
+            </>
+          )}
         />
       )}
 
       <CreateNFSShareDialog
-        open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSuccess={() => refetch()}
+        open={createOpen}
       />
       <EditNFSShareDialog
-        open={editOpen}
         onClose={() => setEditOpen(false)}
-        share={selected}
         onSuccess={() => refetch()}
+        open={editOpen}
+        share={selected}
       />
       <DeleteNFSShareDialog
-        open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        share={selected}
         onSuccess={() => refetch()}
+        open={deleteOpen}
+        share={selected}
       />
     </div>
   );

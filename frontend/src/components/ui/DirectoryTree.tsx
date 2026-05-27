@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, {
-  useState,
   useCallback,
   useEffect,
   useEffectEvent,
   useRef,
+  useState,
 } from "react";
 
 import { linuxio } from "@/api";
@@ -18,16 +18,16 @@ import "./directory-tree.css";
 // ============================================================================
 
 interface DirectoryTreeProps {
+  onSelect: (path: string) => void;
   rootPath?: string;
   selectedPath?: string;
-  onSelect: (path: string) => void;
 }
 
 interface TreeNodeData {
-  name: string;
-  path: string;
   children?: TreeNodeData[];
   loaded: boolean;
+  name: string;
+  path: string;
 }
 
 // ============================================================================
@@ -60,14 +60,14 @@ const TreeNode: React.FC<{
   return (
     <div>
       <div
-        className={`directory-tree__node ${isSelected ? "directory-tree__node--selected" : ""}`}
-        style={{ paddingLeft: depth * 20 + 8 }}
-        onClick={handleClick}
-        role="treeitem"
         aria-expanded={expanded}
         aria-selected={isSelected}
+        className={`directory-tree__node ${isSelected ? "directory-tree__node--selected" : ""}`}
         data-tree-name={node.name.toLowerCase()}
         data-tree-path={node.path}
+        onClick={handleClick}
+        role="treeitem"
+        style={{ paddingLeft: depth * 20 + 8 }}
       >
         <span className="directory-tree__chevron">
           {loading ? (
@@ -80,21 +80,21 @@ const TreeNode: React.FC<{
           )}
         </span>
         <Icon
+          className="directory-tree__icon"
           icon={expanded ? "mdi:folder-open" : "mdi:folder"}
           width={18}
-          className="directory-tree__icon"
         />
         <span className="directory-tree__label">{node.name}</span>
       </div>
       <AppCollapse in={expanded} unmountOnExit>
         {node.children?.map((child) => (
           <TreeNode
+            depth={depth + 1}
             key={child.path}
             node={child}
-            depth={depth + 1}
-            selectedPath={selectedPath}
             onSelect={onSelect}
             onToggle={onToggle}
+            selectedPath={selectedPath}
           />
         ))}
       </AppCollapse>
@@ -174,15 +174,15 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
   }, []);
 
   return (
-    <div ref={containerRef} className="directory-tree" role="tree" tabIndex={0}>
+    <div className="directory-tree" ref={containerRef} role="tree" tabIndex={0}>
       {roots.map((node) => (
         <TreeNode
+          depth={0}
           key={node.path}
           node={node}
-          depth={0}
-          selectedPath={selectedPath}
           onSelect={onSelect}
           onToggle={loadChildren}
+          selectedPath={selectedPath}
         />
       ))}
     </div>

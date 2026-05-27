@@ -7,8 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-
 import "@xterm/xterm/css/xterm.css";
+
 import {
   decodeString,
   encodeString,
@@ -31,10 +31,10 @@ import { useLiveStream } from "@/hooks/useLiveStream";
 import { useAppTheme } from "@/theme";
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
   containerId: string;
   containerName?: string;
+  onClose: () => void;
+  open: boolean;
 }
 const TerminalDialog: React.FC<Props> = ({
   open,
@@ -283,10 +283,10 @@ const TerminalDialog: React.FC<Props> = ({
   }, []);
   return (
     <GeneralDialog
-      open={open}
-      onClose={handleDialogClose}
-      maxWidth="md"
       fullWidth
+      maxWidth="md"
+      onClose={handleDialogClose}
+      open={open}
       slotProps={{
         transition: {
           onEntered: handleDialogEntered,
@@ -307,15 +307,15 @@ const TerminalDialog: React.FC<Props> = ({
             {containerName ? `Shell for ${containerName}` : "Container Shell"}
           </span>
           <AppSelect
-            size="small"
-            variant="standard"
-            value={activeShell}
-            onChange={handleShellChange}
-            style={{ minWidth: 80 }}
             disabled={!isOpen || availableShells.length === 0}
+            onChange={handleShellChange}
+            size="small"
+            style={{ minWidth: 80 }}
+            value={activeShell}
+            variant="standard"
           >
             {availableShells.map((s) => (
-              <option value={s} key={s}>
+              <option key={s} value={s}>
                 {s}
               </option>
             ))}
@@ -356,8 +356,8 @@ const TerminalDialog: React.FC<Props> = ({
         ) : availableShells.length > 0 ? (
           <div
             key={terminalKey}
-            ref={termRef}
             onContextMenu={handleContextMenu}
+            ref={termRef}
             style={{
               width: "100%",
               minHeight: 350,
@@ -369,8 +369,6 @@ const TerminalDialog: React.FC<Props> = ({
         ) : null}
         {/* CONTEXT MENU */}
         <AppMenu
-          open={contextMenu !== null}
-          onClose={handleCloseContextMenu}
           anchorPosition={
             contextMenu !== null
               ? {
@@ -381,36 +379,38 @@ const TerminalDialog: React.FC<Props> = ({
           }
           autoFocus={false}
           minWidth={168}
+          onClose={handleCloseContextMenu}
+          open={contextMenu !== null}
         >
           <AppMenuItem
-            onClick={handleCopy}
             endAdornment={
               <AppTypography
-                variant="body2"
                 color="text.secondary"
                 style={{
                   marginLeft: 8,
                 }}
+                variant="body2"
               >
                 Ctrl+Shift+C
               </AppTypography>
             }
+            onClick={handleCopy}
           >
             Copy
           </AppMenuItem>
           <AppMenuItem
-            onClick={handlePaste}
             endAdornment={
               <AppTypography
-                variant="body2"
                 color="text.secondary"
                 style={{
                   marginLeft: 8,
                 }}
+                variant="body2"
               >
                 Ctrl+Shift+V
               </AppTypography>
             }
+            onClick={handlePaste}
           >
             Paste
           </AppMenuItem>

@@ -1,25 +1,26 @@
-import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import { linuxio, type SubfolderData } from "@/api";
+
 import {
-  shouldSkipSizeCalculation,
-  getDirectorySizeQueryOptions,
-  useIndexerErrorHandler,
   getDirectorySizeError,
+  getDirectorySizeQueryOptions,
   isDirectorySizeUnavailable,
   shouldEnableDirectorySizeQuery,
+  shouldSkipSizeCalculation,
   useIndexerAvailability,
+  useIndexerErrorHandler,
 } from "./useFileDirectorySizeBase";
 
 export type { SubfolderData };
 
 interface UseSubfoldersResult {
+  error: Error | null;
+  isLoading: boolean;
+  isUnavailable: boolean;
   subfolders: SubfolderData[];
   subfoldersMap: Map<string, SubfolderData>;
-  isLoading: boolean;
-  error: Error | null;
-  isUnavailable: boolean;
 }
 
 /**

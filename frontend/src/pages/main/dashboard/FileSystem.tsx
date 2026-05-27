@@ -42,16 +42,16 @@ const FsInfoCard: React.FC = () => {
         return (
           <div key={index}>
             <MetricBar
+              color={theme.palette.primary.main}
               label={fs.mountpoint}
               percent={usedPercent}
-              color={theme.palette.primary.main}
-              tooltip={`Free: ${formatFileSize(fs.free)} / Total: ${formatFileSize(fs.total)}`}
               rightLabel={
                 <>
                   {formatFileSize(fs.used)}&nbsp;/&nbsp;
                   {formatFileSize(fs.total)}
                 </>
               }
+              tooltip={`Free: ${formatFileSize(fs.free)} / Total: ${formatFileSize(fs.total)}`}
             />
           </div>
         );

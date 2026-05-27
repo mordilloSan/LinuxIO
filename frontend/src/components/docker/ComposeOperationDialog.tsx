@@ -1,12 +1,12 @@
 import { Icon } from "@iconify/react";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { linuxio, useStreamMux, openJobAttachStream, type Stream } from "@/api";
+import { linuxio, openJobAttachStream, type Stream, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
+  type AppDialogCloseEvent,
   AppDialogContent,
   AppDialogTitle,
-  type AppDialogCloseEvent,
 } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -16,16 +16,16 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 
 interface ComposeOperationDialogProps {
-  open: boolean;
-  onClose: () => void;
   action: "up" | "down" | "stop" | "restart";
-  projectName: string;
   composePath?: string;
+  onClose: () => void;
+  open: boolean;
+  projectName: string;
 }
 
 interface ComposeMessage {
-  type: "stdout" | "stderr" | "error" | "complete";
   message: string;
+  type: "stdout" | "stderr" | "error" | "complete";
 }
 
 const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
@@ -199,10 +199,10 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
 
   return (
     <GeneralDialog
-      open={open}
-      onClose={handleClose}
-      maxWidth="md"
       fullWidth
+      maxWidth="md"
+      onClose={handleClose}
+      open={open}
       paperStyle={{
         backgroundColor: theme.palette.background.default,
         maxHeight: "80vh",
@@ -232,18 +232,18 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           {isRunning && <AppLinearProgress style={{ width: 100 }} />}
           {success && (
             <Icon
+              color={theme.palette.success.main}
+              height={24}
               icon="mdi:check-circle"
               width={24}
-              height={24}
-              color={theme.palette.success.main}
             />
           )}
           {error && (
             <Icon
+              color={theme.palette.error.main}
+              height={24}
               icon="mdi:alert-circle"
               width={24}
-              height={24}
-              color={theme.palette.error.main}
             />
           )}
           <AppTypography variant="h6">
@@ -251,7 +251,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           </AppTypography>
         </div>
         <AppIconButton onClick={() => handleClose()} size="small">
-          <Icon icon="mdi:close" width={20} height={20} />
+          <Icon height={20} icon="mdi:close" width={20} />
         </AppIconButton>
       </AppDialogTitle>
 

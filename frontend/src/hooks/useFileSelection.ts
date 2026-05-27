@@ -1,18 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { useScopedToast } from "@/hooks/useScopedToast";
 import type { FileItem, FileResource } from "@/types/filebrowser";
+
+import { useScopedToast } from "@/hooks/useScopedToast";
 
 type ClipboardOperation = "copy" | "cut";
 
 interface ClipboardData {
-  paths: string[];
   operation: ClipboardOperation;
+  paths: string[];
 }
 
 interface useFileSelectionParams {
-  resource: FileResource | undefined;
-  normalizedPath: string;
   copyItems: (params: {
     sourcePaths: string[];
     destinationDir: string;
@@ -21,18 +20,20 @@ interface useFileSelectionParams {
     sourcePaths: string[];
     destinationDir: string;
   }) => Promise<void>;
+  normalizedPath: string;
   onContextMenuClose?: () => void;
+  resource: FileResource | undefined;
 }
 
 interface useFileSelectionResult {
-  selectedPaths: Set<string>;
-  setSelectedPaths: (paths: Set<string>) => void;
-  selectedItems: FileItem[];
   clipboard: ClipboardData | null;
-  setClipboard: (data: ClipboardData | null) => void;
   handleCopy: () => void;
   handleCut: () => void;
   handlePaste: () => Promise<void>;
+  selectedItems: FileItem[];
+  selectedPaths: Set<string>;
+  setClipboard: (data: ClipboardData | null) => void;
+  setSelectedPaths: (paths: Set<string>) => void;
 }
 
 /**

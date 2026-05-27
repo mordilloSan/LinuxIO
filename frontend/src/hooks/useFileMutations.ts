@@ -1,27 +1,28 @@
 import {
+  QueryClient,
   useMutation,
   useQueryClient,
-  QueryClient,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
 
+import { linuxio, openJobAttachStream } from "@/api";
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { linuxio, openJobAttachStream } from "@/api";
+import { getMutationErrorMessage } from "@/utils/mutations";
+
 import { useBackgroundJobs } from "./useBackgroundJobs";
 import { useStreamResult } from "./useStreamResult";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface UseFileMutationsParams {
   normalizedPath: string;
-  queryClient?: QueryClient;
   onDeleteSuccess?: () => void;
+  queryClient?: QueryClient;
 }
 
 interface CompressPayload {
-  paths: string[];
   archiveName?: string;
   destination?: string;
+  paths: string[];
 }
 
 interface ExtractPayload {
@@ -30,21 +31,21 @@ interface ExtractPayload {
 }
 
 interface ChmodPayload {
-  path: string;
-  mode: string;
-  recursive?: boolean;
-  owner?: string;
   group?: string;
+  mode: string;
+  owner?: string;
+  path: string;
+  recursive?: boolean;
 }
 
 interface CopyMovePayload {
-  sourcePaths: string[];
   destinationDir: string;
+  sourcePaths: string[];
 }
 
 interface RenamePayload {
-  from: string;
   destination: string;
+  from: string;
 }
 
 export const useFileMutations = ({

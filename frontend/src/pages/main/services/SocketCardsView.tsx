@@ -1,5 +1,10 @@
 import React from "react";
 
+import type { Socket } from "@/api";
+
+import { linuxio } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
+
 import {
   DetailRow,
   UnitCardActions,
@@ -7,24 +12,20 @@ import {
   UnitStatusRows,
 } from "./UnitViews";
 
-import type { Socket } from "@/api";
-import { linuxio } from "@/api";
-import UnitLogsCard from "@/components/cards/UnitLogsCard";
-
 interface SocketCardsViewProps {
-  sockets: Socket[];
   expanded: string | null;
   onExpand: (name: string | null) => void;
   renderDetailPanel: (socket: Socket) => React.ReactNode;
+  sockets: Socket[];
 }
 
 const SocketSummaryRows: React.FC<{ socket: Socket }> = ({ socket }) => (
   <UnitStatusRows
+    activeEnterTimestamp={socket.active_enter_timestamp}
     activeState={socket.active_state}
+    inactiveEnterTimestamp={socket.inactive_enter_timestamp}
     subState={socket.sub_state}
     unitFileState={socket.unit_file_state}
-    activeEnterTimestamp={socket.active_enter_timestamp}
-    inactiveEnterTimestamp={socket.inactive_enter_timestamp}
   />
 );
 
@@ -66,10 +67,10 @@ const SocketActionsWrapper: React.FC<{ socket: Socket }> = ({ socket }) => {
   });
   return (
     <UnitCardActions
-      unitName={socket.name}
       activeState={socket.active_state}
-      unitFileState={socket.unit_file_state}
       info={info}
+      unitFileState={socket.unit_file_state}
+      unitName={socket.name}
     />
   );
 };
@@ -81,17 +82,17 @@ const SocketCardsView: React.FC<SocketCardsViewProps> = ({
   renderDetailPanel,
 }) => (
   <UnitCardsView
-    items={sockets}
-    expanded={expanded}
-    onExpand={onExpand}
     emptyMessage="No sockets found."
-    renderSummaryRows={(socket) => <SocketSummaryRows socket={socket} />}
-    renderSelectedRows={(socket) => <SocketSelectedRows socket={socket} />}
+    expanded={expanded}
+    items={sockets}
+    onExpand={onExpand}
     renderActions={(socket) => <SocketActionsWrapper socket={socket} />}
-    renderDetailPanel={renderDetailPanel}
     renderBottomPanel={(socket) => (
-      <UnitLogsCard unitName={socket.name} title="Socket Logs" />
+      <UnitLogsCard title="Socket Logs" unitName={socket.name} />
     )}
+    renderDetailPanel={renderDetailPanel}
+    renderSelectedRows={(socket) => <SocketSelectedRows socket={socket} />}
+    renderSummaryRows={(socket) => <SocketSummaryRows socket={socket} />}
   />
 );
 

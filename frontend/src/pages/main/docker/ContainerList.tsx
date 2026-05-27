@@ -15,14 +15,14 @@ import {
 } from "@dnd-kit/sortable";
 import React, { Suspense, useMemo } from "react";
 
-import ContainerTable from "./ContainerTable";
-import ContainerCard from "../../../components/cards/ContainerCard";
-
 import { linuxio } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
+
+import ContainerCard from "../../../components/cards/ContainerCard";
+import ContainerTable from "./ContainerTable";
 
 interface ContainerListProps {
   editMode: boolean;
@@ -89,9 +89,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
     return (
       <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
         <DndContext
-          sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
+          sensors={sensors}
         >
           <SortableContext
             items={containerIds}
@@ -111,9 +111,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
     <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
       <div>
         <DndContext
-          sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
+          sensors={sensors}
         >
           <SortableContext items={containerIds} strategy={rectSortingStrategy}>
             <AppGrid container spacing={2}>
@@ -122,7 +122,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   key={container.Id}
                   size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
                 >
-                  <SortableCard id={container.Id} editMode={editMode}>
+                  <SortableCard editMode={editMode} id={container.Id}>
                     <ContainerCard container={container} />
                   </SortableCard>
                 </AppGrid>

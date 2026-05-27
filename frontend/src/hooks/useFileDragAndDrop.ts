@@ -1,4 +1,5 @@
 import type React from "react";
+
 import { useCallback, useState } from "react";
 
 import { BackgroundJobsContextValue } from "@/contexts/BackgroundJobsContext";
@@ -8,22 +9,22 @@ import { FileResource } from "@/types/filebrowser";
 import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
 
 interface UseDragAndDropUploadParams {
-  normalizedPath: string;
-  resource?: FileResource | null;
   editingPath?: string | null;
-  startUpload: BackgroundJobsContextValue["startUpload"];
+  normalizedPath: string;
   onUploadComplete: () => void;
+  resource?: FileResource | null;
+  startUpload: BackgroundJobsContextValue["startUpload"];
 }
 
 interface UseDragAndDropUploadResult {
+  handleCancelOverwrite: () => void;
+  handleConfirmOverwrite: () => Promise<void>;
+  handleDragEnter: (event: React.DragEvent) => void;
+  handleDragLeave: (event: React.DragEvent) => void;
+  handleDragOver: (event: React.DragEvent) => void;
+  handleDrop: (event: React.DragEvent) => Promise<void>;
   isDragOver: boolean;
   overwriteTargets: DroppedEntry[] | null;
-  handleDragEnter: (event: React.DragEvent) => void;
-  handleDragOver: (event: React.DragEvent) => void;
-  handleDragLeave: (event: React.DragEvent) => void;
-  handleDrop: (event: React.DragEvent) => Promise<void>;
-  handleConfirmOverwrite: () => Promise<void>;
-  handleCancelOverwrite: () => void;
   setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
 }
 

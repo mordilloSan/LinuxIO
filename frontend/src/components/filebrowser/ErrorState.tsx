@@ -11,14 +11,14 @@ interface ErrorStateProps {
 const ErrorState: React.FC<ErrorStateProps> = ({ message, onReset }) => {
   return (
     <AppAlert
-      severity="error"
       action={
         onReset && (
-          <AppButton color="inherit" size="small" onClick={onReset}>
+          <AppButton color="inherit" onClick={onReset} size="small">
             Go to root
           </AppButton>
         )
       }
+      severity="error"
     >
       {message}
     </AppAlert>

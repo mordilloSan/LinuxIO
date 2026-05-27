@@ -7,21 +7,23 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
-import {
-  getStreamMux,
-  subscribeMuxInstanceChanged,
-  type Stream,
-  type StreamStatus,
-  type ProgressFrame,
-  type ResultFrame,
-  type MuxStatus,
-  type StreamMultiplexer,
-  type StreamType,
-  encodeString,
-} from "./StreamMultiplexer";
+
+import type { JobSnapshot } from "./generated/linuxio-types";
+
 import { isTerminalJobState } from "./job-state";
 import { call as bridgeCall } from "./linuxio-core";
-import type { JobSnapshot } from "./generated/linuxio-types";
+import {
+  encodeString,
+  getStreamMux,
+  type MuxStatus,
+  type ProgressFrame,
+  type ResultFrame,
+  type Stream,
+  type StreamMultiplexer,
+  type StreamStatus,
+  type StreamType,
+  subscribeMuxInstanceChanged,
+} from "./StreamMultiplexer";
 
 function openMuxStream(
   type: StreamType,

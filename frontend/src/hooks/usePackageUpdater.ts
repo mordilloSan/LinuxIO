@@ -1,5 +1,5 @@
 // src/hooks/usePackageUpdater.ts
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { linuxio, openJobAttachStream, type Stream } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
@@ -22,15 +22,15 @@ async function ensureMinimumVisible(startedAtMs: number): Promise<void> {
 
 // Progress event types from backend
 interface PkgUpdateProgress {
-  type: "item_progress" | "package" | "status" | "percentage" | "message";
+  info_code?: number;
+  item_pct?: number;
+  message?: string;
   package_id?: string;
   package_summary?: string;
-  status?: string;
-  message?: string;
-  status_code?: number;
-  info_code?: number;
   percentage?: number;
-  item_pct?: number;
+  status?: string;
+  status_code?: number;
+  type: "item_progress" | "package" | "status" | "percentage" | "message";
 }
 
 // Extract package name from package ID (e.g., "nginx;1.24.0-1ubuntu1;amd64;ubuntu" -> "nginx")

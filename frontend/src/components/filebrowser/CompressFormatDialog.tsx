@@ -1,20 +1,20 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
-import GeneralDialog from "../dialog/GeneralDialog";
-
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
+import GeneralDialog from "../dialog/GeneralDialog";
+
 type CompressFormat = "zip" | "tar.gz";
 
 interface FormatOption {
-  value: CompressFormat;
-  label: string;
-  icon: string;
-  description: string;
   badge?: string;
+  description: string;
+  icon: string;
+  label: string;
+  value: CompressFormat;
 }
 
 const FORMAT_OPTIONS: FormatOption[] = [
@@ -34,9 +34,9 @@ const FORMAT_OPTIONS: FormatOption[] = [
 ];
 
 interface CompressFormatDialogProps {
-  open: boolean;
   onClose: () => void;
   onConfirm: (format: CompressFormat) => void;
+  open: boolean;
 }
 
 const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
@@ -54,7 +54,7 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <form
         onSubmit={handleSubmit}
         style={{
@@ -64,7 +64,7 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
           gap: theme.spacing(3),
         }}
       >
-        <AppTypography variant="h6" fontWeight={600}>
+        <AppTypography fontWeight={600} variant="h6">
           Compress
         </AppTypography>
 
@@ -80,7 +80,6 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
             return (
               <button
                 key={opt.value}
-                type="button"
                 onClick={() => setSelected(opt.value)}
                 style={{
                   display: "flex",
@@ -99,17 +98,18 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
                   transition: "border-color 150ms ease, background 150ms ease",
                   width: "100%",
                 }}
+                type="button"
               >
                 <Icon
-                  icon={opt.icon}
-                  width={28}
                   height={28}
+                  icon={opt.icon}
                   style={{
                     flexShrink: 0,
                     color: isSelected
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                   }}
+                  width={28}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
@@ -119,7 +119,7 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
                       gap: theme.spacing(1),
                     }}
                   >
-                    <AppTypography variant="body1" fontWeight={600}>
+                    <AppTypography fontWeight={600} variant="body1">
                       {opt.label}
                     </AppTypography>
                     {opt.badge && (
@@ -139,16 +139,16 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
                       </span>
                     )}
                   </div>
-                  <AppTypography variant="body2" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="body2">
                     {opt.description}
                   </AppTypography>
                 </div>
                 {isSelected && (
                   <Icon
-                    icon="mdi:check-circle"
-                    width={20}
                     height={20}
+                    icon="mdi:check-circle"
                     style={{ flexShrink: 0, color: theme.palette.primary.main }}
+                    width={20}
                   />
                 )}
               </button>
@@ -165,13 +165,13 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
           }}
         >
           <AppButton
-            type="button"
             onClick={onClose}
             style={{ color: "var(--mui-palette-text-secondary)" }}
+            type="button"
           >
             Cancel
           </AppButton>
-          <AppButton type="submit" autoFocus>
+          <AppButton autoFocus type="submit">
             Compress
           </AppButton>
         </div>

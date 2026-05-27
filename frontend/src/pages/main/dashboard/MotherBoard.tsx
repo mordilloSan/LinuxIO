@@ -46,7 +46,6 @@ const MotherBoardInfo: React.FC = () => {
           }}
         >
           <AppTypography
-            variant="caption"
             color="text.secondary"
             style={{
               textTransform: "uppercase",
@@ -54,10 +53,11 @@ const MotherBoardInfo: React.FC = () => {
               fontSize: "0.62rem",
               flexShrink: 0,
             }}
+            variant="caption"
           >
             {label}
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500} noWrap>
+          <AppTypography fontWeight={500} noWrap variant="body2">
             {value}
           </AppTypography>
         </div>
@@ -102,11 +102,11 @@ const MotherBoardInfo: React.FC = () => {
 
   return (
     <DashboardCard
-      title="Motherboard"
-      stats={visibleDetails}
-      icon_text={IconText}
-      icon="mdi:thermometer"
       avatarIcon="bi:motherboard"
+      icon="mdi:thermometer"
+      icon_text={IconText}
+      stats={visibleDetails}
+      title="Motherboard"
       {...(lmSensorsAvailable &&
         sensorOptions.length >= 1 && {
           iconTextSelectOptions: sensorOptions,

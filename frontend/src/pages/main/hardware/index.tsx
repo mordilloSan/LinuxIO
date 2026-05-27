@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useMemo } from "react";
 
+import type { SensorGroup } from "@/components/cards/SensorGroupCard";
+
 import { linuxio } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
-import type { SensorGroup } from "@/components/cards/SensorGroupCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
@@ -25,8 +26,8 @@ import {
   DiskIOHistoryCard,
   GPUInfoCard,
   MemoryHistoryCard,
-  NetworkHistoryCard,
   MotherboardInfoCard,
+  NetworkHistoryCard,
 } from "@/pages/main/hardware/HardwareHistoryCards";
 import "@/theme/section.css";
 
@@ -80,14 +81,14 @@ const SectionHeader: React.FC<{
     }}
   >
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <AppTypography variant="subtitle1" fontWeight={700}>
+      <AppTypography fontWeight={700} variant="subtitle1">
         {title}
       </AppTypography>
       {extras}
     </div>
     <AppIconButton
-      size="small"
       className="section-toggle"
+      size="small"
       style={{
         opacity: 0,
         transition: "opacity 0.15s",
@@ -95,13 +96,13 @@ const SectionHeader: React.FC<{
       }}
     >
       <Icon
-        icon="mdi:chevron-down"
-        width={24}
         height={24}
+        icon="mdi:chevron-down"
         style={{
           transition: "transform 0.2s",
           transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
         }}
+        width={24}
       />
     </AppIconButton>
   </div>
@@ -166,9 +167,9 @@ const HardwarePage: React.FC = () => {
     <div>
       {/* ── System Information ──────────────────────────────────────────── */}
       <SectionHeader
-        title="System Information"
         expanded={sections.systemInfo}
         onClick={() => toggleSection("systemInfo")}
+        title="System Information"
       />
       <AppCollapse in={sections.systemInfo}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
@@ -189,9 +190,9 @@ const HardwarePage: React.FC = () => {
 
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
-        title="Hardware"
         expanded={sections.hardware}
         onClick={() => toggleSection("hardware")}
+        title="Hardware"
       />
       <AppCollapse in={sections.hardware}>
         <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
@@ -220,27 +221,27 @@ const HardwarePage: React.FC = () => {
 
       {/* ── Sensor Readings ────────────────────────────────────────────── */}
       <SectionHeader
-        title="Sensors"
         expanded={sections.sensors}
-        onClick={() => toggleSection("sensors")}
         extras={
           visibleSensorGroups.length > 0 ? (
             <>
               <Chip
-                size="small"
-                label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
                 color="primary"
+                label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
+                size="small"
                 variant="soft"
               />
               <Chip
-                size="small"
-                label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
                 color="default"
+                label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
+                size="small"
                 variant="soft"
               />
             </>
           ) : null
         }
+        onClick={() => toggleSection("sensors")}
+        title="Sensors"
       />
       <AppCollapse in={sections.sensors}>
         {visibleSensorGroups.length === 0 ? (
@@ -263,15 +264,16 @@ const HardwarePage: React.FC = () => {
 
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
       <SectionHeader
-        title="Memory"
         expanded={sections.memoryModules}
         onClick={() => toggleSection("memoryModules")}
+        title="Memory"
       />
       <AppCollapse in={sections.memoryModules}>
         <HardwareTableCard>
           <UnifiedCollapsibleTable
-            data={memoryModules ?? []}
             columns={memoryColumns}
+            data={memoryModules ?? []}
+            emptyMessage="No memory module data available. Ensure dmidecode is installed."
             getRowKey={(mod, idx) => `${mod.id}-${idx}`}
             renderMainRow={(mod) => (
               <>
@@ -281,33 +283,33 @@ const HardwarePage: React.FC = () => {
                 <AppTableCell>{mod.size}</AppTableCell>
                 <AppTableCell>
                   <Chip
-                    size="small"
-                    label={mod.state}
                     color={mod.state === "Present" ? "success" : "default"}
-                    variant="soft"
+                    label={mod.state}
+                    size="small"
                     style={{ height: 22, fontSize: "0.75rem" }}
+                    variant="soft"
                   />
                 </AppTableCell>
                 <AppTableCell>{mod.rank}</AppTableCell>
                 <AppTableCell>{mod.speed}</AppTableCell>
               </>
             )}
-            emptyMessage="No memory module data available. Ensure dmidecode is installed."
           />
         </HardwareTableCard>
       </AppCollapse>
 
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}
       <SectionHeader
-        title="PCI Devices"
         expanded={sections.pciDevices}
         onClick={() => toggleSection("pciDevices")}
+        title="PCI Devices"
       />
       <AppCollapse in={sections.pciDevices}>
         <HardwareTableCard>
           <UnifiedCollapsibleTable
-            data={pciDevices ?? []}
             columns={pciColumns}
+            data={pciDevices ?? []}
+            emptyMessage="No PCI devices found"
             getRowKey={(dev, idx) => `${dev.slot}-${idx}`}
             renderMainRow={(dev) => (
               <>
@@ -321,7 +323,6 @@ const HardwarePage: React.FC = () => {
                 </AppTableCell>
               </>
             )}
-            emptyMessage="No PCI devices found"
           />
         </HardwareTableCard>
       </AppCollapse>

@@ -14,19 +14,19 @@ import {
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 interface SelfTestsTabProps {
-  startPending: "short" | "long" | null;
-  percentage?: number;
+  nvmeSelfTestLog?: {
+    table?: unknown[];
+  };
   onRunTest: (testType: "short" | "long") => void;
+  percentage?: number;
   selfTestLog?: {
     standard?: {
       table?: unknown[];
     };
   };
-  nvmeSelfTestLog?: {
-    table?: unknown[];
-  };
   smartmontoolsAvailable: boolean;
   smartmontoolsReason?: string;
+  startPending: "short" | "long" | null;
 }
 export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   startPending,
@@ -48,7 +48,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           marginBottom: theme.spacing(3),
         }}
       >
-        <AppTypography variant="subtitle2" gutterBottom>
+        <AppTypography gutterBottom variant="subtitle2">
           Run SMART Self-Test
         </AppTypography>
         <div
@@ -59,34 +59,34 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           }}
         >
           <AppButton
-            variant="outlined"
-            size="small"
             disabled={testActionsDisabled}
             onClick={(e) => {
               e.stopPropagation();
               onRunTest("short");
             }}
+            size="small"
             startIcon={
               startPending === "short" ? (
                 <AppCircularProgress size={16} />
               ) : undefined
             }
+            variant="outlined"
           >
             {startPending === "short" ? "Starting..." : "Short Test"}
           </AppButton>
           <AppButton
-            variant="outlined"
-            size="small"
             disabled={testActionsDisabled}
             onClick={(e) => {
               e.stopPropagation();
               onRunTest("long");
             }}
+            size="small"
             startIcon={
               startPending === "long" ? (
                 <AppCircularProgress size={16} />
               ) : undefined
             }
+            variant="outlined"
           >
             {startPending === "long" ? "Starting..." : "Extended Test"}
           </AppButton>
@@ -101,22 +101,22 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
             }}
           >
             <AppLinearProgress
-              variant="determinate"
-              value={displayPercent}
               style={{ flex: 1 }}
+              value={displayPercent}
+              variant="determinate"
             />
-            <AppTypography variant="caption" color="text.secondary">
+            <AppTypography color="text.secondary" variant="caption">
               {displayPercent}%
             </AppTypography>
           </div>
         )}
         <AppTypography
-          variant="caption"
           color="text.secondary"
           style={{
             marginTop: 4,
             display: "block",
           }}
+          variant="caption"
         >
           {smartmontoolsAvailable
             ? "Short test takes ~2 minutes. Extended test can take hours depending on drive size."
@@ -125,7 +125,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
         </AppTypography>
       </div>
 
-      <AppTypography variant="subtitle2" gutterBottom>
+      <AppTypography gutterBottom variant="subtitle2">
         Self-Test History
       </AppTypography>
       {selfTestLog?.standard?.table &&
@@ -140,7 +140,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
                 <AppTableCell style={{ fontWeight: 600 }}>#</AppTableCell>
                 <AppTableCell style={{ fontWeight: 600 }}>Type</AppTableCell>
                 <AppTableCell style={{ fontWeight: 600 }}>Status</AppTableCell>
-                <AppTableCell style={{ fontWeight: 600 }} align="right">
+                <AppTableCell align="right" style={{ fontWeight: 600 }}>
                   Lifetime Hours
                 </AppTableCell>
               </AppTableRow>
@@ -190,7 +190,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
               <AppTableRow>
                 <AppTableCell style={{ fontWeight: 600 }}>Type</AppTableCell>
                 <AppTableCell style={{ fontWeight: 600 }}>Result</AppTableCell>
-                <AppTableCell style={{ fontWeight: 600 }} align="right">
+                <AppTableCell align="right" style={{ fontWeight: 600 }}>
                   Power On Hours
                 </AppTableCell>
               </AppTableRow>
