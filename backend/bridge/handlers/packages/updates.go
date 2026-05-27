@@ -1,4 +1,4 @@
-package updates
+package packages
 
 import (
 	"bufio"
@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/autoupdate"
-	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/autoupdate"
+	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 

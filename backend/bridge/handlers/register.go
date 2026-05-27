@@ -18,7 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -40,7 +40,7 @@ func RegisterAllHandlers(rt runtime.Runtime) *bridgeipc.Router {
 	hostname.RegisterHandlers(rt, router)
 	datetime.RegisterHandlers(rt, router)
 	network.RegisterHandlers(rt, router)
-	updates.RegisterHandlers(rt, router)
+	packages.RegisterHandlers(rt, router)
 	terminal.RegisterHandlers(rt, router)
 	wireguard.RegisterHandlers(rt, router)
 	storage.RegisterHandlers(rt, router)

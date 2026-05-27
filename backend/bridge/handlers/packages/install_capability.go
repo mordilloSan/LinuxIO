@@ -1,4 +1,4 @@
-package system
+package packages
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -44,9 +44,10 @@ const (
 	detectRetryInterval  = 300 * time.Millisecond
 )
 
-// RegisterJobRoutes attaches the system-package's job runners (currently only
-// install_capability, which streams per-stage progress events to the UI).
-func RegisterJobRoutes(router *bridgejobs.Router) {
+// RegisterCapabilityJobRoutes attaches the install_capability runner. It
+// streams per-stage progress events to the UI and is registered alongside
+// the other packages-package job runners from handlers.go.
+func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 10 * time.Minute
 	apischema.AttachRunner(router, apischema.RunnerBinding{
@@ -76,7 +77,7 @@ func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, args []st
 }
 
 func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (InstallCapabilityResult, error) {
-	spec, ok := capabilitySpecByName(name)
+	spec, ok := system.CapabilitySpecByName(name)
 	if !ok {
 		return InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
 	}
@@ -92,7 +93,7 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (I
 		reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", pkg))
 		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", pkg))
 		slog.Info("Installing capability package.", "capability", name, "package", pkg)
-		if err := updates.InstallByName(ctx, pkg); err != nil {
+		if err := InstallByName(ctx, pkg); err != nil {
 			return InstallCapabilityResult{}, fmt.Errorf("install %s: %w", pkg, err)
 		}
 	}
@@ -161,7 +162,7 @@ func waitUnitActive(ctx context.Context, unit string, timeout time.Duration) err
 // while it still reports unavailable. This covers the small window between a
 // service becoming "active" and its public surface (D-Bus name, listening
 // socket, etc.) being reachable from the detector.
-func detectWithRetry(ctx context.Context, spec capabilitySpec, timeout time.Duration) (bool, string) {
+func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, timeout time.Duration) (bool, string) {
 	deadline := time.Now().Add(timeout)
 	var available bool
 	var errMsg string

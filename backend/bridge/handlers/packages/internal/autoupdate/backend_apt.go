@@ -145,7 +145,10 @@ func formatAptBlacklist(packages []string) string {
 		if pkg == "" {
 			continue
 		}
-		blacklist.WriteString(`        "` + pkg + `";` + "\n")
+		blacklist.WriteString(`        "`)
+		blacklist.WriteString(pkg)
+		blacklist.WriteString(`";`)
+		blacklist.WriteString("\n")
 	}
 	return blacklist.String()
 }
@@ -258,7 +261,10 @@ func writeTimerDropIn(timer, oncal string) error {
 func formatOrigins(list []string) string {
 	var b strings.Builder
 	for _, s := range list {
-		b.WriteString(`        "` + s + `";` + "\n")
+		b.WriteString(`        "`)
+		b.WriteString(s)
+		b.WriteString(`";`)
+		b.WriteString("\n")
 	}
 	return b.String()
 }

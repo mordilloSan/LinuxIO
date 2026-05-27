@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/updates/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 

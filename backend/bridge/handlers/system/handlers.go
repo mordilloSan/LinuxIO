@@ -11,7 +11,6 @@ import (
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := systemHandlers{rt: rt}
-	RegisterJobRoutes(router)
 	apischema.RegisterRoutes(router, "system", []bridgeipc.Command{
 		{Name: "get_capabilities", Mode: bridgeipc.ModeQuery, Handler: handleGetCapabilities},
 		{Name: "get_cpu_info", Mode: bridgeipc.ModeQuery, Handler: handleGetCPUInfo},

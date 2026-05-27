@@ -1,4 +1,4 @@
-package updates
+package packages
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// RegisterHandlers registers update handlers with the IPC router.
+// RegisterHandlers registers package + update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
+	RegisterCapabilityJobRoutes(router)
 
 	apischema.RegisterRoutes(router, "updates", []bridgeipc.Command{
 		{Name: "get_updates_basic", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesBasic},

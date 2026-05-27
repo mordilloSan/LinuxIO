@@ -36,18 +36,18 @@ type capabilitiesResponse struct {
 	AvahiError             string `json:"avahi_error,omitempty"`
 }
 
-// capabilitySpec describes a single capability: how to detect it, how to
+// CapabilitySpec describes a single capability: how to detect it, how to
 // install it from the UI (if installable), and how to label it in logs.
-type capabilitySpec struct {
+type CapabilitySpec struct {
 	Name    string // wire prefix, e.g. "avahi"
 	LogName string // human-friendly name for logs, e.g. "Avahi mDNS"
 	Detect  func(ctx context.Context) (bool, string)
-	Install *installSpec // nil = "not installable from the UI"
+	Install *InstallSpec // nil = "not installable from the UI"
 }
 
-// installSpec describes what `system.install_capability` should do for one
+// InstallSpec describes what `system.install_capability` should do for one
 // capability. Either or both of the package/service halves may be set.
-type installSpec struct {
+type InstallSpec struct {
 	// PackageDebian / PackageRHEL: name of the package to install on each
 	// distro family (looked up via PackageKit Resolve). Empty = no package
 	// step.
@@ -62,7 +62,7 @@ type installSpec struct {
 	EnableService bool
 }
 
-var capabilityRegistry = []capabilitySpec{
+var capabilityRegistry = []CapabilitySpec{
 	{
 		Name:    "docker",
 		LogName: "Docker service",
@@ -83,7 +83,7 @@ var capabilityRegistry = []capabilitySpec{
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(checkDependencyCommand("sensors", "lm-sensors"))
 		},
-		Install: &installSpec{PackageDebian: "lm-sensors", PackageRHEL: "lm_sensors"},
+		Install: &InstallSpec{PackageDebian: "lm-sensors", PackageRHEL: "lm_sensors"},
 	},
 	{
 		Name:    "smartmontools",
@@ -91,7 +91,7 @@ var capabilityRegistry = []capabilitySpec{
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(checkDependencyCommand("smartctl", "smartmontools"))
 		},
-		Install: &installSpec{PackageDebian: "smartmontools", PackageRHEL: "smartmontools"},
+		Install: &InstallSpec{PackageDebian: "smartmontools", PackageRHEL: "smartmontools"},
 	},
 	{
 		Name:    "packagekit",
@@ -107,7 +107,7 @@ var capabilityRegistry = []capabilitySpec{
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(storage.CheckNFSClientAvailability())
 		},
-		Install: &installSpec{PackageDebian: "nfs-common", PackageRHEL: "nfs-utils"},
+		Install: &InstallSpec{PackageDebian: "nfs-common", PackageRHEL: "nfs-utils"},
 	},
 	{
 		Name:    "nfs_server",
@@ -115,7 +115,7 @@ var capabilityRegistry = []capabilitySpec{
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(nfsshares.CheckNFSServerAvailability())
 		},
-		Install: &installSpec{
+		Install: &InstallSpec{
 			PackageDebian: "nfs-kernel-server",
 			PackageRHEL:   "nfs-utils",
 			ServiceDebian: "nfs-kernel-server.service",
@@ -130,7 +130,7 @@ var capabilityRegistry = []capabilitySpec{
 			ok, err := power.Available(ctx)
 			return checkedCapabilityErr(ok, err, power.ErrUnavailable)
 		},
-		Install: &installSpec{
+		Install: &InstallSpec{
 			PackageDebian: "tuned",
 			PackageRHEL:   "tuned",
 			ServiceDebian: "tuned.service",
@@ -145,7 +145,7 @@ var capabilityRegistry = []capabilitySpec{
 			ok, err := checkAvahiAvailability(ctx)
 			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
 		},
-		Install: &installSpec{
+		Install: &InstallSpec{
 			PackageDebian: "avahi-daemon",
 			PackageRHEL:   "avahi",
 			ServiceDebian: "avahi-daemon.service",
@@ -155,13 +155,13 @@ var capabilityRegistry = []capabilitySpec{
 	},
 }
 
-func capabilitySpecByName(name string) (capabilitySpec, bool) {
+func CapabilitySpecByName(name string) (CapabilitySpec, bool) {
 	for _, spec := range capabilityRegistry {
 		if spec.Name == name {
 			return spec, true
 		}
 	}
-	return capabilitySpec{}, false
+	return CapabilitySpec{}, false
 }
 
 func checkDependencyCommand(command, dependencyName string) (bool, error) {
