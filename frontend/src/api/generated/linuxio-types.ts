@@ -10,11 +10,11 @@ import type {
   AppConfig,
   AutoUpdateOptions,
   AutoUpdateState,
+  CPUInfoResponse,
   CapabilitiesResponse,
   ComposeProject,
   ConfigSetResult,
   ContainerInfo,
-  CPUInfoResponse,
   DeleteStackResult,
   DirectorySizeData,
   DirectoryValidationResult,
@@ -37,10 +37,10 @@ import type {
   MemoryInfoResponse,
   MemoryModule,
   MotherboardInfo,
-  NetworkInterface,
   NFSClient,
   NFSExport,
   NFSMount,
+  NetworkInterface,
   PCIDevice,
   Peer,
   PeerConfigDownload,
@@ -69,10 +69,7 @@ export type * from "../linuxio-models";
 
 export interface LinuxIOSchema {
   accounts: {
-    change_password: {
-      args: [username: string, password: string];
-      result: void;
-    };
+    change_password: { args: [username: string, password: string]; result: void };
     create_group: { args: [request: string]; result: void };
     create_user: { args: [request: string]; result: void };
     delete_group: { args: [groupName: string]; result: void };
@@ -113,53 +110,27 @@ export interface LinuxIOSchema {
 
   docker: {
     clear_icon_cache: { args: []; result: { message: string } };
-    compose: {
-      args: [action: string, projectName: string, composePath?: string];
-      result: JobSnapshot;
-    };
+    compose: { args: [action: string, projectName: string, composePath?: string]; result: JobSnapshot };
     compose_down: { args: [projectName: string]; result: any };
     compose_restart: { args: [projectName: string]; result: any };
     compose_stop: { args: [projectName: string]; result: any };
     compose_up: { args: [projectName: string]; result: any };
-    connect_to_proxy: {
-      args: [containerId: string];
-      result: { message: string };
-    };
+    connect_to_proxy: { args: [containerId: string]; result: { message: string } };
     create_network: { args: [name: string]; result: void };
     create_volume: { args: [name: string]; result: void };
     delete_image: { args: [imageId: string]; result: void };
     delete_network: { args: [id: string]; result: void };
-    delete_stack: {
-      args: [projectName: string, deleteFile: string, deleteDirectory: string];
-      result: DeleteStackResult;
-    };
+    delete_stack: { args: [projectName: string, deleteFile: string, deleteDirectory: string]; result: DeleteStackResult };
     delete_volume: { args: [name: string]; result: void };
     disable_caddy: { args: []; result: { message: string } };
     enable_caddy: { args: []; result: { message: string } };
-    get_caddy_status: {
-      args: [];
-      result: {
-        enabled: boolean;
-        baseDomain: string;
-        running: boolean;
-        routes: Array<{ host: string; container: string; port: string }>;
-      };
-    };
-    get_compose_file_path: {
-      args: [stackName: string];
-      result: { path: string; exists: boolean; directory: string };
-    };
-    get_compose_project: {
-      args: [projectName: string];
-      result: ComposeProject;
-    };
+    get_caddy_status: { args: []; result: { enabled: boolean; baseDomain: string; running: boolean; routes: Array<{ host: string; container: string; port: string }>; } };
+    get_compose_file_path: { args: [stackName: string]; result: { path: string; exists: boolean; directory: string } };
+    get_compose_project: { args: [projectName: string]; result: ComposeProject };
     get_docker_folders: { args: []; result: { folders: string[] } };
     get_docker_info: { args: []; result: DockerSystemInfo };
     get_icon: { args: [identifier: string]; result: { data: string } };
-    get_icon_info: {
-      args: [identifier: string];
-      result: { type: string; identifier: string; cached: boolean };
-    };
+    get_icon_info: { args: [identifier: string]; result: { type: string; identifier: string; cached: boolean } };
     get_icon_uri: { args: [identifier: string]; result: { uri: string } };
     indexer: { args: []; result: JobSnapshot };
     list_auto_update_containers: { args: []; result: string[] };
@@ -171,96 +142,35 @@ export interface LinuxIOSchema {
     reload_caddy: { args: []; result: { message: string } };
     remove_container: { args: [containerId: string]; result: void };
     restart_container: { args: [containerId: string]; result: void };
-    set_auto_update: {
-      args: [payload: { container: string; enabled: boolean }];
-      result: { message: string };
-    };
-    start_all_stopped: {
-      args: [];
-      result: { started: number; failed: number };
-    };
+    set_auto_update: { args: [payload: { container: string; enabled: boolean }]; result: { message: string } };
+    start_all_stopped: { args: []; result: { started: number; failed: number } };
     start_container: { args: [containerId: string]; result: void };
     stop_all_running: { args: []; result: { stopped: number; failed: number } };
     stop_container: { args: [containerId: string]; result: void };
-    system_prune: {
-      args: [opts: string];
-      result: {
-        containersDeleted?: string[];
-        imagesDeleted?: string[];
-        networksDeleted?: string[];
-        volumesDeleted?: string[];
-        spaceReclaimed: number;
-      };
-    };
-    validate_compose: {
-      args: [content: string];
-      result: {
-        valid: boolean;
-        errors: {
-          line?: number;
-          column?: number;
-          field?: string;
-          message: string;
-          type: "error" | "warning";
-        }[];
-        normalized_content?: string;
-      };
-    };
-    validate_stack_directory: {
-      args: [dirPath: string];
-      result: DirectoryValidationResult;
-    };
+    system_prune: { args: [opts: string]; result: { containersDeleted?: string[]; imagesDeleted?: string[]; networksDeleted?: string[]; volumesDeleted?: string[]; spaceReclaimed: number; } };
+    validate_compose: { args: [content: string]; result: { valid: boolean; errors: { line?: number; column?: number; field?: string; message: string; type: "error" | "warning"; }[]; normalized_content?: string; } };
+    validate_stack_directory: { args: [dirPath: string]; result: DirectoryValidationResult };
   };
 
   filebrowser: {
-    archive: {
-      args: [format: string, ...paths: string[]];
-      result: JobSnapshot;
-    };
-    chmod: {
-      args: [
-        path: string,
-        mode: string,
-        owner: string,
-        group: string,
-        recursive?: string,
-      ];
-      result: JobSnapshot;
-    };
-    compress: {
-      args: [format: string, targetPath: string, ...paths: string[]];
-      result: JobSnapshot;
-    };
+    archive: { args: [format: string, ...paths: string[]]; result: JobSnapshot };
+    chmod: { args: [ path: string, mode: string, owner: string, group: string, recursive?: string, ]; result: JobSnapshot };
+    compress: { args: [format: string, targetPath: string, ...paths: string[]]; result: JobSnapshot };
     copy: { args: [source: string, destination: string]; result: JobSnapshot };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     download: { args: [path: string]; result: JobSnapshot };
-    extract: {
-      args: [archivePath: string, destination?: string];
-      result: JobSnapshot;
-    };
+    extract: { args: [archivePath: string, destination?: string]; result: JobSnapshot };
     index: { args: [path?: string]; result: JobSnapshot };
     indexer_status: { args: []; result: IndexerStatusResponse };
     move: { args: [source: string, destination: string]; result: JobSnapshot };
     resource_delete: { args: [path: string]; result: JobSnapshot };
-    resource_get: {
-      args: [path: string, unused?: string, getContent?: string];
-      result: ApiResource;
-    };
-    resource_patch: {
-      args: [action: string, src: string, dst: string];
-      result: void;
-    };
+    resource_get: { args: [path: string, unused?: string, getContent?: string]; result: ApiResource };
+    resource_patch: { args: [action: string, src: string, dst: string]; result: void };
     resource_post: { args: [path: string, action?: string]; result: void };
     resource_stat: { args: [path: string]; result: ResourceStatData };
-    search: {
-      args: [query: string, limit?: string, basePath?: string];
-      result: SearchResponse;
-    };
+    search: { args: [query: string, limit?: string, basePath?: string]; result: SearchResponse };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
-    upload: {
-      args: [targetPath: string, size: string, overwrite?: string];
-      result: JobSnapshot;
-    };
+    upload: { args: [targetPath: string, size: string, overwrite?: string]; result: JobSnapshot };
     users_groups: { args: []; result: UsersGroupsResponse };
   };
 
@@ -271,14 +181,8 @@ export interface LinuxIOSchema {
   indexer: {
     get_config: { args: []; result: IndexerConfig };
     get_status: { args: []; result: IndexerDaemonStatus };
-    set_config: {
-      args: [payload: Partial<IndexerConfig>];
-      result: IndexerConfigSetResult;
-    };
-    set_timer_interval: {
-      args: [interval: string];
-      result: IndexerTimerSetResult;
-    };
+    set_config: { args: [payload: Partial<IndexerConfig>]; result: IndexerConfigSetResult };
+    set_timer_interval: { args: [interval: string]; result: IndexerTimerSetResult };
   };
 
   jobs: {
@@ -292,10 +196,7 @@ export interface LinuxIOSchema {
     enable_connection: { args: [iface: string]; result: void };
     get_network_info: { args: []; result: NetworkInterface[] };
     set_ipv4: { args: [iface: string, method: string]; result: void };
-    set_ipv4_manual: {
-      args: [iface: string, address: string, gateway: string, dns: string];
-      result: void;
-    };
+    set_ipv4_manual: { args: [iface: string, address: string, gateway: string, dns: string]; result: void };
     set_ipv6: { args: [iface: string, method: string]; result: void };
     set_mtu: { args: [iface: string, mtu: string]; result: void };
   };
@@ -312,94 +213,37 @@ export interface LinuxIOSchema {
   };
 
   shares: {
-    create_nfs_share: {
-      args: [path: string, clients: NFSClient[]];
-      result: { success: boolean; path: string };
-    };
-    create_samba_share: {
-      args: [name: string, properties: Record<string, string>];
-      result: { success: boolean; name: string };
-    };
+    create_nfs_share: { args: [path: string, clients: NFSClient[]]; result: { success: boolean; path: string } };
+    create_samba_share: { args: [name: string, properties: Record<string, string>]; result: { success: boolean; name: string } };
     delete_nfs_share: { args: [path: string]; result: { success: boolean } };
     delete_samba_share: { args: [name: string]; result: { success: boolean } };
     list_nfs_shares: { args: []; result: NFSExport[] };
     list_samba_shares: { args: []; result: SambaShare[] };
-    update_nfs_share: {
-      args: [path: string, clients: NFSClient[]];
-      result: { success: boolean; path: string };
-    };
-    update_samba_share: {
-      args:
-        | [name: string, properties: Record<string, string>]
-        | [
-            oldName: string,
-            newName: string,
-            properties: Record<string, string>,
-          ];
-      result: { success: boolean; name: string };
-    };
+    update_nfs_share: { args: [path: string, clients: NFSClient[]]; result: { success: boolean; path: string } };
+    update_samba_share: { args: | [name: string, properties: Record<string, string>] | [ oldName: string, newName: string, properties: Record<string, string>, ]; result: { success: boolean; name: string } };
   };
 
   storage: {
-    create_btrfs_subvolume: {
-      args: [mountpoint: string, name: string];
-      result: { success: boolean; mountpoint?: string; path?: string };
-    };
-    create_lv: {
-      args: [vgName: string, lvName: string, size: string];
-      result: { success: boolean; path: string };
-    };
-    delete_lv: {
-      args: [vgName: string, lvName: string];
-      result: { success: boolean };
-    };
+    create_btrfs_subvolume: { args: [mountpoint: string, name: string]; result: { success: boolean; mountpoint?: string; path?: string } };
+    create_lv: { args: [vgName: string, lvName: string, size: string]; result: { success: boolean; path: string } };
+    delete_lv: { args: [vgName: string, lvName: string]; result: { success: boolean } };
     get_drive_info: { args: []; result: ApiDisk[] };
     list_lvs: { args: []; result: LogicalVolume[] };
     list_nfs_exports: { args: [server: string]; result: string[] };
     list_nfs_mounts: { args: []; result: NFSMount[] };
     list_pvs: { args: []; result: PhysicalVolume[] };
     list_vgs: { args: []; result: VolumeGroup[] };
-    mount_nfs: {
-      args: [
-        server: string,
-        exportPath: string,
-        mountpoint: string,
-        options: string,
-        persist: string,
-      ];
-      result: { success: boolean; mountpoint?: string; warning?: string };
-    };
-    remount_nfs: {
-      args: [mountpoint: string, options: string, updateFstab: string];
-      result: { success: boolean; mountpoint?: string; warning?: string };
-    };
-    resize_lv: {
-      args: [vgName: string, lvName: string, newSize: string];
-      result: { success: boolean };
-    };
-    run_smart_test: {
-      args: [device: string, testType: string];
-      result: JobSnapshot;
-    };
-    unmount_filesystem: {
-      args: [mountpoint: string];
-      result: { success: boolean; mountpoint?: string; warning?: string };
-    };
-    unmount_nfs: {
-      args: [mountpoint: string, removeFstab: string];
-      result: { success: boolean; warning?: string };
-    };
+    mount_nfs: { args: [ server: string, exportPath: string, mountpoint: string, options: string, persist: string, ]; result: { success: boolean; mountpoint?: string; warning?: string } };
+    remount_nfs: { args: [mountpoint: string, options: string, updateFstab: string]; result: { success: boolean; mountpoint?: string; warning?: string } };
+    resize_lv: { args: [vgName: string, lvName: string, newSize: string]; result: { success: boolean } };
+    run_smart_test: { args: [device: string, testType: string]; result: JobSnapshot };
+    unmount_filesystem: { args: [mountpoint: string]; result: { success: boolean; mountpoint?: string; warning?: string } };
+    unmount_nfs: { args: [mountpoint: string, removeFstab: string]; result: { success: boolean; warning?: string } };
   };
 
   system: {
-    dismiss_failed_login_alert: {
-      args: [alertId: string];
-      result: { message: string };
-    };
-    dismiss_unclean_shutdown: {
-      args: [bootId: string];
-      result: { message: string };
-    };
+    dismiss_failed_login_alert: { args: [alertId: string]; result: { message: string } };
+    dismiss_unclean_shutdown: { args: [bootId: string]; result: { message: string } };
     get_capabilities: { args: []; result: CapabilitiesResponse };
     get_cpu_info: { args: []; result: CPUInfoResponse };
     get_disk_throughput: { args: []; result: DiskThroughputResponse };
@@ -420,10 +264,7 @@ export interface LinuxIOSchema {
     get_updates_fast: { args: []; result: Update[] };
     get_uptime: { args: []; result: number };
     install_capability: { args: [capability: string]; result: JobSnapshot };
-    list_failed_login_events: {
-      args: [limit?: string];
-      result: AccountUserLogin[];
-    };
+    list_failed_login_events: { args: [limit?: string]; result: AccountUserLogin[] };
   };
 
   systemd: {
@@ -447,19 +288,13 @@ export interface LinuxIOSchema {
   };
 
   updates: {
-    apply_offline_updates: {
-      args: [];
-      result: { status?: string; error?: string };
-    };
+    apply_offline_updates: { args: []; result: { status?: string; error?: string } };
     get_auto_updates: { args: []; result: AutoUpdateState };
     get_update_detail: { args: [packageId: string]; result: Update };
     get_update_history: { args: []; result: UpdateHistoryRow[] };
     get_updates_basic: { args: []; result: Update[] };
     install_package: { args: [packageId: string]; result: void };
-    set_auto_updates: {
-      args: [options: AutoUpdateOptions];
-      result: AutoUpdateState;
-    };
+    set_auto_updates: { args: [options: AutoUpdateOptions]; result: AutoUpdateState };
   };
 
   wireguard: {
@@ -470,21 +305,13 @@ export interface LinuxIOSchema {
     enable_interface: { args: [name: string]; result: void };
     list_interfaces: { args: []; result: WireGuardInterface[] };
     list_peers: { args: [interfaceName: string]; result: Peer[] };
-    peer_config_download: {
-      args: [interfaceName: string, publicKey: string];
-      result: PeerConfigDownload;
-    };
-    peer_qrcode: {
-      args: [interfaceName: string, publicKey: string];
-      result: QRCodeResponse;
-    };
+    peer_config_download: { args: [interfaceName: string, publicKey: string]; result: PeerConfigDownload };
+    peer_qrcode: { args: [interfaceName: string, publicKey: string]; result: QRCodeResponse };
     remove_interface: { args: [name: string]; result: void };
-    remove_peer: {
-      args: [interfaceName: string, publicKey: string];
-      result: void;
-    };
+    remove_peer: { args: [interfaceName: string, publicKey: string]; result: void };
     up_interface: { args: [name: string]; result: void };
   };
+
 }
 
 /** Extract handler names from schema */

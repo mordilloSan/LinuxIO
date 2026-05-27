@@ -1,33 +1,20 @@
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import React, {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffectEvent, useMemo, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
-import {
-  decodeString,
-  encodeString,
-  linuxio,
-  openContainerStream,
-  useStreamMux,
-} from "@/api";
+import { linuxio, openContainerStream, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import TerminalContextMenu from "@/components/terminal/TerminalContextMenu";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
+import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
 
 interface Props {
@@ -42,19 +29,11 @@ const TerminalDialog: React.FC<Props> = ({
   containerId,
   containerName,
 }) => {
-  const termRef = useRef<HTMLDivElement>(null);
-  const xterm = useRef<Terminal | null>(null);
-  const fitAddon = useRef<FitAddon | null>(null);
   const { streamRef, openStream, closeStream } = useLiveStream();
   const handleClose = useEffectEvent(() => {
     onClose();
   });
-  const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-  } | null>(null);
   const { isOpen } = useStreamMux();
   const theme = useAppTheme();
 
@@ -66,166 +45,87 @@ const TerminalDialog: React.FC<Props> = ({
   } = linuxio.terminal.list_shells.useQuery(containerId, {
     enabled: open && !!containerId,
   });
-  const availableShells = React.useMemo(() => {
+  const availableShells = useMemo(() => {
     if (!shells) return [];
     return shells.filter((s) => s && typeof s === "string" && s.trim() !== "");
   }, [shells]);
-  const activeShell = React.useMemo(() => {
+  const activeShell = useMemo(() => {
     if (selectedShell && availableShells.includes(selectedShell)) {
       return selectedShell;
     }
     return availableShells[0] ?? "";
   }, [selectedShell, availableShells]);
+  const terminalOptions = useMemo(
+    () => ({
+      fontFamily: "monospace",
+      fontSize: 15,
+    }),
+    [],
+  );
   const handleDialogEntered = useCallback(() => {
     setSelectedShell(null);
   }, []);
   const handleDialogExited = useCallback(() => {
-    // Close stream on dialog exit
     closeStream();
     setSelectedShell(null);
-    xterm.current?.dispose();
-    xterm.current = null;
-    fitAddon.current = null;
   }, [closeStream]);
 
-  // Setup xterm and stream when shell is selected
-  useEffect(() => {
-    if (
-      !open ||
-      !termRef.current ||
-      availableShells.length === 0 ||
-      !activeShell ||
-      !isOpen
-    )
-      return;
-
-    // Dispose previous instance
-    xterm.current?.dispose();
-    closeStream();
-    xterm.current = new Terminal({
-      fontFamily: "monospace",
-      fontSize: 15,
-      cursorBlink: true,
-      scrollback: 2000,
-      disableStdin: false,
-      theme: {
-        background: theme.palette.background.default,
-        foreground: theme.palette.text.primary,
-      },
-    });
-    fitAddon.current = new FitAddon();
-    xterm.current.loadAddon(fitAddon.current);
-    xterm.current.open(termRef.current);
-    fitAddon.current.fit();
-
-    // Handle Escape (close) and Ctrl+Shift+C (copy xterm selection).
-    // Paste is handled natively: Ctrl+Shift+V (or Ctrl+V) makes the browser
-    // paste into xterm's hidden textarea, which fires onData below.
-    xterm.current.attachCustomKeyEventHandler((event) => {
-      // attachCustomKeyEventHandler fires for both keydown and keyup;
-      // ignore keyup so handlers don't run twice per keystroke.
-      if (event.type !== "keydown") return true;
-
+  const {
+    containerRef: termRef,
+    terminalRef,
+    writeData,
+  } = useXtermStreamTerminal({
+    background: theme.palette.background.default,
+    enabled: open && availableShells.length > 0 && !!activeShell && isOpen,
+    focusDelayMs: 200,
+    foreground: theme.palette.text.primary,
+    onKeyDown: (event) => {
       if (event.key === "Escape") {
         handleClose();
         return false;
       }
-
-      if (
-        event.ctrlKey &&
-        event.shiftKey &&
-        event.key === "C" &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
-        // preventDefault stops Chrome from opening the DevTools inspector.
-        event.preventDefault();
-        event.stopPropagation();
-        const selection = xterm.current?.getSelection();
-        if (selection) {
-          navigator.clipboard.writeText(selection);
-        }
-        return false;
+    },
+    onReady: (terminal) => {
+      const opened = openStream({
+        open: () =>
+          openContainerStream(
+            containerId,
+            activeShell,
+            terminal.cols,
+            terminal.rows,
+          ),
+        onData: writeData,
+      });
+      if (opened && streamRef.current) {
+        streamRef.current.resize(terminal.cols, terminal.rows);
       }
 
-      return true;
-    });
-    setTimeout(() => {
-      // xterm.js 6.0 still uses .xterm-viewport for scrolling
-      if (termRef.current) {
-        const viewport = termRef.current.querySelector(".xterm-viewport");
-        if (viewport) {
-          viewport.classList.add("custom-scrollbar");
-        }
-      }
-    }, 0);
-
-    // Open container terminal stream
-    const cols = xterm.current.cols;
-    const rows = xterm.current.rows;
-    const opened = openStream({
-      open: () => openContainerStream(containerId, activeShell, cols, rows),
-      onData: (data: Uint8Array) => {
-        if (xterm.current) {
-          const text = decodeString(data);
-          xterm.current.write(text, () => {
-            xterm.current?.scrollToBottom();
-          });
-        }
-      },
-    });
-    if (opened && streamRef.current) {
-      streamRef.current.resize(xterm.current.cols, xterm.current.rows);
-    }
-
-    // Terminal input -> send to stream
-    const onDataDispose = xterm.current.onData((data) => {
-      if (streamRef.current) {
-        streamRef.current.write(encodeString(data));
-      }
-    });
-
-    // Fit on window resize
-    const handleResize = () => {
-      fitAddon.current?.fit();
-      if (xterm.current && streamRef.current) {
-        streamRef.current.resize(xterm.current.cols, xterm.current.rows);
-      }
-    };
-    window.addEventListener("resize", handleResize);
-
-    // Focus on open
-    setTimeout(() => {
-      xterm.current?.focus();
-    }, 200);
-    return () => {
-      onDataDispose.dispose();
-      xterm.current?.dispose();
-      window.removeEventListener("resize", handleResize);
-      // Close stream when effect cleans up
-      closeStream();
-    };
-  }, [
-    open,
-    activeShell,
-    containerId,
-    isOpen,
-    availableShells.length,
-    theme.palette.background.default,
-    theme.palette.text.primary,
-    terminalKey,
-    closeStream,
-    openStream,
+      return () => {
+        closeStream();
+      };
+    },
+    readyMode: "timeout",
+    sessionKey: `${containerId}:${activeShell}`,
     streamRef,
-  ]);
+    terminalOptions,
+  });
+
+  const {
+    contextMenu,
+    handleCloseContextMenu,
+    handleContextMenu,
+    handleCopy,
+    handlePaste,
+  } = useTerminalContextMenu({
+    streamRef,
+    terminalRef,
+  });
 
   // Shell picker handler
   const handleShellChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newShell = e.target.value;
-    // Close existing stream
     closeStream();
     setSelectedShell(newShell);
-    setTerminalKey((k) => k + 1); // Force remount of xterm
   };
 
   // Dialog close handler
@@ -233,57 +133,6 @@ const TerminalDialog: React.FC<Props> = ({
     closeStream();
     onClose();
   };
-
-  // Context menu handlers
-  const handleContextMenu = (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    // Always close first, then open at new position if it was closed
-    const wasOpen = contextMenu !== null;
-    setContextMenu(null);
-    if (!wasOpen) {
-      // Small timeout to ensure state updates
-      setTimeout(() => {
-        setContextMenu({
-          mouseX: event.clientX,
-          mouseY: event.clientY,
-        });
-      }, 0);
-    }
-  };
-  const handleCloseContextMenu = () => {
-    setContextMenu(null);
-  };
-  const handleCopy = () => {
-    const selection = xterm.current?.getSelection();
-    if (selection) {
-      navigator.clipboard.writeText(selection);
-    }
-    handleCloseContextMenu();
-  };
-  const handlePaste = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (streamRef.current) {
-        streamRef.current.write(encodeString(text));
-      }
-    } catch {
-      // clipboard read denied or unavailable — ignore
-    }
-    handleCloseContextMenu();
-  };
-
-  // Close context menu when tab loses focus
-  useEffect(() => {
-    const handleBlur = () => {
-      setContextMenu(null);
-    };
-    window.addEventListener("blur", handleBlur);
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, []);
   return (
     <GeneralDialog
       fullWidth
@@ -358,7 +207,6 @@ const TerminalDialog: React.FC<Props> = ({
           </div>
         ) : availableShells.length > 0 ? (
           <div
-            key={terminalKey}
             onContextMenu={handleContextMenu}
             ref={termRef}
             style={{
@@ -370,54 +218,12 @@ const TerminalDialog: React.FC<Props> = ({
             tabIndex={0}
           />
         ) : null}
-        {/* CONTEXT MENU */}
-        <AppMenu
-          anchorPosition={
-            contextMenu !== null
-              ? {
-                  top: contextMenu.mouseY,
-                  left: contextMenu.mouseX,
-                }
-              : undefined
-          }
-          autoFocus={false}
-          minWidth={168}
+        <TerminalContextMenu
+          contextMenu={contextMenu}
           onClose={handleCloseContextMenu}
-          open={contextMenu !== null}
-        >
-          <AppMenuItem
-            endAdornment={
-              <AppTypography
-                color="text.secondary"
-                style={{
-                  marginLeft: 8,
-                }}
-                variant="body2"
-              >
-                Ctrl+Shift+C
-              </AppTypography>
-            }
-            onClick={handleCopy}
-          >
-            Copy
-          </AppMenuItem>
-          <AppMenuItem
-            endAdornment={
-              <AppTypography
-                color="text.secondary"
-                style={{
-                  marginLeft: 8,
-                }}
-                variant="body2"
-              >
-                Ctrl+Shift+V
-              </AppTypography>
-            }
-            onClick={handlePaste}
-          >
-            Paste
-          </AppMenuItem>
-        </AppMenu>
+          onCopy={handleCopy}
+          onPaste={handlePaste}
+        />
       </AppDialogContent>
       <AppDialogActions>
         <AppButton onClick={handleDialogClose}>Close</AppButton>

@@ -1,21 +1,19 @@
 import { Icon } from "@iconify/react";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 import {
   bindStreamHandlers,
-  decodeString,
-  encodeString,
   openTerminalStream,
   type Stream,
   useStreamMux,
 } from "@/api";
+import TerminalContextMenu from "@/components/terminal/TerminalContextMenu";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 import { shadowSm } from "@/constants";
+import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
+import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
 
 const MIN_FONT = 10;
@@ -23,94 +21,33 @@ const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
 
 const TerminalXTerm: React.FC = () => {
-  const termRef = useRef<HTMLDivElement>(null);
-  const xterm = useRef<Terminal | null>(null);
-  const fitAddon = useRef<FitAddon | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const unbindRef = useRef<(() => void) | null>(null);
   const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-  } | null>(null);
-
-  // Update xterm font size when fontSize changes
-  useEffect(() => {
-    if (xterm.current) {
-      xterm.current.options.fontSize = fontSize;
-      xterm.current.refresh(0, xterm.current.rows - 1);
-      fitAddon.current?.fit();
-    }
-  }, [fontSize]);
-
-  // Init and manage xterm
-  useEffect(() => {
-    if (!termRef.current) return;
-
-    // Dispose old xterm instance (but keep stream alive)
-    xterm.current?.dispose();
-
-    xterm.current = new Terminal({
-      fontSize,
+  const terminalOptions = useMemo(
+    () => ({
       fontFamily:
         "DejaVu Sans Mono, Liberation Mono, Menlo, Consolas, monospace",
-      fontWeight: "bold",
-      cursorBlink: true,
-      scrollback: 2000,
-      disableStdin: false,
-      theme: {
-        background: theme.palette.background.default,
-        foreground: theme.palette.text.primary,
-      },
-    });
+      fontSize,
+      fontWeight: "bold" as const,
+    }),
+    [fontSize],
+  );
 
-    fitAddon.current = new FitAddon();
-    xterm.current.loadAddon(fitAddon.current);
-    xterm.current.open(termRef.current);
+  const {
+    containerRef: termRef,
+    terminalRef: xterm,
+    writeData,
+  } = useXtermStreamTerminal({
+    background: theme.palette.background.default,
+    enabled: true,
+    foreground: theme.palette.text.primary,
+    onReady: (terminal) => {
+      if (!isOpen) return;
 
-    // Handle Ctrl+Shift+C to copy the xterm selection.
-    // Paste is handled natively: pressing Ctrl+Shift+V (or Ctrl+V) makes the
-    // browser paste into xterm's hidden textarea, which fires onData below.
-    xterm.current.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown") return true;
-
-      if (
-        event.ctrlKey &&
-        event.shiftKey &&
-        event.key === "C" &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
-        // preventDefault stops Chrome from opening the DevTools inspector.
-        event.preventDefault();
-        event.stopPropagation();
-        const selection = xterm.current?.getSelection();
-        if (selection) {
-          navigator.clipboard.writeText(selection);
-        }
-        return false;
-      }
-
-      return true;
-    });
-
-    // Set custom scrollbar and connect to stream after DOM is ready
-    requestAnimationFrame(() => {
-      // xterm.js 6.0 still uses .xterm-viewport for scrolling
-      if (termRef.current) {
-        const viewport = termRef.current.querySelector(".xterm-viewport");
-        if (viewport) {
-          viewport.classList.add("custom-scrollbar");
-        }
-      }
-      fitAddon.current?.fit();
-
-      if (!xterm.current || !isOpen) return;
-
-      // Check for existing terminal stream first
       let stream = getStream("terminal.open");
       console.log(
         "[Terminal] getStream('terminal.open'):",
@@ -118,15 +55,10 @@ const TerminalXTerm: React.FC = () => {
       );
 
       if (stream) {
-        // Reattach to existing stream
         console.log("[Terminal] Reattaching to existing stream");
         streamRef.current = stream;
-        // Note: xterm scrollback is lost on dispose, user needs to press Enter for prompt
       } else {
-        // Create new stream
-        const cols = xterm.current.cols;
-        const rows = xterm.current.rows;
-        stream = openTerminalStream(cols, rows);
+        stream = openTerminalStream(terminal.cols, terminal.rows);
 
         if (stream) {
           streamRef.current = stream;
@@ -134,86 +66,50 @@ const TerminalXTerm: React.FC = () => {
       }
 
       if (stream) {
-        // Wire up data handler (reattach on each mount)
         unbindRef.current = bindStreamHandlers(stream, {
-          onData: (data: Uint8Array) => {
-            if (xterm.current) {
-              const text = decodeString(data);
-              xterm.current.write(text, () => {
-                xterm.current?.scrollToBottom();
-              });
-            }
-          },
+          onData: writeData,
           onClose: () => {
             unbindRef.current = null;
             streamRef.current = null;
           },
         });
 
-        stream.resize(xterm.current.cols, xterm.current.rows);
+        stream.resize(terminal.cols, terminal.rows);
       }
 
-      // Auto-focus terminal
-      xterm.current?.focus();
-    });
-
-    // Terminal input -> send to stream as raw bytes
-    const onDataDispose = xterm.current.onData((data) => {
-      if (streamRef.current) {
-        streamRef.current.write(encodeString(data));
-      }
-    });
-
-    // Responsive fit on window resize
-    const doFit = () => {
-      fitAddon.current?.fit();
-      if (xterm.current && streamRef.current) {
-        streamRef.current.resize(xterm.current.cols, xterm.current.rows);
-      }
-    };
-    window.addEventListener("resize", doFit);
-
-    return () => {
-      console.log("[Terminal] Unmounting, detaching handlers");
-      onDataDispose.dispose();
-      xterm.current?.dispose();
-      window.removeEventListener("resize", doFit);
-      // Don't close stream - it persists for reconnection
-      // Detach handler so data gets buffered while unmounted
-      if (unbindRef.current && streamRef.current) {
-        console.log(
-          `[Terminal] Detaching handlers for stream ${streamRef.current.id}`,
-        );
-        unbindRef.current();
-        unbindRef.current = null;
-      }
-      streamRef.current = null;
-    };
-  }, [
-    isOpen,
-    getStream,
-    theme.palette.background.default,
-    theme.palette.text.primary,
-    fontSize,
-  ]);
-
-  // Live update theme
-  useEffect(() => {
-    if (xterm.current) {
-      xterm.current.options.theme = {
-        background: theme.palette.background.default,
-        foreground: theme.palette.text.primary,
+      return () => {
+        console.log("[Terminal] Unmounting, detaching handlers");
+        // Do not close the stream; it persists for reconnection.
+        if (unbindRef.current && streamRef.current) {
+          console.log(
+            `[Terminal] Detaching handlers for stream ${streamRef.current.id}`,
+          );
+          unbindRef.current();
+          unbindRef.current = null;
+        }
+        streamRef.current = null;
       };
-      xterm.current.refresh(0, xterm.current.rows - 1);
-    }
-    if (termRef.current) {
-      termRef.current.style.background = theme.palette.background.default;
-    }
-  }, [theme.palette.background.default, theme.palette.text.primary]);
+    },
+    sessionKey: isOpen ? "open" : "closed",
+    streamRef,
+    terminalOptions,
+  });
+
+  const {
+    contextMenu,
+    handleCloseContextMenu,
+    handleContextMenu,
+    handleCopy,
+    handlePaste,
+  } = useTerminalContextMenu({
+    streamRef,
+    terminalRef: xterm,
+  });
 
   // Handler for reset - closes PTY and creates fresh terminal
   const handleReset = () => {
-    if (!xterm.current || !isOpen) return;
+    const terminal = xterm.current;
+    if (!terminal || !isOpen) return;
 
     // Close existing stream (terminates PTY on bridge)
     if (streamRef.current) {
@@ -226,26 +122,19 @@ const TerminalXTerm: React.FC = () => {
     }
 
     // Clear xterm display
-    xterm.current.clear();
-    xterm.current.reset();
+    terminal.clear();
+    terminal.reset();
 
     // Open fresh stream (creates new PTY)
-    const cols = xterm.current.cols;
-    const rows = xterm.current.rows;
+    const cols = terminal.cols;
+    const rows = terminal.rows;
     const stream = openTerminalStream(cols, rows);
 
     if (stream) {
       streamRef.current = stream;
 
       unbindRef.current = bindStreamHandlers(stream, {
-        onData: (data: Uint8Array) => {
-          if (xterm.current) {
-            const text = decodeString(data);
-            xterm.current.write(text, () => {
-              xterm.current?.scrollToBottom();
-            });
-          }
-        },
+        onData: writeData,
         onClose: () => {
           unbindRef.current = null;
           streamRef.current = null;
@@ -253,59 +142,7 @@ const TerminalXTerm: React.FC = () => {
       });
     }
 
-    xterm.current.focus();
-  };
-
-  // Context menu handlers
-  const handleContextMenu = (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    // Always close first, then open at new position if it was closed
-    const wasOpen = contextMenu !== null;
-    setContextMenu(null);
-
-    if (!wasOpen) {
-      // Small timeout to ensure state updates
-      setTimeout(() => {
-        setContextMenu({ mouseX: event.clientX, mouseY: event.clientY });
-      }, 0);
-    }
-  };
-
-  const handleCloseContextMenu = () => {
-    setContextMenu(null);
-  };
-
-  // Close context menu when tab loses focus
-  useEffect(() => {
-    const handleBlur = () => {
-      setContextMenu(null);
-    };
-    window.addEventListener("blur", handleBlur);
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, []);
-
-  const handleCopy = () => {
-    const selection = xterm.current?.getSelection();
-    if (selection) {
-      navigator.clipboard.writeText(selection);
-    }
-    handleCloseContextMenu();
-  };
-
-  const handlePaste = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (streamRef.current) {
-        streamRef.current.write(encodeString(text));
-      }
-    } catch {
-      // clipboard read denied or unavailable — ignore
-    }
-    handleCloseContextMenu();
+    terminal.focus();
   };
 
   return (
@@ -388,47 +225,12 @@ const TerminalXTerm: React.FC = () => {
           background: theme.palette.background.default,
         }}
       />
-      {/* CONTEXT MENU */}
-      <AppMenu
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-        autoFocus={false}
-        minWidth={168}
+      <TerminalContextMenu
+        contextMenu={contextMenu}
         onClose={handleCloseContextMenu}
-        open={contextMenu !== null}
-      >
-        <AppMenuItem
-          endAdornment={
-            <AppTypography
-              color="text.secondary"
-              style={{ marginLeft: 8 }}
-              variant="body2"
-            >
-              Ctrl+Shift+C
-            </AppTypography>
-          }
-          onClick={handleCopy}
-        >
-          Copy
-        </AppMenuItem>
-        <AppMenuItem
-          endAdornment={
-            <AppTypography
-              color="text.secondary"
-              style={{ marginLeft: 8 }}
-              variant="body2"
-            >
-              Ctrl+Shift+V
-            </AppTypography>
-          }
-          onClick={handlePaste}
-        >
-          Paste
-        </AppMenuItem>
-      </AppMenu>
+        onCopy={handleCopy}
+        onPaste={handlePaste}
+      />
     </div>
   );
 };
