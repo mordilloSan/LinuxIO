@@ -201,6 +201,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
           const modeLoad = loadMode()
             .then(() => {
               loadedAceModes.add(language);
+              return;
             })
             .catch((error) => {
               failedAceModes.add(language);
@@ -227,6 +228,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
           const themeLoad = loadTheme()
             .then(() => {
               loadedAceThemes.add(aceTheme);
+              return;
             })
             .catch((error) => {
               failedAceThemes.add(aceTheme);
@@ -244,11 +246,13 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         return;
       }
 
-      Promise.allSettled(pendingLoads).finally(() => {
-        if (!isCancelled) {
-          forceAssetRefresh((version) => version + 1);
-        }
-      });
+      Promise.allSettled(pendingLoads)
+        .finally(() => {
+          if (!isCancelled) {
+            forceAssetRefresh((version) => version + 1);
+          }
+        })
+        .catch(() => {});
 
       return () => {
         isCancelled = true;

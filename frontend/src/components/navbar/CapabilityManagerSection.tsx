@@ -193,6 +193,10 @@ const CapabilityManagerSection: React.FC = () => {
         if (cancelled || !mountedRef.current) return;
         setLatest(data);
         setLastChecked(new Date());
+        return;
+      })
+      .finally(() => {
+        if (!cancelled && mountedRef.current) setIsRefreshing(false);
       })
       .catch((error: unknown) => {
         if (cancelled || !mountedRef.current) return;
@@ -201,9 +205,6 @@ const CapabilityManagerSection: React.FC = () => {
             ? error.message
             : "Failed to refresh capabilities",
         );
-      })
-      .finally(() => {
-        if (!cancelled && mountedRef.current) setIsRefreshing(false);
       });
     return () => {
       cancelled = true;

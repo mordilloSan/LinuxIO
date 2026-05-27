@@ -177,6 +177,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
                 `${label} self-test failed on /dev/${deviceName}${detail}`,
               );
             }
+            return;
           })
           .catch((error: unknown) => {
             if (error instanceof Error && error.name === "AbortError") return;
@@ -284,6 +285,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
               `${label} self-test failed on /dev/${rawDrive.name}${detail}`,
             );
           }
+          return;
         })
         .catch((error: unknown) => {
           if (error instanceof Error && error.name === "AbortError") {

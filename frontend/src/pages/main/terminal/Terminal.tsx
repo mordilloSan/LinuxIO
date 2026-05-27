@@ -296,12 +296,15 @@ const TerminalXTerm: React.FC = () => {
     handleCloseContextMenu();
   };
 
-  const handlePaste = () => {
-    navigator.clipboard.readText().then((text) => {
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
       if (streamRef.current) {
         streamRef.current.write(encodeString(text));
       }
-    });
+    } catch {
+      // clipboard read denied or unavailable — ignore
+    }
     handleCloseContextMenu();
   };
 
