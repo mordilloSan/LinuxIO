@@ -114,21 +114,21 @@ const getCompletedTitle = (type: string) => {
 // --- Shared transfer list item ---
 
 interface TransferLike {
+  bytes?: unknown;
   id: string;
-  type: string;
+  indeterminate?: boolean;
   label?: string;
   progress: number;
   speed?: unknown;
-  bytes?: unknown;
   total?: unknown;
-  indeterminate?: boolean;
+  type: string;
 }
 
 interface TransferItemProps {
-  transfer: TransferLike;
   getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
   onCancel: (transfer: TransferLike) => void;
   onIndexerClick: () => void;
+  transfer: TransferLike;
 }
 
 const TransferItem = React.memo(function TransferItem({
