@@ -170,8 +170,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
     toast.dismiss();
   }, []);
 
+  const contextValue = useMemo(
+    () => ({ history, clearHistory }),
+    [history, clearHistory],
+  );
+
   return (
-    <ToastHistoryContext.Provider value={{ history, clearHistory }}>
+    <ToastHistoryContext.Provider value={contextValue}>
       {children}
       <Toaster
         position="top-right"
