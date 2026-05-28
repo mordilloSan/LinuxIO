@@ -8,7 +8,7 @@ import React, {
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
-import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
+import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 

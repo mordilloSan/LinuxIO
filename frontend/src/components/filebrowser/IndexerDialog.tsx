@@ -3,16 +3,13 @@ import React from "react";
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
-import { useBackgroundJobs } from "@/hooks/useBackgroundJobs";
+import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
+import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
 
 const IndexerDialog: React.FC = () => {
-  const {
-    indexers,
-    isIndexerDialogOpen,
-    closeIndexerDialog,
-    lastIndexerResult,
-    lastIndexerError,
-  } = useBackgroundJobs();
+  const { closeIndexerDialog } = useBackgroundJobActions();
+  const { indexers, isIndexerDialogOpen, lastIndexerResult, lastIndexerError } =
+    useBackgroundJobIndexer();
   const activeIndexer = indexers[0];
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);

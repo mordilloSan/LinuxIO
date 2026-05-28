@@ -2,7 +2,8 @@ import type React from "react";
 
 import { useCallback, useState } from "react";
 
-import { BackgroundJobsContextValue } from "@/contexts/BackgroundJobsContext";
+import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
+
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { FileResource } from "@/types/filebrowser";
 

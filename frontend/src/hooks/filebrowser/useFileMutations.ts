@@ -6,12 +6,12 @@ import {
 import { useCallback } from "react";
 
 import { linuxio, openJobAttachStream } from "@/api";
-import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
+import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-import { useBackgroundJobs } from "./useBackgroundJobs";
-import { useStreamResult } from "./useStreamResult";
+import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
+import { useStreamResult } from "../useStreamResult";
 
 interface UseFileMutationsParams {
   normalizedPath: string;
@@ -56,7 +56,7 @@ export const useFileMutations = ({
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
-    useBackgroundJobs();
+    useBackgroundJobActions();
   const { run: runStreamResult } = useStreamResult();
 
   const invalidateListing = useCallback(() => {

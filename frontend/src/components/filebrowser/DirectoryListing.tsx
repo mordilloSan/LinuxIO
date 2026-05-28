@@ -7,9 +7,9 @@ import React, {
   useState,
 } from "react";
 
-import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
-import { useFileMarqueeSelection } from "@/hooks/useFileMarqueeSelection";
-import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
+import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
+import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 
 import {

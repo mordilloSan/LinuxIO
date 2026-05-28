@@ -6,7 +6,7 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
-import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 

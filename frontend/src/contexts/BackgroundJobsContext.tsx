@@ -1,12 +1,21 @@
-import React, { createContext, useContext, useMemo } from "react";
+import React, { useContext, useMemo } from "react";
 
-import type {
-  BackgroundJobItem,
-  BackgroundJobsContextValue,
-} from "@/types/backgroundJobs";
+import type { BackgroundJobItem } from "@/types/backgroundJobs";
 
 import { STREAM_MULTIPLEXER_CONFIG } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
+import {
+  BackgroundJobsIndexerContext,
+  type BackgroundJobsIndexerContextValue,
+} from "@/contexts/IndexerContext";
+import {
+  BackgroundJobsActionsContext,
+  type BackgroundJobsActionsContextValue,
+} from "@/contexts/JobsActionsContext";
+import {
+  BackgroundJobsStateContext,
+  type BackgroundJobsStateContextValue,
+} from "@/contexts/JobsStateContext";
 import { useArchiveJobs } from "@/hooks/backgroundJobs/useArchiveJobs";
 import { useBackgroundJobRuntime } from "@/hooks/backgroundJobs/useBackgroundJobRuntime";
 import { useCopyMoveJobs } from "@/hooks/backgroundJobs/useCopyMoveJobs";
@@ -15,11 +24,6 @@ import { useGenericBackgroundJobs } from "@/hooks/backgroundJobs/useGenericBackg
 import { useIndexerJobs } from "@/hooks/backgroundJobs/useIndexerJobs";
 import { useRecoveredJobs } from "@/hooks/backgroundJobs/useRecoveredJobs";
 import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
-
-export type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
-
-export const BackgroundJobsContext =
-  createContext<BackgroundJobsContextValue | null>(null);
 
 export const BackgroundJobsProvider: React.FC<{
   children: React.ReactNode;
@@ -113,7 +117,63 @@ export const BackgroundJobsProvider: React.FC<{
     backgroundJobs,
   ]);
 
-  const contextValue = useMemo(
+  const actionsValue = useMemo<BackgroundJobsActionsContextValue>(
+    () => ({
+      startDownload,
+      startCompression,
+      startExtraction,
+      startIndexer,
+      openIndexerDialog,
+      closeIndexerDialog,
+      startCopy,
+      startMove,
+      startUpload,
+      cancelDownload,
+      cancelUpload,
+      cancelCompression,
+      cancelExtraction,
+      cancelCopy,
+      cancelMove,
+      cancelJob,
+    }),
+    [
+      startDownload,
+      startCompression,
+      startExtraction,
+      startIndexer,
+      openIndexerDialog,
+      closeIndexerDialog,
+      startCopy,
+      startMove,
+      startUpload,
+      cancelDownload,
+      cancelUpload,
+      cancelCompression,
+      cancelExtraction,
+      cancelCopy,
+      cancelMove,
+      cancelJob,
+    ],
+  );
+
+  const indexerValue = useMemo<BackgroundJobsIndexerContextValue>(
+    () => ({
+      indexers,
+      isIndexing,
+      isIndexerDialogOpen,
+      lastIndexerResult,
+      lastIndexerError,
+    }),
+    [
+      indexers,
+      isIndexing,
+      isIndexerDialogOpen,
+      lastIndexerResult,
+      lastIndexerError,
+    ],
+  );
+
+  const stateValue = useMemo<BackgroundJobsStateContextValue>(
     () => ({
       downloads,
       uploads,
@@ -124,26 +184,10 @@ export const BackgroundJobsProvider: React.FC<{
       moves,
       backgroundJobs,
       transfers,
-      startDownload,
-      cancelDownload,
-      startCompression,
-      cancelCompression,
-      startExtraction,
-      cancelExtraction,
-      startIndexer,
       isIndexing,
       isIndexerDialogOpen,
-      openIndexerDialog,
-      closeIndexerDialog,
       lastIndexerResult,
       lastIndexerError,
-      startCopy,
-      cancelCopy,
-      startMove,
-      cancelMove,
-      cancelJob,
-      startUpload,
-      cancelUpload,
     }),
     [
       downloads,
@@ -155,32 +199,20 @@ export const BackgroundJobsProvider: React.FC<{
       moves,
       backgroundJobs,
       transfers,
-      startDownload,
-      cancelDownload,
-      startCompression,
-      cancelCompression,
-      startExtraction,
-      cancelExtraction,
-      startIndexer,
       isIndexing,
       isIndexerDialogOpen,
-      openIndexerDialog,
-      closeIndexerDialog,
       lastIndexerResult,
       lastIndexerError,
-      startCopy,
-      cancelCopy,
-      startMove,
-      cancelMove,
-      cancelJob,
-      startUpload,
-      cancelUpload,
     ],
   );
 
   return (
-    <BackgroundJobsContext.Provider value={contextValue}>
-      {children}
-    </BackgroundJobsContext.Provider>
+    <BackgroundJobsActionsContext.Provider value={actionsValue}>
+      <BackgroundJobsIndexerContext.Provider value={indexerValue}>
+        <BackgroundJobsStateContext.Provider value={stateValue}>
+          {children}
+        </BackgroundJobsStateContext.Provider>
+      </BackgroundJobsIndexerContext.Provider>
+    </BackgroundJobsActionsContext.Provider>
   );
 };

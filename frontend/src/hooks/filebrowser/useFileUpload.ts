@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useMemo, useRef, useState } from "react";
 
-import type { DroppedEntry } from "@/hooks/useFileDragAndDrop";
+import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
 
 interface UploadSummary {
   files: number;

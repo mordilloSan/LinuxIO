@@ -66,6 +66,9 @@ interface UpdateStatusResponse {
 export const UpdateContext = createContext<UpdateContextValue | null>(null);
 UpdateContext.displayName = "UpdateContext";
 
+export const UpdateNavigationContext = createContext<boolean | null>(null);
+UpdateNavigationContext.displayName = "UpdateNavigationContext";
+
 export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -73,7 +76,9 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({
   useUpdateNavigationGuard(value.isUpdating);
 
   return (
-    <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>
+    <UpdateNavigationContext.Provider value={value.canNavigate}>
+      <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>
+    </UpdateNavigationContext.Provider>
   );
 };
 

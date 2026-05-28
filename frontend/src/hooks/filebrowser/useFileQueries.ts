@@ -9,7 +9,7 @@ import {
   useStreamMux,
 } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
-import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
+import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
 import { FileResource } from "@/types/filebrowser";
 
 interface useFileQueriesParams {

@@ -7,7 +7,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import "./sidebar.css";
 
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
-import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
+import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
 import { useAppTheme } from "@/theme";
 import { SidebarItemsType } from "@/types/sidebar";
@@ -23,7 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
   const theme = useAppTheme();
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();
-  const { canNavigate } = useLinuxIOUpdater();
+  const canNavigate = useUpdateCanNavigate();
 
   const [hovered, setHovered] = useState(false);
 
