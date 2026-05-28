@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import AppButton from "@/components/ui/AppButton";
@@ -113,27 +113,30 @@ const getCompletedTitle = (type: string) => {
 
 // --- Shared transfer list item ---
 
-function TransferItem({
+interface TransferLike {
+  id: string;
+  type: string;
+  label?: string;
+  progress: number;
+  speed?: unknown;
+  bytes?: unknown;
+  total?: unknown;
+  indeterminate?: boolean;
+}
+
+interface TransferItemProps {
+  transfer: TransferLike;
+  getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
+  onCancel: (transfer: TransferLike) => void;
+  onIndexerClick: () => void;
+}
+
+const TransferItem = React.memo(function TransferItem({
   transfer,
   getTransferIcon,
   onCancel,
   onIndexerClick,
-}: {
-  transfer: {
-    id: string;
-    type: string;
-    label?: string;
-    progress: number;
-    speed?: unknown;
-    bytes?: unknown;
-    total?: unknown;
-    indeterminate?: boolean;
-  };
-  iconSize: number;
-  getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
-  onCancel: () => void;
-  onIndexerClick: () => void;
-}) {
+}: TransferItemProps) {
   const isIndexer = transfer.type === "indexer";
   const visuals = getTransferIcon(transfer.type);
   const label = transfer.label
@@ -200,13 +203,17 @@ function TransferItem({
         </div>
       </div>
       {!isIndexer ? (
-        <AppIconButton aria-label="Cancel task" onClick={onCancel} size="small">
+        <AppIconButton
+          aria-label="Cancel task"
+          onClick={() => onCancel(transfer)}
+          size="small"
+        >
           <Icon height={22} icon="mdi:close" width={22} />
         </AppIconButton>
       ) : null}
     </li>
   );
-}
+});
 
 // --- Main component ---
 
@@ -319,16 +326,27 @@ function NavbarNotificationsDropdown() {
     setAnchorEl(ref.current);
   };
 
-  const handleCancel = (transfer: (typeof transfers)[number]) => {
-    if (transfer.type === "indexer") return;
-    if (transfer.type === "download") cancelDownload(transfer.id);
-    else if (transfer.type === "upload") cancelUpload(transfer.id);
-    else if (transfer.type === "compression") cancelCompression(transfer.id);
-    else if (transfer.type === "extraction") cancelExtraction(transfer.id);
-    else if (transfer.type === "copy") cancelCopy(transfer.id);
-    else if (transfer.type === "move") cancelMove(transfer.id);
-    else if (transfer.type === "job") cancelJob(transfer.id);
-  };
+  const handleCancel = useCallback(
+    (transfer: TransferLike) => {
+      if (transfer.type === "indexer") return;
+      if (transfer.type === "download") cancelDownload(transfer.id);
+      else if (transfer.type === "upload") cancelUpload(transfer.id);
+      else if (transfer.type === "compression") cancelCompression(transfer.id);
+      else if (transfer.type === "extraction") cancelExtraction(transfer.id);
+      else if (transfer.type === "copy") cancelCopy(transfer.id);
+      else if (transfer.type === "move") cancelMove(transfer.id);
+      else if (transfer.type === "job") cancelJob(transfer.id);
+    },
+    [
+      cancelDownload,
+      cancelUpload,
+      cancelCompression,
+      cancelExtraction,
+      cancelCopy,
+      cancelMove,
+      cancelJob,
+    ],
+  );
 
   const clearCompletedTransfers = () => setCompletedTransfers([]);
 
@@ -403,37 +421,44 @@ function NavbarNotificationsDropdown() {
     }
   };
 
-  const getTransferIcon = (type: string) => {
-    switch (type) {
-      case "download":
-      case "compression":
-        return {
-          icon: <Icon height={iconSize} icon="mdi:download" width={iconSize} />,
-          color: theme.palette.info.main,
-        };
-      case "upload":
-      case "extraction":
-        return {
-          icon: <Icon height={iconSize} icon="mdi:upload" width={iconSize} />,
-          color: theme.palette.info.main,
-        };
-      case "indexer":
-      case "copy":
-      case "move":
-      case "job":
-        return {
-          icon: (
-            <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />
-          ),
-          color: theme.palette.info.main,
-        };
-      default:
-        return {
-          icon: <Icon height={iconSize} icon="mdi:loading" width={iconSize} />,
-          color: theme.palette.text.secondary,
-        };
-    }
-  };
+  const getTransferIcon = useCallback(
+    (type: string) => {
+      switch (type) {
+        case "download":
+        case "compression":
+          return {
+            icon: (
+              <Icon height={iconSize} icon="mdi:download" width={iconSize} />
+            ),
+            color: theme.palette.info.main,
+          };
+        case "upload":
+        case "extraction":
+          return {
+            icon: <Icon height={iconSize} icon="mdi:upload" width={iconSize} />,
+            color: theme.palette.info.main,
+          };
+        case "indexer":
+        case "copy":
+        case "move":
+        case "job":
+          return {
+            icon: (
+              <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />
+            ),
+            color: theme.palette.info.main,
+          };
+        default:
+          return {
+            icon: (
+              <Icon height={iconSize} icon="mdi:loading" width={iconSize} />
+            ),
+            color: theme.palette.text.secondary,
+          };
+      }
+    },
+    [iconSize, theme.palette.info.main, theme.palette.text.secondary],
+  );
 
   const totalItems =
     transfers.length + completedTransfers.length + recentToastCount;
@@ -524,9 +549,8 @@ function NavbarNotificationsDropdown() {
                   {transfers.map((transfer) => (
                     <TransferItem
                       getTransferIcon={getTransferIcon}
-                      iconSize={iconSize}
                       key={`transfer-${transfer.id}`}
-                      onCancel={() => handleCancel(transfer)}
+                      onCancel={handleCancel}
                       onIndexerClick={openIndexerDialog}
                       transfer={transfer}
                     />
