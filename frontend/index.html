@@ -21,6 +21,71 @@
       href="https://fonts.googleapis.com/icon?family=Material+Icons"
       rel="stylesheet"
     />
+    <script>
+      (function () {
+        try {
+          var DARK = {
+            scheme: "dark",
+            bg: "#1B2635",
+            text: "rgba(255, 255, 255, 0.95)",
+          };
+          var LIGHT = {
+            scheme: "light",
+            bg: "#F7F9FC",
+            text: "rgba(0, 0, 0, 0.87)",
+          };
+          function isValid(v) {
+            return (
+              v &&
+              typeof v === "object" &&
+              (v.scheme === "light" || v.scheme === "dark") &&
+              typeof v.bg === "string" &&
+              v.bg.length > 0 &&
+              typeof v.text === "string" &&
+              v.text.length > 0
+            );
+          }
+          var t;
+          if (location.pathname === "/sign-in") {
+            t = DARK;
+          } else {
+            var stored = null;
+            try {
+              stored = JSON.parse(
+                localStorage.getItem("linuxio_theme_bootstrap") || "null"
+              );
+            } catch (e) {}
+            if (isValid(stored)) {
+              t = stored;
+            } else {
+              t =
+                window.matchMedia &&
+                window.matchMedia("(prefers-color-scheme: light)").matches
+                  ? LIGHT
+                  : DARK;
+            }
+          }
+          var s = document.documentElement.style;
+          s.setProperty("--app-color-scheme", t.scheme);
+          s.setProperty("--app-palette-background-default", t.bg);
+          s.setProperty("--app-palette-text-primary", t.text);
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: var(--app-color-scheme, dark);
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--app-palette-background-default, #1b2635);
+        color: var(--app-palette-text-primary, rgba(255, 255, 255, 0.95));
+      }
+    </style>
   </head>
 
   <body>

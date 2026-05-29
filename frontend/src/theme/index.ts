@@ -700,6 +700,19 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     for (const [key, value] of Object.entries(cssVariables)) {
       root.style.setProperty(key, value);
     }
+
+    try {
+      localStorage.setItem(
+        "linuxio_theme_bootstrap",
+        JSON.stringify({
+          scheme: resolvedTheme.colorScheme,
+          bg: resolvedTheme.palette.background.default,
+          text: resolvedTheme.palette.text.primary,
+        }),
+      );
+    } catch {
+      // Best-effort cache only.
+    }
   }, [cssVariables, resolvedTheme]);
 
   if (!resolvedTheme) {
