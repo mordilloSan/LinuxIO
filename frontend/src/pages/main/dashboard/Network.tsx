@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from "react";
 
+import NetworkGraph from "./NetworkGraph";
+
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-
-import NetworkGraph from "./NetworkGraph";
 
 const NetworkInterfacesCard: React.FC = () => {
   const theme = useAppTheme();

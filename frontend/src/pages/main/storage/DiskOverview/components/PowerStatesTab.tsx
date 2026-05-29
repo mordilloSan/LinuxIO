@@ -1,5 +1,7 @@
 import React from "react";
 
+import type { PowerData } from "../types";
+
 import Chip from "@/components/ui/AppChip";
 import {
   AppTable,
@@ -12,7 +14,6 @@ import {
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
-import type { PowerData } from "../types";
 interface PowerStatesTabProps {
   power: PowerData;
 }

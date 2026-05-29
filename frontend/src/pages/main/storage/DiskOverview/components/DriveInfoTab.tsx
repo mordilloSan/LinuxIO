@@ -1,5 +1,8 @@
 import React from "react";
 
+import type { DriveInfo } from "../types";
+import { getSmartNumber, getSmartString } from "../utils";
+
 import {
   AppTable,
   AppTableBody,
@@ -8,10 +11,6 @@ import {
   AppTableHead,
   AppTableRow,
 } from "@/components/ui/AppTable";
-
-import type { DriveInfo } from "../types";
-
-import { getSmartNumber, getSmartString } from "../utils";
 
 interface DriveInfoTabProps {
   deviceInfo?: Record<string, unknown>;

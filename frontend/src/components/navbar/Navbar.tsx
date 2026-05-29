@@ -1,16 +1,17 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
+import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
+import Settings from "./NavbarThemeToggle";
+import NavbarUserDropdown from "./NavbarUserDropdown";
+
 import AppIconButton from "@/components/ui/AppIconButton";
 import { shadowSm } from "@/constants";
 import { iconSize } from "@/constants";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import "./navbar.css";
-import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
-import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
-import Settings from "./NavbarThemeToggle";
-import NavbarUserDropdown from "./NavbarUserDropdown";
 
 interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;

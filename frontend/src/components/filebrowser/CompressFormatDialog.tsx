@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
+import GeneralDialog from "../dialog/GeneralDialog";
+
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-
-import GeneralDialog from "../dialog/GeneralDialog";
 
 type CompressFormat = "zip" | "tar.gz";
 

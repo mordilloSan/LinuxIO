@@ -15,6 +15,17 @@ import {
 import { Icon } from "@iconify/react";
 import React, { useCallback, useMemo, useState } from "react";
 
+import DockerInfo from "./Docker";
+import DriveInfo from "./Drive";
+import FileSystem from "./FileSystem";
+import GpuInfo from "./Gpu";
+import Memory from "./Memory";
+import MotherBoardInfo from "./MotherBoard";
+import Network from "./Network";
+import Processor from "./Processor";
+import SystemHealth from "./SystemHealth";
+import SystemOverview from "./SystemOverview";
+
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -26,17 +37,6 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
-
-import DockerInfo from "./Docker";
-import DriveInfo from "./Drive";
-import FileSystem from "./FileSystem";
-import GpuInfo from "./Gpu";
-import Memory from "./Memory";
-import MotherBoardInfo from "./MotherBoard";
-import Network from "./Network";
-import Processor from "./Processor";
-import SystemHealth from "./SystemHealth";
-import SystemOverview from "./SystemOverview";
 
 const MemoSystemOverview = React.memo(SystemOverview);
 const MemoSystemHealth = React.memo(SystemHealth);

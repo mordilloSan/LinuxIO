@@ -1,6 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useMemo, useState } from "react";
 
+import UpdateHistory from "./UpdateHistory";
+import UpdateSettingsDialog from "./UpdateSettingsDialog";
+import UpdateStatus from "./UpdateStatus";
+
 import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -10,10 +14,6 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { useAppTheme } from "@/theme";
-
-import UpdateHistory from "./UpdateHistory";
-import UpdateSettingsDialog from "./UpdateSettingsDialog";
-import UpdateStatus from "./UpdateStatus";
 
 const Updates: React.FC = () => {
   const theme = useAppTheme();

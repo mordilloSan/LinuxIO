@@ -1,6 +1,13 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
+import CapabilityManagerSection from "./CapabilityManagerSection";
+import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
+import IndexerSettingsSection from "./IndexerSettingsSection";
+import NavbarCustomizer from "./NavbarCustomizer";
+import PowerSettingsSection from "./PowerSettingsSection";
+import ThemeColorsSection from "./ThemeColorsSection";
+
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import TabSelector from "@/components/tabbar/TabSelector";
@@ -11,12 +18,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
-import CapabilityManagerSection from "./CapabilityManagerSection";
-import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
-import IndexerSettingsSection from "./IndexerSettingsSection";
-import NavbarCustomizer from "./NavbarCustomizer";
-import PowerSettingsSection from "./PowerSettingsSection";
-import ThemeColorsSection from "./ThemeColorsSection";
 type SettingsTab =
   | "general"
   | "theme"

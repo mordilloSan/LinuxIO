@@ -1,10 +1,10 @@
 import { FC } from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
-
 import CreateInterfaceButton from "./CreateInterfaceButton";
 import WireGuardDashboard from "./WireguardDashboard";
+
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
 
 const Page: FC = () => {
   const theme = useAppTheme();

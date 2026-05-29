@@ -1,14 +1,14 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import { MultiStatsItem } from "../../types/filebrowser";
+
 import AppButton from "@/components/ui/AppButton";
 import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-
-import { MultiStatsItem } from "../../types/filebrowser";
 
 // Glow animation for loading states
 const glowAnimation = `

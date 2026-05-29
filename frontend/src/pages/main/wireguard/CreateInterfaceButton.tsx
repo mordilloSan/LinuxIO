@@ -1,12 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
+import CreateInterfaceDialog from "./CreateInterfaceDialog";
+
 import { linuxio, type NetworkInterface } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;

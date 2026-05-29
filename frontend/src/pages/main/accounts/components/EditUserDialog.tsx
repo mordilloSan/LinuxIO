@@ -2,6 +2,8 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
+import DeleteUserDialog from "./DeleteUserDialog";
+
 import { type AccountUser, linuxio, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -16,8 +18,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import DeleteUserDialog from "./DeleteUserDialog";
 
 interface EditUserDialogProps {
   onClose: () => void;

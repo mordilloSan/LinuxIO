@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import type { UnitInfo } from "@/api";
-
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 

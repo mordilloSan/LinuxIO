@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import type { ComposeProject } from "../../pages/main/docker/ComposeList";
+
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
@@ -12,8 +14,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import SkeletonText from "@/components/ui/SkeletonText";
 import { getComposeStatusColor } from "@/constants/statusColors";
 import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
-
-import type { ComposeProject } from "../../pages/main/docker/ComposeList";
 
 const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);

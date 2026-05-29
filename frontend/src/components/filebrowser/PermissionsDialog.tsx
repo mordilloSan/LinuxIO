@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from "react";
 
+import AppCheckbox from "../ui/AppCheckbox";
+
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -20,7 +22,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
-import AppCheckbox from "../ui/AppCheckbox";
 interface PermissionsDialogProps {
   currentMode: string; // e.g., "0755", "755", or "-rw-r--r--"
   group?: string;

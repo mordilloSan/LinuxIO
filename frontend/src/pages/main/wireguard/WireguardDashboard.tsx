@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 
+import InterfaceDetails from "./InterfaceClients";
+
 import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -10,8 +12,6 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import InterfaceDetails from "./InterfaceClients";
 
 const WireGuardDashboard: React.FC = () => {
   const theme = useAppTheme();

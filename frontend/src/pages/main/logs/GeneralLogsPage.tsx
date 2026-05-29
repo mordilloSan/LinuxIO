@@ -9,8 +9,6 @@ import React, {
 import { useNavigate } from "react-router-dom";
 
 import type { Service } from "@/api";
-import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
-
 import {
   CACHE_TTL_MS,
   decodeString,
@@ -19,6 +17,7 @@ import {
   useStreamMux,
 } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
+import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";

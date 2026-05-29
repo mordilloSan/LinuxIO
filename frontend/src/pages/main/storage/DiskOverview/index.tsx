@@ -4,6 +4,21 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
+  DriveInfoTab,
+  OverviewTab,
+  PowerStatesTab,
+  SelfTestsTab,
+  SmartAttributesTab,
+  TabPanel,
+} from "./components";
+import type {
+  DriveInfo,
+  SmartTestProgressEvent,
+  SmartTestResult,
+} from "./types";
+import { parseSizeToBytes } from "./utils";
+
+import {
   type ApiDisk,
   jobSnapshotResult,
   linuxio,
@@ -24,22 +39,6 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import type {
-  DriveInfo,
-  SmartTestProgressEvent,
-  SmartTestResult,
-} from "./types";
-
-import {
-  DriveInfoTab,
-  OverviewTab,
-  PowerStatesTab,
-  SelfTestsTab,
-  SmartAttributesTab,
-  TabPanel,
-} from "./components";
-import { parseSizeToBytes } from "./utils";
 
 interface DriveDetailsProps {
   drive: DriveInfo;

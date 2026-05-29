@@ -1,6 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 
+import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
+
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -12,8 +14,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 /* ================= helpers ================= */
 

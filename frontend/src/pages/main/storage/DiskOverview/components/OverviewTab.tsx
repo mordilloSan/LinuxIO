@@ -1,11 +1,10 @@
 import React from "react";
 
+import type { DriveInfo } from "../types";
+import { formatDataUnits, formatPowerOnTime } from "../utils";
+
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-
-import type { DriveInfo } from "../types";
-
-import { formatDataUnits, formatPowerOnTime } from "../utils";
 
 interface OverviewTabProps {
   drive: DriveInfo;

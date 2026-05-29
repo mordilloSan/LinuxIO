@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
-import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
 import DockerIcon from "@/components/docker/DockerIcon";
+import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
@@ -22,7 +23,6 @@ import { getComposeStatusColor } from "@/constants/statusColors";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
 
-import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 interface ComposeService {
   container_count: number;
   container_ids: string[];

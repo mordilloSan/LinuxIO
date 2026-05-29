@@ -7,15 +7,14 @@ import React, {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import type { TableCardViewMode } from "@/types/config";
+import type { UnitListItem } from "./UnitViews";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { useAppTheme } from "@/theme";
-
-import type { UnitListItem } from "./UnitViews";
+import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
   items: T[];

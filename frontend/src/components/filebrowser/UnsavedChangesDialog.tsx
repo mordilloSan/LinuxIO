@@ -1,10 +1,10 @@
 import React from "react";
 
+import FileBrowserDialog from "../dialog/GeneralDialog";
+
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-
-import FileBrowserDialog from "../dialog/GeneralDialog";
 
 interface UnsavedChangesDialogProps {
   isSaving?: boolean;

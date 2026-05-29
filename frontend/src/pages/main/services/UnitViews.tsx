@@ -4,9 +4,8 @@ import { motion } from "framer-motion";
 import React from "react";
 
 import type { UnitInfo } from "@/api";
-import type { UnitListItem } from "@/components/cards/UnitCard";
-
 import { linuxio } from "@/api";
+import type { UnitListItem } from "@/components/cards/UnitCard";
 import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import UnifiedCollapsibleTable, {

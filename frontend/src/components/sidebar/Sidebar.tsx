@@ -1,6 +1,9 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useState } from "react";
 
+import SidebarNavList from "./SidebarNavList";
+import LogoDisplay from "../logo/LogoDisplay";
+
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 
@@ -11,9 +14,6 @@ import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
 import { useAppTheme } from "@/theme";
 import { SidebarItemsType } from "@/types/sidebar";
-
-import LogoDisplay from "../logo/LogoDisplay";
-import SidebarNavList from "./SidebarNavList";
 
 export interface SidebarProps {
   items: SidebarItemsType[];

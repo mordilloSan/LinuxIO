@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
 
+import ActionButton from "./ActionButton";
+
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
@@ -30,8 +32,6 @@ import { alpha } from "@/utils/color";
 import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import ActionButton from "./ActionButton";
 
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
 const TerminalDialog = React.lazy(

@@ -1,5 +1,8 @@
 import React from "react";
 
+import type { SmartAttribute } from "../types";
+import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
+
 import {
   AppTable,
   AppTableBody,
@@ -10,9 +13,6 @@ import {
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 
-import type { SmartAttribute } from "../types";
-
-import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 interface SmartAttributesTabProps {
   ataAttrs?: SmartAttribute[];
   isNvme: boolean;

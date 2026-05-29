@@ -1,6 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
 
+import { DeleteNFSShareDialog } from "./NFSShares";
+import { DeleteSambaShareDialog } from "./SambaShares";
+import NFSMounts from "../storage/NFSMounts";
+
 import {
   linuxio,
   type NFSClient,
@@ -37,10 +41,6 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import NFSMounts from "../storage/NFSMounts";
-import { DeleteNFSShareDialog } from "./NFSShares";
-import { DeleteSambaShareDialog } from "./SambaShares";
 
 type ShareGroup = {
   id: string;

@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from "react";
 
+import DriveGraph from "./DriveGraph";
+
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-
-import DriveGraph from "./DriveGraph";
 
 interface DriveInfo {
   model: string;

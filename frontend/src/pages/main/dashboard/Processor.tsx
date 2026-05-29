@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 
+import ProcessorGraph from "./ProcessorGraph";
+
 import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
@@ -9,8 +11,6 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
-
-import ProcessorGraph from "./ProcessorGraph";
 
 const formatLoadAverage = (loadAverage?: {
   load1: number;

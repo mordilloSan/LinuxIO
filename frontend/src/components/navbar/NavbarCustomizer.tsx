@@ -1,6 +1,5 @@
-import type { CSSProperties } from "react";
-
 import { Icon } from "@iconify/react";
+import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";

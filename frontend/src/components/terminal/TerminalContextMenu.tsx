@@ -1,7 +1,6 @@
-import type { TerminalContextMenuPosition } from "@/hooks/useTerminalContextMenu";
-
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
+import type { TerminalContextMenuPosition } from "@/hooks/useTerminalContextMenu";
 
 interface TerminalContextMenuProps {
   contextMenu: TerminalContextMenuPosition | null;

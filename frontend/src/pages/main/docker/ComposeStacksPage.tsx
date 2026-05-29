@@ -7,6 +7,8 @@ import React, {
   useState,
 } from "react";
 
+import ComposeList, { type ComposeProject } from "./ComposeList";
+
 import {
   CACHE_TTL_MS,
   isConnected,
@@ -34,8 +36,6 @@ import {
 import { useConfig } from "@/hooks/useConfig";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
-
-import ComposeList, { type ComposeProject } from "./ComposeList";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;

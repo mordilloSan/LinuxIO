@@ -2,14 +2,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import NetworkTrafficGraph from "./NetworkTrafficGraph";
+
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-
-import NetworkTrafficGraph from "./NetworkTrafficGraph";
 
 export type { NetworkInterface };
 

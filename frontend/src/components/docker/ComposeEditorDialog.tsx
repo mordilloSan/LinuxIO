@@ -6,8 +6,11 @@ import React, {
   useState,
 } from "react";
 
-import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
+import ComposeValidationFeedback, {
+  ValidationResult,
+} from "./ComposeValidationFeedback";
 
+import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
@@ -21,9 +24,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
-import ComposeValidationFeedback, {
-  ValidationResult,
-} from "./ComposeValidationFeedback";
 interface ComposeEditorDialogProps {
   filePath?: string;
   initialContent?: string;

@@ -1,9 +1,9 @@
 import React from "react";
 
-import { Update } from "@/types/update";
-
 import UpdateActions from "./UpdateActions";
 import UpdateList from "./UpdateList";
+
+import { Update } from "@/types/update";
 
 interface UpdateStatusProps {
   error?: string | null;

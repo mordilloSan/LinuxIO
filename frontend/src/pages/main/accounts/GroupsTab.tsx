@@ -1,6 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useEffect, useState } from "react";
 
+import CreateGroupDialog from "./components/CreateGroupDialog";
+import DeleteGroupDialog from "./components/DeleteGroupDialog";
+import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
+
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import UnifiedCollapsibleTable, {
@@ -14,10 +18,6 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
-
-import CreateGroupDialog from "./components/CreateGroupDialog";
-import DeleteGroupDialog from "./components/DeleteGroupDialog";
-import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 interface GroupsTabProps {
   onMountCreateHandler?: (handler: () => void) => void;

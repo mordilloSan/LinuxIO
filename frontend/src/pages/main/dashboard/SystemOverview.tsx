@@ -1,13 +1,13 @@
 import { Icon } from "@iconify/react";
 import React, { useState } from "react";
 
+import SetDateTimeDialog from "./SetDateTimeDialog";
+import SetHostnameDialog from "./SetHostnameDialog";
+
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-
-import SetDateTimeDialog from "./SetDateTimeDialog";
-import SetHostnameDialog from "./SetHostnameDialog";
 
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);

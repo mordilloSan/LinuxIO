@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import React, { useMemo, useState } from "react";
 
 import type { GpuDevice } from "@/api";
-
 import { linuxio } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";

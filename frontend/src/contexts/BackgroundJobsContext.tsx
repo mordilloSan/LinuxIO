@@ -1,7 +1,5 @@
 import React, { useContext, useMemo } from "react";
 
-import type { BackgroundJobItem } from "@/types/backgroundJobs";
-
 import { STREAM_MULTIPLEXER_CONFIG } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import {
@@ -24,6 +22,7 @@ import { useGenericBackgroundJobs } from "@/hooks/backgroundJobs/useGenericBackg
 import { useIndexerJobs } from "@/hooks/backgroundJobs/useIndexerJobs";
 import { useRecoveredJobs } from "@/hooks/backgroundJobs/useRecoveredJobs";
 import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
+import type { BackgroundJobItem } from "@/types/backgroundJobs";
 
 export const BackgroundJobsProvider: React.FC<{
   children: React.ReactNode;

@@ -7,11 +7,10 @@ import React, {
   useState,
 } from "react";
 
-import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
-import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
-import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
-import { useAppTheme } from "@/theme";
-
+import EmptyState from "./EmptyState";
+import FilesList from "./FilesList";
+import FoldersList from "./FoldersList";
+import SelectionBox from "./SelectionBox";
 import {
   FileItem,
   FileResource,
@@ -19,10 +18,11 @@ import {
   SortOrder,
   ViewMode,
 } from "../../types/filebrowser";
-import EmptyState from "./EmptyState";
-import FilesList from "./FilesList";
-import FoldersList from "./FoldersList";
-import SelectionBox from "./SelectionBox";
+
+import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
+import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
+import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
+import { useAppTheme } from "@/theme";
 
 interface DirectoryListingProps {
   cutPaths: Set<string>;

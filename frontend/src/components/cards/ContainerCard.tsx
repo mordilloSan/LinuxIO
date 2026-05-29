@@ -7,6 +7,9 @@ import React, {
   useState,
 } from "react";
 
+import ActionButton from "../../pages/main/docker/ActionButton";
+import AppCircularProgress from "../ui/AppCircularProgress";
+
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -24,9 +27,6 @@ import { ContainerInfo } from "@/types/container";
 import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-import ActionButton from "../../pages/main/docker/ActionButton";
-import AppCircularProgress from "../ui/AppCircularProgress";
 
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
