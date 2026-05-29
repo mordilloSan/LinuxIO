@@ -1,4 +1,4 @@
-import React, { useCallback, useEffectEvent, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 import { linuxio, openContainerStream, useStreamMux } from "@/api";
@@ -30,9 +30,9 @@ const TerminalDialog: React.FC<Props> = ({
   containerName,
 }) => {
   const { streamRef, openStream, closeStream } = useLiveStream();
-  const handleClose = useEffectEvent(() => {
+  const handleClose = useCallback(() => {
     onClose();
-  });
+  }, [onClose]);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
   const { isOpen } = useStreamMux();
   const theme = useAppTheme();
