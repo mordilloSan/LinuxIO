@@ -350,31 +350,13 @@ test-updater: ensure-go
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo "🔎 Running ESLint (parallel, auto-fix)..."
+	@echo "🔎 Running ESLint (auto-fix, concurrent)..."
 	@bash -c ' \
 	  cd frontend; \
-	  entries=(); \
-	  while IFS= read -r e; do \
-	    if echo "$$e" | grep -qE "\.(ts|tsx)$$"; then \
-	      entries+=("$$e"); \
-	    elif [ -d "$$e" ] && find "$$e" \( -name "*.ts" -o -name "*.tsx" \) -print -quit 2>/dev/null | grep -q .; then \
-	      entries+=("$$e"); \
-	    fi; \
-	  done < <(find src -maxdepth 1 -mindepth 1 | sort); \
-	  total=$${#entries[@]}; \
-	  chunk=$$(( (total + 2) / 3 )); \
-	  g1=("$${entries[@]:0:$$chunk}"); \
-	  g2=("$${entries[@]:$$chunk:$$chunk}"); \
-	  g3=("$${entries[@]:$$((chunk*2))}"); \
 	  filter_ts_warn() { grep -v -F -e "=============" -e "WARNING: You are currently running" -e "@typescript-eslint/typescript-estree version:" -e "Supported TypeScript versions:" -e "Your TypeScript version:" -e "Please only submit bug reports" || true; }; \
-	  run_eslint() { ./node_modules/.bin/eslint --fix --cache --cache-location "$$1" "$${@:2}"; }; \
-	  { run_eslint .eslintcache-a "$${g1[@]}"; echo $$? > /tmp/.eslint_a; } 2>&1 | filter_ts_warn & pid_a=$$!; \
-	  { run_eslint .eslintcache-b "$${g2[@]}"; echo $$? > /tmp/.eslint_b; } 2>&1 | filter_ts_warn & pid_b=$$!; \
-	  { run_eslint .eslintcache-c "$${g3[@]}"; echo $$? > /tmp/.eslint_c; } 2>&1 | filter_ts_warn & pid_c=$$!; \
-	  wait $$pid_a; wait $$pid_b; wait $$pid_c; \
-	  a=$$(cat /tmp/.eslint_a 2>/dev/null); b=$$(cat /tmp/.eslint_b 2>/dev/null); c=$$(cat /tmp/.eslint_c 2>/dev/null); \
-	  rm -f /tmp/.eslint_a /tmp/.eslint_b /tmp/.eslint_c; \
-	  [ "$${a:-0}$${b:-0}$${c:-0}" = "000" ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit 1; } \
+	  ./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache --concurrency auto 2>&1 | filter_ts_warn; \
+	  status=$${PIPESTATUS[0]}; \
+	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit "$$status"; } \
 	'
 
 tsc-only:
