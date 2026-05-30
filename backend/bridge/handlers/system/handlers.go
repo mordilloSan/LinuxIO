@@ -38,114 +38,114 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleGetCapabilities(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetCapabilities(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, buildCapabilitiesResponse(ctx), nil)
 }
 
-func handleGetCPUInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetCPUInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchCPUInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetSensorInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetSensorInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, FetchSensorsInfo(ctx), nil)
 }
 
-func handleGetMotherboardInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetMotherboardInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchBaseboardInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetMemoryInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetMemoryInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchMemoryInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetHostInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetHostInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchHostInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUptime(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetUptime(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	uptimeSeconds, err := FetchUptimeSeconds(ctx)
 	return bridgeipc.EmitResult(emit, uptimeSeconds, err)
 }
 
-func handleGetFilesystemInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := FetchFileSystemInfo(ctx, parseIncludeAllArg(args))
+func handleGetFilesystemInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+	result, err := FetchFileSystemInfo(ctx, false)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetProcesses(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetProcesses(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchProcesses(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetServices(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetServices(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchServices(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetGPUInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetGPUInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchGPUInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdatesFast(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetUpdatesFast(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetUpdatesFast(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetNetworkInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetNetworkInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchNetworks(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetDiskThroughput(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetDiskThroughput(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchDiskThroughput(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetSystemInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetSystemInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchSystemInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetPCIDevices(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetPCIDevices(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchPCIDevices(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetMemoryModules(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetMemoryModules(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := FetchMemoryModules(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetServerTime(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetServerTime(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, GetCurrentServerTime(ctx), nil)
 }
 
-func handleGetTimezones(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetTimezones(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetTimezones(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h systemHandlers) handleGetHealthSummary(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func (h systemHandlers) handleGetHealthSummary(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetHealthSummaryForRuntime(ctx, h.rt)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h systemHandlers) handleListFailedLoginEvents(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListFailedLoginEventsForRuntime(ctx, h.rt, args)
+func (h systemHandlers) handleListFailedLoginEvents(ctx context.Context, req apischema.FailedLoginEventsRequest, emit bridgeipc.Events) error {
+	result, err := ListFailedLoginEventsForRuntime(ctx, h.rt, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h systemHandlers) handleDismissUncleanShutdown(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DismissUncleanShutdownForRuntime(ctx, h.rt, args)
+func (h systemHandlers) handleDismissUncleanShutdown(ctx context.Context, req apischema.BootIDRequest, emit bridgeipc.Events) error {
+	result, err := DismissUncleanShutdownForRuntime(ctx, h.rt, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h systemHandlers) handleDismissFailedLoginAlert(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DismissFailedLoginAlertForRuntime(ctx, h.rt, args)
+func (h systemHandlers) handleDismissFailedLoginAlert(ctx context.Context, req apischema.AlertIDRequest, emit bridgeipc.Events) error {
+	result, err := DismissFailedLoginAlertForRuntime(ctx, h.rt, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -37,10 +38,8 @@ type appUpdateRequest struct {
 	version string
 }
 
-// runAppUpdateJob handles app update with verified install script through the bridge job lifecycle.
-// args: [runId] or [runId, version]
-func runAppUpdateJob(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job, args []string) (any, error) {
-	req, err := parseAppUpdateRequest(args)
+func runAppUpdateJob(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job, payload apischema.AppUpdateRequest) (any, error) {
+	req, err := parseAppUpdateRequest(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -53,19 +52,19 @@ func runAppUpdateJob(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job
 	return executeAppUpdate(ctx, rt, job, req.runID, version)
 }
 
-func parseAppUpdateRequest(args []string) (appUpdateRequest, error) {
-	if len(args) == 0 {
+func parseAppUpdateRequest(payload apischema.AppUpdateRequest) (appUpdateRequest, error) {
+	if payload.RunID == "" {
 		return appUpdateRequest{}, bridgeipc.NewError("missing run_id argument", 400)
 	}
 
-	runID := args[0]
+	runID := payload.RunID
 	if !validRunIDRE.MatchString(runID) {
 		return appUpdateRequest{}, bridgeipc.NewError("invalid run_id format", 400)
 	}
 
 	req := appUpdateRequest{runID: runID}
-	if len(args) > 1 {
-		req.version = args[1]
+	if payload.Version != nil {
+		req.version = *payload.Version
 	}
 	return req, nil
 }

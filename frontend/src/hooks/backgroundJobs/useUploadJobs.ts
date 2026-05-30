@@ -72,18 +72,18 @@ export function useUploadJobs(
         return { success: false, error: "Stream connection not ready" };
       }
 
-      const pendingUploadKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_UPLOAD, [
+      const pendingUploadKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_UPLOAD, {
         targetPath,
-        String(file.size),
-      ]);
+        size: String(file.size),
+      });
       pendingLocalJobKeysRef.current.add(pendingUploadKey);
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.upload.call(
+        job = await linuxio.filebrowser.upload({
           targetPath,
-          String(file.size),
-        );
+          size: String(file.size),
+        });
       } catch (error) {
         pendingLocalJobKeysRef.current.delete(pendingUploadKey);
         return {
@@ -336,10 +336,10 @@ export function useUploadJobs(
           try {
             // Check if aborted before making the call
             if (abortController.signal.aborted) break;
-            await linuxio.filebrowser.resource_post.call(
-              dirPath,
-              override ? "true" : undefined,
-            );
+            await linuxio.filebrowser.resource_post({
+              path: dirPath,
+              override: override || undefined,
+            });
             uploaded += 1;
           } catch (err: any) {
             if (abortController.signal.aborted) break;

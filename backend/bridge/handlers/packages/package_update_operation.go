@@ -132,8 +132,8 @@ func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
 }
 
-func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-	if len(args) == 0 {
+func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, req apischema.PackageUpdateRequest) (any, error) {
+	if len(req.PackageIDs) == 0 {
 		return nil, bridgejobs.NewError("no packages specified", 400)
 	}
 	report := jobPkgUpdateReporter(job)
@@ -143,14 +143,14 @@ func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, args []string
 		Percentage: new(uint32(0)),
 	})
 
-	if err := updatePackagesWithProgress(ctx, args, report); err != nil {
+	if err := updatePackagesWithProgress(ctx, req.PackageIDs, report); err != nil {
 		if ctx.Err() != nil {
 			return nil, context.Canceled
 		}
 		return nil, bridgejobs.NewError(err.Error(), 500)
 	}
 
-	result := map[string]any{"updated": len(args)}
+	result := map[string]any{"updated": len(req.PackageIDs)}
 	return result, nil
 }
 

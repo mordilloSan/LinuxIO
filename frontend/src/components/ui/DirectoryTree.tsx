@@ -125,7 +125,9 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
     if (node.loaded) return;
 
     try {
-      const resource = await linuxio.filebrowser.resource_get.call(node.path);
+      const resource = await linuxio.filebrowser.resource_get({
+        path: node.path,
+      });
 
       const raw = resource as unknown as {
         folders?: { name: string }[];

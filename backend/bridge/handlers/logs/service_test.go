@@ -3,10 +3,14 @@ package logs
 import (
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-func TestParseServiceLogsArgsRejectsTemplateUnits(t *testing.T) {
-	_, _, err := parseServiceLogsArgs([]string{"apport-coredump-hook@.service"})
+func TestParseServiceLogsRequestRejectsTemplateUnits(t *testing.T) {
+	_, _, err := parseServiceLogsRequest(apischema.ServiceLogsFollowRequest{
+		ServiceName: "apport-coredump-hook@.service",
+	})
 	if err == nil || !strings.Contains(err.Error(), "template unit") {
 		t.Fatalf("handler err = %v, want template-unit error", err)
 	}

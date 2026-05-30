@@ -119,17 +119,24 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     let canceled = false;
     void (async () => {
       try {
-        const jobs = await linuxio.jobs.list.call("active");
+        const jobs = await linuxio.jobs.list({ status: "active" });
         if (canceled) return;
-        const mine = jobs.find(
-          (j) =>
+        const mine = jobs.find((j) => {
+          const request = j.request as
+            | { device?: string; testType?: string }
+            | undefined;
+          return (
             j.type === "storage.run_smart_test" &&
-            j.args?.[0] === deviceName &&
-            (j.state === "running" || j.state === "queued"),
-        );
+            request?.device === deviceName &&
+            (j.state === "running" || j.state === "queued")
+          );
+        });
         if (!mine) return;
+        const request = mine.request as
+          | { device?: string; testType?: string }
+          | undefined;
         const testType: "short" | "long" =
-          mine.args?.[1] === "long" ? "long" : "short";
+          request?.testType === "long" ? "long" : "short";
         setStartPending(testType);
         setTestProgress({
           type: "status",
@@ -217,32 +224,35 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     void (async () => {
       let jobId: string | null = null;
       try {
-        const job = await linuxio.storage.run_smart_test.call(
-          rawDrive.name,
+        const job = await linuxio.storage.run_smart_test({
+          device: rawDrive.name,
           testType,
-        );
+        });
         jobId = job.id;
       } catch {
-        runSmartTest([rawDrive.name, testType], {
-          onSuccess: () => {
-            toast.success(
-              `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
-            );
-            setStartPending(null);
+        runSmartTest(
+          { device: rawDrive.name, testType },
+          {
+            onSuccess: () => {
+              toast.success(
+                `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
+              );
+              setStartPending(null);
+            },
+            onError: () => {
+              setTestProgress((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "error",
+                      message: "Failed to start test",
+                    }
+                  : null,
+              );
+              setStartPending(null);
+            },
           },
-          onError: () => {
-            setTestProgress((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    status: "error",
-                    message: "Failed to start test",
-                  }
-                : null,
-            );
-            setStartPending(null);
-          },
-        });
+        );
         return;
       }
 
@@ -585,7 +595,7 @@ const DiskOverview: React.FC = () => {
     setCreatingSubvolumeMountpoint(null);
   };
   const handleUnmountFilesystem = (mountpoint: string) => {
-    unmountFilesystem([mountpoint]);
+    unmountFilesystem({ mountpoint });
   };
   const handleSubvolumeNameChange = (mountpoint: string, value: string) => {
     setSubvolumeDrafts((prev) => ({
@@ -600,11 +610,14 @@ const DiskOverview: React.FC = () => {
       return;
     }
     setCreatingSubvolumeMountpoint(mountpoint);
-    createBtrfsSubvolume([mountpoint, name], {
-      onSettled: () => {
-        setCreatingSubvolumeMountpoint(null);
+    createBtrfsSubvolume(
+      { mountpoint, name },
+      {
+        onSettled: () => {
+          setCreatingSubvolumeMountpoint(null);
+        },
       },
-    });
+    );
   };
   if (drivesLoading || fsLoading) {
     return <PageLoader />;

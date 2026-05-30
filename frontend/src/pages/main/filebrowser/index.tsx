@@ -532,7 +532,6 @@ const FileBrowser: React.FC = () => {
     );
     try {
       // Fetch stat info to get current permissions (use first item as reference)
-      // Args: [path]
       const stat = await queryClient.fetchQuery(
         linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {
           staleTime: CACHE_TTL_MS.FIVE_SECONDS,
@@ -778,10 +777,10 @@ const FileBrowser: React.FC = () => {
   );
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
-      const job = await linuxio.filebrowser.upload.call(
-        path,
-        String(contentBytes.length),
-      );
+      const job = await linuxio.filebrowser.upload({
+        targetPath: path,
+        size: String(contentBytes.length),
+      });
       await runChunkedStreamResult<void>({
         open: () => openJobDataStream(job.id, 0),
         openErrorMessage: "Failed to open save stream",
@@ -810,11 +809,11 @@ const FileBrowser: React.FC = () => {
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
-        queryKey: linuxio.filebrowser.resource_get.queryKey(
-          editingPath,
-          "",
-          "true",
-        ),
+        queryKey: linuxio.filebrowser.resource_get.queryKey({
+          path: editingPath,
+          unused: "",
+          getContent: "true",
+        }),
       });
     } catch (error: any) {
       console.error("Save error:", error);
@@ -864,11 +863,11 @@ const FileBrowser: React.FC = () => {
       setEditingPath(null);
       setCloseEditorDialog(false);
       queryClient.invalidateQueries({
-        queryKey: linuxio.filebrowser.resource_get.queryKey(
-          editingPath,
-          "",
-          "true",
-        ),
+        queryKey: linuxio.filebrowser.resource_get.queryKey({
+          path: editingPath,
+          unused: "",
+          getContent: "true",
+        }),
       });
     } catch (error: any) {
       toast.error(error.message || "Failed to save file");
@@ -888,7 +887,9 @@ const FileBrowser: React.FC = () => {
   ]);
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: linuxio.filebrowser.resource_get.queryKey(normalizedPath),
+      queryKey: linuxio.filebrowser.resource_get.queryKey({
+        path: normalizedPath,
+      }),
     });
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);

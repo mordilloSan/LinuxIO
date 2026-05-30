@@ -96,7 +96,7 @@ export const clearFileSubfoldersCache = (
 ) => {
   if (queryClient) {
     queryClient.removeQueries({
-      queryKey: linuxio.filebrowser.subfolders.queryKey(),
+      queryKey: ["linuxio", "filebrowser", "subfolders"],
     });
   }
 };

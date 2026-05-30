@@ -4,24 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleGetIconURI(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	identifier, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	uri, err := GetIconURI(ctx, identifier)
+func (h dockerHandlers) handleGetIconURI(ctx context.Context, req apischema.IdentifierRequest, emit bridgeipc.Events) error {
+	uri, err := GetIconURI(ctx, req.Identifier)
 	return bridgeipc.EmitResult(emit, map[string]string{"uri": uri}, err)
 }
 
-func (h dockerHandlers) handleGetIcon(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	identifier, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	data, err := GetIcon(ctx, identifier)
+func (h dockerHandlers) handleGetIcon(ctx context.Context, req apischema.IdentifierRequest, emit bridgeipc.Events) error {
+	data, err := GetIcon(ctx, req.Identifier)
 	if err != nil {
 		return err
 	}
@@ -29,15 +22,11 @@ func (h dockerHandlers) handleGetIcon(ctx context.Context, args []string, emit b
 	return bridgeipc.EmitResult(emit, map[string]string{"data": encoded}, nil)
 }
 
-func (h dockerHandlers) handleGetIconInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	identifier, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, GetIconInfo(ctx, identifier), nil)
+func (h dockerHandlers) handleGetIconInfo(ctx context.Context, req apischema.IdentifierRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, GetIconInfo(ctx, req.Identifier), nil)
 }
 
-func (h dockerHandlers) handleClearIconCache(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleClearIconCache(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	if err := ClearIconCache(ctx); err != nil {
 		return err
 	}

@@ -115,11 +115,13 @@ const SystemHealth = () => {
     isPending: failedLoginEventsPending,
     isError: failedLoginEventsError,
     error: failedLoginEventsErrorValue,
-  } = linuxio.system.list_failed_login_events.useQuery({
-    args: ["24"],
-    enabled: failedLoginsOpen,
-    refetchInterval: failedLoginsOpen ? 30000 : false,
-  });
+  } = linuxio.system.list_failed_login_events.useQuery(
+    { limit: "24" },
+    {
+      enabled: failedLoginsOpen,
+      refetchInterval: failedLoginsOpen ? 30000 : false,
+    },
+  );
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
     linuxio.system.dismiss_unclean_shutdown.useMutation({
@@ -186,7 +188,7 @@ const SystemHealth = () => {
         disabled: dismissingFailedLogin,
         onClick: (event) => {
           event.stopPropagation();
-          dismissFailedLoginAlert([failedLoginAlert.id]);
+          dismissFailedLoginAlert({ alertId: failedLoginAlert.id });
         },
       },
     });
@@ -227,7 +229,7 @@ const SystemHealth = () => {
             disabled: dismissingUnclean,
             onClick: (event) => {
               event.stopPropagation();
-              dismissUncleanShutdown([bootId]);
+              dismissUncleanShutdown({ bootId });
             },
           }
         : undefined,
@@ -591,7 +593,9 @@ const SystemHealth = () => {
             <AppButton
               color="warning"
               disabled={dismissingFailedLogin}
-              onClick={() => dismissFailedLoginAlert([failedLoginAlert.id])}
+              onClick={() =>
+                dismissFailedLoginAlert({ alertId: failedLoginAlert.id })
+              }
               startIcon={<Icon height={18} icon="mdi:check" width={18} />}
               variant="contained"
             >

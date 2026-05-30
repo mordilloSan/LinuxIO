@@ -43,7 +43,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
 
   const handleDelete = async () => {
     for (const name of groupNames) {
-      await deleteGroup([name]);
+      await deleteGroup({ groupName: name });
     }
     const successMessage =
       groupNames.length === 1

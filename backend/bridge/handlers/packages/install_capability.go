@@ -57,11 +57,8 @@ func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
 	})
 }
 
-func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-	if len(args) == 0 {
-		return nil, bridgejobs.NewError("capability name required", 400)
-	}
-	name := strings.TrimSpace(args[0])
+func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, req apischema.CapabilityRequest) (any, error) {
+	name := strings.TrimSpace(req.Capability)
 	if name == "" {
 		return nil, bridgejobs.NewError("capability name required", 400)
 	}

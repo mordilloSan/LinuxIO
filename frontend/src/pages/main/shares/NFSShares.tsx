@@ -345,7 +345,7 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
       return;
     }
     setValidationError(null);
-    createShare([path, parsed]);
+    createShare({ path, clients: parsed });
   };
 
   const handleClose = () => {
@@ -467,7 +467,7 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
     if (!share) return;
     const parsed = rowsToNFSClients(clients);
     if (parsed.length === 0) return;
-    updateShare([share.path, parsed]);
+    updateShare({ path: share.path, clients: parsed });
   };
 
   const handleClose = () => {
@@ -588,7 +588,7 @@ export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
 
   const handleDelete = () => {
     if (!share) return;
-    deleteShare([share.path]);
+    deleteShare({ path: share.path });
   };
 
   return (

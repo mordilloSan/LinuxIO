@@ -41,12 +41,14 @@ type NoRequest struct{}
 // NoResponse marks a route that returns no result payload.
 type NoResponse struct{}
 
-type HandlerFunc func(ctx context.Context, args []string, emit Events) error
-type DuplexFunc func(ctx context.Context, stream net.Conn, args []string) error
+type HandlerFunc func(ctx context.Context, request any, emit Events) error
+type DuplexFunc func(ctx context.Context, stream net.Conn, request any) error
+
+type RequestDecoder func(raw json.RawMessage) (any, error)
 
 type Command struct {
 	Name       string
-	Handler    HandlerFunc
+	Handler    any
 	Mode       Mode
 	Policy     JobPolicy
 	Privileged bool
@@ -59,11 +61,15 @@ func RegisterRoutes(router *Router, component string, commands []Command) {
 		if cmd.Privileged {
 			opts = append(opts, Privileged)
 		}
+		handler, ok := cmd.Handler.(HandlerFunc)
+		if !ok {
+			panic("bridge command handler has incompatible signature: " + cmd.Name)
+		}
 		switch mode := commandMode(cmd); mode {
 		case ModeQuery:
-			router.Query(route, cmd.Handler, opts...)
+			router.Query(route, handler, opts...)
 		case ModeJob:
-			router.Job(route, cmd.Handler, commandPolicy(cmd), opts...)
+			router.Job(route, handler, commandPolicy(cmd), opts...)
 		default:
 			panic("unsupported bridge command mode: " + string(mode))
 		}
@@ -93,10 +99,11 @@ type Events interface {
 }
 
 type Request struct {
-	Route   string
-	Args    []string
-	Session *session.Session
-	Owner   Owner
+	Route        string
+	RawRequest   json.RawMessage
+	DecodedValue any
+	Session      *session.Session
+	Owner        Owner
 }
 
 type Route struct {
@@ -107,12 +114,19 @@ type Route struct {
 	Duplex     DuplexFunc
 	Privileged bool
 	Policy     JobPolicy
+	Decode     RequestDecoder
 }
 
 type RouteOption func(*Route)
 
 func Privileged(r *Route) {
 	r.Privileged = true
+}
+
+func WithRequestDecoder(decode RequestDecoder) RouteOption {
+	return func(r *Route) {
+		r.Decode = decode
+	}
 }
 
 type JobPolicy struct {
@@ -248,22 +262,30 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
 		return err
 	}
+	if route.Decode != nil {
+		decoded, err := route.Decode(req.RawRequest)
+		if err != nil {
+			err = fmt.Errorf("%w: %s: %v", ErrInvalidArgs, req.Route, err)
+			_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+			return err
+		}
+		req.DecodedValue = decoded
+	}
 
 	startedAt := time.Now()
 	slog.Debug("route started",
 		"route", req.Route,
 		"mode", route.Mode,
-		"arg_count", len(req.Args),
 		"user", req.Owner.Username)
 
 	var err error
 	switch route.Mode {
 	case ModeQuery:
-		err = r.dispatchQuery(ctx, stream, route, req.Args)
+		err = r.dispatchQuery(ctx, stream, route, req.DecodedValue)
 	case ModeJob:
 		err = r.dispatchJob(ctx, stream, route, req)
 	case ModeDuplex:
-		err = route.Duplex(ctx, stream, append([]string(nil), req.Args...))
+		err = route.Duplex(ctx, stream, req.DecodedValue)
 	default:
 		err = fmt.Errorf("unsupported route mode: %s", route.Mode)
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), 500)
@@ -316,9 +338,9 @@ func (r *Router) lookup(route string) (Route, bool) {
 	return found, ok
 }
 
-func (r *Router) dispatchQuery(ctx context.Context, stream net.Conn, route Route, args []string) error {
+func (r *Router) dispatchQuery(ctx context.Context, stream net.Conn, route Route, request any) error {
 	emit := newStreamEmitter(stream)
-	err := route.Handler(ctx, append([]string(nil), args...), emit)
+	err := route.Handler(ctx, request, emit)
 	if err != nil {
 		_ = emit.Error(err, statusCode(err))
 	}
@@ -343,10 +365,10 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 }
 
 func (r *Router) routeRunner(route Route) Runner {
-	return func(ctx context.Context, job *Job, args []string) (any, error) {
+	return func(ctx context.Context, job *Job, request any) (any, error) {
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
-			return r.runRoute(ctx, job, args, route)
+			return r.runRoute(ctx, job, request, route)
 		}
 
 		runCtx, cancel := context.WithTimeout(ctx, policy.Timeout)
@@ -354,7 +376,7 @@ func (r *Router) routeRunner(route Route) Runner {
 
 		done := make(chan runnerResult, 1)
 		go func() {
-			result, err := r.runRoute(runCtx, job, args, route)
+			result, err := r.runRoute(runCtx, job, request, route)
 			done <- runnerResult{result: result, err: err}
 		}()
 
@@ -370,12 +392,12 @@ func (r *Router) routeRunner(route Route) Runner {
 	}
 }
 
-func (r *Router) runRoute(ctx context.Context, job *Job, args []string, route Route) (any, error) {
+func (r *Router) runRoute(ctx context.Context, job *Job, request any, route Route) (any, error) {
 	if route.Runner != nil {
-		return route.Runner(ctx, job, args)
+		return route.Runner(ctx, job, request)
 	}
 	emit := newJobEmitter(job)
-	if err := route.Handler(ctx, args, emit); err != nil {
+	if err := route.Handler(ctx, request, emit); err != nil {
 		return nil, err
 	}
 	return emit.result, nil
@@ -409,7 +431,7 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
 	r.mu.Unlock()
 
-	job, err := r.registry.CreateForOwner(req.Route, req.Args, req.Owner)
+	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner)
 	if err != nil {
 		return nil, false, err
 	}
@@ -623,33 +645,6 @@ func statusCode(err error) int {
 	default:
 		return 500
 	}
-}
-
-func Arg(args []string, i int) (string, error) {
-	if len(args) <= i {
-		return "", ErrInvalidArgs
-	}
-	return args[i], nil
-}
-
-func RequireArgs(args []string, n int) error {
-	if len(args) < n {
-		return ErrInvalidArgs
-	}
-	return nil
-}
-
-func DecodeJSONArg[T any](args []string, i int) (T, error) {
-	var zero T
-	raw, err := Arg(args, i)
-	if err != nil {
-		return zero, err
-	}
-	var value T
-	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-		return zero, ErrInvalidArgs
-	}
-	return value, nil
 }
 
 func EmitResult(emit Events, result any, err error) error {

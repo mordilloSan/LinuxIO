@@ -169,25 +169,25 @@ const CreateInterfaceButton = () => {
       .filter(Boolean)
       .join(",");
 
-    // AddInterface expects: [name, addresses, listenPort, egressNic, dns, mtu, peers_json, numPeers]
-    const args = [
-      serverName,
-      CIDR, // addresses as comma-separated string
-      String(port),
-      nic,
-      dnsStr, // dns as comma-separated string
-      "0", // mtu
-      "[]", // peers_json (empty array)
-      String(peers), // numPeers
-    ];
-
-    addInterface(args, {
-      onSuccess: () => {
-        toast.success(`WireGuard interface '${serverName}' created`);
-        setShowDialog(false);
-        setDns("");
+    addInterface(
+      {
+        name: serverName,
+        addresses: CIDR,
+        listenPort: String(port),
+        egressNic: nic,
+        dns: dnsStr,
+        mtu: "0",
+        peersJson: "[]",
+        numPeers: String(peers),
       },
-    });
+      {
+        onSuccess: () => {
+          toast.success(`WireGuard interface '${serverName}' created`);
+          setShowDialog(false);
+          setDns("");
+        },
+      },
+    );
   };
 
   const availableNICs =

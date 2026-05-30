@@ -42,7 +42,7 @@ const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
   );
 
   const handleSave = () => {
-    if (isValid) mutate([hostname]);
+    if (isValid) mutate({ hostname });
   };
 
   return (

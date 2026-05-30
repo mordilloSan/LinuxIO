@@ -1,5 +1,5 @@
-export function jobIdentityKey(type: string, args: readonly string[] = []) {
-  return JSON.stringify([type, ...args]);
+export function jobIdentityKey(type: string, request: unknown = {}) {
+  return JSON.stringify([type, request ?? {}]);
 }
 
 export function makeCountedSet() {

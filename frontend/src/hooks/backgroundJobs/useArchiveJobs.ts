@@ -72,19 +72,19 @@ export function useArchiveJobs(runtime: BackgroundJobRuntime) {
       const fullDestination = destination.endsWith("/")
         ? `${destination}${archiveName}`
         : `${destination}/${archiveName}`;
-      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COMPRESS, [
+      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COMPRESS, {
         format,
-        fullDestination,
-        ...paths,
-      ]);
+        targetPath: fullDestination,
+        paths,
+      });
       pendingLocalJobKeysRef.current.add(pendingKey);
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.compress.call(
+        job = await linuxio.filebrowser.compress({
           format,
-          fullDestination,
-          ...paths,
-        );
+          targetPath: fullDestination,
+          paths,
+        });
       } catch (error) {
         pendingLocalJobKeysRef.current.delete(pendingKey);
         toast.error(
@@ -235,17 +235,17 @@ export function useArchiveJobs(runtime: BackgroundJobRuntime) {
         return;
       }
 
-      const jobArgs = destination ? [archivePath, destination] : [archivePath];
       const pendingKey = jobIdentityKey(
         JobTypes.JOB_TYPE_FILE_EXTRACT,
-        jobArgs,
+        destination ? { archivePath, destination } : { archivePath },
       );
       pendingLocalJobKeysRef.current.add(pendingKey);
       let job: JobSnapshot;
       try {
-        job = destination
-          ? await linuxio.filebrowser.extract.call(archivePath, destination)
-          : await linuxio.filebrowser.extract.call(archivePath);
+        job = await linuxio.filebrowser.extract({
+          archivePath,
+          destination,
+        });
       } catch (error) {
         pendingLocalJobKeysRef.current.delete(pendingKey);
         toast.error(

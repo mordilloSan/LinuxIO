@@ -36,7 +36,7 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: removeInterface } =
     linuxio.wireguard.remove_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
+        const interfaceName = variables.name;
         toast.success(`WireGuard interface '${interfaceName}' deleted`);
         setSelectedInterface(null);
         refetch();
@@ -53,7 +53,7 @@ const WireGuardDashboard: React.FC = () => {
 
   const { mutate: addPeer } = linuxio.wireguard.add_peer.useMutation({
     onSuccess: (_, variables) => {
-      const [interfaceName] = variables;
+      const interfaceName = variables.interfaceName;
       toast.success(`Peer added to '${interfaceName}'`);
       refetch();
     },
@@ -64,7 +64,7 @@ const WireGuardDashboard: React.FC = () => {
 
   const { mutate: upInterface } = linuxio.wireguard.up_interface.useMutation({
     onSuccess: (_, variables) => {
-      const [interfaceName] = variables;
+      const interfaceName = variables.name;
       toast.success(`WireGuard interface "${interfaceName}" turned on.`);
       refetch();
     },
@@ -78,7 +78,7 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: downInterface } =
     linuxio.wireguard.down_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
+        const interfaceName = variables.name;
         toast.success(`WireGuard interface "${interfaceName}" turned off.`);
         refetch();
       },
@@ -92,7 +92,7 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: enableInterface } =
     linuxio.wireguard.enable_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
+        const interfaceName = variables.name;
         toast.success(
           `WireGuard interface "${interfaceName}" enabled for boot persistence.`,
         );
@@ -108,7 +108,7 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: disableInterface } =
     linuxio.wireguard.disable_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
+        const interfaceName = variables.name;
         toast.success(
           `WireGuard interface "${interfaceName}" disabled for boot persistence.`,
         );
@@ -158,11 +158,11 @@ const WireGuardDashboard: React.FC = () => {
   }, [hasSelectedInterface]);
 
   const handleDelete = (interfaceName: string) => {
-    removeInterface([interfaceName]);
+    removeInterface({ name: interfaceName });
   };
 
   const handleAddPeer = (interfaceName: string) => {
-    addPeer([interfaceName]);
+    addPeer({ interfaceName });
   };
 
   const handleToggleInterface = (
@@ -170,7 +170,7 @@ const WireGuardDashboard: React.FC = () => {
     status: "up" | "down",
   ) => {
     const mutation = status === "up" ? upInterface : downInterface;
-    mutation([interfaceName]);
+    mutation({ name: interfaceName });
   };
 
   const handleToggleBootPersistence = (
@@ -178,7 +178,7 @@ const WireGuardDashboard: React.FC = () => {
     isEnabled: boolean,
   ) => {
     const mutation = isEnabled ? disableInterface : enableInterface;
-    mutation([interfaceName]);
+    mutation({ name: interfaceName });
   };
 
   const handleSelectInterface = (iface: WireGuardInterface) => {

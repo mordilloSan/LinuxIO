@@ -137,7 +137,7 @@ const CapabilityManagerSection: React.FC = () => {
       setInstallingWire(wire);
       setInstallStatus("Starting…");
       try {
-        const job = await linuxio.system.install_capability.call(wire);
+        const job = await linuxio.system.install_capability(wire);
         const result = await runStreamResult<
           InstallCapabilityResult,
           InstallCapabilityProgress

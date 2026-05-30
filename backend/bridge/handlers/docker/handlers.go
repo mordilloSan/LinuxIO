@@ -60,8 +60,8 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: "docker.logs.follow",
-		Runner: func(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
-			return runDockerLogsJob(ctx, rt, job, args)
+		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.DockerLogsFollowRequest) (any, error) {
+			return runDockerLogsJob(ctx, rt, job, req)
 		},
 		Policy: bridgeipc.StreamDefault,
 	})

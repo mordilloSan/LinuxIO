@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -18,9 +19,8 @@ import (
 const StreamTypeServiceLogs = "logs.service.follow"
 
 // runServiceLogsJob streams service logs from journalctl through the bridge job lifecycle.
-// Args: [serviceName, lines] where lines is the number of initial lines (default "100")
-func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, args []string) (any, error) {
-	serviceName, lines, err := parseServiceLogsArgs(args)
+func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
+	serviceName, lines, err := parseServiceLogsRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -66,12 +66,8 @@ func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	return map[string]any{"status": "stopped"}, nil
 }
 
-func parseServiceLogsArgs(args []string) (string, string, error) {
-	if len(args) < 1 {
-		slog.Error("[ServiceLogs] missing service name")
-		return "", "", bridgeipc.NewError("missing service name", 400)
-	}
-	serviceName := strings.TrimSpace(args[0])
+func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, string, error) {
+	serviceName := strings.TrimSpace(req.ServiceName)
 	if serviceName == "" {
 		slog.Error("[ServiceLogs] empty service name")
 		return "", "", bridgeipc.NewError("empty service name", 400)
@@ -89,8 +85,8 @@ func parseServiceLogsArgs(args []string) (string, string, error) {
 		)
 	}
 	lines := "100"
-	if len(args) >= 2 && args[1] != "" {
-		lines = args[1]
+	if req.Lines != nil && *req.Lines != "" {
+		lines = *req.Lines
 	}
 	return serviceName, lines, nil
 }

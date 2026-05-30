@@ -18,14 +18,14 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	policy.Timeout = 30 * time.Minute
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: "control.app_update",
-		Runner: func(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
-			return runAppUpdateJob(ctx, rt, job, args)
+		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
+			return runAppUpdateJob(ctx, rt, job, req)
 		},
 		Policy: policy,
 	})
 }
 
-func handleVersion(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleVersion(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	info, err := getVersionInfo(ctx)
 	return bridgeipc.EmitResult(emit, info, err)
 }

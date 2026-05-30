@@ -17,18 +17,14 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleReboot(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleReboot(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, nil, Reboot(ctx))
 }
 
-func handlePowerOff(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handlePowerOff(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, nil, PowerOff(ctx))
 }
 
-func handleLogoff(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 1); err != nil {
-		return err
-	}
-	sessionID := args[0]
-	return bridgeipc.EmitResult(emit, nil, Logoff(ctx, sessionID))
+func handleLogoff(ctx context.Context, req apischema.SessionIDRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, Logoff(ctx, req.SessionID))
 }

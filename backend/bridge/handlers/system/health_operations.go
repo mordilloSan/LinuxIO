@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -21,20 +22,17 @@ func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*Syste
 	return result, err
 }
 
-func ListFailedLoginEventsForRuntime(ctx context.Context, rt runtime.Runtime, args []string) ([]SystemLoginEvent, error) {
+func ListFailedLoginEventsForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.FailedLoginEventsRequest) ([]SystemLoginEvent, error) {
 	session := rt.Session
-	limit := parsePositiveLimitArg(args, 24, 100)
+	limit := parsePositiveLimit(req.Limit, 24, 100)
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	return FetchFailedLoginEvents(ctx, session.User.Username, session.Timing.CreatedAt, limit)
 }
 
-func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, args []string) (map[string]any, error) {
-	if err := bridgeipc.RequireArgs(args, 1); err != nil {
-		return nil, err
-	}
+func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.BootIDRequest) (map[string]any, error) {
 	username := rt.Username()
-	bootID := strings.TrimSpace(args[0])
+	bootID := strings.TrimSpace(req.BootID)
 	if !isValidBootID(bootID) {
 		return nil, bridgeipc.ErrInvalidArgs
 	}
@@ -52,12 +50,9 @@ func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, a
 	return map[string]any{"message": "dismissed"}, nil
 }
 
-func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, args []string) (map[string]any, error) {
-	if err := bridgeipc.RequireArgs(args, 1); err != nil {
-		return nil, err
-	}
+func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.AlertIDRequest) (map[string]any, error) {
 	username := rt.Username()
-	alertID := strings.TrimSpace(args[0])
+	alertID := strings.TrimSpace(req.AlertID)
 	if !isValidFailedLoginAlertID(alertID) {
 		return nil, bridgeipc.ErrInvalidArgs
 	}

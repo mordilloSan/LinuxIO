@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
@@ -86,17 +87,17 @@ type archiveTransferJob struct {
 
 var fileTransferJobs sync.Map
 
-func parseUploadArgs(args []string) (string, int64, error) {
-	if len(args) < 2 {
+func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, error) {
+	if req.TargetPath == "" || req.Size == "" {
 		return "", 0, fmt.Errorf("missing path or size")
 	}
 
-	expectedSize, err := strconv.ParseInt(args[1], 10, 64)
+	expectedSize, err := strconv.ParseInt(req.Size, 10, 64)
 	if err != nil {
 		return "", 0, fmt.Errorf("invalid size: %w", err)
 	}
 
-	return args[0], expectedSize, nil
+	return req.TargetPath, expectedSize, nil
 }
 
 func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes, error) {
@@ -138,8 +139,8 @@ func notifyUploadedFile(path string, info os.FileInfo) {
 	})
 }
 
-func runUploadJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-	path, expectedSize, err := parseUploadArgs(args)
+func runUploadJob(ctx context.Context, job *bridgejobs.Job, req apischema.FileUploadRequest) (any, error) {
+	path, expectedSize, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 400)
 	}
@@ -163,12 +164,12 @@ func runUploadJob(ctx context.Context, job *bridgejobs.Job, args []string) (any,
 	}
 }
 
-func runDownloadJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-	if len(args) < 1 {
+func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.PathRequest) (any, error) {
+	if req.Path == "" {
 		return nil, bridgejobs.NewError("missing file path", 400)
 	}
 
-	path := filepath.Clean(args[0])
+	path := filepath.Clean(req.Path)
 	root, err := fsroot.Open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to access filesystem: %w", err)
@@ -205,16 +206,15 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, args []string) (an
 	}
 }
 
-func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
-	if len(args) < 2 {
+func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
+	if req.Format == "" || len(req.Paths) == 0 {
 		return nil, bridgejobs.NewError("missing format or paths", 400)
 	}
 
-	format := args[0]
-	paths := append([]string(nil), args[1:]...)
-	extension, err := archiveExtension(format)
+	paths := append([]string(nil), req.Paths...)
+	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", format), 400)
+		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
 	}
 	settings := jobSettingsForJob(ctx, job, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
@@ -225,7 +225,7 @@ func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 
 	transfer := &archiveTransferJob{
 		job:         job,
-		format:      format,
+		format:      req.Format,
 		paths:       paths,
 		archiveName: archiveNameForPaths(paths, extension),
 		total:       computeArchiveSize(paths),
@@ -253,7 +253,7 @@ func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 	transfer.mu.Unlock()
 
 	callbacks := newArchiveJobCallbacks(ctx, transfer, store)
-	err = createArchive(format, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
+	err = createArchive(req.Format, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
 	if err != nil {
 		transfer.setReadyError(err)
 		if errors.Is(err, context.Canceled) || errors.Is(err, ipc.ErrAborted) {
@@ -279,7 +279,11 @@ func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 	}
 }
 
-func attachFileTransferData(ctx context.Context, job *bridgejobs.Job, stream net.Conn, args []string) error {
+func attachFileTransferData(ctx context.Context, job *bridgejobs.Job, stream net.Conn, request any) error {
+	req, ok := request.(bridgejobs.JobDataAttachRequest)
+	if !ok {
+		return ipc.WriteResultErrorAndClose(stream, 0, "invalid transfer request", 400)
+	}
 	transfer, ok := waitForFileTransferJob(ctx, job.ID())
 	if !ok {
 		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("transfer job not ready: %s", job.ID()), 404)
@@ -287,11 +291,11 @@ func attachFileTransferData(ctx context.Context, job *bridgejobs.Job, stream net
 
 	switch active := transfer.(type) {
 	case *uploadTransferJob:
-		return active.attach(stream, args)
+		return active.attach(stream, req)
 	case *downloadTransferJob:
-		return active.attach(stream, args)
+		return active.attach(stream, req)
 	case *archiveTransferJob:
-		return active.attach(stream, args)
+		return active.attach(stream, req)
 	default:
 		return ipc.WriteResultErrorAndClose(stream, 0, "unsupported transfer job", 400)
 	}
@@ -318,11 +322,11 @@ func waitForFileTransferJob(ctx context.Context, jobID string) (any, bool) {
 	}
 }
 
-func parseTransferOffset(args []string) (int64, error) {
-	if len(args) == 0 || args[0] == "" {
+func parseTransferOffset(req bridgejobs.JobDataAttachRequest) (int64, error) {
+	if req.Offset == nil || *req.Offset == "" {
 		return 0, nil
 	}
-	offset, err := strconv.ParseInt(args[0], 10, 64)
+	offset, err := strconv.ParseInt(*req.Offset, 10, 64)
 	if err != nil || offset < 0 {
 		return 0, fmt.Errorf("invalid transfer offset")
 	}
@@ -369,8 +373,8 @@ func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, s
 	}
 }
 
-func (t *uploadTransferJob) attach(stream net.Conn, args []string) error {
-	offset, err := parseTransferOffset(args)
+func (t *uploadTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
 	}
@@ -645,8 +649,8 @@ func (t *uploadTransferJob) finish(result any, err error) {
 	})
 }
 
-func (t *downloadTransferJob) attach(stream net.Conn, args []string) error {
-	offset, err := parseTransferOffset(args)
+func (t *downloadTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
 	}
@@ -811,8 +815,8 @@ func (t *downloadTransferJob) finish(result any, err error) {
 	})
 }
 
-func (t *archiveTransferJob) attach(stream net.Conn, args []string) error {
-	offset, err := parseTransferOffset(args)
+func (t *archiveTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
 	}

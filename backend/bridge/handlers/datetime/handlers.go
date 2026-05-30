@@ -20,45 +20,33 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleGetNTPStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetNTPStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetNTPStatus(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleSetNTP(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if len(args) != 1 {
-		return bridgeipc.ErrInvalidArgs
-	}
-	enabled := args[0] == "true"
-	return bridgeipc.EmitResult(emit, nil, SetNTP(ctx, enabled))
+func handleSetNTP(ctx context.Context, req apischema.EnabledRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetNTP(ctx, req.Enabled == "true"))
 }
 
-func handleSetServerTime(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	mode, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, SetServerTime(ctx, mode))
+func handleSetServerTime(ctx context.Context, req apischema.ISOTimeRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetServerTime(ctx, req.ISOTime))
 }
 
-func handleGetTimezone(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetTimezone(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetTimezone(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleSetTimezone(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	timezone, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, SetTimezone(ctx, timezone))
+func handleSetTimezone(ctx context.Context, req apischema.TimezoneRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetTimezone(ctx, req.Timezone))
 }
 
-func handleGetNTPServers(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetNTPServers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetNTPServers(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleSetNTPServers(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, SetNTPServers(ctx, args))
+func handleSetNTPServers(ctx context.Context, req apischema.NTPServersRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetNTPServers(ctx, req.Servers))
 }

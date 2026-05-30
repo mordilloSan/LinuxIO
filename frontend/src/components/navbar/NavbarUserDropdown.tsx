@@ -76,10 +76,10 @@ function NavbarUserDropdown() {
     // Show overlay immediately
     if (action === "reboot") {
       triggerReboot();
-      reboot([]);
+      reboot();
     } else if (action === "poweroff") {
       triggerPowerOff();
-      powerOff([]);
+      powerOff();
     }
   };
 

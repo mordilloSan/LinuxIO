@@ -22,70 +22,41 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleGetNetworkInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetNetworkInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetNetworkInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleSetIPv4Manual(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 4); err != nil {
-		return err
-	}
-	iface := args[0]
-	addressCIDR := args[1]
-	gateway := args[2]
-	dnsServers := args[3:]
-	return bridgeipc.EmitResult(emit, nil, SetIPv4Manual(ctx, iface, addressCIDR, gateway, dnsServers))
+func handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetIPv4Manual(ctx, req.Iface, req.Address, req.Gateway, []string{req.DNS}))
 }
 
-func handleSetIPv4(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 2); err != nil {
-		return err
-	}
-	iface, method := args[0], strings.ToLower(args[1])
+func handleSetIPv4(ctx context.Context, req apischema.InterfaceMethodRequest, emit bridgeipc.Events) error {
+	method := strings.ToLower(req.Method)
 	if method != "dhcp" && method != "auto" {
 		return fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
 	}
-	return bridgeipc.EmitResult(emit, nil, SetIPv4DHCP(ctx, iface))
+	return bridgeipc.EmitResult(emit, nil, SetIPv4DHCP(ctx, req.Iface))
 }
 
-func handleSetIPv6(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 2); err != nil {
-		return err
-	}
-	iface, method := args[0], strings.ToLower(args[1])
+func handleSetIPv6(ctx context.Context, req apischema.InterfaceMethodRequest, emit bridgeipc.Events) error {
+	method := strings.ToLower(req.Method)
 	switch method {
 	case "dhcp", "auto":
-		return bridgeipc.EmitResult(emit, nil, SetIPv6DHCP(ctx, iface))
-	case "static":
-		if len(args) != 3 {
-			return bridgeipc.ErrInvalidArgs
-		}
-		return bridgeipc.EmitResult(emit, nil, SetIPv6Static(ctx, iface, args[2]))
+		return bridgeipc.EmitResult(emit, nil, SetIPv6DHCP(ctx, req.Iface))
 	default:
-		return fmt.Errorf("SetIPv6 method must be 'dhcp' or 'static'")
+		return fmt.Errorf("SetIPv6 method must be 'dhcp' or 'auto'")
 	}
 }
 
-func handleSetMTU(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if len(args) != 2 {
-		return bridgeipc.ErrInvalidArgs
-	}
-	return bridgeipc.EmitResult(emit, nil, SetMTU(ctx, args[0], args[1]))
+func handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetMTU(ctx, req.Iface, req.MTU))
 }
 
-func handleEnableConnection(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	iface, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, EnableConnection(ctx, iface))
+func handleEnableConnection(ctx context.Context, req apischema.InterfaceRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, EnableConnection(ctx, req.Iface))
 }
 
-func handleDisableConnection(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	iface, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, DisableConnection(ctx, iface))
+func handleDisableConnection(ctx context.Context, req apischema.InterfaceRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, DisableConnection(ctx, req.Iface))
 }

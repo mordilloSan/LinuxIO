@@ -530,7 +530,7 @@ const IndexerSettingsSection: React.FC = () => {
 
       if (hasConfigChanges) {
         const configResult = jobSnapshotResult(
-          await setConfigMutation.mutateAsync([payload]),
+          await setConfigMutation.mutateAsync(payload),
         );
         nextConfig = configResult.config;
         nextRestartRequired = configResult.restart_required;
@@ -538,7 +538,9 @@ const IndexerSettingsSection: React.FC = () => {
 
       if (hasTimerChange) {
         const timerResult = jobSnapshotResult(
-          await setTimerMutation.mutateAsync([draft.interval.trim()]),
+          await setTimerMutation.mutateAsync({
+            interval: draft.interval.trim(),
+          }),
         );
         nextConfig = timerResult.config;
         void queryClient.invalidateQueries({

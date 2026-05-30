@@ -1,6 +1,8 @@
 package apischema
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -43,6 +45,58 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 	}
 }
 
+func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
+	tests := []struct {
+		name  string
+		route string
+		raw   string
+	}{
+		{
+			name:  "no request",
+			route: "system.get_cpu_info",
+			raw:   `{}`,
+		},
+		{
+			name:  "object request",
+			route: "docker.set_auto_update",
+			raw:   `{"container":"web","enabled":true}`,
+		},
+		{
+			name:  "optional request",
+			route: "docker.compose",
+			raw:   `{"action":"up","projectName":"stack"}`,
+		},
+		{
+			name:  "slice request",
+			route: "datetime.set_ntp_servers",
+			raw:   `{"servers":["0.pool.ntp.org","1.pool.ntp.org"]}`,
+		},
+		{
+			name:  "runner request",
+			route: "storage.run_smart_test",
+			raw:   `{"device":"sda","testType":"short"}`,
+		},
+		{
+			name:  "duplex request",
+			route: "terminal.open",
+			raw:   `{"cols":120,"rows":40}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := MustRoute(tc.route)
+			decoded, err := requestDecoder(spec.Request)(json.RawMessage(tc.raw))
+			if err != nil {
+				t.Fatalf("requestDecoder() error = %v", err)
+			}
+			if !jsonEquivalent(t, decoded, tc.raw) {
+				t.Fatalf("decoded request %#v does not match %s", decoded, tc.raw)
+			}
+		})
+	}
+}
+
 func TestEndpointExcludesDuplexAndStreamOnlyJobs(t *testing.T) {
 	for _, route := range []string{"jobs.attach", "jobs.data", "terminal.open", "container.open"} {
 		spec := MustRoute(route)
@@ -61,4 +115,32 @@ func TestEndpointExcludesDuplexAndStreamOnlyJobs(t *testing.T) {
 	if !MustRoute("system.get_cpu_info").Endpoint() {
 		t.Fatal("query route should generate an endpoint")
 	}
+}
+
+func TestRoutesDeclareContractFields(t *testing.T) {
+	for _, route := range Routes {
+		if route.Request.GoType == nil {
+			t.Fatalf("%s should declare a request contract", route.Route)
+		}
+		if route.Result.GoType == nil {
+			t.Fatalf("%s should declare a result contract", route.Route)
+		}
+	}
+}
+
+func jsonEquivalent(t *testing.T, got any, want string) bool {
+	t.Helper()
+	gotBytes, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal decoded request: %v", err)
+	}
+	var gotValue any
+	if err := json.Unmarshal(gotBytes, &gotValue); err != nil {
+		t.Fatalf("unmarshal decoded request: %v", err)
+	}
+	var wantValue any
+	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+		t.Fatalf("unmarshal expected request: %v", err)
+	}
+	return reflect.DeepEqual(gotValue, wantValue)
 }

@@ -185,7 +185,7 @@ const DockerPage: React.FC = () => {
               <>
                 <AppButton
                   disabled={isStartingAll || stoppedContainers.length === 0}
-                  onClick={() => startAllStopped([])}
+                  onClick={() => startAllStopped()}
                   size="small"
                   startIcon={<Icon height={20} icon="mdi:play" width={20} />}
                   variant="outlined"
@@ -195,7 +195,7 @@ const DockerPage: React.FC = () => {
                 <AppButton
                   color="warning"
                   disabled={isStoppingAll || runningContainers.length === 0}
-                  onClick={() => stopAllRunning([])}
+                  onClick={() => stopAllRunning()}
                   size="small"
                   startIcon={<Icon height={20} icon="mdi:stop" width={20} />}
                   variant="outlined"
@@ -454,7 +454,7 @@ const DockerPage: React.FC = () => {
       <PruneDialog
         isLoading={isPruning}
         onClose={() => !isPruning && setPruneDialogOpen(false)}
-        onConfirm={(opts: PruneOptions) => systemPrune([opts])}
+        onConfirm={(opts: PruneOptions) => systemPrune(opts)}
         open={pruneDialogOpen}
       />
     </>

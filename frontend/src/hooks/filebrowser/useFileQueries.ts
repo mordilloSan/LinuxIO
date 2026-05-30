@@ -34,9 +34,12 @@ export const useFileQueries = ({
     isPending,
     isError,
     error,
-  } = linuxio.filebrowser.resource_get.useQuery(normalizedPath, {
-    staleTime: CACHE_TTL_MS.NONE,
-  });
+  } = linuxio.filebrowser.resource_get.useQuery(
+    { path: normalizedPath },
+    {
+      staleTime: CACHE_TTL_MS.NONE,
+    },
+  );
 
   const resource = useMemo(
     () => (resourceData ? normalizeResource(resourceData) : undefined),
@@ -68,9 +71,11 @@ export const useFileQueries = ({
     isPending: isDetailPending,
     error: detailError,
   } = linuxio.filebrowser.resource_get.useQuery(
-    detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
-    "",
-    "true",
+    {
+      path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
+      unused: "",
+      getContent: "true",
+    },
     {
       enabled:
         hasSingleDetailTarget &&
@@ -99,9 +104,12 @@ export const useFileQueries = ({
 
   const multipleResourceQueries = useQueries({
     queries: multipleDetailTargets.map((path) => ({
-      ...linuxio.filebrowser.resource_get.queryOptions(path, {
-        staleTime: CACHE_TTL_MS.NONE,
-      }),
+      ...linuxio.filebrowser.resource_get.queryOptions(
+        { path },
+        {
+          staleTime: CACHE_TTL_MS.NONE,
+        },
+      ),
       enabled: areMultipleResourcesEnabled,
     })),
   });
@@ -153,9 +161,12 @@ export const useFileQueries = ({
 
   // Editing file resource with content flag
   const { data: editingFileResource, isPending: isEditingFileLoading } =
-    linuxio.filebrowser.resource_get.useQuery(editingPath || "", "", "true", {
-      enabled: !!editingPath,
-    });
+    linuxio.filebrowser.resource_get.useQuery(
+      { path: editingPath || "", unused: "", getContent: "true" },
+      {
+        enabled: !!editingPath,
+      },
+    );
 
   const shouldShowDetailLoader =
     (hasSingleDetailTarget && isDetailPending) ||

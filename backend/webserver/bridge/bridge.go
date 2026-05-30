@@ -59,19 +59,14 @@ func validateBridgeHash(bridgePath string) error {
 
 const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
 
-func bridgeOpenPayload(route string, args ...string) []byte {
-	payload := []byte(route)
-	for _, arg := range args {
-		payload = append(payload, 0)
-		payload = append(payload, arg...)
-	}
-	return payload
-}
-
 func writeCapabilitiesRequest(stream io.Writer) error {
+	payload, err := relay.MarshalStreamOpenPayload("system.get_capabilities", nil)
+	if err != nil {
+		return err
+	}
 	return relay.WriteRelayFrame(stream, &relay.StreamFrame{
 		Opcode:  relay.OpStreamOpen,
-		Payload: bridgeOpenPayload("system.get_capabilities"),
+		Payload: payload,
 	})
 }
 

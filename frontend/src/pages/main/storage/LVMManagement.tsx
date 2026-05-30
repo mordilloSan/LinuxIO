@@ -122,7 +122,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
       return;
     }
     setValidationError(null);
-    createLV([vgName, lvName, size]);
+    createLV({ vgName, lvName, size });
   };
   const handleClose = () => {
     setVgName("");
@@ -251,7 +251,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
       return;
     }
     setValidationError(null);
-    resizeLV([lv.vgName, lv.name, newSize]);
+    resizeLV({ vgName: lv.vgName, lvName: lv.name, newSize });
   };
   const handleClose = () => {
     setNewSize("");
@@ -353,7 +353,7 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
     });
   const handleDelete = () => {
     if (!lv) return;
-    deleteLV([lv.vgName, lv.name]);
+    deleteLV({ vgName: lv.vgName, lvName: lv.name });
   };
   const handleClose = () => {
     onClose();

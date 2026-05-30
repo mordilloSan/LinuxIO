@@ -183,7 +183,7 @@ const DockerFolderSettingsSection: React.FC = () => {
       for (let index = 0; index < folders.length; index += 1) {
         const folder = folders[index];
         const validation =
-          await linuxio.docker.validate_stack_directory.call(folder);
+          await linuxio.docker.validate_stack_directory(folder);
         if (!validation.valid) {
           setErrorTexts((prev) => {
             const next = [...prev];
@@ -200,9 +200,9 @@ const DockerFolderSettingsSection: React.FC = () => {
             return;
           }
 
-          await linuxio.filebrowser.resource_post.call(
-            ensureTrailingSlash(folder),
-          );
+          await linuxio.filebrowser.resource_post({
+            path: ensureTrailingSlash(folder),
+          });
           toast.success("Docker folder created.");
         }
       }

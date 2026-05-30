@@ -91,10 +91,11 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
 
     void (async () => {
       try {
-        const jobArgs = composePath
-          ? [action, projectName, composePath]
-          : [action, projectName];
-        const job = await linuxio.docker.compose.call(...jobArgs);
+        const job = await linuxio.docker.compose({
+          action,
+          projectName,
+          composePath,
+        });
         if (cancelled) {
           return;
         }

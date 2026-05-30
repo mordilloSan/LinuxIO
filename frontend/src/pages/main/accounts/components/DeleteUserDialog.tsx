@@ -41,7 +41,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
 
   const handleDelete = async () => {
     for (const username of usernames) {
-      await deleteUser([username]);
+      await deleteUser({ username });
     }
     const successMessage =
       usernames.length === 1

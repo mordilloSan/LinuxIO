@@ -49,9 +49,7 @@ export const useFileSearch = ({
   const queryEnabled = enabled && shouldSearch && !indexerDisabled;
 
   const { data, isLoading, error } = linuxio.filebrowser.search.useQuery(
-    query,
-    String(limit),
-    basePath,
+    { query, limit: String(limit), basePath },
     {
       enabled: queryEnabled,
       staleTime: CACHE_TTL_MS.THIRTY_SECONDS, // Search results stay fresh longer

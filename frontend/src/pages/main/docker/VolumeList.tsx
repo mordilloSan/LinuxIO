@@ -59,7 +59,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   const handleDelete = async () => {
     // Delete volumes sequentially
     for (const name of volumeNames) {
-      await deleteVolume([name]);
+      await deleteVolume({ name });
     }
     const successMessage =
       volumeNames.length === 1

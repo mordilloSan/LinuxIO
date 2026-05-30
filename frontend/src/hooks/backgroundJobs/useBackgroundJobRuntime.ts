@@ -49,7 +49,7 @@ export function useBackgroundJobRuntime(): BackgroundJobRuntime {
   const streamRefsRef = useRef<Map<string, Stream>>(new Map());
 
   const cancelBridgeJob = useCallback((id: string) => {
-    void linuxio.jobs.cancel.call(id).catch((error) => {
+    void linuxio.jobs.cancel(id).catch((error) => {
       console.debug("Failed to cancel bridge job", error);
     });
   }, []);

@@ -39,6 +39,30 @@ import {
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
+function requestObject(request: unknown): Record<string, unknown> {
+  return request && typeof request === "object"
+    ? (request as Record<string, unknown>)
+    : {};
+}
+
+function requestString(
+  request: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = request[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function requestStringArray(
+  request: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = request[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 interface RecoveredJobControls {
   archives: {
     setCompressions: Dispatch<SetStateAction<Compression[]>>;
@@ -112,11 +136,14 @@ export function useRecoveredJobs(
         return;
       }
       if (
-        pendingLocalJobKeysRef.current.has(jobIdentityKey(job.type, job.args))
+        pendingLocalJobKeysRef.current.has(
+          jobIdentityKey(job.type, job.request),
+        )
       ) {
         return;
       }
 
+      const request = requestObject(job.request);
       const progress = job.progress as ProgressFrame | undefined;
       const initialPct = Math.min(99, progress?.pct ?? 0);
       const getName = (path: string | undefined, fallback: string) => {
@@ -127,7 +154,6 @@ export function useRecoveredJobs(
       };
       const getSpeed = createProgressSpeedCalculator();
       const abortController = new AbortController();
-      const args = job.args ?? [];
       const genericProgressPct = (value: unknown) => {
         const data = value as
           | {
@@ -169,13 +195,13 @@ export function useRecoveredJobs(
           | undefined;
         switch (job.type) {
           case JobTypes.JOB_TYPE_FILE_UPLOAD: {
-            const name = getName(args[0], "file");
+            const name = getName(requestString(request, "targetPath"), "file");
             return data?.phase === "waiting_for_client"
               ? `Upload waiting: ${name}`
               : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           }
           case JobTypes.JOB_TYPE_FILE_DOWNLOAD: {
-            const name = getName(args[0], "file");
+            const name = getName(requestString(request, "path"), "file");
             return data?.phase === "waiting_for_client"
               ? `Download waiting: ${name}`
               : `Downloading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
@@ -187,7 +213,7 @@ export function useRecoveredJobs(
           case JobTypes.JOB_TYPE_FILE_CHMOD:
             return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           case JobTypes.JOB_TYPE_FILE_DELETE: {
-            const name = getName(args[0], "item");
+            const name = getName(requestString(request, "path"), "item");
             if (data?.indeterminate) {
               const processed = data.processed ?? 0;
               return `Deleting ${name} (${processed} item${processed === 1 ? "" : "s"})`;
@@ -195,7 +221,10 @@ export function useRecoveredJobs(
             return `Deleting ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           }
           case JobTypes.JOB_TYPE_DOCKER_COMPOSE:
-            return data?.message ?? `Docker compose ${args[0] ?? "operation"}`;
+            return (
+              data?.message ??
+              `Docker compose ${requestString(request, "action") ?? "operation"}`
+            );
           case JobTypes.JOB_TYPE_DOCKER_INDEXER:
             return data?.files_indexed !== undefined ||
               data?.dirs_indexed !== undefined
@@ -210,7 +239,7 @@ export function useRecoveredJobs(
           case JobTypes.JOB_TYPE_STORAGE_SMART_TEST:
             return data?.message ?? "Running SMART self-test";
           case JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY: {
-            const cap = args[0] ?? "capability";
+            const cap = requestString(request, "capability") ?? "capability";
             return data?.message ?? `Installing ${cap}`;
           }
           default:
@@ -253,7 +282,7 @@ export function useRecoveredJobs(
       switch (job.type) {
         case JobTypes.JOB_TYPE_FILE_COMPRESS: {
           if (activeCompressionIdsRef.current.has(job.id)) return;
-          const destination = args[1] ?? "";
+          const destination = requestString(request, "targetPath") ?? "";
           const labelBase = allocateDownloadLabelBase(
             getName(destination, "archive"),
             job.id,
@@ -266,7 +295,7 @@ export function useRecoveredJobs(
               type: "compression",
               archiveName: labelBase,
               destination,
-              paths: args.slice(2),
+              paths: requestStringArray(request, "paths"),
               progress: initialPct,
               label: `Compressing ${labelBase} (${initialPct}%)`,
               bytes: progress?.bytes,
@@ -307,7 +336,7 @@ export function useRecoveredJobs(
         }
         case JobTypes.JOB_TYPE_FILE_EXTRACT: {
           if (activeExtractionIdsRef.current.has(job.id)) return;
-          const archivePath = args[0] ?? "";
+          const archivePath = requestString(request, "archivePath") ?? "";
           const labelBase = allocateDownloadLabelBase(
             getName(archivePath, "archive"),
             job.id,
@@ -319,7 +348,7 @@ export function useRecoveredJobs(
               id: job.id,
               type: "extraction",
               archivePath,
-              destination: args[1] ?? "",
+              destination: requestString(request, "destination") ?? "",
               progress: initialPct,
               label: `Extracting ${labelBase} (${initialPct}%)`,
               bytes: progress?.bytes,
@@ -363,8 +392,8 @@ export function useRecoveredJobs(
           const isMove = job.type === JobTypes.JOB_TYPE_FILE_MOVE;
           const activeIds = isMove ? activeMoveIdsRef : activeCopyIdsRef;
           if (activeIds.current.has(job.id)) return;
-          const source = args[0] ?? "";
-          const destination = args[1] ?? "";
+          const source = requestString(request, "source") ?? "";
+          const destination = requestString(request, "destination") ?? "";
           const labelBase = getName(source, "item");
           activeIds.current.add(job.id);
           if (isMove) {
@@ -448,7 +477,7 @@ export function useRecoveredJobs(
             {
               id: job.id,
               type: "indexer",
-              path: args[0] ?? "/",
+              path: requestString(request, "path") ?? "/",
               filesIndexed: 0,
               dirsIndexed: 0,
               totalSize: 0,
@@ -500,7 +529,7 @@ export function useRecoveredJobs(
                   }
                 | undefined;
               setLastIndexerResult({
-                path: args[0] ?? "/",
+                path: requestString(request, "path") ?? "/",
                 filesIndexed: summaryResult?.files_indexed ?? 0,
                 dirsIndexed: summaryResult?.dirs_indexed ?? 0,
                 totalSize: summaryResult?.total_size ?? 0,

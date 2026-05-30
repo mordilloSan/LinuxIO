@@ -14,10 +14,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleSetHostname(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	name, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, SetHostname(ctx, name))
+func handleSetHostname(ctx context.Context, req apischema.HostnameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, SetHostname(ctx, req.Hostname))
 }

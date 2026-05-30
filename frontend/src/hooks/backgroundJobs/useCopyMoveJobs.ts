@@ -74,15 +74,15 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
         return;
       }
 
-      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COPY, [
+      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COPY, {
         source,
         destination,
-      ]);
+      });
       pendingLocalJobKeysRef.current.add(pendingKey);
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.copy.call(source, destination);
+        job = await linuxio.filebrowser.copy({ source, destination });
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start copy",
@@ -219,15 +219,15 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
         return;
       }
 
-      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_MOVE, [
+      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_MOVE, {
         source,
         destination,
-      ]);
+      });
       pendingLocalJobKeysRef.current.add(pendingKey);
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.move.call(source, destination);
+        job = await linuxio.filebrowser.move({ source, destination });
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start move",

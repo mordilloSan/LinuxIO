@@ -46,7 +46,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useMutation({
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: linuxio.wireguard.list_peers.queryKey(),
+        queryKey: linuxio.wireguard.list_peers.queryKey(interfaceName),
       });
     },
     onError: (error: Error) => {
@@ -68,18 +68,21 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     });
   }, [peers, currentTime]);
   const handleDeletePeer = (peerName: string) => {
-    deletePeer([interfaceName, peerName], {
-      onSuccess: () => {
-        toast.success(`WireGuard Peer '${peerName}' deleted`);
+    deletePeer(
+      { interfaceName, peerName },
+      {
+        onSuccess: () => {
+          toast.success(`WireGuard Peer '${peerName}' deleted`);
+        },
       },
-    });
+    );
   };
   const handleDownloadConfig = async (peername: string) => {
     try {
-      const result = await linuxio.wireguard.peer_config_download.call(
+      const result = await linuxio.wireguard.peer_config_download({
         interfaceName,
-        peername,
-      );
+        peerName: peername,
+      });
       const blob = new Blob([result.content], {
         type: "text/plain",
       });
@@ -99,10 +102,10 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleViewQrCode = async (peername: string) => {
     setIsLoadingQrCode(true);
     try {
-      const result = await linuxio.wireguard.peer_qrcode.call(
+      const result = await linuxio.wireguard.peer_qrcode({
         interfaceName,
-        peername,
-      );
+        peerName: peername,
+      });
       setQrCode(result.qrcode);
       setOpenDialog(true);
       toast.success(`QR code for '${peername}' loaded successfully`);

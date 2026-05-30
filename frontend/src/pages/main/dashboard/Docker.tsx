@@ -103,7 +103,7 @@ const DockerInfo: React.FC = () => {
     (action: "start" | "stop" | "restart" | "remove") => {
       if (!menuContainer) return;
       const { id, name } = menuContainer;
-      const args = [id];
+      const request = { containerId: id };
       const callbacks = {
         onSuccess: () => {
           toast.success(
@@ -117,10 +117,10 @@ const DockerInfo: React.FC = () => {
           );
         },
       };
-      if (action === "start") startContainer(args, callbacks);
-      else if (action === "stop") stopContainer(args, callbacks);
-      else if (action === "restart") restartContainer(args, callbacks);
-      else removeContainer(args, callbacks);
+      if (action === "start") startContainer(request, callbacks);
+      else if (action === "stop") stopContainer(request, callbacks);
+      else if (action === "restart") restartContainer(request, callbacks);
+      else removeContainer(request, callbacks);
       handleMenuClose();
     },
     [

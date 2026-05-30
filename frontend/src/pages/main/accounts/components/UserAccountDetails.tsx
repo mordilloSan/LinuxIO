@@ -599,10 +599,10 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
   };
   const confirmKill = () => {
     if (!pendingKillSession) return;
-    terminateSession([
-      pendingKillSession.sessionId ?? "",
-      String(pendingKillSession.pid ?? 0),
-    ]);
+    terminateSession({
+      sessionId: pendingKillSession.sessionId ?? "",
+      pid: String(pendingKillSession.pid ?? 0),
+    });
   };
   const focusedLoginKey = useMemo(() => {
     if (!focusLoginEventId) {
@@ -635,7 +635,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
       dismissedAlertRef.current !== failedLoginAlertId
     ) {
       dismissedAlertRef.current = failedLoginAlertId;
-      dismissFailedLoginAlert([failedLoginAlertId]);
+      dismissFailedLoginAlert({ alertId: failedLoginAlertId });
     }
 
     const timeout = window.setTimeout(() => {

@@ -472,12 +472,18 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
           sambaProperties["comment"] = comment.trim();
         }
 
-        await sambaCreate.mutateAsync([resolvedName, sambaProperties]);
+        await sambaCreate.mutateAsync({
+          name: resolvedName,
+          properties: sambaProperties,
+        });
         createdAny = true;
       }
 
       if (nfsEnabled) {
-        await nfsCreate.mutateAsync([normalizedPath, parsedNFSClients]);
+        await nfsCreate.mutateAsync({
+          path: normalizedPath,
+          clients: parsedNFSClients,
+        });
         createdAny = true;
       }
 
@@ -725,29 +731,38 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
         );
 
         if (group.samba) {
-          await sambaUpdate.mutateAsync([
-            group.samba.name,
-            resolvedName,
-            sambaProperties,
-          ]);
+          await sambaUpdate.mutateAsync({
+            oldName: group.samba.name,
+            newName: resolvedName,
+            properties: sambaProperties,
+          });
         } else {
-          await sambaCreate.mutateAsync([resolvedName, sambaProperties]);
+          await sambaCreate.mutateAsync({
+            name: resolvedName,
+            properties: sambaProperties,
+          });
         }
         changedAny = true;
       } else if (group.samba) {
-        await sambaDelete.mutateAsync([group.samba.name]);
+        await sambaDelete.mutateAsync({ name: group.samba.name });
         changedAny = true;
       }
 
       if (nfsEnabled) {
         if (group.nfs) {
-          await nfsUpdate.mutateAsync([group.path, parsedNFSClients]);
+          await nfsUpdate.mutateAsync({
+            path: group.path,
+            clients: parsedNFSClients,
+          });
         } else {
-          await nfsCreate.mutateAsync([group.path, parsedNFSClients]);
+          await nfsCreate.mutateAsync({
+            path: group.path,
+            clients: parsedNFSClients,
+          });
         }
         changedAny = true;
       } else if (group.nfs) {
-        await nfsDelete.mutateAsync([group.path]);
+        await nfsDelete.mutateAsync({ path: group.path });
         changedAny = true;
       }
 

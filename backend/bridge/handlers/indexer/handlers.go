@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -18,27 +19,22 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleGetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if len(args) != 0 {
-		return bridgeipc.ErrInvalidArgs
-	}
+func handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	cfg, err := FetchConfig(ctx)
 	return bridgeipc.EmitResult(emit, cfg, err)
 }
 
-func handleGetStatus(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if len(args) != 0 {
-		return bridgeipc.ErrInvalidArgs
-	}
+func handleGetStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	status, err := FetchStatus(ctx)
 	return bridgeipc.EmitResult(emit, status, err)
 }
 
-func handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if len(args) != 1 {
-		return bridgeipc.ErrInvalidArgs
+func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch, emit bridgeipc.Events) error {
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return err
 	}
-	cfg, restartRequired, err := UpdateConfig(ctx, []byte(args[0]))
+	cfg, restartRequired, err := UpdateConfig(ctx, raw)
 	if err != nil {
 		return err
 	}
@@ -48,10 +44,10 @@ func handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) 
 	}, nil)
 }
 
-func handleSetTimerInterval(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if len(args) != 1 {
+func handleSetTimerInterval(ctx context.Context, req apischema.IntervalRequest, emit bridgeipc.Events) error {
+	if req.Interval == "" {
 		return bridgeipc.ErrInvalidArgs
 	}
-	result, err := SetTimerInterval(ctx, args[0])
+	result, err := SetTimerInterval(ctx, req.Interval)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -174,15 +174,18 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
       }
 
       const pendingKey = isSingleFile
-        ? jobIdentityKey(JobTypes.JOB_TYPE_FILE_DOWNLOAD, [paths[0]])
-        : jobIdentityKey(JobTypes.JOB_TYPE_FILE_ARCHIVE, ["zip", ...paths]);
+        ? jobIdentityKey(JobTypes.JOB_TYPE_FILE_DOWNLOAD, { path: paths[0] })
+        : jobIdentityKey(JobTypes.JOB_TYPE_FILE_ARCHIVE, {
+            format: "zip",
+            paths,
+          });
       pendingLocalJobKeysRef.current.add(pendingKey);
       let pendingKeyHeld = true;
 
       try {
         const activeDownloadJob = isSingleFile
-          ? await linuxio.filebrowser.download.call(paths[0])
-          : await linuxio.filebrowser.archive.call("zip", ...paths);
+          ? await linuxio.filebrowser.download(paths[0])
+          : await linuxio.filebrowser.archive({ format: "zip", paths });
         activeFileTransferJobIdsRef.current.add(activeDownloadJob.id);
         pendingLocalJobKeysRef.current.delete(pendingKey);
         pendingKeyHeld = false;

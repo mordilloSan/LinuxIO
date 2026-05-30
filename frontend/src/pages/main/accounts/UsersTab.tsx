@@ -130,9 +130,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;
     if (user.isLocked) {
-      unlockUser([user.username]);
+      unlockUser({ username: user.username });
     } else {
-      lockUser([user.username]);
+      lockUser({ username: user.username });
     }
   };
 

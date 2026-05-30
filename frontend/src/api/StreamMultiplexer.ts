@@ -2,7 +2,7 @@
  * StreamMultiplexer - Binary WebSocket stream multiplexer (Singleton)
  *
  * Provides multiplexed bidirectional streams over a single WebSocket connection.
- * The server acts as a pure byte relay - no JSON parsing on the server side.
+ * The webserver relays bytes; the bridge parses JSON stream-open envelopes.
  * Streams persist across component unmounts for session continuity.
  *
  * Protocol: [streamID:4 bytes][flags:1 byte][payload:N bytes]
@@ -54,7 +54,7 @@ export interface Stream {
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
 export interface StreamMultiplexerConfig {
-  defaultCallTimeoutMs: number;
+  defaultRequestTimeoutMs: number;
   detachedBufferBytes: number;
   scrollbackBytes: number;
   uploadChunkSize: number;
@@ -91,8 +91,8 @@ export const STREAM_MULTIPLEXER_CONFIG: StreamMultiplexerConfig = {
     import.meta.env.VITE_STREAM_UPLOAD_WINDOW_CHUNKS,
     4,
   ),
-  defaultCallTimeoutMs: readPositiveInt(
-    import.meta.env.VITE_STREAM_DEFAULT_CALL_TIMEOUT_MS,
+  defaultRequestTimeoutMs: readPositiveInt(
+    import.meta.env.VITE_STREAM_DEFAULT_REQUEST_TIMEOUT_MS,
     30000,
   ),
 };
@@ -124,10 +124,10 @@ export function configureStreamMultiplexer(
       STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks,
     );
   }
-  if (config.defaultCallTimeoutMs !== undefined) {
-    STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs = normalizePositiveInt(
-      config.defaultCallTimeoutMs,
-      STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs,
+  if (config.defaultRequestTimeoutMs !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs = normalizePositiveInt(
+      config.defaultRequestTimeoutMs,
+      STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
     );
   }
 }

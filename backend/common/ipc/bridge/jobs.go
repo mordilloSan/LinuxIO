@@ -65,7 +65,7 @@ func (o Owner) Matches(other Owner) bool {
 type Snapshot struct {
 	ID         string     `json:"id"`
 	Type       string     `json:"type"`
-	Args       []string   `json:"args,omitempty"`
+	Request    any        `json:"request,omitempty"`
 	Owner      Owner      `json:"owner"`
 	State      State      `json:"state"`
 	Progress   any        `json:"progress,omitempty"`
@@ -97,8 +97,12 @@ type Event struct {
 	transient bool
 }
 
-type Runner func(ctx context.Context, job *Job, args []string) (any, error)
-type DataAttacher func(ctx context.Context, job *Job, stream net.Conn, args []string) error
+type Runner func(ctx context.Context, job *Job, request any) (any, error)
+type DataAttacher func(ctx context.Context, job *Job, stream net.Conn, request any) error
+
+type JobDataAttachRequest struct {
+	Offset *string `json:"offset,omitempty"`
+}
 
 type Registry struct {
 	mu            sync.RWMutex
@@ -117,7 +121,7 @@ type Job struct {
 	mu          sync.RWMutex
 	id          string
 	typ         string
-	args        []string
+	request     any
 	owner       Owner
 	state       State
 	progress    any
@@ -197,8 +201,8 @@ func ListActiveForOwner(owner Owner) []Snapshot {
 }
 
 // AttachData attaches stream data to a job using the default registry.
-func AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
-	return DefaultRegistry.AttachData(ctx, job, stream, args)
+func AttachData(ctx context.Context, job *Job, stream net.Conn, request any) error {
+	return DefaultRegistry.AttachData(ctx, job, stream, request)
 }
 
 // Subscribe subscribes to all job events on the default registry with an optional buffer size.
@@ -221,7 +225,7 @@ func (r *Registry) RegisterDataAttacher(jobType string, attacher DataAttacher) {
 }
 
 // AttachData calls the registered data attacher for the job's type.
-func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, args []string) error {
+func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, request any) error {
 	if job == nil {
 		return fmt.Errorf("job cannot be nil")
 	}
@@ -232,16 +236,16 @@ func (r *Registry) AttachData(ctx context.Context, job *Job, stream net.Conn, ar
 	if !ok {
 		return fmt.Errorf("job data attacher not found: %s", job.Type())
 	}
-	return attacher(ctx, job, stream, args)
+	return attacher(ctx, job, stream, request)
 }
 
 // Create creates a new unowned job in the registry.
-func (r *Registry) Create(jobType string, args []string) (*Job, error) {
-	return r.CreateForOwner(jobType, args, Owner{})
+func (r *Registry) Create(jobType string, request any) (*Job, error) {
+	return r.CreateForOwner(jobType, request, Owner{})
 }
 
 // CreateForOwner creates a new job owned by the specified owner.
-func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*Job, error) {
+func (r *Registry) CreateForOwner(jobType string, request any, owner Owner) (*Job, error) {
 	if jobType == "" {
 		return nil, fmt.Errorf("job type cannot be empty")
 	}
@@ -258,7 +262,7 @@ func (r *Registry) CreateForOwner(jobType string, args []string, owner Owner) (*
 		ctx:         ctx,
 		id:          id,
 		typ:         jobType,
-		args:        append([]string(nil), args...),
+		request:     request,
 		owner:       owner,
 		state:       StateQueued,
 		createdAt:   now,
@@ -391,7 +395,7 @@ func (j *Job) Snapshot() Snapshot {
 	return Snapshot{
 		ID:         j.id,
 		Type:       j.typ,
-		Args:       append([]string(nil), j.args...),
+		Request:    j.request,
 		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,
@@ -553,7 +557,7 @@ func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 
 func (j *Job) run(ctx context.Context, runner Runner) {
 	j.markStarted()
-	result, err := runner(ctx, j, append([]string(nil), j.args...))
+	result, err := runner(ctx, j, j.request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			j.markFailed(NewError("operation timed out", 504))
@@ -752,7 +756,7 @@ func (j *Job) snapshotLocked() Snapshot {
 	return Snapshot{
 		ID:         j.id,
 		Type:       j.typ,
-		Args:       append([]string(nil), j.args...),
+		Request:    j.request,
 		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,

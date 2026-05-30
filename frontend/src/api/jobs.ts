@@ -2,7 +2,7 @@ import type { JobSnapshot } from "./generated/linuxio-types";
 
 import { isTerminalJobState } from "./job-state";
 import { openJobAttachStream } from "./linuxio";
-import { call, LinuxIOError } from "./linuxio-core";
+import { LinuxIOError, request } from "./linuxio-core";
 import { waitForStreamResult } from "./stream-helpers";
 
 export { isTerminalJobState };
@@ -62,9 +62,14 @@ export async function waitForJobCompletion(
     });
 
     try {
-      return await call<JobSnapshot>("jobs", "get", [snapshot.id], {
-        retryPolicy: "connection_closed",
-      });
+      return await request<JobSnapshot>(
+        "jobs",
+        "get",
+        { jobId: snapshot.id },
+        {
+          retryPolicy: "connection_closed",
+        },
+      );
     } catch {
       const now = new Date().toISOString();
       return {

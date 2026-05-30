@@ -60,7 +60,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     const results = await Promise.all(
       imageIds.map(async (id, index) => {
         try {
-          await deleteImage([id]);
+          await deleteImage({ imageId: id });
           return {
             success: true,
             tag: imageTags[index],

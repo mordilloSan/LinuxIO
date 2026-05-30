@@ -24,48 +24,43 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleGetUpdatesBasic(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetUpdatesBasic(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetUpdatesBasic(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdateDetail(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	packageID, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	result, err := GetSingleUpdateDetail(ctx, packageID)
+func handleGetUpdateDetail(ctx context.Context, req apischema.PackageIDRequest, emit bridgeipc.Events) error {
+	result, err := GetSingleUpdateDetail(ctx, req.PackageID)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleInstallPackage(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	packageName, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, InstallPackage(ctx, packageName))
+func handleInstallPackage(ctx context.Context, req apischema.PackageIDRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, InstallPackage(ctx, req.PackageID))
 }
 
-func handleGetAutoUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetAutoUpdates(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := getAutoUpdates(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleSetAutoUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	opts, err := bridgeipc.DecodeJSONArg[AutoUpdateOptions](args, 0)
-	if err != nil {
-		return err
-	}
-	result, err := setAutoUpdates(ctx, opts)
+func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdatesRequest, emit bridgeipc.Events) error {
+	result, err := setAutoUpdates(ctx, AutoUpdateOptions{
+		Enabled:      req.Enabled,
+		Frequency:    req.Frequency,
+		Scope:        req.Scope,
+		DownloadOnly: req.DownloadOnly,
+		RebootPolicy: req.RebootPolicy,
+		ExcludePkgs:  req.ExcludePackages,
+	})
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleApplyOfflineUpdates(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleApplyOfflineUpdates(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := applyOfflineUpdates(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdateHistory(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleGetUpdateHistory(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetUpdateHistory(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

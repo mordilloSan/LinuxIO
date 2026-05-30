@@ -5,244 +5,556 @@ import type { TypedAPI } from "../react-query";
 
 const linuxio = {
   accounts: {
-    change_password: createEndpoint("accounts", "change_password"),
-    create_group: createEndpoint("accounts", "create_group"),
-    create_user: createEndpoint("accounts", "create_user"),
-    delete_group: createEndpoint("accounts", "delete_group"),
-    delete_user: createEndpoint("accounts", "delete_user"),
-    get_user_details: createEndpoint("accounts", "get_user_details"),
-    list_groups: createEndpoint("accounts", "list_groups"),
-    list_shells: createEndpoint("accounts", "list_shells"),
-    list_user_logins: createEndpoint("accounts", "list_user_logins"),
-    list_users: createEndpoint("accounts", "list_users"),
-    lock_user: createEndpoint("accounts", "lock_user"),
-    modify_group_members: createEndpoint("accounts", "modify_group_members"),
-    modify_user: createEndpoint("accounts", "modify_user"),
-    terminate_session: createEndpoint("accounts", "terminate_session"),
-    unlock_user: createEndpoint("accounts", "unlock_user"),
+    change_password: createEndpoint("accounts", "change_password", {
+      kind: "object",
+    }),
+    create_group: createEndpoint("accounts", "create_group", {
+      kind: "object",
+    }),
+    create_user: createEndpoint("accounts", "create_user", { kind: "object" }),
+    delete_group: createEndpoint("accounts", "delete_group", {
+      kind: "field",
+      field: "groupName",
+    }),
+    delete_user: createEndpoint("accounts", "delete_user", {
+      kind: "field",
+      field: "username",
+    }),
+    get_user_details: createEndpoint("accounts", "get_user_details", {
+      kind: "field",
+      field: "username",
+    }),
+    list_groups: createEndpoint("accounts", "list_groups", { kind: "none" }),
+    list_shells: createEndpoint("accounts", "list_shells", { kind: "none" }),
+    list_user_logins: createEndpoint("accounts", "list_user_logins", {
+      kind: "field",
+      field: "username",
+    }),
+    list_users: createEndpoint("accounts", "list_users", { kind: "none" }),
+    lock_user: createEndpoint("accounts", "lock_user", {
+      kind: "field",
+      field: "username",
+    }),
+    modify_group_members: createEndpoint("accounts", "modify_group_members", {
+      kind: "object",
+    }),
+    modify_user: createEndpoint("accounts", "modify_user", { kind: "object" }),
+    terminate_session: createEndpoint("accounts", "terminate_session", {
+      kind: "object",
+    }),
+    unlock_user: createEndpoint("accounts", "unlock_user", {
+      kind: "field",
+      field: "username",
+    }),
   },
   config: {
-    get: createEndpoint("config", "get"),
-    set: createEndpoint("config", "set"),
+    get: createEndpoint("config", "get", { kind: "none" }),
+    set: createEndpoint("config", "set", { kind: "object" }),
   },
   control: {
-    logoff: createEndpoint("control", "logoff"),
-    power_off: createEndpoint("control", "power_off"),
-    reboot: createEndpoint("control", "reboot"),
-    version: createEndpoint("control", "version"),
+    logoff: createEndpoint("control", "logoff", {
+      kind: "field",
+      field: "sessionID",
+    }),
+    power_off: createEndpoint("control", "power_off", { kind: "none" }),
+    reboot: createEndpoint("control", "reboot", { kind: "none" }),
+    version: createEndpoint("control", "version", { kind: "none" }),
   },
   datetime: {
-    get_ntp_servers: createEndpoint("datetime", "get_ntp_servers"),
-    get_ntp_status: createEndpoint("datetime", "get_ntp_status"),
-    get_timezone: createEndpoint("datetime", "get_timezone"),
-    set_ntp: createEndpoint("datetime", "set_ntp"),
-    set_ntp_servers: createEndpoint("datetime", "set_ntp_servers"),
-    set_server_time: createEndpoint("datetime", "set_server_time"),
-    set_timezone: createEndpoint("datetime", "set_timezone"),
+    get_ntp_servers: createEndpoint("datetime", "get_ntp_servers", {
+      kind: "none",
+    }),
+    get_ntp_status: createEndpoint("datetime", "get_ntp_status", {
+      kind: "none",
+    }),
+    get_timezone: createEndpoint("datetime", "get_timezone", { kind: "none" }),
+    set_ntp: createEndpoint("datetime", "set_ntp", {
+      kind: "field",
+      field: "enabled",
+    }),
+    set_ntp_servers: createEndpoint("datetime", "set_ntp_servers", {
+      kind: "field",
+      field: "servers",
+    }),
+    set_server_time: createEndpoint("datetime", "set_server_time", {
+      kind: "field",
+      field: "isoTime",
+    }),
+    set_timezone: createEndpoint("datetime", "set_timezone", {
+      kind: "field",
+      field: "timezone",
+    }),
   },
   docker: {
-    clear_icon_cache: createEndpoint("docker", "clear_icon_cache"),
-    compose: createEndpoint("docker", "compose"),
-    compose_down: createEndpoint("docker", "compose_down"),
-    compose_restart: createEndpoint("docker", "compose_restart"),
-    compose_stop: createEndpoint("docker", "compose_stop"),
-    compose_up: createEndpoint("docker", "compose_up"),
-    connect_to_proxy: createEndpoint("docker", "connect_to_proxy"),
-    create_network: createEndpoint("docker", "create_network"),
-    create_volume: createEndpoint("docker", "create_volume"),
-    delete_image: createEndpoint("docker", "delete_image"),
-    delete_network: createEndpoint("docker", "delete_network"),
-    delete_stack: createEndpoint("docker", "delete_stack"),
-    delete_volume: createEndpoint("docker", "delete_volume"),
-    disable_caddy: createEndpoint("docker", "disable_caddy"),
-    enable_caddy: createEndpoint("docker", "enable_caddy"),
-    get_caddy_status: createEndpoint("docker", "get_caddy_status"),
-    get_compose_file_path: createEndpoint("docker", "get_compose_file_path"),
-    get_compose_project: createEndpoint("docker", "get_compose_project"),
-    get_docker_folders: createEndpoint("docker", "get_docker_folders"),
-    get_docker_info: createEndpoint("docker", "get_docker_info"),
-    get_icon: createEndpoint("docker", "get_icon"),
-    get_icon_info: createEndpoint("docker", "get_icon_info"),
-    get_icon_uri: createEndpoint("docker", "get_icon_uri"),
-    indexer: createEndpoint("docker", "indexer"),
+    clear_icon_cache: createEndpoint("docker", "clear_icon_cache", {
+      kind: "none",
+    }),
+    compose: createEndpoint("docker", "compose", { kind: "object" }),
+    compose_down: createEndpoint("docker", "compose_down", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_restart: createEndpoint("docker", "compose_restart", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_stop: createEndpoint("docker", "compose_stop", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_up: createEndpoint("docker", "compose_up", {
+      kind: "field",
+      field: "projectName",
+    }),
+    connect_to_proxy: createEndpoint("docker", "connect_to_proxy", {
+      kind: "field",
+      field: "containerId",
+    }),
+    create_network: createEndpoint("docker", "create_network", {
+      kind: "field",
+      field: "name",
+    }),
+    create_volume: createEndpoint("docker", "create_volume", {
+      kind: "field",
+      field: "name",
+    }),
+    delete_image: createEndpoint("docker", "delete_image", {
+      kind: "field",
+      field: "imageId",
+    }),
+    delete_network: createEndpoint("docker", "delete_network", {
+      kind: "field",
+      field: "id",
+    }),
+    delete_stack: createEndpoint("docker", "delete_stack", { kind: "object" }),
+    delete_volume: createEndpoint("docker", "delete_volume", {
+      kind: "field",
+      field: "name",
+    }),
+    disable_caddy: createEndpoint("docker", "disable_caddy", { kind: "none" }),
+    enable_caddy: createEndpoint("docker", "enable_caddy", { kind: "none" }),
+    get_caddy_status: createEndpoint("docker", "get_caddy_status", {
+      kind: "none",
+    }),
+    get_compose_file_path: createEndpoint("docker", "get_compose_file_path", {
+      kind: "field",
+      field: "stackName",
+    }),
+    get_compose_project: createEndpoint("docker", "get_compose_project", {
+      kind: "field",
+      field: "projectName",
+    }),
+    get_docker_folders: createEndpoint("docker", "get_docker_folders", {
+      kind: "none",
+    }),
+    get_docker_info: createEndpoint("docker", "get_docker_info", {
+      kind: "none",
+    }),
+    get_icon: createEndpoint("docker", "get_icon", {
+      kind: "field",
+      field: "identifier",
+    }),
+    get_icon_info: createEndpoint("docker", "get_icon_info", {
+      kind: "field",
+      field: "identifier",
+    }),
+    get_icon_uri: createEndpoint("docker", "get_icon_uri", {
+      kind: "field",
+      field: "identifier",
+    }),
+    indexer: createEndpoint("docker", "indexer", { kind: "none" }),
     list_auto_update_containers: createEndpoint(
       "docker",
       "list_auto_update_containers",
+      { kind: "none" },
     ),
-    list_compose_projects: createEndpoint("docker", "list_compose_projects"),
-    list_containers: createEndpoint("docker", "list_containers"),
-    list_images: createEndpoint("docker", "list_images"),
-    list_networks: createEndpoint("docker", "list_networks"),
-    list_volumes: createEndpoint("docker", "list_volumes"),
-    reload_caddy: createEndpoint("docker", "reload_caddy"),
-    remove_container: createEndpoint("docker", "remove_container"),
-    restart_container: createEndpoint("docker", "restart_container"),
-    set_auto_update: createEndpoint("docker", "set_auto_update"),
-    start_all_stopped: createEndpoint("docker", "start_all_stopped"),
-    start_container: createEndpoint("docker", "start_container"),
-    stop_all_running: createEndpoint("docker", "stop_all_running"),
-    stop_container: createEndpoint("docker", "stop_container"),
-    system_prune: createEndpoint("docker", "system_prune"),
-    validate_compose: createEndpoint("docker", "validate_compose"),
+    list_compose_projects: createEndpoint("docker", "list_compose_projects", {
+      kind: "none",
+    }),
+    list_containers: createEndpoint("docker", "list_containers", {
+      kind: "none",
+    }),
+    list_images: createEndpoint("docker", "list_images", { kind: "none" }),
+    list_networks: createEndpoint("docker", "list_networks", { kind: "none" }),
+    list_volumes: createEndpoint("docker", "list_volumes", { kind: "none" }),
+    reload_caddy: createEndpoint("docker", "reload_caddy", { kind: "none" }),
+    remove_container: createEndpoint("docker", "remove_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    restart_container: createEndpoint("docker", "restart_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    set_auto_update: createEndpoint("docker", "set_auto_update", {
+      kind: "object",
+    }),
+    start_all_stopped: createEndpoint("docker", "start_all_stopped", {
+      kind: "none",
+    }),
+    start_container: createEndpoint("docker", "start_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    stop_all_running: createEndpoint("docker", "stop_all_running", {
+      kind: "none",
+    }),
+    stop_container: createEndpoint("docker", "stop_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    system_prune: createEndpoint("docker", "system_prune", { kind: "object" }),
+    validate_compose: createEndpoint("docker", "validate_compose", {
+      kind: "field",
+      field: "content",
+    }),
     validate_stack_directory: createEndpoint(
       "docker",
       "validate_stack_directory",
+      { kind: "field", field: "dirPath" },
     ),
   },
   filebrowser: {
-    archive: createEndpoint("filebrowser", "archive"),
-    chmod: createEndpoint("filebrowser", "chmod"),
-    compress: createEndpoint("filebrowser", "compress"),
-    copy: createEndpoint("filebrowser", "copy"),
-    dir_size: createEndpoint("filebrowser", "dir_size"),
-    download: createEndpoint("filebrowser", "download"),
-    extract: createEndpoint("filebrowser", "extract"),
-    index: createEndpoint("filebrowser", "index"),
-    indexer_status: createEndpoint("filebrowser", "indexer_status"),
-    move: createEndpoint("filebrowser", "move"),
-    resource_delete: createEndpoint("filebrowser", "resource_delete"),
-    resource_get: createEndpoint("filebrowser", "resource_get"),
-    resource_patch: createEndpoint("filebrowser", "resource_patch"),
-    resource_post: createEndpoint("filebrowser", "resource_post"),
-    resource_stat: createEndpoint("filebrowser", "resource_stat"),
-    search: createEndpoint("filebrowser", "search"),
-    subfolders: createEndpoint("filebrowser", "subfolders"),
-    upload: createEndpoint("filebrowser", "upload"),
-    users_groups: createEndpoint("filebrowser", "users_groups"),
+    archive: createEndpoint("filebrowser", "archive", { kind: "object" }),
+    chmod: createEndpoint("filebrowser", "chmod", { kind: "object" }),
+    compress: createEndpoint("filebrowser", "compress", { kind: "object" }),
+    copy: createEndpoint("filebrowser", "copy", { kind: "object" }),
+    dir_size: createEndpoint("filebrowser", "dir_size", {
+      kind: "field",
+      field: "path",
+    }),
+    download: createEndpoint("filebrowser", "download", {
+      kind: "field",
+      field: "path",
+    }),
+    extract: createEndpoint("filebrowser", "extract", { kind: "object" }),
+    index: createEndpoint("filebrowser", "index", { kind: "object" }),
+    indexer_status: createEndpoint("filebrowser", "indexer_status", {
+      kind: "none",
+    }),
+    move: createEndpoint("filebrowser", "move", { kind: "object" }),
+    resource_delete: createEndpoint("filebrowser", "resource_delete", {
+      kind: "field",
+      field: "path",
+    }),
+    resource_get: createEndpoint("filebrowser", "resource_get", {
+      kind: "object",
+    }),
+    resource_patch: createEndpoint("filebrowser", "resource_patch", {
+      kind: "object",
+    }),
+    resource_post: createEndpoint("filebrowser", "resource_post", {
+      kind: "object",
+    }),
+    resource_stat: createEndpoint("filebrowser", "resource_stat", {
+      kind: "field",
+      field: "path",
+    }),
+    search: createEndpoint("filebrowser", "search", { kind: "object" }),
+    subfolders: createEndpoint("filebrowser", "subfolders", {
+      kind: "field",
+      field: "path",
+    }),
+    upload: createEndpoint("filebrowser", "upload", { kind: "object" }),
+    users_groups: createEndpoint("filebrowser", "users_groups", {
+      kind: "none",
+    }),
   },
   hostname: {
-    set_hostname: createEndpoint("hostname", "set_hostname"),
+    set_hostname: createEndpoint("hostname", "set_hostname", {
+      kind: "field",
+      field: "hostname",
+    }),
   },
   indexer: {
-    get_config: createEndpoint("indexer", "get_config"),
-    get_status: createEndpoint("indexer", "get_status"),
-    set_config: createEndpoint("indexer", "set_config"),
-    set_timer_interval: createEndpoint("indexer", "set_timer_interval"),
+    get_config: createEndpoint("indexer", "get_config", { kind: "none" }),
+    get_status: createEndpoint("indexer", "get_status", { kind: "none" }),
+    set_config: createEndpoint("indexer", "set_config", { kind: "object" }),
+    set_timer_interval: createEndpoint("indexer", "set_timer_interval", {
+      kind: "field",
+      field: "interval",
+    }),
   },
   jobs: {
-    cancel: createEndpoint("jobs", "cancel"),
-    get: createEndpoint("jobs", "get"),
-    list: createEndpoint("jobs", "list"),
+    cancel: createEndpoint("jobs", "cancel", { kind: "field", field: "jobId" }),
+    get: createEndpoint("jobs", "get", { kind: "field", field: "jobId" }),
+    list: createEndpoint("jobs", "list", { kind: "object" }),
   },
   network: {
-    disable_connection: createEndpoint("network", "disable_connection"),
-    enable_connection: createEndpoint("network", "enable_connection"),
-    get_network_info: createEndpoint("network", "get_network_info"),
-    set_ipv4: createEndpoint("network", "set_ipv4"),
-    set_ipv4_manual: createEndpoint("network", "set_ipv4_manual"),
-    set_ipv6: createEndpoint("network", "set_ipv6"),
-    set_mtu: createEndpoint("network", "set_mtu"),
+    disable_connection: createEndpoint("network", "disable_connection", {
+      kind: "field",
+      field: "iface",
+    }),
+    enable_connection: createEndpoint("network", "enable_connection", {
+      kind: "field",
+      field: "iface",
+    }),
+    get_network_info: createEndpoint("network", "get_network_info", {
+      kind: "none",
+    }),
+    set_ipv4: createEndpoint("network", "set_ipv4", { kind: "object" }),
+    set_ipv4_manual: createEndpoint("network", "set_ipv4_manual", {
+      kind: "object",
+    }),
+    set_ipv6: createEndpoint("network", "set_ipv6", { kind: "object" }),
+    set_mtu: createEndpoint("network", "set_mtu", { kind: "object" }),
   },
   packages: {
-    update: createEndpoint("packages", "update"),
+    update: createEndpoint("packages", "update", {
+      kind: "field",
+      field: "packageIds",
+    }),
   },
   power: {
-    disable: createEndpoint("power", "disable"),
-    get_status: createEndpoint("power", "get_status"),
-    set_profile: createEndpoint("power", "set_profile"),
-    start: createEndpoint("power", "start"),
+    disable: createEndpoint("power", "disable", { kind: "none" }),
+    get_status: createEndpoint("power", "get_status", { kind: "none" }),
+    set_profile: createEndpoint("power", "set_profile", {
+      kind: "field",
+      field: "profile",
+    }),
+    start: createEndpoint("power", "start", { kind: "none" }),
   },
   shares: {
-    create_nfs_share: createEndpoint("shares", "create_nfs_share"),
-    create_samba_share: createEndpoint("shares", "create_samba_share"),
-    delete_nfs_share: createEndpoint("shares", "delete_nfs_share"),
-    delete_samba_share: createEndpoint("shares", "delete_samba_share"),
-    list_nfs_shares: createEndpoint("shares", "list_nfs_shares"),
-    list_samba_shares: createEndpoint("shares", "list_samba_shares"),
-    update_nfs_share: createEndpoint("shares", "update_nfs_share"),
-    update_samba_share: createEndpoint("shares", "update_samba_share"),
+    create_nfs_share: createEndpoint("shares", "create_nfs_share", {
+      kind: "object",
+    }),
+    create_samba_share: createEndpoint("shares", "create_samba_share", {
+      kind: "object",
+    }),
+    delete_nfs_share: createEndpoint("shares", "delete_nfs_share", {
+      kind: "field",
+      field: "path",
+    }),
+    delete_samba_share: createEndpoint("shares", "delete_samba_share", {
+      kind: "field",
+      field: "name",
+    }),
+    list_nfs_shares: createEndpoint("shares", "list_nfs_shares", {
+      kind: "none",
+    }),
+    list_samba_shares: createEndpoint("shares", "list_samba_shares", {
+      kind: "none",
+    }),
+    update_nfs_share: createEndpoint("shares", "update_nfs_share", {
+      kind: "object",
+    }),
+    update_samba_share: createEndpoint("shares", "update_samba_share", {
+      kind: "object",
+    }),
   },
   storage: {
-    create_btrfs_subvolume: createEndpoint("storage", "create_btrfs_subvolume"),
-    create_lv: createEndpoint("storage", "create_lv"),
-    delete_lv: createEndpoint("storage", "delete_lv"),
-    get_drive_info: createEndpoint("storage", "get_drive_info"),
-    list_lvs: createEndpoint("storage", "list_lvs"),
-    list_nfs_exports: createEndpoint("storage", "list_nfs_exports"),
-    list_nfs_mounts: createEndpoint("storage", "list_nfs_mounts"),
-    list_pvs: createEndpoint("storage", "list_pvs"),
-    list_vgs: createEndpoint("storage", "list_vgs"),
-    mount_nfs: createEndpoint("storage", "mount_nfs"),
-    remount_nfs: createEndpoint("storage", "remount_nfs"),
-    resize_lv: createEndpoint("storage", "resize_lv"),
-    run_smart_test: createEndpoint("storage", "run_smart_test"),
-    unmount_filesystem: createEndpoint("storage", "unmount_filesystem"),
-    unmount_nfs: createEndpoint("storage", "unmount_nfs"),
+    create_btrfs_subvolume: createEndpoint(
+      "storage",
+      "create_btrfs_subvolume",
+      { kind: "object" },
+    ),
+    create_lv: createEndpoint("storage", "create_lv", { kind: "object" }),
+    delete_lv: createEndpoint("storage", "delete_lv", { kind: "object" }),
+    get_drive_info: createEndpoint("storage", "get_drive_info", {
+      kind: "none",
+    }),
+    list_lvs: createEndpoint("storage", "list_lvs", { kind: "none" }),
+    list_nfs_exports: createEndpoint("storage", "list_nfs_exports", {
+      kind: "field",
+      field: "server",
+    }),
+    list_nfs_mounts: createEndpoint("storage", "list_nfs_mounts", {
+      kind: "none",
+    }),
+    list_pvs: createEndpoint("storage", "list_pvs", { kind: "none" }),
+    list_vgs: createEndpoint("storage", "list_vgs", { kind: "none" }),
+    mount_nfs: createEndpoint("storage", "mount_nfs", { kind: "object" }),
+    remount_nfs: createEndpoint("storage", "remount_nfs", { kind: "object" }),
+    resize_lv: createEndpoint("storage", "resize_lv", { kind: "object" }),
+    run_smart_test: createEndpoint("storage", "run_smart_test", {
+      kind: "object",
+    }),
+    unmount_filesystem: createEndpoint("storage", "unmount_filesystem", {
+      kind: "field",
+      field: "mountpoint",
+    }),
+    unmount_nfs: createEndpoint("storage", "unmount_nfs", { kind: "object" }),
   },
   system: {
     dismiss_failed_login_alert: createEndpoint(
       "system",
       "dismiss_failed_login_alert",
+      { kind: "field", field: "alertId" },
     ),
     dismiss_unclean_shutdown: createEndpoint(
       "system",
       "dismiss_unclean_shutdown",
+      { kind: "field", field: "bootId" },
     ),
-    get_capabilities: createEndpoint("system", "get_capabilities"),
-    get_cpu_info: createEndpoint("system", "get_cpu_info"),
-    get_disk_throughput: createEndpoint("system", "get_disk_throughput"),
-    get_fs_info: createEndpoint("system", "get_fs_info"),
-    get_gpu_info: createEndpoint("system", "get_gpu_info"),
-    get_health_summary: createEndpoint("system", "get_health_summary"),
-    get_host_info: createEndpoint("system", "get_host_info"),
-    get_memory_info: createEndpoint("system", "get_memory_info"),
-    get_memory_modules: createEndpoint("system", "get_memory_modules"),
-    get_motherboard_info: createEndpoint("system", "get_motherboard_info"),
-    get_network_info: createEndpoint("system", "get_network_info"),
-    get_pci_devices: createEndpoint("system", "get_pci_devices"),
-    get_processes: createEndpoint("system", "get_processes"),
-    get_sensor_info: createEndpoint("system", "get_sensor_info"),
-    get_server_time: createEndpoint("system", "get_server_time"),
-    get_system_info: createEndpoint("system", "get_system_info"),
-    get_timezones: createEndpoint("system", "get_timezones"),
-    get_updates_fast: createEndpoint("system", "get_updates_fast"),
-    get_uptime: createEndpoint("system", "get_uptime"),
-    install_capability: createEndpoint("system", "install_capability"),
+    get_capabilities: createEndpoint("system", "get_capabilities", {
+      kind: "none",
+    }),
+    get_cpu_info: createEndpoint("system", "get_cpu_info", { kind: "none" }),
+    get_disk_throughput: createEndpoint("system", "get_disk_throughput", {
+      kind: "none",
+    }),
+    get_fs_info: createEndpoint("system", "get_fs_info", { kind: "none" }),
+    get_gpu_info: createEndpoint("system", "get_gpu_info", { kind: "none" }),
+    get_health_summary: createEndpoint("system", "get_health_summary", {
+      kind: "none",
+    }),
+    get_host_info: createEndpoint("system", "get_host_info", { kind: "none" }),
+    get_memory_info: createEndpoint("system", "get_memory_info", {
+      kind: "none",
+    }),
+    get_memory_modules: createEndpoint("system", "get_memory_modules", {
+      kind: "none",
+    }),
+    get_motherboard_info: createEndpoint("system", "get_motherboard_info", {
+      kind: "none",
+    }),
+    get_network_info: createEndpoint("system", "get_network_info", {
+      kind: "none",
+    }),
+    get_pci_devices: createEndpoint("system", "get_pci_devices", {
+      kind: "none",
+    }),
+    get_processes: createEndpoint("system", "get_processes", { kind: "none" }),
+    get_sensor_info: createEndpoint("system", "get_sensor_info", {
+      kind: "none",
+    }),
+    get_server_time: createEndpoint("system", "get_server_time", {
+      kind: "none",
+    }),
+    get_system_info: createEndpoint("system", "get_system_info", {
+      kind: "none",
+    }),
+    get_timezones: createEndpoint("system", "get_timezones", { kind: "none" }),
+    get_updates_fast: createEndpoint("system", "get_updates_fast", {
+      kind: "none",
+    }),
+    get_uptime: createEndpoint("system", "get_uptime", { kind: "none" }),
+    install_capability: createEndpoint("system", "install_capability", {
+      kind: "field",
+      field: "capability",
+    }),
     list_failed_login_events: createEndpoint(
       "system",
       "list_failed_login_events",
+      { kind: "object" },
     ),
   },
   systemd: {
-    disable_service: createEndpoint("systemd", "disable_service"),
-    enable_service: createEndpoint("systemd", "enable_service"),
-    get_unit_info: createEndpoint("systemd", "get_unit_info"),
-    list_services: createEndpoint("systemd", "list_services"),
-    list_sockets: createEndpoint("systemd", "list_sockets"),
-    list_timers: createEndpoint("systemd", "list_timers"),
-    mask_service: createEndpoint("systemd", "mask_service"),
-    reload_service: createEndpoint("systemd", "reload_service"),
-    reset_failed_service: createEndpoint("systemd", "reset_failed_service"),
-    restart_service: createEndpoint("systemd", "restart_service"),
-    start_service: createEndpoint("systemd", "start_service"),
-    stop_service: createEndpoint("systemd", "stop_service"),
-    unmask_service: createEndpoint("systemd", "unmask_service"),
+    disable_service: createEndpoint("systemd", "disable_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    enable_service: createEndpoint("systemd", "enable_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    get_unit_info: createEndpoint("systemd", "get_unit_info", {
+      kind: "field",
+      field: "unitName",
+    }),
+    list_services: createEndpoint("systemd", "list_services", { kind: "none" }),
+    list_sockets: createEndpoint("systemd", "list_sockets", { kind: "none" }),
+    list_timers: createEndpoint("systemd", "list_timers", { kind: "none" }),
+    mask_service: createEndpoint("systemd", "mask_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    reload_service: createEndpoint("systemd", "reload_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    reset_failed_service: createEndpoint("systemd", "reset_failed_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    restart_service: createEndpoint("systemd", "restart_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    start_service: createEndpoint("systemd", "start_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    stop_service: createEndpoint("systemd", "stop_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    unmask_service: createEndpoint("systemd", "unmask_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
   },
   terminal: {
-    list_shells: createEndpoint("terminal", "list_shells"),
+    list_shells: createEndpoint("terminal", "list_shells", {
+      kind: "field",
+      field: "containerId",
+    }),
   },
   updates: {
-    apply_offline_updates: createEndpoint("updates", "apply_offline_updates"),
-    get_auto_updates: createEndpoint("updates", "get_auto_updates"),
-    get_update_detail: createEndpoint("updates", "get_update_detail"),
-    get_update_history: createEndpoint("updates", "get_update_history"),
-    get_updates_basic: createEndpoint("updates", "get_updates_basic"),
-    install_package: createEndpoint("updates", "install_package"),
-    set_auto_updates: createEndpoint("updates", "set_auto_updates"),
+    apply_offline_updates: createEndpoint("updates", "apply_offline_updates", {
+      kind: "none",
+    }),
+    get_auto_updates: createEndpoint("updates", "get_auto_updates", {
+      kind: "none",
+    }),
+    get_update_detail: createEndpoint("updates", "get_update_detail", {
+      kind: "field",
+      field: "packageId",
+    }),
+    get_update_history: createEndpoint("updates", "get_update_history", {
+      kind: "none",
+    }),
+    get_updates_basic: createEndpoint("updates", "get_updates_basic", {
+      kind: "none",
+    }),
+    install_package: createEndpoint("updates", "install_package", {
+      kind: "field",
+      field: "packageId",
+    }),
+    set_auto_updates: createEndpoint("updates", "set_auto_updates", {
+      kind: "object",
+    }),
   },
   wireguard: {
-    add_interface: createEndpoint("wireguard", "add_interface"),
-    add_peer: createEndpoint("wireguard", "add_peer"),
-    disable_interface: createEndpoint("wireguard", "disable_interface"),
-    down_interface: createEndpoint("wireguard", "down_interface"),
-    enable_interface: createEndpoint("wireguard", "enable_interface"),
-    list_interfaces: createEndpoint("wireguard", "list_interfaces"),
-    list_peers: createEndpoint("wireguard", "list_peers"),
-    peer_config_download: createEndpoint("wireguard", "peer_config_download"),
-    peer_qrcode: createEndpoint("wireguard", "peer_qrcode"),
-    remove_interface: createEndpoint("wireguard", "remove_interface"),
-    remove_peer: createEndpoint("wireguard", "remove_peer"),
-    up_interface: createEndpoint("wireguard", "up_interface"),
+    add_interface: createEndpoint("wireguard", "add_interface", {
+      kind: "object",
+    }),
+    add_peer: createEndpoint("wireguard", "add_peer", {
+      kind: "field",
+      field: "interfaceName",
+    }),
+    disable_interface: createEndpoint("wireguard", "disable_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    down_interface: createEndpoint("wireguard", "down_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    enable_interface: createEndpoint("wireguard", "enable_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    list_interfaces: createEndpoint("wireguard", "list_interfaces", {
+      kind: "none",
+    }),
+    list_peers: createEndpoint("wireguard", "list_peers", {
+      kind: "field",
+      field: "interfaceName",
+    }),
+    peer_config_download: createEndpoint("wireguard", "peer_config_download", {
+      kind: "object",
+    }),
+    peer_qrcode: createEndpoint("wireguard", "peer_qrcode", { kind: "object" }),
+    remove_interface: createEndpoint("wireguard", "remove_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    remove_peer: createEndpoint("wireguard", "remove_peer", { kind: "object" }),
+    up_interface: createEndpoint("wireguard", "up_interface", {
+      kind: "field",
+      field: "name",
+    }),
   },
 } as TypedAPI;
 

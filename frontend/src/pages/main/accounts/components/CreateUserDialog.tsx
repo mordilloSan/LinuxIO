@@ -93,7 +93,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
       createHome,
     };
 
-    createUser([request]);
+    createUser(request);
   };
 
   return (

@@ -110,7 +110,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     setIsValidating(true);
     try {
       // Validate the directory with the backend
-      const result = await linuxio.docker.validate_stack_directory.call(
+      const result = await linuxio.docker.validate_stack_directory(
         workingDir.trim(),
       );
       if (!result.valid) {

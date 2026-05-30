@@ -74,10 +74,9 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
       setLastIndexerResult(null);
       setLastIndexerError(null);
 
-      const jobArgs = path && path !== "/" ? [path] : [];
       const pendingKey = jobIdentityKey(
         JobTypes.JOB_TYPE_FILE_INDEXER,
-        jobArgs,
+        path && path !== "/" ? { path } : {},
       );
       pendingLocalJobKeysRef.current.add(pendingKey);
 
@@ -85,8 +84,8 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
       try {
         job =
           path && path !== "/"
-            ? await linuxio.filebrowser.index.call(path)
-            : await linuxio.filebrowser.index.call();
+            ? await linuxio.filebrowser.index({ path })
+            : await linuxio.filebrowser.index({});
       } catch (error) {
         pendingLocalJobKeysRef.current.delete(pendingKey);
         const message =

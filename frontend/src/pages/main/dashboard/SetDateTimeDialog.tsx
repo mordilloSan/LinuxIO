@@ -138,25 +138,25 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
     setIsPending(true);
     try {
       if (timezone && timezone !== originalTimezone) {
-        await setTz([timezone]);
+        await setTz({ timezone });
       }
       if (
         timeMode !== originalMode ||
         JSON.stringify(customServers) !== JSON.stringify(originalServers)
       ) {
         if (timeMode === "manual") {
-          await setNtp(["false"]);
+          await setNtp({ enabled: "false" });
         } else {
-          await setNtp(["true"]);
+          await setNtp({ enabled: "true" });
           const servers =
             timeMode === "custom"
               ? customServers.map((s) => s.trim()).filter(Boolean)
               : [];
-          await setServers(servers);
+          await setServers({ servers });
         }
       }
       if (timeMode === "manual" && manualTime) {
-        await setTime([new Date(manualTime).toISOString()]);
+        await setTime({ isoTime: new Date(manualTime).toISOString() });
       }
       toast.success("Date/time settings updated");
       queryClient.invalidateQueries({

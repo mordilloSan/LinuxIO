@@ -1,7 +1,9 @@
 /**
  * LinuxIO API - Unified Entry Point
  *
- * JSON API (request/response via bridge streams) → React Query:
+ * JSON API (generated, Go-owned request/response contracts):
+ *   await linuxio.system.get_cpu_info()
+ *   await linuxio.jobs.cancel(jobId)
  *   linuxio.system.get_cpu_info.useQuery()
  *   linuxio.docker.start_container.useMutation()
  *
@@ -26,7 +28,7 @@ export {
   jobSnapshotResult,
 } from "./jobs";
 
-// === Core API (Promise-based, used by React Query internally) ===
+// === API Error Type ===
 export { LinuxIOError } from "./linuxio-core";
 
 // === React Hooks ===
@@ -79,7 +81,14 @@ export type * from "./StreamMultiplexer";
 export type * from "./generated/linuxio-types";
 
 // === Capabilities (manifest, types, helpers) ===
-export type * from "./capabilities";
+export type {
+  CapabilityDef,
+  CapabilityErrorKey,
+  CapabilityKey,
+  CapabilityState,
+  CapabilityValueKey,
+  CapabilityWire,
+} from "./capabilities";
 export {
   CAPABILITIES,
   CAPABILITY_KEYS,

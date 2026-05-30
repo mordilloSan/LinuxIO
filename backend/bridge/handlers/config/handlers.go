@@ -21,13 +21,13 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func (h configHandlers) handleGetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func (h configHandlers) handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("config.get requested", "component", "config", "user", h.username)
 	result, err := GetConfigForUser(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h configHandlers) handleSetConfig(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := SetConfigForUser(ctx, args, h.username, h.store)
+func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload, emit bridgeipc.Events) error {
+	result, err := SetConfigForUser(ctx, req, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

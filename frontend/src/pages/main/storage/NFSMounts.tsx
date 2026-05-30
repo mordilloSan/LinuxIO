@@ -269,13 +269,13 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       return;
     }
     setValidationError(null);
-    mountNFS([
+    mountNFS({
       server,
       exportPath,
       mountpoint,
-      buildOptionsString(),
-      mountAtBoot ? "true" : "false",
-    ]);
+      options: buildOptionsString(),
+      persist: mountAtBoot ? "true" : "false",
+    });
   };
   const handleClose = () => {
     setServer("");
@@ -423,7 +423,7 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
 
   const handleRemove = () => {
     if (!mount) return;
-    removeEntry([mount.mountpoint, "true"]);
+    removeEntry({ mountpoint: mount.mountpoint, removeFstab: "true" });
   };
 
   return (
@@ -568,11 +568,11 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   };
   const handleSave = () => {
     if (!mount) return;
-    remountNFS([
-      mount.mountpoint,
-      buildOptionsString(),
-      mountAtBoot ? "true" : "false",
-    ]);
+    remountNFS({
+      mountpoint: mount.mountpoint,
+      options: buildOptionsString(),
+      updateFstab: mountAtBoot ? "true" : "false",
+    });
   };
   const handleClose = () => {
     setReadOnly(false);
@@ -718,7 +718,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       if (unmountResult.warning) {
         toast.warning(unmountResult.warning);
       } else {
-        toast.success(`Unmounted ${variables[0]}`);
+        toast.success(`Unmounted ${variables.mountpoint}`);
       }
       refetch();
     },
@@ -739,7 +739,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
     }
   }, [onMountCreateHandler, handleMountNFS]);
   const handleUnmount = (mount: NFSMount) => {
-    unmountEntry([mount.mountpoint, "false"]);
+    unmountEntry({ mountpoint: mount.mountpoint, removeFstab: "false" });
   };
   const handleEdit = (mount: NFSMount) => {
     setSelectedMount(mount);
@@ -759,13 +759,13 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       return;
     }
     setMountingMountpoint(mount.mountpoint);
-    mountExistingEntry([
-      mount.server,
-      mount.exportPath,
-      mount.mountpoint,
-      buildMountOptionsFromEntry(mount),
-      mount.inFstab ? "true" : "false",
-    ]);
+    mountExistingEntry({
+      server: mount.server,
+      exportPath: mount.exportPath,
+      mountpoint: mount.mountpoint,
+      options: buildMountOptionsFromEntry(mount),
+      persist: mount.inFstab ? "true" : "false",
+    });
   };
   if (loading) {
     return <PageLoader />;

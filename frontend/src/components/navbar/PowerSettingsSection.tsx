@@ -250,8 +250,8 @@ const PowerSettingsSection: React.FC = () => {
                 }
                 onClick={() =>
                   status.tuned_active
-                    ? disableMutation.mutate([])
-                    : startMutation.mutate([])
+                    ? disableMutation.mutate()
+                    : startMutation.mutate()
                 }
                 style={{
                   color: status.tuned_active
@@ -328,7 +328,9 @@ const PowerSettingsSection: React.FC = () => {
           </AppSelect>
           <AppButton
             disabled={!canApplyProfile}
-            onClick={() => setProfileMutation.mutate([resolvedProfile])}
+            onClick={() =>
+              setProfileMutation.mutate({ profile: resolvedProfile })
+            }
             size="small"
             startIcon={<Icon height={18} icon="mdi:check" width={18} />}
             variant={selectedIsActive ? "text" : "contained"}

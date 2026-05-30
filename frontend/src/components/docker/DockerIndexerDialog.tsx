@@ -146,9 +146,9 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
 
     void (async () => {
       try {
-        const job = await linuxio.docker.indexer.call();
+        const job = await linuxio.docker.indexer();
         if (cancelled) {
-          void linuxio.jobs.cancel.call(job.id).catch(() => undefined);
+          void linuxio.jobs.cancel(job.id).catch(() => undefined);
           return;
         }
         jobIdRef.current = job.id;
@@ -195,7 +195,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
   const handleClose = () => {
     if (isRunning) {
       if (jobIdRef.current) {
-        void linuxio.jobs.cancel.call(jobIdRef.current).catch(() => undefined);
+        void linuxio.jobs.cancel(jobIdRef.current).catch(() => undefined);
       }
       closeStream();
     }

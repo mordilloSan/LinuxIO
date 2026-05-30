@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestArchiveResourceLimiterQueuesAndReleases(t *testing.T) {
@@ -69,10 +71,10 @@ func TestArchiveResourceLimiterCancelsWhileWaiting(t *testing.T) {
 	}
 }
 
-func TestParseChmodArgs(t *testing.T) {
+func TestParseChmodRequest(t *testing.T) {
 	tests := []struct {
 		name          string
-		args          []string
+		req           apischema.FileChmodRequest
 		wantPath      string
 		wantMode      string
 		wantOwner     string
@@ -82,25 +84,25 @@ func TestParseChmodArgs(t *testing.T) {
 	}{
 		{
 			name:    "missing mode",
-			args:    []string{"/tmp/file"},
+			req:     apischema.FileChmodRequest{Path: "/tmp/file"},
 			wantErr: true,
 		},
 		{
 			name:     "path and mode only",
-			args:     []string{"/tmp/file", "0644"},
+			req:      apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644"},
 			wantPath: "/tmp/file",
 			wantMode: "0644",
 		},
 		{
 			name:      "owner only",
-			args:      []string{"/tmp/file", "0644", "miguel"},
+			req:       apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644", Owner: "miguel"},
 			wantPath:  "/tmp/file",
 			wantMode:  "0644",
 			wantOwner: "miguel",
 		},
 		{
 			name:      "owner and group",
-			args:      []string{"/tmp/file", "0644", "miguel", "staff"},
+			req:       apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644", Owner: "miguel", Group: "staff"},
 			wantPath:  "/tmp/file",
 			wantMode:  "0644",
 			wantOwner: "miguel",
@@ -108,7 +110,7 @@ func TestParseChmodArgs(t *testing.T) {
 		},
 		{
 			name:          "owner group recursive",
-			args:          []string{"/tmp/file", "0644", "miguel", "staff", "true"},
+			req:           apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644", Owner: "miguel", Group: "staff", Recursive: new(true)},
 			wantPath:      "/tmp/file",
 			wantMode:      "0644",
 			wantOwner:     "miguel",
@@ -119,18 +121,18 @@ func TestParseChmodArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, mode, owner, group, recursive, err := parseChmodArgs(tt.args)
+			path, mode, owner, group, recursive, err := parseChmodRequest(tt.req)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatal("parseChmodArgs returned nil error")
+					t.Fatal("parseChmodRequest returned nil error")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseChmodArgs returned error: %v", err)
+				t.Fatalf("parseChmodRequest returned error: %v", err)
 			}
 			if path != tt.wantPath || mode != tt.wantMode || owner != tt.wantOwner || group != tt.wantGroup || recursive != tt.wantRecursive {
-				t.Fatalf("parseChmodArgs() = (%q, %q, %q, %q, %v), want (%q, %q, %q, %q, %v)", path, mode, owner, group, recursive, tt.wantPath, tt.wantMode, tt.wantOwner, tt.wantGroup, tt.wantRecursive)
+				t.Fatalf("parseChmodRequest() = (%q, %q, %q, %q, %v), want (%q, %q, %q, %q, %v)", path, mode, owner, group, recursive, tt.wantPath, tt.wantMode, tt.wantOwner, tt.wantGroup, tt.wantRecursive)
 			}
 		})
 	}

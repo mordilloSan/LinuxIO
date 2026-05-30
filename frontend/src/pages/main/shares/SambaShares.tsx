@@ -281,7 +281,7 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
     }
     setValidationError(null);
     const props = buildProperties(path, comment, accessOpts, validUsers);
-    createShare([name.trim(), props]);
+    createShare({ name: name.trim(), properties: props });
   };
 
   const handleClose = () => {
@@ -401,7 +401,11 @@ export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
   const handleSave = () => {
     if (!share || !path.trim()) return;
     const props = buildProperties(path, comment, accessOpts, validUsers);
-    updateShare([share.name, props]);
+    updateShare({
+      oldName: share.name,
+      newName: share.name,
+      properties: props,
+    });
   };
 
   const handleClose = () => {
@@ -512,7 +516,7 @@ export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
 
   const handleDelete = () => {
     if (!share) return;
-    deleteShare([share.name]);
+    deleteShare({ name: share.name });
   };
 
   return (

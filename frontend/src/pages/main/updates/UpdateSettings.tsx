@@ -128,10 +128,10 @@ export const useUpdateSettingsState = (enabled = true) => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-    setAutoUpdates([payload]);
+    setAutoUpdates(payload);
   };
   const applyOffline = () => {
-    applyOfflineUpdates([]);
+    applyOfflineUpdates();
   };
   return {
     loading,

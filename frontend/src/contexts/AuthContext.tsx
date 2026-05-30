@@ -158,7 +158,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshCapabilities =
     useCallback(async (): Promise<CapabilitiesResponse> => {
-      const data = await linuxio.system.get_capabilities.call();
+      const data = await linuxio.system.get_capabilities();
       applyCapabilities(data);
       return data;
     }, [applyCapabilities]);

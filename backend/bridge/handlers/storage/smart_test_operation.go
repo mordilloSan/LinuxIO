@@ -39,32 +39,20 @@ func pollInterval(testType string) time.Duration {
 	return 15 * time.Second
 }
 
-func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-	device, testType, err := smartTestJobArgs(args)
-	if err != nil {
-		return nil, err
-	}
-
+func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, req apischema.DeviceTestTypeRequest) (any, error) {
 	state := smartTestJobState{
 		job:      job,
-		device:   device,
-		testType: testType,
+		device:   req.Device,
+		testType: req.TestType,
 	}
 	state.reportStart()
 
-	if _, err := RunSmartTest(ctx, device, testType); err != nil {
+	if _, err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 500)
 	}
 
 	state.pollInitial(ctx)
 	return state.pollUntilDone(ctx)
-}
-
-func smartTestJobArgs(args []string) (string, string, error) {
-	if len(args) < 2 {
-		return "", "", bridgejobs.NewError("run_smart_test requires device name and test type (short/long)", 400)
-	}
-	return args[0], args[1], nil
 }
 
 type smartTestJobState struct {

@@ -216,7 +216,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
     if (isManagedContainer) return;
     setAutoUpdateLoading(true);
     try {
-      await linuxio.docker.set_auto_update.call({ container: name, enabled });
+      await linuxio.docker.set_auto_update({ container: name, enabled });
       queryClient.invalidateQueries({
         queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
       });
@@ -522,7 +522,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     <span>
                       <ActionButton
                         icon="mdi:play"
-                        onClick={() => startContainer([container.Id])}
+                        onClick={() =>
+                          startContainer({ containerId: container.Id })
+                        }
                       />
                     </span>
                   </AppTooltip>
@@ -532,7 +534,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     <span>
                       <ActionButton
                         icon="mdi:stop"
-                        onClick={() => stopContainer([container.Id])}
+                        onClick={() =>
+                          stopContainer({ containerId: container.Id })
+                        }
                       />
                     </span>
                   </AppTooltip>
@@ -541,7 +545,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   <span>
                     <ActionButton
                       icon="mdi:restart"
-                      onClick={() => restartContainer([container.Id])}
+                      onClick={() =>
+                        restartContainer({ containerId: container.Id })
+                      }
                     />
                   </span>
                 </AppTooltip>
@@ -549,7 +555,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   <span>
                     <ActionButton
                       icon="mdi:delete"
-                      onClick={() => removeContainer([container.Id])}
+                      onClick={() =>
+                        removeContainer({ containerId: container.Id })
+                      }
                     />
                   </span>
                 </AppTooltip>

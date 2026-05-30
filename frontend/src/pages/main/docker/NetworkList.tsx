@@ -83,7 +83,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
 
   const handleCreate = () => {
     if (!networkName || nameTaken || !isValidName) return;
-    createNetwork([networkName]);
+    createNetwork({ name: networkName });
   };
 
   const handleClose = () => {
@@ -192,7 +192,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   const handleDelete = async () => {
     // Delete networks sequentially
     for (const id of networkIds) {
-      await deleteNetwork([id]);
+      await deleteNetwork({ id });
     }
     const successMessage =
       networkNames.length === 1

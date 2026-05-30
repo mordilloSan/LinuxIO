@@ -170,19 +170,19 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
-      const containerId = [container.Id];
+      const request = { containerId: container.Id };
       switch (action) {
         case "start":
-          startContainer(containerId);
+          startContainer(request);
           break;
         case "stop":
-          stopContainer(containerId);
+          stopContainer(request);
           break;
         case "restart":
-          restartContainer(containerId);
+          restartContainer(request);
           break;
         case "remove":
-          removeContainer(containerId);
+          removeContainer(request);
           break;
       }
     },
@@ -227,7 +227,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       if (isManagedContainer) return;
       setAutoUpdateLoading(true);
       try {
-        await linuxio.docker.set_auto_update.call({ container: name, enabled });
+        await linuxio.docker.set_auto_update({ container: name, enabled });
         queryClient.invalidateQueries({
           queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
         });

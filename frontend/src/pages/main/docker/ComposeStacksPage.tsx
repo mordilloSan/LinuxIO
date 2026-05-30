@@ -170,11 +170,11 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           const deleteFile = option === "file" || option === "directory";
           const deleteDirectory = option === "directory";
 
-          await deleteStack([
+          await deleteStack({
             projectName,
-            deleteFile ? "true" : "false",
-            deleteDirectory ? "true" : "false",
-          ]);
+            deleteFile,
+            deleteDirectory,
+          });
 
           const successMsg =
             option === "directory"
@@ -239,12 +239,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         // Fetch file content
         const result = await queryClient.fetchQuery(
           linuxio.filebrowser.resource_get.queryOptions(
-            configPath,
-            "",
-            "true",
-            {
-              staleTime: CACHE_TTL_MS.NONE,
-            },
+            { path: configPath, unused: "", getContent: "true" },
+            { staleTime: CACHE_TTL_MS.NONE },
           ),
         );
 
@@ -273,12 +269,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       try {
         const result = await queryClient.fetchQuery(
           linuxio.filebrowser.resource_get.queryOptions(
-            configPath,
-            "",
-            "true",
-            {
-              staleTime: CACHE_TTL_MS.NONE,
-            },
+            { path: configPath, unused: "", getContent: "true" },
+            { staleTime: CACHE_TTL_MS.NONE },
           ),
         );
 
@@ -305,7 +297,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await linuxio.docker.validate_compose.call(content);
+        const result = await linuxio.docker.validate_compose(content);
         return result;
       } catch (error) {
         return {
@@ -339,11 +331,11 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
-      const job = await linuxio.filebrowser.upload.call(
-        filePath,
-        String(contentSize),
-        ...(override ? ["true"] : []),
-      );
+      const job = await linuxio.filebrowser.upload({
+        targetPath: filePath,
+        size: String(contentSize),
+        overwrite: override || undefined,
+      });
 
       await runChunkedStreamResult<void>({
         open: () => openJobDataStream(job.id, 0),

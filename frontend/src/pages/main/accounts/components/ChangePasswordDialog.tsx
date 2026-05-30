@@ -61,7 +61,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
       return;
     }
 
-    changePassword([username, password]);
+    changePassword({ username, password });
   };
 
   return (

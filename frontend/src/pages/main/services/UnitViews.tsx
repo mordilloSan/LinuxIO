@@ -292,7 +292,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             color="error"
             disabled={anyPending}
-            onClick={() => stopService([unitName])}
+            onClick={() => stopService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isStopping, "mdi:stop-circle")}
             variant="outlined"
@@ -305,7 +305,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             color="success"
             disabled={anyPending}
-            onClick={() => startService([unitName])}
+            onClick={() => startService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isStarting, "mdi:play")}
             variant="outlined"
@@ -318,7 +318,7 @@ export const UnitCardActions: React.FC<{
         <span>
           <AppButton
             disabled={!isActive || anyPending}
-            onClick={() => restartService([unitName])}
+            onClick={() => restartService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isRestarting, "mdi:restart")}
             variant="outlined"
@@ -331,7 +331,7 @@ export const UnitCardActions: React.FC<{
         <span>
           <AppButton
             disabled={!isActive || anyPending}
-            onClick={() => reloadService([unitName])}
+            onClick={() => reloadService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isReloading, "mdi:refresh")}
             variant="outlined"
@@ -345,7 +345,7 @@ export const UnitCardActions: React.FC<{
           <span>
             <AppButton
               disabled={isMasked || anyPending}
-              onClick={() => disableService([unitName])}
+              onClick={() => disableService({ serviceName: unitName })}
               size="small"
               startIcon={buttonIcon(isDisabling, "mdi:block-helper")}
               variant="outlined"
@@ -360,7 +360,7 @@ export const UnitCardActions: React.FC<{
             <AppButton
               color="success"
               disabled={isMasked || anyPending}
-              onClick={() => enableService([unitName])}
+              onClick={() => enableService({ serviceName: unitName })}
               size="small"
               startIcon={buttonIcon(isEnabling, "mdi:play")}
               variant="outlined"
@@ -375,7 +375,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             color="warning"
             disabled={anyPending}
-            onClick={() => unmaskService([unitName])}
+            onClick={() => unmaskService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isUnmasking, "mdi:eye")}
             variant="outlined"
@@ -387,7 +387,7 @@ export const UnitCardActions: React.FC<{
         <AppTooltip title="Mask to completely prevent the unit from starting">
           <AppButton
             disabled={anyPending}
-            onClick={() => maskService([unitName])}
+            onClick={() => maskService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isMasking, "mdi:eye-off")}
             variant="outlined"
@@ -401,7 +401,7 @@ export const UnitCardActions: React.FC<{
           <AppButton
             color="warning"
             disabled={anyPending}
-            onClick={() => resetFailedService([unitName])}
+            onClick={() => resetFailedService({ serviceName: unitName })}
             size="small"
             startIcon={buttonIcon(isResettingFailed, "mdi:broom")}
             variant="outlined"

@@ -179,9 +179,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   const isConnecting = iface.state >= 40 && iface.state <= 90;
   const handleConnectionToggle = () => {
     if (isConnected || isConnecting) {
-      disableConnection([iface.name]);
+      disableConnection({ iface: iface.name });
     } else {
-      enableConnection([iface.name]);
+      enableConnection({ iface: iface.name });
     }
   };
 
@@ -268,7 +268,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   const handleSave = () => {
     if (mode === "auto") {
       // SetIPv4 with method "dhcp"
-      setIPv4([iface.name, "dhcp"]);
+      setIPv4({ iface: iface.name, method: "dhcp" });
     } else {
       const ipv4 = (editForm.ipv4 || "").trim();
       const gateway = (editForm.gateway || "").trim();
@@ -314,8 +314,12 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         }
       }
 
-      // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
-      setIPv4Manual([iface.name, ipv4, gateway, ...dnsServers]);
+      setIPv4Manual({
+        iface: iface.name,
+        address: ipv4,
+        gateway,
+        dns: dnsServers.join(","),
+      });
     }
   };
   return (

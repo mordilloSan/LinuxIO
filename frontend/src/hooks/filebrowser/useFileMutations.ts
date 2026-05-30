@@ -61,7 +61,9 @@ export const useFileMutations = ({
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: linuxio.filebrowser.resource_get.queryKey(normalizedPath),
+      queryKey: linuxio.filebrowser.resource_get.queryKey({
+        path: normalizedPath,
+      }),
     });
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);
@@ -79,8 +81,7 @@ export const useFileMutations = ({
   const createFile = useCallback(
     (fileName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
-      // Args: [path] - file path without trailing slash
-      createFileMutation.mutate([path]);
+      createFileMutation.mutate({ path });
     },
     [createFileMutation, normalizedPath],
   );
@@ -98,8 +99,7 @@ export const useFileMutations = ({
   const createFolder = useCallback(
     (folderName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
-      // Args: [path] - directory path with trailing slash
-      createFolderMutation.mutate([path]);
+      createFolderMutation.mutate({ path });
     },
     [createFolderMutation, normalizedPath],
   );
@@ -108,7 +108,7 @@ export const useFileMutations = ({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
         paths.map(async (path) => {
-          const job = await linuxio.filebrowser.resource_delete.call(path);
+          const job = await linuxio.filebrowser.resource_delete(path);
           await runStreamResult({
             open: () => openJobAttachStream(job.id),
             closeMessage: "Delete job stream closed before completion",
@@ -177,17 +177,13 @@ export const useFileMutations = ({
       if (!mode) {
         throw new Error("No mode provided");
       }
-      const args = [path, mode, owner || "", group || ""];
-      if (recursive) {
-        args.push("true");
-      }
-      const job = await linuxio.filebrowser.chmod.call(
-        args[0],
-        args[1],
-        args[2],
-        args[3],
-        args[4],
-      );
+      const job = await linuxio.filebrowser.chmod({
+        path,
+        mode,
+        owner: owner || "",
+        group: group || "",
+        recursive: recursive || undefined,
+      });
       await runStreamResult({
         open: () => openJobAttachStream(job.id),
         closeMessage: "Permissions job stream closed before completion",
@@ -226,8 +222,11 @@ export const useFileMutations = ({
       if (!from || !destination) {
         throw new Error("Invalid rename parameters");
       }
-      // Args: [action, from, destination]
-      await renameMutation.mutateAsync(["rename", from, destination]);
+      await renameMutation.mutateAsync({
+        action: "rename",
+        src: from,
+        dst: destination,
+      });
     },
     [renameMutation],
   );

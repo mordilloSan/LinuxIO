@@ -28,7 +28,7 @@ var (
 // Stream opcodes for the binary relay protocol.
 // Frame format: [opcode:1][streamID:4][length:4][payload:N]
 const (
-	OpStreamOpen     byte = 0x80 // Open stream: payload = streamType\0arg1\0arg2...
+	OpStreamOpen     byte = 0x80 // Open stream: payload = JSON StreamOpenEnvelope
 	OpStreamData     byte = 0x81 // Binary data: payload = raw bytes
 	OpStreamClose    byte = 0x82 // Close stream: payload = empty
 	OpStreamResize   byte = 0x83 // Terminal resize: payload = [cols:2][rows:2]
@@ -117,31 +117,71 @@ func ReadRelayFrame(r io.Reader) (*StreamFrame, error) {
 	return f, nil
 }
 
-// StreamOpenPayload parses the payload of an OpStreamOpen frame.
-// Format: streamType\0arg1\0arg2\0...
-func ParseStreamOpenPayload(payload []byte) (streamType string, args []string) {
-	if len(payload) == 0 {
-		return "", nil
-	}
+// StreamOpenEnvelope is the JSON payload for an OpStreamOpen frame.
+type StreamOpenEnvelope struct {
+	Route   string          `json:"route"`
+	Request json.RawMessage `json:"request"`
+}
 
-	// Split by null bytes
-	var parts []string
-	start := 0
-	for i, b := range payload {
-		if b == 0 {
-			parts = append(parts, string(payload[start:i]))
-			start = i + 1
+// MarshalStreamOpenPayload builds the payload of an OpStreamOpen frame.
+func MarshalStreamOpenPayload(route string, request any) ([]byte, error) {
+	if request == nil {
+		request = map[string]any{}
+	}
+	rawRequest, err := rawMessage(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal stream open request: %w", err)
+	}
+	payload, err := json.Marshal(StreamOpenEnvelope{
+		Route:   route,
+		Request: rawRequest,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal stream open payload: %w", err)
+	}
+	if _, err := checkPayloadSize(payload); err != nil {
+		return nil, fmt.Errorf("stream open payload invalid: %w", err)
+	}
+	return payload, nil
+}
+
+func rawMessage(value any) (json.RawMessage, error) {
+	if raw, ok := value.(json.RawMessage); ok {
+		if len(raw) == 0 {
+			return json.RawMessage("{}"), nil
 		}
+		return raw, nil
 	}
-	// Last part (no trailing null)
-	if start < len(payload) {
-		parts = append(parts, string(payload[start:]))
+	if raw, ok := value.([]byte); ok {
+		if len(raw) == 0 {
+			return json.RawMessage("{}"), nil
+		}
+		return json.RawMessage(raw), nil
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// ParseStreamOpenPayload parses the payload of an OpStreamOpen frame.
+func ParseStreamOpenPayload(payload []byte) (StreamOpenEnvelope, error) {
+	if len(payload) == 0 {
+		return StreamOpenEnvelope{}, fmt.Errorf("%w: empty stream open payload", ErrInvalidRequest)
 	}
 
-	if len(parts) == 0 {
-		return "", nil
+	var envelope StreamOpenEnvelope
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return StreamOpenEnvelope{}, fmt.Errorf("%w: decode stream open payload: %v", ErrInvalidRequest, err)
 	}
-	return parts[0], parts[1:]
+	if envelope.Route == "" {
+		return StreamOpenEnvelope{}, fmt.Errorf("%w: missing route", ErrInvalidRequest)
+	}
+	if len(envelope.Request) == 0 || string(envelope.Request) == "null" {
+		envelope.Request = json.RawMessage("{}")
+	}
+	return envelope, nil
 }
 
 // ResultFrame represents the final result of an operation.

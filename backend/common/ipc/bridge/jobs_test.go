@@ -12,7 +12,7 @@ import (
 
 func TestJobCompletesAndSnapshotsResult(t *testing.T) {
 	registry := NewRegistry()
-	job, err := startTestJob(registry, "test.complete", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.complete", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		job.ReportProgress(map[string]any{"pct": 50})
 		return map[string]any{"ok": true}, nil
 	})
@@ -35,7 +35,7 @@ func TestJobCompletesAndSnapshotsResult(t *testing.T) {
 
 func TestJobDoneClosesAfterTerminalSnapshotCommitted(t *testing.T) {
 	registry := NewRegistry()
-	job, err := startTestJob(registry, "test.done.atomic", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.done.atomic", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		return map[string]any{"ok": true}, nil
 	})
 	if err != nil {
@@ -58,7 +58,7 @@ func TestJobDoneClosesAfterTerminalSnapshotCommitted(t *testing.T) {
 func TestJobCancelMarksCanceled(t *testing.T) {
 	registry := NewRegistry()
 	started := make(chan struct{})
-	job, err := startTestJob(registry, "test.cancel", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.cancel", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		close(started)
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -100,7 +100,7 @@ func TestCancelForSessionActiveJob(t *testing.T) {
 	events, unsubscribe := registry.Subscribe(8)
 	defer unsubscribe()
 	started := make(chan struct{})
-	job, err := startTestJob(registry, "test.cancel.session.active", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.cancel.session.active", nil, owner, func(ctx context.Context, job *Job, _ any) (any, error) {
 		close(started)
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -135,7 +135,7 @@ func TestCancelForSessionQueuedJob(t *testing.T) {
 func TestCancelForSessionCompletedJobIgnored(t *testing.T) {
 	registry := NewRegistry()
 	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
-	job, err := startTestJob(registry, "test.cancel.session.completed", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.cancel.session.completed", nil, owner, func(ctx context.Context, job *Job, _ any) (any, error) {
 		return map[string]any{"ok": true}, nil
 	})
 	if err != nil {
@@ -158,7 +158,7 @@ func TestOwnerScopedAccessors(t *testing.T) {
 	ownerA := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
 	ownerB := Owner{SessionID: "session-b", Username: "bob", UID: 1001}
 	block := make(chan struct{})
-	job, err := startTestJob(registry, "test.owner", nil, ownerA, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.owner", nil, ownerA, func(ctx context.Context, job *Job, _ any) (any, error) {
 		<-block
 		return map[string]any{"ok": true}, nil
 	})
@@ -186,7 +186,7 @@ func TestRegistrySubscribeReceivesLiveEvents(t *testing.T) {
 	owner := Owner{SessionID: "session-a", Username: "alice", UID: 1000}
 	events, unsubscribe := registry.Subscribe(8)
 	defer unsubscribe()
-	job, err := startTestJob(registry, "test.events", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.events", nil, owner, func(ctx context.Context, job *Job, _ any) (any, error) {
 		job.ReportProgress(map[string]any{"pct": 50})
 		return map[string]any{"ok": true}, nil
 	})
@@ -218,7 +218,7 @@ func TestSlowRegistrySubscriberStillReceivesTerminalEvent(t *testing.T) {
 	events, unsubscribe := registry.Subscribe(1)
 	defer unsubscribe()
 
-	job, err := startTestJob(registry, "test.slow.registry", nil, owner, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.slow.registry", nil, owner, func(ctx context.Context, job *Job, _ any) (any, error) {
 		for i := range 20 {
 			job.ReportProgress(map[string]any{"pct": i})
 		}
@@ -238,7 +238,7 @@ func TestSlowRegistrySubscriberStillReceivesTerminalEvent(t *testing.T) {
 func TestSlowJobSubscriberStillReceivesTerminalEvent(t *testing.T) {
 	registry := NewRegistry()
 	block := make(chan struct{})
-	job, err := startTestJob(registry, "test.slow.job", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.slow.job", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		<-block
 		for i := range 20 {
 			job.ReportProgress(map[string]any{"pct": i})
@@ -349,7 +349,7 @@ func TestTransientProgressDoesNotReachRegistryEvents(t *testing.T) {
 
 func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	registry := NewRegistry()
-	job, err := startTestJob(registry, "test.attach.replay", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	job, err := startTestJob(registry, "test.attach.replay", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		job.ReportData("first\n")
 		job.ReportData("second\n")
 		return map[string]any{"ok": true}, nil
@@ -405,13 +405,13 @@ func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 func TestSweepTerminalOlderThanRemovesOnlyOldTerminalJobs(t *testing.T) {
 	registry := NewRegistry()
 	activeBlock := make(chan struct{})
-	doneJob, err := startTestJob(registry, "test.sweep.done", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	doneJob, err := startTestJob(registry, "test.sweep.done", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		return map[string]any{"ok": true}, nil
 	})
 	if err != nil {
 		t.Fatalf("start done returned error: %v", err)
 	}
-	activeJob, err := startTestJob(registry, "test.sweep.active", nil, Owner{}, func(ctx context.Context, job *Job, args []string) (any, error) {
+	activeJob, err := startTestJob(registry, "test.sweep.active", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
 		<-activeBlock
 		return map[string]any{"ok": true}, nil
 	})
@@ -460,8 +460,8 @@ func readProgressData(t *testing.T, conn net.Conn) string {
 	return progress.Data
 }
 
-func startTestJob(registry *Registry, jobType string, args []string, owner Owner, runner Runner) (*Job, error) {
-	job, err := registry.CreateForOwner(jobType, args, owner)
+func startTestJob(registry *Registry, jobType string, request any, owner Owner, runner Runner) (*Job, error) {
+	job, err := registry.CreateForOwner(jobType, request, owner)
 	if err != nil {
 		return nil, err
 	}
