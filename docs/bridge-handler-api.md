@@ -1,30 +1,24 @@
 # Bridge Handler API
 
-The bridge owns LinuxIO application semantics. The webserver authenticates the browser, relays opaque WebSocket/yamux bytes, and the bridge parses the first relay frame as a canonical route invocation.
+The bridge owns LinuxIO application semantics. The webserver authenticates the browser and relays WebSocket/yamux bytes; the bridge parses the first relay frame as a JSON route invocation and dispatches to typed Go handlers.
 
 ## Package Split
 
-Bridge IPC is split by responsibility:
-
 | Package | Purpose |
 |---------|---------|
-| `backend/common/ipc/auth` | auth/bootstrap binary protocol |
-| `backend/common/ipc/relay` | relay frames and yamux helpers |
-| `backend/common/ipc/bridge` | route registry, dispatch, typed errors, privileges, jobs, lifecycle primitives |
+| `backend/common/ipc/auth` | Auth/bootstrap protocol. |
+| `backend/common/ipc/relay` | Relay frames, stream-open JSON envelope, yamux helpers, progress/result frames. |
+| `backend/common/ipc/bridge` | Route registry, dispatch, typed errors, privileges, jobs, lifecycle primitives. |
+| `backend/bridge/apischema` | Single source of truth for API routes, request/response contracts, registration adapters, and generated frontend types. |
 
-Feature handlers should import `bridgeipc` from `backend/common/ipc/bridge`.
+Feature handlers usually import:
 
-## Route Modes
-
-Every backend route declares one mode:
-
-| Mode | Contract |
-|------|----------|
-| `Query` | read-only, bounded, one result, dispatcher closes |
-| `Job` | every mutation/action plus long-running reads, logs, subscriptions, and cancellable work |
-| `Duplex` | interactive bidirectional sessions such as terminals |
-
-The frontend mirrors this in `frontend/src/api/route-metadata.ts`.
+```go
+import (
+    "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+    bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+)
+```
 
 ## Core Flow
 
@@ -38,51 +32,145 @@ webserver yamux relay
 bridge accepts yamux stream
     |
     v
-first relay frame payload: <route>\0<arg1>\0...
+OpStreamOpen payload: {"route":"handler.command","request":{...}}
     |
     v
-bridgeipc.Dispatch(route, args, session)
+bridgeipc.Router decodes request through the apischema RouteSpec
+    |
+    v
+typed handler / runner / duplex function
 ```
 
 The route name is the protocol name. There is no separate request/response transport namespace.
 
-## Registering Routes
+## API Contract Ownership
 
-Use the router directly for explicit routes:
+`backend/bridge/apischema` is the contract source:
+
+| File | Role |
+|------|------|
+| `routes.go` | One `RouteSpec` per route: route name, mode, kind, request type, result type, policy, privilege, and `NoEndpoint`. |
+| `contracts.go` | Shared request structs and small shared responses. |
+| `models.go` | API response/domain model structs reflected into TypeScript. |
+| `schema.go` | Contract helpers, request decoders, and typed registration adapters. |
+
+The generator at `backend/common/tools/linuxio-api-gen` reflects those contracts into:
+
+- `frontend/src/api/generated/client.ts`
+- `frontend/src/api/generated/linuxio-types.ts`
+- `frontend/src/api/generated/route-metadata.ts`
+
+Run `make generate` after contract changes.
+
+## Route Modes And Kinds
+
+Every route has one mode:
+
+| Mode | Contract |
+|------|----------|
+| `bridgeipc.ModeQuery` | Read-only, bounded, one result, dispatcher closes. |
+| `bridgeipc.ModeJob` | Mutations, cancellable work, long-running reads, logs, subscriptions. |
+| `bridgeipc.ModeDuplex` | Interactive bidirectional sessions such as terminals. |
+
+Every route also has one schema kind:
+
+| Kind | Go signature |
+|------|--------------|
+| `KindHandler` | `func(context.Context, TRequest, bridgeipc.Events) error` |
+| `KindRunner` | `func(context.Context, *bridgeipc.Job, TRequest) (any, error)` |
+| `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
+
+Use `bridgeipc.NoRequest` / `apischema.NoRequest()` for no request payload and `bridgeipc.NoResponse` / `apischema.NoResponse()` for no result payload.
+
+## Registering Handler Routes
+
+Add the route spec:
 
 ```go
-router.Query("packages.list_installed", handleListInstalled)
-router.JobRunner("packages.update", runPackageUpdate, bridgeipc.SingletonSystem)
-router.Job("docker.start_container", handleStartContainer, bridgeipc.ActionDefault)
-router.Duplex("terminal.open", openTerminal)
+{Kind: KindHandler, Route: "systemd.get_unit_info", Mode: bridgeipc.ModeQuery, Request: TypeOf[UnitNameRequest](), Result: TypeOf[UnitInfo]()},
 ```
 
-For command tables inside one component, `bridgeipc.RegisterRoutes` is a route-table helper:
+Implement the typed handler:
 
 ```go
-bridgeipc.RegisterRoutes(router, "docker", []bridgeipc.Command{
-    {Name: "list_containers", Mode: bridgeipc.ModeQuery, Handler: h.handleListContainers},
-    {Name: "start_container", Mode: bridgeipc.ModeJob, Handler: h.handleStartContainer},
-})
-```
-
-The mode must be declared. Missing mode panics at registration time.
-
-## Jobs
-
-All actions are Jobs, including fast atomic mutations. Runner authors do not choose a fast or long path:
-
-```go
-func runStartContainer(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
-    id, err := bridgeipc.Arg(args, 0)
-    if err != nil {
-        return nil, err
-    }
-    return map[string]string{"id": id}, startContainer(ctx, id)
+func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
+    result, err := GetUnitInfo(ctx, req.UnitName)
+    return bridgeipc.EmitResult(emit, result, err)
 }
 ```
 
-If the runner completes before the initial response is written, the initial `JobSnapshot` is already terminal. Otherwise the frontend can attach to shared job lifecycle primitives.
+Register it from the domain package:
+
+```go
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+    apischema.RegisterRoutes(router, "systemd", []bridgeipc.Command{
+        {Name: "get_unit_info", Mode: bridgeipc.ModeQuery, Handler: handleGetUnitInfo},
+    })
+}
+```
+
+`apischema.RegisterRoutes` looks up the route in `routes.go`, installs the generated JSON request decoder, validates the function signature, applies schema privilege/policy, and registers the route with `bridgeipc.Router`.
+
+## Registering Job Runners
+
+Use a runner when the implementation needs direct access to `*bridgeipc.Job`, for example progress reporting, job data, or lower-level cancellation behavior.
+
+```go
+func runPackageUpdateJob(ctx context.Context, job *bridgeipc.Job, req apischema.PackageUpdateRequest) (any, error) {
+    job.ReportProgress(map[string]any{"phase": "starting"})
+    return nil, UpdatePackages(ctx, req.PackageIDs)
+}
+```
+
+```go
+policy := bridgeipc.SingletonSystem
+policy.Timeout = 2 * time.Hour
+
+apischema.AttachRunner(router, apischema.RunnerBinding{
+    Route:  "packages.update",
+    Runner: runPackageUpdateJob,
+    Policy: policy,
+})
+```
+
+The route spec still owns the route name, mode, kind, request type, result type, privilege, and default policy. The binding can override policy when a route needs a tuned timeout or limit.
+
+## Registering Duplex Routes
+
+Duplex routes receive the raw `net.Conn` and a typed request:
+
+```go
+apischema.AttachDuplex(router, apischema.DuplexBinding{
+    Route: "terminal.open",
+    Handle: func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
+        return HandleTerminalSession(ctx, rt, stream, req)
+    },
+})
+```
+
+Stream-only routes usually have `NoEndpoint: true` in the route spec. They appear in generated route metadata, but no React Query endpoint is generated for them.
+
+## Emitting Results
+
+Handlers should use `bridgeipc.EmitResult` for ordinary query/job responses:
+
+```go
+return bridgeipc.EmitResult(emit, result, err)
+```
+
+For progress:
+
+```go
+if err := emit.Progress(progress); err != nil {
+    return err
+}
+```
+
+Runner implementations can use `job.ReportProgress(progress)`.
+
+## Jobs
+
+All actions are jobs, including fast atomic mutations. If a job completes before the initial response is written, the initial `JobSnapshot` is already terminal. Otherwise the frontend can attach to shared job lifecycle primitives.
 
 Terminal job state is committed under the job lock before observers are notified, so clients cannot see `completed` without a result or `failed` without an error.
 
@@ -92,26 +180,26 @@ Job lifecycle routes are built into `bridgeipc` and are handled before feature r
 
 | Route | Purpose |
 |-------|---------|
-| `jobs.get` | get one owned job snapshot |
-| `jobs.list` | list owned jobs |
-| `jobs.cancel` | cancel one owned job |
-| `jobs.attach` | attach to progress/result |
-| `jobs.data` | attach binary job data |
-| `jobs.events` | subscribe to owned job events |
+| `jobs.get` | Get one owned job snapshot. |
+| `jobs.list` | List owned jobs. |
+| `jobs.cancel` | Cancel one owned job. |
+| `jobs.attach` | Attach to progress/result. |
+| `jobs.data` | Attach binary job data. |
+| `jobs.events` | Subscribe to owned job events. |
 
 The `jobs.*` namespace is reserved. Feature handlers cannot register routes there.
 
 ## Job Policies
 
-Every Job route has a `JobPolicy`.
+Every job route has a `JobPolicy`.
 
 | Preset | Use |
 |--------|-----|
-| `ActionDefault` | normal frontend mutations |
-| `SingletonSystem` | package/app updates and system-wide mutations |
-| `StreamDefault` | logs, subscriptions, watch-style jobs |
+| `ActionDefault` | Normal frontend mutations. |
+| `SingletonSystem` | Package/app updates and system-wide mutations. |
+| `StreamDefault` | Logs, subscriptions, watch-style jobs. |
 
-The dispatcher centrally handles rate limits, queue limits, duplicate singleton starts, invalid arguments, forbidden routes, logging, and typed start failures.
+The dispatcher centrally handles rate limits, queue limits, duplicate singleton starts, invalid requests, forbidden routes, logging, and typed start failures.
 
 ## Errors
 
@@ -121,27 +209,20 @@ Use typed bridge errors where status matters:
 return bridgeipc.NewError("missing service name", 400)
 ```
 
-Common helpers:
+Request JSON is decoded before the handler runs. Validate semantic requirements in the handler:
 
 ```go
-value, err := bridgeipc.Arg(args, 0)
-err := bridgeipc.RequireArgs(args, 2)
-payload, err := bridgeipc.DecodeJSONArg[CreateRequest](args, 0)
-return bridgeipc.EmitResult(emit, result, err)
+if req.ServiceName == "" {
+    return bridgeipc.NewError("missing service name", 400)
+}
 ```
 
 ## Privilege
 
-Privileged routes declare it at registration:
+Prefer declaring privilege in the route spec:
 
 ```go
-router.Job("control.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
-```
-
-or in command tables:
-
-```go
-{Name: "reboot", Mode: bridgeipc.ModeJob, Handler: handleReboot, Privileged: true}
+{Kind: KindHandler, Route: "control.reboot", Privileged: true, Mode: bridgeipc.ModeJob, Request: NoRequest(), Result: NoResponse()},
 ```
 
 The dispatcher checks the authenticated session before running the route.
@@ -156,12 +237,21 @@ Relay frames live in `backend/common/ipc/relay`:
 
 | Opcode | Meaning |
 |--------|---------|
-| `OpStreamOpen` | initial route payload |
-| `OpStreamData` | binary data |
-| `OpStreamClose` | graceful close |
-| `OpStreamResize` | terminal resize |
-| `OpStreamProgress` | JSON progress payload |
-| `OpStreamResult` | JSON result payload |
-| `OpStreamAbort` | client cancellation |
+| `OpStreamOpen` | Initial route payload: JSON `{"route":"...","request":...}`. |
+| `OpStreamData` | Binary data. |
+| `OpStreamClose` | Graceful close. |
+| `OpStreamResize` | Terminal resize. |
+| `OpStreamProgress` | JSON progress payload. |
+| `OpStreamResult` | JSON result payload. |
+| `OpStreamAbort` | Client cancellation. |
 
-JSON remains the control/result format for this refactor. Binary optimization is deferred until there is evidence it matters.
+## Adding An Endpoint
+
+1. Define or reuse exported Go request/response structs in `backend/bridge/apischema`.
+2. Add one `RouteSpec` to `backend/bridge/apischema/routes.go`.
+3. Implement the typed handler, runner, or duplex function.
+4. Register it from the relevant `RegisterHandlers` function.
+5. Run `make generate`.
+6. Run at least `cd backend && go test ./...` and `make tsc-only`.
+
+No generated frontend file should be edited by hand.

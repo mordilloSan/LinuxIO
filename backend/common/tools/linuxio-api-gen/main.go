@@ -135,7 +135,7 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 				&schema,
 				"    %s: { input: %s; request: %s; result: %s };\n",
 				route.Command(),
-				renderer.inputRef(route.RequestSpec()),
+				renderer.inputTupleRef(route.RequestSpec()),
 				renderer.requestRef(route.RequestSpec()),
 				renderer.typeRef(route.ResultSpec()),
 			)
@@ -147,11 +147,13 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 	schema.WriteString("export type HandlerName = keyof LinuxIOSchema;\n\n")
 	schema.WriteString("/** Extract command names for a given handler */\n")
 	schema.WriteString("export type CommandName<H extends HandlerName> = keyof LinuxIOSchema[H];\n\n")
-	schema.WriteString("/** Extract ergonomic input type for a handler/command pair */\n")
+	schema.WriteString("/** Extract ergonomic input argument tuple for a handler/command pair */\n")
 	schema.WriteString("export type CommandInput<\n")
 	schema.WriteString("  H extends HandlerName,\n")
 	schema.WriteString("  C extends CommandName<H>,\n")
-	schema.WriteString("> = LinuxIOSchema[H][C] extends { input: infer I } ? I : never;\n\n")
+	schema.WriteString("> = LinuxIOSchema[H][C] extends { input: infer I extends readonly unknown[] }\n")
+	schema.WriteString("  ? I\n")
+	schema.WriteString("  : never;\n\n")
 	schema.WriteString("/** Extract request type for a handler/command pair */\n")
 	schema.WriteString("export type CommandRequest<\n")
 	schema.WriteString("  H extends HandlerName,\n")
@@ -271,14 +273,15 @@ func (r *tsRenderer) requestRef(request apischema.TypeSpec) string {
 	return r.typeRef(request)
 }
 
-func (r *tsRenderer) inputRef(request apischema.TypeSpec) string {
+func (r *tsRenderer) inputTupleRef(request apischema.TypeSpec) string {
 	if sameType(request.GoType, reflect.TypeFor[bridgeipc.NoRequest]()) {
-		return "void"
+		return "[]"
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
-		return r.reflectType(field.Type)
+		name, _ := jsonFieldName(field)
+		return fmt.Sprintf("[%s: %s]", tsTupleLabel(name), r.reflectType(field.Type))
 	}
-	return r.typeRef(request)
+	return fmt.Sprintf("[request: %s]", r.typeRef(request))
 }
 
 func (r *tsRenderer) typeRef(spec apischema.TypeSpec) string {
@@ -476,6 +479,13 @@ func tsFieldName(name string) string {
 		return name
 	}
 	return fmt.Sprintf("%q", name)
+}
+
+func tsTupleLabel(name string) string {
+	if tsIdentifierRE.MatchString(name) {
+		return name
+	}
+	return "request"
 }
 
 func lowerFirst(value string) string {

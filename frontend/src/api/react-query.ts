@@ -98,35 +98,42 @@ type SelectableQueryOptions<TResult, TData = TResult> = Omit<
   "queryKey" | "queryFn"
 >;
 
-type MutationOptions<TInput, TResult> = Omit<
-  UseMutationOptions<TResult, LinuxIOError, TInput>,
+type MutationOptions<TRequest, TResult> = Omit<
+  UseMutationOptions<TResult, LinuxIOError, TRequest>,
   "mutationFn"
 >;
 
-type RequestArgs<TInput> = [TInput] extends [void] ? [] : [request: TInput];
-
-type QueryOptionsArgs<TInput, TResult> = [TInput] extends [void]
+type QueryOptionsArgs<
+  TInput extends readonly unknown[],
+  TResult,
+> = TInput extends readonly []
   ? [options?: QueryOptions<TResult>]
-  : [request: TInput, options?: QueryOptions<TResult>];
+  : [...input: TInput, options?: QueryOptions<TResult>];
 
-type SelectableQueryOptionsArgs<TInput, TResult, TData> = [TInput] extends [
-  void,
-]
+type SelectableQueryOptionsArgs<
+  TInput extends readonly unknown[],
+  TResult,
+  TData,
+> = TInput extends readonly []
   ? [options?: SelectableQueryOptions<TResult, TData>]
-  : [request: TInput, options?: SelectableQueryOptions<TResult, TData>];
+  : [...input: TInput, options?: SelectableQueryOptions<TResult, TData>];
 
 /**
  * Command endpoint interface
  */
-export interface CommandEndpoint<TInput, TRequest, TResult> {
+export interface CommandEndpoint<
+  TInput extends readonly unknown[],
+  TRequest,
+  TResult,
+> {
   /**
    * Framework-agnostic call (Promise-based) using the same generated request
    * shape and cache key scheme as the React Query hooks.
    */
-  (...args: RequestArgs<TInput>): Promise<TResult>;
+  (...args: TInput): Promise<TResult>;
 
   /** Deterministic React Query key for this command */
-  queryKey: (...args: RequestArgs<TInput>) => QueryKey;
+  queryKey: (...args: TInput) => QueryKey;
 
   /**
    * React Query options for `queryClient.fetchQuery/ensureQueryData`
@@ -245,7 +252,7 @@ export function createEndpoint<TResult>(
   handler: string,
   command: string,
   requestShape: RequestShape,
-): CommandEndpoint<unknown, unknown, TResult> {
+): CommandEndpoint<[] | [unknown], unknown, TResult> {
   const retryPolicy = getRetryPolicy(handler, command);
   const queryKey = (...rawArgs: [] | [unknown]): QueryKey => {
     const request = rawArgs[0];
@@ -297,7 +304,7 @@ export function createEndpoint<TResult>(
   };
 
   const endpoint = ((...rawArgs: [] | [unknown]) =>
-    execute(...rawArgs)) as CommandEndpoint<unknown, unknown, TResult>;
+    execute(...rawArgs)) as CommandEndpoint<[] | [unknown], unknown, TResult>;
 
   endpoint.queryKey = queryKey;
   endpoint.queryOptions = queryOptions;
@@ -326,7 +333,7 @@ export function createEndpoint<TResult>(
       ...baseOptions,
       enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
     });
-  }) as CommandEndpoint<unknown, unknown, TResult>["useQueryWithSelect"];
+  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQueryWithSelect"];
 
   endpoint.useMutation = (options?: MutationOptions<unknown, TResult>) => {
     const route = routeName(handler, command);
