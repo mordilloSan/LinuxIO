@@ -170,46 +170,6 @@ func RegisterDataAttacher(jobType string, attacher DataAttacher) {
 	DefaultRegistry.RegisterDataAttacher(jobType, attacher)
 }
 
-// Get retrieves a job by ID from the default registry.
-func Get(id string) (*Job, bool) {
-	return DefaultRegistry.Get(id)
-}
-
-// GetForOwner retrieves a job by ID from the default registry, verifying it belongs to the owner.
-func GetForOwner(id string, owner Owner) (*Job, bool) {
-	return DefaultRegistry.GetForOwner(id, owner)
-}
-
-// List returns all jobs from the default registry.
-func List() []Snapshot {
-	return DefaultRegistry.List()
-}
-
-// ListForOwner returns all jobs belonging to the owner from the default registry.
-func ListForOwner(owner Owner) []Snapshot {
-	return DefaultRegistry.ListForOwner(owner)
-}
-
-// ListActive returns all queued and running jobs from the default registry.
-func ListActive() []Snapshot {
-	return DefaultRegistry.ListActive()
-}
-
-// ListActiveForOwner returns all queued and running jobs belonging to the owner from the default registry.
-func ListActiveForOwner(owner Owner) []Snapshot {
-	return DefaultRegistry.ListActiveForOwner(owner)
-}
-
-// AttachData attaches stream data to a job using the default registry.
-func AttachData(ctx context.Context, job *Job, stream net.Conn, request any) error {
-	return DefaultRegistry.AttachData(ctx, job, stream, request)
-}
-
-// Subscribe subscribes to all job events on the default registry with an optional buffer size.
-func Subscribe(buffer int) (<-chan Event, func()) {
-	return DefaultRegistry.Subscribe(buffer)
-}
-
 // RegisterDataAttacher registers a data attacher for the given job type.
 func (r *Registry) RegisterDataAttacher(jobType string, attacher DataAttacher) {
 	if jobType == "" {

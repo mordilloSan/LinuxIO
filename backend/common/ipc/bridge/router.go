@@ -243,9 +243,6 @@ func (r *Router) Duplex(name string, handler DuplexFunc, opts ...RouteOption) {
 // request route, enforcing privilege checks and logging request lifecycle events.
 func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) error {
 	req.Owner = ownerFromSession(req.Session)
-	if req.Session != nil {
-		ctx = session.WithContext(ctx, req.Session)
-	}
 
 	if strings.HasPrefix(req.Route, "jobs.") {
 		return r.dispatchJobPrimitive(ctx, stream, req)

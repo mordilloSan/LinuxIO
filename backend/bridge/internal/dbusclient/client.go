@@ -71,10 +71,6 @@ func RetryOnceIfClosed(ctx context.Context, do func() error) error {
 	return do()
 }
 
-func UseSystemBus(ctx context.Context, subsystem string, fn func(context.Context, *godbus.Conn) error) error {
-	return UseSystemBusWithOptions(ctx, SystemBusOptions{Subsystem: subsystem}, fn)
-}
-
 func UseSystemBusWithOptions(ctx context.Context, opts SystemBusOptions, fn func(context.Context, *godbus.Conn) error) error {
 	if fn == nil {
 		return fmt.Errorf("nil D-Bus callback")

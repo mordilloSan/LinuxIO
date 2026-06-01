@@ -124,13 +124,6 @@ func CheckNFSClientAvailability() (bool, error) {
 	return checkNFSCommands(requiredNFSClientCommands)
 }
 
-// CheckNFSAvailability verifies that the optional NFS client utilities are installed.
-//
-// Deprecated: use CheckNFSClientAvailability for mount/client operations.
-func CheckNFSAvailability() (bool, error) {
-	return CheckNFSClientAvailability()
-}
-
 func nfsCommandInstallHint(command string) string {
 	if command == "exportfs" {
 		return "nfs-kernel-server or nfs-utils"
