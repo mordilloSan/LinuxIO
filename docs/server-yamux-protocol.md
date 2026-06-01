@@ -385,4 +385,4 @@ json.Unmarshal(payload, &req) // Never parses
 ## See Also
 
 - [API Contract](./api-contract.md) - Go-owned API contract and generated frontend client
-- [Handler Patterns](./BRIDGE_HANDLER_PATTERNS.md) - Handler package style and adapter conventions
+- [Handler Patterns](./bridge_handler_patterns.md) - Handler package style and adapter conventions

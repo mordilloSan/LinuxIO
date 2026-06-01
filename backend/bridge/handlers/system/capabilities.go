@@ -25,6 +25,7 @@ type capabilitiesResponse struct {
 	NFSServerAvailable     bool   `json:"nfs_server_available"`
 	TunedAvailable         bool   `json:"tuned_available"`
 	AvahiAvailable         bool   `json:"avahi_available"`
+	WireGuardAvailable     bool   `json:"wireguard_available"`
 	DockerError            string `json:"docker_error,omitempty"`
 	IndexerError           string `json:"indexer_error,omitempty"`
 	LMSensorsError         string `json:"lm_sensors_error,omitempty"`
@@ -34,6 +35,7 @@ type capabilitiesResponse struct {
 	NFSServerError         string `json:"nfs_server_error,omitempty"`
 	TunedError             string `json:"tuned_error,omitempty"`
 	AvahiError             string `json:"avahi_error,omitempty"`
+	WireGuardError         string `json:"wireguard_error,omitempty"`
 }
 
 // CapabilitySpec describes a single capability: how to detect it, how to
@@ -153,6 +155,14 @@ var capabilityRegistry = []CapabilitySpec{
 			EnableService: true,
 		},
 	},
+	{
+		Name:    "wireguard",
+		LogName: "WireGuard tools",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("wg-quick", "wireguard-tools"))
+		},
+		Install: &InstallSpec{PackageDebian: "wireguard-tools", PackageRHEL: "wireguard-tools"},
+	},
 }
 
 func CapabilitySpecByName(name string) (CapabilitySpec, bool) {
@@ -223,6 +233,8 @@ func setCapabilityField(out *capabilitiesResponse, name string, ok bool, errMsg 
 		out.TunedAvailable, out.TunedError = ok, errMsg
 	case "avahi":
 		out.AvahiAvailable, out.AvahiError = ok, errMsg
+	case "wireguard":
+		out.WireGuardAvailable, out.WireGuardError = ok, errMsg
 	default:
 		panic("system: unknown capability wire name " + name)
 	}

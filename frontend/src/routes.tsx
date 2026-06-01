@@ -177,6 +177,7 @@ const coreRoutes: RouteWithSidebar[] = [
     element: <Wireguard />,
     preload: Wireguard.preload,
     requiresPrivileged: true,
+    requiredCapabilities: ["wireguardAvailable"],
     sidebar: {
       title: "Wireguard",
       icon: WireguardIcon,

@@ -240,6 +240,8 @@ export interface CapabilitiesResponse {
   tuned_error?: string;
   avahi_available: boolean;
   avahi_error?: string;
+  wireguard_available: boolean;
+  wireguard_error?: string;
 }
 
 export interface CapabilityRequest {

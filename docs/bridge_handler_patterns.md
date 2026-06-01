@@ -135,6 +135,6 @@ Return `bridgeipc.NewError(message, code)` for typed client errors.
 
 ## Privilege
 
-Declare route-level privilege in `apischema`. See [Privilege Pattern](./PRIVILEGE_PATTERN.md) for the policy rule.
+Declare route-level privilege in `apischema`. See [Privilege Pattern](./privilege_pattern.md) for the policy rule.
 
 Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin check.

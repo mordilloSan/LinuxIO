@@ -1054,6 +1054,8 @@ type CapabilitiesResponse struct {
 	TunedError             *string `json:"tuned_error,omitempty"`
 	AvahiAvailable         bool    `json:"avahi_available"`
 	AvahiError             *string `json:"avahi_error,omitempty"`
+	WireGuardAvailable     bool    `json:"wireguard_available"`
+	WireGuardError         *string `json:"wireguard_error,omitempty"`
 }
 
 type AppConfig struct {

@@ -144,6 +144,18 @@ export const CAPABILITIES = [
     reasonUnavailable: "Avahi mDNS daemon is unavailable.",
     installable: { requiresPackageKit: true },
   },
+  {
+    wire: "wireguard",
+    state: "wireguardAvailable",
+    label: "WireGuard",
+    description: "Create and manage WireGuard VPN interfaces",
+    readyText: "wg-quick command is available.",
+    dependency: "wg-quick",
+    icon: "simple-icons:wireguard",
+    reasonUnknown: "WireGuard tools availability is still being checked.",
+    reasonUnavailable: "WireGuard tools are unavailable.",
+    installable: { requiresPackageKit: true },
+  },
 ] as const satisfies readonly CapabilityDef[];
 
 // --- Derived types ------------------------------------------------------------
