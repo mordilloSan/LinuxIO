@@ -14,8 +14,7 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 7 - Higher-level mutation API: implement `useJobAction` on CommandEndpoint (typed args/result, `invalidates`/`success`/`error` config, mode guard for job-only routes), then migrate existing `.useMutation()` job-route call sites (~80) to `.useJobAction()`.
 
-10 - Bridge Handler Pattern - See docs
-
+Bridge Handler Pattern - See docs DONE
 Shared API betewen go/react via generator. DONE
 Remove binary protocol. Lets just use json for all... DONE
 Config should not be loaded on every page load. go template? - DONE
