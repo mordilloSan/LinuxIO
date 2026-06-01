@@ -1,31 +1,23 @@
 # Privilege Pattern
 
-Privilege is part of bridge route metadata. Handlers should not perform the normal route privilege gate themselves.
+Privilege is route metadata. Handlers should not perform the normal route privilege gate themselves.
 
 ## Rule
 
-Declare privileged operations where the route is registered:
+Declare privileged operations in `backend/bridge/apischema/routes.go`:
 
 ```go
-router.Job("control.reboot", handleReboot, bridgeipc.SingletonSystem, bridgeipc.Privileged)
+{Kind: KindHandler, Route: "control.reboot", Privileged: true, Mode: bridgeipc.ModeJob, Request: NoRequest(), Result: NoResponse()},
 ```
 
-or in command tables:
-
-```go
-bridgeipc.RegisterRoutes(router, "control", []bridgeipc.Command{
-    {Name: "reboot", Mode: bridgeipc.ModeJob, Handler: handleReboot, Privileged: true},
-})
-```
-
-The dispatcher checks `req.Session.Privileged` before the handler or runner starts. Forbidden starts are typed dispatcher errors and are logged centrally.
+`apischema` applies that metadata when the route is registered. The dispatcher checks `req.Session.Privileged` before the handler or runner starts. Forbidden starts are typed dispatcher errors and are logged centrally.
 
 ## What Belongs In Handlers
 
 Handlers may still validate operation-specific policy:
 
 - whether a requested resource exists
-- whether an argument is allowed
+- whether a request field is allowed
 - whether a system capability is available
 - whether a user-visible operation should be rejected for domain reasons
 
@@ -45,3 +37,5 @@ Dispatcher tests should cover:
 - privileged route with privileged session runs
 - forbidden starts do not create jobs
 - forbidden starts are typed errors
+
+See [API Contract](./api-contract.md) for route declaration and registration details.
