@@ -220,6 +220,13 @@ Terminal and container streams are true duplex routes. Logs and app update expos
 
 ## Adding An Endpoint
 
+For the common case where request/result structs already exist, adding a route touches two Go places:
+
+1. `backend/bridge/apischema/routes.go` for the `RouteSpec`.
+2. The relevant `backend/bridge/handlers/<domain>/...` package for the typed handler and its registration in `RegisterHandlers`.
+
+If the request or response type is new, also add the Go struct in `backend/bridge/apischema/contracts.go` or `backend/bridge/apischema/models.go`.
+
 1. Define or reuse exported Go request/response structs in `backend/bridge/apischema`.
    - Put shared request structs and small shared responses in `contracts.go`.
    - Put API response/domain models in `models.go`.
