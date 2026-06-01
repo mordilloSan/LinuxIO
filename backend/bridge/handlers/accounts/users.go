@@ -869,6 +869,9 @@ func getLockedUsers() map[string]bool {
 		// Account is locked if password starts with ! or *
 		locked[username] = strings.HasPrefix(passwordHash, "!") || strings.HasPrefix(passwordHash, "*")
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("failed to read shadow file", "file", shadowFile, "error", err)
+	}
 
 	return locked
 }
@@ -905,6 +908,9 @@ func parseGroupFile() (map[string][]string, map[int]string) {
 				userGroups[member] = append(userGroups[member], groupName)
 			}
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("failed to read /etc/group", "error", err)
 	}
 
 	return userGroups, gidToGroup
