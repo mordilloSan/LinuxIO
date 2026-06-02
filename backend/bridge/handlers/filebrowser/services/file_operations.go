@@ -17,6 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 var (
@@ -24,15 +25,8 @@ var (
 	PermDir  os.FileMode = 0o775 // rwxrwxr-x (owner read+write+execute, group read+write+execute, rest read+execute)
 )
 
-func cleanAbsPath(p string) string {
-	if p == "" {
-		return "/"
-	}
-	return filepath.Clean("/" + strings.TrimPrefix(p, "/"))
-}
-
 func relPath(p string) string {
-	return fsroot.ToRel(cleanAbsPath(p))
+	return fsroot.ToRel(utils.CleanAbsPath(p))
 }
 
 func readDir(root *fsroot.FSRoot, dirPath string) ([]os.DirEntry, error) {
@@ -53,8 +47,8 @@ func readDir(root *fsroot.FSRoot, dirPath string) ([]os.DirEntry, error) {
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy is used as a fallback.
 func MoveFile(src, dst string, overwrite bool) error {
-	src = cleanAbsPath(src)
-	dst = cleanAbsPath(dst)
+	src = utils.CleanAbsPath(src)
+	dst = utils.CleanAbsPath(dst)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -107,8 +101,8 @@ func MoveFile(src, dst string, overwrite bool) error {
 // CopyFile copies a file or directory from source to dest and returns an error if any.
 // It handles both files and directories, copying recursively as needed.
 func CopyFile(source, dest string, overwrite bool) error {
-	source = cleanAbsPath(source)
-	dest = cleanAbsPath(dest)
+	source = utils.CleanAbsPath(source)
+	dest = utils.CleanAbsPath(dest)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -221,8 +215,8 @@ func copyDirectory(root *fsroot.FSRoot, source, dest string) error {
 // CopyFileWithCallbacks copies a file or directory with progress callbacks.
 // It handles both files and directories, copying recursively as needed.
 func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
-	source = cleanAbsPath(source)
-	dest = cleanAbsPath(dest)
+	source = utils.CleanAbsPath(source)
+	dest = utils.CleanAbsPath(dest)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -360,7 +354,7 @@ func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *
 // ComputeCopySize calculates the total size of files to be copied.
 // For directories, it recursively sums the sizes of all contained files.
 func ComputeCopySize(path string) (int64, error) {
-	path = cleanAbsPath(path)
+	path = utils.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -405,8 +399,8 @@ type MoveFileOptions struct {
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy with callbacks is used as a fallback, followed by deletion of the source.
 func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) error {
-	src = cleanAbsPath(src)
-	dst = cleanAbsPath(dst)
+	src = utils.CleanAbsPath(src)
+	dst = utils.CleanAbsPath(dst)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -526,7 +520,7 @@ func TopLevelEntryCountWithin(absPath string, maxEntries int) (bool, error) {
 
 // DeleteFilesWithProgress removes a file or directory while reporting item-count progress.
 func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
-	absPath = cleanAbsPath(absPath)
+	absPath = utils.CleanAbsPath(absPath)
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
@@ -683,7 +677,7 @@ func reportDeleteProgress(opts DeleteOptions, processed, total int64, indetermin
 
 // CreateDirectory creates a directory with proper permissions
 func CreateDirectory(opts iteminfo.FileOptions) error {
-	realPath := cleanAbsPath(opts.Path)
+	realPath := utils.CleanAbsPath(opts.Path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -714,7 +708,7 @@ func CreateDirectory(opts iteminfo.FileOptions) error {
 
 // WriteContentInFile writes content to a file with proper permissions
 func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
-	realPath := cleanAbsPath(opts.Path)
+	realPath := utils.CleanAbsPath(opts.Path)
 	// Strip trailing slash from realPath if it's meant to be a file
 	realPath = strings.TrimRight(realPath, "/")
 
@@ -763,7 +757,7 @@ func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
 func GetContent(realPath string) (string, error) {
 	const headerSize = 4096
 
-	cleanPath := cleanAbsPath(realPath)
+	cleanPath := utils.CleanAbsPath(realPath)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -914,7 +908,7 @@ func CommonPrefix(sep byte, paths ...string) string {
 
 // ChangePermissionsCtx changes permissions and reports processed entries when requested.
 func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, cb func(processed, total int64)) error {
-	path = cleanAbsPath(path)
+	path = utils.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -961,7 +955,7 @@ func ChangeOwnership(path string, uid, gid int, recursive bool) error {
 
 // ChangeOwnershipCtx changes ownership and reports processed entries when requested.
 func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, cb func(processed, total int64)) error {
-	path = cleanAbsPath(path)
+	path = utils.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -1079,8 +1073,8 @@ func countRecursiveEntries(ctx context.Context, root *fsroot.FSRoot, path string
 // validateMoveDestination validates that a move operation is safe
 func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	// Clean and normalize paths
-	src = cleanAbsPath(src)
-	dst = cleanAbsPath(dst)
+	src = utils.CleanAbsPath(src)
+	dst = utils.CleanAbsPath(dst)
 
 	if src == dst {
 		return fmt.Errorf("source and destination are the same")

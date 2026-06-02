@@ -21,6 +21,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -420,7 +421,7 @@ func notifyExtractedFiles(destination string) {
 			if infoErr != nil {
 				return nil
 			}
-			absPath := filepath.Clean("/" + strings.TrimPrefix(rel, "/"))
+			absPath := utils.CleanAbsPath(rel)
 			if err := addToIndexer(ctx, absPath, info); err != nil {
 				slog.Debug("failed to update indexer for extracted path", "path", absPath, "error", err)
 			}

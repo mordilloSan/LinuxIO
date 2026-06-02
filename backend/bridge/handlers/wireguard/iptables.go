@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const iptablesCmd = "iptables"
@@ -187,7 +189,7 @@ func (firewalldBackend) Setup(ctx context.Context, interfaceName, egressNic, sub
 		args := append([]string{"--direct", "--add-rule"}, rule...)
 		output, cmdErr := wireguardNATRunner.Run(ctx, "firewall-cmd", args...)
 		if cmdErr != nil {
-			return commandOutputError("firewall-cmd", args, output, cmdErr)
+			return utils.CommandOutputError("firewall-cmd", args, output, cmdErr)
 		}
 	}
 	return nil
@@ -205,7 +207,7 @@ func (firewalldBackend) Cleanup(ctx context.Context, interfaceName, egressNic, s
 		args := append([]string{"--direct", "--remove-rule"}, rule...)
 		output, cmdErr := wireguardNATRunner.Run(ctx, "firewall-cmd", args...)
 		if cmdErr != nil {
-			return commandOutputError("firewall-cmd", args, output, cmdErr)
+			return utils.CommandOutputError("firewall-cmd", args, output, cmdErr)
 		}
 	}
 	return nil
@@ -221,7 +223,7 @@ func (nftBackend) Setup(ctx context.Context, interfaceName, egressNic, subnet st
 	script := buildNFTSetupScript(table, interfaceName, egressNic, subnet)
 	output, err := wireguardNATRunner.RunInput(ctx, "nft", script, "-f", "-")
 	if err != nil {
-		return commandOutputError("nft", []string{"-f", "-"}, output, err)
+		return utils.CommandOutputError("nft", []string{"-f", "-"}, output, err)
 	}
 	return nil
 }
@@ -230,7 +232,7 @@ func (nftBackend) Cleanup(ctx context.Context, interfaceName, _, _ string) error
 	table := nftTableName(interfaceName)
 	output, err := wireguardNATRunner.Run(ctx, "nft", "delete", "table", "ip", table)
 	if err != nil && !nftMissingTable(output) {
-		return commandOutputError("nft", []string{"delete", "table", "ip", table}, output, err)
+		return utils.CommandOutputError("nft", []string{"delete", "table", "ip", table}, output, err)
 	}
 	return nil
 }
@@ -340,7 +342,7 @@ func iptablesAvailable(ctx context.Context) bool {
 func firewalldRules(ctx context.Context) (map[string]struct{}, error) {
 	output, err := wireguardNATRunner.Run(ctx, "firewall-cmd", "--direct", "--get-all-rules")
 	if err != nil {
-		return nil, commandOutputError("firewall-cmd", []string{"--direct", "--get-all-rules"}, output, err)
+		return nil, utils.CommandOutputError("firewall-cmd", []string{"--direct", "--get-all-rules"}, output, err)
 	}
 	rules := make(map[string]struct{})
 	for line := range strings.SplitSeq(string(output), "\n") {
@@ -392,17 +394,6 @@ func nftMissingTable(output []byte) bool {
 	return strings.Contains(lower, "no such file") || strings.Contains(lower, "does not exist")
 }
 
-func commandOutputError(name string, args []string, output []byte, err error) error {
-	if err == nil {
-		return nil
-	}
-	text := strings.TrimSpace(string(output))
-	if text == "" {
-		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
-	}
-	return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, text)
-}
-
 // iptablesRun invokes iptables with --wait so we participate in the xtables
 // lock. Returns the combined output and (for callers that care) the raw error
 // so they can inspect the exit code.
@@ -423,7 +414,7 @@ func iptablesRuleExists(ctx context.Context, table, chain string, rulespec ...st
 	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return false, nil
 	}
-	return false, commandOutputError(iptablesCmd, args, output, err)
+	return false, utils.CommandOutputError(iptablesCmd, args, output, err)
 }
 
 func removeRuleIfExists(ctx context.Context, table, chain string, rulespec ...string) error {
@@ -437,7 +428,7 @@ func removeRuleIfExists(ctx context.Context, table, chain string, rulespec ...st
 	args := append([]string{"-t", table, "-D", chain}, rulespec...)
 	output, err := iptablesRun(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("delete rule: %w", commandOutputError(iptablesCmd, args, output, err))
+		return fmt.Errorf("delete rule: %w", utils.CommandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }
@@ -453,7 +444,7 @@ func insertRuleIfMissing(ctx context.Context, table, chain string, position int,
 	args := append([]string{"-t", table, "-I", chain, strconv.Itoa(position)}, rulespec...)
 	output, err := iptablesRun(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("insert rule: %w", commandOutputError(iptablesCmd, args, output, err))
+		return fmt.Errorf("insert rule: %w", utils.CommandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }
@@ -469,7 +460,7 @@ func appendRuleIfMissing(ctx context.Context, table, chain string, rulespec ...s
 	args := append([]string{"-t", table, "-A", chain}, rulespec...)
 	output, err := iptablesRun(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("append rule: %w", commandOutputError(iptablesCmd, args, output, err))
+		return fmt.Errorf("append rule: %w", utils.CommandOutputError(iptablesCmd, args, output, err))
 	}
 	return nil
 }

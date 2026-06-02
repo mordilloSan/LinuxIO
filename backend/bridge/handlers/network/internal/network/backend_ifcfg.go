@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type ifcfgBackend struct {
@@ -159,7 +161,7 @@ func (b *ifcfgBackend) runIfup(ctx context.Context) ([]byte, error) {
 	if fallbackErr == nil {
 		return fallback, nil
 	}
-	return output, commandError("ifup", []string{b.iface}, output, err)
+	return output, utils.CommandOutputError("ifup", []string{b.iface}, output, err)
 }
 
 func (b *ifcfgBackend) runIfdown(ctx context.Context) ([]byte, error) {
@@ -167,7 +169,7 @@ func (b *ifcfgBackend) runIfdown(ctx context.Context) ([]byte, error) {
 	if err == nil {
 		return output, nil
 	}
-	return output, commandError("ifdown", []string{b.iface}, output, err)
+	return output, utils.CommandOutputError("ifdown", []string{b.iface}, output, err)
 }
 
 type keyValueDoc struct {

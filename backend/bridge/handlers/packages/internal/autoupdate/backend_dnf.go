@@ -17,7 +17,7 @@ type dnfBackend struct{}
 func newDnfBackend() UpdateBackend { return &dnfBackend{} }
 func (*dnfBackend) Name() string   { return "dnf-automatic" }
 func (*dnfBackend) Detect(context.Context) bool {
-	return fileExists("/usr/bin/dnf-automatic") || fileExists("/usr/lib/systemd/system/dnf-automatic.timer")
+	return utils.FileExists("/usr/bin/dnf-automatic") || utils.FileExists("/usr/lib/systemd/system/dnf-automatic.timer")
 }
 
 func (b *dnfBackend) Read() (AutoUpdateState, error) {

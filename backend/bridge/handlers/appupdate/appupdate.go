@@ -19,6 +19,7 @@ import (
 	"time"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -365,7 +366,7 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("github API returned status %d", resp.StatusCode)
 	}
 
-	body, err := readBodyLimited(resp.Body, maxGitHubReleaseBodyBytes)
+	body, err := utils.ReadAllLimited(resp.Body, maxGitHubReleaseBodyBytes)
 	if err != nil {
 		return "", err
 	}
@@ -401,7 +402,7 @@ func downloadChecksum(ctx context.Context, client *http.Client, url string) (str
 		return "", fmt.Errorf("http %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	checksumBytes, err := readBodyLimited(resp.Body, maxChecksumBodyBytes)
+	checksumBytes, err := utils.ReadAllLimited(resp.Body, maxChecksumBodyBytes)
 	if err != nil {
 		return "", fmt.Errorf("read body: %w", err)
 	}
@@ -433,7 +434,7 @@ func downloadScript(ctx context.Context, client *http.Client, url string) ([]byt
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	scriptBytes, err := readBodyLimited(resp.Body, maxInstallScriptBodyBytes)
+	scriptBytes, err := utils.ReadAllLimited(resp.Body, maxInstallScriptBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -447,19 +448,8 @@ func computeSHA256(data []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func readBodyLimited(r io.Reader, max int64) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r, max+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(body)) > max {
-		return nil, fmt.Errorf("response body exceeds %d bytes", max)
-	}
-	return body, nil
-}
-
 func readErrorBody(r io.Reader) string {
-	body, err := readBodyLimited(r, maxHTTPErrorBodyBytes)
+	body, err := utils.ReadAllLimited(r, maxHTTPErrorBodyBytes)
 	if err != nil {
 		return err.Error()
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // FileInfoFaster retrieves file/directory information quickly
@@ -84,7 +85,7 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 	}
 	defer root.Close()
 
-	cleanRealPath := filepath.Clean("/" + strings.TrimPrefix(realPath, "/"))
+	cleanRealPath := utils.CleanAbsPath(realPath)
 	dir, err := root.Root.Open(fsroot.ToRel(cleanRealPath))
 	if err != nil {
 		return nil, err

@@ -25,6 +25,7 @@ import (
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 var (
@@ -173,7 +174,7 @@ func deleteTargetIsDir(path string) (bool, error) {
 	}
 	defer root.Close()
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	cleanPath := utils.CleanAbsPath(path)
 	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
 	if err != nil {
 		return false, err
@@ -298,7 +299,7 @@ func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePo
 		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid path encoding")
 	}
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	cleanPath := utils.CleanAbsPath(path)
 	if cleanPath == "/" {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:cannot create root")
 	}
@@ -415,7 +416,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	if strings.HasSuffix(req.dst, "/") && !strings.HasSuffix(req.realDest, "/") {
 		req.realDest += "/"
 	}
-	req.realSrc = filepath.Clean("/" + strings.TrimPrefix(req.src, "/"))
+	req.realSrc = utils.CleanAbsPath(req.src)
 
 	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
 	if err != nil {
@@ -689,19 +690,6 @@ func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, timestamp, ext))
 }
 
-func normalizeIndexerPath(path string) string {
-	if path == "" || path == "/" {
-		return "/"
-	}
-	// Strip trailing slashes - indexer is sensitive to them
-	normalized := strings.TrimRight(path, "/")
-	// Ensure leading slash
-	if !strings.HasPrefix(normalized, "/") {
-		normalized = "/" + normalized
-	}
-	return normalized
-}
-
 // indexerHTTPClient is a shared HTTP client for communicating with the indexer daemon.
 // It uses a Unix socket connection and is reused across all indexer operations.
 var indexerHTTPClient = &http.Client{
@@ -758,7 +746,7 @@ func addToIndexerWithSize(ctx context.Context, path string, info os.FileInfo, si
 	}
 
 	entry := indexerEntry{
-		Path:    normalizeIndexerPath(path),
+		Path:    utils.NormalizeIndexerPath(path),
 		AbsPath: path,
 		Name:    filepath.Base(path),
 		Size:    size,
@@ -864,7 +852,7 @@ func requestIndexerReindex(ctx context.Context, path string) error {
 	}
 
 	query := url.Values{}
-	query.Set("path", normalizeIndexerPath(path))
+	query.Set("path", utils.NormalizeIndexerPath(path))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex?"+query.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to build indexer reindex request: %w", err)
@@ -898,7 +886,7 @@ func deleteFromIndexer(ctx context.Context, path string) error {
 		return nil
 	}
 
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 	deleteURL := fmt.Sprintf("http://unix/delete?path=%s", url.QueryEscape(normPath))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, deleteURL, nil)
@@ -1046,7 +1034,7 @@ type indexerStatusResponse struct {
 
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/dirsize", nil)
 	if err != nil {
@@ -1086,7 +1074,7 @@ func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
 
 // fetchEntryCountFromIndexer queries the indexer daemon for cached recursive entry counts.
 func fetchEntryCountFromIndexer(ctx context.Context, path string) (int64, error) {
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entrycount", nil)
 	if err != nil {
@@ -1277,7 +1265,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (any, error) {
 
 // fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
 func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]subfoldersResponse, error) {
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/subfolders", nil)
 	if err != nil {
@@ -1336,7 +1324,7 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (any, err
 
 	basePath := "/" // default to root
 	if req.BasePath != nil && *req.BasePath != "" {
-		basePath = normalizeIndexerPath(*req.BasePath)
+		basePath = utils.NormalizeIndexerPath(*req.BasePath)
 	}
 
 	results, err := searchInIndexer(ctx, req.Query, limit, basePath)

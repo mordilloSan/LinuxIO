@@ -19,11 +19,11 @@ type aptBackend struct{}
 func newAptBackend() UpdateBackend { return &aptBackend{} }
 func (*aptBackend) Name() string   { return "apt-unattended" }
 func (*aptBackend) Detect(context.Context) bool {
-	return fileExists("/usr/bin/apt")
+	return utils.FileExists("/usr/bin/apt")
 }
 
 func unattendedUpgradesInstalled() bool {
-	return fileExists("/usr/bin/unattended-upgrades") || fileExists("/usr/bin/unattended-upgrade")
+	return utils.FileExists("/usr/bin/unattended-upgrades") || utils.FileExists("/usr/bin/unattended-upgrade")
 }
 
 func (b *aptBackend) Read() (AutoUpdateState, error) {
@@ -239,17 +239,12 @@ func (b *aptBackend) ApplyOfflineNow(context.Context) error {
 
 /* ===== HELPER FUNCTIONS ===== */
 
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
-
 func timerEnabled(name string) bool {
 	wants := []string{
 		"/etc/systemd/system/timers.target.wants/" + name,
 		"/lib/systemd/system/timers.target.wants/" + name,
 	}
-	return slices.ContainsFunc(wants, fileExists)
+	return slices.ContainsFunc(wants, utils.FileExists)
 }
 
 func writeTimerDropIn(timer, oncal string) error {

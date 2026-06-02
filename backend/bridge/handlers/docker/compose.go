@@ -20,6 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 var validNetworkMode = regexp.MustCompile(`^(none|host|bridge|service:.+|container:.+)$`)
@@ -1277,7 +1278,7 @@ var composeFileNamePriority = []string{
 
 // findComposeFileCandidates finds at most one canonical compose file per stack directory.
 func findComposeFileCandidates(ctx context.Context, basePath string) ([]composeFileCandidate, error) {
-	normPath := normalizeIndexerPath(basePath)
+	normPath := utils.NormalizeIndexerPath(basePath)
 
 	var candidates []composeFileCandidate
 	seenPaths := make(map[string]struct{})
@@ -1378,17 +1379,6 @@ func composeCandidateFromPath(path string) (composeFileCandidate, error) {
 		ModTime: info.ModTime().Format(time.RFC3339),
 		IsDir:   false,
 	}, nil
-}
-
-func normalizeIndexerPath(path string) string {
-	if path == "" || path == "/" {
-		return "/"
-	}
-	path = strings.TrimRight(path, "/")
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	return path
 }
 
 // isValidComposeFile checks if a file is a valid docker-compose file

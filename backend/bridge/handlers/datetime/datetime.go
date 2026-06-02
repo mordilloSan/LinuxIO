@@ -142,10 +142,10 @@ func selectNTPServerBackend(ctx context.Context) (ntpServerBackend, error) {
 
 func detectTimesyncdBackend(ctx context.Context) backendCandidate {
 	score := serviceScore(ctx, []string{"systemd-timesyncd.service"})
-	if fileExists(timesyncdManagedConf) {
+	if utils.FileExists(timesyncdManagedConf) {
 		score = max(score, 150)
 	}
-	if fileExists(timesyncdMainConf) {
+	if utils.FileExists(timesyncdMainConf) {
 		score = max(score, 100)
 	}
 	if score == 0 {
@@ -170,7 +170,7 @@ func detectChronyBackend(ctx context.Context) backendCandidate {
 		mainPath = chronyMainConfCandidates[0]
 	}
 	managedPath, inlineManaged := chronyManagedTarget(mainPath)
-	if fileExists(managedPath) {
+	if utils.FileExists(managedPath) {
 		score = max(score, 160)
 	}
 	return backendCandidate{
@@ -498,14 +498,9 @@ func restartFirstService(ctx context.Context, candidates []string) error {
 
 func firstExistingPath(candidates []string) (string, bool) {
 	for _, path := range candidates {
-		if fileExists(path) {
+		if utils.FileExists(path) {
 			return path, true
 		}
 	}
 	return "", false
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

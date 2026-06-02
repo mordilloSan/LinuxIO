@@ -3,7 +3,9 @@ package config
 import (
 	"errors"
 	"log/slog"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -118,7 +120,7 @@ func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, default
 		changed = true
 	}
 	if !hasMapKey(appSettings, "dashboardOrder") {
-		cfg.AppSettings.DashboardOrder = cloneStringSlice(defaults.AppSettings.DashboardOrder)
+		cfg.AppSettings.DashboardOrder = slices.Clone(defaults.AppSettings.DashboardOrder)
 		changed = true
 	}
 	if !hasMapKey(appSettings, "dockerDashboardSections") {
@@ -136,7 +138,7 @@ func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, default
 		changed = true
 	}
 	if !hasMapKey(appSettings, "viewModes") {
-		cfg.AppSettings.ViewModes = cloneStringMap(defaults.AppSettings.ViewModes)
+		cfg.AppSettings.ViewModes = maps.Clone(defaults.AppSettings.ViewModes)
 		changed = true
 	}
 	if !hasMapKey(appSettings, "chunkSizeMB") {

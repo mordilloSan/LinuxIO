@@ -3,10 +3,10 @@ package iteminfo
 import (
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // DetectTypeByHeader detects the MIME type of a file based on its header.
@@ -17,7 +17,7 @@ func DetectTypeByHeader(realPath string) string {
 	}
 	defer root.Close()
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(realPath, "/"))
+	cleanPath := utils.CleanAbsPath(realPath)
 	relPath := fsroot.ToRel(cleanPath)
 
 	// First, check if it's a regular file

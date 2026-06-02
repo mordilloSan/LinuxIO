@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func (info *FileInfo) SortItems() {
@@ -47,7 +48,7 @@ func ResolveSymlinks(path string) (string, bool, error) {
 	}
 	defer root.Close()
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	cleanPath := utils.CleanAbsPath(path)
 	visited := make(map[string]struct{})
 
 	for {
@@ -69,7 +70,7 @@ func ResolveSymlinks(path string) (string, bool, error) {
 			}
 
 			if filepath.IsAbs(target) {
-				cleanPath = filepath.Clean("/" + strings.TrimPrefix(target, "/"))
+				cleanPath = utils.CleanAbsPath(target)
 			} else {
 				cleanPath = filepath.Clean(filepath.Join(filepath.Dir(cleanPath), target))
 			}

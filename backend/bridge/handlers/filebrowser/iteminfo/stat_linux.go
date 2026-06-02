@@ -13,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // CollectStatInfo gathers extended Linux-specific file metadata including owner, group, and permissions.
@@ -24,7 +25,7 @@ func CollectStatInfo(realPath string) (*apischema.ResourceStatData, error) {
 	}
 	defer root.Close()
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(realPath, "/"))
+	cleanPath := utils.CleanAbsPath(realPath)
 	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
 	if err != nil {
 		return nil, err
