@@ -284,9 +284,9 @@ func TestGetSingleUpdateDetailIgnoresNonMatchingDetail(t *testing.T) {
 	service.setDetail("wrong;0;x86_64;repo", detailBody("wrong;0;x86_64;repo", "0"))
 	service.setDetail(packageID, detailBody(packageID, "1.2.3"))
 
-	got, err := GetSingleUpdateDetail(context.Background(), packageID)
+	got, err := getSingleUpdateDetail(context.Background(), packageID)
 	if err != nil {
-		t.Fatalf("GetSingleUpdateDetail: %v", err)
+		t.Fatalf("getSingleUpdateDetail: %v", err)
 	}
 	if got.PackageID != packageID || got.Version != "1.2.3" {
 		t.Fatalf("unexpected detail: %#v", got)

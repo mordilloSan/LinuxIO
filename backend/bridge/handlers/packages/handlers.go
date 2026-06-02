@@ -30,7 +30,7 @@ func handleGetUpdatesBasic(ctx context.Context, _ bridgeipc.NoRequest, emit brid
 }
 
 func handleGetUpdateDetail(ctx context.Context, req apischema.PackageIDRequest, emit bridgeipc.Events) error {
-	result, err := GetSingleUpdateDetail(ctx, req.PackageID)
+	result, err := getSingleUpdateDetail(ctx, req.PackageID)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 

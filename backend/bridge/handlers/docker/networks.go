@@ -51,6 +51,9 @@ func EnsureLinuxIONetwork(ctx context.Context) {
 	slog.Info("created docker bridge network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName)
 }
 
+// connectToProxyNetwork attaches a container to the linuxio-docker bridge so the
+// built-in path proxy can reach it. The call is idempotent — Docker returns a
+// "already exists" error which is silently ignored.
 func connectToProxyNetwork(ctx context.Context, containerID string) {
 	cli, err := getClient()
 	if err != nil {
@@ -64,13 +67,6 @@ func connectToProxyNetwork(ctx context.Context, containerID string) {
 		// "already connected" is expected and harmless
 		slog.Debug("docker proxy network connect returned error", "component", "docker", "subsystem", "network", "container", containerID, "network", linuxIONetworkName, "error", err)
 	}
-}
-
-// ConnectToProxyNetwork attaches a container to the linuxio-docker bridge so the
-// built-in path proxy can reach it. The call is idempotent — Docker returns a
-// "already exists" error which is silently ignored.
-func ConnectToProxyNetwork(ctx context.Context, containerID string) {
-	connectToProxyNetwork(ctx, containerID)
 }
 
 // List all networks

@@ -393,14 +393,6 @@ func resolvePackageIDs(ctx context.Context, name string, filter uint64) ([]strin
 	return ids, err
 }
 
-// GetSingleUpdateDetail returns detailed info for a single package.
-// Used for on-demand changelog fetching.
-func GetSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail, error) {
-	return getSingleUpdateDetail(ctx, packageID)
-}
-
-// --- Private Implementation ---
-
 // getUpdatesBasic fetches available updates with basic info only (fast).
 // Only calls GetUpdates, skips the slow GetUpdateDetail call.
 func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
@@ -427,6 +419,7 @@ func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 }
 
 // getSingleUpdateDetail fetches detailed info for a single package.
+// Used for on-demand changelog fetching.
 func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail, error) {
 	var detail *UpdateDetail
 	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.ClientSession) error {
