@@ -1298,6 +1298,20 @@ export interface SearchResult {
   modified?: string;
 }
 
+export interface SensorGroup {
+  adapter: string;
+  readings: SensorReading[];
+}
+
+export interface SensorReading {
+  kind: SensorReadingKind;
+  label: string;
+  unit: string;
+  value: unknown;
+}
+
+export type SensorReadingKind = "number" | "boolean";
+
 export interface ServerExportMountOptionsPersistRequest {
   server: string;
   exportPath: string;
@@ -1533,6 +1547,18 @@ export interface Update {
   state: number;
   summary: string;
   version: string;
+}
+
+export interface UpdateItem {
+  arch?: string;
+  currentVersion?: string;
+  name: string;
+  newVersion?: string;
+  repo?: string;
+}
+
+export interface UpdatesFastResponse {
+  updates?: UpdateItem[];
 }
 
 export interface UpdateHistoryRow {
@@ -2199,11 +2225,11 @@ export interface LinuxIOSchema {
     get_network_info: { input: []; request: void; result: InterfaceStats[] };
     get_pci_devices: { input: []; request: void; result: PCIDevice[] };
     get_processes: { input: []; request: void; result: ProcessInfo[] };
-    get_sensor_info: { input: []; request: void; result: unknown };
+    get_sensor_info: { input: []; request: void; result: SensorGroup[] };
     get_server_time: { input: []; request: void; result: string };
     get_system_info: { input: []; request: void; result: SystemInfo };
     get_timezones: { input: []; request: void; result: string[] };
-    get_updates_fast: { input: []; request: void; result: Update[] };
+    get_updates_fast: { input: []; request: void; result: UpdatesFastResponse };
     get_uptime: { input: []; request: void; result: number };
     install_capability: {
       input: [capability: string];

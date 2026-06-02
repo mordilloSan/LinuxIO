@@ -4,30 +4,17 @@ import (
 	"context"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
-type FilesystemMount struct {
-	Device            string  `json:"device"`
-	Mountpoint        string  `json:"mountpoint"`
-	FSType            string  `json:"fstype"`
-	ReadOnly          bool    `json:"readOnly"`
-	Total             uint64  `json:"total"`
-	Used              uint64  `json:"used"`
-	Free              uint64  `json:"free"`
-	UsedPercent       float64 `json:"usedPercent"`
-	InodesTotal       uint64  `json:"inodesTotal,omitempty"`
-	InodesUsed        uint64  `json:"inodesUsed,omitempty"`
-	InodesFree        uint64  `json:"inodesFree,omitempty"`
-	InodesUsedPercent float64 `json:"inodesUsedPercent,omitempty"`
-}
-
-func FetchFileSystemInfo(ctx context.Context, includeAll bool) ([]FilesystemMount, error) {
+func FetchFileSystemInfo(ctx context.Context, includeAll bool) ([]apischema.FilesystemInfo, error) {
 	parts, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}
-	results := make([]FilesystemMount, 0, len(parts))
+	results := make([]apischema.FilesystemInfo, 0, len(parts))
 	for _, p := range parts {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -39,19 +26,19 @@ func FetchFileSystemInfo(ctx context.Context, includeAll bool) ([]FilesystemMoun
 		if err != nil {
 			continue
 		}
-		results = append(results, FilesystemMount{
+		results = append(results, apischema.FilesystemInfo{
 			Device:            p.Device,
 			Mountpoint:        p.Mountpoint,
 			FSType:            p.Fstype,
-			ReadOnly:          hasReadOnlyOpt(p.Opts),
+			ReadOnly:          utils.BoolPtr(utils.HasReadOnlyOpt(p.Opts)),
 			Total:             usage.Total,
 			Used:              usage.Used,
 			Free:              usage.Free,
 			UsedPercent:       usage.UsedPercent,
-			InodesTotal:       usage.InodesTotal,
-			InodesUsed:        usage.InodesUsed,
-			InodesFree:        usage.InodesFree,
-			InodesUsedPercent: usage.InodesUsedPercent,
+			InodesTotal:       utils.OptionalUint64(usage.InodesTotal),
+			InodesUsed:        utils.OptionalUint64(usage.InodesUsed),
+			InodesFree:        utils.OptionalUint64(usage.InodesFree),
+			InodesUsedPercent: utils.OptionalFloat64(usage.InodesUsedPercent),
 		})
 	}
 	return results, nil
@@ -73,15 +60,6 @@ func isPseudoFS(p disk.PartitionStat) bool {
 	case "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs",
 		"f2fs", "reiserfs", "jfs", "ntfs", "vfat", "exfat":
 		return false
-	}
-	return false
-}
-
-func hasReadOnlyOpt(opts []string) bool {
-	for _, o := range opts {
-		if strings.TrimSpace(o) == "ro" {
-			return true
-		}
 	}
 	return false
 }

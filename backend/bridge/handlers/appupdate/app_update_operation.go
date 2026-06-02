@@ -12,9 +12,9 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -201,5 +201,5 @@ func writeStatusFile(runID, status string, exitCode *int, errMsg string, started
 		return err
 	}
 
-	return fsutil.WriteFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
+	return utils.WriteFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
 }

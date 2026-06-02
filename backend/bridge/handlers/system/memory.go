@@ -10,38 +10,33 @@ import (
 	"time"
 
 	"github.com/moby/moby/client"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
-// ---------- Public types & handler ----------
-
-type MemoryResponse struct {
-	System *mem.VirtualMemoryStat `json:"system"`
-	Docker struct {
-		Used uint64 `json:"used"`
-	} `json:"docker"`
-	ZFS struct {
-		ARC uint64 `json:"arc"`
-	} `json:"zfs"`
-}
-
 // FetchMemoryInfo returns the system memory, docker usage, and ZFS ARC cache info.
-func FetchMemoryInfo(ctx context.Context) (*MemoryResponse, error) {
-	vm, err := mem.VirtualMemory()
+func FetchMemoryInfo(ctx context.Context) (*apischema.MemoryInfoResponse, error) {
+	vm, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var resp MemoryResponse
-	resp.System = vm
-	resp.ZFS.ARC = readZFSArc()
+	resp := &apischema.MemoryInfoResponse{
+		System: apischema.MemorySystemInfo{
+			Total:     vm.Total,
+			Active:    vm.Active,
+			SwapTotal: vm.SwapTotal,
+			SwapFree:  vm.SwapFree,
+		},
+		ZFS: apischema.MemoryZFSInfo{ARC: readZFSArc()},
+	}
 
 	if used, err := getDockerMemoryUsage(ctx); err == nil {
 		resp.Docker.Used = used
 		// (Intentionally ignore Docker errors to keep endpoint useful without Docker.)
 	}
 
-	return &resp, nil
+	return resp, nil
 }
 
 // ---------- ZFS ARC ----------

@@ -11,6 +11,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type dockerStatsPayload struct {
@@ -76,7 +77,7 @@ func containerInfoFromSummary(
 	return apischema.ContainerInfo{
 		Created:         ctr.Created,
 		HostConfig:      containerHostConfigFromSummary(ctr),
-		Icon:            optionalString(iconIdentifier),
+		Icon:            utils.OptionalString(iconIdentifier),
 		ID:              ctr.ID,
 		Image:           ctr.Image,
 		Labels:          ctr.Labels,
@@ -85,15 +86,15 @@ func containerInfoFromSummary(
 		Names:           ctr.Names,
 		NetworkSettings: containerNetworkSettingsFromSummary(ctr.NetworkSettings),
 		Ports:           containerPortsFromSummary(ctr.Ports),
-		ProxyPort:       optionalString(proxyPort),
+		ProxyPort:       utils.OptionalString(proxyPort),
 		State:           string(ctr.State),
 		Status:          ctr.Status,
-		URL:             optionalString(resolvedURL),
+		URL:             utils.OptionalString(resolvedURL),
 	}
 }
 
 func containerHostConfigFromSummary(ctr container.Summary) *apischema.ContainerHostConfig {
-	networkMode := optionalString(ctr.HostConfig.NetworkMode)
+	networkMode := utils.OptionalString(ctr.HostConfig.NetworkMode)
 	if networkMode == nil {
 		return nil
 	}
@@ -114,7 +115,7 @@ func containerNetworkSettingsFromSummary(settings *container.NetworkSettingsSumm
 			Gateway:           addrString(endpoint.Gateway),
 			GlobalIPv6Address: optionalAddrString(endpoint.GlobalIPv6Address),
 			IPAddress:         addrString(endpoint.IPAddress),
-			MACAddress:        optionalString(endpoint.MacAddress.String()),
+			MACAddress:        utils.OptionalString(endpoint.MacAddress.String()),
 		}
 	}
 	if len(networks) == 0 {
@@ -133,7 +134,7 @@ func containerPortsFromSummary(ports []container.PortSummary) []apischema.Contai
 		result = append(result, apischema.ContainerPort{
 			IP:          optionalAddrString(port.IP),
 			PrivatePort: int(port.PrivatePort),
-			PublicPort:  optionalInt(int(port.PublicPort)),
+			PublicPort:  utils.OptionalInt(int(port.PublicPort)),
 			Type:        port.Type,
 		})
 	}
@@ -246,13 +247,6 @@ func resolveContainerURL(containerURL, proxyPort, iconName string) string {
 	return "/proxy/" + iconName + "/"
 }
 
-func optionalString(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
 func addrString(value netip.Addr) string {
 	if !value.IsValid() {
 		return ""
@@ -261,14 +255,7 @@ func addrString(value netip.Addr) string {
 }
 
 func optionalAddrString(value netip.Addr) *string {
-	return optionalString(addrString(value))
-}
-
-func optionalInt(value int) *int {
-	if value == 0 {
-		return nil
-	}
-	return &value
+	return utils.OptionalString(addrString(value))
 }
 
 // Start a container by ID

@@ -7,19 +7,9 @@ import (
 	"github.com/jaypipes/ghw/pkg/bios"
 	"github.com/jaypipes/ghw/pkg/chassis"
 	"github.com/jaypipes/ghw/pkg/product"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/shirou/gopsutil/v4/cpu"
 )
-
-type SystemInfo struct {
-	ChassisType    string `json:"chassisType"`
-	ProductName    string `json:"productName"`
-	ProductVersion string `json:"productVersion"`
-	ProductVendor  string `json:"productVendor"`
-	BIOSVendor     string `json:"biosVendor"`
-	BIOSVersion    string `json:"biosVersion"`
-	BIOSDate       string `json:"biosDate"`
-	CPUSummary     string `json:"cpuSummary"`
-}
 
 func FetchCPUSummary(ctx context.Context) string {
 	cpuInfo, err := cpu.InfoWithContext(ctx)
@@ -34,8 +24,8 @@ func FetchCPUSummary(ctx context.Context) string {
 	return cpuInfo[0].ModelName
 }
 
-func FetchSystemInfo(ctx context.Context) (*SystemInfo, error) {
-	info := &SystemInfo{}
+func FetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
+	info := &apischema.SystemInfo{}
 
 	// ghw has no context support; check ctx before each hardware metadata read.
 	if err := ctx.Err(); err != nil {

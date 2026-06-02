@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type aptBackend struct{}
@@ -103,7 +103,7 @@ func writeAptAutoUpgradeConfig(o AutoUpdateOptions) error {
 APT::Periodic::Download-Upgradeable-Packages "%s";
 APT::Periodic::Unattended-Upgrade "%s";
 `, upd, dl, uu)
-	return fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content), 0o644)
+	return utils.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content), 0o644)
 }
 
 func aptPeriodicValues(o AutoUpdateOptions) (string, string, string) {
@@ -124,7 +124,7 @@ Unattended-Upgrade::Package-Blacklist {
 Unattended-Upgrade::Automatic-Reboot "%s";
 Unattended-Upgrade::Automatic-Reboot-Time "03:30";
 `, formatOrigins(aptAllowedOrigins(o.Scope)), formatAptBlacklist(o.ExcludePkgs), aptRebootSetting(o.RebootPolicy))
-	return fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content), 0o644)
+	return utils.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content), 0o644)
 }
 
 func aptAllowedOrigins(scope string) []string {
@@ -255,7 +255,7 @@ func timerEnabled(name string) bool {
 func writeTimerDropIn(timer, oncal string) error {
 	path := filepath.Join("/etc/systemd/system", timer+".d", "linuxio.conf")
 	body := "[Timer]\nOnCalendar=" + oncal + "\nRandomizedDelaySec=30m\n"
-	return fsutil.WriteFileAtomic(path, []byte(body), 0o644)
+	return utils.WriteFileAtomic(path, []byte(body), 0o644)
 }
 
 func formatOrigins(list []string) string {

@@ -5,19 +5,11 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-type MemoryModule struct {
-	ID         string `json:"id"`
-	Technology string `json:"technology"`
-	Type       string `json:"type"`
-	Size       string `json:"size"`
-	State      string `json:"state"`
-	Rank       string `json:"rank"`
-	Speed      string `json:"speed"`
-}
-
-func FetchMemoryModules(ctx context.Context) ([]MemoryModule, error) {
+func FetchMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
 	out, err := exec.CommandContext(ctx, "dmidecode", "-t", "memory").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run dmidecode: %w", err)
@@ -26,10 +18,10 @@ func FetchMemoryModules(ctx context.Context) ([]MemoryModule, error) {
 	return parseDMIMemory(string(out)), nil
 }
 
-func parseDMIMemory(output string) []MemoryModule {
+func parseDMIMemory(output string) []apischema.MemoryModule {
 	// Split on "Memory Device" sections (skip "Physical Memory Array" blocks)
 	sections := strings.Split(output, "Memory Device")
-	var modules []MemoryModule
+	var modules []apischema.MemoryModule
 
 	for _, section := range sections[1:] { // skip preamble before first "Memory Device"
 		fields := parseDMIFields(section)
@@ -49,7 +41,7 @@ func parseDMIMemory(output string) []MemoryModule {
 			state = "Present"
 		}
 
-		modules = append(modules, MemoryModule{
+		modules = append(modules, apischema.MemoryModule{
 			ID:         id,
 			Technology: valueOrDefault(fields["Memory Technology"], installed),
 			Type:       valueOrDefault(fields["Type"], installed),

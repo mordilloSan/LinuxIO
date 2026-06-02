@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,10 +86,10 @@ func TestFailedLoginAlertIDSurvivesSessionWindowChanges(t *testing.T) {
 
 func TestApplyFailedLoginAlertDismissal(t *testing.T) {
 	alertID := failedLoginAlertID("user", "miguel", "login_abc")
-	summary := &SystemHealthSummary{
-		FailedLoginAlert: &FailedLoginAlert{
+	summary := &apischema.SystemHealthSummary{
+		FailedLoginAlert: &apischema.SystemFailedLoginAlert{
 			ID:            alertID,
-			Scope:         "user",
+			Scope:         utils.OptionalString("user"),
 			Username:      "miguel",
 			Count:         2,
 			LatestEventID: "login_abc",
@@ -101,10 +103,10 @@ func TestApplyFailedLoginAlertDismissal(t *testing.T) {
 
 func TestApplyFailedLoginAlertDismissalKeepsNewAlert(t *testing.T) {
 	alertID := failedLoginAlertID("user", "miguel", "login_abc")
-	summary := &SystemHealthSummary{
-		FailedLoginAlert: &FailedLoginAlert{
+	summary := &apischema.SystemHealthSummary{
+		FailedLoginAlert: &apischema.SystemFailedLoginAlert{
 			ID:            alertID,
-			Scope:         "user",
+			Scope:         utils.OptionalString("user"),
 			Username:      "miguel",
 			Count:         2,
 			LatestEventID: "login_abc",

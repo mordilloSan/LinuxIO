@@ -11,9 +11,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*SystemHealthSummary, error) {
+func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*apischema.SystemHealthSummary, error) {
 	session := rt.Session
 	result, err := FetchSystemHealthSummary(ctx, session.User.Username, session.Privileged, session.Timing.CreatedAt)
 	if err == nil && result != nil {
@@ -22,7 +23,7 @@ func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*Syste
 	return result, err
 }
 
-func ListFailedLoginEventsForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.FailedLoginEventsRequest) ([]SystemLoginEvent, error) {
+func ListFailedLoginEventsForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.FailedLoginEventsRequest) ([]apischema.AccountUserLogin, error) {
 	session := rt.Session
 	limit := parsePositiveLimit(req.Limit, 24, 100)
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -73,7 +74,7 @@ func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, 
 // applyHealthDismissals suppresses acknowledged one-shot health signals. Any
 // error reading the user's settings is treated as "not dismissed" so warnings
 // still surface.
-func applyHealthDismissals(ctx context.Context, username string, store *config.UserStore, summary *SystemHealthSummary) {
+func applyHealthDismissals(ctx context.Context, username string, store *config.UserStore, summary *apischema.SystemHealthSummary) {
 	if !hasDismissibleHealthSignal(summary) {
 		return
 	}
@@ -89,22 +90,23 @@ func applyHealthDismissals(ctx context.Context, username string, store *config.U
 	applyFailedLoginAlertDismissal(summary, cfg.Dismissals)
 }
 
-func hasDismissibleHealthSignal(summary *SystemHealthSummary) bool {
-	return (summary.UncleanShutdown && summary.UncleanShutdownBootID != "") ||
+func hasDismissibleHealthSignal(summary *apischema.SystemHealthSummary) bool {
+	return (summary.UncleanShutdown && utils.StringValue(summary.UncleanShutdownBootID) != "") ||
 		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
 }
 
-func applyUncleanShutdownDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
-	if !summary.UncleanShutdown || summary.UncleanShutdownBootID == "" {
+func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismissals *config.Dismissals) {
+	bootID := utils.StringValue(summary.UncleanShutdownBootID)
+	if !summary.UncleanShutdown || bootID == "" {
 		return
 	}
-	if dismissals.UncleanShutdownBootID == summary.UncleanShutdownBootID {
+	if dismissals.UncleanShutdownBootID == bootID {
 		summary.UncleanShutdown = false
-		summary.UncleanShutdownBootID = ""
+		summary.UncleanShutdownBootID = nil
 	}
 }
 
-func applyFailedLoginAlertDismissal(summary *SystemHealthSummary, dismissals *config.Dismissals) {
+func applyFailedLoginAlertDismissal(summary *apischema.SystemHealthSummary, dismissals *config.Dismissals) {
 	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
 		return
 	}

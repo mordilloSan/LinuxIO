@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 type Manager string
@@ -22,25 +24,13 @@ const (
 	MgrAPK    Manager = "apk"
 )
 
-type UpdateItem struct {
-	Name           string `json:"name"`
-	NewVersion     string `json:"newVersion,omitempty"`
-	CurrentVersion string `json:"currentVersion,omitempty"`
-	Arch           string `json:"arch,omitempty"`
-	Repo           string `json:"repo,omitempty"`
-}
-
-type UpdatesFastResponse struct {
-	Updates []UpdateItem `json:"updates,omitempty"`
-}
-
-func GetUpdatesFast(parent context.Context) (*UpdatesFastResponse, error) {
+func GetUpdatesFast(parent context.Context) (*apischema.UpdatesFastResponse, error) {
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 
 	mgr, cmd, args := pickCommand()
 	out, _ := runCmd(ctx, cmd, args...)
-	resp := &UpdatesFastResponse{}
+	resp := &apischema.UpdatesFastResponse{}
 	switch mgr {
 	case MgrAPT:
 		resp.Updates = parseAptListUpgradeable(out)
@@ -96,8 +86,8 @@ func runCmd(ctx context.Context, name string, args ...string) (string, error) {
 
 var aptLine = regexp.MustCompile(`^([^\s/]+)/([^\s]+)\s+(\S+)\s+(\S+)\s+\[upgradable from:\s*([^\]]+)\]`)
 
-func parseAptListUpgradeable(out string) []UpdateItem {
-	var updates []UpdateItem
+func parseAptListUpgradeable(out string) []apischema.UpdateItem {
+	var updates []apischema.UpdateItem
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -105,7 +95,7 @@ func parseAptListUpgradeable(out string) []UpdateItem {
 			continue
 		}
 		if m := aptLine.FindStringSubmatch(line); len(m) == 6 {
-			updates = append(updates, UpdateItem{Name: m[1], Repo: m[2], NewVersion: m[3], Arch: m[4], CurrentVersion: m[5]})
+			updates = append(updates, apischema.UpdateItem{Name: m[1], Repo: m[2], NewVersion: m[3], Arch: m[4], CurrentVersion: m[5]})
 		}
 	}
 	return updates
@@ -113,8 +103,8 @@ func parseAptListUpgradeable(out string) []UpdateItem {
 
 var dnfYumLine = regexp.MustCompile(`^(\S+)\.(\S+)\s+(\S+)\s+(\S+)$`)
 
-func parseDnfYum(out string) []UpdateItem {
-	var items []UpdateItem
+func parseDnfYum(out string) []apischema.UpdateItem {
+	var items []apischema.UpdateItem
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -126,14 +116,14 @@ func parseDnfYum(out string) []UpdateItem {
 			continue
 		}
 		if m := dnfYumLine.FindStringSubmatch(line); len(m) == 5 {
-			items = append(items, UpdateItem{Name: m[1], Arch: m[2], NewVersion: m[3], Repo: m[4]})
+			items = append(items, apischema.UpdateItem{Name: m[1], Arch: m[2], NewVersion: m[3], Repo: m[4]})
 		}
 	}
 	return items
 }
 
-func parseZypper(out string) []UpdateItem {
-	var items []UpdateItem
+func parseZypper(out string) []apischema.UpdateItem {
+	var items []apischema.UpdateItem
 	sc := bufio.NewScanner(strings.NewReader(out))
 	header := false
 	for sc.Scan() {
@@ -150,7 +140,7 @@ func parseZypper(out string) []UpdateItem {
 		}
 		cols := splitPipeCols(line)
 		if len(cols) >= 6 {
-			items = append(items, UpdateItem{Name: cols[2], CurrentVersion: cols[3], NewVersion: cols[4], Arch: cols[5], Repo: cols[1]})
+			items = append(items, apischema.UpdateItem{Name: cols[2], CurrentVersion: cols[3], NewVersion: cols[4], Arch: cols[5], Repo: cols[1]})
 		}
 	}
 	return items
@@ -164,8 +154,8 @@ func splitPipeCols(line string) []string {
 	return parts
 }
 
-func parsePacmanSup(out string) []UpdateItem {
-	var items []UpdateItem
+func parsePacmanSup(out string) []apischema.UpdateItem {
+	var items []apischema.UpdateItem
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -188,7 +178,7 @@ func parsePacmanSup(out string) []UpdateItem {
 			name := strings.Join(parts[:len(parts)-2], "-")
 			ver := parts[len(parts)-2]
 			arch := parts[len(parts)-1]
-			items = append(items, UpdateItem{Name: name, NewVersion: ver, Arch: arch})
+			items = append(items, apischema.UpdateItem{Name: name, NewVersion: ver, Arch: arch})
 		}
 	}
 	return items
@@ -196,27 +186,27 @@ func parsePacmanSup(out string) []UpdateItem {
 
 var apkLine = regexp.MustCompile(`^(\S+)-([^-]+)\s+\S+\s+\{[^}]*\}\s+\(installed:\s*([^)]+)\)`)
 
-func parseAPK(out string) []UpdateItem {
-	var items []UpdateItem
+func parseAPK(out string) []apischema.UpdateItem {
+	var items []apischema.UpdateItem
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if m := apkLine.FindStringSubmatch(line); len(m) == 4 {
-			items = append(items, UpdateItem{Name: m[1], NewVersion: m[2], CurrentVersion: m[3]})
+			items = append(items, apischema.UpdateItem{Name: m[1], NewVersion: m[2], CurrentVersion: m[3]})
 		}
 	}
 	return items
 }
 
-func splitAsRawItems(out string) []UpdateItem {
-	var items []UpdateItem
+func splitAsRawItems(out string) []apischema.UpdateItem {
+	var items []apischema.UpdateItem
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
-		items = append(items, UpdateItem{Name: line})
+		items = append(items, apischema.UpdateItem{Name: line})
 	}
 	return items
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -205,7 +205,7 @@ func (timesyncdBackend) SetServers(ctx context.Context, servers []string) error 
 	}
 
 	content := "[Time]\nNTP=" + strings.Join(servers, " ") + "\n"
-	if err := fsutil.WriteFileAtomic(timesyncdManagedConf, []byte(content), 0o644); err != nil {
+	if err := utils.WriteFileAtomic(timesyncdManagedConf, []byte(content), 0o644); err != nil {
 		return err
 	}
 	return restartFirstService(ctx, []string{"systemd-timesyncd.service"})
@@ -247,7 +247,7 @@ func (b chronyBackend) SetServers(ctx context.Context, servers []string) error {
 		return restartFirstService(ctx, chronyServiceCandidates)
 	}
 	content := renderChronyManagedServers(servers)
-	if err := fsutil.WriteFileAtomic(b.managedPath, []byte(content), 0o644); err != nil {
+	if err := utils.WriteFileAtomic(b.managedPath, []byte(content), 0o644); err != nil {
 		return err
 	}
 	return restartFirstService(ctx, chronyServiceCandidates)
@@ -261,7 +261,7 @@ func (b chronyBackend) writeInlineManagedServers(servers []string) error {
 	lines := strings.Split(string(data), "\n")
 	block := buildChronyManagedBlock(servers)
 	updated := replaceManagedBlock(lines, chronyInlineStartMarker, chronyInlineEndMarker, block)
-	return fsutil.WriteFileAtomic(b.mainPath, []byte(strings.Join(updated, "\n")), 0o644)
+	return utils.WriteFileAtomic(b.mainPath, []byte(strings.Join(updated, "\n")), 0o644)
 }
 
 func parseTimesyncdServers(path string) ([]string, bool, error) {

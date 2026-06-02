@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,27 +57,27 @@ func TestFetchSensorsInfoParsesJSONReadings(t *testing.T) {
 	require.Len(t, groups, 2)
 
 	require.Equal(t, "coretemp-isa-0000", groups[0].Adapter)
-	require.Equal(t, []SensorReading{
-		{Label: "Core 0 (input)", Value: 48.0, Kind: SensorReadingKindNumber, Unit: "°C", field: "temp2_input"},
-		{Label: "Core 0 (max)", Value: 95.0, Kind: SensorReadingKindNumber, Unit: "°C", field: "temp2_max"},
-		{Label: "Core 0 (crit)", Value: 100.0, Kind: SensorReadingKindNumber, Unit: "°C", field: "temp2_crit"},
-		{Label: "Core 0 (alarm)", Value: false, Kind: SensorReadingKindBoolean, Unit: "", field: "temp2_alarm"},
-		{Label: "Package id 0 (input)", Value: 55.5, Kind: SensorReadingKindNumber, Unit: "°C", field: "temp1_input"},
-		{Label: "Package id 0 (max)", Value: 95.0, Kind: SensorReadingKindNumber, Unit: "°C", field: "temp1_max"},
-		{Label: "Package id 0 (crit)", Value: 100.0, Kind: SensorReadingKindNumber, Unit: "°C", field: "temp1_crit"},
-		{Label: "Package id 0 (alarm)", Value: true, Kind: SensorReadingKindBoolean, Unit: "", field: "temp1_alarm"},
+	require.Equal(t, []apischema.SensorReading{
+		{Label: "Core 0 (input)", Value: 48.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_input"},
+		{Label: "Core 0 (max)", Value: 95.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_max"},
+		{Label: "Core 0 (crit)", Value: 100.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_crit"},
+		{Label: "Core 0 (alarm)", Value: false, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp2_alarm"},
+		{Label: "Package id 0 (input)", Value: 55.5, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_input"},
+		{Label: "Package id 0 (max)", Value: 95.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_max"},
+		{Label: "Package id 0 (crit)", Value: 100.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_crit"},
+		{Label: "Package id 0 (alarm)", Value: true, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp1_alarm"},
 	}, groups[0].Readings)
 
 	require.Equal(t, "nct6798-isa-0290", groups[1].Adapter)
-	require.Equal(t, []SensorReading{
-		{Label: "3VCC (input)", Value: 3.31, Kind: SensorReadingKindNumber, Unit: "V", field: "in0_input"},
-		{Label: "3VCC (min)", Value: 3.14, Kind: SensorReadingKindNumber, Unit: "V", field: "in0_min"},
-		{Label: "3VCC (max)", Value: 3.47, Kind: SensorReadingKindNumber, Unit: "V", field: "in0_max"},
-		{Label: "fan1 (input)", Value: 1520.0, Kind: SensorReadingKindNumber, Unit: "RPM", field: "fan1_input"},
-		{Label: "fan1 (alarm)", Value: false, Kind: SensorReadingKindBoolean, Unit: "", field: "fan1_alarm"},
-		{Label: "intrusion0", Value: true, Kind: SensorReadingKindBoolean, Unit: "", field: "alarm"},
-		{Label: "nested (subsystem / input)", Value: 65.2, Kind: SensorReadingKindNumber, Unit: "W", field: "power1_input"},
-		{Label: "nested (subsystem / alarm)", Value: false, Kind: SensorReadingKindBoolean, Unit: "", field: "power1_alarm"},
+	require.Equal(t, []apischema.SensorReading{
+		{Label: "3VCC (input)", Value: 3.31, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_input"},
+		{Label: "3VCC (min)", Value: 3.14, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_min"},
+		{Label: "3VCC (max)", Value: 3.47, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_max"},
+		{Label: "fan1 (input)", Value: 1520.0, Kind: apischema.SensorReadingKindNumber, Unit: "RPM", Field: "fan1_input"},
+		{Label: "fan1 (alarm)", Value: false, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "fan1_alarm"},
+		{Label: "intrusion0", Value: true, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "alarm"},
+		{Label: "nested (subsystem / input)", Value: 65.2, Kind: apischema.SensorReadingKindNumber, Unit: "W", Field: "power1_input"},
+		{Label: "nested (subsystem / alarm)", Value: false, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "power1_alarm"},
 	}, groups[1].Readings)
 }
 

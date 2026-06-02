@@ -18,7 +18,7 @@ import (
 
 	"github.com/shirou/gopsutil/v4/disk"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // Validation patterns for NFS
@@ -229,7 +229,7 @@ func saveManagedNFSMountEntries(entries map[string]managedNFSMountEntry) error {
 	}
 	data = append(data, '\n')
 
-	return fsutil.WriteFileAtomic(managedNFSMountsPath, data, 0o644)
+	return utils.WriteFileAtomic(managedNFSMountsPath, data, 0o644)
 }
 
 func upsertManagedNFSMount(source, mountpoint, fstype string, options []string) error {

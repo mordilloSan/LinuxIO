@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type InterfaceConfig struct {
@@ -59,7 +59,7 @@ func DefaultEnvironment() Environment {
 		IfupdownDir:     "/etc/network/interfaces.d",
 		IfcfgDir:        "/etc/sysconfig/network-scripts",
 		Runner:          ExecRunner{},
-		WriteFile:       fsutil.WriteFileAtomic,
+		WriteFile:       utils.WriteFileAtomic,
 	}
 }
 

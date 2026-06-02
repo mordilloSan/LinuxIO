@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/jaypipes/ghw/pkg/gpu"
 	"github.com/jaypipes/ghw/pkg/pci"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 type nvidiaGPUStats struct {
@@ -29,24 +31,37 @@ type nvidiaGPUStats struct {
 	MaxGraphicsClockMHz int
 }
 
-func FetchGPUInfo(ctx context.Context) ([]map[string]any, error) {
+func FetchGPUInfo(ctx context.Context) ([]apischema.GpuDevice, error) {
 	info, err := gpu.New()
 	if err != nil || info == nil {
 		return nil, fmt.Errorf("failed to retrieve GPU information: %w", err)
 	}
 
 	nvidiaStats := readNvidiaSMIStats(ctx)
-	gpus := make([]map[string]any, 0, len(info.GraphicsCards))
+	gpus := make([]apischema.GpuDevice, 0, len(info.GraphicsCards))
 	for _, card := range info.GraphicsCards {
 		entry := buildGPUEntry(card)
 		enrichGPUFromSysfs(card.Address, entry)
 		if stats, ok := nvidiaStats[normalizePCIAddress(card.Address)]; ok {
 			mergeNvidiaStats(entry, stats)
 		}
-		gpus = append(gpus, entry)
+		device, err := gpuDeviceFromEntry(entry)
+		if err != nil {
+			return nil, fmt.Errorf("build GPU response: %w", err)
+		}
+		gpus = append(gpus, device)
 	}
 
 	return gpus, nil
+}
+
+func gpuDeviceFromEntry(entry map[string]any) (apischema.GpuDevice, error) {
+	var device apischema.GpuDevice
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return device, err
+	}
+	return device, json.Unmarshal(data, &device)
 }
 
 func buildGPUEntry(card *gpu.GraphicsCard) map[string]any {

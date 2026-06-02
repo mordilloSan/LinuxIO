@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type dnfBackend struct{}
@@ -72,7 +72,7 @@ emit_via = motd
 [base]
 %srandom_sleep = 0
 `, dnfApplyUpdatesValue(o), dnfUpgradeType(o.Scope), dnfExcludeLine(o.ExcludePkgs))
-	return fsutil.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644)
+	return utils.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644)
 }
 
 func dnfApplyUpdatesValue(o AutoUpdateOptions) string {

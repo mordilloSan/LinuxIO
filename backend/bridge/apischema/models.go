@@ -9,6 +9,7 @@ type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type JobState string
+type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
 type ValidationIssueType string
@@ -18,10 +19,16 @@ var StringEnums = map[string][]string{
 	"AutoUpdateScope":        {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy": {"never", "if_needed", "always", "schedule"},
 	"JobState":               {"queued", "running", "completed", "failed", "canceled"},
+	"SensorReadingKind":      {"number", "boolean"},
 	"TableCardViewMode":      {"card", "table"},
 	"Theme":                  {"LIGHT", "DARK"},
 	"ValidationIssueType":    {"error", "warning"},
 }
+
+const (
+	SensorReadingKindNumber  SensorReadingKind = "number"
+	SensorReadingKindBoolean SensorReadingKind = "boolean"
+)
 
 var ExtraTypes = []TypeSpec{
 	TypeOf[InstallCapabilityResult](),
@@ -112,6 +119,19 @@ type GpuDevice struct {
 	VendorID               string   `json:"vendor_id"`
 	VisibleMemoryTotalByte *uint64  `json:"visible_memory_total_bytes,omitempty"`
 	VisibleMemoryUsedBytes *uint64  `json:"visible_memory_used_bytes,omitempty"`
+}
+
+type SensorReading struct {
+	Field string            `json:"-"`
+	Kind  SensorReadingKind `json:"kind"`
+	Label string            `json:"label"`
+	Unit  string            `json:"unit"`
+	Value any               `json:"value"`
+}
+
+type SensorGroup struct {
+	Adapter  string          `json:"adapter"`
+	Readings []SensorReading `json:"readings"`
 }
 
 type ApiDisk struct {
@@ -959,6 +979,18 @@ type Update struct {
 	State     int      `json:"state"`
 	Summary   string   `json:"summary"`
 	Version   string   `json:"version"`
+}
+
+type UpdateItem struct {
+	Arch           string `json:"arch,omitempty"`
+	CurrentVersion string `json:"currentVersion,omitempty"`
+	Name           string `json:"name"`
+	NewVersion     string `json:"newVersion,omitempty"`
+	Repo           string `json:"repo,omitempty"`
+}
+
+type UpdatesFastResponse struct {
+	Updates []UpdateItem `json:"updates,omitempty"`
 }
 
 type CaddyStatusResponse struct {
