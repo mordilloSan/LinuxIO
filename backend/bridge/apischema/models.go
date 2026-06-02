@@ -440,20 +440,23 @@ type DockerSystemInfo struct {
 type ComposeService struct {
 	ContainerCount int      `json:"container_count"`
 	ContainerIDs   []string `json:"container_ids"`
+	Icon           string   `json:"icon,omitempty"`
 	Image          string   `json:"image"`
 	Name           string   `json:"name"`
 	Ports          []string `json:"ports"`
 	State          string   `json:"state"`
 	Status         string   `json:"status"`
+	URL            string   `json:"url,omitempty"`
 }
 
 type ComposeProject struct {
-	AutoUpdate  *bool                     `json:"auto_update,omitempty"`
-	ConfigFiles []string                  `json:"config_files"`
-	Name        string                    `json:"name"`
-	Services    map[string]ComposeService `json:"services"`
-	Status      string                    `json:"status"`
-	WorkingDir  string                    `json:"working_dir"`
+	AutoUpdate  bool                       `json:"auto_update"`
+	ConfigFiles []string                   `json:"config_files"`
+	Icon        string                     `json:"icon,omitempty"`
+	Name        string                     `json:"name"`
+	Services    map[string]*ComposeService `json:"services"`
+	Status      string                     `json:"status"`
+	WorkingDir  string                     `json:"working_dir"`
 }
 
 type AutoUpdateOptions struct {
@@ -905,12 +908,12 @@ type IndexerDaemonStatus struct {
 }
 
 type DirectoryValidationResult struct {
-	CanCreate   bool    `json:"canCreate"`
-	CanWrite    bool    `json:"canWrite"`
-	Error       *string `json:"error,omitempty"`
-	Exists      bool    `json:"exists"`
-	IsDirectory bool    `json:"isDirectory"`
-	Valid       bool    `json:"valid"`
+	CanCreate   bool   `json:"canCreate"`
+	CanWrite    bool   `json:"canWrite"`
+	Error       string `json:"error,omitempty"`
+	Exists      bool   `json:"exists"`
+	IsDirectory bool   `json:"isDirectory"`
+	Valid       bool   `json:"valid"`
 }
 
 type JobError struct {
@@ -996,9 +999,9 @@ type DockerIconURIResponse struct {
 }
 
 type ValidateComposeError struct {
-	Line    *int                `json:"line,omitempty"`
-	Column  *int                `json:"column,omitempty"`
-	Field   *string             `json:"field,omitempty"`
+	Line    int                 `json:"line,omitempty"`
+	Column  int                 `json:"column,omitempty"`
+	Field   string              `json:"field,omitempty"`
 	Message string              `json:"message"`
 	Type    ValidationIssueType `json:"type"`
 }
@@ -1006,7 +1009,7 @@ type ValidateComposeError struct {
 type ValidateComposeResponse struct {
 	Valid             bool                   `json:"valid"`
 	Errors            []ValidateComposeError `json:"errors"`
-	NormalizedContent *string                `json:"normalized_content,omitempty"`
+	NormalizedContent string                 `json:"normalized_content,omitempty"`
 }
 
 type StoragePathResult struct {

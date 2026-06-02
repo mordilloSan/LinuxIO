@@ -261,8 +261,9 @@ export interface ComposeFilePathResponse {
 }
 
 export interface ComposeProject {
-  auto_update?: boolean;
+  auto_update: boolean;
   config_files: string[];
+  icon?: string;
   name: string;
   services: Record<string, ComposeService>;
   status: string;
@@ -272,11 +273,13 @@ export interface ComposeProject {
 export interface ComposeService {
   container_count: number;
   container_ids: string[];
+  icon?: string;
   image: string;
   name: string;
   ports: string[];
   state: string;
   status: string;
+  url?: string;
 }
 
 export interface ConfigAppSettingsPayload {

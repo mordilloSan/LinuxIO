@@ -6,25 +6,8 @@ import (
 
 	"github.com/moby/moby/client"
 	"github.com/moby/moby/client/pkg/versions"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
-
-// PruneOptions controls which Docker resources are pruned.
-type PruneOptions struct {
-	Containers bool `json:"containers"`
-	Images     bool `json:"images"`     // dangling only
-	BuildCache bool `json:"buildCache"` //nolint:tagliatelle
-	Networks   bool `json:"networks"`
-	Volumes    bool `json:"volumes"`
-}
-
-// PruneResult summarises what was removed and how much space was reclaimed.
-type PruneResult struct {
-	ContainersDeleted []string `json:"containersDeleted,omitempty"`
-	ImagesDeleted     []string `json:"imagesDeleted,omitempty"`
-	NetworksDeleted   []string `json:"networksDeleted,omitempty"`
-	VolumesDeleted    []string `json:"volumesDeleted,omitempty"`
-	SpaceReclaimed    uint64   `json:"spaceReclaimed"`
-}
 
 func volumePruneOptions(apiVersion string) client.VolumePruneOptions {
 	if versions.GreaterThanOrEqualTo(apiVersion, "1.42") {
@@ -35,14 +18,14 @@ func volumePruneOptions(apiVersion string) client.VolumePruneOptions {
 }
 
 // SystemPrune removes unused Docker resources according to opts.
-func SystemPrune(ctx context.Context, opts PruneOptions) (*PruneResult, error) {
+func SystemPrune(ctx context.Context, opts apischema.DockerSystemPruneRequest) (*apischema.DockerSystemPruneResponse, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	result := &PruneResult{}
+	result := &apischema.DockerSystemPruneResponse{}
 
 	if err := pruneContainers(ctx, cli, opts, result); err != nil {
 		return nil, err
@@ -63,7 +46,7 @@ func SystemPrune(ctx context.Context, opts PruneOptions) (*PruneResult, error) {
 	return result, nil
 }
 
-func pruneContainers(ctx context.Context, cli *client.Client, opts PruneOptions, result *PruneResult) error {
+func pruneContainers(ctx context.Context, cli *client.Client, opts apischema.DockerSystemPruneRequest, result *apischema.DockerSystemPruneResponse) error {
 	if !opts.Containers {
 		return nil
 	}
@@ -76,7 +59,7 @@ func pruneContainers(ctx context.Context, cli *client.Client, opts PruneOptions,
 	return nil
 }
 
-func pruneImages(ctx context.Context, cli *client.Client, opts PruneOptions, result *PruneResult) error {
+func pruneImages(ctx context.Context, cli *client.Client, opts apischema.DockerSystemPruneRequest, result *apischema.DockerSystemPruneResponse) error {
 	if !opts.Images {
 		return nil
 	}
@@ -95,7 +78,7 @@ func pruneImages(ctx context.Context, cli *client.Client, opts PruneOptions, res
 	return nil
 }
 
-func pruneBuildCache(ctx context.Context, cli *client.Client, opts PruneOptions, result *PruneResult) error {
+func pruneBuildCache(ctx context.Context, cli *client.Client, opts apischema.DockerSystemPruneRequest, result *apischema.DockerSystemPruneResponse) error {
 	if !opts.BuildCache {
 		return nil
 	}
@@ -107,7 +90,7 @@ func pruneBuildCache(ctx context.Context, cli *client.Client, opts PruneOptions,
 	return nil
 }
 
-func pruneNetworks(ctx context.Context, cli *client.Client, opts PruneOptions, result *PruneResult) error {
+func pruneNetworks(ctx context.Context, cli *client.Client, opts apischema.DockerSystemPruneRequest, result *apischema.DockerSystemPruneResponse) error {
 	if !opts.Networks {
 		return nil
 	}
@@ -119,7 +102,7 @@ func pruneNetworks(ctx context.Context, cli *client.Client, opts PruneOptions, r
 	return nil
 }
 
-func pruneVolumes(ctx context.Context, cli *client.Client, opts PruneOptions, result *PruneResult) error {
+func pruneVolumes(ctx context.Context, cli *client.Client, opts apischema.DockerSystemPruneRequest, result *apischema.DockerSystemPruneResponse) error {
 	if !opts.Volumes {
 		return nil
 	}

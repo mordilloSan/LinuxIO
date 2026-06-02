@@ -8,60 +8,11 @@ import (
 
 	"github.com/moby/moby/api/types/system"
 	"github.com/moby/moby/client"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-// DockerSystemInfo holds the flattened Docker daemon system and version info.
-type DockerSystemInfo struct {
-	// System
-	Name            string `json:"name"`
-	ID              string `json:"id"`
-	OperatingSystem string `json:"operating_system"`
-	OSType          string `json:"os_type"`
-	Architecture    string `json:"architecture"`
-	KernelVersion   string `json:"kernel_version"`
-	SystemTime      string `json:"system_time"`
-	DockerRootDir   string `json:"docker_root_dir"`
-	NCPU            int    `json:"ncpu"`
-	MemTotal        int64  `json:"mem_total"`
-
-	// Version
-	ServerVersion string `json:"server_version"`
-	APIVersion    string `json:"api_version"`
-	GoVersion     string `json:"go_version"`
-	GitCommit     string `json:"git_commit"`
-	BuildTime     string `json:"build_time"`
-	Experimental  bool   `json:"experimental"`
-
-	// Configuration
-	StorageDriver  string `json:"storage_driver"`
-	LoggingDriver  string `json:"logging_driver"`
-	CgroupDriver   string `json:"cgroup_driver"`
-	CgroupVersion  string `json:"cgroup_version"`
-	InitBinary     string `json:"init_binary"`
-	DefaultRuntime string `json:"default_runtime"`
-
-	// Network & Proxy
-	IPv4Forwarding bool   `json:"ipv4_forwarding"`
-	HTTPProxy      string `json:"http_proxy"`
-	HTTPSProxy     string `json:"https_proxy"`
-	NoProxy        string `json:"no_proxy"`
-
-	// Security & Runtimes
-	SecurityOptions []string `json:"security_options"`
-	Runtimes        []string `json:"runtimes"`
-
-	// Plugins
-	VolumePlugins  []string `json:"volume_plugins"`
-	NetworkPlugins []string `json:"network_plugins"`
-	LogPlugins     []string `json:"log_plugins"`
-
-	// Disk
-	DiskUsed  int64 `json:"disk_used"`
-	DiskTotal int64 `json:"disk_total"`
-}
-
 // GetDockerInfo returns combined system and version information from the Docker daemon.
-func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
+func GetDockerInfo(ctx context.Context) (*apischema.DockerSystemInfo, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -91,7 +42,7 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 	}
 	sort.Strings(runtimes)
 
-	result := &DockerSystemInfo{
+	result := &apischema.DockerSystemInfo{
 		// System
 		Name:            info.Name,
 		ID:              info.ID,
@@ -102,7 +53,7 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 		SystemTime:      info.SystemTime,
 		DockerRootDir:   info.DockerRootDir,
 		NCPU:            info.NCPU,
-		MemTotal:        info.MemTotal,
+		MemTotal:        nonNegativeUint64(info.MemTotal),
 
 		// Version
 		ServerVersion: version.Version,
@@ -138,16 +89,23 @@ func GetDockerInfo(ctx context.Context) (*DockerSystemInfo, error) {
 
 	// Disk usage: sum image layers + build cache.
 	if du, err := cli.DiskUsage(ctx, client.DiskUsageOptions{Images: true, BuildCache: true}); err == nil {
-		result.DiskUsed = du.Images.TotalSize + du.BuildCache.TotalSize
+		result.DiskUsed = nonNegativeUint64(du.Images.TotalSize + du.BuildCache.TotalSize)
 	}
 
 	// Filesystem capacity for the Docker root dir.
 	var fsStat syscall.Statfs_t
 	if err := syscall.Statfs(info.DockerRootDir, &fsStat); err == nil {
-		result.DiskTotal = int64(fsStat.Blocks) * int64(fsStat.Bsize)
+		result.DiskTotal = fsStat.Blocks * uint64(fsStat.Bsize)
 	}
 
 	return result, nil
+}
+
+func nonNegativeUint64(value int64) uint64 {
+	if value < 0 {
+		return 0
+	}
+	return uint64(value)
 }
 
 func dockerVersionDetails(components []system.ComponentVersion) (goVersion, gitCommit, buildTime string) {

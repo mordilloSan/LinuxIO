@@ -13,7 +13,6 @@ func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, _ bridgeipc.NoR
 }
 
 func (h dockerHandlers) handleSystemPrune(ctx context.Context, req apischema.DockerSystemPruneRequest, emit bridgeipc.Events) error {
-	opts := PruneOptions(req)
-	result, err := SystemPrune(ctx, opts)
+	result, err := SystemPrune(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }

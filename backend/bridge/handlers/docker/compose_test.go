@@ -3,6 +3,8 @@ package docker
 import (
 	"context"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestExtractHostPortsTreatsTCPAndUDPAsDistinct(t *testing.T) {
@@ -49,7 +51,7 @@ services:
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
 	}
-	result, ok := resultAny.(ValidationResult)
+	result, ok := resultAny.(apischema.ValidateComposeResponse)
 	if !ok {
 		t.Fatalf("ValidateComposeFile() type = %T, want ValidationResult", resultAny)
 	}
@@ -72,7 +74,7 @@ services:
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
 	}
-	result, ok := resultAny.(ValidationResult)
+	result, ok := resultAny.(apischema.ValidateComposeResponse)
 	if !ok {
 		t.Fatalf("ValidateComposeFile() type = %T, want ValidationResult", resultAny)
 	}
