@@ -7,13 +7,13 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 interface ConfirmDialogProps {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmText?: string;
   cancelText?: string;
+  confirmText?: string;
+  message: string;
   onClose: () => void;
   onConfirm: () => void;
+  open: boolean;
+  title: string;
 }
 
 const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -47,10 +47,10 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <form
-        onSubmit={handleConfirm}
         onKeyDown={handleKeyDown}
+        onSubmit={handleConfirm}
         style={{
           padding: theme.spacing(4),
           display: "flex",
@@ -60,14 +60,14 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           textAlign: "center",
         }}
       >
-        <AppTypography variant="h5" fontWeight={600}>
+        <AppTypography fontWeight={600} variant="h5">
           {title}
         </AppTypography>
 
         <AppTypography
-          variant="body1"
           color="text.secondary"
           style={{ marginTop: theme.spacing(2) }}
+          variant="body1"
         >
           {message}
         </AppTypography>
@@ -82,14 +82,14 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           }}
         >
           <AppButton
-            onClick={onClose}
-            type="button"
             className="app-btn--dialog-action"
+            onClick={onClose}
             style={{ color: "var(--mui-palette-text-secondary)" }}
+            type="button"
           >
             {cancelText}
           </AppButton>
-          <AppButton type="submit" autoFocus className="app-btn--dialog-action">
+          <AppButton autoFocus className="app-btn--dialog-action" type="submit">
             {confirmText}
           </AppButton>
         </div>

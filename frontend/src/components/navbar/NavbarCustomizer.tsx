@@ -29,27 +29,27 @@ function NavbarColorCustomizer() {
     <>
       <AppTooltip title="Customize primary color">
         <AppIconButton
+          aria-label="Customize primary color"
           color="inherit"
           onClick={(e) => setAnchorEl(e.currentTarget)}
-          aria-label="Customize primary color"
         >
-          <Icon icon="mdi:brush" width={iconSize.md} height={iconSize.md} />
+          <Icon height={iconSize.md} icon="mdi:brush" width={iconSize.md} />
         </AppIconButton>
       </AppTooltip>
 
       <AppPopover
-        open={open}
         anchorEl={anchorEl}
-        onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        onClose={() => setAnchorEl(null)}
+        open={open}
         paperStyle={{
           padding: theme.spacing(2),
           background: theme.palette.background.paper,
           boxShadow: shadowSm,
         }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <AppTypography variant="h6" gutterBottom>
+        <AppTypography gutterBottom variant="h6">
           Primary Color
         </AppTypography>
 
@@ -64,11 +64,9 @@ function NavbarColorCustomizer() {
         >
           {tokenSwatches.map(({ name, hex }) => (
             <button
+              aria-label={`Set color ${name}`}
               key={name}
               onClick={() => setPrimaryColor(name)}
-              type="button"
-              aria-label={`Set color ${name}`}
-              title={`${name} (${hex})`}
               style={{
                 width: 28,
                 height: 28,
@@ -85,6 +83,8 @@ function NavbarColorCustomizer() {
                     : "none",
                 padding: 0,
               }}
+              title={`${name} (${hex})`}
+              type="button"
             />
           ))}
         </div>
@@ -97,10 +97,9 @@ function NavbarColorCustomizer() {
           }}
         >
           <AppButton
-            variant="outlined"
             fullWidth
-            size="small"
             onClick={() => setPrimaryColor("blue")}
+            size="small"
             style={
               {
                 marginTop: theme.spacing(2),
@@ -109,6 +108,7 @@ function NavbarColorCustomizer() {
                 "--_btn-contrast": theme.palette.common.white,
               } as CSSProperties
             }
+            variant="outlined"
           >
             Reset to Default
           </AppButton>

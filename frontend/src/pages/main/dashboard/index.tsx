@@ -143,29 +143,29 @@ const Dashboard: React.FC = () => {
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
-            <Icon icon="mdi:view-grid-outline" width={20} height={20} />
+            <Icon height={20} icon="mdi:view-grid-outline" width={20} />
           </AppIconButton>
         </AppTooltip>
         <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>
           <AppIconButton
-            onClick={() => setEditMode((prev) => !prev)}
             color={editMode ? "primary" : "default"}
+            onClick={() => setEditMode((prev) => !prev)}
             size="small"
           >
-            <Icon icon="mdi:drag" width={20} height={20} />
+            <Icon height={20} icon="mdi:drag" width={20} />
           </AppIconButton>
         </AppTooltip>
       </div>
 
       <AppPopover
-        open={Boolean(anchorEl)}
         anchorEl={anchorEl}
-        onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        onClose={() => setAnchorEl(null)}
+        open={Boolean(anchorEl)}
         paperStyle={{
           padding: theme.spacing(2),
         }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
         <div
           style={{
@@ -175,7 +175,6 @@ const Dashboard: React.FC = () => {
         >
           {availableCards.map((card) => (
             <AppFormControlLabel
-              key={card.id}
               control={
                 <AppCheckbox
                   checked={!hiddenCards?.includes(card.id)}
@@ -183,6 +182,7 @@ const Dashboard: React.FC = () => {
                   size="small"
                 />
               }
+              key={card.id}
               label={card.label}
             />
           ))}
@@ -190,15 +190,15 @@ const Dashboard: React.FC = () => {
       </AppPopover>
 
       <DndContext
-        sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
+        sensors={sensors}
       >
         <SortableContext items={cardIds} strategy={rectSortingStrategy}>
           <AppGrid container spacing={4}>
             {cards.map(({ id, component: CardComponent }) => (
               <AppGrid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
-                <SortableCard id={id} editMode={editMode}>
+                <SortableCard editMode={editMode} id={id}>
                   <ErrorBoundary>
                     <CardComponent />
                   </ErrorBoundary>

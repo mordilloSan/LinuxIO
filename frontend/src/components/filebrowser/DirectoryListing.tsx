@@ -1,10 +1,10 @@
 import React, {
-  useState,
-  useRef,
   useCallback,
-  useMemo,
   useEffect,
   useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 
 import EmptyState from "./EmptyState";
@@ -12,35 +12,35 @@ import FilesList from "./FilesList";
 import FoldersList from "./FoldersList";
 import SelectionBox from "./SelectionBox";
 import {
-  FileResource,
   FileItem,
+  FileResource,
   SortField,
   SortOrder,
   ViewMode,
 } from "../../types/filebrowser";
 
-import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
-import { useFileMarqueeSelection } from "@/hooks/useFileMarqueeSelection";
-import { useFileSubfolders } from "@/hooks/useFileSubfolders";
+import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
+import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
+import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 
 interface DirectoryListingProps {
+  cutPaths: Set<string>;
+  isContextMenuOpen: boolean;
+  onCancelRename: () => void;
+  onConfirmRename: (path: string, newName: string) => void;
+  onDelete?: () => void;
+  onDownloadFile: (item: FileItem) => void;
+  onOpenDirectory: (path: string) => void;
+  onSelectedPathsChange: (paths: Set<string>) => void;
+  onStartRename: () => void;
+  renamingPath: string | null;
   resource: FileResource;
+  selectedPaths: Set<string>;
   showHiddenFiles: boolean;
-  viewMode: ViewMode;
   sortField: SortField;
   sortOrder: SortOrder;
-  onOpenDirectory: (path: string) => void;
-  onDownloadFile: (item: FileItem) => void;
-  selectedPaths: Set<string>;
-  cutPaths: Set<string>;
-  onSelectedPathsChange: (paths: Set<string>) => void;
-  isContextMenuOpen: boolean;
-  onDelete?: () => void;
-  renamingPath: string | null;
-  onStartRename: () => void;
-  onConfirmRename: (path: string, newName: string) => void;
-  onCancelRename: () => void;
+  viewMode: ViewMode;
 }
 
 const DirectoryListing: React.FC<DirectoryListingProps> = ({
@@ -284,10 +284,10 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
 
   return (
     <div
-      ref={containerRef}
-      onMouseDownCapture={handleContainerMouseDown}
-      onMouseDown={handleMouseDown}
       className="custom-scrollbar"
+      onMouseDown={handleMouseDown}
+      onMouseDownCapture={handleContainerMouseDown}
+      ref={containerRef}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -299,41 +299,41 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       }}
     >
       <FoldersList
-        folders={folders}
-        selectedPaths={selectedPaths}
         cutPaths={cutPaths}
-        viewMode={viewMode}
-        onFolderClick={handleFolderClick}
-        onOpenDirectory={onOpenDirectory}
-        onFolderContextMenu={handleItemContextMenu}
-        isMarqueeSelecting={isSelecting}
-        subfoldersMap={subfoldersMap}
+        folders={folders}
         isLoadingSubfolders={isLoadingSubfolders}
-        renamingPath={renamingPath}
-        onConfirmRename={onConfirmRename}
+        isMarqueeSelecting={isSelecting}
         onCancelRename={onCancelRename}
+        onConfirmRename={onConfirmRename}
+        onFolderClick={handleFolderClick}
+        onFolderContextMenu={handleItemContextMenu}
+        onOpenDirectory={onOpenDirectory}
+        renamingPath={renamingPath}
+        selectedPaths={selectedPaths}
+        subfoldersMap={subfoldersMap}
+        viewMode={viewMode}
       />
 
       <FilesList
-        files={files}
-        selectedPaths={selectedPaths}
         cutPaths={cutPaths}
-        viewMode={viewMode}
-        onFileClick={handleFileClick}
-        onDownloadFile={onDownloadFile}
-        onFileContextMenu={handleItemContextMenu}
+        files={files}
         isMarqueeSelecting={isSelecting}
-        renamingPath={renamingPath}
-        onConfirmRename={onConfirmRename}
         onCancelRename={onCancelRename}
+        onConfirmRename={onConfirmRename}
+        onDownloadFile={onDownloadFile}
+        onFileClick={handleFileClick}
+        onFileContextMenu={handleItemContextMenu}
+        renamingPath={renamingPath}
+        selectedPaths={selectedPaths}
+        viewMode={viewMode}
       />
 
       {isSelecting && selectionBox && (
         <SelectionBox
+          height={selectionBox.height}
           left={selectionBox.left}
           top={selectionBox.top}
           width={selectionBox.width}
-          height={selectionBox.height}
         />
       )}
     </div>

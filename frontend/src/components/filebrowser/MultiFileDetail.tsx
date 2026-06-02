@@ -33,15 +33,15 @@ if (
 }
 
 interface MultiFileDetailItem extends MultiStatsItem {
-  isLoading?: boolean;
   error?: Error | null;
+  isLoading?: boolean;
 }
 
 interface MultiFileDetailProps {
+  isLoadingDetails?: boolean;
   multiItems: MultiFileDetailItem[];
   onDownload: (path: string) => void;
   totalSize?: number | null;
-  isLoadingDetails?: boolean;
 }
 
 const DetailRow: React.FC<{
@@ -59,29 +59,29 @@ const DetailRow: React.FC<{
       }}
     >
       <AppTypography
-        variant="body2"
-        fontWeight={600}
         color="text.secondary"
+        fontWeight={600}
         style={{ minWidth: 140 }}
+        variant="body2"
       >
         {label}:
       </AppTypography>
       {isLoading ? (
         <AppTypography
-          variant="body2"
           style={{
             flex: 1,
             wordBreak: "break-all",
             animation: "detailGlow 2.5s infinite",
           }}
+          variant="body2"
         >
           —
         </AppTypography>
       ) : (
         <AppTypography
           component="div"
-          variant="body2"
           style={{ flex: 1, wordBreak: "break-all" }}
+          variant="body2"
         >
           {value}
         </AppTypography>
@@ -146,24 +146,24 @@ const MultiFileItemRow: React.FC<{
         }}
       >
         <div>
-          <AppTypography variant="subtitle1" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="subtitle1">
             {item.name}
           </AppTypography>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             {isDir ? "Directory" : "File"}
           </AppTypography>
         </div>
         {!isDir && (
           <AppButton
-            size="small"
-            startIcon={<Icon icon="mdi:download" width={18} height={18} />}
             onClick={() => onDownload(item.path)}
+            size="small"
+            startIcon={<Icon height={18} icon="mdi:download" width={18} />}
           >
             Download
           </AppButton>
         )}
       </div>
-      <AppTypography variant="body2" color="text.secondary">
+      <AppTypography color="text.secondary" variant="body2">
         Size: {renderSize()}
       </AppTypography>
     </div>
@@ -184,7 +184,6 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
 
   return (
     <AppPaper
-      variant="outlined"
       style={{
         borderRadius: 8,
         display: "flex",
@@ -192,6 +191,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         padding: 12,
         gap: 8,
       }}
+      variant="outlined"
     >
       <div
         style={{
@@ -202,11 +202,11 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         }}
       >
         <div>
-          <AppTypography variant="h6" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="h6">
             {multiItems.length} Selected Item
             {multiItems.length === 1 ? "" : "s"}
           </AppTypography>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Combined statistics for the selected files and folders
           </AppTypography>
         </div>
@@ -226,9 +226,9 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           value={multiItems.length.toLocaleString()}
         />
         <DetailRow
+          isLoading={isLoadingDetails}
           label="Total Size"
           value={formatFileSize(totalSize)}
-          isLoading={isLoadingDetails}
         />
       </div>
 
@@ -252,8 +252,8 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           {multiItems.map((item) => {
             return (
               <MultiFileItemRow
-                key={item.path}
                 item={item}
+                key={item.path}
                 onDownload={onDownload}
               />
             );

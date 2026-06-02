@@ -4,14 +4,14 @@ import { createPortal } from "react-dom";
 import "./app-fullscreen-dialog.css";
 
 export interface AppFullscreenDialogProps {
-  open: boolean;
-  onClose?: () => void;
-  disableEscapeKeyDown?: boolean;
   children?: React.ReactNode;
   className?: string;
-  style?: React.CSSProperties;
   contentClassName?: string;
   contentStyle?: React.CSSProperties;
+  disableEscapeKeyDown?: boolean;
+  onClose?: () => void;
+  open: boolean;
+  style?: React.CSSProperties;
 }
 
 const OVERLAY_ROOT_SELECTOR = ".app-dialog-root, .app-fullscreen-dialog-root";
@@ -103,11 +103,11 @@ const AppFullscreenDialog: React.FC<AppFullscreenDialogProps> = ({
 
   return createPortal(
     <div
-      ref={rootRef}
-      className={`app-fullscreen-dialog-root ${className || ""}`.trim()}
-      style={style}
-      role="dialog"
       aria-modal="true"
+      className={`app-fullscreen-dialog-root ${className || ""}`.trim()}
+      ref={rootRef}
+      role="dialog"
+      style={style}
       tabIndex={-1}
     >
       <div

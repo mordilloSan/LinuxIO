@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -11,15 +10,17 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface Props {
-  open: boolean;
   current: string;
   onClose: () => void;
+  open: boolean;
 }
 
 const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
+  const toast = useScopedToast({ href: "/", label: "Open dashboard" });
   const queryClient = useQueryClient();
   const [hostname, setHostname] = useState(current);
 
@@ -41,37 +42,37 @@ const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
   );
 
   const handleSave = () => {
-    if (isValid) mutate([hostname]);
+    if (isValid) mutate({ hostname });
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Set Hostname</AppDialogTitle>
       <AppDialogContent>
         <AppTextField
           autoFocus
-          label="Hostname"
-          type="text"
-          fullWidth
-          variant="outlined"
-          value={hostname}
-          onChange={(e) => setHostname(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && isValid) handleSave();
-          }}
           error={hostname.length > 0 && !isValid}
+          fullWidth
           helperText={
             hostname.length > 0 && !isValid
               ? "Only letters, numbers, and hyphens; cannot start or end with a hyphen"
               : undefined
           }
+          label="Hostname"
+          onChange={(e) => setHostname(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && isValid) handleSave();
+          }}
+          type="text"
+          value={hostname}
+          variant="outlined"
         />
       </AppDialogContent>
       <AppDialogActions>
         <AppButton onClick={onClose}>Cancel</AppButton>
         <AppButton
-          onClick={handleSave}
           disabled={!isValid || isPending}
+          onClick={handleSave}
           variant="contained"
         >
           Save

@@ -27,20 +27,20 @@ type NativeChipProps = Omit<
 >;
 
 export interface AppChipProps extends NativeChipProps {
-  label: React.ReactNode;
-  color?: AppChipColor;
-  size?: AppChipSize;
-  variant?: AppChipVariant;
   className?: string;
-  style?: React.CSSProperties;
-  title?: string;
+  color?: AppChipColor;
   disabled?: boolean;
-  sx?: AppChipSx;
+  label: React.ReactNode;
   onDelete?: (
     event:
       | React.MouseEvent<HTMLButtonElement>
       | React.KeyboardEvent<HTMLSpanElement>,
   ) => void;
+  size?: AppChipSize;
+  style?: React.CSSProperties;
+  sx?: AppChipSx;
+  title?: string;
+  variant?: AppChipVariant;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -347,14 +347,12 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
     return (
       <span
         {...nativeProps}
-        ref={ref}
-        className={chipClassName}
-        title={title}
-        role={isInteractive ? "button" : nativeProps.role}
         aria-disabled={disabled || undefined}
-        tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
+        className={chipClassName}
         onClick={disabled ? undefined : onClick}
         onKeyDown={handleKeyDown}
+        ref={ref}
+        role={isInteractive ? "button" : nativeProps.role}
         style={
           {
             "--app-chip-color": isOutlined
@@ -408,22 +406,24 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
             ...style,
           } as React.CSSProperties
         }
+        tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
+        title={title}
       >
         <span className="app-chip__label" style={labelStyle}>
           {label}
         </span>
         {onDelete && (
           <button
-            type="button"
-            className="app-chip__delete"
-            onClick={handleDeleteClick}
-            tabIndex={-1}
             aria-label={
               typeof label === "string" ? `Remove ${label}` : "Remove"
             }
+            className="app-chip__delete"
             disabled={disabled}
+            onClick={handleDeleteClick}
+            tabIndex={-1}
+            type="button"
           >
-            <Icon icon="mdi:close-circle" width={16} height={16} />
+            <Icon height={16} icon="mdi:close-circle" width={16} />
           </button>
         )}
       </span>

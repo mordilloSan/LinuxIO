@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 )
@@ -28,8 +29,8 @@ const (
 )
 
 // ListUsers returns login users (root + users with UID >= 1000 and valid shell)
-func ListUsers(ctx context.Context) ([]User, error) {
-	users := []User{}
+func ListUsers(ctx context.Context) ([]apischema.AccountUser, error) {
+	users := []apischema.AccountUser{}
 
 	file, err := os.Open(passwdFile)
 	if err != nil {
@@ -64,32 +65,32 @@ func parsePasswdLine(
 	userGroups map[string][]string,
 	gidToGroup map[int]string,
 	lastLogins map[string]string,
-) (User, bool) {
+) (apischema.AccountUser, bool) {
 	if line == "" || strings.HasPrefix(line, "#") {
-		return User{}, false
+		return apischema.AccountUser{}, false
 	}
 
 	parts := strings.Split(line, ":")
 	if len(parts) < 7 {
-		return User{}, false
+		return apischema.AccountUser{}, false
 	}
 
 	uid, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return User{}, false
+		return apischema.AccountUser{}, false
 	}
 
 	gid, err := strconv.Atoi(parts[3])
 	if err != nil {
-		return User{}, false
+		return apischema.AccountUser{}, false
 	}
 
 	shell := parts[6]
 	if uid != 0 && uid < systemUID {
-		return User{}, false
+		return apischema.AccountUser{}, false
 	}
 	if uid != 0 && isNonLoginShell(shell) {
-		return User{}, false
+		return apischema.AccountUser{}, false
 	}
 
 	username := parts[0]
@@ -103,7 +104,7 @@ func parsePasswdLine(
 		lastLogin = "Never"
 	}
 
-	return User{
+	return apischema.AccountUser{
 		Username:     username,
 		UID:          uid,
 		GID:          gid,
@@ -130,7 +131,7 @@ func isNonLoginShell(shell string) bool {
 }
 
 // GetUser returns a single user by username
-func GetUser(ctx context.Context, username string) (*User, error) {
+func GetUser(ctx context.Context, username string) (*apischema.AccountUser, error) {
 	users, err := ListUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -208,7 +209,7 @@ func GetUserDetails(ctx context.Context, username string) (UserDetails, error) {
 	return details, nil
 }
 
-func allGroupsForUser(user User) []string {
+func allGroupsForUser(user apischema.AccountUser) []string {
 	groups := []string{user.PrimaryGroup}
 	for _, group := range user.Groups {
 		if group != "" && !slices.Contains(groups, group) {
@@ -387,7 +388,7 @@ func parsePasswordState(parts []string) UserPasswordState {
 	return state
 }
 
-func getAdminAccess(user User, groups []string) UserAdminAccess {
+func getAdminAccess(user apischema.AccountUser, groups []string) UserAdminAccess {
 	privilegedGroups := map[string]bool{
 		"admin":   true,
 		"docker":  true,
@@ -414,7 +415,7 @@ func getAdminAccess(user User, groups []string) UserAdminAccess {
 	}
 }
 
-func getHomeHealth(user User) UserHomeHealth {
+func getHomeHealth(user apischema.AccountUser) UserHomeHealth {
 	if user.HomeDir == "" {
 		return UserHomeHealth{Error: "home directory is not configured"}
 	}
@@ -442,7 +443,7 @@ func getHomeHealth(user User) UserHomeHealth {
 	return health
 }
 
-func getSSHAccess(user User) UserSSHAccess {
+func getSSHAccess(user apischema.AccountUser) UserSSHAccess {
 	if user.HomeDir == "" {
 		return UserSSHAccess{Error: "home directory is not configured"}
 	}
@@ -596,7 +597,7 @@ func formatFileMode(mode os.FileMode) string {
 }
 
 // CreateUser creates a new system user
-func CreateUser(ctx context.Context, req CreateUserRequest) error {
+func CreateUser(ctx context.Context, req apischema.CreateUserRequest) error {
 	if req.Username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -606,20 +607,20 @@ func CreateUser(ctx context.Context, req CreateUserRequest) error {
 
 	args := []string{}
 
-	if req.CreateHome {
+	if req.CreateHome != nil && *req.CreateHome {
 		args = append(args, "-m")
 	}
 
-	if req.FullName != "" {
-		args = append(args, "-c", req.FullName)
+	if req.FullName != nil && *req.FullName != "" {
+		args = append(args, "-c", *req.FullName)
 	}
 
-	if req.HomeDir != "" {
-		args = append(args, "-d", req.HomeDir)
+	if req.HomeDir != nil && *req.HomeDir != "" {
+		args = append(args, "-d", *req.HomeDir)
 	}
 
-	if req.Shell != "" {
-		args = append(args, "-s", req.Shell)
+	if req.Shell != nil && *req.Shell != "" {
+		args = append(args, "-s", *req.Shell)
 	}
 
 	if len(req.Groups) > 0 {
@@ -674,7 +675,7 @@ func DeleteUser(ctx context.Context, username string) error {
 }
 
 // ModifyUser modifies user properties
-func ModifyUser(ctx context.Context, req ModifyUserRequest) error {
+func ModifyUser(ctx context.Context, req apischema.ModifyUserRequest) error {
 	if req.Username == "" {
 		return fmt.Errorf("username is required")
 	}
@@ -869,6 +870,9 @@ func getLockedUsers() map[string]bool {
 		// Account is locked if password starts with ! or *
 		locked[username] = strings.HasPrefix(passwordHash, "!") || strings.HasPrefix(passwordHash, "*")
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("failed to read shadow file", "file", shadowFile, "error", err)
+	}
 
 	return locked
 }
@@ -905,6 +909,9 @@ func parseGroupFile() (map[string][]string, map[int]string) {
 				userGroups[member] = append(userGroups[member], groupName)
 			}
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("failed to read /etc/group", "error", err)
 	}
 
 	return userGroups, gidToGroup

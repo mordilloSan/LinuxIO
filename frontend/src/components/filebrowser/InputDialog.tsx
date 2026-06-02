@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback, useState } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
@@ -11,13 +11,13 @@ import {
 import AppTextField from "@/components/ui/AppTextField";
 
 interface InputDialogProps {
-  open: boolean;
-  title: string;
-  label: string;
+  confirmText?: string;
   defaultValue?: string;
+  label: string;
   onClose: () => void;
   onConfirm: (value: string) => void;
-  confirmText?: string;
+  open: boolean;
+  title: string;
 }
 
 const InputDialog: React.FC<InputDialogProps> = ({
@@ -70,25 +70,25 @@ const InputDialog: React.FC<InputDialogProps> = ({
   };
 
   return (
-    <FileBrowserDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <FileBrowserDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>{title}</AppDialogTitle>
       <AppDialogContent>
         <AppTextField
           autoFocus
-          label={label}
-          type="text"
           fullWidth
-          variant="outlined"
-          value={value}
+          label={label}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyPress}
+          type="text"
+          value={value}
+          variant="outlined"
         />
       </AppDialogContent>
       <AppDialogActions>
         <AppButton onClick={onClose}>Cancel</AppButton>
         <AppButton
-          onClick={handleConfirm}
           disabled={!value.trim()}
+          onClick={handleConfirm}
           variant="contained"
         >
           {confirmText}

@@ -6,9 +6,9 @@ import (
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyDismissalsUpdate(dismissals **bridgeconfig.Dismissals, payload *configDismissalsPayload) {
+func applyDismissalsUpdate(dismissals **bridgeconfig.PersistedDismissals, payload *configDismissalsPayload) {
 	if *dismissals == nil {
-		*dismissals = &bridgeconfig.Dismissals{}
+		*dismissals = &bridgeconfig.PersistedDismissals{}
 	}
 	if payload.UncleanShutdownBootID != nil {
 		(*dismissals).UncleanShutdownBootID = strings.TrimSpace(*payload.UncleanShutdownBootID)

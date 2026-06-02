@@ -14,12 +14,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -91,7 +93,7 @@ type countProgressLimiter struct {
 	lastAt      time.Time
 }
 
-func newProgressLimiter(jobSettings config.JobSettings, total int64) *progressLimiter {
+func newProgressLimiter(jobSettings config.PersistedJobSettings, total int64) *progressLimiter {
 	jobSettings = config.EffectiveJobSettings(jobSettings)
 	minBytes := int64(jobSettings.ProgressMinBytesMB) * 1024 * 1024
 	if minBytes <= 0 {
@@ -109,7 +111,7 @@ func newProgressLimiter(jobSettings config.JobSettings, total int64) *progressLi
 	}
 }
 
-func newCountProgressLimiter(jobSettings config.JobSettings) *countProgressLimiter {
+func newCountProgressLimiter(jobSettings config.PersistedJobSettings) *countProgressLimiter {
 	jobSettings = config.EffectiveJobSettings(jobSettings)
 	minInterval := time.Duration(jobSettings.ProgressMinIntervalMs) * time.Millisecond
 	if minInterval <= 0 {
@@ -172,7 +174,7 @@ func (l *countProgressLimiter) Set(processed, total int64) (int64, int, bool) {
 	return l.processed, pct, true
 }
 
-func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore) config.JobSettings {
+func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore) config.PersistedJobSettings {
 	if job == nil || strings.TrimSpace(job.Owner().Username) == "" {
 		return config.DefaultJobSettings()
 	}
@@ -183,7 +185,7 @@ func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.U
 	return config.EffectiveJobSettings(cfg.Jobs)
 }
 
-func archiveCompressionWorkers(jobSettings config.JobSettings) int {
+func archiveCompressionWorkers(jobSettings config.PersistedJobSettings) int {
 	workers := jobSettings.ArchiveCompressionWorkers
 	if workers <= 0 {
 		return runtime.GOMAXPROCS(0)
@@ -191,7 +193,7 @@ func archiveCompressionWorkers(jobSettings config.JobSettings) int {
 	return workers
 }
 
-func archiveExtractWorkers(jobSettings config.JobSettings) int {
+func archiveExtractWorkers(jobSettings config.PersistedJobSettings) int {
 	workers := jobSettings.ArchiveExtractWorkers
 	if workers <= 0 {
 		return runtime.GOMAXPROCS(0)
@@ -213,27 +215,63 @@ type ChmodProgress struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
-	router.JobRunner(JobTypeFileCompress, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runCompressJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileExtract, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runExtractJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileCopy, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runCopyJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileMove, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runMoveJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeFileIndexer, runIndexerJob, bridgejobs.SingletonSystem)
-	router.JobRunner(JobTypeFileUpload, runUploadJob, bridgejobs.StreamDefault)
-	router.JobRunner(JobTypeFileDownload, runDownloadJob, bridgejobs.StreamDefault)
-	router.JobRunner(JobTypeFileArchive, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runArchiveJobWithStore(ctx, job, store, args)
-	}, bridgejobs.StreamDefault)
-	router.JobRunner(JobTypeFileChmod, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runChmodJobWithStore(ctx, job, store, args)
-	}, bridgejobs.ActionDefault)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileCompress,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
+			return runCompressJob(ctx, job, store, req)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileExtract,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
+			return runExtractJob(ctx, job, store, req)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileCopy,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
+			return runCopyJob(ctx, job, store, req)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileMove,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
+			return runMoveJob(ctx, job, store, req)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeFileIndexer,
+		Runner: runIndexerJob,
+		Policy: bridgejobs.SingletonSystem,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeFileUpload,
+		Runner: runUploadJob,
+		Policy: bridgejobs.StreamDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route:  JobTypeFileDownload,
+		Runner: runDownloadJob,
+		Policy: bridgejobs.StreamDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileArchive,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
+			return runArchiveJob(ctx, job, store, req)
+		},
+		Policy: bridgejobs.StreamDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeFileChmod,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
+			return runChmodJob(ctx, job, store, req)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
 	bridgejobs.RegisterDataAttacher(JobTypeFileUpload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(JobTypeFileDownload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(JobTypeFileArchive, attachFileTransferData)
@@ -351,15 +389,15 @@ func computeExtractSize(archivePath string, archiveSize int64) int64 {
 	return totalSize
 }
 
-func parseExtractArgs(args []string) (string, string, error) {
-	if len(args) < 1 {
+func parseExtractRequest(req apischema.FileExtractRequest) (string, string, error) {
+	if req.ArchivePath == "" {
 		return "", "", fmt.Errorf("missing archive path")
 	}
 
-	archivePath := filepath.Clean(args[0])
+	archivePath := filepath.Clean(req.ArchivePath)
 	destination := defaultExtractDestination(archivePath)
-	if len(args) > 1 && args[1] != "" {
-		destination = filepath.Clean(args[1])
+	if req.Destination != nil && *req.Destination != "" {
+		destination = filepath.Clean(*req.Destination)
 	}
 	return archivePath, destination, nil
 }
@@ -383,7 +421,7 @@ func notifyExtractedFiles(destination string) {
 			if infoErr != nil {
 				return nil
 			}
-			absPath := filepath.Clean("/" + strings.TrimPrefix(rel, "/"))
+			absPath := utils.CleanAbsPath(rel)
 			if err := addToIndexer(ctx, absPath, info); err != nil {
 				slog.Debug("failed to update indexer for extracted path", "path", absPath, "error", err)
 			}
@@ -395,41 +433,26 @@ func notifyExtractedFiles(destination string) {
 	})
 }
 
-func parseTransferRequest(args []string) (transferRequest, error) {
-	if len(args) < 2 {
+func transferRequestFromAPI(req apischema.SourceDestinationRequest) (transferRequest, error) {
+	if req.Source == "" || req.Destination == "" {
 		return transferRequest{}, fmt.Errorf("missing source or destination")
 	}
 
 	return transferRequest{
-		source:      filepath.Clean(args[0]),
-		destination: filepath.Clean(args[1]),
-		overwrite:   len(args) > 2 && args[2] == "true",
+		source:      filepath.Clean(req.Source),
+		destination: filepath.Clean(req.Destination),
+		overwrite:   req.Overwrite != nil && *req.Overwrite,
 	}, nil
 }
 
-func parseChmodArgs(args []string) (path, modeStr, owner, group string, recursive bool, err error) {
-	if len(args) < 2 {
-		err = fmt.Errorf("missing path or mode")
-		return
+func parseChmodRequest(req apischema.FileChmodRequest) (path, modeStr, owner, group string, recursive bool, err error) {
+	if req.Path == "" || req.Mode == "" {
+		return "", "", "", "", false, fmt.Errorf("missing path or mode")
 	}
-	path = args[0]
-	modeStr = args[1]
-	switch len(args) {
-	case 2:
-	case 3:
-		owner = args[2]
-	case 4:
-		owner = args[2]
-		group = args[3]
-	default:
-		owner = args[2]
-		group = args[3]
-		recursive = args[4] == "true"
-	}
-	return
+	return req.Path, req.Mode, req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
 }
 
-func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.JobSettings, phase string) func(processed, total int64) {
+func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.PersistedJobSettings, phase string) func(processed, total int64) {
 	limiter := newCountProgressLimiter(jobSettings)
 	return func(processed, total int64) {
 		processed, pct, ok := limiter.Set(processed, total)
@@ -469,8 +492,8 @@ func prepareTransfer(root *fsroot.FSRoot, req transferRequest) (transferRequest,
 	return req, nil
 }
 
-func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
-	path, modeStr, owner, group, recursive, err := parseChmodArgs(args)
+func runChmodJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodRequest) (any, error) {
+	path, modeStr, owner, group, recursive, err := parseChmodRequest(req)
 	if err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 400)
 	}
@@ -527,17 +550,14 @@ func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *confi
 	}, nil
 }
 
-func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
-	if len(args) < 3 {
+func runCompressJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileCompressRequest) (any, error) {
+	if req.Format == "" || req.TargetPath == "" || len(req.Paths) == 0 {
 		return nil, bridgejobs.NewError("missing format, destination, or paths", 400)
 	}
 
-	format := args[0]
-	destination := args[1]
-	paths := args[2:]
-	extension, err := archiveExtension(format)
+	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", format), 400)
+		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
 	}
 	settings := jobSettingsForJob(ctx, job, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
@@ -546,7 +566,7 @@ func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *co
 	}
 	defer release()
 
-	targetPath := normalizeArchiveTargetPath(destination, extension)
+	targetPath := normalizeArchiveTargetPath(req.TargetPath, extension)
 	root, err := fsroot.Open()
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to access filesystem", 500)
@@ -563,10 +583,10 @@ func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *co
 		return nil, bridgejobs.NewError(message, status)
 	}
 
-	totalSize := computeArchiveSize(paths)
+	totalSize := computeArchiveSize(req.Paths)
 	writeJobPhaseProgress(job, totalSize, "preparing")
 	opts := newJobPhaseCallbacks(ctx, job, store, totalSize, "compressing")
-	err = createArchive(format, tempPath, opts, archiveCompressionWorkers(settings), paths)
+	err = createArchive(req.Format, tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
 	if err == ipc.ErrAborted {
 		slog.Info("compress aborted, cleaning up", "path", targetPath)
 		cleanupArchiveTarget(root, tempRel, tempPath)
@@ -587,16 +607,16 @@ func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *co
 		notifyCompressedArchive(targetPath, info)
 	}
 
-	slog.Info("compress complete", "path", targetPath, "count", len(paths), "size", archiveSize, "format", format)
+	slog.Info("compress complete", "path", targetPath, "count", len(req.Paths), "size", archiveSize, "format", req.Format)
 	return map[string]any{
 		"path":   targetPath,
 		"size":   archiveSize,
-		"format": format,
+		"format": req.Format,
 	}, nil
 }
 
-func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
-	archivePath, destination, err := parseExtractArgs(args)
+func runExtractJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileExtractRequest) (any, error) {
+	archivePath, destination, err := parseExtractRequest(req)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing archive path", 400)
 	}
@@ -649,34 +669,32 @@ func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 	}, nil
 }
 
-func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
-	if len(args) < 2 {
+func runCopyJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
+	req, err := transferRequestFromAPI(apiReq)
+	if err != nil {
 		return nil, bridgejobs.NewError("missing source or destination", 400)
 	}
 
-	source := filepath.Clean(args[0])
-	destination := filepath.Clean(args[1])
 	root, err := fsroot.Open()
 	if err != nil {
 		return nil, bridgejobs.NewError("failed to access filesystem", 500)
 	}
 	defer root.Close()
-	overwrite := len(args) > 2 && args[2] == "true"
 
-	sourceInfo, err := root.Root.Stat(fsroot.ToRel(source))
+	sourceInfo, err := root.Root.Stat(fsroot.ToRel(req.source))
 	if err != nil {
 		return nil, bridgejobs.NewError(fmt.Sprintf("source not found: %v", err), 404)
 	}
 
-	destInfo, destErr := root.Root.Stat(fsroot.ToRel(destination))
+	destInfo, destErr := root.Root.Stat(fsroot.ToRel(req.destination))
 	if destErr == nil && destInfo.IsDir() {
-		destination = filepath.Join(destination, filepath.Base(source))
-		destInfo, destErr = root.Root.Stat(fsroot.ToRel(destination))
+		req.destination = filepath.Join(req.destination, filepath.Base(req.source))
+		destInfo, destErr = root.Root.Stat(fsroot.ToRel(req.destination))
 	}
 
 	destExisted := destErr == nil
 	if destErr == nil {
-		if !overwrite {
+		if !req.overwrite {
 			return nil, bridgejobs.NewError("destination already exists", 409)
 		}
 		if sourceInfo.IsDir() != destInfo.IsDir() {
@@ -684,35 +702,35 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 		}
 	}
 
-	size := computeTransferSize(ctx, source, sourceInfo)
+	size := computeTransferSize(ctx, req.source, sourceInfo)
 	writeJobPhaseProgress(job, size.total, "preparing")
 
 	opts := newJobPhaseCallbacks(ctx, job, store, size.total, "copying")
-	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
+	err = services.CopyFileWithCallbacks(req.source, req.destination, req.overwrite, opts)
 	if err == ipc.ErrAborted {
-		slog.Info("copy aborted", "source", source, "destination", destination)
+		slog.Info("copy aborted", "source", req.source, "destination", req.destination)
 		return nil, abortErr(ctx)
 	}
 	if err != nil {
 		return nil, bridgejobs.NewError(fmt.Sprintf("copy failed: %v", err), 500)
 	}
 
-	if info, err := root.Root.Stat(fsroot.ToRel(destination)); err == nil {
+	if info, err := root.Root.Stat(fsroot.ToRel(req.destination)); err == nil {
 		runDetachedIndexerUpdate("copy", func(ctx context.Context) error {
-			return addCopiedPathToIndexer(ctx, destination, info, size, destExisted && overwrite)
+			return addCopiedPathToIndexer(ctx, req.destination, info, size, destExisted && req.overwrite)
 		})
 	}
 
-	slog.Info("copy complete", "source", source, "destination", destination, "size", size.total)
+	slog.Info("copy complete", "source", req.source, "destination", req.destination, "size", size.total)
 	return map[string]any{
-		"source":      source,
-		"destination": destination,
+		"source":      req.source,
+		"destination": req.destination,
 		"size":        size.total,
 	}, nil
 }
 
-func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, args []string) (any, error) {
-	req, err := parseTransferRequest(args)
+func runMoveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
+	req, err := transferRequestFromAPI(apiReq)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing source or destination", 400)
 	}
@@ -783,10 +801,10 @@ func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 	}, nil
 }
 
-func runIndexerJob(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
+func runIndexerJob(ctx context.Context, job *bridgejobs.Job, req apischema.OptionalPathRequest) (any, error) {
 	path := "/"
-	if len(args) > 0 && args[0] != "" {
-		path = filepath.Clean(args[0])
+	if req.Path != nil && *req.Path != "" {
+		path = filepath.Clean(*req.Path)
 	}
 	return runIndexerOperation(ctx, job, path, false)
 }

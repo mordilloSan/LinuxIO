@@ -21,22 +21,22 @@ const canCreateSubvolume = (filesystem: FilesystemInfo): boolean =>
   filesystem.fstype === "btrfs" && !filesystem.readOnly;
 
 interface BackingDrive {
-  name: string;
   model?: string;
+  name: string;
 }
 
 interface FilesystemCardDetailsProps {
-  filesystem: FilesystemInfo;
   backingDrive: BackingDrive | null;
-  nfsMount: NFSMount | null;
-  isUnmounting: boolean;
+  filesystem: FilesystemInfo;
   isCreatingSubvolume: boolean;
-  subvolumeName: string;
+  isUnmounting: boolean;
+  nfsMount: NFSMount | null;
   onBrowse: (mountpoint: string) => void;
-  onInspectDrive: (driveName: string) => void;
-  onUnmount: (mountpoint: string) => void;
-  onSubvolumeNameChange: (mountpoint: string, value: string) => void;
   onCreateSubvolume: (mountpoint: string) => void;
+  onInspectDrive: (driveName: string) => void;
+  onSubvolumeNameChange: (mountpoint: string, value: string) => void;
+  onUnmount: (mountpoint: string) => void;
+  subvolumeName: string;
 }
 
 const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
@@ -74,20 +74,20 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           />
           {filesystem.readOnly && (
             <Chip
+              color="warning"
               label="Read-only"
               size="small"
-              color="warning"
               variant="soft"
             />
           )}
           {nfsMount && (
-            <Chip label="NFS mount" size="small" color="info" variant="soft" />
+            <Chip color="info" label="NFS mount" size="small" variant="soft" />
           )}
           {isSystemMount && (
             <Chip
+              color="default"
               label="System mount"
               size="small"
-              color="default"
               variant="soft"
             />
           )}
@@ -101,7 +101,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           }}
         >
           <div>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               Source
             </AppTypography>
             <AppTypography variant="body1">
@@ -110,7 +110,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           </div>
 
           <div>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               Usage
             </AppTypography>
             <AppTypography variant="body1">
@@ -119,7 +119,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               {filesystem.usedPercent.toFixed(1)}
               %)
             </AppTypography>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               {formatFileSize(filesystem.free)} free
             </AppTypography>
           </div>
@@ -128,7 +128,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             filesystem.inodesTotal &&
             filesystem.inodesTotal > 0 && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Inodes
                 </AppTypography>
                 <AppTypography variant="body1">
@@ -142,7 +142,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           {nfsMount && (
             <>
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Export
                 </AppTypography>
                 <AppTypography variant="body1">
@@ -151,7 +151,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               </div>
 
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Mount options
                 </AppTypography>
                 <AppTypography variant="body1">
@@ -159,7 +159,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
                     ? nfsMount.options.join(", ")
                     : "Default options"}
                 </AppTypography>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   {nfsMount.inFstab
                     ? "Configured to mount at boot"
                     : "Not persisted in /etc/fstab"}
@@ -168,7 +168,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             </>
           )}
 
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             {nfsMount
               ? "This filesystem supports direct unmount here because NFS management already exists in the backend."
               : isNfs
@@ -181,7 +181,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           </AppTypography>
 
           {backingDrive && (
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               Backing drive: /dev/{backingDrive.name}
               {backingDrive.model ? ` (${backingDrive.model})` : ""}
             </AppTypography>
@@ -197,15 +197,15 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           }}
         >
           <AppButton
-            variant="outlined"
             onClick={() => onBrowse(filesystem.mountpoint)}
+            variant="outlined"
           >
             Browse
           </AppButton>
           {backingDrive && (
             <AppButton
-              variant="outlined"
               onClick={() => onInspectDrive(backingDrive.name)}
+              variant="outlined"
             >
               Inspect Drive
             </AppButton>
@@ -213,9 +213,9 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
           {canUnmountFilesystem(filesystem) && (
             <AppButton
               color="error"
-              variant="outlined"
-              onClick={() => onUnmount(filesystem.mountpoint)}
               disabled={isUnmounting}
+              onClick={() => onUnmount(filesystem.mountpoint)}
+              variant="outlined"
             >
               {isUnmounting ? "Unmounting..." : "Unmount"}
             </AppButton>
@@ -233,22 +233,22 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             }}
           >
             <AppTextField
-              size="small"
               label="Subvolume name"
-              value={subvolumeName}
               onChange={(event) =>
                 onSubvolumeNameChange(filesystem.mountpoint, event.target.value)
               }
-              placeholder="@data"
-              style={{ minWidth: 220, flex: "1 1 220px" }}
               onClick={(event) => event.stopPropagation()}
+              placeholder="@data"
+              size="small"
+              style={{ minWidth: 220, flex: "1 1 220px" }}
+              value={subvolumeName}
             />
             <AppButton
-              variant="outlined"
-              onClick={() => onCreateSubvolume(filesystem.mountpoint)}
               disabled={
                 isCreatingSubvolume || subvolumeName.trim().length === 0
               }
+              onClick={() => onCreateSubvolume(filesystem.mountpoint)}
+              variant="outlined"
             >
               {isCreatingSubvolume ? "Creating..." : "Create subvolume"}
             </AppButton>
@@ -260,19 +260,19 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
 };
 
 export interface FilesystemCardProps {
-  filesystem: FilesystemInfo;
-  selected: boolean;
   backingDrive: BackingDrive | null;
-  nfsMount: NFSMount | null;
-  isUnmounting: boolean;
+  filesystem: FilesystemInfo;
   isCreatingSubvolume: boolean;
-  subvolumeName: string;
-  onClick: () => void;
+  isUnmounting: boolean;
+  nfsMount: NFSMount | null;
   onBrowse: (mountpoint: string) => void;
-  onInspectDrive: (driveName: string) => void;
-  onUnmount: (mountpoint: string) => void;
-  onSubvolumeNameChange: (mountpoint: string, value: string) => void;
+  onClick: () => void;
   onCreateSubvolume: (mountpoint: string) => void;
+  onInspectDrive: (driveName: string) => void;
+  onSubvolumeNameChange: (mountpoint: string, value: string) => void;
+  onUnmount: (mountpoint: string) => void;
+  selected: boolean;
+  subvolumeName: string;
 }
 
 const FilesystemCard: React.FC<FilesystemCardProps> = ({
@@ -291,11 +291,8 @@ const FilesystemCard: React.FC<FilesystemCardProps> = ({
   onCreateSubvolume,
 }) => (
   <FrostedCard
+    aria-label={`Toggle details for ${filesystem.mountpoint}`}
     hoverLift={!selected}
-    style={{
-      padding: 8,
-      cursor: "pointer",
-    }}
     onClick={onClick}
     onKeyDown={(event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -304,34 +301,30 @@ const FilesystemCard: React.FC<FilesystemCardProps> = ({
       }
     }}
     role="button"
+    style={{
+      padding: 8,
+      cursor: "pointer",
+    }}
     tabIndex={0}
-    aria-label={`Toggle details for ${filesystem.mountpoint}`}
   >
     <AppTypography
-      variant="subtitle2"
       fontWeight={600}
       noWrap
       title={filesystem.mountpoint}
+      variant="subtitle2"
     >
       {filesystem.mountpoint}
     </AppTypography>
     <AppTypography
-      variant="body2"
       color="text.secondary"
       noWrap
-      title={`${filesystem.device} (${filesystem.fstype})`}
       style={{ marginBottom: 6 }}
+      title={`${filesystem.device} (${filesystem.fstype})`}
+      variant="body2"
     >
       {filesystem.device} ({filesystem.fstype})
     </AppTypography>
     <AppLinearProgress
-      variant="determinate"
-      value={filesystem.usedPercent}
-      style={{
-        height: 8,
-        borderRadius: 4,
-        marginBottom: 8,
-      }}
       color={
         filesystem.usedPercent > 90
           ? "error"
@@ -339,24 +332,31 @@ const FilesystemCard: React.FC<FilesystemCardProps> = ({
             ? "warning"
             : "primary"
       }
+      style={{
+        height: 8,
+        borderRadius: 4,
+        marginBottom: 8,
+      }}
+      value={filesystem.usedPercent}
+      variant="determinate"
     />
-    <AppTypography variant="body2" color="text.secondary">
+    <AppTypography color="text.secondary" variant="body2">
       {formatFileSize(filesystem.used)} / {formatFileSize(filesystem.total)} (
       {filesystem.usedPercent.toFixed(1)}%)
     </AppTypography>
     {selected && (
       <FilesystemCardDetails
-        filesystem={filesystem}
         backingDrive={backingDrive}
-        nfsMount={nfsMount}
-        isUnmounting={isUnmounting}
+        filesystem={filesystem}
         isCreatingSubvolume={isCreatingSubvolume}
-        subvolumeName={subvolumeName}
+        isUnmounting={isUnmounting}
+        nfsMount={nfsMount}
         onBrowse={onBrowse}
-        onInspectDrive={onInspectDrive}
-        onUnmount={onUnmount}
-        onSubvolumeNameChange={onSubvolumeNameChange}
         onCreateSubvolume={onCreateSubvolume}
+        onInspectDrive={onInspectDrive}
+        onSubvolumeNameChange={onSubvolumeNameChange}
+        onUnmount={onUnmount}
+        subvolumeName={subvolumeName}
       />
     )}
   </FrostedCard>

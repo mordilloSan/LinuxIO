@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type netplanBackend struct {
@@ -19,7 +21,7 @@ func (b *netplanBackend) Name() string {
 	return "netplan"
 }
 
-func detectNetplanBackend(env Environment, iface string) (Backend, error) {
+func detectNetplanBackend(env Environment, iface string) (ConfigBackend, error) {
 	var matches []string
 	var kinds []string
 	for _, pattern := range []string{"*.yaml", "*.yml"} {
@@ -190,12 +192,12 @@ func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[
 
 func (b *netplanBackend) generate(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "netplan", "generate")
-	return commandError("netplan", []string{"generate"}, output, err)
+	return utils.CommandOutputError("netplan", []string{"generate"}, output, err)
 }
 
 func (b *netplanBackend) apply(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "netplan", "apply")
-	return commandError("netplan", []string{"apply"}, output, err)
+	return utils.CommandOutputError("netplan", []string{"apply"}, output, err)
 }
 
 type netplanDoc struct {

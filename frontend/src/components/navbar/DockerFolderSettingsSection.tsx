@@ -183,7 +183,7 @@ const DockerFolderSettingsSection: React.FC = () => {
       for (let index = 0; index < folders.length; index += 1) {
         const folder = folders[index];
         const validation =
-          await linuxio.docker.validate_stack_directory.call(folder);
+          await linuxio.docker.validate_stack_directory(folder);
         if (!validation.valid) {
           setErrorTexts((prev) => {
             const next = [...prev];
@@ -200,9 +200,9 @@ const DockerFolderSettingsSection: React.FC = () => {
             return;
           }
 
-          await linuxio.filebrowser.resource_post.call(
-            ensureTrailingSlash(folder),
-          );
+          await linuxio.filebrowser.resource_post({
+            path: ensureTrailingSlash(folder),
+          });
           toast.success("Docker folder created.");
         }
       }
@@ -243,10 +243,10 @@ const DockerFolderSettingsSection: React.FC = () => {
         }}
       >
         <div>
-          <AppTypography variant="body1" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="body1">
             Docker Folders
           </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
+          <AppTypography color="text.secondary" variant="caption">
             Directories scanned for Docker Compose stacks.
           </AppTypography>
         </div>
@@ -261,36 +261,36 @@ const DockerFolderSettingsSection: React.FC = () => {
               }}
             >
               <div style={folderIconStyle}>
-                <Icon icon="mdi:folder-open-outline" width={22} height={22} />
+                <Icon height={22} icon="mdi:folder-open-outline" width={22} />
               </div>
 
               <AppTextField
-                label={index === 0 ? "Path" : `Path ${index + 1}`}
-                size="small"
-                value={draft}
-                onChange={(event) =>
-                  handleDraftChange(index, event.target.value)
-                }
-                placeholder="/home/user/docker"
-                fullWidth
+                disabled={isSaving}
                 error={Boolean(errorTexts[index])}
+                fullWidth
                 helperText={
                   errorTexts[index] ||
                   "Absolute path only. Root (/) is not allowed."
                 }
-                disabled={isSaving}
+                label={index === 0 ? "Path" : `Path ${index + 1}`}
+                onChange={(event) =>
+                  handleDraftChange(index, event.target.value)
+                }
+                placeholder="/home/user/docker"
+                size="small"
                 style={{ flex: 1 }}
+                value={draft}
               />
 
               {drafts.length > 1 ? (
                 <AppIconButton
-                  size="small"
-                  onClick={() => handleRemoveFolder(index)}
-                  disabled={isSaving}
                   aria-label={`Remove Docker folder ${index + 1}`}
+                  disabled={isSaving}
+                  onClick={() => handleRemoveFolder(index)}
+                  size="small"
                   style={{ marginTop: 3 }}
                 >
-                  <Icon icon="mdi:close" width={16} height={16} />
+                  <Icon height={16} icon="mdi:close" width={16} />
                 </AppIconButton>
               ) : null}
             </div>
@@ -308,12 +308,12 @@ const DockerFolderSettingsSection: React.FC = () => {
             }
           }}
           role="button"
-          tabIndex={isSaving ? -1 : 0}
           style={{
             padding: 12,
             cursor: isSaving ? "default" : "pointer",
             opacity: isSaving ? 0.65 : 1,
           }}
+          tabIndex={isSaving ? -1 : 0}
         >
           <div
             style={{
@@ -323,13 +323,13 @@ const DockerFolderSettingsSection: React.FC = () => {
             }}
           >
             <div style={folderIconStyle}>
-              <Icon icon="mdi:plus" width={22} height={22} />
+              <Icon height={22} icon="mdi:plus" width={22} />
             </div>
             <div>
-              <AppTypography variant="body2" fontWeight={600}>
+              <AppTypography fontWeight={600} variant="body2">
                 Add Docker folder
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 Add another directory for compose stacks.
               </AppTypography>
             </div>
@@ -344,13 +344,13 @@ const DockerFolderSettingsSection: React.FC = () => {
             paddingTop: theme.spacing(0.5),
           }}
         >
-          <AppButton onClick={handleReset} disabled={!isDirty || isSaving}>
+          <AppButton disabled={!isDirty || isSaving} onClick={handleReset}>
             Reset
           </AppButton>
           <AppButton
-            variant="contained"
-            onClick={() => void handleSave()}
             disabled={!isDirty || isSaving}
+            onClick={() => void handleSave()}
+            variant="contained"
           >
             {isSaving ? "Saving..." : "Save"}
           </AppButton>
@@ -358,13 +358,13 @@ const DockerFolderSettingsSection: React.FC = () => {
       </div>
 
       <ConfirmDialog
-        open={createPromptOpen}
+        cancelText="Cancel"
+        confirmText="Create"
+        message={`This directory does not exist yet: "${createPromptPath ?? ""}". Create it now?`}
         onClose={() => resolveCreatePrompt(false)}
         onConfirm={() => resolveCreatePrompt(true)}
+        open={createPromptOpen}
         title="Create Docker Folder?"
-        message={`This directory does not exist yet: "${createPromptPath ?? ""}". Create it now?`}
-        confirmText="Create"
-        cancelText="Cancel"
       />
     </>
   );

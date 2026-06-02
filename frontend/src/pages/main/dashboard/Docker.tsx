@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -12,7 +11,8 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useScopedToast } from "@/hooks/useScopedToast";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
@@ -28,6 +28,7 @@ const getCollectionCount = <T,>(items: T[] | null | undefined) =>
   items?.length ?? 0;
 const DockerInfo: React.FC = () => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -102,7 +103,7 @@ const DockerInfo: React.FC = () => {
     (action: "start" | "stop" | "restart" | "remove") => {
       if (!menuContainer) return;
       const { id, name } = menuContainer;
-      const args = [id];
+      const request = { containerId: id };
       const callbacks = {
         onSuccess: () => {
           toast.success(
@@ -116,10 +117,10 @@ const DockerInfo: React.FC = () => {
           );
         },
       };
-      if (action === "start") startContainer(args, callbacks);
-      else if (action === "stop") stopContainer(args, callbacks);
-      else if (action === "restart") restartContainer(args, callbacks);
-      else removeContainer(args, callbacks);
+      if (action === "start") startContainer(request, callbacks);
+      else if (action === "stop") stopContainer(request, callbacks);
+      else if (action === "restart") restartContainer(request, callbacks);
+      else removeContainer(request, callbacks);
       handleMenuClose();
     },
     [
@@ -130,6 +131,7 @@ const DockerInfo: React.FC = () => {
       removeContainer,
       handleMenuClose,
       invalidateContainers,
+      toast,
     ],
   );
   const {
@@ -211,7 +213,6 @@ const DockerInfo: React.FC = () => {
           }}
         >
           <AppTypography
-            variant="caption"
             color="text.secondary"
             style={{
               textTransform: "uppercase",
@@ -219,10 +220,11 @@ const DockerInfo: React.FC = () => {
               fontSize: "0.62rem",
               flexShrink: 0,
             }}
+            variant="caption"
           >
             {label}
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500} noWrap>
+          <AppTypography fontWeight={500} noWrap variant="body2">
             {value}
           </AppTypography>
         </div>
@@ -256,7 +258,9 @@ const DockerInfo: React.FC = () => {
         );
         return (
           <AppTooltip
+            arrow
             key={c.Id}
+            placement="top"
             title={
               <div
                 style={{
@@ -281,8 +285,6 @@ const DockerInfo: React.FC = () => {
                 </AppTypography>
               </div>
             }
-            arrow
-            placement="top"
           >
             <div
               onContextMenu={(e) => handleContextMenu(e, c.Id, name, c.State)}
@@ -293,7 +295,7 @@ const DockerInfo: React.FC = () => {
                 cursor: "context-menu",
               }}
             >
-              <DockerIcon identifier={c.icon} size={36} alt={name} />
+              <DockerIcon alt={name} identifier={c.icon} size={36} />
               <div
                 style={{
                   position: "absolute",
@@ -312,10 +314,10 @@ const DockerInfo: React.FC = () => {
       })}
       <AppMenu
         anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
-        onClose={handleMenuClose}
         autoFocus={false}
         minWidth={140}
+        onClose={handleMenuClose}
+        open={Boolean(menuAnchor)}
       >
         {menuContainer?.state !== "running" && (
           <AppMenuItem
@@ -386,28 +388,28 @@ const DockerInfo: React.FC = () => {
   return (
     <>
       <DashboardCard
-        title="Docker"
         avatarIcon="mdi:docker"
+        contentLayout="auto"
         stats={stats}
         stats2={stats2}
-        contentLayout="auto"
+        title="Docker"
       />
       {dialogContainer && (
         <Suspense fallback={null}>
           {hasLoadedLogsDialog && (
             <LogsDialog
-              open={logsOpen}
-              onClose={() => setLogsOpen(false)}
               containerId={dialogContainer.id}
               containerName={dialogContainer.name}
+              onClose={() => setLogsOpen(false)}
+              open={logsOpen}
             />
           )}
           {hasLoadedTerminalDialog && (
             <TerminalDialog
-              open={terminalOpen}
-              onClose={() => setTerminalOpen(false)}
               containerId={dialogContainer.id}
               containerName={dialogContainer.name}
+              onClose={() => setTerminalOpen(false)}
+              open={terminalOpen}
             />
           )}
         </Suspense>

@@ -10,53 +10,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
-
-type SystemHealthSummary struct {
-	FailedServicesCount   int               `json:"failedServicesCount"`
-	FailedServices        []string          `json:"failedServices,omitempty"`
-	RunningServicesCount  int               `json:"runningServicesCount"`
-	FailedLoginAlert      *FailedLoginAlert `json:"failedLoginAlert,omitempty"`
-	UpdatesAvailable      int               `json:"updatesAvailable"`
-	UpToDate              bool              `json:"upToDate"`
-	UncleanShutdown       bool              `json:"uncleanShutdown"`
-	UncleanShutdownBootID string            `json:"uncleanShutdownBootId,omitempty"`
-	LastLogin             *SystemLastLogin  `json:"lastLogin,omitempty"`
-}
-
-type SystemLastLogin struct {
-	Username string `json:"username"`
-	Terminal string `json:"terminal,omitempty"`
-	Source   string `json:"source,omitempty"`
-	Time     string `json:"time"`
-}
-
-type FailedLoginAlert struct {
-	ID            string           `json:"id"`
-	Scope         string           `json:"scope"`
-	Username      string           `json:"username"`
-	Count         int              `json:"count"`
-	LatestEventID string           `json:"latestEventId"`
-	LatestEvent   SystemLoginEvent `json:"latestEvent"`
-}
-
-type SystemLoginEvent struct {
-	ID        string `json:"id"`
-	Username  string `json:"username"`
-	Terminal  string `json:"terminal"`
-	Source    string `json:"source"`
-	Time      string `json:"time"`
-	StartedAt string `json:"startedAt,omitempty"`
-	Status    string `json:"status"`
-}
 
 var healthRunCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
-func FetchSystemHealthSummary(ctx context.Context, username string, privileged bool, sessionStartedAt time.Time) (*SystemHealthSummary, error) {
-	summary := &SystemHealthSummary{
+func FetchSystemHealthSummary(ctx context.Context, username string, privileged bool, sessionStartedAt time.Time) (*apischema.SystemHealthSummary, error) {
+	summary := &apischema.SystemHealthSummary{
 		UpToDate: true,
 	}
 
@@ -90,13 +54,13 @@ func FetchSystemHealthSummary(ctx context.Context, username string, privileged b
 
 	if unclean, bootID, err := DetectUncleanShutdown(ctx); err == nil {
 		summary.UncleanShutdown = unclean
-		summary.UncleanShutdownBootID = bootID
+		summary.UncleanShutdownBootID = utils.OptionalString(bootID)
 	}
 
 	return summary, nil
 }
 
-func FetchLastSuccessfulLogin(parent context.Context, username string) (*SystemLastLogin, error) {
+func FetchLastSuccessfulLogin(parent context.Context, username string) (*apischema.SystemLastLogin, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return nil, nil
@@ -110,10 +74,10 @@ func FetchLastSuccessfulLogin(parent context.Context, username string) (*SystemL
 		return nil, err
 	}
 
-	return &SystemLastLogin{
+	return &apischema.SystemLastLogin{
 		Username: login.Username,
-		Terminal: login.Terminal,
-		Source:   login.Source,
+		Terminal: utils.OptionalString(login.Terminal),
+		Source:   utils.OptionalString(login.Source),
 		Time:     login.Time,
 	}, nil
 }
@@ -130,7 +94,7 @@ func FetchFailedLoginAttempts(parent context.Context, username string, sessionSt
 	return loginhistory.FetchFailedAttempts(ctx, username, sessionStartedAt)
 }
 
-func FetchFailedLoginAlert(parent context.Context, username string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
+func FetchFailedLoginAlert(parent context.Context, username string, sessionStartedAt time.Time) (*apischema.SystemFailedLoginAlert, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return nil, nil
@@ -145,9 +109,9 @@ func FetchFailedLoginAlert(parent context.Context, username string, sessionStart
 	}
 
 	latestEvent := systemLoginEventFromLogin(batch.Latest)
-	alert := &FailedLoginAlert{
+	alert := &apischema.SystemFailedLoginAlert{
 		ID:            failedLoginAlertID("user", username, batch.Latest.ID),
-		Scope:         "user",
+		Scope:         utils.OptionalString("user"),
 		Username:      username,
 		Count:         batch.Count,
 		LatestEventID: batch.Latest.ID,
@@ -156,7 +120,7 @@ func FetchFailedLoginAlert(parent context.Context, username string, sessionStart
 	return alert, nil
 }
 
-func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string, sessionStartedAt time.Time) (*FailedLoginAlert, error) {
+func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string, sessionStartedAt time.Time) (*apischema.SystemFailedLoginAlert, error) {
 	boundaryUsername = strings.TrimSpace(boundaryUsername)
 	if boundaryUsername == "" {
 		return nil, nil
@@ -171,9 +135,9 @@ func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string
 	}
 
 	latestEvent := systemLoginEventFromLogin(batch.Latest)
-	alert := &FailedLoginAlert{
+	alert := &apischema.SystemFailedLoginAlert{
 		ID:            failedLoginAlertID("system", boundaryUsername, batch.Latest.ID),
-		Scope:         "system",
+		Scope:         utils.OptionalString("system"),
 		Username:      batch.Latest.Username,
 		Count:         batch.Count,
 		LatestEventID: batch.Latest.ID,
@@ -182,7 +146,7 @@ func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string
 	return alert, nil
 }
 
-func FetchFailedLoginEvents(ctx context.Context, boundaryUsername string, sessionStartedAt time.Time, limit int) ([]SystemLoginEvent, error) {
+func FetchFailedLoginEvents(ctx context.Context, boundaryUsername string, sessionStartedAt time.Time, limit int) ([]apischema.AccountUserLogin, error) {
 	boundaryUsername = strings.TrimSpace(boundaryUsername)
 	if boundaryUsername == "" {
 		return nil, nil
@@ -196,25 +160,25 @@ func FetchFailedLoginEvents(ctx context.Context, boundaryUsername string, sessio
 		return nil, err
 	}
 
-	events := make([]SystemLoginEvent, 0, len(logins))
+	events := make([]apischema.AccountUserLogin, 0, len(logins))
 	for _, login := range logins {
 		events = append(events, systemLoginEventFromLogin(login))
 	}
 	return events, nil
 }
 
-func systemLoginEventFromLogin(login loginhistory.Login) SystemLoginEvent {
+func systemLoginEventFromLogin(login loginhistory.Login) apischema.AccountUserLogin {
 	startedAt := ""
 	if !login.StartedAt.IsZero() {
 		startedAt = login.StartedAt.Format(time.RFC3339)
 	}
-	return SystemLoginEvent{
+	return apischema.AccountUserLogin{
 		ID:        login.ID,
 		Username:  login.Username,
 		Terminal:  login.Terminal,
 		Source:    login.Source,
 		Time:      login.Time,
-		StartedAt: startedAt,
+		StartedAt: utils.OptionalString(startedAt),
 		Status:    login.Status,
 	}
 }

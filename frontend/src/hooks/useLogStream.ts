@@ -1,32 +1,32 @@
 import {
-  useState,
-  useEffect,
-  useRef,
   useCallback,
+  useEffect,
   useEffectEvent,
+  useRef,
+  useState,
 } from "react";
 
-import { useStreamMux, decodeString, type Stream } from "@/api";
+import { decodeString, type Stream, useStreamMux } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
 export interface UseLogStreamOptions {
-  open: boolean;
   /** Returns the stream handle; called with tail line count as a string. */
   createStream: (tail: string) => Stream | null;
   /** Number of tail lines to fetch on initial open. Default: "200". */
   initialTail?: string;
   /** Number of tail lines when re-enabling live mode. Default: "0". */
   liveTail?: string;
+  open: boolean;
 }
 
 export interface UseLogStreamResult {
-  logs: string;
-  isLoading: boolean;
   error: string | null;
+  isLoading: boolean;
   liveMode: boolean;
-  setLiveMode: React.Dispatch<React.SetStateAction<boolean>>;
+  logs: string;
   logsBoxRef: React.RefObject<HTMLDivElement | null>;
   resetState: () => void;
+  setLiveMode: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;

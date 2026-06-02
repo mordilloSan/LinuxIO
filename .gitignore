@@ -3,6 +3,7 @@ backend/webserver/web/frontend/
 frontend/node_modules/
 frontend/.vite-dev.pid
 frontend/vite.config.module-build.tmp.js
+frontend/tsconfig.tsbuildinfo
 
 # Go Binaries
 /linuxio
@@ -20,7 +21,4 @@ linuxio-bridge
 .claude/
 *.swp
 .script-server.pid
-frontend/.eslintcache-a
-frontend/.eslintcache-b
-frontend/.eslintcache-c
-
+frontend/.eslintcache*

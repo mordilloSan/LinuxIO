@@ -2,10 +2,10 @@ import React from "react";
 
 import {
   DetailRow,
+  formatBytes,
   UnitCardActions,
   UnitCardsView,
   UnitStatusRows,
-  formatBytes,
 } from "./UnitViews";
 
 import type { Service } from "@/api";
@@ -14,20 +14,20 @@ import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
 interface ServiceCardsViewProps {
-  services: Service[];
   expanded: string | null;
   onExpand: (name: string | null) => void;
   renderDetailPanel: (service: Service) => React.ReactNode;
+  services: Service[];
 }
 
 const ServiceStatusRows = React.memo<{ service: Service }>(({ service }) => (
   <UnitStatusRows
+    activeEnterTimestamp={service.active_enter_timestamp}
+    activeLabel="Running"
     activeState={service.active_state}
+    inactiveEnterTimestamp={service.inactive_enter_timestamp}
     subState={service.sub_state}
     unitFileState={service.unit_file_state}
-    activeEnterTimestamp={service.active_enter_timestamp}
-    inactiveEnterTimestamp={service.inactive_enter_timestamp}
-    activeLabel="Running"
   />
 ));
 ServiceStatusRows.displayName = "ServiceStatusRows";
@@ -89,10 +89,10 @@ const ServiceActionsWrapper: React.FC<{ service: Service }> = ({ service }) => {
   });
   return (
     <UnitCardActions
-      unitName={service.name}
       activeState={service.active_state}
-      unitFileState={service.unit_file_state}
       info={info}
+      unitFileState={service.unit_file_state}
+      unitName={service.name}
     />
   );
 };
@@ -104,17 +104,17 @@ const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
   renderDetailPanel,
 }) => (
   <UnitCardsView
-    items={services}
-    expanded={expanded}
-    onExpand={onExpand}
     emptyMessage="No services found."
-    renderSummaryRows={(service) => <ServiceStatusRows service={service} />}
-    renderSelectedRows={(service) => <ServiceInfoRows service={service} />}
+    expanded={expanded}
+    items={services}
+    onExpand={onExpand}
     renderActions={(service) => <ServiceActionsWrapper service={service} />}
-    renderDetailPanel={renderDetailPanel}
     renderBottomPanel={(service) => (
-      <UnitLogsCard unitName={service.name} title="Service Logs" />
+      <UnitLogsCard title="Service Logs" unitName={service.name} />
     )}
+    renderDetailPanel={renderDetailPanel}
+    renderSelectedRows={(service) => <ServiceInfoRows service={service} />}
+    renderSummaryRows={(service) => <ServiceStatusRows service={service} />}
   />
 );
 

@@ -1,8 +1,8 @@
 package config
 
 // DefaultAppSettings returns sane UI defaults.
-func DefaultAppSettings() AppSettings {
-	return AppSettings{
+func DefaultAppSettings() PersistedAppSettings {
+	return PersistedAppSettings{
 		Theme:            ThemeDark,
 		PrimaryColor:     "#2196f3",
 		ThemeColors:      defaultThemeColors(),
@@ -103,8 +103,8 @@ func DefaultDocker(base string) Docker {
 	}
 }
 
-func DefaultJobSettings() JobSettings {
-	return JobSettings{
+func DefaultJobSettings() PersistedJobSettings {
+	return PersistedJobSettings{
 		ProgressMinIntervalMs:     250,
 		NotificationMinIntervalMs: 1000,
 		ProgressMinBytesMB:        16,
@@ -114,7 +114,7 @@ func DefaultJobSettings() JobSettings {
 	}
 }
 
-func EffectiveJobSettings(jobSettings JobSettings) JobSettings {
+func EffectiveJobSettings(jobSettings PersistedJobSettings) PersistedJobSettings {
 	defaults := DefaultJobSettings()
 	if jobSettings.ProgressMinIntervalMs <= 0 {
 		jobSettings.ProgressMinIntervalMs = defaults.ProgressMinIntervalMs

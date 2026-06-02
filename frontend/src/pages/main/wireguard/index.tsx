@@ -18,7 +18,7 @@ const Page: FC = () => {
           marginBottom: theme.spacing(2),
         }}
       >
-        <AppTypography variant="h4" component="h1">
+        <AppTypography component="h1" variant="h4">
           Interface Dashboard
         </AppTypography>
         <CreateInterfaceButton />

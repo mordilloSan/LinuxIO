@@ -6,13 +6,13 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 interface ComposePostSaveDialogProps {
+  isExecuting?: boolean;
+  onDoNothing: () => void;
+  onRestart: () => void;
+  onStart: () => void;
   open: boolean;
   stackName: string;
   stackState: "new" | "running" | "stopped";
-  onStart: () => void;
-  onRestart: () => void;
-  onDoNothing: () => void;
-  isExecuting?: boolean;
 }
 
 const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
@@ -50,10 +50,10 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
 
   return (
     <GeneralDialog
-      open={open}
-      onClose={onDoNothing}
-      maxWidth="xs"
       fullWidth
+      maxWidth="xs"
+      onClose={onDoNothing}
+      open={open}
       paperStyle={{
         backgroundColor: theme.header.background,
       }}
@@ -70,23 +70,23 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
       >
         {/* Title */}
         <AppTypography
-          variant="h5"
           fontWeight={600}
           style={{
             color: theme.palette.text.primary,
           }}
+          variant="h5"
         >
           Stack Saved Successfully
         </AppTypography>
 
         {/* Message */}
         <AppTypography
-          variant="body1"
           style={{
             marginTop: theme.spacing(2),
             color: theme.palette.text.secondary,
             whiteSpace: "pre-line",
           }}
+          variant="body1"
         >
           {getActionMessage()}
         </AppTypography>
@@ -102,9 +102,9 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
           }}
         >
           <AppButton
-            onClick={onDoNothing}
-            disabled={isExecuting}
             color="inherit"
+            disabled={isExecuting}
+            onClick={onDoNothing}
             style={{
               paddingInline: 12,
               paddingBlock: 6,
@@ -117,8 +117,8 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
           </AppButton>
 
           <AppButton
-            onClick={handleAction}
             disabled={isExecuting}
+            onClick={handleAction}
             style={{
               paddingInline: 12,
               paddingBlock: 6,

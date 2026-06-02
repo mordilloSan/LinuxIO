@@ -5,31 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"strings"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-type Metrics struct {
-	CPUPercent float64 `json:"cpu_percent"`
-	MemUsage   uint64  `json:"mem_usage"`
-	MemLimit   uint64  `json:"mem_limit"`
-	NetInput   uint64  `json:"net_input"`
-	NetOutput  uint64  `json:"net_output"`
-	BlockRead  uint64  `json:"block_read"`
-	BlockWrite uint64  `json:"block_write"`
-}
-
-type ContainerWithMetrics struct {
-	container.Summary
-	Metrics   *Metrics `json:"metrics,omitempty"`
-	Icon      string   `json:"icon,omitempty"`
-	URL       string   `json:"url,omitempty"`
-	ProxyPort string   `json:"proxyPort,omitempty"`
-}
-
-type containerStats struct {
+type dockerStatsPayload struct {
 	CPUStats struct {
 		CPUUsage struct {
 			TotalUsage  uint64   `json:"total_usage"`
@@ -67,7 +52,7 @@ func ListContainers(ctx context.Context) (any, error) {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	enriched := make([]ContainerWithMetrics, 0, len(containers.Items))
+	enriched := make([]apischema.ContainerInfo, 0, len(containers.Items))
 
 	for _, ctr := range containers.Items {
 		if err := ctx.Err(); err != nil {
@@ -76,20 +61,106 @@ func ListContainers(ctx context.Context) (any, error) {
 		metrics := collectContainerMetrics(ctx, cli, ctr.ID)
 		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
 
-		enriched = append(enriched, ContainerWithMetrics{
-			Summary:   ctr,
-			Metrics:   metrics,
-			Icon:      iconIdentifier,
-			URL:       resolvedURL,
-			ProxyPort: proxyPort,
-		})
+		enriched = append(enriched, containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL, proxyPort))
 	}
 
 	return enriched, nil
 }
 
-func collectContainerMetrics(ctx context.Context, cli *client.Client, containerID string) *Metrics {
-	metrics := &Metrics{}
+func containerInfoFromSummary(
+	ctr container.Summary,
+	metrics *apischema.ContainerMetrics,
+	iconIdentifier string,
+	resolvedURL string,
+	proxyPort string,
+) apischema.ContainerInfo {
+	return apischema.ContainerInfo{
+		Created:         ctr.Created,
+		HostConfig:      containerHostConfigFromSummary(ctr),
+		Icon:            utils.OptionalString(iconIdentifier),
+		ID:              ctr.ID,
+		Image:           ctr.Image,
+		Labels:          ctr.Labels,
+		Metrics:         metrics,
+		Mounts:          containerMountsFromSummary(ctr.Mounts),
+		Names:           ctr.Names,
+		NetworkSettings: containerNetworkSettingsFromSummary(ctr.NetworkSettings),
+		Ports:           containerPortsFromSummary(ctr.Ports),
+		ProxyPort:       utils.OptionalString(proxyPort),
+		State:           string(ctr.State),
+		Status:          ctr.Status,
+		URL:             utils.OptionalString(resolvedURL),
+	}
+}
+
+func containerHostConfigFromSummary(ctr container.Summary) *apischema.ContainerHostConfig {
+	networkMode := utils.OptionalString(ctr.HostConfig.NetworkMode)
+	if networkMode == nil {
+		return nil
+	}
+	return &apischema.ContainerHostConfig{NetworkMode: networkMode}
+}
+
+func containerNetworkSettingsFromSummary(settings *container.NetworkSettingsSummary) *apischema.ContainerNetworkSettings {
+	if settings == nil || len(settings.Networks) == 0 {
+		return nil
+	}
+
+	networks := make(map[string]apischema.ContainerEndpoint, len(settings.Networks))
+	for name, endpoint := range settings.Networks {
+		if endpoint == nil {
+			continue
+		}
+		networks[name] = apischema.ContainerEndpoint{
+			Gateway:           addrString(endpoint.Gateway),
+			GlobalIPv6Address: optionalAddrString(endpoint.GlobalIPv6Address),
+			IPAddress:         addrString(endpoint.IPAddress),
+			MACAddress:        utils.OptionalString(endpoint.MacAddress.String()),
+		}
+	}
+	if len(networks) == 0 {
+		return nil
+	}
+	return &apischema.ContainerNetworkSettings{Networks: networks}
+}
+
+func containerPortsFromSummary(ports []container.PortSummary) []apischema.ContainerPort {
+	if len(ports) == 0 {
+		return nil
+	}
+
+	result := make([]apischema.ContainerPort, 0, len(ports))
+	for _, port := range ports {
+		result = append(result, apischema.ContainerPort{
+			IP:          optionalAddrString(port.IP),
+			PrivatePort: int(port.PrivatePort),
+			PublicPort:  utils.OptionalInt(int(port.PublicPort)),
+			Type:        port.Type,
+		})
+	}
+	return result
+}
+
+func containerMountsFromSummary(mounts []container.MountPoint) []apischema.ContainerMount {
+	if len(mounts) == 0 {
+		return nil
+	}
+
+	result := make([]apischema.ContainerMount, 0, len(mounts))
+	for _, mount := range mounts {
+		result = append(result, apischema.ContainerMount{
+			Destination: mount.Destination,
+			Mode:        mount.Mode,
+			RW:          mount.RW,
+			Source:      mount.Source,
+			Type:        string(mount.Type),
+		})
+	}
+	return result
+}
+
+func collectContainerMetrics(ctx context.Context, cli *client.Client, containerID string) *apischema.ContainerMetrics {
+	metrics := &apischema.ContainerMetrics{}
 	statsResp, err := cli.ContainerStats(ctx, containerID, client.ContainerStatsOptions{})
 	if err != nil {
 		return metrics
@@ -100,7 +171,7 @@ func collectContainerMetrics(ctx context.Context, cli *client.Client, containerI
 		}
 	}()
 
-	var stats containerStats
+	var stats dockerStatsPayload
 
 	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
 		return metrics
@@ -111,7 +182,7 @@ func collectContainerMetrics(ctx context.Context, cli *client.Client, containerI
 	return metrics
 }
 
-func populateContainerCPUMetrics(metrics *Metrics, stats containerStats) {
+func populateContainerCPUMetrics(metrics *apischema.ContainerMetrics, stats dockerStatsPayload) {
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(stats.CPUStats.SystemCPUUsage)
 	if systemDelta > 0 && len(stats.CPUStats.CPUUsage.PercpuUsage) > 0 {
@@ -119,7 +190,7 @@ func populateContainerCPUMetrics(metrics *Metrics, stats containerStats) {
 	}
 }
 
-func populateContainerMemoryMetrics(metrics *Metrics, stats containerStats) {
+func populateContainerMemoryMetrics(metrics *apischema.ContainerMetrics, stats dockerStatsPayload) {
 	memUsage := stats.MemoryStats.Usage
 	if inactiveFile, ok := stats.MemoryStats.Stats["inactive_file"]; ok && inactiveFile < memUsage {
 		memUsage -= inactiveFile
@@ -128,7 +199,7 @@ func populateContainerMemoryMetrics(metrics *Metrics, stats containerStats) {
 	metrics.MemLimit = stats.MemoryStats.Limit
 }
 
-func populateContainerIOMetrics(metrics *Metrics, stats containerStats) {
+func populateContainerIOMetrics(metrics *apischema.ContainerMetrics, stats dockerStatsPayload) {
 	for _, netStats := range stats.Networks {
 		metrics.NetInput += netStats.RxBytes
 		metrics.NetOutput += netStats.TxBytes
@@ -174,6 +245,17 @@ func resolveContainerURL(containerURL, proxyPort, iconName string) string {
 		return containerURL
 	}
 	return "/proxy/" + iconName + "/"
+}
+
+func addrString(value netip.Addr) string {
+	if !value.IsValid() {
+		return ""
+	}
+	return value.String()
+}
+
+func optionalAddrString(value netip.Addr) *string {
+	return utils.OptionalString(addrString(value))
 }
 
 // Start a container by ID

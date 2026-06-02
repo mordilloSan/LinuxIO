@@ -1,7 +1,9 @@
 /**
  * LinuxIO API - Unified Entry Point
  *
- * JSON API (request/response via bridge streams) → React Query:
+ * JSON API (generated, Go-owned request/response contracts):
+ *   await linuxio.system.get_cpu_info()
+ *   await linuxio.jobs.cancel(jobId)
  *   linuxio.system.get_cpu_info.useQuery()
  *   linuxio.docker.start_container.useMutation()
  *
@@ -10,10 +12,15 @@
  *   stream.onData = (data) => ...;
  */
 
-// === JSON API (React Query type-safe proxy) ===
-export { default as linuxio, CACHE_TTL_MS } from "./react-query";
-export { ROUTE_MODES, getRouteMode, routeName } from "./route-metadata";
-export type { RouteMode } from "./route-metadata";
+// === JSON API (generated type-safe endpoints) ===
+export { default as linuxio } from "./generated/client";
+export { CACHE_TTL_MS } from "./react-query";
+export {
+  ROUTE_MODES,
+  getRouteMode,
+  routeName,
+} from "./generated/route-metadata";
+export type { RouteMode } from "./generated/route-metadata";
 export {
   isJobSnapshot,
   isJobLocallyHandled,
@@ -21,7 +28,7 @@ export {
   jobSnapshotResult,
 } from "./jobs";
 
-// === Core API (Promise-based, used by React Query internally) ===
+// === API Error Type ===
 export { LinuxIOError } from "./linuxio-core";
 
 // === React Hooks ===
@@ -70,5 +77,23 @@ export type * from "./stream-helpers";
 // === Stream Types ===
 export type * from "./StreamMultiplexer";
 
-// === Domain Types ===
-export type * from "./linuxio-types";
+// === Domain/API Types ===
+export type * from "./generated/linuxio-types";
+
+// === Capabilities (manifest, types, helpers) ===
+export type {
+  CapabilityDef,
+  CapabilityErrorKey,
+  CapabilityKey,
+  CapabilityState,
+  CapabilityValueKey,
+  CapabilityWire,
+} from "./capabilities";
+export {
+  CAPABILITIES,
+  CAPABILITY_KEYS,
+  capabilityStateFromWire,
+  emptyCapabilityState,
+  parseCapabilityState,
+  pickCapabilityState,
+} from "./capabilities";

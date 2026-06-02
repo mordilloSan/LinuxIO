@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
@@ -12,6 +11,7 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -74,12 +74,12 @@ function getDNSv4List(i: any): string[] {
 /* ============================================ */
 
 interface Props {
-  iface: BaseNI;
-  expanded: boolean;
   editForm: Record<string, any>;
-  setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  expanded: boolean;
+  iface: BaseNI;
   onClose: () => void;
   onSave: (iface: BaseNI) => void;
+  setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }
 const NetworkInterfaceEditor: React.FC<Props> = ({
   iface,
@@ -90,6 +90,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onSave,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/network", label: "Open network" });
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
   const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
@@ -178,9 +179,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   const isConnecting = iface.state >= 40 && iface.state <= 90;
   const handleConnectionToggle = () => {
     if (isConnected || isConnecting) {
-      disableConnection([iface.name]);
+      disableConnection({ iface: iface.name });
     } else {
-      enableConnection([iface.name]);
+      enableConnection({ iface: iface.name });
     }
   };
 
@@ -267,7 +268,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   const handleSave = () => {
     if (mode === "auto") {
       // SetIPv4 with method "dhcp"
-      setIPv4([iface.name, "dhcp"]);
+      setIPv4({ iface: iface.name, method: "dhcp" });
     } else {
       const ipv4 = (editForm.ipv4 || "").trim();
       const gateway = (editForm.gateway || "").trim();
@@ -313,8 +314,12 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         }
       }
 
-      // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
-      setIPv4Manual([iface.name, ipv4, gateway, ...dnsServers]);
+      setIPv4Manual({
+        iface: iface.name,
+        address: ipv4,
+        gateway,
+        dns: dnsServers.join(","),
+      });
     }
   };
   return (
@@ -338,8 +343,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             control={
               <AppSwitch
                 checked={isConnected || isConnecting}
-                onChange={handleConnectionToggle}
                 disabled={toggling}
+                onChange={handleConnectionToggle}
               />
             }
             label={
@@ -353,9 +358,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             }
           />
           <Chip
-            size="small"
             color="primary"
-            variant="soft"
             label={
               iface.ipv4_method === "manual"
                 ? "static IP"
@@ -365,21 +368,23 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
                     ? "IPv4 disabled"
                     : "IPv4: unknown"
             }
+            size="small"
+            variant="soft"
           />
         </div>
 
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <AppButton
             fullWidth
-            variant={mode === "auto" ? "contained" : "outlined"}
             onClick={() => handleModeChange("auto")}
+            variant={mode === "auto" ? "contained" : "outlined"}
           >
             Automatic
           </AppButton>
           <AppButton
             fullWidth
-            variant={mode === "manual" ? "contained" : "outlined"}
             onClick={() => handleModeChange("manual")}
+            variant={mode === "manual" ? "contained" : "outlined"}
           >
             Manual
           </AppButton>
@@ -388,11 +393,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         {mode === "auto" ? (
           <div>
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{
                 marginBottom: 8,
               }}
+              variant="body2"
             >
               The interface will automatically obtain IP address, gateway, and
               DNS from a DHCP server.
@@ -401,49 +406,49 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         ) : (
           <div>
             <AppTypography
-              variant="body2"
               color="text.secondary"
               style={{
                 marginBottom: 8,
               }}
+              variant="body2"
             >
               Configure static network settings. All fields are required.
             </AppTypography>
 
             <AppTextField
               fullWidth
-              required
-              size="small"
-              label="IPv4 Address (CIDR)"
-              placeholder="192.168.1.10/24"
-              value={editForm.ipv4 ?? ""}
-              onChange={(e) => handleChange("ipv4", e.target.value)}
               helperText="Format: IP/prefix (e.g., 192.168.1.10/24)"
+              label="IPv4 Address (CIDR)"
+              onChange={(e) => handleChange("ipv4", e.target.value)}
+              placeholder="192.168.1.10/24"
+              required
+              size="small"
               style={{ marginBottom: 8 }}
+              value={editForm.ipv4 ?? ""}
             />
 
             <AppTextField
               fullWidth
-              required
-              size="small"
-              label="Gateway"
-              placeholder="192.168.1.1"
-              value={editForm.gateway ?? ""}
-              onChange={(e) => handleChange("gateway", e.target.value)}
               helperText="The IP address of your network gateway/router"
+              label="Gateway"
+              onChange={(e) => handleChange("gateway", e.target.value)}
+              placeholder="192.168.1.1"
+              required
+              size="small"
               style={{ marginBottom: 8 }}
+              value={editForm.gateway ?? ""}
             />
 
             <AppTextField
               fullWidth
+              helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
+              label="DNS Servers"
+              onChange={(e) => handleDNSChange(e.target.value)}
+              placeholder="8.8.8.8, 8.8.4.4"
               required
               size="small"
-              label="DNS Servers"
-              placeholder="8.8.8.8, 8.8.4.4"
-              value={editForm.dns ?? ""}
-              onChange={(e) => handleDNSChange(e.target.value)}
-              helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
               style={{ marginBottom: 8 }}
+              value={editForm.dns ?? ""}
             />
           </div>
         )}
@@ -456,10 +461,10 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
             marginTop: theme.spacing(2),
           }}
         >
-          <AppButton onClick={onClose} disabled={saving}>
+          <AppButton disabled={saving} onClick={onClose}>
             Cancel
           </AppButton>
-          <AppButton variant="contained" onClick={handleSave} disabled={saving}>
+          <AppButton disabled={saving} onClick={handleSave} variant="contained">
             {saving ? "Saving…" : "Apply Configuration"}
           </AppButton>
         </div>

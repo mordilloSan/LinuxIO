@@ -8,33 +8,15 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 var sensorsCommand = exec.CommandContext
 
-type SensorReadingKind string
-
-const (
-	SensorReadingKindNumber  SensorReadingKind = "number"
-	SensorReadingKindBoolean SensorReadingKind = "boolean"
-)
-
-type SensorReading struct {
-	Label string            `json:"label"`
-	Value any               `json:"value"`
-	Kind  SensorReadingKind `json:"kind"`
-	Unit  string            `json:"unit"`
-	field string
-}
-
-type SensorGroup struct {
-	Adapter  string          `json:"adapter"`
-	Readings []SensorReading `json:"readings"`
-}
-
 // FetchSensorsInfo returns sensor readings parsed from `sensors -j`.
 // Each SensorGroup.Adapter is the chip name (e.g. "coretemp-isa-0000").
-func FetchSensorsInfo(ctx context.Context) []SensorGroup {
+func FetchSensorsInfo(ctx context.Context) []apischema.SensorGroup {
 	out, err := sensorsCommand(ctx, "sensors", "-j").Output()
 	if err != nil {
 		return nil
@@ -46,7 +28,7 @@ func FetchSensorsInfo(ctx context.Context) []SensorGroup {
 	}
 
 	chipNames := sortedSensorKeys(raw)
-	var groups []SensorGroup
+	var groups []apischema.SensorGroup
 	for _, chipName := range chipNames {
 		chip, ok := raw[chipName].(map[string]any)
 		if !ok {
@@ -59,8 +41,8 @@ func FetchSensorsInfo(ctx context.Context) []SensorGroup {
 	return groups
 }
 
-func parseSensorChip(chipName string, chip map[string]any) SensorGroup {
-	group := SensorGroup{Adapter: chipName}
+func parseSensorChip(chipName string, chip map[string]any) apischema.SensorGroup {
+	group := apischema.SensorGroup{Adapter: chipName}
 	featureNames := sortedSensorKeys(chip)
 	for _, featureName := range featureNames {
 		if featureName == "Adapter" {
@@ -82,12 +64,12 @@ func parseSensorChip(chipName string, chip map[string]any) SensorGroup {
 				label = fmt.Sprintf("%s (%s)", featureName, sensorLeafLabel(leaf.path))
 			}
 
-			group.Readings = append(group.Readings, SensorReading{
+			group.Readings = append(group.Readings, apischema.SensorReading{
 				Label: label,
 				Value: leaf.value,
 				Kind:  leaf.kind,
 				Unit:  leaf.unit,
-				field: leaf.field,
+				Field: leaf.field,
 			})
 		}
 	}
@@ -97,7 +79,7 @@ func parseSensorChip(chipName string, chip map[string]any) SensorGroup {
 type sensorLeaf struct {
 	path  []string
 	value any
-	kind  SensorReadingKind
+	kind  apischema.SensorReadingKind
 	unit  string
 	field string
 }
@@ -119,7 +101,7 @@ func collectSensorLeaves(value any, path []string) []sensorLeaf {
 		return []sensorLeaf{{
 			path:  cloneSensorPath(path),
 			value: typed,
-			kind:  SensorReadingKindNumber,
+			kind:  apischema.SensorReadingKindNumber,
 			unit:  sensorUnitForPath(path),
 			field: field,
 		}}
@@ -128,7 +110,7 @@ func collectSensorLeaves(value any, path []string) []sensorLeaf {
 		return []sensorLeaf{{
 			path:  cloneSensorPath(path),
 			value: typed,
-			kind:  SensorReadingKindBoolean,
+			kind:  apischema.SensorReadingKindBoolean,
 			field: field,
 		}}
 	default:
@@ -273,8 +255,8 @@ func getTemperatureMap(ctx context.Context) map[string]float64 {
 	return temps
 }
 
-func sensorNumberValue(reading SensorReading) (float64, bool) {
-	if reading.Kind != SensorReadingKindNumber {
+func sensorNumberValue(reading apischema.SensorReading) (float64, bool) {
+	if reading.Kind != apischema.SensorReadingKindNumber {
 		return 0, false
 	}
 
@@ -282,11 +264,11 @@ func sensorNumberValue(reading SensorReading) (float64, bool) {
 	return value, ok
 }
 
-func sensorReadingIsInput(reading SensorReading) bool {
-	if reading.field == "" {
+func sensorReadingIsInput(reading apischema.SensorReading) bool {
+	if reading.Field == "" {
 		return true
 	}
-	return reading.field == "input" || strings.HasSuffix(reading.field, "_input")
+	return reading.Field == "input" || strings.HasSuffix(reading.Field, "_input")
 }
 
 type temperatureIndexes struct {
@@ -295,7 +277,7 @@ type temperatureIndexes struct {
 	drive int
 }
 
-func classifyTemperatureReading(adapter string, reading SensorReading, indices *temperatureIndexes) (string, bool) {
+func classifyTemperatureReading(adapter string, reading apischema.SensorReading, indices *temperatureIndexes) (string, bool) {
 	unit := strings.ToLower(reading.Unit)
 	if unit != "c" && unit != "°c" {
 		return "", false

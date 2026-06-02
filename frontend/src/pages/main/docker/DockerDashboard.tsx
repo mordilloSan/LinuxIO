@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import "@/theme/section.css";
+
 import "./docker-dashboard.css";
 import { linuxio } from "@/api";
 import DockerResourceListCard from "@/components/cards/DockerResourceListCard";
@@ -29,15 +30,15 @@ const StateChip: React.FC<{
 }> = ({ state, status }) => {
   if (status.toLowerCase().includes("unhealthy"))
     return (
-      <Chip size="small" label="Unhealthy" color="warning" variant="soft" />
+      <Chip color="warning" label="Unhealthy" size="small" variant="soft" />
     );
   if (status.toLowerCase().includes("healthy"))
-    return <Chip size="small" label="Healthy" color="success" variant="soft" />;
+    return <Chip color="success" label="Healthy" size="small" variant="soft" />;
   if (state === "running")
-    return <Chip size="small" label="Running" color="success" variant="soft" />;
+    return <Chip color="success" label="Running" size="small" variant="soft" />;
   if (state === "exited" || state === "dead")
-    return <Chip size="small" label="Stopped" color="error" variant="soft" />;
-  return <Chip size="small" label={state} variant="soft" />;
+    return <Chip color="error" label="Stopped" size="small" variant="soft" />;
+  return <Chip label={state} size="small" variant="soft" />;
 };
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -193,12 +194,12 @@ const DockerDashboard: React.FC = () => {
           userSelect: "none",
         }}
       >
-        <AppTypography variant="subtitle1" fontWeight={700}>
+        <AppTypography fontWeight={700} variant="subtitle1">
           Overview
         </AppTypography>
         <AppIconButton
-          size="small"
           className="section-toggle"
+          size="small"
           style={{
             opacity: 0,
             transition: "opacity 0.15s",
@@ -206,13 +207,13 @@ const DockerDashboard: React.FC = () => {
           }}
         >
           <Icon
-            icon="mdi:chevron-down"
-            width={24}
             height={24}
+            icon="mdi:chevron-down"
             style={{
               transition: "transform 0.2s",
               transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
             }}
+            width={24}
           />
         </AppIconButton>
       </div>
@@ -271,10 +272,10 @@ const DockerDashboard: React.FC = () => {
               }}
             >
               <DockerStatCard
-                label={label}
-                value={value}
                 detail={detail}
+                label={label}
                 onClick={() => navigateToTab(tab)}
+                value={value}
               />
             </AppGrid>
           ))}
@@ -293,12 +294,12 @@ const DockerDashboard: React.FC = () => {
           userSelect: "none",
         }}
       >
-        <AppTypography variant="subtitle1" fontWeight={700}>
+        <AppTypography fontWeight={700} variant="subtitle1">
           Docker Daemon
         </AppTypography>
         <AppIconButton
-          size="small"
           className="section-toggle"
+          size="small"
           style={{
             opacity: 0,
             transition: "opacity 0.15s",
@@ -306,13 +307,13 @@ const DockerDashboard: React.FC = () => {
           }}
         >
           <Icon
-            icon="mdi:chevron-down"
-            width={24}
             height={24}
+            icon="mdi:chevron-down"
             style={{
               transition: "transform 0.2s",
               transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
             }}
+            width={24}
           />
         </AppIconButton>
       </div>
@@ -333,21 +334,21 @@ const DockerDashboard: React.FC = () => {
                     <DockerSectionCard
                       icon={
                         <Icon
+                          color={theme.palette.primary.main}
+                          height={28}
                           icon="ph:cpu"
                           width={28}
-                          height={28}
-                          color={theme.palette.primary.main}
                         />
                       }
-                      title="CPU"
                       subtitle="Processor utilization"
+                      title="CPU"
                     >
                       <MetricBar
+                        color={theme.palette.primary.main}
                         label="CPU"
                         percent={Math.min(totalCpu, 100)}
-                        color={theme.palette.primary.main}
-                        tooltip={`Total CPU across ${runningContainers.length} running containers`}
                         rightLabel={`${totalCpu.toFixed(1)}%`}
+                        tooltip={`Total CPU across ${runningContainers.length} running containers`}
                       />
                     </DockerSectionCard>
                   </AppGrid>
@@ -360,21 +361,21 @@ const DockerDashboard: React.FC = () => {
                     <DockerSectionCard
                       icon={
                         <Icon
+                          color={theme.palette.primary.main}
+                          height={28}
                           icon="la:memory"
                           width={28}
-                          height={28}
-                          color={theme.palette.primary.main}
                         />
                       }
-                      title="Memory"
                       subtitle="RAM utilization"
+                      title="Memory"
                     >
                       <MetricBar
+                        color={theme.palette.primary.main}
                         label="Memory"
                         percent={totalMemPercent}
-                        color={theme.palette.primary.main}
-                        tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
                         rightLabel={formatFileSize(totalMemUsage)}
+                        tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
                       />
                     </DockerSectionCard>
                   </AppGrid>
@@ -388,25 +389,25 @@ const DockerDashboard: React.FC = () => {
                       <DockerSectionCard
                         icon={
                           <Icon
+                            color={theme.palette.primary.main}
+                            height={28}
                             icon="mdi:harddisk"
                             width={28}
-                            height={28}
-                            color={theme.palette.primary.main}
                           />
                         }
-                        title="Disk Usage"
                         subtitle="Storage utilization"
+                        title="Disk Usage"
                       >
                         <MetricBar
+                          color={theme.palette.primary.main}
                           label="Disk (Docker)"
                           percent={Math.min(
                             (dockerInfo.disk_used / dockerInfo.disk_total) *
                               100,
                             100,
                           )}
-                          color={theme.palette.primary.main}
-                          tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
                           rightLabel={formatFileSize(dockerInfo.disk_used)}
+                          tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
                         />
                       </DockerSectionCard>
                     </AppGrid>
@@ -420,17 +421,17 @@ const DockerDashboard: React.FC = () => {
                 }}
               >
                 <DockerSectionCard
+                  fullHeight
                   icon={
                     <Icon
+                      color={theme.palette.primary.main}
+                      height={28}
                       icon="mdi:tag"
                       width={28}
-                      height={28}
-                      color={theme.palette.primary.main}
                     />
                   }
-                  title="Version"
                   subtitle="Engine & runtime versions"
-                  fullHeight
+                  title="Version"
                 >
                   <InfoRow label="Server">
                     {dockerInfo.server_version || "—"}
@@ -449,17 +450,17 @@ const DockerDashboard: React.FC = () => {
                 }}
               >
                 <DockerSectionCard
+                  fullHeight
                   icon={
                     <Icon
+                      color={theme.palette.primary.main}
+                      height={28}
                       icon="mdi:monitor"
                       width={28}
-                      height={28}
-                      color={theme.palette.primary.main}
                     />
                   }
-                  title="System"
                   subtitle="Host machine information"
-                  fullHeight
+                  title="System"
                 >
                   <InfoRow label="Hostname">{dockerInfo.name || "—"}</InfoRow>
                   <InfoRow label="OS">
@@ -480,17 +481,17 @@ const DockerDashboard: React.FC = () => {
                 }}
               >
                 <DockerSectionCard
+                  fullHeight
                   icon={
                     <Icon
+                      color={theme.palette.primary.main}
+                      height={28}
                       icon="mdi:wrench"
                       width={28}
-                      height={28}
-                      color={theme.palette.primary.main}
                     />
                   }
-                  title="Configuration"
                   subtitle="Storage & runtime settings"
-                  fullHeight
+                  title="Configuration"
                 >
                   <InfoRow label="Storage Driver">
                     {dockerInfo.storage_driver || "—"}
@@ -524,12 +525,12 @@ const DockerDashboard: React.FC = () => {
           userSelect: "none",
         }}
       >
-        <AppTypography variant="subtitle1" fontWeight={700}>
+        <AppTypography fontWeight={700} variant="subtitle1">
           Resources
         </AppTypography>
         <AppIconButton
-          size="small"
           className="section-toggle"
+          size="small"
           style={{
             opacity: 0,
             transition: "opacity 0.15s",
@@ -537,13 +538,13 @@ const DockerDashboard: React.FC = () => {
           }}
         >
           <Icon
-            icon="mdi:chevron-down"
-            width={24}
             height={24}
+            icon="mdi:chevron-down"
             style={{
               transition: "transform 0.2s",
               transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
             }}
+            width={24}
           />
         </AppIconButton>
       </div>
@@ -557,20 +558,29 @@ const DockerDashboard: React.FC = () => {
             }}
           >
             <DockerResourceListCard
+              columnHeaders={[
+                { label: "Name" },
+                { label: "Image", hiddenXs: true },
+                { label: "State" },
+                { label: "Status", hiddenXs: true },
+              ]}
+              emptyText="No containers found"
+              footerText={`${containers.length} containers`}
+              gridClassName="dd-containers-grid"
               icon={
                 <Icon
+                  color={theme.palette.primary.main}
+                  height={28}
                   icon="mdi:cube-outline"
                   width={28}
-                  height={28}
-                  color={theme.palette.primary.main}
                 />
               }
-              title="Containers"
+              isEmpty={previewContainers.length === 0}
+              onViewAll={() => navigateToTab("containers")}
+              scrollHeight={SCROLL_HEIGHT}
               subtitle={
                 <AppSelect
-                  variant="standard"
                   disableUnderline
-                  value={containerSort}
                   onChange={(e) =>
                     setContainerSort(e.target.value as typeof containerSort)
                   }
@@ -579,24 +589,15 @@ const DockerDashboard: React.FC = () => {
                     color: "var(--mui-palette-text-secondary)",
                     lineHeight: 1.4,
                   }}
+                  value={containerSort}
+                  variant="standard"
                 >
                   <option value="recent">Recent containers</option>
                   <option value="name">Sort by name</option>
                   <option value="state">Sort by state</option>
                 </AppSelect>
               }
-              onViewAll={() => navigateToTab("containers")}
-              columnHeaders={[
-                { label: "Name" },
-                { label: "Image", hiddenXs: true },
-                { label: "State" },
-                { label: "Status", hiddenXs: true },
-              ]}
-              gridClassName="dd-containers-grid"
-              isEmpty={previewContainers.length === 0}
-              emptyText="No containers found"
-              footerText={`${containers.length} containers`}
-              scrollHeight={SCROLL_HEIGHT}
+              title="Containers"
             >
               {previewContainers.map((container, i) => {
                 const name =
@@ -620,19 +621,19 @@ const DockerDashboard: React.FC = () => {
                         }}
                       >
                         <DockerIcon
+                          alt={name}
                           identifier={container.icon}
                           size={22}
-                          alt={name}
                         />
-                        <AppTypography variant="body2" fontWeight={500} noWrap>
+                        <AppTypography fontWeight={500} noWrap variant="body2">
                           {name}
                         </AppTypography>
                       </div>
                       <AppTypography
-                        variant="caption"
+                        className="dd-hidden-xs"
                         color="text.secondary"
                         noWrap
-                        className="dd-hidden-xs"
+                        variant="caption"
                       >
                         {container.Image}
                       </AppTypography>
@@ -643,10 +644,10 @@ const DockerDashboard: React.FC = () => {
                         />
                       </div>
                       <AppTypography
-                        variant="caption"
+                        className="dd-hidden-xs"
                         color="text.secondary"
                         noWrap
-                        className="dd-hidden-xs"
+                        variant="caption"
                       >
                         {container.Status.replace(/\s*\(.*?\)\s*$/, "")}
                       </AppTypography>
@@ -666,20 +667,29 @@ const DockerDashboard: React.FC = () => {
             }}
           >
             <DockerResourceListCard
+              columnHeaders={[
+                { label: "Repository" },
+                { label: "Tag", hiddenXs: true },
+                { label: "Status" },
+                { label: "Size", hiddenXs: true },
+              ]}
+              emptyText="No images found"
+              footerText={`${images.length} images`}
+              gridClassName="dd-images-grid"
               icon={
                 <Icon
+                  color={theme.palette.primary.main}
+                  height={28}
                   icon="mdi:layers"
                   width={28}
-                  height={28}
-                  color={theme.palette.primary.main}
                 />
               }
-              title="Images"
+              isEmpty={previewImages.length === 0}
+              onViewAll={() => navigateToTab("images")}
+              scrollHeight={SCROLL_HEIGHT}
               subtitle={
                 <AppSelect
-                  variant="standard"
                   disableUnderline
-                  value={imageSort}
                   onChange={(e) =>
                     setImageSort(e.target.value as typeof imageSort)
                   }
@@ -688,6 +698,8 @@ const DockerDashboard: React.FC = () => {
                     color: "var(--mui-palette-text-secondary)",
                     lineHeight: 1.4,
                   }}
+                  value={imageSort}
+                  variant="standard"
                 >
                   <option value="largest">Largest images</option>
                   <option value="recent">Most recent</option>
@@ -695,18 +707,7 @@ const DockerDashboard: React.FC = () => {
                   <option value="usage">Most used</option>
                 </AppSelect>
               }
-              onViewAll={() => navigateToTab("images")}
-              columnHeaders={[
-                { label: "Repository" },
-                { label: "Tag", hiddenXs: true },
-                { label: "Status" },
-                { label: "Size", hiddenXs: true },
-              ]}
-              gridClassName="dd-images-grid"
-              isEmpty={previewImages.length === 0}
-              emptyText="No images found"
-              footerText={`${images.length} images`}
-              scrollHeight={SCROLL_HEIGHT}
+              title="Images"
             >
               {previewImages.map((image, i) => {
                 const fullTag = image.RepoTags?.[0] ?? "<none>:<none>";
@@ -725,32 +726,32 @@ const DockerDashboard: React.FC = () => {
                         paddingBlock: 5,
                       }}
                     >
-                      <AppTypography variant="body2" fontWeight={500} noWrap>
+                      <AppTypography fontWeight={500} noWrap variant="body2">
                         {repo}
                       </AppTypography>
                       <AppTypography
-                        variant="caption"
+                        className="dd-hidden-xs"
                         color="text.secondary"
                         noWrap
-                        className="dd-hidden-xs"
+                        variant="caption"
                       >
                         {tag}
                       </AppTypography>
                       <div>
                         {inUse && (
                           <Chip
-                            size="small"
-                            label="In Use"
                             color="success"
+                            label="In Use"
+                            size="small"
                             variant="soft"
                           />
                         )}
                       </div>
                       <AppTypography
-                        variant="caption"
+                        className="dd-hidden-xs"
                         color="text.secondary"
                         noWrap
-                        className="dd-hidden-xs"
+                        variant="caption"
                       >
                         {formatFileSize(image.Size)}
                       </AppTypography>

@@ -3,16 +3,13 @@ import React from "react";
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
+import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
+import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
 
 const IndexerDialog: React.FC = () => {
-  const {
-    indexers,
-    isIndexerDialogOpen,
-    closeIndexerDialog,
-    lastIndexerResult,
-    lastIndexerError,
-  } = useFileTransfers();
+  const { closeIndexerDialog } = useBackgroundJobActions();
+  const { indexers, isIndexerDialogOpen, lastIndexerResult, lastIndexerError } =
+    useBackgroundJobIndexer();
   const activeIndexer = indexers[0];
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);
@@ -68,16 +65,16 @@ const IndexerDialog: React.FC = () => {
 
   return (
     <IndexerStatusDialog
-      open={isIndexerDialogOpen}
-      onClose={closeIndexerDialog}
-      title="Indexing Filesystem"
-      isRunning={isRunning}
-      success={success}
       error={error}
+      isRunning={isRunning}
+      onClose={closeIndexerDialog}
+      open={isIndexerDialogOpen}
       phaseLabel={getPhaseLabel()}
       progressStats={progressStats}
       showProgressStats={isRunning || success}
+      success={success}
       successDescription={successDescription}
+      title="Indexing Filesystem"
     />
   );
 };

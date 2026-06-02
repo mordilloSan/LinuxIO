@@ -1,6 +1,9 @@
 package config
 
-import "maps"
+import (
+	"maps"
+	"slices"
+)
 
 func cloneSettings(in *Settings) *Settings {
 	if in == nil {
@@ -16,12 +19,12 @@ func cloneSettings(in *Settings) *Settings {
 	return &out
 }
 
-func cloneAppSettings(in AppSettings) AppSettings {
+func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
 	out := in
 	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
-	out.DashboardOrder = cloneStringSlice(in.DashboardOrder)
-	out.HiddenCards = cloneStringSlice(in.HiddenCards)
-	out.ContainerOrder = cloneStringSlice(in.ContainerOrder)
+	out.DashboardOrder = slices.Clone(in.DashboardOrder)
+	out.HiddenCards = slices.Clone(in.HiddenCards)
+	out.ContainerOrder = slices.Clone(in.ContainerOrder)
 	if in.DockerDashboardSections != nil {
 		sections := *in.DockerDashboardSections
 		out.DockerDashboardSections = &sections
@@ -30,14 +33,14 @@ func cloneAppSettings(in AppSettings) AppSettings {
 		sections := *in.HardwareSections
 		out.HardwareSections = &sections
 	}
-	out.ViewModes = cloneStringMap(in.ViewModes)
+	out.ViewModes = maps.Clone(in.ViewModes)
 	return out
 }
 
 func cloneDocker(in Docker) Docker {
 	out := in
-	out.Folders = cloneAbsolutePathSlice(in.Folders)
-	out.AutoUpdateStacks = cloneStringSlice(in.AutoUpdateStacks)
+	out.Folders = slices.Clone(in.Folders)
+	out.AutoUpdateStacks = slices.Clone(in.AutoUpdateStacks)
 	return out
 }
 
@@ -83,27 +86,4 @@ func cloneCSSColor(in *CSSColor) *CSSColor {
 	}
 	out := *in
 	return &out
-}
-
-func cloneStringSlice(in []string) []string {
-	if in == nil {
-		return nil
-	}
-	return append([]string(nil), in...)
-}
-
-func cloneAbsolutePathSlice(in []AbsolutePath) []AbsolutePath {
-	if in == nil {
-		return nil
-	}
-	return append([]AbsolutePath(nil), in...)
-}
-
-func cloneStringMap(in map[string]string) map[string]string {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]string, len(in))
-	maps.Copy(out, in)
-	return out
 }

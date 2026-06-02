@@ -2,21 +2,21 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   createContext,
-  useEffect,
-  useState,
   useCallback,
+  useEffect,
   useMemo,
+  useState,
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio, CACHE_TTL_MS, LinuxIOError, waitForStreamMux } from "@/api";
+import { CACHE_TTL_MS, linuxio, LinuxIOError, waitForStreamMux } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
   AppSettings,
   AppViewModes,
-  ConfigPatch,
   ConfigContextType,
+  ConfigPatch,
   ConfigProviderProps,
   ConfigValueKey,
   ConfigValueMap,
@@ -386,7 +386,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (patch: ConfigPatch) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
-      setConfigRemote([patch]);
+      setConfigRemote(patch);
     },
     [canSave, setConfigRemote],
   );

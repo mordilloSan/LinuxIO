@@ -17,15 +17,15 @@ import { WireGuardInterface } from "@/types/wireguard";
 
 // Props type
 interface InterfaceCardProps {
-  iface: WireGuardInterface;
-  selectedInterface: string | null;
-  selectedCardRef: RefObject<HTMLDivElement> | null;
-  primaryColor?: string;
-  handleSelectInterface: (iface: WireGuardInterface) => void;
-  handleToggleInterface: (name: string, status: "up" | "down") => void;
-  handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
-  handleDelete: (name: string) => void;
   handleAddPeer: (name: string, peerData: any) => void;
+  handleDelete: (name: string) => void;
+  handleSelectInterface: (iface: WireGuardInterface) => void;
+  handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
+  handleToggleInterface: (name: string, status: "up" | "down") => void;
+  iface: WireGuardInterface;
+  primaryColor?: string;
+  selectedCardRef: RefObject<HTMLDivElement> | null;
+  selectedInterface: string | null;
 }
 
 const InterfaceCard: React.FC<InterfaceCardProps> = ({
@@ -51,16 +51,17 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0, y: -20 }}
       layout
+      transition={{ duration: 0.3 }}
     >
       <FrostedCard
-        ref={isSelected ? selectedCardRef : null}
+        onClick={() => handleSelectInterface(iface)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        ref={isSelected ? selectedCardRef : null}
         style={{
           cursor: "pointer",
           ...getAccentCardStyles(idleAccentColor),
@@ -68,7 +69,6 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
             "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
           ...((isSelected || hovered) && hoverStyles),
         }}
-        onClick={() => handleSelectInterface(iface)}
       >
         <AppCardContent>
           <div
@@ -78,7 +78,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               alignItems: "center",
             }}
           >
-            <AppTypography variant="subtitle1" fontWeight={700}>
+            <AppTypography fontWeight={700} variant="subtitle1">
               {iface.name}
             </AppTypography>
             <div>
@@ -86,12 +86,6 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
                 <AppIconButton
-                  style={{
-                    color:
-                      iface.isConnected === "Active"
-                        ? theme.palette.primary.light
-                        : theme.palette.text.disabled,
-                  }}
                   aria-label="Power"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -100,8 +94,14 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                       iface.isConnected === "Active" ? "down" : "up",
                     );
                   }}
+                  style={{
+                    color:
+                      iface.isConnected === "Active"
+                        ? theme.palette.primary.light
+                        : theme.palette.text.disabled,
+                  }}
                 >
-                  <Icon icon="mdi:power" width={22} height={22} />
+                  <Icon height={22} icon="mdi:power" width={22} />
                 </AppIconButton>
               </AppTooltip>
               <AppTooltip
@@ -112,18 +112,18 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 }
               >
                 <AppIconButton
-                  style={{
-                    color: iface.isEnabled
-                      ? theme.palette.success.main
-                      : theme.palette.text.disabled,
-                  }}
                   aria-label="Boot Persistence"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleToggleBootPersistence(iface.name, iface.isEnabled);
                   }}
+                  style={{
+                    color: iface.isEnabled
+                      ? theme.palette.success.main
+                      : theme.palette.text.disabled,
+                  }}
                 >
-                  <Icon icon="mdi:restart" width={22} height={22} />
+                  <Icon height={22} icon="mdi:restart" width={22} />
                 </AppIconButton>
               </AppTooltip>
               <AppTooltip title="Add Peer">
@@ -133,7 +133,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     handleAddPeer(iface.name, {});
                   }}
                 >
-                  <Icon icon="mdi:plus" width={22} height={22} />
+                  <Icon height={22} icon="mdi:plus" width={22} />
                 </AppIconButton>
               </AppTooltip>
               <AppTooltip title="Delete Interface">
@@ -144,7 +144,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     handleDelete(iface.name);
                   }}
                 >
-                  <Icon icon="mdi:delete" width={22} height={22} />
+                  <Icon height={22} icon="mdi:delete" width={22} />
                 </AppIconButton>
               </AppTooltip>
             </div>

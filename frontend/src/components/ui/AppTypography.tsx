@@ -54,15 +54,15 @@ export interface AppTypographyProps extends Omit<
   React.HTMLAttributes<HTMLElement>,
   "color"
 > {
-  variant?: Variant;
-  color?: SemanticColor | (string & {});
-  fontWeight?: number | string;
-  fontSize?: string | number;
-  noWrap?: boolean;
   align?: "left" | "center" | "right" | "justify";
-  gutterBottom?: boolean;
-  component?: React.ElementType;
   children?: React.ReactNode;
+  color?: SemanticColor | (string & {});
+  component?: React.ElementType;
+  fontSize?: string | number;
+  fontWeight?: number | string;
+  gutterBottom?: boolean;
+  noWrap?: boolean;
+  variant?: Variant;
 }
 
 const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
@@ -108,7 +108,7 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
     };
 
     return (
-      <Tag ref={ref} className={cls} style={merged} {...rest}>
+      <Tag className={cls} ref={ref} style={merged} {...rest}>
         {children}
       </Tag>
     );

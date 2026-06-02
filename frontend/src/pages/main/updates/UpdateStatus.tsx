@@ -6,16 +6,16 @@ import UpdateList from "./UpdateList";
 import { Update } from "@/types/update";
 
 interface UpdateStatusProps {
-  updates: Update[];
+  error?: string | null;
+  eventLog?: string[];
   isLoading: boolean;
+  onCancel?: () => void;
+  onClearError?: () => void;
   onUpdateOne: (pkg: string) => Promise<void>;
-  updatingPackage: string | null;
   progress: number;
   status?: string | null;
-  eventLog?: string[];
-  error?: string | null;
-  onClearError?: () => void;
-  onCancel?: () => void;
+  updates: Update[];
+  updatingPackage: string | null;
 }
 
 const UpdateStatus: React.FC<UpdateStatusProps> = ({
@@ -33,22 +33,22 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
   return (
     <div>
       <UpdateActions
-        isUpdating={!!updatingPackage}
         currentPackage={updatingPackage}
+        error={error}
+        eventLog={eventLog}
+        isUpdating={!!updatingPackage}
+        onCancel={onCancel}
+        onClearError={onClearError}
         progress={progress}
         status={status}
-        eventLog={eventLog}
-        error={error}
-        onClearError={onClearError}
-        onCancel={onCancel}
       />
 
       <UpdateList
-        updates={updates}
-        onUpdateClick={onUpdateOne}
-        isUpdating={!!updatingPackage || isLoading}
         currentPackage={updatingPackage}
         isLoading={isLoading}
+        isUpdating={!!updatingPackage || isLoading}
+        onUpdateClick={onUpdateOne}
+        updates={updates}
       />
     </div>
   );

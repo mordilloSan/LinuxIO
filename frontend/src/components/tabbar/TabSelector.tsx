@@ -8,16 +8,16 @@ import AppMenu from "@/components/ui/AppMenu";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface TabOption {
-  value: string;
   label: string;
+  value: string;
 }
 interface TabSelectorProps {
-  value: string;
+  className?: string;
   onChange: (value: string) => void;
   options: TabOption[];
   rightContent?: React.ReactNode;
-  className?: string;
   style?: React.CSSProperties;
+  value: string;
 }
 
 const TabSelector: React.FC<TabSelectorProps> = ({
@@ -50,15 +50,15 @@ const TabSelector: React.FC<TabSelectorProps> = ({
       }
     >
       <div className="tab-selector__scroller custom-scrollbar">
-        <div className="tab-selector__pills" role="tablist" aria-label="Tabs">
+        <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
           {options.map((opt) => (
             <button
-              key={opt.value}
-              type="button"
-              role="tab"
               aria-selected={value === opt.value}
               className={`tab-selector__pill ${value === opt.value ? "tab-selector__pill--active" : ""}`.trim()}
+              key={opt.value}
               onClick={() => onChange(opt.value)}
+              role="tab"
+              type="button"
             >
               {opt.label}
             </button>
@@ -71,19 +71,19 @@ const TabSelector: React.FC<TabSelectorProps> = ({
           {isMobile ? (
             <>
               <AppIconButton
-                size="small"
                 onClick={(e) => setAnchorEl(e.currentTarget)}
+                size="small"
                 style={{ marginTop: 2, flexShrink: 0 }}
               >
-                <Icon icon="mdi:tune" width={20} height={20} />
+                <Icon height={20} icon="mdi:tune" width={20} />
               </AppIconButton>
               <AppMenu
-                open={Boolean(anchorEl)}
-                onClose={() => setAnchorEl(null)}
                 anchorEl={anchorEl}
                 anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
                 minWidth="unset"
+                onClose={() => setAnchorEl(null)}
+                open={Boolean(anchorEl)}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
               >
                 <div className="tab-selector__mobile-actions">
                   {rightContent}

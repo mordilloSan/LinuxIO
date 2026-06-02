@@ -1,30 +1,29 @@
 import React, { useEffect, useRef } from "react";
 
 import AppPopover, { AppPopoverOrigin } from "./AppPopover";
-
 import "./app-menu.css";
 
 export interface AppMenuProps {
-  open: boolean;
-  onClose: () => void;
   anchorEl?: HTMLElement | null;
-  anchorPosition?: { top: number; left: number } | null;
   anchorOrigin?: AppPopoverOrigin;
-  transformOrigin?: AppPopoverOrigin;
+  anchorPosition?: { top: number; left: number } | null;
   autoFocus?: boolean;
-  minWidth?: number | string;
   children: React.ReactNode;
   className?: string;
+  minWidth?: number | string;
+  onClose: () => void;
+  open: boolean;
   style?: React.CSSProperties;
+  transformOrigin?: AppPopoverOrigin;
 }
 
 export interface AppMenuItemProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
+  endAdornment?: React.ReactNode;
   selected?: boolean;
   startAdornment?: React.ReactNode;
-  endAdornment?: React.ReactNode;
 }
 
 const focusableSelector = '[role="menuitem"]:not(:disabled)';
@@ -111,23 +110,23 @@ const AppMenu: React.FC<AppMenuProps> = ({
 
   return (
     <AppPopover
-      open={open}
-      onClose={onClose}
       anchorEl={anchorEl}
-      anchorPosition={anchorPosition}
       anchorOrigin={anchorOrigin}
-      transformOrigin={transformOrigin}
+      anchorPosition={anchorPosition}
+      onClose={onClose}
+      open={open}
       paperClassName={`app-menu ${className || ""}`.trim()}
       paperStyle={{
         minWidth,
         ...style,
       }}
+      transformOrigin={transformOrigin}
     >
       <div
-        ref={menuRef}
         className="app-menu__content"
-        role="menu"
         onKeyDown={handleKeyDown}
+        ref={menuRef}
+        role="menu"
       >
         {children}
       </div>
@@ -152,9 +151,6 @@ export const AppMenuItem = React.forwardRef<
     ref,
   ) => (
     <button
-      ref={ref}
-      type="button"
-      role="menuitem"
       className={[
         "app-menu__item",
         selected && "app-menu__item--selected",
@@ -163,6 +159,9 @@ export const AppMenuItem = React.forwardRef<
         .filter(Boolean)
         .join(" ")}
       disabled={disabled}
+      ref={ref}
+      role="menuitem"
+      type="button"
       {...rest}
     >
       {startAdornment ? (

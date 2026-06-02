@@ -103,7 +103,6 @@ const NetworkInterfacesCard: React.FC = () => {
             }}
           >
             <AppTypography
-              variant="caption"
               color="text.secondary"
               style={{
                 textTransform: "uppercase",
@@ -111,10 +110,11 @@ const NetworkInterfacesCard: React.FC = () => {
                 fontSize: "0.62rem",
                 flexShrink: 0,
               }}
+              variant="caption"
             >
               {label}
             </AppTypography>
-            <AppTypography variant="body2" fontWeight={500} noWrap>
+            <AppTypography fontWeight={500} noWrap variant="body2">
               {value}
             </AppTypography>
           </div>
@@ -143,21 +143,21 @@ const NetworkInterfacesCard: React.FC = () => {
 
   return (
     <DashboardCard
-      title="Network"
       avatarIcon="mdi:ethernet"
-      stats={content}
-      stats2={content2}
-      selectOptions={options}
-      selectedOption={effectiveSelected}
-      selectedOptionLabel={effectiveSelected}
-      onSelect={(val: string) => {
-        setSelected(val);
-      }}
       connectionStatus={
         selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0
           ? "online"
           : "offline"
       }
+      onSelect={(val: string) => {
+        setSelected(val);
+      }}
+      selectedOption={effectiveSelected}
+      selectedOptionLabel={effectiveSelected}
+      selectOptions={options}
+      stats={content}
+      stats2={content2}
+      title="Network"
     />
   );
 };

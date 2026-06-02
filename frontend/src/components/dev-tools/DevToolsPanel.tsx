@@ -1,5 +1,5 @@
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
-import { useState, useRef, useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import { useAppTheme } from "@/theme";
@@ -152,31 +152,31 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
           </button>
         </div>
         <AppButton
-          variant="contained"
           color="primary"
-          size="small"
-          onClick={() => setIsDevtoolsOpen(!isDevtoolsOpen)}
           fullWidth
+          onClick={() => setIsDevtoolsOpen(!isDevtoolsOpen)}
+          size="small"
+          variant="contained"
         >
           {isDevtoolsOpen ? "Close" : "Open"} React Query Devtools
         </AppButton>
         {!shown ? (
           <AppButton
-            variant="contained"
             color="warning"
-            size="small"
-            onClick={forceUpdateNotification}
             fullWidth
+            onClick={forceUpdateNotification}
+            size="small"
+            variant="contained"
           >
             Show Update Notification
           </AppButton>
         ) : (
           <AppButton
-            variant="contained"
             color="secondary"
-            size="small"
-            onClick={clearUpdateNotification}
             fullWidth
+            onClick={clearUpdateNotification}
+            size="small"
+            variant="contained"
           >
             Hide Update Notification
           </AppButton>
@@ -188,6 +188,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
         <>
           {/* Backdrop */}
           <div
+            onClick={() => setIsDevtoolsOpen(false)}
             style={{
               position: "fixed",
               top: 0,
@@ -197,7 +198,6 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
               backgroundColor: alpha(theme.palette.common.black, 0.5),
               zIndex: 9997,
             }}
-            onClick={() => setIsDevtoolsOpen(false)}
           />
           {/* Draggable Devtools Panel */}
           <div

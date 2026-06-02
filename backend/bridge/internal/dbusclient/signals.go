@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,10 +94,10 @@ func (m SignalMatch) Options() []godbus.MatchOption {
 	if m.PathNamespace != "" {
 		options = append(options, godbus.WithMatchPathNamespace(m.PathNamespace))
 	}
-	for _, idx := range sortedIntKeys(m.Args) {
+	for _, idx := range slices.Sorted(maps.Keys(m.Args)) {
 		options = append(options, godbus.WithMatchArg(idx, m.Args[idx]))
 	}
-	for _, idx := range sortedIntKeys(m.ArgPaths) {
+	for _, idx := range slices.Sorted(maps.Keys(m.ArgPaths)) {
 		options = append(options, godbus.WithMatchArgPath(idx, m.ArgPaths[idx]))
 	}
 	if m.Arg0Namespace != "" {
@@ -163,10 +164,10 @@ func (m SignalMatch) key() string {
 	appendPart("member", m.Member)
 	appendPart("path", string(m.Path))
 	appendPart("path_namespace", string(m.PathNamespace))
-	for _, idx := range sortedIntKeys(m.Args) {
+	for _, idx := range slices.Sorted(maps.Keys(m.Args)) {
 		parts = append(parts, "arg"+strconv.Itoa(idx)+"="+m.Args[idx])
 	}
-	for _, idx := range sortedIntKeys(m.ArgPaths) {
+	for _, idx := range slices.Sorted(maps.Keys(m.ArgPaths)) {
 		parts = append(parts, "arg"+strconv.Itoa(idx)+"path="+m.ArgPaths[idx])
 	}
 	appendPart("arg0namespace", m.Arg0Namespace)
@@ -392,13 +393,4 @@ func signalArg0InNamespace(sig *godbus.Signal, namespace string) bool {
 		return false
 	}
 	return got == namespace || strings.HasPrefix(got, namespace+".")
-}
-
-func sortedIntKeys(values map[int]string) []int {
-	keys := make([]int, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Ints(keys)
-	return keys
 }

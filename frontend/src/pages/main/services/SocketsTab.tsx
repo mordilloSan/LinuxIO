@@ -64,42 +64,42 @@ const SocketsTab: React.FC = () => {
 
   return (
     <UnitListTab
-      viewMode={viewMode}
-      setViewMode={setViewMode}
-      data={data}
-      isPending={isPending}
-      isError={isError}
-      error={error}
-      searchPlaceholder="Search sockets…"
-      errorMessage="Failed to load sockets"
       compareItems={compareSocketsByName}
+      data={data}
+      error={error}
+      errorMessage="Failed to load sockets"
+      isError={isError}
+      isPending={isPending}
       matchesSearch={matchesSocketSearch}
-      urlParam="socket"
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
-        <SocketTableView
-          sockets={items}
-          selected={selected}
-          onSelect={onSelect}
-          onDoubleClick={onDoubleClick}
-        />
-      )}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <SocketCardsView
-          sockets={items}
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
+          sockets={items}
         />
       )}
       renderDetailPanel={(socket, onClose) => (
         <UnitInfoPanel
-          unitName={socket.name}
           onClose={onClose}
           renderInfoRows={(info, isPending) =>
             buildSocketInfoRows(socket, info, isPending)
           }
+          unitName={socket.name}
         />
       )}
+      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+        <SocketTableView
+          onDoubleClick={onDoubleClick}
+          onSelect={onSelect}
+          selected={selected}
+          sockets={items}
+        />
+      )}
+      searchPlaceholder="Search sockets…"
+      setViewMode={setViewMode}
+      urlParam="socket"
+      viewMode={viewMode}
     />
   );
 };

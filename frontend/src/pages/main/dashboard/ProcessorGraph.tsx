@@ -82,8 +82,8 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}
     >
       <SmoothieCanvas
-        ref={canvasRef}
         chartRef={chartRef}
+        ref={canvasRef}
         style={{ flex: 1, minWidth: 0, height: "100%" }}
       />
       <div

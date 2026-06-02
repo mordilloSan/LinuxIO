@@ -6,17 +6,17 @@ import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
 
 interface FilesListProps {
-  files: FileItem[];
-  selectedPaths: Set<string>;
   cutPaths: Set<string>;
-  viewMode: ViewMode;
-  onFileClick: (event: React.MouseEvent, path: string) => void;
-  onDownloadFile: (item: FileItem) => void;
-  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
+  files: FileItem[];
   isMarqueeSelecting?: boolean;
-  renamingPath: string | null;
-  onConfirmRename: (path: string, newName: string) => void;
   onCancelRename: () => void;
+  onConfirmRename: (path: string, newName: string) => void;
+  onDownloadFile: (item: FileItem) => void;
+  onFileClick: (event: React.MouseEvent, path: string) => void;
+  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
+  renamingPath: string | null;
+  selectedPaths: Set<string>;
+  viewMode: ViewMode;
 }
 
 const FilesList: React.FC<FilesListProps> = React.memo(
@@ -67,25 +67,25 @@ const FilesList: React.FC<FilesListProps> = React.memo(
         >
           {files.map((file) => (
             <ItemComponent
-              key={`${file.path}-${file.name}`}
-              path={file.path}
-              name={file.name}
-              type={file.type}
-              size={file.size}
-              modTime={file.modTime}
-              isDirectory={false}
-              isSymlink={file.symlink}
-              hidden={file.hidden}
-              selected={selectedPaths.has(file.path)}
-              isCut={cutPaths.has(file.path)}
-              isRenaming={renamingPath === file.path}
-              showFullPath={file.showFullPath}
-              onClick={(event) => onFileClick(event, file.path)}
-              onDoubleClick={() => onDownloadFile(file)}
-              onContextMenu={(event) => onFileContextMenu(event, file.path)}
-              onConfirmRename={(newName) => onConfirmRename(file.path, newName)}
-              onCancelRename={onCancelRename}
               disableHover={isMarqueeSelecting}
+              hidden={file.hidden}
+              isCut={cutPaths.has(file.path)}
+              isDirectory={false}
+              isRenaming={renamingPath === file.path}
+              isSymlink={file.symlink}
+              key={`${file.path}-${file.name}`}
+              modTime={file.modTime}
+              name={file.name}
+              onCancelRename={onCancelRename}
+              onClick={(event) => onFileClick(event, file.path)}
+              onConfirmRename={(newName) => onConfirmRename(file.path, newName)}
+              onContextMenu={(event) => onFileContextMenu(event, file.path)}
+              onDoubleClick={() => onDownloadFile(file)}
+              path={file.path}
+              selected={selectedPaths.has(file.path)}
+              showFullPath={file.showFullPath}
+              size={file.size}
+              type={file.type}
             />
           ))}
         </div>

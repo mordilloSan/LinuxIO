@@ -1,18 +1,18 @@
 /**
- * LinuxIO Core API - Promise-based bridge communication
+ * LinuxIO Core API - internal JSON request bridge.
  *
- * - Typed calls: linuxio.*.call()
+ * App code should use generated endpoints, such as `linuxio.system.get_cpu_info()`.
  *
  */
 
+import { waitForStreamResult } from "./stream-helpers";
 import {
+  encodeString,
   getStreamMux,
   initStreamMux,
-  waitForStreamMux,
-  encodeString,
   STREAM_MULTIPLEXER_CONFIG,
+  waitForStreamMux,
 } from "./StreamMultiplexer";
-import { waitForStreamResult } from "./stream-helpers";
 
 /**
  * LinuxIOError - structured error with code
@@ -28,20 +28,20 @@ export class LinuxIOError extends Error {
 }
 
 /**
- * CallOptions for simple request/response calls
+ * RequestOptions for simple request/response calls
  */
-export interface CallOptions {
-  timeout?: number; // Timeout in milliseconds (default: 30000)
+export interface RequestOptions {
   retryPolicy?: "connection_closed" | "none";
+  timeout?: number; // Timeout in milliseconds (default: 30000)
 }
 
-const MAX_CALL_ATTEMPTS = 2;
+const MAX_REQUEST_ATTEMPTS = 2;
 
 function isConnectionClosedError(error: unknown): boolean {
   return error instanceof LinuxIOError && error.code === "connection_closed";
 }
 
-async function ensureCallMuxReady(timeoutMs: number) {
+async function ensureRequestMuxReady(timeoutMs: number) {
   const existingMux = getStreamMux();
   if (!existingMux) {
     throw new LinuxIOError("StreamMux not initialized", "not_initialized");
@@ -70,17 +70,21 @@ async function ensureCallMuxReady(timeoutMs: number) {
   return mux;
 }
 
-async function executeCallAttempt<T>(
+async function executeRequestAttempt<T>(
   handler: string,
   command: string,
-  args: string[],
+  request: unknown,
   timeoutMs: number,
 ): Promise<T> {
   const route = `${handler}.${command}`;
-  const parts = [route, ...args];
-  const payload = encodeString(parts.join("\0"));
+  const payload = encodeString(
+    JSON.stringify({
+      route,
+      request: request ?? {},
+    }),
+  );
 
-  const mux = await ensureCallMuxReady(timeoutMs);
+  const mux = await ensureRequestMuxReady(timeoutMs);
   const stream = mux.openStream(route, payload);
 
   const controller = new AbortController();
@@ -103,34 +107,39 @@ async function executeCallAttempt<T>(
 }
 
 /**
- * Simple request/response call (internal — use linuxio.*.call() for typed access)
+ * Simple request/response call (internal — use linuxio.*() for typed access)
  */
-export async function call<T = unknown>(
+export async function request<T = unknown>(
   handler: string,
   command: string,
-  args: string[] = [],
-  options?: CallOptions,
+  payload: unknown = {},
+  options?: RequestOptions,
 ): Promise<T> {
   const timeoutMs =
-    options?.timeout ?? STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs;
+    options?.timeout ?? STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs;
   const retryPolicy = options?.retryPolicy ?? "none";
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown = null;
 
-  for (let attempt = 1; attempt <= MAX_CALL_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt += 1) {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       throw new LinuxIOError("Request timeout", "timeout");
     }
 
     try {
-      return await executeCallAttempt<T>(handler, command, args, remainingMs);
+      return await executeRequestAttempt<T>(
+        handler,
+        command,
+        payload,
+        remainingMs,
+      );
     } catch (error) {
       lastError = error;
 
       const canRetry =
         retryPolicy === "connection_closed" &&
-        attempt < MAX_CALL_ATTEMPTS &&
+        attempt < MAX_REQUEST_ATTEMPTS &&
         isConnectionClosedError(error);
       if (!canRetry) {
         throw error;

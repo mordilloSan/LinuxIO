@@ -4,8 +4,8 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import {
-  SummaryRowsList,
   type SummaryRow,
+  SummaryRowsList,
 } from "@/components/cards/HardwareCard";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -89,8 +89,8 @@ const CompactGroupChips: React.FC<{
   return (
     <div style={{ position: "relative", minHeight: 20 }}>
       <div
-        ref={measureRef}
         aria-hidden
+        ref={measureRef}
         style={{
           display: "flex",
           flexWrap: "wrap",
@@ -108,8 +108,8 @@ const CompactGroupChips: React.FC<{
             key={`measure-${username}-${group}`}
             label={group}
             size="small"
-            variant="soft"
             style={{ fontSize: "0.65rem", height: 20 }}
+            variant="soft"
           />
         ))}
       </div>
@@ -123,20 +123,20 @@ const CompactGroupChips: React.FC<{
       >
         {visible.map((group, idx) => (
           <Chip
+            color={idx === 0 ? "primary" : "default"}
             key={`${username}-${group}`}
             label={group}
             size="small"
-            variant="soft"
-            color={idx === 0 ? "primary" : "default"}
             style={{ fontSize: "0.65rem", height: 20, flexShrink: 0 }}
+            variant="soft"
           />
         ))}
         {hiddenCount > 0 && (
           <Chip
             label={`+${hiddenCount}`}
             size="small"
-            variant="soft"
             style={{ fontSize: "0.65rem", height: 20, flexShrink: 0 }}
+            variant="soft"
           />
         )}
       </div>
@@ -174,15 +174,15 @@ const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
 );
 
 export interface UserCardProps {
-  user: AccountUser;
   currentUsername: string | undefined;
   isLocking: boolean;
-  isUnlocking: boolean;
   isSelected?: boolean;
-  onOpen?: () => void;
-  onEdit: () => void;
+  isUnlocking: boolean;
   onChangePassword: () => void;
+  onEdit: () => void;
+  onOpen?: () => void;
   onToggleLock: () => void;
+  user: AccountUser;
 }
 
 const UserCard: React.FC<UserCardProps> = ({
@@ -244,7 +244,6 @@ const UserCard: React.FC<UserCardProps> = ({
         onOpen();
       }}
       role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
       style={{
         padding: isSelected ? 12 : 10,
         display: "flex",
@@ -261,6 +260,7 @@ const UserCard: React.FC<UserCardProps> = ({
           ? "transparent"
           : `color-mix(in srgb, ${accentColor}, transparent 70%)`,
       }}
+      tabIndex={onOpen ? 0 : undefined}
     >
       {/* Header */}
       <div
@@ -291,26 +291,26 @@ const UserCard: React.FC<UserCardProps> = ({
             }}
           >
             <Icon
+              color={accentColor}
+              height={32}
               icon={getUserIcon(user)}
               width={32}
-              height={32}
-              color={accentColor}
             />
           </div>
           <div style={{ minWidth: 0 }}>
             <AppTypography
-              variant="subtitle1"
               fontWeight={700}
               noWrap
               style={{ lineHeight: 1.2 }}
+              variant="subtitle1"
             >
               {user.username}
             </AppTypography>
             <AppTypography
-              variant="caption"
               color="text.secondary"
               noWrap
               style={{ display: "block" }}
+              variant="caption"
             >
               {user.gecos || "No full name"}
             </AppTypography>
@@ -326,28 +326,28 @@ const UserCard: React.FC<UserCardProps> = ({
             >
               {isCurrentUser && (
                 <Chip
+                  color="primary"
                   label="Your account"
                   size="small"
-                  color="primary"
-                  variant="soft"
                   style={{ fontSize: "0.65rem", height: 20 }}
+                  variant="soft"
                 />
               )}
               {user.isLocked && (
                 <Chip
+                  color="warning"
                   label="Locked"
                   size="small"
-                  color="warning"
-                  variant="soft"
                   style={{ fontSize: "0.65rem", height: 20 }}
+                  variant="soft"
                 />
               )}
               {user.isSystem && !isCurrentUser && (
                 <Chip
                   label="System"
                   size="small"
-                  variant="soft"
                   style={{ fontSize: "0.65rem", height: 20 }}
+                  variant="soft"
                 />
               )}
             </div>
@@ -355,65 +355,65 @@ const UserCard: React.FC<UserCardProps> = ({
         </div>
 
         <div
+          onClick={(event) => event.stopPropagation()}
           style={{
             display: "flex",
             alignItems: "center",
             gap: 2,
             flexShrink: 0,
           }}
-          onClick={(event) => event.stopPropagation()}
         >
           <AppTooltip title="Edit">
             <span>
               <AppIconButton
-                size="small"
-                style={{ padding: 4 }}
+                disabled={user.username === "root"}
                 onClick={(event) => {
                   event.stopPropagation();
                   onEdit();
                 }}
-                disabled={user.username === "root"}
+                size="small"
+                style={{ padding: 4 }}
               >
-                <Icon icon="mdi:pencil" width={14} height={14} />
+                <Icon height={14} icon="mdi:pencil" width={14} />
               </AppIconButton>
             </span>
           </AppTooltip>
           <AppTooltip title="Change Password">
             <AppIconButton
-              size="small"
-              style={{ padding: 4 }}
               onClick={(event) => {
                 event.stopPropagation();
                 onChangePassword();
               }}
+              size="small"
+              style={{ padding: 4 }}
             >
-              <Icon icon="mdi:form-textbox-password" width={14} height={14} />
+              <Icon height={14} icon="mdi:form-textbox-password" width={14} />
             </AppIconButton>
           </AppTooltip>
           <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
             <span>
               <AppIconButton
-                size="small"
-                style={{ padding: 4 }}
+                disabled={isProtected || isLocking || isUnlocking}
                 onClick={(event) => {
                   event.stopPropagation();
                   onToggleLock();
                 }}
-                disabled={isProtected || isLocking || isUnlocking}
+                size="small"
+                style={{ padding: 4 }}
               >
                 {user.isLocked ? (
-                  <Icon icon="mdi:lock-open" width={14} height={14} />
+                  <Icon height={14} icon="mdi:lock-open" width={14} />
                 ) : (
-                  <Icon icon="mdi:lock" width={14} height={14} />
+                  <Icon height={14} icon="mdi:lock" width={14} />
                 )}
               </AppIconButton>
             </span>
           </AppTooltip>
           <StatusDot
             color={statusColor}
-            tooltip={statusTooltip}
             size={8}
             style={{ marginLeft: 4 }}
+            tooltip={statusTooltip}
           />
         </div>
       </div>
@@ -430,7 +430,6 @@ const UserCard: React.FC<UserCardProps> = ({
       {/* Groups footer */}
       <div style={{ marginTop: "auto", paddingTop: 8 }}>
         <AppTypography
-          variant="caption"
           color="text.secondary"
           style={{
             letterSpacing: "0.06em",
@@ -438,6 +437,7 @@ const UserCard: React.FC<UserCardProps> = ({
             display: "block",
             marginBottom: 4,
           }}
+          variant="caption"
         >
           Groups ({groups.length})
         </AppTypography>
@@ -455,17 +455,17 @@ const UserCard: React.FC<UserCardProps> = ({
           >
             {groups.map((group, idx) => (
               <Chip
+                color={idx === 0 ? "primary" : "default"}
                 key={`${user.username}-${group}`}
                 label={group}
                 size="small"
-                variant="soft"
-                color={idx === 0 ? "primary" : "default"}
                 style={{ fontSize: "0.65rem", height: 20 }}
+                variant="soft"
               />
             ))}
           </div>
         ) : (
-          <CompactGroupChips username={user.username} groups={groups} />
+          <CompactGroupChips groups={groups} username={user.username} />
         )}
       </div>
     </FrostedCard>

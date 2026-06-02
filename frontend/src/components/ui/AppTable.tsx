@@ -9,8 +9,8 @@ export const AppTableContainer = React.forwardRef<
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
-    ref={ref}
     className={`app-table-container custom-scrollbar ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -23,8 +23,8 @@ export const AppTable = React.forwardRef<
   React.TableHTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
   <table
-    ref={ref}
     className={`app-table ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -37,8 +37,8 @@ export const AppTableHead = React.forwardRef<
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
   <thead
-    ref={ref}
     className={`app-table-head ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -51,8 +51,8 @@ export const AppTableBody = React.forwardRef<
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
   <tbody
-    ref={ref}
     className={`app-table-body ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -69,8 +69,8 @@ export const AppTableRow = React.forwardRef<
   AppTableRowProps
 >(({ className, selected, ...props }, ref) => (
   <tr
-    ref={ref}
     className={`app-table-row${selected ? " app-table-row--selected" : ""} ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -88,8 +88,8 @@ export const AppTableCell = React.forwardRef<
   AppTableCellProps
 >(({ align, component: Component = "td", className, style, ...props }, ref) => (
   <Component
-    ref={ref}
     className={`app-table-cell ${className || ""}`.trim()}
+    ref={ref}
     style={{ textAlign: align, ...style }}
     {...props}
   />

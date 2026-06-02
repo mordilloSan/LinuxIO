@@ -3,10 +3,10 @@ import React from "react";
 import { useAppTheme } from "@/theme";
 
 interface SelectionBoxProps {
+  height: number;
   left: number;
   top: number;
   width: number;
-  height: number;
 }
 
 /**

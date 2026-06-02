@@ -83,14 +83,14 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 	require.Equal(t, []string{"192.168.1.10/24"}, first[0].IPv4)
 	require.Equal(t, "00:11:22:33:44:55", first[0].MAC)
 	require.Equal(t, "1000 Mbps", first[0].Speed)
-	require.Zero(t, first[0].RxKBs)
-	require.Zero(t, first[0].TxKBs)
+	require.Zero(t, first[0].RXSpeed)
+	require.Zero(t, first[0].TXSpeed)
 
 	second, err := FetchNetworks(context.Background())
 	require.NoError(t, err)
 	require.Len(t, second, 1)
-	require.Equal(t, 2.0, second[0].RxKBs)
-	require.Equal(t, 4.0, second[0].TxKBs)
+	require.Equal(t, 2.0, second[0].RXSpeed)
+	require.Equal(t, 4.0, second[0].TXSpeed)
 }
 
 func TestComputeSimpleNetRatesReturnsZeroForInvalidSamples(t *testing.T) {

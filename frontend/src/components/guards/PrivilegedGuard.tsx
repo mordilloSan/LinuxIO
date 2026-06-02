@@ -15,7 +15,7 @@ export const PrivilegedGuard: React.FC<PropsWithChildren> = ({ children }) => {
 
   // Not authenticated - redirect to sign-in
   if (!isAuthenticated) {
-    return <Navigate to="/sign-in" replace />;
+    return <Navigate replace to="/sign-in" />;
   }
 
   // Authenticated but not privileged - show error

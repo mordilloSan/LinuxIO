@@ -6,65 +6,112 @@ import React, {
   useState,
 } from "react";
 
+import type { AppSettings, ThemeColorsByMode } from "@/types/config";
+
+import { useConfig } from "@/hooks/useConfig";
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
   FILE_TYPE_COLORS,
-  SEMANTIC_STATUS_COLORS,
   getContrastText,
   resolvePrimaryColor,
+  SEMANTIC_STATUS_COLORS,
 } from "@/theme/colors";
 import variants from "@/theme/variants";
-import { useConfig } from "@/hooks/useConfig";
-import type { AppSettings, ThemeColorsByMode } from "@/types/config";
 import { alpha, darken, lighten } from "@/utils/color";
 
 type BreakpointKey = keyof typeof breakpoints.values;
 type SpacingInput = number | string;
 
 interface AppPaletteColor {
-  main: string;
-  light: string;
-  dark: string;
   contrastText: string;
+  dark: string;
+  light: string;
+  main: string;
 }
 
 interface AppTypographyVariant {
   fontSize: string;
   fontWeight: number;
-  lineHeight: number;
   letterSpacing?: string;
+  lineHeight: number;
 }
 
 export interface AppTypography {
+  body1: AppTypographyVariant;
+  body2: AppTypographyVariant;
+  button: {
+    textTransform: "none";
+    fontWeight: number;
+  };
+  caption: AppTypographyVariant;
   fontFamily: string;
   fontSize: number;
-  fontWeightLight: number;
-  fontWeightRegular: number;
-  fontWeightMedium: number;
   fontWeightBold: number;
+  fontWeightLight: number;
+  fontWeightMedium: number;
+  fontWeightRegular: number;
   h1: AppTypographyVariant;
   h2: AppTypographyVariant;
   h3: AppTypographyVariant;
   h4: AppTypographyVariant;
   h5: AppTypographyVariant;
   h6: AppTypographyVariant;
-  body1: AppTypographyVariant;
-  body2: AppTypographyVariant;
-  caption: AppTypographyVariant;
+  overline: AppTypographyVariant & { textTransform: "uppercase" };
+  pxToRem: (value: number) => string;
   subtitle1: AppTypographyVariant;
   subtitle2: AppTypographyVariant;
-  overline: AppTypographyVariant & { textTransform: "uppercase" };
-  button: {
-    textTransform: "none";
-    fontWeight: number;
-  };
-  pxToRem: (value: number) => string;
 }
 
 export interface AppTheme {
-  name: string;
+  alpha: typeof alpha;
+  breakpoints: {
+    values: Record<BreakpointKey, number>;
+    up: (key: BreakpointKey) => string;
+    down: (key: BreakpointKey) => string;
+    between: (start: BreakpointKey, end: BreakpointKey) => string;
+  };
+  card: {
+    background: string;
+  };
+  chart: {
+    rx: string;
+    tx: string;
+    neutral: string;
+  };
+  codeBlock: {
+    background: string;
+    color: string;
+  };
   colorScheme: "light" | "dark";
+  darken: typeof darken;
+  dialog: {
+    border: string;
+    glow: string;
+    backdrop: string;
+  };
+  fileBrowser: {
+    surface: string;
+    chrome: string;
+    breadcrumbBackground: string;
+    breadcrumbText: string;
+  };
+  footer: {
+    color: string;
+    background: string;
+  };
+  header: {
+    color: string;
+    background: string;
+    search: {
+      color: string;
+    };
+    indicator: {
+      background: string;
+    };
+  };
+  lighten: typeof lighten;
+  name: string;
   palette: {
     mode: "light" | "dark";
     common: {
@@ -99,13 +146,22 @@ export interface AppTheme {
   shape: {
     borderRadius: number;
   };
-  spacing: (...values: SpacingInput[]) => string;
-  breakpoints: {
-    values: Record<BreakpointKey, number>;
-    up: (key: BreakpointKey) => string;
-    down: (key: BreakpointKey) => string;
-    between: (start: BreakpointKey, end: BreakpointKey) => string;
+  sidebar: {
+    color: string;
+    background: string;
+    header: {
+      color: string;
+      background: string;
+      brand: {
+        color: string;
+      };
+    };
+    badge: {
+      color: string;
+      background: string;
+    };
   };
+  spacing: (...values: SpacingInput[]) => string;
   transitions: {
     easing: {
       easeInOut: string;
@@ -122,61 +178,6 @@ export interface AppTheme {
     ) => string;
   };
   typography: AppTypography;
-  card: {
-    background: string;
-  };
-  dialog: {
-    border: string;
-    glow: string;
-    backdrop: string;
-  };
-  codeBlock: {
-    background: string;
-    color: string;
-  };
-  chart: {
-    rx: string;
-    tx: string;
-    neutral: string;
-  };
-  fileBrowser: {
-    surface: string;
-    chrome: string;
-    breadcrumbBackground: string;
-    breadcrumbText: string;
-  };
-  header: {
-    color: string;
-    background: string;
-    search: {
-      color: string;
-    };
-    indicator: {
-      background: string;
-    };
-  };
-  footer: {
-    color: string;
-    background: string;
-  };
-  sidebar: {
-    color: string;
-    background: string;
-    header: {
-      color: string;
-      background: string;
-      brand: {
-        color: string;
-      };
-    };
-    badge: {
-      color: string;
-      background: string;
-    };
-  };
-  alpha: typeof alpha;
-  lighten: typeof lighten;
-  darken: typeof darken;
 }
 
 interface AppThemeProviderProps {
@@ -346,7 +347,7 @@ function toColorChannel(color: string) {
     }
   }
 
-  const rgbMatch = trimmed.match(/^rgba?\(([^)]+)\)$/i);
+  const rgbMatch = /^rgba?\(([^)]+)\)$/i.exec(trimmed);
 
   if (rgbMatch) {
     return rgbMatch[1]
@@ -698,6 +699,19 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 
     for (const [key, value] of Object.entries(cssVariables)) {
       root.style.setProperty(key, value);
+    }
+
+    try {
+      localStorage.setItem(
+        "linuxio_theme_bootstrap",
+        JSON.stringify({
+          scheme: resolvedTheme.colorScheme,
+          bg: resolvedTheme.palette.background.default,
+          text: resolvedTheme.palette.text.primary,
+        }),
+      );
+    } catch {
+      // Best-effort cache only.
     }
   }, [cssVariables, resolvedTheme]);
 

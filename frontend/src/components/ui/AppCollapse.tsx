@@ -3,10 +3,10 @@ import React, { useEffect, useState } from "react";
 import "./app-collapse.css";
 
 interface AppCollapseProps {
+  children: React.ReactNode;
   in: boolean;
   timeout?: number | "auto";
   unmountOnExit?: boolean;
-  children: React.ReactNode;
 }
 
 const AppCollapse: React.FC<AppCollapseProps> = ({

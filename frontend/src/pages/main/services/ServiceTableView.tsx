@@ -1,15 +1,15 @@
 import React from "react";
 
-import { UnitTableView, statusDot } from "./UnitViews";
+import { statusDot, UnitTableView } from "./UnitViews";
 
 import type { Service } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
 
 interface ServiceTableViewProps {
-  services: Service[];
-  selected?: string | null;
-  onSelect?: (name: string | null) => void;
   onDoubleClick?: (name: string) => void;
+  onSelect?: (name: string | null) => void;
+  selected?: string | null;
+  services: Service[];
 }
 
 const desktopColumns = [
@@ -56,15 +56,31 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
   <UnitTableView
     data={services}
     desktopColumns={desktopColumns}
-    mobileColumns={mobileColumns}
+    emptyMessage="No services found."
     getRowKey={(service) => service.name}
-    selected={selected}
-    onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
+    mobileColumns={mobileColumns}
     onDoubleClick={(key) => {
       if (typeof key === "string") {
         onDoubleClick?.(key);
       }
     }}
+    onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
+    renderMainRow={(service, isMobile) => (
+      <>
+        <AppTableCell style={{ paddingLeft: 8 }}>
+          {statusDot(service.active_state)}
+          {service.active_state}
+        </AppTableCell>
+        <AppTableCell>{service.name}</AppTableCell>
+        {!isMobile && (
+          <>
+            <AppTableCell>{service.load_state}</AppTableCell>
+            <AppTableCell>{service.sub_state}</AppTableCell>
+            <AppTableCell>{service.description || "-"}</AppTableCell>
+          </>
+        )}
+      </>
+    )}
     renderMobileExpandedContent={(service) => (
       <div
         style={{
@@ -98,23 +114,7 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         ))}
       </div>
     )}
-    renderMainRow={(service, isMobile) => (
-      <>
-        <AppTableCell style={{ paddingLeft: 8 }}>
-          {statusDot(service.active_state)}
-          {service.active_state}
-        </AppTableCell>
-        <AppTableCell>{service.name}</AppTableCell>
-        {!isMobile && (
-          <>
-            <AppTableCell>{service.load_state}</AppTableCell>
-            <AppTableCell>{service.sub_state}</AppTableCell>
-            <AppTableCell>{service.description || "-"}</AppTableCell>
-          </>
-        )}
-      </>
-    )}
-    emptyMessage="No services found."
+    selected={selected}
   />
 );
 

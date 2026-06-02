@@ -244,6 +244,34 @@ install_pam_config() {
     return 0
 }
 
+# Drop the Avahi service file so LinuxIO advertises itself on the LAN as
+# <hostname>.local once avahi-daemon is running. The file is harmless when
+# Avahi isn't installed — it just sits in /etc/avahi/services/ until it is.
+install_avahi_service() {
+    Show 2 "Installing Avahi service file..."
+
+    local avahi_dir="/etc/avahi/services"
+    local avahi_file="${avahi_dir}/linuxio.service"
+
+    mkdir -p "$avahi_dir"
+
+    if ! curl -fsSL "${RAW_BASE}/etc/avahi/services/linuxio.service" -o "$avahi_file"; then
+        Show 3 "Failed to download Avahi service file — mDNS advertisement skipped"
+        return 0
+    fi
+
+    chown root:root "$avahi_file"
+    chmod 0644 "$avahi_file"
+
+    if pgrep -x avahi-daemon >/dev/null 2>&1; then
+        Show 0 "mDNS advertisement enabled ${GREY}(reachable at <hostname>.local)${COLOUR_RESET}"
+    else
+        Show 3 "Avahi not running — file installed, will activate when avahi-daemon starts"
+    fi
+
+    return 0
+}
+
 # ---------- Systemd Functions ----------
 
 SELECTED_PORT=8090
@@ -285,7 +313,8 @@ is_port_in_use() {
 
     local existing_socket="/lib/systemd/system/linuxio-webserver.socket"
     if [[ -f "$existing_socket" ]]; then
-        if grep -qE "ListenStream=.*:${port}\$" "$existing_socket" 2>/dev/null; then
+        # Matches both "ListenStream=8090" (dual-stack) and "ListenStream=host:8090" forms.
+        if grep -qE "^ListenStream=([^=]*:)?${port}\$" "$existing_socket" 2>/dev/null; then
             return 1
         fi
     fi
@@ -574,6 +603,7 @@ main() {
     if ! install_pam_config; then
         Show 1 "PAM configuration failed"
     fi
+    install_avahi_service
 
     # Step 5: Systemd
     Header "Step 5/5 — Systemd Services"
@@ -610,6 +640,12 @@ main() {
     if [[ -n "$lan_ip" ]]; then
         echo -e "${BULLET} https://${lan_ip}:${SELECTED_PORT}"
     fi
+    if pgrep -x avahi-daemon >/dev/null 2>&1; then
+        hn=$(hostname 2>/dev/null) || hn=""
+        if [[ -n "$hn" ]]; then
+            echo -e "${BULLET} https://${hn}.local:${SELECTED_PORT}  ${GREY}(via mDNS)${COLOUR_RESET}"
+        fi
+    fi
     echo ""
     echo -e " ${BOLD}Useful commands:${COLOUR_RESET}"
     echo -e "${BULLET} Check status:  ${GREY}linuxio status${COLOUR_RESET}"
@@ -641,6 +677,7 @@ What gets installed:
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
   - PAM:          /etc/pam.d/linuxio
   - Config:       /etc/linuxio/disallowed-users
+  - Avahi mDNS:   /etc/avahi/services/linuxio.service (advertises <hostname>.local)
 
 Examples:
   $(basename "$0")                 # Install latest release

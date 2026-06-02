@@ -11,17 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	gopsnet "github.com/shirou/gopsutil/v4/net"
 )
-
-type SimpleNetInfo struct {
-	Name  string   `json:"name"`
-	IPv4  []string `json:"ipv4"`
-	MAC   string   `json:"mac"`
-	Speed string   `json:"speed"`
-	TxKBs float64  `json:"tx_speed"`
-	RxKBs float64  `json:"rx_speed"`
-}
 
 var (
 	netRateStateLock sync.Mutex
@@ -51,8 +43,8 @@ func collectSimpleNetStats(
 	previousStats,
 	currentStats map[string]gopsnet.IOCountersStat,
 	intervalSeconds float64,
-) []SimpleNetInfo {
-	infos := make([]SimpleNetInfo, 0, len(ifaces))
+) []apischema.InterfaceStats {
+	infos := make([]apischema.InterfaceStats, 0, len(ifaces))
 	for _, iface := range ifaces {
 		if err := ctx.Err(); err != nil {
 			return infos
@@ -62,13 +54,13 @@ func collectSimpleNetStats(
 		}
 
 		rxKBs, txKBs := computeSimpleNetRates(iface.Name, previousStats, currentStats, intervalSeconds)
-		infos = append(infos, SimpleNetInfo{
-			Name:  iface.Name,
-			IPv4:  collectInterfaceIPv4s(iface),
-			MAC:   iface.HardwareAddr,
-			Speed: netSpeedReader(ctx, iface.Name),
-			TxKBs: txKBs,
-			RxKBs: rxKBs,
+		infos = append(infos, apischema.InterfaceStats{
+			Name:    iface.Name,
+			IPv4:    collectInterfaceIPv4s(iface),
+			MAC:     iface.HardwareAddr,
+			Speed:   netSpeedReader(ctx, iface.Name),
+			TXSpeed: txKBs,
+			RXSpeed: rxKBs,
 		})
 	}
 	return infos
@@ -126,7 +118,7 @@ func computeSimpleNetRates(
 }
 
 // Pure fetcher used by the bridge handler map.
-func FetchNetworks(ctx context.Context) ([]SimpleNetInfo, error) {
+func FetchNetworks(ctx context.Context) ([]apischema.InterfaceStats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

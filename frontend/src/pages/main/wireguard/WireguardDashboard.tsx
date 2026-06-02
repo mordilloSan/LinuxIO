@@ -1,6 +1,5 @@
-import { motion, AnimatePresence } from "framer-motion";
-import React, { useState, useRef, useEffect, useEffectEvent } from "react";
-import { toast } from "sonner";
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import InterfaceDetails from "./InterfaceClients";
 
@@ -9,16 +8,14 @@ import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-const wireguardToastMeta = {
-  meta: { href: "/wireguard", label: "Open WireGuard" },
-};
-
 const WireGuardDashboard: React.FC = () => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );
@@ -39,11 +36,8 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: removeInterface } =
     linuxio.wireguard.remove_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
-        toast.success(
-          `WireGuard interface '${interfaceName}' deleted`,
-          wireguardToastMeta,
-        );
+        const interfaceName = variables.name;
+        toast.success(`WireGuard interface '${interfaceName}' deleted`);
         setSelectedInterface(null);
         refetch();
       },
@@ -53,38 +47,30 @@ const WireGuardDashboard: React.FC = () => {
             error,
             "Failed to remove WireGuard interface",
           ),
-          wireguardToastMeta,
         );
       },
     });
 
   const { mutate: addPeer } = linuxio.wireguard.add_peer.useMutation({
     onSuccess: (_, variables) => {
-      const [interfaceName] = variables;
-      toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
+      const interfaceName = variables.interfaceName;
+      toast.success(`Peer added to '${interfaceName}'`);
       refetch();
     },
     onError: (error: Error) => {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to add peer"),
-        wireguardToastMeta,
-      );
+      toast.error(getMutationErrorMessage(error, "Failed to add peer"));
     },
   });
 
   const { mutate: upInterface } = linuxio.wireguard.up_interface.useMutation({
     onSuccess: (_, variables) => {
-      const [interfaceName] = variables;
-      toast.success(
-        `WireGuard interface "${interfaceName}" turned on.`,
-        wireguardToastMeta,
-      );
+      const interfaceName = variables.name;
+      toast.success(`WireGuard interface "${interfaceName}" turned on.`);
       refetch();
     },
     onError: (error: Error) => {
       toast.error(
         getMutationErrorMessage(error, "Failed to bring interface up"),
-        wireguardToastMeta,
       );
     },
   });
@@ -92,17 +78,13 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: downInterface } =
     linuxio.wireguard.down_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
-        toast.success(
-          `WireGuard interface "${interfaceName}" turned off.`,
-          wireguardToastMeta,
-        );
+        const interfaceName = variables.name;
+        toast.success(`WireGuard interface "${interfaceName}" turned off.`);
         refetch();
       },
       onError: (error: Error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to bring interface down"),
-          wireguardToastMeta,
         );
       },
     });
@@ -110,17 +92,15 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: enableInterface } =
     linuxio.wireguard.enable_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
+        const interfaceName = variables.name;
         toast.success(
           `WireGuard interface "${interfaceName}" enabled for boot persistence.`,
-          wireguardToastMeta,
         );
         refetch();
       },
       onError: (error: Error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to enable boot persistence"),
-          wireguardToastMeta,
         );
       },
     });
@@ -128,17 +108,15 @@ const WireGuardDashboard: React.FC = () => {
   const { mutate: disableInterface } =
     linuxio.wireguard.disable_interface.useMutation({
       onSuccess: (_, variables) => {
-        const [interfaceName] = variables;
+        const interfaceName = variables.name;
         toast.success(
           `WireGuard interface "${interfaceName}" disabled for boot persistence.`,
-          wireguardToastMeta,
         );
         refetch();
       },
       onError: (error: Error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to disable boot persistence"),
-          wireguardToastMeta,
         );
       },
     });
@@ -180,11 +158,11 @@ const WireGuardDashboard: React.FC = () => {
   }, [hasSelectedInterface]);
 
   const handleDelete = (interfaceName: string) => {
-    removeInterface([interfaceName]);
+    removeInterface({ name: interfaceName });
   };
 
   const handleAddPeer = (interfaceName: string) => {
-    addPeer([interfaceName]);
+    addPeer({ interfaceName });
   };
 
   const handleToggleInterface = (
@@ -192,7 +170,7 @@ const WireGuardDashboard: React.FC = () => {
     status: "up" | "down",
   ) => {
     const mutation = status === "up" ? upInterface : downInterface;
-    mutation([interfaceName]);
+    mutation({ name: interfaceName });
   };
 
   const handleToggleBootPersistence = (
@@ -200,7 +178,7 @@ const WireGuardDashboard: React.FC = () => {
     isEnabled: boolean,
   ) => {
     const mutation = isEnabled ? disableInterface : enableInterface;
-    mutation([interfaceName]);
+    mutation({ name: interfaceName });
   };
 
   const handleSelectInterface = (iface: WireGuardInterface) => {
@@ -221,20 +199,20 @@ const WireGuardDashboard: React.FC = () => {
             <AppGrid container spacing={3}>
               {WGinterfaces.map((iface) => (
                 <AppGrid
-                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                   key={iface.name}
+                  size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                 >
                   <WireguardInterfaceCard
+                    handleAddPeer={handleAddPeer}
+                    handleDelete={handleDelete}
+                    handleSelectInterface={handleSelectInterface}
+                    handleToggleBootPersistence={handleToggleBootPersistence}
+                    handleToggleInterface={handleToggleInterface}
                     iface={iface}
-                    selectedInterface={selectedInterface}
                     selectedCardRef={
                       iface.name === selectedInterface ? selectedCardRef : null
                     }
-                    handleSelectInterface={handleSelectInterface}
-                    handleToggleInterface={handleToggleInterface}
-                    handleToggleBootPersistence={handleToggleBootPersistence}
-                    handleDelete={handleDelete}
-                    handleAddPeer={handleAddPeer}
+                    selectedInterface={selectedInterface}
                   />
                 </AppGrid>
               ))}
@@ -244,11 +222,11 @@ const WireGuardDashboard: React.FC = () => {
             <AppGrid container spacing={3}>
               <AppGrid size={{ xs: 12 }}>
                 <motion.div
-                  initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.5 }}
+                  initial={{ opacity: 0, x: -20 }}
                   layout
+                  transition={{ duration: 0.5 }}
                 >
                   <div
                     style={{
@@ -256,7 +234,7 @@ const WireGuardDashboard: React.FC = () => {
                       marginBottom: theme.spacing(2),
                     }}
                   >
-                    <AppTypography variant="h5" gutterBottom>
+                    <AppTypography gutterBottom variant="h5">
                       Clients for {selectedInterface}
                     </AppTypography>
                   </div>

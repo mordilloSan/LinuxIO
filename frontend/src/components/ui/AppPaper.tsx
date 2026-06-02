@@ -16,7 +16,7 @@ const AppPaper = React.forwardRef<HTMLDivElement, AppPaperProps>(
       .filter(Boolean)
       .join(" ");
 
-    return <div ref={ref} className={cls} {...rest} />;
+    return <div className={cls} ref={ref} {...rest} />;
   },
 );
 

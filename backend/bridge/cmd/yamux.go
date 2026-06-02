@@ -76,13 +76,17 @@ func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeip
 		return
 	}
 
-	// Parse stream type and args from payload.
-	route, args := relay.ParseStreamOpenPayload(frame.Payload)
+	envelope, err := relay.ParseStreamOpenPayload(frame.Payload)
+	if err != nil {
+		slog.Warn("failed to parse stream open payload", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
+		return
+	}
 
 	if err := router.Dispatch(ctx, stream, bridgeipc.Request{
-		Route:   route,
-		Args:    args,
-		Session: sess,
+		Route:      envelope.Route,
+		RawRequest: envelope.Request,
+		Session:    sess,
 	}); err != nil {
 		return
 	}

@@ -70,15 +70,21 @@ export function writeConfigCache(
 
 export function clearConfigCache(): void {
   const storage = getSessionStorage();
-  if (!storage) return;
+  if (storage) {
+    try {
+      for (let i = storage.length - 1; i >= 0; i -= 1) {
+        const key = storage.key(i);
+        if (key?.startsWith(CONFIG_CACHE_PREFIX)) {
+          storage.removeItem(key);
+        }
+      }
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
 
   try {
-    for (let i = storage.length - 1; i >= 0; i -= 1) {
-      const key = storage.key(i);
-      if (key?.startsWith(CONFIG_CACHE_PREFIX)) {
-        storage.removeItem(key);
-      }
-    }
+    window.localStorage.removeItem("linuxio_theme_bootstrap");
   } catch {
     // Best-effort cleanup only.
   }

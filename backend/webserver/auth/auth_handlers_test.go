@@ -81,7 +81,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		caps := session.Capabilities{
+		caps := session.CapabilitiesAvailable{
 			DockerAvailable:        true,
 			IndexerAvailable:       false,
 			LMSensorsAvailable:     true,

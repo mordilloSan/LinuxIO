@@ -19,6 +19,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/moby/moby/client"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -34,25 +35,18 @@ type TerminalSession struct {
 }
 
 // HandleTerminalSession handles a yamux stream dedicated to terminal I/O.
-// This bypasses all JSON encoding - raw PTY bytes flow directly.
-// Protocol:
-//   - First frame from client: OpStreamOpen with args [cols, rows]
-//   - Subsequent frames from client: OpStreamData with input bytes
-//   - Server sends: OpStreamData with PTY output bytes
-//   - Either side can send OpStreamClose to terminate
-func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, args []string) error {
+// This bypasses result/progress JSON encoding after the JSON request envelope opens the stream.
+func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, req apischema.TerminalOpenRequest) error {
 	sess := rt.Session
-	slog.Debug("starting terminal stream", "user", sess.User.Username, "args", args)
+	slog.Debug("starting terminal stream", "user", sess.User.Username, "cols", req.Cols, "rows", req.Rows)
 
 	// Parse initial size from args (cols, rows)
 	cols, rows := 120, 32
-	if len(args) >= 2 {
-		if c, err := strconv.Atoi(args[0]); err == nil && c > 0 {
-			cols = c
-		}
-		if r, err := strconv.Atoi(args[1]); err == nil && r > 0 {
-			rows = r
-		}
+	if req.Cols > 0 {
+		cols = req.Cols
+	}
+	if req.Rows > 0 {
+		rows = req.Rows
 	}
 
 	// Look up user for environment setup
@@ -253,16 +247,22 @@ func safeUint16(val int) uint16 {
 }
 
 // HandleContainerTerminalSession handles a yamux stream for container terminal I/O.
-// Args: [containerID, shell, cols, rows]
-func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, stream net.Conn, args []string) error {
+func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, stream net.Conn, req apischema.ContainerOpenRequest) error {
 	sess := rt.Session
-	containerID, shell, cols, rows, err := parseContainerTerminalArgs(args)
-	if err != nil {
-		slog.Error("invalid container terminal arguments", "error", err)
+	if req.ContainerID == "" || req.Shell == "" {
+		err := fmt.Errorf("missing containerID or shell")
+		slog.Error("invalid container terminal request", "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
-	slog.Debug("starting container terminal stream", "container", containerID, "shell", shell, "user", sess.User.Username)
+	cols, rows := 120, 32
+	if req.Cols > 0 {
+		cols = req.Cols
+	}
+	if req.Rows > 0 {
+		rows = req.Rows
+	}
+	slog.Debug("starting container terminal stream", "container", req.ContainerID, "shell", req.Shell, "user", sess.User.Username)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -275,16 +275,16 @@ func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, 
 	}
 	defer cli.Close()
 
-	execResp, err := createContainerExec(ctx, cli, containerID, shell, cols, rows)
+	execResp, err := createContainerExec(ctx, cli, req.ContainerID, req.Shell, cols, rows)
 	if err != nil {
-		slog.Error("container terminal exec create failed", "container", containerID, "shell", shell, "error", err)
+		slog.Error("container terminal exec create failed", "container", req.ContainerID, "shell", req.Shell, "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
 
 	attachResp, err := attachContainerExec(ctx, cli, execResp.ID, cols, rows)
 	if err != nil {
-		slog.Error("container terminal exec attach failed", "container", containerID, "exec_id", execResp.ID, "error", err)
+		slog.Error("container terminal exec attach failed", "container", req.ContainerID, "exec_id", execResp.ID, "error", err)
 		writeContainerTerminalClose(stream)
 		return err
 	}
@@ -297,24 +297,6 @@ func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, 
 	go streamContainerExecInput(ctx, cli, execResp.ID, attachResp.Conn, stream, done)
 
 	return waitForContainerTerminalEnd(ctx, cancel, attachResp.Close, stream, done)
-}
-
-func parseContainerTerminalArgs(args []string) (string, string, int, int, error) {
-	if len(args) < 2 {
-		return "", "", 0, 0, fmt.Errorf("missing containerID or shell")
-	}
-
-	cols, rows := 120, 32
-	if len(args) >= 4 {
-		if c, err := strconv.Atoi(args[2]); err == nil && c > 0 {
-			cols = c
-		}
-		if r, err := strconv.Atoi(args[3]); err == nil && r > 0 {
-			rows = r
-		}
-	}
-
-	return args[0], args[1], cols, rows, nil
 }
 
 func createContainerExec(ctx context.Context, cli *client.Client, containerID, shell string, cols, rows int) (client.ExecCreateResult, error) {

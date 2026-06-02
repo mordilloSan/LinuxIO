@@ -1,6 +1,6 @@
 import React from "react";
 
-import { linuxio, CACHE_TTL_MS } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import DevToolsButton from "@/components/footer/DevToolsButton";
 import { useAppTheme } from "@/theme";

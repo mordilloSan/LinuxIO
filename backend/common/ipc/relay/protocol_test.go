@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -125,5 +126,54 @@ func TestAbortContextCleanupCancelsContext(t *testing.T) {
 	case <-ctx.Done():
 	case <-time.After(time.Second):
 		t.Fatalf("cleanup did not cancel context")
+	}
+}
+
+func TestStreamOpenPayloadEnvelopeRoundTrip(t *testing.T) {
+	payload, err := MarshalStreamOpenPayload("docker.start_container", map[string]string{
+		"containerId": "abc",
+	})
+	if err != nil {
+		t.Fatalf("MarshalStreamOpenPayload() error = %v", err)
+	}
+
+	envelope, err := ParseStreamOpenPayload(payload)
+	if err != nil {
+		t.Fatalf("ParseStreamOpenPayload() error = %v", err)
+	}
+	if envelope.Route != "docker.start_container" {
+		t.Fatalf("route = %q, want docker.start_container", envelope.Route)
+	}
+
+	var request struct {
+		ContainerID string `json:"containerId"`
+	}
+	if err := json.Unmarshal(envelope.Request, &request); err != nil {
+		t.Fatalf("json.Unmarshal(request): %v", err)
+	}
+	if request.ContainerID != "abc" {
+		t.Fatalf("containerId = %q, want abc", request.ContainerID)
+	}
+}
+
+func TestParseStreamOpenPayloadDefaultsMissingRequest(t *testing.T) {
+	envelope, err := ParseStreamOpenPayload([]byte(`{"route":"system.get_cpu_info"}`))
+	if err != nil {
+		t.Fatalf("ParseStreamOpenPayload() error = %v", err)
+	}
+	if string(envelope.Request) != "{}" {
+		t.Fatalf("request = %s, want {}", envelope.Request)
+	}
+}
+
+func TestParseStreamOpenPayloadRejectsInvalidEnvelope(t *testing.T) {
+	for _, payload := range [][]byte{
+		[]byte(``),
+		[]byte(`not-json`),
+		[]byte(`{"request":{}}`),
+	} {
+		if _, err := ParseStreamOpenPayload(payload); err == nil {
+			t.Fatalf("ParseStreamOpenPayload(%q) error = nil, want error", payload)
+		}
 	}
 }

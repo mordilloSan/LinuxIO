@@ -10,134 +10,36 @@ import { toast } from "sonner";
 
 import "./capability-manager-section.css";
 
-import type { CapabilitiesResponse } from "@/api";
+import {
+  CAPABILITIES,
+  type CapabilitiesResponse,
+  type CapabilityDef,
+  type CapabilityErrorKey,
+  type CapabilityKey,
+  type CapabilityValueKey,
+  type InstallCapabilityResult,
+  linuxio,
+  openJobAttachStream,
+} from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import {
-  type CapabilityKey,
   type CapabilityStatus,
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
+import { useStreamResult } from "@/hooks/useStreamResult";
 
-type CapabilityValueKey =
-  | "docker_available"
-  | "indexer_available"
-  | "lm_sensors_available"
-  | "smartmontools_available"
-  | "packagekit_available"
-  | "nfs_client_available"
-  | "nfs_server_available"
-  | "tuned_available";
-
-type CapabilityErrorKey =
-  | "docker_error"
-  | "indexer_error"
-  | "lm_sensors_error"
-  | "smartmontools_error"
-  | "packagekit_error"
-  | "nfs_client_error"
-  | "nfs_server_error"
-  | "tuned_error";
-
-interface CapabilityItem {
-  authKey: CapabilityKey;
-  valueKey: CapabilityValueKey;
-  errorKey: CapabilityErrorKey;
-  label: string;
-  description: string;
-  readyText: string;
-  dependency: string;
-  icon: string;
+interface InstallCapabilityProgress {
+  message: string;
+  stage: string;
 }
-
-const CAPABILITY_ITEMS: CapabilityItem[] = [
-  {
-    authKey: "dockerAvailable",
-    valueKey: "docker_available",
-    errorKey: "docker_error",
-    label: "Docker",
-    description: "Container dashboard and compose stack controls",
-    readyText: "Docker is reachable.",
-    dependency: "docker",
-    icon: "mdi:docker",
-  },
-  {
-    authKey: "indexerAvailable",
-    valueKey: "indexer_available",
-    errorKey: "indexer_error",
-    label: "Indexer",
-    description: "Search, folder sizes, and Docker stack indexing",
-    readyText: "Indexer API is reachable.",
-    dependency: "linuxio indexer",
-    icon: "mdi:magnify-scan",
-  },
-  {
-    authKey: "lmSensorsAvailable",
-    valueKey: "lm_sensors_available",
-    errorKey: "lm_sensors_error",
-    label: "lm-sensors",
-    description: "Hardware sensors and thermal readings",
-    readyText: "sensors command is available.",
-    dependency: "sensors",
-    icon: "mdi:thermometer-lines",
-  },
-  {
-    authKey: "smartmontoolsAvailable",
-    valueKey: "smartmontools_available",
-    errorKey: "smartmontools_error",
-    label: "smartmontools",
-    description: "Drive SMART attributes and self-tests",
-    readyText: "smartctl command is available.",
-    dependency: "smartctl",
-    icon: "mdi:harddisk",
-  },
-  {
-    authKey: "packageKitAvailable",
-    valueKey: "packagekit_available",
-    errorKey: "packagekit_error",
-    label: "PackageKit",
-    description: "Package update checks and package operations",
-    readyText: "PackageKit D-Bus service is reachable.",
-    dependency: "PackageKit",
-    icon: "mdi:package-variant-closed",
-  },
-  {
-    authKey: "nfsClientAvailable",
-    valueKey: "nfs_client_available",
-    errorKey: "nfs_client_error",
-    label: "NFS client",
-    description: "Mount external NFS exports",
-    readyText: "NFS client utilities are available.",
-    dependency: "nfs utilities",
-    icon: "mdi:folder-network-outline",
-  },
-  {
-    authKey: "nfsServerAvailable",
-    valueKey: "nfs_server_available",
-    errorKey: "nfs_server_error",
-    label: "NFS server",
-    description: "Create and manage exported NFS shares",
-    readyText: "NFS server utilities are available.",
-    dependency: "exportfs",
-    icon: "mdi:server-network",
-  },
-  {
-    authKey: "tunedAvailable",
-    valueKey: "tuned_available",
-    errorKey: "tuned_error",
-    label: "TuneD",
-    description: "Power profile management",
-    readyText: "TuneD D-Bus service is reachable.",
-    dependency: "TuneD",
-    icon: "mdi:lightning-bolt-outline",
-  },
-];
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -158,62 +60,44 @@ const formatLastChecked = (value: Date | null) => {
 };
 
 const CapabilityManagerSection: React.FC = () => {
-  const {
-    dockerAvailable,
-    indexerAvailable,
-    lmSensorsAvailable,
-    smartmontoolsAvailable,
-    packageKitAvailable,
-    nfsClientAvailable,
-    nfsServerAvailable,
-    tunedAvailable,
-    refreshCapabilities,
-  } = useAuth();
+  const auth = useAuth();
+  const { refreshCapabilities } = auth;
 
   const [latest, setLatest] = useState<CapabilitiesResponse | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [installingWire, setInstallingWire] = useState<string | null>(null);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const { run: runStreamResult } = useStreamResult();
+
+  const packageKitAvailable =
+    latest?.packagekit_available ?? auth.packageKitAvailable ?? false;
 
   const rows = useMemo(
     () =>
-      CAPABILITY_ITEMS.map((item) => {
-        const authValue = {
-          dockerAvailable,
-          indexerAvailable,
-          lmSensorsAvailable,
-          smartmontoolsAvailable,
-          packageKitAvailable,
-          nfsClientAvailable,
-          nfsServerAvailable,
-          tunedAvailable,
-        }[item.authKey];
-        const value = latest?.[item.valueKey] ?? authValue;
+      CAPABILITIES.map((item) => {
+        const valueKey = `${item.wire}_available` as CapabilityValueKey;
+        const errorKey = `${item.wire}_error` as CapabilityErrorKey;
+        const authValue = auth[item.state as CapabilityKey];
+        const value = latest?.[valueKey] ?? authValue;
         const status = getCapabilityStatus(value);
         const detail =
-          latest?.[item.errorKey] ||
+          latest?.[errorKey] ||
           (status === "available"
             ? item.readyText
-            : getCapabilityReason(item.authKey, status));
+            : getCapabilityReason(item.state as CapabilityKey, status));
+        const installable = (item as CapabilityDef).installable;
 
         return {
           ...item,
+          installable,
           status,
           detail,
         };
       }),
-    [
-      dockerAvailable,
-      indexerAvailable,
-      lmSensorsAvailable,
-      smartmontoolsAvailable,
-      packageKitAvailable,
-      nfsClientAvailable,
-      nfsServerAvailable,
-      tunedAvailable,
-      latest,
-    ],
+    [auth, latest],
   );
 
   const handleRefresh = useCallback(
@@ -248,6 +132,53 @@ const CapabilityManagerSection: React.FC = () => {
     [refreshCapabilities],
   );
 
+  const handleInstall = useCallback(
+    async (wire: string, label: string) => {
+      setInstallingWire(wire);
+      setInstallStatus("Starting…");
+      try {
+        const job = await linuxio.system.install_capability(wire);
+        const result = await runStreamResult<
+          InstallCapabilityResult,
+          InstallCapabilityProgress
+        >({
+          open: () => openJobAttachStream(job.id),
+          onProgress: (progress) => {
+            if (!mountedRef.current) return;
+            if (progress?.message) {
+              setInstallStatus(progress.message);
+            }
+          },
+        });
+        if (!mountedRef.current) return;
+        setLatest((previous) => ({
+          ...(previous ?? ({} as CapabilitiesResponse)),
+          [`${wire}_available`]: result.available,
+          [`${wire}_error`]: result.error ?? "",
+        }));
+        setLastChecked(new Date());
+        if (result.available) {
+          toast.success(`${label} installed`);
+        } else {
+          const reason = result.error ? `: ${result.error}` : ".";
+          toast.warning(`${label} installed but is still unavailable${reason}`);
+        }
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : `Failed to install ${label}`;
+        if (mountedRef.current) {
+          toast.error(message);
+        }
+      } finally {
+        if (mountedRef.current) {
+          setInstallingWire(null);
+          setInstallStatus(null);
+        }
+      }
+    },
+    [runStreamResult],
+  );
+
   useEffect(
     () => () => {
       mountedRef.current = false;
@@ -262,6 +193,10 @@ const CapabilityManagerSection: React.FC = () => {
         if (cancelled || !mountedRef.current) return;
         setLatest(data);
         setLastChecked(new Date());
+        return;
+      })
+      .finally(() => {
+        if (!cancelled && mountedRef.current) setIsRefreshing(false);
       })
       .catch((error: unknown) => {
         if (cancelled || !mountedRef.current) return;
@@ -270,9 +205,6 @@ const CapabilityManagerSection: React.FC = () => {
             ? error.message
             : "Failed to refresh capabilities",
         );
-      })
-      .finally(() => {
-        if (!cancelled && mountedRef.current) setIsRefreshing(false);
       });
     return () => {
       cancelled = true;
@@ -280,31 +212,31 @@ const CapabilityManagerSection: React.FC = () => {
   }, [refreshCapabilities]);
 
   return (
-    <div className="capability-manager" aria-busy={isRefreshing}>
+    <div aria-busy={isRefreshing} className="capability-manager">
       <div className="capability-manager__header">
         <div>
-          <AppTypography variant="body1" fontWeight={600}>
+          <AppTypography fontWeight={600} variant="body1">
             Capability Manager
           </AppTypography>
-          <AppTypography variant="caption" color="text.secondary">
+          <AppTypography color="text.secondary" variant="caption">
             Last check: {formatLastChecked(lastChecked)}
           </AppTypography>
         </div>
         <AppTooltip title={isRefreshing ? "Checking" : "Refresh"}>
           <AppIconButton
-            size="small"
-            color="default"
-            disabled={isRefreshing}
-            onClick={() => void handleRefresh()}
             aria-label={
               isRefreshing ? "Checking capabilities" : "Refresh capabilities"
             }
+            color="default"
+            disabled={isRefreshing}
+            onClick={() => void handleRefresh()}
+            size="small"
           >
             <Icon
+              className={isRefreshing ? "capability-manager__spin" : undefined}
+              height={18}
               icon={isRefreshing ? "mdi:loading" : "mdi:refresh"}
               width={18}
-              height={18}
-              className={isRefreshing ? "capability-manager__spin" : undefined}
             />
           </AppIconButton>
         </AppTooltip>
@@ -320,41 +252,91 @@ const CapabilityManagerSection: React.FC = () => {
       <div className="capability-manager__list">
         {rows.map((row) => {
           const status = STATUS_DETAILS[row.status];
+          const showInstall =
+            row.status === "unavailable" && row.installable !== undefined;
+          const blockedByPackageKit =
+            showInstall &&
+            row.installable?.requiresPackageKit === true &&
+            !packageKitAvailable;
+          const installing = installingWire === row.wire;
+          const installDisabled =
+            installingWire !== null || blockedByPackageKit;
+          const installTooltip = blockedByPackageKit
+            ? "Install requires PackageKit, which is itself unavailable. Install PackageKit from a shell first."
+            : installing
+              ? "Installing…"
+              : `Install ${row.label}`;
+
           return (
             <FrostedCard
-              key={row.authKey}
               className="capability-manager__row"
               hoverLift
+              key={row.state}
             >
               <div className="capability-manager__icon">
-                <Icon icon={row.icon} width={22} height={22} />
+                <Icon height={22} icon={row.icon} width={22} />
               </div>
               <div className="capability-manager__body">
                 <div className="capability-manager__row-header">
                   <div className="capability-manager__title-block">
                     <AppTypography
-                      variant="body2"
-                      fontWeight={600}
                       component="h3"
+                      fontWeight={600}
+                      variant="body2"
                     >
                       {row.label}
                     </AppTypography>
-                    <AppTypography variant="caption" color="text.secondary">
+                    <AppTypography color="text.secondary" variant="caption">
                       {row.description}
                     </AppTypography>
                   </div>
-                  <AppChip
-                    size="small"
-                    variant="soft"
-                    color={status.color}
-                    label={status.label}
-                  />
+                  <div className="capability-manager__row-actions">
+                    {showInstall ? (
+                      <AppTooltip title={installTooltip}>
+                        <span>
+                          <AppButton
+                            color="primary"
+                            disabled={installDisabled}
+                            onClick={() =>
+                              void handleInstall(row.wire, row.label)
+                            }
+                            size="small"
+                            startIcon={
+                              <Icon
+                                className={
+                                  installing
+                                    ? "capability-manager__spin"
+                                    : undefined
+                                }
+                                height={16}
+                                icon={
+                                  installing ? "mdi:loading" : "mdi:download"
+                                }
+                                width={16}
+                              />
+                            }
+                            variant="outlined"
+                          >
+                            {installing ? "Installing…" : "Install"}
+                          </AppButton>
+                        </span>
+                      </AppTooltip>
+                    ) : null}
+                    <AppChip
+                      color={status.color}
+                      label={status.label}
+                      size="small"
+                      variant="soft"
+                    />
+                  </div>
                 </div>
                 <div className="capability-manager__detail">
                   <span className="capability-manager__dependency">
                     {row.dependency}
                   </span>
-                  <span>{row.detail}</span>
+                  <span>
+                    {installing && installStatus ? installStatus : row.detail}
+                  </span>
                 </div>
               </div>
             </FrostedCard>

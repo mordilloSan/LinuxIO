@@ -13,22 +13,22 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 interface LogDialogProps {
-  open: boolean;
+  error: string | null;
+  /** Extra action buttons rendered before the live switch (e.g. copy, download). */
+  extraActions?: React.ReactNode;
+  isLoading: boolean;
+  liveMode: boolean;
+  logs: string;
+  logsBoxRef: React.RefObject<HTMLDivElement | null>;
+  maxWidth?: "sm" | "md" | "lg" | "xl";
   onClose: () => void;
+  onExited?: () => void;
+  onLiveModeChange: (value: boolean) => void;
+  open: boolean;
   /** Text title shown in the header. Ignored when `titleContent` is provided. */
   title?: string;
   /** Replaces the text title (e.g. a search field). Should grow to fill available space. */
   titleContent?: React.ReactNode;
-  /** Extra action buttons rendered before the live switch (e.g. copy, download). */
-  extraActions?: React.ReactNode;
-  logs: string;
-  isLoading: boolean;
-  error: string | null;
-  liveMode: boolean;
-  onLiveModeChange: (value: boolean) => void;
-  logsBoxRef: React.RefObject<HTMLDivElement | null>;
-  onExited?: () => void;
-  maxWidth?: "sm" | "md" | "lg" | "xl";
 }
 const LogDialog: React.FC<LogDialogProps> = ({
   open,
@@ -48,10 +48,10 @@ const LogDialog: React.FC<LogDialogProps> = ({
   const theme = useAppTheme();
   return (
     <GeneralDialog
-      open={open}
-      onClose={onClose}
-      maxWidth={maxWidth}
       fullWidth
+      maxWidth={maxWidth}
+      onClose={onClose}
+      open={open}
       slotProps={{
         transition: {
           onExited,
@@ -91,7 +91,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
           />
         </AppTooltip>
         <AppIconButton onClick={onClose} size="small">
-          <Icon icon="mdi:close" width={18} height={18} />
+          <Icon height={18} icon="mdi:close" width={18} />
         </AppIconButton>
       </AppDialogTitle>
 
@@ -112,8 +112,8 @@ const LogDialog: React.FC<LogDialogProps> = ({
           </AppAlert>
         ) : (
           <div
-            ref={logsBoxRef}
             className="custom-scrollbar"
+            ref={logsBoxRef}
             style={{
               position: "relative",
               backgroundColor: theme.codeBlock.background,

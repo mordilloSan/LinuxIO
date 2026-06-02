@@ -1,19 +1,19 @@
 import React, { useMemo } from "react";
 
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 export interface BreadcrumbItem {
+  isLast: boolean;
   label: string;
   path: string;
-  isLast: boolean;
 }
 
 interface FilebrowserBreadcrumbsProps {
-  path: string;
-  onNavigate: (path: string) => void;
-  showGallerySize?: boolean;
   gallerySize?: number;
   onGallerySizeChange?: (next: number) => void;
+  onNavigate: (path: string) => void;
+  path: string;
+  showGallerySize?: boolean;
 }
 
 // Static CSS styles (injected once)
@@ -262,33 +262,33 @@ const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
 
   return (
     <div
-      id="breadcrumbs"
       className="linuxio-breadcrumb-container"
+      id="breadcrumbs"
       style={cssVars}
     >
       <ul className="linuxio-breadcrumb-list">
         <li className="linuxio-breadcrumb-list-item">
           <button
-            type="button"
+            aria-label="Go to root"
             className="linuxio-breadcrumb-button"
             onClick={handleHome}
-            aria-label="Go to root"
             title="Home"
+            type="button"
           >
             <span className="material-icons">home</span>
           </button>
         </li>
         {breadcrumbs.map((crumb, index) => (
           <li
-            key={`${crumb.path}-${crumb.label}-${index}`}
             className="linuxio-breadcrumb-list-item"
+            key={`${crumb.path}-${crumb.label}-${index}`}
           >
             <button
-              type="button"
+              aria-label={`breadcrumb-link-${crumb.label}`}
               className={`linuxio-breadcrumb-button${crumb.isLast ? " active" : ""}`}
               onClick={() => onNavigate(crumb.path)}
-              aria-label={`breadcrumb-link-${crumb.label}`}
               title={crumb.label}
+              type="button"
             >
               {crumb.label}
             </button>
@@ -299,16 +299,16 @@ const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
         <div className="linuxio-gallery-size gallery-size card">
           Size<span className="sr-only">:</span>
           <input
-            type="range"
             className="linuxio-range-input"
             id="gallery-size"
-            name="gallery-size"
-            min={1}
             max={8}
-            value={gallerySize}
+            min={1}
+            name="gallery-size"
             onChange={(event) =>
               onGallerySizeChange(Number.parseInt(event.target.value, 10))
             }
+            type="range"
+            value={gallerySize}
           />
         </div>
       )}

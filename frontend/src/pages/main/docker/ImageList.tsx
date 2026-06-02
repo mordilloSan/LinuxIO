@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
@@ -22,10 +21,11 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
-  responsiveTextStyles,
   longTextStyles,
+  responsiveTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 interface ImageListProps {
@@ -33,11 +33,11 @@ interface ImageListProps {
   viewMode?: "table" | "card";
 }
 interface DeleteImageDialogProps {
-  open: boolean;
-  onClose: () => void;
   imageIds: string[];
   imageTags: string[];
+  onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   open,
@@ -48,6 +48,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useMutation({
       onError: () => {
@@ -59,7 +60,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     const results = await Promise.all(
       imageIds.map(async (id, index) => {
         try {
-          await deleteImage([id]);
+          await deleteImage({ imageId: id });
           return {
             success: true,
             tag: imageTags[index],
@@ -98,7 +99,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     onClose();
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>
         Delete Image{imageIds.length > 1 ? "s" : ""}
       </AppDialogTitle>
@@ -120,11 +121,11 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
               key={`${tag}-${idx}`}
               label={tag}
               size="small"
-              variant="soft"
               style={{
                 marginRight: 4,
                 marginBottom: 4,
               }}
+              variant="soft"
             />
           ))}
         </div>
@@ -139,14 +140,14 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
         </AppDialogContentText>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isDeleting}>
+        <AppButton disabled={isDeleting} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isDeleting}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
@@ -293,19 +294,19 @@ const ImageList: React.FC<ImageListProps> = ({
         }}
       >
         <AppSearchField
-          placeholder="Search images…"
-          value={search}
           onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search images…"
           style={{ width: 320 }}
+          value={search}
         />
         <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
         {effectiveSelected.size > 0 && (
           <AppButton
-            variant="contained"
             color="error"
-            size="small"
-            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
+            size="small"
+            startIcon={<Icon height={20} icon="mdi:delete" width={20} />}
+            variant="contained"
           >
             Delete ({effectiveSelected.size})
           </AppButton>
@@ -326,8 +327,8 @@ const ImageList: React.FC<ImageListProps> = ({
               >
                 <DockerImageCard
                   image={image}
-                  selected={effectiveSelected.has(image.id)}
                   onSelect={(checked) => handleSelectOne(image.id, checked)}
+                  selected={effectiveSelected.has(image.id)}
                 />
               </AppGrid>
             ))}
@@ -340,112 +341,35 @@ const ImageList: React.FC<ImageListProps> = ({
               paddingBottom: theme.spacing(4),
             }}
           >
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No images found.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={filtered}
           columns={columns}
+          data={filtered}
+          emptyMessage="No images found."
           getRowKey={(image) => `${image.id}-${image.tag}`}
-          renderFirstCell={(image) => (
-            <AppCheckbox
-              size="small"
-              checked={effectiveSelected.has(image.id)}
-              onChange={(e) => handleSelectOne(image.id, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              size="small"
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-            />
-          )}
-          renderMainRow={(image) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  variant="body2"
-                  fontWeight={500}
-                  style={responsiveTextStyles}
-                >
-                  {image.repo}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <Chip
-                  label={image.tag}
-                  size="small"
-                  variant="soft"
-                  style={{
-                    fontSize: "0.75rem",
-                  }}
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography
-                  variant="body2"
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "0.85rem",
-                    ...responsiveTextStyles,
-                  }}
-                >
-                  {image.shortId}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="right">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
-                  {image.size} MB
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography
-                  variant="body2"
-                  style={{
-                    fontSize: "0.85rem",
-                    ...responsiveTextStyles,
-                  }}
-                >
-                  {image.created}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="center">
-                <Chip
-                  label={image.containers}
-                  size="small"
-                  variant="soft"
-                  color={image.containers > 0 ? "success" : "default"}
-                  style={{
-                    minWidth: 40,
-                  }}
-                />
-              </AppTableCell>
-            </>
-          )}
           renderExpandedContent={(image) => (
             <>
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Full Image ID:</b>
               </AppTypography>
               <AppTypography
-                variant="body2"
                 style={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
                   marginBottom: 8,
                   ...longTextStyles,
                 }}
+                variant="body2"
               >
                 {image.id}
               </AppTypography>
 
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Labels:</b>
               </AppTypography>
               <div
@@ -462,22 +386,22 @@ const ImageList: React.FC<ImageListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
-                      variant="soft"
                       sx={{
                         mr: 1,
                         mb: 1,
                         ...wrappableChipStyles,
                       }}
+                      variant="soft"
                     />
                   ))
                 ) : (
-                  <AppTypography variant="body2" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="body2">
                     (no labels)
                   </AppTypography>
                 )}
               </div>
 
-              <AppTypography variant="subtitle2" gutterBottom>
+              <AppTypography gutterBottom variant="subtitle2">
                 <b>Image Digests:</b>
               </AppTypography>
               <div>
@@ -485,35 +409,112 @@ const ImageList: React.FC<ImageListProps> = ({
                   image.raw.RepoDigests.map((digest) => (
                     <AppTypography
                       key={digest}
-                      variant="body2"
                       style={{
                         fontFamily: "monospace",
                         fontSize: "0.8rem",
                         marginBottom: 2,
                         ...longTextStyles,
                       }}
+                      variant="body2"
                     >
                       {digest}
                     </AppTypography>
                   ))
                 ) : (
-                  <AppTypography variant="body2" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="body2">
                     (no digests)
                   </AppTypography>
                 )}
               </div>
             </>
           )}
-          emptyMessage="No images found."
+          renderFirstCell={(image) => (
+            <AppCheckbox
+              checked={effectiveSelected.has(image.id)}
+              onChange={(e) => handleSelectOne(image.id, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              size="small"
+            />
+          )}
+          renderHeaderFirstCell={() => (
+            <AppCheckbox
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={(e) => handleSelectAll(e.target.checked)}
+              size="small"
+            />
+          )}
+          renderMainRow={(image) => (
+            <>
+              <AppTableCell>
+                <AppTypography
+                  fontWeight={500}
+                  style={responsiveTextStyles}
+                  variant="body2"
+                >
+                  {image.repo}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell>
+                <Chip
+                  label={image.tag}
+                  size="small"
+                  style={{
+                    fontSize: "0.75rem",
+                  }}
+                  variant="soft"
+                />
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                <AppTypography
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem",
+                    ...responsiveTextStyles,
+                  }}
+                  variant="body2"
+                >
+                  {image.shortId}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell align="right">
+                <AppTypography style={responsiveTextStyles} variant="body2">
+                  {image.size} MB
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                <AppTypography
+                  style={{
+                    fontSize: "0.85rem",
+                    ...responsiveTextStyles,
+                  }}
+                  variant="body2"
+                >
+                  {image.created}
+                </AppTypography>
+              </AppTableCell>
+              <AppTableCell align="center">
+                <Chip
+                  color={image.containers > 0 ? "success" : "default"}
+                  label={image.containers}
+                  size="small"
+                  style={{
+                    minWidth: 40,
+                  }}
+                  variant="soft"
+                />
+              </AppTableCell>
+            </>
+          )}
         />
       )}
 
       <DeleteImageDialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
         imageIds={selectedImages.map((img) => img.id)}
         imageTags={selectedImages.map((img) => `${img.repo}:${img.tag}`)}
+        onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
+        open={deleteDialogOpen}
       />
     </div>
   );

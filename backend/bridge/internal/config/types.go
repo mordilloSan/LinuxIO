@@ -10,16 +10,16 @@ import (
 
 // Settings holds the persisted configuration.
 type Settings struct {
-	AppSettings AppSettings `json:"appSettings" yaml:"appSettings"`
-	Docker      Docker      `json:"docker" yaml:"docker"`
-	Jobs        JobSettings `json:"jobs" yaml:"jobs"`
-	Dismissals  *Dismissals `json:"dismissals,omitempty" yaml:"dismissals,omitempty"`
+	AppSettings PersistedAppSettings `json:"appSettings" yaml:"appSettings"`
+	Docker      Docker               `json:"docker" yaml:"docker"`
+	Jobs        PersistedJobSettings `json:"jobs" yaml:"jobs"`
+	Dismissals  *PersistedDismissals `json:"dismissals,omitempty" yaml:"dismissals,omitempty"`
 }
 
-// Dismissals records per-user acknowledgements of one-shot health signals.
+// PersistedDismissals records per-user acknowledgements of one-shot health signals.
 // The identifier is matched against the live signal — a new event produces a
 // different identifier and re-flags automatically.
-type Dismissals struct {
+type PersistedDismissals struct {
 	UncleanShutdownBootID string `json:"uncleanShutdownBootId,omitempty" yaml:"uncleanShutdownBootId,omitempty"`
 	FailedLoginAlertID    string `json:"failedLoginAlertId,omitempty" yaml:"failedLoginAlertId,omitempty"`
 }
@@ -70,9 +70,9 @@ type ThemeColors struct {
 	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
 }
 
-// AppSettings holds UI-related settings
-type AppSettings struct {
-	Theme                   Theme                    `json:"theme" yaml:"theme"`
+// PersistedAppSettings holds UI-related settings.
+type PersistedAppSettings struct {
+	Theme                   PersistedTheme           `json:"theme" yaml:"theme"`
 	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
 	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
@@ -101,7 +101,8 @@ type Docker struct {
 	Proxy            DockerProxy    `json:"proxy" yaml:"proxy,omitempty"`
 }
 
-type JobSettings struct {
+// PersistedJobSettings holds job progress and worker tuning settings.
+type PersistedJobSettings struct {
 	ProgressMinIntervalMs     int `json:"progressMinIntervalMs" yaml:"progressMinIntervalMs"`
 	NotificationMinIntervalMs int `json:"notificationMinIntervalMs" yaml:"notificationMinIntervalMs"`
 	ProgressMinBytesMB        int `json:"progressMinBytesMB" yaml:"progressMinBytesMB"`
@@ -110,16 +111,16 @@ type JobSettings struct {
 	ArchiveExtractWorkers     int `json:"archiveExtractWorkers" yaml:"archiveExtractWorkers"`
 }
 
-// Theme represents a validated theme value (LIGHT or DARK)
-type Theme string
+// PersistedTheme represents a validated theme value (LIGHT or DARK).
+type PersistedTheme string
 
 const (
-	ThemeLight Theme = "LIGHT"
-	ThemeDark  Theme = "DARK"
+	ThemeLight PersistedTheme = "LIGHT"
+	ThemeDark  PersistedTheme = "DARK"
 )
 
 // UnmarshalYAML validates theme on unmarshal
-func (t *Theme) UnmarshalYAML(data []byte) error {
+func (t *PersistedTheme) UnmarshalYAML(data []byte) error {
 	var s string
 	if err := yaml.Unmarshal(data, &s); err != nil {
 		return err
@@ -128,12 +129,12 @@ func (t *Theme) UnmarshalYAML(data []byte) error {
 	if s != string(ThemeLight) && s != string(ThemeDark) {
 		return fmt.Errorf("invalid theme %q: must be LIGHT or DARK", s)
 	}
-	*t = Theme(s)
+	*t = PersistedTheme(s)
 	return nil
 }
 
 // String returns the theme as a string
-func (t Theme) String() string {
+func (t PersistedTheme) String() string {
 	return string(t)
 }
 

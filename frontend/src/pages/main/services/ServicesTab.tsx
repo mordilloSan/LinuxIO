@@ -5,8 +5,8 @@ import ServiceTableView from "./ServiceTableView";
 import UnitListTab from "./UnitListTab";
 import { UnitInfoPanel } from "./UnitViews";
 
-import type { Service } from "@/api";
 import { linuxio } from "@/api";
+import type { Service } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
 import type { TableCardViewMode } from "@/types/config";
 
@@ -36,36 +36,36 @@ const ServicesTab: React.FC = () => {
 
   return (
     <UnitListTab
-      viewMode={viewMode}
-      setViewMode={setViewMode}
-      data={data}
-      isPending={isPending}
-      isError={isError}
-      error={error}
-      searchPlaceholder="Search services…"
-      errorMessage="Failed to load services"
       compareItems={compareServicesByName}
+      data={data}
+      error={error}
+      errorMessage="Failed to load services"
+      isError={isError}
+      isPending={isPending}
       matchesSearch={matchesServiceSearch}
-      urlParam="service"
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
-        <ServiceTableView
-          services={items}
-          selected={selected}
-          onSelect={onSelect}
-          onDoubleClick={onDoubleClick}
-        />
-      )}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <ServiceCardsView
-          services={items}
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
+          services={items}
         />
       )}
       renderDetailPanel={(service, onClose) => (
-        <UnitInfoPanel unitName={service.name} onClose={onClose} />
+        <UnitInfoPanel onClose={onClose} unitName={service.name} />
       )}
+      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+        <ServiceTableView
+          onDoubleClick={onDoubleClick}
+          onSelect={onSelect}
+          selected={selected}
+          services={items}
+        />
+      )}
+      searchPlaceholder="Search services…"
+      setViewMode={setViewMode}
+      urlParam="service"
+      viewMode={viewMode}
     />
   );
 };

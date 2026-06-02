@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // FSRoot provides helpers around os.Root for path-contained filesystem access.
@@ -40,7 +42,7 @@ func (r *FSRoot) Close() error {
 
 // ToRel converts a path to a root-relative path safe for os.Root methods.
 func ToRel(path string) string {
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	cleanPath := utils.CleanAbsPath(path)
 	if cleanPath == "/" {
 		return "."
 	}

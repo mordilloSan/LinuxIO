@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -19,7 +20,6 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
@@ -317,30 +317,42 @@ func normalizeAddresses(addrs []string) []string {
 	return result
 }
 
-func parseOptionalCSV(args []string, index int) []string {
-	if index < len(args) && args[index] != "" && args[index] != "null" {
-		return parseCSV(args[index])
+func parseOptionalCSVValue(raw *string) []string {
+	if raw != nil && *raw != "" && *raw != "null" {
+		return parseCSV(*raw)
 	}
 	return nil
 }
 
-func parseOptionalInt(args []string, index int, defaultVal int) int {
-	if index < len(args) && args[index] != "" && args[index] != "null" {
-		val, _ := strconv.Atoi(args[index])
-		return val
+func parseOptionalIntValue(raw *string, defaultVal int) int {
+	if raw == nil {
+		return defaultVal
+	}
+	return parseOptionalIntString(*raw, defaultVal)
+}
+
+func parseOptionalIntString(raw string, defaultVal int) int {
+	if raw != "" && raw != "null" {
+		if val, err := strconv.Atoi(raw); err == nil {
+			return val
+		}
 	}
 	return defaultVal
 }
 
-func parseOptionalPeers(args []string, index int) ([]PeerConfig, error) {
-	if index >= len(args) {
+func parseOptionalPeersValue(raw *string) ([]PeerConfig, error) {
+	if raw == nil {
 		return nil, nil
 	}
-	switch args[index] {
+	switch *raw {
 	case "", "null", "[]":
 		return nil, nil
 	}
-	return bridgeipc.DecodeJSONArg[[]PeerConfig](args, index)
+	var peers []PeerConfig
+	if err := json.Unmarshal([]byte(*raw), &peers); err != nil {
+		return nil, err
+	}
+	return peers, nil
 }
 
 func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {

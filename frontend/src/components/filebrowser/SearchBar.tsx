@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState, useCallback } from "react";
+import React, { useCallback, useState } from "react";
 
 import "./search-bar.css";
 
@@ -8,10 +8,10 @@ import AppTextField from "@/components/ui/AppTextField";
 import { useAppTheme } from "@/theme";
 
 interface SearchBarProps {
-  value: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
   placeholder?: string;
-  disabled?: boolean;
+  value: string;
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({
@@ -36,41 +36,41 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   return (
     <AppTextField
-      value={value}
+      className="search-bar"
+      disabled={disabled}
+      endAdornment={
+        value ? (
+          <AppIconButton
+            aria-label="clear search"
+            edge="end"
+            onClick={handleClear}
+            size="small"
+            style={{ padding: 4 }}
+          >
+            <Icon height={18} icon="mdi:close" width={18} />
+          </AppIconButton>
+        ) : undefined
+      }
+      fullWidth
+      onBlur={() => setIsFocused(false)}
       onChange={handleChange}
       onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
       placeholder={placeholder}
-      disabled={disabled}
       size="small"
-      fullWidth
-      className="search-bar"
       startAdornment={
         <Icon
-          icon="mdi:magnify"
-          width={20}
           height={20}
+          icon="mdi:magnify"
           style={{
             color: isFocused
               ? theme.palette.primary.main
               : theme.palette.text.secondary,
             transition: "color 0.2s",
           }}
+          width={20}
         />
       }
-      endAdornment={
-        value ? (
-          <AppIconButton
-            onClick={handleClear}
-            size="small"
-            edge="end"
-            aria-label="clear search"
-            style={{ padding: 4 }}
-          >
-            <Icon icon="mdi:close" width={18} height={18} />
-          </AppIconButton>
-        ) : undefined
-      }
+      value={value}
     />
   );
 };

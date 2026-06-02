@@ -7,14 +7,14 @@ import Chip from "@/components/ui/AppChip";
 import { GAP_SM } from "@/theme/constants";
 
 export interface LVMSectionCardProps {
-  title: string;
-  subtitle: string;
-  count: number;
-  icon: string;
   accent: string;
-  expanded: boolean;
-  onToggle: () => void;
   children: React.ReactNode;
+  count: number;
+  expanded: boolean;
+  icon: string;
+  onToggle: () => void;
+  subtitle: string;
+  title: string;
 }
 
 const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
@@ -29,8 +29,6 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
 }) => (
   <FrostedCard style={{ padding: GAP_SM }}>
     <div
-      role="button"
-      tabIndex={0}
       onClick={onToggle}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -38,12 +36,12 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
           onToggle();
         }
       }}
+      role="button"
       style={{ cursor: "pointer", userSelect: "none" }}
+      tabIndex={0}
     >
       <CardIconHeader
-        icon={<Icon icon={icon} width={24} height={24} color={accent} />}
-        title={title}
-        subtitle={subtitle}
+        icon={<Icon color={accent} height={24} icon={icon} width={24} />}
         right={
           <div
             style={{
@@ -68,17 +66,19 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
               }}
             >
               <Icon
-                icon="mdi:chevron-down"
-                width={22}
                 height={22}
+                icon="mdi:chevron-down"
                 style={{
                   transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
                   transition: "transform 0.2s ease",
                 }}
+                width={22}
               />
             </div>
           </div>
         }
+        subtitle={subtitle}
+        title={title}
       />
     </div>
     {expanded ? <div style={{ marginTop: GAP_SM }}>{children}</div> : null}

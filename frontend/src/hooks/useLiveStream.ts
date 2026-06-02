@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 import {
   bindStreamHandlers,
-  type StreamEventHandlers,
   type Stream,
+  type StreamEventHandlers,
 } from "@/api";
 
 export interface OpenLiveStreamOptions<
   TProgress = unknown,
 > extends StreamEventHandlers<TProgress> {
-  open: () => Stream | null;
   onOpen?: (stream: Stream) => void;
   onOpenError?: () => void;
+  open: () => Stream | null;
 }
 
 export interface UseLiveStreamOptions {
@@ -19,12 +19,12 @@ export interface UseLiveStreamOptions {
 }
 
 export interface UseLiveStreamReturn {
-  streamRef: RefObject<Stream | null>;
+  closeStream: () => void;
   // Returns true when a stream is active (existing or newly opened), false when opening failed.
   openStream: <TProgress = unknown>(
     options: OpenLiveStreamOptions<TProgress>,
   ) => boolean;
-  closeStream: () => void;
+  streamRef: RefObject<Stream | null>;
 }
 
 /**

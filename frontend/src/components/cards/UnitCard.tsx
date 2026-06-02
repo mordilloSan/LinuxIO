@@ -4,10 +4,10 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
 export interface UnitListItem {
-  name: string;
+  active_state: string;
   description?: string;
   load_state: string;
-  active_state: string;
+  name: string;
   sub_state: string;
   unit_file_state: string;
 }
@@ -37,12 +37,12 @@ const selectedCardStyle: React.CSSProperties = {
 };
 
 interface UnitCardProps<T extends UnitListItem> {
-  item: T;
   isSelected: boolean;
+  item: T;
   onExpand: (name: string | null) => void;
-  renderSummaryRows: (item: T) => React.ReactNode;
-  renderSelectedRows?: (item: T) => React.ReactNode;
   renderActions?: (item: T) => React.ReactNode;
+  renderSelectedRows?: (item: T) => React.ReactNode;
+  renderSummaryRows: (item: T) => React.ReactNode;
 }
 
 function UnitCard<T extends UnitListItem>({
@@ -57,9 +57,9 @@ function UnitCard<T extends UnitListItem>({
 
   return (
     <FrostedCard
-      onClick={() => onExpand(isSelected ? null : item.name)}
-      hoverLift={!isSelected}
       className="fc-svc-card"
+      hoverLift={!isSelected}
+      onClick={() => onExpand(isSelected ? null : item.name)}
       style={
         {
           "--svc-status-color": statusColor,
@@ -118,10 +118,10 @@ function UnitCard<T extends UnitListItem>({
       </div>
 
       <div
-        style={{ flex: 1, display: "flex", flexDirection: "column" }}
         className="svc-card-details"
+        style={{ flex: 1, display: "flex", flexDirection: "column" }}
       >
-        <div style={{ flex: 1 }} className="svc-rows-wrapper">
+        <div className="svc-rows-wrapper" style={{ flex: 1 }}>
           {renderSummaryRows(item)}
           {isSelected && renderSelectedRows?.(item)}
         </div>

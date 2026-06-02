@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestFindComposeFileCandidatesChoosesOneCanonicalFilePerStackDir(t *testing.T) {
@@ -60,7 +62,7 @@ func TestAddOfflineComposeProjectSuffixesDuplicateNames(t *testing.T) {
 	secondPath := filepath.Join(root, "second", "homepage", "docker-compose.yml")
 	thirdPath := filepath.Join(root, "third", "homepage", "docker-compose.yml")
 
-	projects := map[string]*ComposeProject{}
+	projects := map[string]*apischema.ComposeProject{}
 	addOfflineComposeProject(projects, firstPath)
 	addOfflineComposeProject(projects, secondPath)
 	addOfflineComposeProject(projects, thirdPath)
@@ -85,7 +87,7 @@ func TestAddOfflineComposeProjectSuffixesDuplicateNames(t *testing.T) {
 }
 
 func TestFillMissingComposeProjectFileDoesNotAppend(t *testing.T) {
-	project := &ComposeProject{
+	project := &apischema.ComposeProject{
 		Name:        "homepage",
 		ConfigFiles: []string{"/stacks/homepage/docker-compose.yml"},
 		WorkingDir:  "/stacks/homepage",
@@ -102,7 +104,7 @@ func TestFillMissingComposeProjectFileDoesNotAppend(t *testing.T) {
 }
 
 func TestUniqueComposeProjectNameSkipsExistingSuffixes(t *testing.T) {
-	projects := map[string]*ComposeProject{
+	projects := map[string]*apischema.ComposeProject{
 		"homepage":   {Name: "homepage"},
 		"homepage-2": {Name: "homepage-2"},
 	}

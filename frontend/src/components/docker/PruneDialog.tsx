@@ -14,9 +14,9 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
 export interface PruneOptions {
+  buildCache: boolean;
   containers: boolean;
   images: boolean;
-  buildCache: boolean;
   networks: boolean;
   volumes: boolean;
 }
@@ -28,10 +28,10 @@ const defaultOptions: PruneOptions = {
   volumes: false,
 };
 interface PruneDialogProps {
-  open: boolean;
+  isLoading?: boolean;
   onClose: () => void;
   onConfirm: (opts: PruneOptions) => void;
-  isLoading?: boolean;
+  open: boolean;
 }
 const PruneDialog: React.FC<PruneDialogProps> = ({
   open,
@@ -53,7 +53,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
     }
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
+    <GeneralDialog fullWidth maxWidth="xs" onClose={handleClose} open={open}>
       <AppDialogTitle
         style={{
           display: "flex",
@@ -62,7 +62,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           borderBottom: "1px solid var(--mui-palette-divider)",
         }}
       >
-        <Icon icon="mdi:broom" width={24} height={24} />
+        <Icon height={24} icon="mdi:broom" width={24} />
         <AppTypography variant="h6">Prune System</AppTypography>
       </AppDialogTitle>
 
@@ -73,11 +73,11 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         }}
       >
         <AppTypography
-          variant="body2"
           color="text.secondary"
           style={{
             marginBottom: 8,
           }}
+          variant="body2"
         >
           Select which unused Docker resources to remove:
         </AppTypography>
@@ -93,8 +93,8 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             control={
               <AppCheckbox
                 checked={opts.containers}
-                onChange={() => toggle("containers")}
                 disabled={isLoading}
+                onChange={() => toggle("containers")}
               />
             }
             label="Stopped Containers"
@@ -103,8 +103,8 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             control={
               <AppCheckbox
                 checked={opts.images}
-                onChange={() => toggle("images")}
                 disabled={isLoading}
+                onChange={() => toggle("images")}
               />
             }
             label="Unused Images (Not Used by Any Container)"
@@ -113,8 +113,8 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             control={
               <AppCheckbox
                 checked={opts.buildCache}
-                onChange={() => toggle("buildCache")}
                 disabled={isLoading}
+                onChange={() => toggle("buildCache")}
               />
             }
             label="Build Cache"
@@ -123,8 +123,8 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             control={
               <AppCheckbox
                 checked={opts.networks}
-                onChange={() => toggle("networks")}
                 disabled={isLoading}
+                onChange={() => toggle("networks")}
               />
             }
             label="Unused Networks"
@@ -136,9 +136,9 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
             control={
               <AppCheckbox
                 checked={opts.volumes}
-                onChange={() => toggle("volumes")}
-                disabled={isLoading}
                 color="error"
+                disabled={isLoading}
+                onChange={() => toggle("volumes")}
               />
             }
             label={
@@ -151,10 +151,10 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
               >
                 <span>Unused Volumes</span>
                 <AppTypography
-                  component="span"
-                  variant="caption"
                   color="error"
+                  component="span"
                   fontWeight={600}
+                  variant="caption"
                 >
                   (Potentially Destructive!)
                 </AppTypography>
@@ -185,15 +185,15 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           borderTop: "1px solid var(--mui-palette-divider)",
         }}
       >
-        <AppButton onClick={handleClose} disabled={isLoading} color="inherit">
+        <AppButton color="inherit" disabled={isLoading} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={() => onConfirm(opts)}
-          disabled={isLoading || selectedCount === 0}
-          variant="contained"
           color={opts.volumes ? "error" : "warning"}
-          startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
+          disabled={isLoading || selectedCount === 0}
+          onClick={() => onConfirm(opts)}
+          startIcon={<Icon height={20} icon="mdi:broom" width={20} />}
+          variant="contained"
         >
           {isLoading ? "Pruning..." : `Prune Selected (${selectedCount})`}
         </AppButton>

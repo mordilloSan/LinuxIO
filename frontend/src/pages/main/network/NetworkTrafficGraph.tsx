@@ -11,9 +11,9 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface NetworkTrafficGraphProps {
-  value: number;
   color: string;
   label: string;
+  value: number;
 }
 
 const NetworkTrafficGraph = React.forwardRef<
@@ -89,8 +89,8 @@ const NetworkTrafficGraph = React.forwardRef<
 
   return (
     <SmoothieCanvas
-      ref={canvasRef}
       chartRef={chartRef}
+      ref={canvasRef}
       style={{ width: "100%", height: "100%" }}
     />
   );

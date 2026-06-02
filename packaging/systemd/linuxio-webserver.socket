@@ -5,7 +5,11 @@ PartOf=linuxio.target
 Wants=linuxio-issue.service
 
 [Socket]
-ListenStream=0.0.0.0:8090
+# Port-only form binds dual-stack (IPv4 + IPv6 via IPV6_V6ONLY=0).
+# Needed so that hostname.local clients reaching us over the AAAA
+# record Avahi publishes also connect, not just the A record.
+ListenStream=8090
+BindIPv6Only=both
 
 # Tuning
 Backlog=4096

@@ -1,22 +1,19 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useCallback, useMemo } from "react";
-import { toast } from "sonner";
+import React, { useCallback, useMemo, useState } from "react";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-const wireguardToastMeta = {
-  meta: { href: "/wireguard", label: "Open WireGuard" },
-};
 
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
 
 const CreateInterfaceButton = () => {
+  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
   const [serverName, setServerName] = useState("");
   const [port, setPort] = useState(0);
   const [CIDR, setCIDR] = useState("");
@@ -172,28 +169,25 @@ const CreateInterfaceButton = () => {
       .filter(Boolean)
       .join(",");
 
-    // AddInterface expects: [name, addresses, listenPort, egressNic, dns, mtu, peers_json, numPeers]
-    const args = [
-      serverName,
-      CIDR, // addresses as comma-separated string
-      String(port),
-      nic,
-      dnsStr, // dns as comma-separated string
-      "0", // mtu
-      "[]", // peers_json (empty array)
-      String(peers), // numPeers
-    ];
-
-    addInterface(args, {
-      onSuccess: () => {
-        toast.success(
-          `WireGuard interface '${serverName}' created`,
-          wireguardToastMeta,
-        );
-        setShowDialog(false);
-        setDns("");
+    addInterface(
+      {
+        name: serverName,
+        addresses: CIDR,
+        listenPort: String(port),
+        egressNic: nic,
+        dns: dnsStr,
+        mtu: "0",
+        peersJson: "[]",
+        numPeers: String(peers),
       },
-    });
+      {
+        onSuccess: () => {
+          toast.success(`WireGuard interface '${serverName}' created`);
+          setShowDialog(false);
+          setDns("");
+        },
+      },
+    );
   };
 
   const availableNICs =
@@ -206,31 +200,31 @@ const CreateInterfaceButton = () => {
 
   return (
     <>
-      <AppButton variant="contained" color="primary" onClick={handleOpenDialog}>
+      <AppButton color="primary" onClick={handleOpenDialog} variant="contained">
         Create New Interface
       </AppButton>
       <CreateInterfaceDialog
-        open={showDialog}
-        onClose={() => setShowDialog(false)}
-        onCreate={handleCreateInterface}
-        loading={isAddingInterface}
-        error={error || undefined}
-        serverName={serverName}
-        setServerName={setServerName}
-        port={port}
-        setPort={setPort}
-        CIDR={CIDR}
-        setCIDR={setCIDR}
-        peers={peers}
-        setPeers={setPeers}
-        nic={nic}
-        setNic={setNic}
         availableNICs={availableNICs}
+        CIDR={CIDR}
+        dns={dns}
+        error={error || undefined}
+        existingCIDRs={existingCIDRs}
         existingNames={existingNames}
         existingPorts={existingPorts}
-        existingCIDRs={existingCIDRs}
-        dns={dns}
+        loading={isAddingInterface}
+        nic={nic}
+        onClose={() => setShowDialog(false)}
+        onCreate={handleCreateInterface}
+        open={showDialog}
+        peers={peers}
+        port={port}
+        serverName={serverName}
+        setCIDR={setCIDR}
         setDns={setDns}
+        setNic={setNic}
+        setPeers={setPeers}
+        setPort={setPort}
+        setServerName={setServerName}
       />
     </>
   );

@@ -41,7 +41,6 @@ export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
           }}
         >
           <AppTypography
-            variant="caption"
             color="text.secondary"
             style={{
               textTransform: "uppercase",
@@ -49,6 +48,7 @@ export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
               fontSize: "0.62rem",
               flexShrink: 0,
             }}
+            variant="caption"
           >
             {label}
           </AppTypography>
@@ -63,11 +63,11 @@ export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
           >
             {typeof value === "string" ? (
               <AppTypography
-                variant="body2"
+                align="right"
                 fontWeight={500}
                 noWrap={noWrap ?? true}
-                align="right"
                 style={{ width: "100%", textAlign: "right" }}
+                variant="body2"
               >
                 {value}
               </AppTypography>
@@ -90,19 +90,17 @@ const HardwareCard: React.FC<{
   actions?: React.ReactNode;
 }> = ({ title, subtitle, avatarIcon, accentColor, rows, actions }) => (
   <FrostedCard
+    hoverLift
     style={{
       display: "flex",
       flexDirection: "column",
       padding: 8,
     }}
-    hoverLift
   >
     <CardIconHeader
       icon={
-        <Icon icon={avatarIcon} width={28} height={28} color={accentColor} />
+        <Icon color={accentColor} height={28} icon={avatarIcon} width={28} />
       }
-      title={title}
-      subtitle={subtitle}
       right={
         actions ? (
           <div
@@ -118,6 +116,8 @@ const HardwareCard: React.FC<{
         ) : undefined
       }
       style={{ marginBottom: 6 }}
+      subtitle={subtitle}
+      title={title}
     />
 
     <div style={{ display: "flex", flexWrap: "wrap", gap: 16, flex: 1 }}>

@@ -35,8 +35,8 @@ const FrostedCard = React.forwardRef<HTMLDivElement, FrostedCardProps>(
 
     return (
       <div
-        ref={ref}
         className={cls || undefined}
+        ref={ref}
         style={frostedStyles}
         {...props}
       >

@@ -3,13 +3,14 @@ package wireguard
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers wireguard handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "wireguard", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "wireguard", []bridgeipc.Command{
 		{Name: "list_interfaces", Mode: bridgeipc.ModeQuery, Handler: handleListInterfaces},
 		{Name: "add_interface", Mode: bridgeipc.ModeJob, Handler: handleAddInterface},
 		{Name: "remove_interface", Mode: bridgeipc.ModeJob, Handler: handleRemoveInterface},
@@ -25,62 +26,62 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleListInterfaces(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListInterfaces(ctx, args)
+func handleListInterfaces(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+	result, err := ListInterfaces(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleAddInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := AddInterface(ctx, args)
+func handleAddInterface(ctx context.Context, req apischema.WireGuardAddInterfaceRequest, emit bridgeipc.Events) error {
+	result, err := AddInterface(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleRemoveInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := RemoveInterface(ctx, args)
+func handleRemoveInterface(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
+	result, err := RemoveInterface(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListPeers(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := ListPeers(ctx, args)
+func handleListPeers(ctx context.Context, req apischema.InterfaceNameRequest, emit bridgeipc.Events) error {
+	result, err := ListPeers(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleAddPeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := AddPeer(ctx, args)
+func handleAddPeer(ctx context.Context, req apischema.InterfaceNameRequest, emit bridgeipc.Events) error {
+	result, err := AddPeer(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleRemovePeer(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := RemovePeerByName(ctx, args)
+func handleRemovePeer(ctx context.Context, req apischema.InterfaceNamePeerNameRequest, emit bridgeipc.Events) error {
+	result, err := RemovePeerByName(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handlePeerQRCode(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := PeerQRCode(ctx, args)
+func handlePeerQRCode(ctx context.Context, req apischema.InterfaceNamePeerNameRequest, emit bridgeipc.Events) error {
+	result, err := PeerQRCode(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handlePeerConfigDownload(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := PeerConfigDownload(ctx, args)
+func handlePeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerNameRequest, emit bridgeipc.Events) error {
+	result, err := PeerConfigDownload(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleUpInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := UpInterface(ctx, args)
+func handleUpInterface(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
+	result, err := UpInterface(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleDownInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DownInterface(ctx, args)
+func handleDownInterface(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
+	result, err := DownInterface(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleEnableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := EnableInterface(ctx, args)
+func handleEnableInterface(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
+	result, err := EnableInterface(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleDisableInterface(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	result, err := DisableInterface(ctx, args)
+func handleDisableInterface(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
+	result, err := DisableInterface(ctx, req)
 	return bridgeipc.EmitResult(emit, result, err)
 }

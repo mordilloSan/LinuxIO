@@ -15,21 +15,19 @@ import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog"
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import {
-  AppDialogTitle,
-  AppDialogContent,
   AppDialogActions,
+  AppDialogContent,
+  AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
 interface ComposeEditorDialogProps {
-  open: boolean;
-  mode: "create" | "edit";
-  readOnly?: boolean;
-  stackName?: string;
   filePath?: string;
   initialContent?: string;
+  mode: "create" | "edit";
   onClose: () => void;
   onSave: (
     content: string,
@@ -37,6 +35,9 @@ interface ComposeEditorDialogProps {
     filePath: string,
   ) => Promise<void>;
   onValidate?: (content: string) => Promise<ValidationResult>;
+  open: boolean;
+  readOnly?: boolean;
+  stackName?: string;
 }
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
@@ -189,11 +190,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   return (
     <>
       <AppFullscreenDialog
-        open={open}
-        onClose={handleClose}
         contentStyle={{
           backgroundColor: theme.palette.background.default,
         }}
+        onClose={handleClose}
+        open={open}
       >
         <AppDialogTitle
           style={{
@@ -218,21 +219,21 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
 
             {mode === "create" ? (
               <AppTextField
-                label="Stack Name"
-                value={stackName}
-                onChange={handleStackNameChange}
-                fullWidth
-                size="small"
-                placeholder="my-stack"
-                helperText="Lowercase letters, numbers, hyphens, and underscores only (max 63 chars)"
                 disabled={isSaving}
+                fullWidth
+                helperText="Lowercase letters, numbers, hyphens, and underscores only (max 63 chars)"
+                label="Stack Name"
+                onChange={handleStackNameChange}
+                placeholder="my-stack"
+                size="small"
+                value={stackName}
               />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Stack: <strong>{stackName}</strong>
                 </AppTypography>
-                <AppTypography variant="caption" color="text.secondary">
+                <AppTypography color="text.secondary" variant="caption">
                   File: {filePath}
                 </AppTypography>
               </div>
@@ -248,8 +249,8 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           }}
         >
           <ComposeValidationFeedback
-            validation={validation}
             isValidating={isValidating}
+            validation={validation}
           />
 
           <div
@@ -274,13 +275,13 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
               }
             >
               <FileEditor
-                ref={editorRef}
-                filePath={filePath || "docker-compose.yml"}
                 fileName="docker-compose.yml"
+                filePath={filePath || "docker-compose.yml"}
                 initialContent={initialContent}
+                onDirtyChange={readOnly ? undefined : setIsEditorDirty}
                 onSave={handleSave}
                 readOnly={readOnly}
-                onDirtyChange={readOnly ? undefined : setIsEditorDirty}
+                ref={editorRef}
               />
             </Suspense>
           </div>
@@ -299,21 +300,21 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             </AppButton>
           ) : (
             <>
-              <AppButton onClick={handleClose} disabled={isSaving}>
+              <AppButton disabled={isSaving} onClick={handleClose}>
                 Cancel
               </AppButton>
               <AppButton
-                onClick={handleValidate}
                 disabled={isSaving || isValidating}
+                onClick={handleValidate}
                 variant="outlined"
               >
                 {isValidating ? "Validating..." : "Validate"}
               </AppButton>
               <AppButton
-                onClick={handleSave}
-                disabled={isSaving || isValidating}
-                variant="contained"
                 color="primary"
+                disabled={isSaving || isValidating}
+                onClick={handleSave}
+                variant="contained"
               >
                 {isSaving ? "Saving..." : "Save"}
               </AppButton>
@@ -323,11 +324,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       </AppFullscreenDialog>
 
       <UnsavedChangesDialog
-        open={showUnsavedDialog}
-        onKeepEditing={() => setShowUnsavedDialog(false)}
-        onDiscardAndExit={handleDiscardAndExit}
-        onSaveAndExit={handleSaveAndExit}
         isSaving={isSaving}
+        onDiscardAndExit={handleDiscardAndExit}
+        onKeepEditing={() => setShowUnsavedDialog(false)}
+        onSaveAndExit={handleSaveAndExit}
+        open={showUnsavedDialog}
       />
     </>
   );

@@ -6,14 +6,13 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { toast } from "sonner";
 
 import ComposeList, { type ComposeProject } from "./ComposeList";
 
 import {
-  linuxio,
   CACHE_TTL_MS,
   isConnected,
+  linuxio,
   openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
@@ -35,6 +34,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ComposeStacksPageProps {
@@ -47,6 +47,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   viewMode = "table",
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { config } = useConfig();
   const chunkSize =
     (config.appSettings.chunkSizeMB ?? 0) > 0
@@ -169,11 +170,11 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           const deleteFile = option === "file" || option === "directory";
           const deleteDirectory = option === "directory";
 
-          await deleteStack([
+          await deleteStack({
             projectName,
-            deleteFile ? "true" : "false",
-            deleteDirectory ? "true" : "false",
-          ]);
+            deleteFile,
+            deleteDirectory,
+          });
 
           const successMsg =
             option === "directory"
@@ -194,7 +195,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         setDeleteLoading(false);
       }
     },
-    [deleteDialogProject, deleteStack, refetch],
+    [deleteDialogProject, deleteStack, refetch, toast],
   );
 
   const handleDeleteDialogClose = useCallback(() => {
@@ -238,12 +239,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         // Fetch file content
         const result = await queryClient.fetchQuery(
           linuxio.filebrowser.resource_get.queryOptions(
-            configPath,
-            "",
-            "true",
-            {
-              staleTime: CACHE_TTL_MS.NONE,
-            },
+            { path: configPath, unused: "", getContent: "true" },
+            { staleTime: CACHE_TTL_MS.NONE },
           ),
         );
 
@@ -263,7 +260,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [queryClient],
+    [queryClient, toast],
   );
 
   // Preview stack handler (read-only)
@@ -272,12 +269,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       try {
         const result = await queryClient.fetchQuery(
           linuxio.filebrowser.resource_get.queryOptions(
-            configPath,
-            "",
-            "true",
-            {
-              staleTime: CACHE_TTL_MS.NONE,
-            },
+            { path: configPath, unused: "", getContent: "true" },
+            { staleTime: CACHE_TTL_MS.NONE },
           ),
         );
 
@@ -297,14 +290,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [queryClient],
+    [queryClient, toast],
   );
 
   // Validate compose file
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await linuxio.docker.validate_compose.call(content);
+        const result = await linuxio.docker.validate_compose(content);
         return result;
       } catch (error) {
         return {
@@ -338,11 +331,11 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
-      const job = await linuxio.filebrowser.upload.call(
-        filePath,
-        String(contentSize),
-        ...(override ? ["true"] : []),
-      );
+      const job = await linuxio.filebrowser.upload({
+        targetPath: filePath,
+        size: String(contentSize),
+        overwrite: override || undefined,
+      });
 
       await runChunkedStreamResult<void>({
         open: () => openJobDataStream(job.id, 0),
@@ -378,7 +371,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [chunkSize, projects, refetch, runChunkedStreamResult],
+    [chunkSize, projects, refetch, runChunkedStreamResult, toast],
   );
 
   // Save compose file with overwrite protection
@@ -417,7 +410,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         }
       }
     },
-    [editorMode, performSave, queryClient],
+    [editorMode, performSave, queryClient, toast],
   );
 
   // Handle overwrite confirmation
@@ -440,7 +433,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     } finally {
       setPendingSaveData(null);
     }
-  }, [pendingSaveData, performSave]);
+  }, [pendingSaveData, performSave, toast]);
 
   // Handle overwrite cancellation
   const handleOverwriteCancel = useCallback(() => {
@@ -470,71 +463,71 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           <PageLoader />
         ) : (
           <ComposeList
-            projects={projects}
-            onStart={startProject}
-            onStop={stopProject}
-            onRestart={restartProject}
+            isLoading={isLoading}
+            isPending={isPending}
             onDelete={handleOpenDeleteDialog}
             onEdit={handleEditStack}
             onPreview={handlePreviewStack}
-            isLoading={isLoading}
-            isPending={isPending}
+            onRestart={restartProject}
+            onStart={startProject}
+            onStop={stopProject}
+            projects={projects}
             viewMode={viewMode}
           />
         )}
 
         <ComposeEditorDialog
-          open={editorOpen}
-          mode={editorMode}
-          readOnly={editorReadOnly}
-          stackName={editingStackName}
           filePath={editingFilePath}
           initialContent={editingContent}
+          mode={editorMode}
           onClose={() => setEditorOpen(false)}
           onSave={handleSave}
           onValidate={handleValidate}
+          open={editorOpen}
+          readOnly={editorReadOnly}
+          stackName={editingStackName}
         />
 
         <ComposePostSaveDialog
+          isExecuting={operationDialogOpen}
+          onDoNothing={handlePostSaveDoNothing}
+          onRestart={handlePostSaveRestart}
+          onStart={handlePostSaveStart}
           open={postSaveDialogOpen}
           stackName={postSaveStackName}
           stackState={postSaveStackState}
-          onStart={handlePostSaveStart}
-          onRestart={handlePostSaveRestart}
-          onDoNothing={handlePostSaveDoNothing}
-          isExecuting={operationDialogOpen}
         />
 
         <StackSetupDialog
-          open={setupDialogOpen}
+          defaultWorkingDir={config.docker.folders?.[0]}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
-          defaultWorkingDir={config.docker.folders?.[0]}
+          open={setupDialogOpen}
         />
 
         <ComposeOperationDialog
-          open={operationDialogOpen}
-          onClose={handleOperationDialogClose}
           action={operationAction}
-          projectName={operationProjectName}
           composePath={operationComposePath}
+          onClose={handleOperationDialogClose}
+          open={operationDialogOpen}
+          projectName={operationProjectName}
         />
 
         <DeleteStackDialog
-          open={deleteDialogOpen}
+          configFiles={deleteDialogProject?.config_files || []}
+          isLoading={deleteLoading}
           onClose={handleDeleteDialogClose}
           onConfirm={handleDeleteConfirm}
+          open={deleteDialogOpen}
           projectName={deleteDialogProject?.name || ""}
-          configFiles={deleteDialogProject?.config_files || []}
           workingDir={deleteDialogProject?.working_dir || ""}
-          isLoading={deleteLoading}
         />
 
         <GeneralDialog
-          open={overwriteDialogOpen}
-          onClose={handleOverwriteCancel}
-          maxWidth="sm"
           fullWidth
+          maxWidth="sm"
+          onClose={handleOverwriteCancel}
+          open={overwriteDialogOpen}
         >
           <AppDialogTitle>File Already Exists</AppDialogTitle>
           <AppDialogContent>
@@ -544,12 +537,12 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             </AppDialogContentText>
           </AppDialogContent>
           <AppDialogActions>
-            <AppButton onClick={handleOverwriteCancel} color="inherit">
+            <AppButton color="inherit" onClick={handleOverwriteCancel}>
               Cancel
             </AppButton>
             <AppButton
-              onClick={handleOverwriteConfirm}
               color="warning"
+              onClick={handleOverwriteConfirm}
               variant="contained"
             >
               Overwrite

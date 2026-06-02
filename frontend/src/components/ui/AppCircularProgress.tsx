@@ -3,8 +3,8 @@ import React from "react";
 import "./app-circular-progress.css";
 
 export interface AppCircularProgressProps extends React.HTMLAttributes<HTMLSpanElement> {
-  size?: number;
   color?: "primary" | "inherit";
+  size?: number;
 }
 
 const AppCircularProgress = React.forwardRef<
@@ -15,9 +15,9 @@ const AppCircularProgress = React.forwardRef<
 
   return (
     <span
+      className={cls}
       ref={ref}
       role="progressbar"
-      className={cls}
       style={{
         width: size,
         height: size,
@@ -26,13 +26,13 @@ const AppCircularProgress = React.forwardRef<
       }}
       {...rest}
     >
-      <svg viewBox="22 22 44 44" width={size} height={size}>
+      <svg height={size} viewBox="22 22 44 44" width={size}>
         <circle
           className="app-circular-progress__circle"
           cx="44"
           cy="44"
-          r="20.2"
           fill="none"
+          r="20.2"
           strokeWidth="3.6"
         />
       </svg>

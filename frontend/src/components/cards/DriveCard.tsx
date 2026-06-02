@@ -9,20 +9,20 @@ import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 interface DriveSmartData {
+  nvme_smart_health_information_log?: { temperature?: number };
   smart_status?: { passed?: boolean };
   temperature?: { current?: number };
-  nvme_smart_health_information_log?: { temperature?: number };
 }
 
 export interface DriveCardProps {
-  name: string;
+  children?: React.ReactNode;
+  expanded: boolean;
   model?: string;
-  transport: string;
+  name: string;
+  onClick: () => void;
   sizeBytes: number;
   smart?: DriveSmartData;
-  expanded: boolean;
-  onClick: () => void;
-  children?: React.ReactNode;
+  transport: string;
 }
 
 const getTemperature = (smart?: DriveSmartData): number | null => {
@@ -67,37 +67,37 @@ const DriveCard: React.FC<DriveCardProps> = ({
   return (
     <FrostedCard
       hoverLift={!expanded}
+      onClick={onClick}
       style={{
         padding: 8,
         position: "relative",
         cursor: "pointer",
       }}
-      onClick={onClick}
     >
       {transport.toLowerCase() === "usb" ? (
-        <AppTooltip title="Create Bootable USB" arrow>
+        <AppTooltip arrow title="Create Bootable USB">
           <div
             className="fc-opacity-hover"
+            onClick={(e) => {
+              e.stopPropagation();
+              // TODO: Add handler for bootable USB creation
+            }}
             style={{
               position: "absolute",
               top: 8,
               right: 8,
               cursor: "pointer",
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-              // TODO: Add handler for bootable USB creation
-            }}
           >
             <Icon
+              color={theme.palette.text.secondary}
               icon="mdi:pencil"
               width={20}
-              color={theme.palette.text.secondary}
             />
           </div>
         </AppTooltip>
       ) : temperature !== null ? (
-        <AppTooltip title="Drive Temperature" placement="top" arrow>
+        <AppTooltip arrow placement="top" title="Drive Temperature">
           <div
             style={{
               position: "absolute",
@@ -109,9 +109,9 @@ const DriveCard: React.FC<DriveCardProps> = ({
             }}
           >
             <AppTypography
-              variant="body2"
-              fontWeight={600}
               color={getTemperatureColor(temperature)}
+              fontWeight={600}
+              variant="body2"
             >
               {temperature}°C
             </AppTypography>
@@ -127,19 +127,19 @@ const DriveCard: React.FC<DriveCardProps> = ({
         }}
       >
         <Icon
+          color={theme.palette.primary.main}
           icon={transport === "nvme" ? "mdi:harddisk" : "mdi:harddisk-plus"}
           width={32}
-          color={theme.palette.primary.main}
         />
         <div style={{ marginLeft: 6, flexGrow: 1, minWidth: 0 }}>
-          <AppTypography variant="subtitle1" fontWeight={600} noWrap>
+          <AppTypography fontWeight={600} noWrap variant="subtitle1">
             /dev/{name}
           </AppTypography>
           <AppTypography
-            variant="body2"
             color="text.secondary"
             noWrap
             title={model || "Unknown Model"}
+            variant="body2"
           >
             {model || "Unknown Model"}
           </AppTypography>
@@ -148,14 +148,15 @@ const DriveCard: React.FC<DriveCardProps> = ({
 
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
         <Chip
+          color="primary"
           label={formatFileSize(sizeBytes)}
           size="small"
-          color="primary"
           variant="soft"
         />
         <Chip label={transport.toUpperCase()} size="small" variant="soft" />
         {smart?.smart_status && (
           <Chip
+            color={getHealthColor(smart)}
             label={
               getHealthColor(smart) === "success"
                 ? "Healthy"
@@ -164,7 +165,6 @@ const DriveCard: React.FC<DriveCardProps> = ({
                   : "Unknown"
             }
             size="small"
-            color={getHealthColor(smart)}
             variant="soft"
           />
         )}

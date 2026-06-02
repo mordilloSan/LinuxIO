@@ -13,13 +13,13 @@ type GridSize =
     };
 
 export interface AppGridProps extends React.HTMLAttributes<HTMLElement> {
-  container?: boolean;
-  spacing?: number;
-  size?: GridSize;
-  alignItems?: React.CSSProperties["alignItems"];
-  component?: React.ElementType;
   /** Allow extra props to pass through to the underlying component (e.g. motion props). */
   [key: string]: unknown;
+  alignItems?: React.CSSProperties["alignItems"];
+  component?: React.ElementType;
+  container?: boolean;
+  size?: GridSize;
+  spacing?: number;
 }
 
 function AppGrid(
@@ -40,8 +40,8 @@ function AppGrid(
     const cls = ["app-grid", className].filter(Boolean).join(" ");
     return (
       <Component
-        ref={ref}
         className={cls}
+        ref={ref}
         style={{
           gap: spacing ? spacing * 4 : undefined,
           alignItems,
@@ -85,8 +85,8 @@ function AppGrid(
 
   return (
     <Component
-      ref={ref}
       className={cls}
+      ref={ref}
       style={{ ...sizeVars, ...style }}
       {...rest}
     >

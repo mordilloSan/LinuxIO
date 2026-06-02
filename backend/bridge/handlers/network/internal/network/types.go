@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type InterfaceConfig struct {
@@ -22,7 +22,7 @@ type InterfaceConfig struct {
 	MTU           *uint32
 }
 
-type Backend interface {
+type ConfigBackend interface {
 	Name() string
 	Read() (InterfaceConfig, error)
 	SetIPv4DHCP(ctx context.Context) error
@@ -34,7 +34,7 @@ type Backend interface {
 	Disable(ctx context.Context) error
 }
 
-type Runner interface {
+type CommandRunner interface {
 	LookPath(name string) (string, error)
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
@@ -46,7 +46,7 @@ type Environment struct {
 	IfupdownMain    string
 	IfupdownDir     string
 	IfcfgDir        string
-	Runner          Runner
+	Runner          CommandRunner
 	WriteFile       func(path string, data []byte, mode fs.FileMode) error
 }
 
@@ -59,7 +59,7 @@ func DefaultEnvironment() Environment {
 		IfupdownDir:     "/etc/network/interfaces.d",
 		IfcfgDir:        "/etc/sysconfig/network-scripts",
 		Runner:          ExecRunner{},
-		WriteFile:       fsutil.WriteFileAtomic,
+		WriteFile:       utils.WriteFileAtomic,
 	}
 }
 

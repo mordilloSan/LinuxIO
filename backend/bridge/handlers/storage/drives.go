@@ -257,3 +257,216 @@ func RunSmartTest(ctx context.Context, device, testType string) (map[string]any,
 		"output":  string(out),
 	}, nil
 }
+
+// SmartTestStatus represents the current state of a SMART self-test on a drive.
+type SmartTestStatus struct {
+	State           string // "in_progress" | "completed" | "failed" | "aborted" | "idle"
+	PercentComplete int    // 0..100
+	Message         string
+}
+
+// smartctlOutput is the subset of `smartctl --json -a /dev/X` output we care about.
+// NVMe schemas vary across smartmontools versions: current versions emit
+// current_self_test_operation as an object with .value, paired with the scalar
+// current_self_test_completion_percent. Older / fully-scalar / fully-object
+// variants are also supported via custom unmarshalling below.
+type smartctlOutput struct {
+	ATA  *ataSmartData    `json:"ata_smart_data"`
+	NVMe *nvmeSelfTestLog `json:"nvme_self_test_log"`
+}
+
+type ataSmartData struct {
+	SelfTest *ataSelfTest `json:"self_test"`
+}
+
+type ataSelfTest struct {
+	Status *ataSelfTestStatus `json:"status"`
+}
+
+type ataSelfTestStatus struct {
+	Value            *int   `json:"value"`
+	String           string `json:"string"`
+	Passed           *bool  `json:"passed"`
+	RemainingPercent *int   `json:"remaining_percent"`
+}
+
+type nvmeSelfTestLog struct {
+	// Newer smartctl: scalar.
+	CurrentSelfTestOp                *intOrObj `json:"current_self_test_op"`
+	CurrentSelfTestCompletionPercent *intOrObj `json:"current_self_test_completion_percent"`
+	// Older / object form.
+	CurrentSelfTestOperation  *intOrObj              `json:"current_self_test_operation"`
+	CurrentSelfTestCompletion *intOrObj              `json:"current_self_test_completion"`
+	Table                     []nvmeSelfTestLogEntry `json:"table"`
+}
+
+type nvmeSelfTestLogEntry struct {
+	SelfTestResult *nvmeSelfTestResult `json:"self_test_result"`
+}
+
+type nvmeSelfTestResult struct {
+	Value  *int   `json:"value"`
+	String string `json:"string"`
+}
+
+// intOrObj decodes either a JSON number or an object with a `value` field.
+// Some smartmontools versions emit `current_self_test_operation: { value: 1 }`
+// while others emit `current_self_test_op: 1` as a plain integer.
+type intOrObj struct {
+	Value int
+}
+
+func (i *intOrObj) UnmarshalJSON(b []byte) error {
+	// Try plain int first.
+	var n int
+	if err := json.Unmarshal(b, &n); err == nil {
+		i.Value = n
+		return nil
+	}
+	// Fall back to object { "value": N }.
+	var obj struct {
+		Value int `json:"value"`
+	}
+	if err := json.Unmarshal(b, &obj); err != nil {
+		return err
+	}
+	i.Value = obj.Value
+	return nil
+}
+
+// parseSmartTestJSON converts a smartctl JSON blob into a SmartTestStatus.
+// Pure function — exported indirectly via interpretSmartctlResult so tests
+// can drive it with canned bytes.
+func parseSmartTestJSON(b []byte) (SmartTestStatus, error) {
+	var out smartctlOutput
+	if err := json.Unmarshal(b, &out); err != nil {
+		return SmartTestStatus{}, fmt.Errorf("parse smartctl json: %w", err)
+	}
+
+	if st, ok := parseATASmartTestStatus(out.ATA); ok {
+		return st, nil
+	}
+	if out.NVMe != nil {
+		return parseNVMeSmartTestStatus(out.NVMe), nil
+	}
+
+	// Neither block present.
+	return SmartTestStatus{State: "idle"}, nil
+}
+
+func parseATASmartTestStatus(ata *ataSmartData) (SmartTestStatus, bool) {
+	if ata == nil || ata.SelfTest == nil || ata.SelfTest.Status == nil {
+		return SmartTestStatus{}, false
+	}
+
+	st := ata.SelfTest.Status
+	// Prefer documented fields. `remaining_percent` is present only while in progress.
+	if st.RemainingPercent != nil {
+		rem := min(max(*st.RemainingPercent, 0), 100)
+		return SmartTestStatus{
+			State:           "in_progress",
+			PercentComplete: 100 - rem,
+			Message:         st.String,
+		}, true
+	}
+	if st.Passed == nil {
+		// Status block present but no actionable fields -> idle.
+		return SmartTestStatus{State: "idle", Message: st.String}, true
+	}
+	if *st.Passed {
+		return SmartTestStatus{State: "completed", PercentComplete: 100, Message: st.String}, true
+	}
+	return SmartTestStatus{State: "failed", PercentComplete: 0, Message: st.String}, true
+}
+
+func parseNVMeSmartTestStatus(log *nvmeSelfTestLog) SmartTestStatus {
+	if opCode, ok := firstIntOrObjValue(log.CurrentSelfTestOp, log.CurrentSelfTestOperation); ok && opCode != 0 {
+		return SmartTestStatus{
+			State:           "in_progress",
+			PercentComplete: nvmeCompletionPercent(log),
+		}
+	}
+	if result, ok := latestNVMeSelfTestResult(log); ok {
+		return nvmeResultCodeToStatus(*result.Value, result.String)
+	}
+	// NVMe block present but no actionable info -> idle.
+	return SmartTestStatus{State: "idle"}
+}
+
+func nvmeCompletionPercent(log *nvmeSelfTestLog) int {
+	pct, ok := firstIntOrObjValue(log.CurrentSelfTestCompletionPercent, log.CurrentSelfTestCompletion)
+	if !ok {
+		return 0
+	}
+	return min(max(pct, 0), 100)
+}
+
+func firstIntOrObjValue(values ...*intOrObj) (int, bool) {
+	for _, value := range values {
+		if value != nil {
+			return value.Value, true
+		}
+	}
+	return 0, false
+}
+
+func latestNVMeSelfTestResult(log *nvmeSelfTestLog) (*nvmeSelfTestResult, bool) {
+	if len(log.Table) == 0 || log.Table[0].SelfTestResult == nil ||
+		log.Table[0].SelfTestResult.Value == nil {
+		return nil, false
+	}
+	return log.Table[0].SelfTestResult, true
+}
+
+// nvmeResultCodeToStatus maps the NVMe self-test result code to a status.
+// Mapping matches current smartmontools (nvmeprint.cpp) and the NVMe spec:
+//   - 0:           passed
+//   - 1, 2, 3, 4, 8, 9: aborted (operation interrupted, not a real failure)
+//   - 5, 6, 7:     failed (fatal error or segment failure)
+func nvmeResultCodeToStatus(code int, msg string) SmartTestStatus {
+	switch code {
+	case 0:
+		return SmartTestStatus{State: "completed", PercentComplete: 100, Message: msg}
+	case 1, 2, 3, 4, 8, 9:
+		return SmartTestStatus{State: "aborted", Message: msg}
+	case 5, 6, 7:
+		return SmartTestStatus{State: "failed", Message: msg}
+	default:
+		return SmartTestStatus{State: "failed", Message: msg}
+	}
+}
+
+// interpretSmartctlResult parses smartctl output, tolerating non-zero exit
+// codes when the JSON itself is intact. smartctl encodes many non-fatal
+// conditions in its exit status (bitmask), so a non-zero exit alongside
+// valid JSON is normal.
+func interpretSmartctlResult(out []byte, runErr error) (SmartTestStatus, error) {
+	if len(out) > 0 {
+		if st, err := parseSmartTestJSON(out); err == nil {
+			return st, nil
+		}
+	}
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) && len(exitErr.Stderr) > 0 {
+			return SmartTestStatus{}, fmt.Errorf("smartctl failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return SmartTestStatus{}, fmt.Errorf("smartctl failed: %w", runErr)
+	}
+	return SmartTestStatus{}, errors.New("smartctl produced no parseable output")
+}
+
+// PollSmartTestStatus runs `smartctl --json -a /dev/X` and returns the parsed
+// SMART self-test state. Uses cmd.Output() so stderr can't poison stdout JSON.
+func PollSmartTestStatus(ctx context.Context, device string) (SmartTestStatus, error) {
+	if !validDeviceNameRe.MatchString(device) {
+		return SmartTestStatus{}, errors.New("invalid device name")
+	}
+	smartctlPath, err := exec.LookPath("smartctl")
+	if err != nil {
+		return SmartTestStatus{}, fmt.Errorf("smartctl not found: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, smartctlPath, "--json", "-a", "/dev/"+device)
+	out, runErr := cmd.Output()
+	return interpretSmartctlResult(out, runErr)
+}

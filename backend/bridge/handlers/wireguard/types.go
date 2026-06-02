@@ -24,7 +24,7 @@ type PeerConfig struct {
 	Name                string   `json:"name,omitempty"`
 }
 
-type InterfaceConfig struct {
+type WireGuardConfig struct {
 	PrivateKey string       `json:"private_key"`
 	Address    []string     `json:"address"`
 	ListenPort int          `json:"listen_port"`

@@ -1,14 +1,14 @@
 import React, {
-  useMemo,
   useCallback,
-  useState,
-  useRef,
   useEffect,
   useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
-import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
+import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -38,27 +38,27 @@ if (
 }
 
 export interface FileCardProps {
-  name: string;
-  type: string;
-  path?: string;
-  size?: number;
-  modTime?: string;
-  isDirectory: boolean;
-  isSymlink?: boolean;
-  selected?: boolean;
+  directorySizeError?: Error | null;
+  directorySizeLoading?: boolean;
+  directorySizeUnavailable?: boolean;
+  disableHover?: boolean;
   hidden?: boolean;
   isCut?: boolean;
+  isDirectory: boolean;
   isRenaming?: boolean;
-  directorySizeLoading?: boolean;
-  directorySizeError?: Error | null;
-  directorySizeUnavailable?: boolean;
-  showFullPath?: boolean; // Show full directory path (for search results)
-  onClick: (event: React.MouseEvent) => void;
-  onDoubleClick?: () => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
-  onConfirmRename?: (newName: string) => void;
+  isSymlink?: boolean;
+  modTime?: string;
+  name: string;
   onCancelRename?: () => void;
-  disableHover?: boolean;
+  onClick: (event: React.MouseEvent) => void;
+  onConfirmRename?: (newName: string) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
+  onDoubleClick?: () => void;
+  path?: string;
+  selected?: boolean;
+  showFullPath?: boolean; // Show full directory path (for search results)
+  size?: number;
+  type: string;
 }
 
 const FileCard: React.FC<FileCardProps> = React.memo(
@@ -211,12 +211,12 @@ const FileCard: React.FC<FileCardProps> = React.memo(
 
     return (
       <div
+        className={className}
         data-file-card="true"
         data-file-path={path}
-        className={className}
         onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
+        onDoubleClick={handleDoubleClick}
         style={{
           display: "flex",
           alignItems: "center",
@@ -233,9 +233,9 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         }}
       >
         <FileIcon
-          isDirectory={isDirectory}
           filename={name}
           hidden={hidden}
+          isDirectory={isDirectory}
           isSymlink={isSymlink}
         />
         <div
@@ -248,14 +248,12 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         >
           {isRenaming ? (
             <input
-              ref={inputRef}
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={handleRenameKeyDown}
               onBlur={handleRenameBlur}
+              onChange={(e) => setRenameValue(e.target.value)}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
+              onKeyDown={handleRenameKeyDown}
+              ref={inputRef}
               style={{
                 fontWeight: 400,
                 fontSize: "0.90rem",
@@ -268,6 +266,8 @@ const FileCard: React.FC<FileCardProps> = React.memo(
                 width: "100%",
                 boxSizing: "border-box",
               }}
+              type="text"
+              value={renameValue}
             />
           ) : (
             <div

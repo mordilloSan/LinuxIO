@@ -14,7 +14,7 @@ import (
 func TestRouterJobFastCompleteReturnsTerminalSnapshot(t *testing.T) {
 	registry := NewRegistry()
 	router := NewRouter(registry)
-	router.JobRunner("test.fast", func(ctx context.Context, job *Job, args []string) (any, error) {
+	router.JobRunner("test.fast", func(ctx context.Context, job *Job, _ any) (any, error) {
 		return map[string]any{"ok": true}, nil
 	}, ActionDefault)
 
@@ -71,7 +71,7 @@ func TestRouterJobTimeoutReturnsFailedSnapshot(t *testing.T) {
 	policy := ActionDefault
 	policy.Name = "timeout_test"
 	policy.Timeout = 10 * time.Millisecond
-	router.JobRunner("test.timeout", func(ctx context.Context, job *Job, args []string) (any, error) {
+	router.JobRunner("test.timeout", func(ctx context.Context, job *Job, _ any) (any, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}, policy)
@@ -137,7 +137,7 @@ func TestRouterRejectsRegisteredJobsNamespace(t *testing.T) {
 			t.Fatal("expected reserved jobs.* registration to panic")
 		}
 	}()
-	router.Query("jobs.get", func(ctx context.Context, args []string, emit Events) error {
+	router.Query("jobs.get", func(ctx context.Context, _ any, emit Events) error {
 		return emit.Result(nil)
 	})
 }

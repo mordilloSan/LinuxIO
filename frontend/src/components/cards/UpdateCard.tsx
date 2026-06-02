@@ -9,14 +9,14 @@ import AppTypography from "@/components/ui/AppTypography";
 import { Update } from "@/types/update";
 
 export interface UpdateCardProps {
-  update: Update;
-  isExpanded: boolean;
-  isUpdating: boolean;
-  isCurrentPackage: boolean;
   changelog: string | undefined;
+  isCurrentPackage: boolean;
+  isExpanded: boolean;
   isLoadingChangelog: boolean;
+  isUpdating: boolean;
   onToggleChangelog: () => void;
   onUpdate: () => Promise<void>;
+  update: Update;
 }
 
 const UpdateCard: React.FC<UpdateCardProps> = ({
@@ -40,13 +40,13 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
         }}
       >
         <AppTypography
-          variant="h6"
           style={{
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
             maxWidth: "90%",
           }}
+          variant="h6"
         >
           {update.summary}
         </AppTypography>
@@ -54,7 +54,6 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
 
       {/* Package & version */}
       <AppTypography
-        variant="body2"
         color="text.secondary"
         gutterBottom
         style={{
@@ -63,11 +62,11 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
           textOverflow: "ellipsis",
           maxWidth: "90%",
         }}
+        variant="body2"
       >
         Package: {update.package_id}
       </AppTypography>
       <AppTypography
-        variant="body2"
         color="text.secondary"
         gutterBottom
         style={{
@@ -76,6 +75,7 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
           textOverflow: "ellipsis",
           maxWidth: "90%",
         }}
+        variant="body2"
       >
         Version: {update.version}
       </AppTypography>
@@ -91,18 +91,18 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       >
         <Chip
           label="View Changelog"
+          onClick={onToggleChangelog}
           size="small"
           variant="outlined"
-          onClick={onToggleChangelog}
         />
         <Chip
+          disabled={isUpdating}
           label={
             isCurrentPackage ? <AppCircularProgress size={16} /> : "Update"
           }
+          onClick={onUpdate}
           size="small"
           variant="outlined"
-          disabled={isUpdating}
-          onClick={onUpdate}
         />
       </div>
 
@@ -121,7 +121,7 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
               <AppCircularProgress size={20} />
             </div>
           ) : (
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               {changelog || "Loading..."}
             </AppTypography>
           )}

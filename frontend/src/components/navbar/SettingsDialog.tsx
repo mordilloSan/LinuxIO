@@ -17,6 +17,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
+
 type SettingsTab =
   | "general"
   | "theme"
@@ -25,8 +26,8 @@ type SettingsTab =
   | "indexer"
   | "power";
 interface SettingsDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useAppTheme();
@@ -51,10 +52,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   };
   return (
     <GeneralDialog
-      open={open}
-      onClose={handleClose}
-      maxWidth="md"
       fullWidth
+      maxWidth="md"
+      onClose={handleClose}
+      open={open}
       style={{ alignSelf: "flex-start" }}
     >
       <AppDialogTitle
@@ -73,16 +74,16 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             position: "relative",
           }}
         >
-          <AppTypography variant="h3" style={{ marginTop: 8 }}>
+          <AppTypography style={{ marginTop: 8 }} variant="h3">
             Settings
           </AppTypography>
           <AppIconButton
-            size="small"
-            onClick={handleClose}
             aria-label="Close settings"
+            onClick={handleClose}
+            size="small"
             style={{ position: "absolute", right: 0 }}
           >
-            <Icon icon="mdi:close" width={18} height={18} />
+            <Icon height={18} icon="mdi:close" width={18} />
           </AppIconButton>
         </div>
       </AppDialogTitle>
@@ -94,10 +95,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         }}
       >
         <TabSelector
-          value={effectiveTab}
           onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
           options={tabs}
           style={{ marginBottom: 0 }}
+          value={effectiveTab}
         />
         <AppDivider />
       </div>
@@ -119,10 +120,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             }}
           >
             <div>
-              <AppTypography variant="body1" fontWeight={600}>
+              <AppTypography fontWeight={600} variant="body1">
                 General
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 Common app preferences.
               </AppTypography>
             </div>
@@ -145,10 +146,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               }}
             >
               <div>
-                <AppTypography variant="body2" fontWeight={600}>
+                <AppTypography fontWeight={600} variant="body2">
                   Primary color
                 </AppTypography>
-                <AppTypography variant="caption" color="text.secondary">
+                <AppTypography color="text.secondary" variant="caption">
                   Change the app accent color.
                 </AppTypography>
               </div>

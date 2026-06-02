@@ -1,9 +1,9 @@
 import React, {
-  useState,
-  useRef,
+  useCallback,
   useEffect,
   useLayoutEffect,
-  useCallback,
+  useRef,
+  useState,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -13,20 +13,20 @@ interface AppSelectProps extends Omit<
   React.SelectHTMLAttributes<HTMLSelectElement>,
   "size"
 > {
-  size?: "small" | "medium";
-  variant?: "outlined" | "standard";
   disableUnderline?: boolean;
   fullWidth?: boolean;
   label?: string;
   renderOption?: (value: string, label: string) => React.ReactNode;
   renderValue?: (value: string, label: string) => React.ReactNode;
+  size?: "small" | "medium";
+  variant?: "outlined" | "standard";
 }
 
 interface OptionData {
-  value: string;
-  label: string;
   disabled?: boolean;
   hidden?: boolean;
+  label: string;
+  value: string;
 }
 
 function collectOptions(children: React.ReactNode): OptionData[] {
@@ -177,17 +177,17 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
       .join(" ");
 
     return (
-      <div className={wrapperClass} style={style} ref={ref}>
+      <div className={wrapperClass} ref={ref} style={style}>
         {label && <label className="app-select__label">{label}</label>}
         <div className="app-select__control" ref={containerRef}>
           <div
-            className={triggerClass}
-            role="combobox"
             aria-expanded={open}
             aria-haspopup="listbox"
-            tabIndex={disabled ? -1 : 0}
+            className={triggerClass}
             onClick={toggle}
             onKeyDown={onKeyDown}
+            role="combobox"
+            tabIndex={disabled ? -1 : 0}
           >
             {current
               ? renderValue
@@ -196,10 +196,10 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
               : ""}
           </div>
           <span
-            className={`app-select__arrow${open ? " app-select__arrow--open" : ""}`}
             aria-hidden="true"
+            className={`app-select__arrow${open ? " app-select__arrow--open" : ""}`}
           >
-            <svg viewBox="0 0 24 24" width="1.25em" height="1.25em">
+            <svg height="1.25em" viewBox="0 0 24 24" width="1.25em">
               <path d="M7 10l5 5 5-5z" fill="currentColor" />
             </svg>
           </span>
@@ -208,8 +208,8 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
           dropdownPos &&
           createPortal(
             <ul
-              ref={dropdownRef}
               className="app-select__dropdown app-select__dropdown--portal custom-scrollbar"
+              ref={dropdownRef}
               role="listbox"
               style={{
                 top: dropdownPos.top,
@@ -222,8 +222,6 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
                 .filter((o) => !o.hidden)
                 .map((opt) => (
                   <li
-                    key={opt.value}
-                    role="option"
                     aria-selected={opt.value === currentValue}
                     className={[
                       "app-select__option",
@@ -233,8 +231,10 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    onMouseDown={(e) => e.preventDefault()}
+                    key={opt.value}
                     onClick={() => select(opt)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    role="option"
                   >
                     {renderOption
                       ? renderOption(opt.value, opt.label)

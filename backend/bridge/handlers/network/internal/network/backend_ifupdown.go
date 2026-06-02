@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type ifupdownBackend struct {
@@ -16,7 +18,7 @@ func (b *ifupdownBackend) Name() string {
 	return "ifupdown"
 }
 
-func detectIfupdownBackend(env Environment, iface string) (Backend, error) {
+func detectIfupdownBackend(env Environment, iface string) (ConfigBackend, error) {
 	paths := []string{env.IfupdownMain}
 	extra, err := globSorted(filepath.Join(env.IfupdownDir, "*"))
 	if err != nil {
@@ -145,12 +147,12 @@ func (b *ifupdownBackend) SetMTU(ctx context.Context, mtu uint32) error {
 
 func (b *ifupdownBackend) Enable(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "ifup", b.iface)
-	return commandError("ifup", []string{b.iface}, output, err)
+	return utils.CommandOutputError("ifup", []string{b.iface}, output, err)
 }
 
 func (b *ifupdownBackend) Disable(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "ifdown", b.iface)
-	return commandError("ifdown", []string{b.iface}, output, err)
+	return utils.CommandOutputError("ifdown", []string{b.iface}, output, err)
 }
 
 func (b *ifupdownBackend) load() (*ifupdownDoc, error) {
@@ -182,7 +184,7 @@ func (b *ifupdownBackend) update(ctx context.Context, updateFn func(state *ifupd
 		_ = down
 	}
 	output, err := b.env.Runner.Run(ctx, "ifup", b.iface)
-	return commandError("ifup", []string{b.iface}, output, err)
+	return utils.CommandOutputError("ifup", []string{b.iface}, output, err)
 }
 
 type ifupdownDoc struct {

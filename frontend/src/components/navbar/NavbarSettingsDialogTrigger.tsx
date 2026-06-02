@@ -22,15 +22,15 @@ const NavbarSettingsDialogTrigger: React.FC = () => {
     <>
       <AppTooltip title="Open settings">
         <AppIconButton
-          color="inherit"
           aria-label="Open settings"
+          color="inherit"
           onClick={handleOpen}
         >
-          <Icon icon="mdi:cog" width={iconSize.md} height={iconSize.md} />
+          <Icon height={iconSize.md} icon="mdi:cog" width={iconSize.md} />
         </AppIconButton>
       </AppTooltip>
 
-      <SettingsDialog open={open} onClose={handleClose} />
+      <SettingsDialog onClose={handleClose} open={open} />
     </>
   );
 };

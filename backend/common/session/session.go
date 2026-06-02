@@ -68,19 +68,6 @@ type User struct {
 	GID      uint32 `json:"gid"`
 }
 
-type contextKey struct{}
-
-// WithContext returns a context carrying the authenticated LinuxIO session.
-func WithContext(ctx context.Context, sess *Session) context.Context {
-	return context.WithValue(ctx, contextKey{}, sess)
-}
-
-// FromContext returns the authenticated LinuxIO session from ctx when present.
-func FromContext(ctx context.Context) (*Session, bool) {
-	sess, ok := ctx.Value(contextKey{}).(*Session)
-	return sess, ok
-}
-
 type Timing struct {
 	CreatedAt     time.Time `json:"created_at"`
 	LastAccess    time.Time `json:"last_access"`
@@ -89,7 +76,7 @@ type Timing struct {
 	AbsoluteUntil time.Time `json:"absolute_until"`
 }
 
-type Capabilities struct {
+type CapabilitiesAvailable struct {
 	DockerAvailable        bool `json:"docker_available"`
 	IndexerAvailable       bool `json:"indexer_available"`
 	LMSensorsAvailable     bool `json:"lm_sensors_available"`
@@ -98,14 +85,29 @@ type Capabilities struct {
 	NFSClientAvailable     bool `json:"nfs_client_available"`
 	NFSServerAvailable     bool `json:"nfs_server_available"`
 	TunedAvailable         bool `json:"tuned_available"`
+	AvahiAvailable         bool `json:"avahi_available"`
+	WireGuardAvailable     bool `json:"wireguard_available"`
+}
+
+type CapabilitiesError struct {
+	DockerError        *string `json:"docker_error,omitempty"`
+	IndexerError       *string `json:"indexer_error,omitempty"`
+	LMSensorsError     *string `json:"lm_sensors_error,omitempty"`
+	SmartmontoolsError *string `json:"smartmontools_error,omitempty"`
+	PackageKitError    *string `json:"packagekit_error,omitempty"`
+	NFSClientError     *string `json:"nfs_client_error,omitempty"`
+	NFSServerError     *string `json:"nfs_server_error,omitempty"`
+	TunedError         *string `json:"tuned_error,omitempty"`
+	AvahiError         *string `json:"avahi_error,omitempty"`
+	WireGuardError     *string `json:"wireguard_error,omitempty"`
 }
 
 type Session struct {
-	SessionID    string       `json:"session_id"`
-	User         User         `json:"user"`
-	Privileged   bool         `json:"privileged"`
-	Capabilities Capabilities `json:"capabilities"`
-	Timing       Timing       `json:"timing"`
+	SessionID    string                `json:"session_id"`
+	User         User                  `json:"user"`
+	Privileged   bool                  `json:"privileged"`
+	Capabilities CapabilitiesAvailable `json:"capabilities"`
+	Timing       Timing                `json:"timing"`
 
 	// Termination handler (not serialized)
 	terminateFunc func(DeleteReason) error
@@ -403,7 +405,7 @@ func (m *Manager) SetPrivileged(id string, v bool) error {
 	return m.commitSession(s)
 }
 
-func (m *Manager) SetCapabilities(id string, v Capabilities) error {
+func (m *Manager) SetCapabilities(id string, v CapabilitiesAvailable) error {
 	s, err := m.GetSession(id)
 	if err != nil {
 		return err

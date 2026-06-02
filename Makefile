@@ -61,11 +61,56 @@ GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unk
 BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
 BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# For code counting (cloc)
-CLOC_INCLUDE_EXT := js,jsx,ts,tsx,css,scss,html,go
-CLOC_EXCLUDE_DIR := node_modules
-CLOC_EXCLUDE_BUILD_REGEX := '(^|/)backend/webserver/web/frontend($|/)'
-CLOC_EXCLUDE_GEN_REGEX := '(routeTree\.gen\.ts|\.min\.js$$)'
+# For code counting (built-in find + wc + awk; no external `cloc` dependency)
+LOC_INCLUDE_EXT := js,jsx,ts,tsx,css,scss,html,go
+
+define LOC_COUNT_SCRIPT
+loc_count() {
+  local root="$$1"; local exts_csv="$$2"; local exclude_gen="$$3"
+  if [ ! -d "$$root" ]; then echo "(skipped: $$root does not exist)"; return 0; fi
+  local -a find_ext_args=()
+  local first=1
+  local IFS=','
+  for ext in $$exts_csv; do
+    if [ $$first -eq 1 ]; then first=0; else find_ext_args+=( -o ); fi
+    find_ext_args+=( -name "*.$$ext" )
+  done
+  unset IFS
+  find "$$root" \
+    \( -type d \( -name node_modules \
+                  -o -path "*/backend/webserver/web/frontend" \
+                  -o -path "*/backend/webserver/web/frontend/*" \) -prune \) \
+    -o -type f \( "$${find_ext_args[@]}" \) -print0 \
+    | { if [ "$$exclude_gen" = "1" ]; then \
+          grep -zvE '(routeTree\.gen\.ts|\.min\.js)$$'; \
+        else cat; fi; } \
+    | xargs -0 -r wc -l 2>/dev/null \
+    | awk '
+        function basename_ext(p,   n, parts) {
+          n = split(p, parts, ".");
+          return (n > 1 ? parts[n] : "");
+        }
+        $$1 ~ /^[0-9]+$$/ {
+          count = $$1;
+          match($$0, /^[ \t]*[0-9]+[ \t]+/);
+          path = substr($$0, RSTART+RLENGTH);
+          if (path == "total") next;
+          ext = basename_ext(path);
+          if (ext == "") next;
+          lines[ext] += count; files[ext] += 1;
+          total += count; total_files += 1;
+        }
+        END {
+          if (total_files == 0) { print "(no files matched)"; exit }
+          printf "%-10s %10s %10s\n", "Language", "Files", "Lines";
+          printf "%-10s %10s %10s\n", "--------", "-----", "-----";
+          for (e in lines) printf "%-10s %10d %10d\n", e, files[e], lines[e];
+          printf "%-10s %10s %10s\n", "--------", "-----", "-----";
+          printf "%-10s %10d %10d\n", "TOTAL", total_files, total;
+        }'
+}
+endef
+export LOC_COUNT_SCRIPT
 
 # Determine version: prioritize dev branch, then tag, then commit
 ifneq ($(findstring dev/,$(GIT_BRANCH)),)
@@ -236,9 +281,6 @@ ensure-go:
 		  echo "export PATH=$$GO_CURRENT/bin:$$TOOLS_DIR/bin:\$$PATH" >> "$$HOME/.bashrc"; \
 		fi; \
 		FINAL_VERSION="$$( "$$GO_CURRENT/bin/go" version 2>/dev/null || true )"; \
-		echo "   Go root: $$GO_CURRENT -> $$GO_DIR"; \
-		echo "   Go binary: $$GO_CURRENT/bin/go"; \
-		echo "   Go version: $$FINAL_VERSION"; \
 		if ! printf "%s\n" "$$FINAL_VERSION" | grep -Fq "go$$DESIRED "; then \
 		  echo "❌ Expected Go $$DESIRED, got: $${FINAL_VERSION:-not found}"; \
 		  exit 1; \
@@ -295,7 +337,7 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	  $(MAKE) --no-print-directory tsc-only & \
 	  $(MAKE) --no-print-directory golint-only & \
 	  wait; \
-	} && $(MAKE) --no-print-directory test-backend
+	} && $(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -308,31 +350,13 @@ test-updater: ensure-go
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo "🔎 Running ESLint (parallel, auto-fix)..."
+	@echo "🔎 Running ESLint (auto-fix, concurrent)..."
 	@bash -c ' \
 	  cd frontend; \
-	  entries=(); \
-	  while IFS= read -r e; do \
-	    if echo "$$e" | grep -qE "\.(ts|tsx)$$"; then \
-	      entries+=("$$e"); \
-	    elif [ -d "$$e" ] && find "$$e" \( -name "*.ts" -o -name "*.tsx" \) -print -quit 2>/dev/null | grep -q .; then \
-	      entries+=("$$e"); \
-	    fi; \
-	  done < <(find src -maxdepth 1 -mindepth 1 | sort); \
-	  total=$${#entries[@]}; \
-	  chunk=$$(( (total + 2) / 3 )); \
-	  g1=("$${entries[@]:0:$$chunk}"); \
-	  g2=("$${entries[@]:$$chunk:$$chunk}"); \
-	  g3=("$${entries[@]:$$((chunk*2))}"); \
 	  filter_ts_warn() { grep -v -F -e "=============" -e "WARNING: You are currently running" -e "@typescript-eslint/typescript-estree version:" -e "Supported TypeScript versions:" -e "Your TypeScript version:" -e "Please only submit bug reports" || true; }; \
-	  run_eslint() { ./node_modules/.bin/eslint --fix --cache --cache-location "$$1" "$${@:2}"; }; \
-	  { run_eslint .eslintcache-a "$${g1[@]}"; echo $$? > /tmp/.eslint_a; } 2>&1 | filter_ts_warn & pid_a=$$!; \
-	  { run_eslint .eslintcache-b "$${g2[@]}"; echo $$? > /tmp/.eslint_b; } 2>&1 | filter_ts_warn & pid_b=$$!; \
-	  { run_eslint .eslintcache-c "$${g3[@]}"; echo $$? > /tmp/.eslint_c; } 2>&1 | filter_ts_warn & pid_c=$$!; \
-	  wait $$pid_a; wait $$pid_b; wait $$pid_c; \
-	  a=$$(cat /tmp/.eslint_a 2>/dev/null); b=$$(cat /tmp/.eslint_b 2>/dev/null); c=$$(cat /tmp/.eslint_c 2>/dev/null); \
-	  rm -f /tmp/.eslint_a /tmp/.eslint_b /tmp/.eslint_c; \
-	  [ "$${a:-0}$${b:-0}$${c:-0}" = "000" ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit 1; } \
+	  ./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache --concurrency auto 2>&1 | filter_ts_warn; \
+	  status=$${PIPESTATUS[0]}; \
+	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit "$$status"; } \
 	'
 
 tsc-only:
@@ -356,7 +380,7 @@ endif
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
-test-backend: ensure-go
+test-backend: $(GO_BUILD_PREREQ)
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		out="$$( $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... -count=1 -timeout 5m 2>&1)"; \
@@ -618,6 +642,7 @@ fastbuild: generate build-bridge _build-binaries
 
 generate: ensure-go
 	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/internal/config/init.go
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 
 clean:
 	@rm -f ./linuxio || true
@@ -699,19 +724,11 @@ help:
 
 cloc:
 	@echo "==> Total LOC (excluding node_modules and embedded frontend build)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		.
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
 
 cloc-clean:
 	@echo "==> Handwritten LOC (also excluding generated/minified files)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath \
-		--not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		--not-match-f=$(CLOC_EXCLUDE_GEN_REGEX) \
-		.
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 1'
 
 cloc-breakdown:
 	@echo "============================================================"
@@ -719,30 +736,19 @@ cloc-breakdown:
 	@echo "============================================================"
 	@echo
 	@echo "==> Frontend (Vite/React source)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		frontend/src || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count frontend/src "$(LOC_INCLUDE_EXT)" 0'
 	@echo
 	@echo "==> Go backend (entire backend tree, excluding embedded frontend build)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		backend || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend "$(LOC_INCLUDE_EXT)" 0'
 	@echo
 	@echo "==> Embedded frontend build inside backend (for visibility)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		backend/webserver/web/frontend 2>/dev/null || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend/webserver/web/frontend "$(LOC_INCLUDE_EXT)" 0'
 	@echo
 	@echo "==> Packaging / helper C code (if present)"
-	@cloc --include-ext=c,h \
-		packaging 2>/dev/null || true
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count packaging "c,h" 0'
 	@echo
 	@echo "==> TOTAL (same as make cloc)"
-	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
-		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
-		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
-		.
+	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
 
 .PHONY: \
   default help clean run \

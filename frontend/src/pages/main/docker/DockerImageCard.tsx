@@ -6,16 +6,16 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { cardBorderRadius } from "@/constants";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { CollapsibleTableProps } from "@/types/collapsible";
 import { alpha } from "@/utils/color";
 
 interface Props<T extends Record<string, any>> {
-  row: T;
   columns: CollapsibleTableProps<T>["columns"];
-  renderCollapseContent: CollapsibleTableProps<T>["renderCollapseContent"];
-  selected: boolean;
   onToggleSelected: () => void;
+  renderCollapseContent: CollapsibleTableProps<T>["renderCollapseContent"];
+  row: T;
+  selected: boolean;
 }
 
 export default function CollapsibleCard<T extends Record<string, any>>({
@@ -37,6 +37,15 @@ export default function CollapsibleCard<T extends Record<string, any>>({
   return (
     <div
       onClick={onToggleSelected}
+      onMouseEnter={(event) => {
+        event.currentTarget.style.transform = "scale(1.005)";
+        event.currentTarget.style.boxShadow =
+          "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)";
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.transform = "none";
+        event.currentTarget.style.boxShadow = "none";
+      }}
       style={{
         marginBottom: theme.spacing(2),
         position: "relative",
@@ -47,15 +56,6 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         transition:
           "border-left-color 160ms ease, transform 140ms ease-out, box-shadow 140ms ease-out",
         transformOrigin: "left center", // scale out from the accent
-      }}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.transform = "scale(1.005)";
-        event.currentTarget.style.boxShadow =
-          "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)";
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.transform = "none";
-        event.currentTarget.style.boxShadow = "none";
       }}
     >
       {/* frosted bg (not the text) */}
@@ -88,8 +88,8 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           {columns.map((col) => (
             <div key={col.field} style={{ flex: 1, minWidth: 0 }}>
               <AppTypography
-                variant={col.field === "repo" ? "subtitle1" : "body2"}
                 color="text.primary"
+                variant={col.field === "repo" ? "subtitle1" : "body2"}
               >
                 {(row as any)[col.field]}
               </AppTypography>
@@ -98,16 +98,16 @@ export default function CollapsibleCard<T extends Record<string, any>>({
 
           {/* ONLY chevron expands */}
           <AppIconButton
-            size="small"
             onClick={(e) => {
               e.stopPropagation();
               setOpen((o) => !o);
             }}
+            size="small"
           >
             {open ? (
-              <Icon icon="mdi:chevron-up" width={24} height={24} />
+              <Icon height={24} icon="mdi:chevron-up" width={24} />
             ) : (
-              <Icon icon="mdi:chevron-down" width={24} height={24} />
+              <Icon height={24} icon="mdi:chevron-down" width={24} />
             )}
           </AppIconButton>
         </AppCardContent>

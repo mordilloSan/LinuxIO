@@ -2,15 +2,14 @@ import React, { PropsWithChildren, useMemo } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import PageLoader from "@/components/loaders/PageLoader";
+import { BackgroundJobsProvider } from "@/contexts/BackgroundJobsContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
-import { FileTransferProvider } from "@/contexts/FileTransferContext";
-import { JobsEventsListener } from "@/contexts/JobsEventsListener";
 import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { UpdateProvider } from "@/contexts/UpdateContext";
 import useAuth from "@/hooks/useAuth";
-import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
+import { useConfigReady, useConfigValue } from "@/hooks/useConfig";
 import { AppThemeProvider } from "@/theme";
 import buildAppTheme from "@/theme";
 
@@ -55,7 +54,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
       existing || `${location.pathname}${location.search}${location.hash}`;
     const to = `/sign-in${target ? `?redirect=${encodeURIComponent(target)}` : ""}`;
 
-    return <Navigate to={to} replace />;
+    return <Navigate replace to={to} />;
   }
 
   // Authenticated:
@@ -63,8 +62,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   return (
     <ToastProvider>
       <ConfigProvider key={user?.id ?? "anonymous"}>
-        <FileTransferProvider>
-          <JobsEventsListener />
+        <BackgroundJobsProvider>
           <AuthedThemeShell>
             <PowerActionProvider>
               <UpdateProvider>
@@ -72,7 +70,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
               </UpdateProvider>
             </PowerActionProvider>
           </AuthedThemeShell>
-        </FileTransferProvider>
+        </BackgroundJobsProvider>
       </ConfigProvider>
     </ToastProvider>
   );

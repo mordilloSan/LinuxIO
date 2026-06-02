@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -90,7 +90,7 @@ func fetchLatestRelease() (version string, releaseURL string) {
 		return "", ""
 	}
 
-	body, err := readBodyLimited(resp.Body, maxGitHubReleaseBodyBytes)
+	body, err := utils.ReadAllLimited(resp.Body, maxGitHubReleaseBodyBytes)
 	if err != nil {
 		slog.Debug("failed to read latest release response body", "error", err)
 		return "", ""
@@ -107,17 +107,6 @@ func fetchLatestRelease() (version string, releaseURL string) {
 	}
 
 	return release.TagName, release.HTMLURL
-}
-
-func readBodyLimited(r io.Reader, max int64) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r, max+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(body)) > max {
-		return nil, fmt.Errorf("response body exceeds %d bytes", max)
-	}
-	return body, nil
 }
 
 type componentVersionProbe struct {

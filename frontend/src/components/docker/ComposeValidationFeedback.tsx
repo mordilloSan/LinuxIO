@@ -6,22 +6,22 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 export interface ValidationError {
-  line?: number;
   column?: number;
   field?: string;
+  line?: number;
   message: string;
   type: "error" | "warning";
 }
 
 export interface ValidationResult {
-  valid: boolean;
   errors: ValidationError[];
   normalized_content?: string; // Auto-normalized content with container_name added
+  valid: boolean;
 }
 
 interface ComposeValidationFeedbackProps {
-  validation: ValidationResult | null;
   isValidating?: boolean;
+  validation: ValidationResult | null;
 }
 
 const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
@@ -65,9 +65,9 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
     return (
       <AppCollapse in={visible}>
         <AppAlert
+          onClose={dismiss}
           severity="success"
           style={{ marginBottom: 16 }}
-          onClose={dismiss}
         >
           Compose file is valid.
         </AppAlert>
@@ -83,9 +83,9 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
       {errors.length > 0 && (
         <AppCollapse in={visible}>
           <AppAlert
+            onClose={dismiss}
             severity="error"
             style={{ marginBottom: warnings.length > 0 ? 16 : 0 }}
-            onClose={dismiss}
           >
             <AppAlertTitle>Validation Errors ({errors.length})</AppAlertTitle>
             {errors.map((error, index) => (
@@ -116,7 +116,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
 
       {warnings.length > 0 && (
         <AppCollapse in={visible}>
-          <AppAlert severity="warning" onClose={dismiss}>
+          <AppAlert onClose={dismiss} severity="warning">
             <AppAlertTitle>Warnings ({warnings.length})</AppAlertTitle>
             {warnings.map((warning, index) => (
               <div

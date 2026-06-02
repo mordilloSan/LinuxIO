@@ -9,8 +9,8 @@ import { longTextStyles, wrappableChipStyles } from "@/theme/tableStyles";
 
 export interface NetworkCardProps {
   network: DockerNetwork;
-  selected: boolean;
   onSelect: (checked: boolean) => void;
+  selected: boolean;
 }
 
 const NetworkCard: React.FC<NetworkCardProps> = ({
@@ -33,20 +33,20 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
         style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
       >
         <AppCheckbox
-          size="small"
           checked={selected}
           onChange={(e) => onSelect(e.target.checked)}
+          size="small"
         />
-        <AppTypography variant="body2" fontWeight={700} noWrap>
+        <AppTypography fontWeight={700} noWrap variant="body2">
           {network.Name}
         </AppTypography>
       </div>
       <Chip
+        color="primary"
         label={network.Driver}
         size="small"
-        color="primary"
-        variant="soft"
         style={{ fontSize: "0.75rem" }}
+        variant="soft"
       />
     </div>
 
@@ -72,7 +72,6 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
 
     {/* ID */}
     <AppTypography
-      variant="body2"
       style={{
         marginTop: 4,
         marginBottom: 4,
@@ -80,6 +79,7 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
         fontSize: "0.78rem",
         ...longTextStyles,
       }}
+      variant="body2"
     >
       ID: {network.Id}
     </AppTypography>
@@ -92,12 +92,12 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
             key={`${network.Id}-ipam-${i}`}
             label={ipam.Subnet}
             size="small"
-            variant="outlined"
             sx={wrappableChipStyles}
+            variant="outlined"
           />
         ))
       ) : (
-        <AppTypography variant="caption" color="text.secondary">
+        <AppTypography color="text.secondary" variant="caption">
           No IPAM config
         </AppTypography>
       )}

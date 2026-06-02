@@ -5,16 +5,10 @@ import (
 	"fmt"
 
 	"github.com/jaypipes/ghw/pkg/pci"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-type PCIDevice struct {
-	Class  string `json:"class"`
-	Model  string `json:"model"`
-	Vendor string `json:"vendor"`
-	Slot   string `json:"slot"`
-}
-
-func FetchPCIDevices(ctx context.Context) ([]PCIDevice, error) {
+func FetchPCIDevices(ctx context.Context) ([]apischema.PCIDevice, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -24,9 +18,9 @@ func FetchPCIDevices(ctx context.Context) ([]PCIDevice, error) {
 		return nil, fmt.Errorf("failed to retrieve PCI information: %w", err)
 	}
 
-	devices := make([]PCIDevice, 0, len(info.Devices))
+	devices := make([]apischema.PCIDevice, 0, len(info.Devices))
 	for _, dev := range info.Devices {
-		d := PCIDevice{
+		d := apischema.PCIDevice{
 			Slot: dev.Address,
 		}
 		if dev.Class != nil {

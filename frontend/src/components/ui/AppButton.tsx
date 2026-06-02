@@ -49,12 +49,12 @@ export interface AppButtonProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
-  variant?: ButtonVariant;
   color?: ButtonColor;
-  size?: ButtonSize;
-  startIcon?: React.ReactNode;
   fullWidth?: boolean;
   keepTextOnMobile?: boolean;
+  size?: ButtonSize;
+  startIcon?: React.ReactNode;
+  variant?: ButtonVariant;
 }
 
 const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
@@ -95,10 +95,10 @@ const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
 
     return (
       <button
-        ref={ref}
-        type="button"
         className={cls}
+        ref={ref}
         style={{ ...colorVars, ...style }}
+        type="button"
         {...rest}
       >
         {startIcon && <span className="app-btn__icon">{startIcon}</span>}

@@ -18,26 +18,26 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 export interface UnifiedTableColumn {
+  align?: "left" | "center" | "right";
+  className?: string;
   field: string;
   headerName: string;
-  align?: "left" | "center" | "right";
-  width?: string | number;
   style?: React.CSSProperties;
-  className?: string;
+  width?: string | number;
 }
 
 interface UnifiedCollapsibleTableProps<T> {
-  data: T[];
   columns: UnifiedTableColumn[];
+  data: T[];
+  emptyMessage?: string;
   getRowKey: (row: T, index: number) => string | number;
-  renderMainRow: (row: T, index: number) => React.ReactNode;
+  onRowClick?: (row: T, index: number) => void;
+  onRowDoubleClick?: (row: T, index: number) => void;
   renderExpandedContent?: (row: T, index: number) => React.ReactNode;
   renderFirstCell?: (row: T, index: number) => React.ReactNode;
   renderHeaderFirstCell?: () => React.ReactNode;
-  onRowClick?: (row: T, index: number) => void;
-  onRowDoubleClick?: (row: T, index: number) => void;
+  renderMainRow: (row: T, index: number) => React.ReactNode;
   selectedKey?: string | number | null;
-  emptyMessage?: string;
 }
 
 function UnifiedCollapsibleTable<T>({
@@ -86,10 +86,10 @@ function UnifiedCollapsibleTable<T>({
               )}
               {columns.map((column) => (
                 <AppTableCell
-                  component="th"
-                  key={column.field}
                   align={column.align || "left"}
                   className={column.className}
+                  component="th"
+                  key={column.field}
                   style={{ width: column.width, ...column.style }}
                 >
                   {column.headerName}
@@ -131,22 +131,22 @@ function UnifiedCollapsibleTable<T>({
                     {renderExpandedContent && (
                       <AppTableCell>
                         <AppIconButton
-                          size="small"
                           onClick={(e) => {
                             e.stopPropagation();
                             setExpanded(isExpanded ? null : rowKey);
                           }}
+                          size="small"
                         >
                           <Icon
-                            icon="mdi:chevron-down"
-                            width={22}
                             height={22}
+                            icon="mdi:chevron-down"
                             style={{
                               transform: isExpanded
                                 ? "rotate(180deg)"
                                 : "rotate(0deg)",
                               transition: "0.2s",
                             }}
+                            width={22}
                           />
                         </AppIconButton>
                       </AppTableCell>
@@ -155,8 +155,8 @@ function UnifiedCollapsibleTable<T>({
                   {renderExpandedContent && (
                     <AppTableRow style={{ backgroundColor: "transparent" }}>
                       <AppTableCell
-                        style={{ paddingBottom: 0, paddingTop: 0 }}
                         colSpan={columns.length + (renderFirstCell ? 2 : 1)}
+                        style={{ paddingBottom: 0, paddingTop: 0 }}
                       >
                         <AppCollapse
                           in={isExpanded}
@@ -164,8 +164,8 @@ function UnifiedCollapsibleTable<T>({
                           unmountOnExit
                         >
                           <motion.div
-                            initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
+                            initial={{ opacity: 0, y: -10 }}
                           >
                             <div
                               style={{
@@ -196,7 +196,7 @@ function UnifiedCollapsibleTable<T>({
             paddingBottom: 32,
           }}
         >
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             {emptyMessage}
           </AppTypography>
         </div>

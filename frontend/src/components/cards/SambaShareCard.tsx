@@ -14,9 +14,9 @@ const displayProps = [
 ] as const;
 
 export interface SambaShareCardProps {
-  share: SambaShare;
   onEdit: () => void;
   onRemove: () => void;
+  share: SambaShare;
 }
 
 const SambaShareCard: React.FC<SambaShareCardProps> = ({
@@ -26,14 +26,14 @@ const SambaShareCard: React.FC<SambaShareCardProps> = ({
 }) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Name */}
-    <AppTypography variant="body2" fontWeight={700} style={{ marginBottom: 2 }}>
+    <AppTypography fontWeight={700} style={{ marginBottom: 2 }} variant="body2">
       {share.name}
     </AppTypography>
 
     {/* Path */}
     <AppTypography
-      variant="body2"
       style={{ marginBottom: 4, fontFamily: "monospace" }}
+      variant="body2"
     >
       {share.properties["path"]}
     </AppTypography>
@@ -41,9 +41,9 @@ const SambaShareCard: React.FC<SambaShareCardProps> = ({
     {/* Comment */}
     {share.properties["comment"] && (
       <AppTypography
-        variant="caption"
         color="text.secondary"
         style={{ marginBottom: 4, display: "block" }}
+        variant="caption"
       >
         {share.properties["comment"]}
       </AppTypography>
@@ -65,10 +65,10 @@ const SambaShareCard: React.FC<SambaShareCardProps> = ({
 
     {/* Actions */}
     <div style={{ display: "flex", gap: 4 }}>
-      <AppButton size="small" variant="outlined" onClick={onEdit}>
+      <AppButton onClick={onEdit} size="small" variant="outlined">
         Edit
       </AppButton>
-      <AppButton size="small" color="error" onClick={onRemove}>
+      <AppButton color="error" onClick={onRemove} size="small">
         Remove
       </AppButton>
     </div>

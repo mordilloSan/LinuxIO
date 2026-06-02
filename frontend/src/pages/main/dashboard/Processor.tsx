@@ -123,7 +123,6 @@ const Processor: React.FC = () => {
             }}
           >
             <AppTypography
-              variant="caption"
               color="text.secondary"
               style={{
                 textTransform: "uppercase",
@@ -131,10 +130,11 @@ const Processor: React.FC = () => {
                 fontSize: "0.62rem",
                 flexShrink: 0,
               }}
+              variant="caption"
             >
               {label}
             </AppTypography>
-            <AppTypography variant="body2" fontWeight={500} noWrap>
+            <AppTypography fontWeight={500} noWrap variant="body2">
               {value}
             </AppTypography>
           </div>

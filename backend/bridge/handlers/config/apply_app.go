@@ -7,7 +7,7 @@ import (
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyAppSettingsUpdate(app *bridgeconfig.AppSettings, payload *configAppSettingsPayload) error {
+func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *configAppSettingsPayload) error {
 	if err := applyThemeSetting(app, payload.Theme); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func applyAppSettingsUpdate(app *bridgeconfig.AppSettings, payload *configAppSet
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
 
-func applyThemeSetting(app *bridgeconfig.AppSettings, theme *string) error {
+func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) error {
 	if theme == nil {
 		return nil
 	}
@@ -36,11 +36,11 @@ func applyThemeSetting(app *bridgeconfig.AppSettings, theme *string) error {
 	if normalized != string(bridgeconfig.ThemeLight) && normalized != string(bridgeconfig.ThemeDark) {
 		return fmt.Errorf("invalid theme value (LIGHT|DARK)")
 	}
-	app.Theme = bridgeconfig.Theme(normalized)
+	app.Theme = bridgeconfig.PersistedTheme(normalized)
 	return nil
 }
 
-func applyPrimaryColorSetting(app *bridgeconfig.AppSettings, primaryColor *string) error {
+func applyPrimaryColorSetting(app *bridgeconfig.PersistedAppSettings, primaryColor *string) error {
 	if primaryColor == nil {
 		return nil
 	}
@@ -51,7 +51,7 @@ func applyPrimaryColorSetting(app *bridgeconfig.AppSettings, primaryColor *strin
 	return nil
 }
 
-func applyThemeColorOverrides(app *bridgeconfig.AppSettings, payload *configThemeColorsByModePayload) error {
+func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *configThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
@@ -118,19 +118,19 @@ func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*br
 	return colors, nil
 }
 
-func applyOptionalDockerDashboardSections(app *bridgeconfig.AppSettings, sections *bridgeconfig.DockerDashboardSections) {
+func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *bridgeconfig.DockerDashboardSections) {
 	if sections != nil {
 		app.DockerDashboardSections = sections
 	}
 }
 
-func applyOptionalHardwareSections(app *bridgeconfig.AppSettings, sections *bridgeconfig.HardwareSections) {
+func applyOptionalHardwareSections(app *bridgeconfig.PersistedAppSettings, sections *bridgeconfig.HardwareSections) {
 	if sections != nil {
 		app.HardwareSections = sections
 	}
 }
 
-func applyViewModes(app *bridgeconfig.AppSettings, viewModes map[string]string) {
+func applyViewModes(app *bridgeconfig.PersistedAppSettings, viewModes map[string]string) {
 	if viewModes == nil {
 		return
 	}
@@ -149,7 +149,7 @@ func applyViewModes(app *bridgeconfig.AppSettings, viewModes map[string]string) 
 	app.ViewModes = normalized
 }
 
-func applyChunkSizeSetting(app *bridgeconfig.AppSettings, chunkSize *int) error {
+func applyChunkSizeSetting(app *bridgeconfig.PersistedAppSettings, chunkSize *int) error {
 	if chunkSize == nil {
 		return nil
 	}

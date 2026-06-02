@@ -1,6 +1,6 @@
 import React from "react";
 
-import { UnitTableView, statusDot } from "./UnitViews";
+import { statusDot, UnitTableView } from "./UnitViews";
 
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
@@ -8,10 +8,10 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import { useAppTheme } from "@/theme";
 
 interface SocketTableViewProps {
-  sockets: Socket[];
-  selected?: string | null;
-  onSelect?: (name: string | null) => void;
   onDoubleClick?: (name: string) => void;
+  onSelect?: (name: string | null) => void;
+  selected?: string | null;
+  sockets: Socket[];
 }
 
 const desktopColumns = [
@@ -61,50 +61,15 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
     <UnitTableView
       data={sockets}
       desktopColumns={desktopColumns}
-      mobileColumns={mobileColumns}
+      emptyMessage="No sockets found."
       getRowKey={(socket) => socket.name}
-      selected={selected}
-      onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
+      mobileColumns={mobileColumns}
       onDoubleClick={(key) => {
         if (typeof key === "string") {
           onDoubleClick?.(key);
         }
       }}
-      renderMobileExpandedContent={(socket) => (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            padding: "2px 0",
-          }}
-        >
-          {[
-            { label: "Listen", value: socket.listen.join(", ") || "—" },
-            { label: "Connections", value: String(socket.n_connections) },
-            { label: "Accepted", value: String(socket.n_accepted) },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ display: "flex", gap: 12 }}>
-              <span
-                style={{
-                  fontSize: "0.6rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  color: "var(--app-palette-text-secondary)",
-                  width: 80,
-                  flexShrink: 0,
-                  paddingTop: 2,
-                }}
-              >
-                {label}
-              </span>
-              <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
       renderMainRow={(socket, isMobile) => (
         <>
           <AppTableCell style={{ paddingLeft: 8 }}>
@@ -140,7 +105,42 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
           )}
         </>
       )}
-      emptyMessage="No sockets found."
+      renderMobileExpandedContent={(socket) => (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            padding: "2px 0",
+          }}
+        >
+          {[
+            { label: "Listen", value: socket.listen.join(", ") || "—" },
+            { label: "Connections", value: String(socket.n_connections) },
+            { label: "Accepted", value: String(socket.n_accepted) },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ display: "flex", gap: 12 }}>
+              <span
+                style={{
+                  fontSize: "0.6rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  color: "var(--app-palette-text-secondary)",
+                  width: 80,
+                  flexShrink: 0,
+                  paddingTop: 2,
+                }}
+              >
+                {label}
+              </span>
+              <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      selected={selected}
     />
   );
 };

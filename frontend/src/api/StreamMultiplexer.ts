@@ -2,7 +2,7 @@
  * StreamMultiplexer - Binary WebSocket stream multiplexer (Singleton)
  *
  * Provides multiplexed bidirectional streams over a single WebSocket connection.
- * The server acts as a pure byte relay - no JSON parsing on the server side.
+ * The webserver relays bytes; the bridge parses JSON stream-open envelopes.
  * Streams persist across component unmounts for session continuity.
  *
  * Protocol: [streamID:4 bytes][flags:1 byte][payload:N bytes]
@@ -22,43 +22,43 @@ export type StreamType = "terminal" | "container" | string;
 // Forward declare types used in Stream interface (full definitions below)
 export interface ProgressFrame {
   bytes: number;
-  total: number;
+  indeterminate?: boolean;
   pct: number;
   phase?: string;
   processed?: number;
-  indeterminate?: boolean;
+  total: number;
 }
 
 export interface ResultFrame {
-  status: "ok" | "error";
-  error?: string;
   code?: number;
   data?: unknown;
+  error?: string;
+  status: "ok" | "error";
 }
 
 export interface Stream {
-  readonly id: number;
-  readonly type: StreamType;
-  readonly status: StreamStatus;
-  write(data: Uint8Array): void;
-  resize(cols: number, rows: number): void;
-  close(): void;
   /** Abort the stream immediately (sends RST flag instead of FIN) */
   abort(): void;
-  onData: ((data: Uint8Array) => void) | null;
+  close(): void;
+  readonly id: number;
   onClose: (() => void) | null;
+  onData: ((data: Uint8Array) => void) | null;
   onProgress: ((progress: ProgressFrame) => void) | null;
   onResult: ((result: ResultFrame) => void) | null;
+  resize(cols: number, rows: number): void;
+  readonly status: StreamStatus;
+  readonly type: StreamType;
+  write(data: Uint8Array): void;
 }
 
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
 export interface StreamMultiplexerConfig {
-  scrollbackBytes: number;
+  defaultRequestTimeoutMs: number;
   detachedBufferBytes: number;
+  scrollbackBytes: number;
   uploadChunkSize: number;
   uploadWindowChunks: number;
-  defaultCallTimeoutMs: number;
 }
 
 function readPositiveInt(
@@ -91,8 +91,8 @@ export const STREAM_MULTIPLEXER_CONFIG: StreamMultiplexerConfig = {
     import.meta.env.VITE_STREAM_UPLOAD_WINDOW_CHUNKS,
     4,
   ),
-  defaultCallTimeoutMs: readPositiveInt(
-    import.meta.env.VITE_STREAM_DEFAULT_CALL_TIMEOUT_MS,
+  defaultRequestTimeoutMs: readPositiveInt(
+    import.meta.env.VITE_STREAM_DEFAULT_REQUEST_TIMEOUT_MS,
     30000,
   ),
 };
@@ -124,10 +124,10 @@ export function configureStreamMultiplexer(
       STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks,
     );
   }
-  if (config.defaultCallTimeoutMs !== undefined) {
-    STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs = normalizePositiveInt(
-      config.defaultCallTimeoutMs,
-      STREAM_MULTIPLEXER_CONFIG.defaultCallTimeoutMs,
+  if (config.defaultRequestTimeoutMs !== undefined) {
+    STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs = normalizePositiveInt(
+      config.defaultRequestTimeoutMs,
+      STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
     );
   }
 }

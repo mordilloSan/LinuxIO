@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import AppButton from "@/components/ui/AppButton";
@@ -8,8 +8,9 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
+import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
+import { useBackgroundJobState } from "@/hooks/backgroundJobs/useBackgroundJobState";
 import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { useAppTheme } from "@/theme";
 
@@ -17,7 +18,9 @@ const MAX_RECENT_TOASTS = 5;
 const PEEK_DURATION_MS = 3000;
 
 interface CompletedTransfer {
+  completedAt: Date;
   id: string;
+  label?: string;
   type:
     | "download"
     | "upload"
@@ -27,8 +30,6 @@ interface CompletedTransfer {
     | "copy"
     | "move"
     | "job";
-  label?: string;
-  completedAt: Date;
 }
 
 // --- File transfer helpers ---
@@ -112,27 +113,30 @@ const getCompletedTitle = (type: string) => {
 
 // --- Shared transfer list item ---
 
-function TransferItem({
+interface TransferLike {
+  bytes?: unknown;
+  id: string;
+  indeterminate?: boolean;
+  label?: string;
+  progress: number;
+  speed?: unknown;
+  total?: unknown;
+  type: string;
+}
+
+interface TransferItemProps {
+  getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
+  onCancel: (transfer: TransferLike) => void;
+  onIndexerClick: () => void;
+  transfer: TransferLike;
+}
+
+const TransferItem = React.memo(function TransferItem({
   transfer,
   getTransferIcon,
   onCancel,
   onIndexerClick,
-}: {
-  transfer: {
-    id: string;
-    type: string;
-    label?: string;
-    progress: number;
-    speed?: unknown;
-    bytes?: unknown;
-    total?: unknown;
-    indeterminate?: boolean;
-  };
-  iconSize: number;
-  getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
-  onCancel: () => void;
-  onIndexerClick: () => void;
-}) {
+}: TransferItemProps) {
   const isIndexer = transfer.type === "indexer";
   const visuals = getTransferIcon(transfer.type);
   const label = transfer.label
@@ -188,24 +192,28 @@ function TransferItem({
       <div className="app-navbar-notifications__content">
         <p className="app-navbar-notifications__title">{label}</p>
         <div className="app-navbar-notifications__meta">
-          <AppTooltip title={detailText} arrow placement="top">
+          <AppTooltip arrow placement="top" title={detailText}>
             <AppLinearProgress
-              variant={isIndeterminate ? "indeterminate" : "determinate"}
-              value={transfer.progress}
               style={{ height: 5, borderRadius: 1, marginBottom: 2 }}
+              value={transfer.progress}
+              variant={isIndeterminate ? "indeterminate" : "determinate"}
             />
           </AppTooltip>
           <p className="app-navbar-notifications__caption">{detailText}</p>
         </div>
       </div>
       {!isIndexer ? (
-        <AppIconButton size="small" onClick={onCancel} aria-label="Cancel task">
-          <Icon icon="mdi:close" width={22} height={22} />
+        <AppIconButton
+          aria-label="Cancel task"
+          onClick={() => onCancel(transfer)}
+          size="small"
+        >
+          <Icon height={22} icon="mdi:close" width={22} />
         </AppIconButton>
       ) : null}
     </li>
   );
-}
+});
 
 // --- Main component ---
 
@@ -230,8 +238,8 @@ function NavbarNotificationsDropdown() {
   const clearToastHistory = useClearToastHistory();
 
   // File transfers
+  const { transfers } = useBackgroundJobState();
   const {
-    transfers,
     cancelDownload,
     cancelUpload,
     cancelCompression,
@@ -240,7 +248,7 @@ function NavbarNotificationsDropdown() {
     cancelMove,
     cancelJob,
     openIndexerDialog,
-  } = useFileTransfers();
+  } = useBackgroundJobActions();
 
   const [completedTransfers, setCompletedTransfers] = useState<
     CompletedTransfer[]
@@ -318,16 +326,27 @@ function NavbarNotificationsDropdown() {
     setAnchorEl(ref.current);
   };
 
-  const handleCancel = (transfer: (typeof transfers)[number]) => {
-    if (transfer.type === "indexer") return;
-    if (transfer.type === "download") cancelDownload(transfer.id);
-    else if (transfer.type === "upload") cancelUpload(transfer.id);
-    else if (transfer.type === "compression") cancelCompression(transfer.id);
-    else if (transfer.type === "extraction") cancelExtraction(transfer.id);
-    else if (transfer.type === "copy") cancelCopy(transfer.id);
-    else if (transfer.type === "move") cancelMove(transfer.id);
-    else if (transfer.type === "job") cancelJob(transfer.id);
-  };
+  const handleCancel = useCallback(
+    (transfer: TransferLike) => {
+      if (transfer.type === "indexer") return;
+      if (transfer.type === "download") cancelDownload(transfer.id);
+      else if (transfer.type === "upload") cancelUpload(transfer.id);
+      else if (transfer.type === "compression") cancelCompression(transfer.id);
+      else if (transfer.type === "extraction") cancelExtraction(transfer.id);
+      else if (transfer.type === "copy") cancelCopy(transfer.id);
+      else if (transfer.type === "move") cancelMove(transfer.id);
+      else if (transfer.type === "job") cancelJob(transfer.id);
+    },
+    [
+      cancelDownload,
+      cancelUpload,
+      cancelCompression,
+      cancelExtraction,
+      cancelCopy,
+      cancelMove,
+      cancelJob,
+    ],
+  );
 
   const clearCompletedTransfers = () => setCompletedTransfers([]);
 
@@ -366,73 +385,80 @@ function NavbarNotificationsDropdown() {
       case "success":
         return {
           icon: (
-            <Icon icon="mdi:check-circle" width={iconSize} height={iconSize} />
+            <Icon height={iconSize} icon="mdi:check-circle" width={iconSize} />
           ),
           color: theme.palette.success.main,
         };
       case "error":
         return {
           icon: (
-            <Icon icon="mdi:close-circle" width={iconSize} height={iconSize} />
+            <Icon height={iconSize} icon="mdi:close-circle" width={iconSize} />
           ),
           color: theme.palette.error.main,
         };
       case "warning":
         return {
-          icon: <Icon icon="mdi:alert" width={iconSize} height={iconSize} />,
+          icon: <Icon height={iconSize} icon="mdi:alert" width={iconSize} />,
           color: theme.palette.warning.main,
         };
       case "info":
         return {
           icon: (
-            <Icon icon="mdi:information" width={iconSize} height={iconSize} />
+            <Icon height={iconSize} icon="mdi:information" width={iconSize} />
           ),
           color: theme.palette.info.main,
         };
       case "loading":
         return {
-          icon: <Icon icon="mdi:loading" width={iconSize} height={iconSize} />,
+          icon: <Icon height={iconSize} icon="mdi:loading" width={iconSize} />,
           color: theme.palette.text.secondary,
         };
       default:
         return {
-          icon: <Icon icon="mdi:bell" width={iconSize} height={iconSize} />,
+          icon: <Icon height={iconSize} icon="mdi:bell" width={iconSize} />,
           color: theme.palette.text.secondary,
         };
     }
   };
 
-  const getTransferIcon = (type: string) => {
-    switch (type) {
-      case "download":
-      case "compression":
-        return {
-          icon: <Icon icon="mdi:download" width={iconSize} height={iconSize} />,
-          color: theme.palette.info.main,
-        };
-      case "upload":
-      case "extraction":
-        return {
-          icon: <Icon icon="mdi:upload" width={iconSize} height={iconSize} />,
-          color: theme.palette.info.main,
-        };
-      case "indexer":
-      case "copy":
-      case "move":
-      case "job":
-        return {
-          icon: (
-            <Icon icon="mdi:folder-sync" width={iconSize} height={iconSize} />
-          ),
-          color: theme.palette.info.main,
-        };
-      default:
-        return {
-          icon: <Icon icon="mdi:loading" width={iconSize} height={iconSize} />,
-          color: theme.palette.text.secondary,
-        };
-    }
-  };
+  const getTransferIcon = useCallback(
+    (type: string) => {
+      switch (type) {
+        case "download":
+        case "compression":
+          return {
+            icon: (
+              <Icon height={iconSize} icon="mdi:download" width={iconSize} />
+            ),
+            color: theme.palette.info.main,
+          };
+        case "upload":
+        case "extraction":
+          return {
+            icon: <Icon height={iconSize} icon="mdi:upload" width={iconSize} />,
+            color: theme.palette.info.main,
+          };
+        case "indexer":
+        case "copy":
+        case "move":
+        case "job":
+          return {
+            icon: (
+              <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />
+            ),
+            color: theme.palette.info.main,
+          };
+        default:
+          return {
+            icon: (
+              <Icon height={iconSize} icon="mdi:loading" width={iconSize} />
+            ),
+            color: theme.palette.text.secondary,
+          };
+      }
+    },
+    [iconSize, theme.palette.info.main, theme.palette.text.secondary],
+  );
 
   const totalItems =
     transfers.length + completedTransfers.length + recentToastCount;
@@ -452,8 +478,8 @@ function NavbarNotificationsDropdown() {
     <>
       {/* Inline peek — compact progress in the navbar */}
       <div
-        onClick={handlePeekClick}
         className="app-navbar-notifications__peek"
+        onClick={handlePeekClick}
         style={{
           cursor: peekVisible ? "pointer" : undefined,
           overflow: "hidden",
@@ -464,9 +490,9 @@ function NavbarNotificationsDropdown() {
         {peekTransfer && (
           <>
             <AppLinearProgress
-              variant="determinate"
-              value={peekTransfer.progress}
               style={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
+              value={peekTransfer.progress}
+              variant="determinate"
             />
             <span className="app-navbar-notifications__peek-copy">
               {peekTransfer.label
@@ -478,28 +504,28 @@ function NavbarNotificationsDropdown() {
         )}
       </div>
 
-      <div ref={layerRef} className="app-navbar-dropdown">
+      <div className="app-navbar-dropdown" ref={layerRef}>
         <AppTooltip title="Notifications">
           <AppIconButton
-            color="inherit"
-            ref={ref}
-            onClick={handleOpen}
-            aria-haspopup="dialog"
-            aria-expanded={isFullOpen}
             aria-controls={
               isFullOpen ? "navbar-notifications-panel" : undefined
             }
+            aria-expanded={isFullOpen}
+            aria-haspopup="dialog"
+            color="inherit"
+            onClick={handleOpen}
+            ref={ref}
           >
-            <Icon icon="mdi:bell" width={22} height={22} />
+            <Icon height={22} icon="mdi:bell" width={22} />
           </AppIconButton>
         </AppTooltip>
 
         {isFullOpen ? (
           <div
-            id="navbar-notifications-panel"
-            className="app-navbar-panel app-navbar-panel--notifications"
-            role="dialog"
             aria-label="Notifications"
+            className="app-navbar-panel app-navbar-panel--notifications"
+            id="navbar-notifications-panel"
+            role="dialog"
           >
             <div className="app-navbar-panel__header app-navbar-panel__header--centered">
               <p className="app-navbar-panel__title">
@@ -509,7 +535,7 @@ function NavbarNotificationsDropdown() {
               </p>
             </div>
 
-            <ul className="app-navbar-notifications__list">
+            <ul className="app-navbar-notifications__list custom-scrollbar">
               {totalItems === 0 ? (
                 <li className="app-navbar-notifications__item">
                   <div className="app-navbar-notifications__content">
@@ -522,12 +548,11 @@ function NavbarNotificationsDropdown() {
                 <>
                   {transfers.map((transfer) => (
                     <TransferItem
-                      key={`transfer-${transfer.id}`}
-                      transfer={transfer}
-                      iconSize={iconSize}
                       getTransferIcon={getTransferIcon}
-                      onCancel={() => handleCancel(transfer)}
+                      key={`transfer-${transfer.id}`}
+                      onCancel={handleCancel}
                       onIndexerClick={openIndexerDialog}
+                      transfer={transfer}
                     />
                   ))}
 
@@ -535,8 +560,8 @@ function NavbarNotificationsDropdown() {
                     const isIndexer = transfer.type === "indexer";
                     return (
                       <li
-                        key={`completed-${transfer.id}`}
                         className={`app-navbar-notifications__item ${isIndexer ? "app-navbar-notifications__item--interactive" : ""}`.trim()}
+                        key={`completed-${transfer.id}`}
                         onClick={isIndexer ? openIndexerDialog : undefined}
                         onKeyDown={
                           isIndexer
@@ -559,9 +584,9 @@ function NavbarNotificationsDropdown() {
                           style={{ color: "var(--color-success)" }}
                         >
                           <Icon
+                            height={iconSize}
                             icon="mdi:check-circle"
                             width={iconSize}
-                            height={iconSize}
                           />
                         </div>
                         <div className="app-navbar-notifications__content">
@@ -580,8 +605,8 @@ function NavbarNotificationsDropdown() {
                     const visuals = getToastVisuals(toastItem.type);
                     return (
                       <li
-                        key={toastItem.id}
                         className="app-navbar-notifications__item"
+                        key={toastItem.id}
                       >
                         <div
                           className="app-navbar-notifications__icon"
@@ -601,9 +626,9 @@ function NavbarNotificationsDropdown() {
                             </p>
                             {toastItem.meta?.href ? (
                               <Link
-                                to={toastItem.meta.href}
-                                onClick={handleClose}
                                 className="app-navbar-notifications__link"
+                                onClick={handleClose}
+                                to={toastItem.meta.href}
                               >
                                 <AppButton
                                   size="small"
@@ -628,14 +653,14 @@ function NavbarNotificationsDropdown() {
 
             <div className="app-navbar-panel__footer">
               <AppButton
-                size="small"
+                disabled={
+                  recentToastCount === 0 && completedTransfers.length === 0
+                }
                 onClick={() => {
                   clearToastHistory();
                   clearCompletedTransfers();
                 }}
-                disabled={
-                  recentToastCount === 0 && completedTransfers.length === 0
-                }
+                size="small"
               >
                 Clear
               </AppButton>

@@ -13,30 +13,30 @@ export type AppDialogCloseEvent =
   | React.MouseEvent<HTMLDivElement>;
 
 export interface AppDialogProps {
-  open: boolean;
+  /** Styles applied to the backdrop overlay */
+  backdropStyle?: React.CSSProperties;
+  children?: React.ReactNode;
+  className?: string;
+  /** When true, pressing Escape will not close the dialog */
+  disableEscapeKeyDown?: boolean;
+  fullWidth?: boolean;
+  maxWidth?: "xs" | "sm" | "md" | "lg" | "xl" | false;
   onClose?: (
     event: AppDialogCloseEvent,
     reason: "backdropClick" | "escapeKeyDown",
   ) => void;
-  maxWidth?: "xs" | "sm" | "md" | "lg" | "xl" | false;
-  fullWidth?: boolean;
-  /** When true, pressing Escape will not close the dialog */
-  disableEscapeKeyDown?: boolean;
-  children?: React.ReactNode;
-  className?: string;
-  style?: React.CSSProperties;
-  /** Styles applied to the paper (content wrapper) element */
-  paperStyle?: React.CSSProperties;
+  open: boolean;
   /** Class name applied to the paper element */
   paperClassName?: string;
-  /** Styles applied to the backdrop overlay */
-  backdropStyle?: React.CSSProperties;
+  /** Styles applied to the paper (content wrapper) element */
+  paperStyle?: React.CSSProperties;
   /** Slot props for advanced customization */
   slotProps?: {
     paper?: { style?: React.CSSProperties; className?: string };
     backdrop?: { style?: React.CSSProperties };
     transition?: { onEntered?: () => void; onExited?: () => void };
   };
+  style?: React.CSSProperties;
 }
 
 export const AppDialog: React.FC<AppDialogProps> = ({
@@ -165,27 +165,27 @@ export const AppDialog: React.FC<AppDialogProps> = ({
 
   return createPortal(
     <div
-      ref={rootRef}
       className="app-dialog-root"
-      role="presentation"
       // React synthetic events bubble through the React tree, so a dialog
       // rendered inside e.g. a clickable card would still trigger that card's
       // onClick / onMouseDown. Stop those at the portal root.
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
+      ref={rootRef}
+      role="presentation"
     >
       <div
-        className="app-dialog__backdrop"
-        style={mergedBackdropStyle}
-        onClick={(e) => onClose?.(e, "backdropClick")}
         aria-hidden
+        className="app-dialog__backdrop"
+        onClick={(e) => onClose?.(e, "backdropClick")}
+        style={mergedBackdropStyle}
       />
       <div
-        ref={dialogRef}
-        className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
-        style={style}
-        role="dialog"
         aria-modal="true"
+        className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
+        ref={dialogRef}
+        role="dialog"
+        style={style}
         tabIndex={-1}
       >
         <div className={mergedPaperClass} style={mergedPaperStyle}>
@@ -208,8 +208,8 @@ export const AppDialogTitle = React.forwardRef<
   AppDialogTitleProps
 >(({ className, ...props }, ref) => (
   <div
-    ref={ref}
     className={`app-dialog-title ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -226,8 +226,8 @@ export const AppDialogContent = React.forwardRef<
   AppDialogContentProps
 >(({ className, ...props }, ref) => (
   <div
-    ref={ref}
     className={`app-dialog-content ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -244,8 +244,8 @@ export const AppDialogContentText = React.forwardRef<
   AppDialogContentTextProps
 >(({ className, ...props }, ref) => (
   <p
-    ref={ref}
     className={`app-dialog-content-text ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));
@@ -262,8 +262,8 @@ export const AppDialogActions = React.forwardRef<
   AppDialogActionsProps
 >(({ className, ...props }, ref) => (
   <div
-    ref={ref}
     className={`app-dialog-actions ${className || ""}`.trim()}
+    ref={ref}
     {...props}
   />
 ));

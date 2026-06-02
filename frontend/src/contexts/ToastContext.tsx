@@ -1,11 +1,11 @@
 import React, {
   createContext,
-  useState,
-  useEffect,
   useCallback,
+  useEffect,
   useMemo,
+  useState,
 } from "react";
-import { toast, useSonner, Toaster, type ToastT } from "sonner";
+import { toast, Toaster, type ToastT, useSonner } from "sonner";
 
 export interface ToastMeta {
   href?: string;
@@ -13,12 +13,12 @@ export interface ToastMeta {
 }
 
 export interface ToastHistoryItem {
-  id: string | number;
-  title: string;
-  description?: string;
-  type?: ToastT["type"];
   createdAt: number;
+  description?: string;
+  id: string | number;
   meta?: ToastMeta;
+  title: string;
+  type?: ToastT["type"];
 }
 
 const STORAGE_KEY = "linuxio.toastHistory";
@@ -136,8 +136,8 @@ const buildHistorySnapshot = (
 };
 
 export interface ToastHistoryContextValue {
-  history: ToastHistoryItem[];
   clearHistory: () => void;
+  history: ToastHistoryItem[];
 }
 
 export const ToastHistoryContext =
@@ -170,12 +170,17 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
     toast.dismiss();
   }, []);
 
+  const contextValue = useMemo(
+    () => ({ history, clearHistory }),
+    [history, clearHistory],
+  );
+
   return (
-    <ToastHistoryContext.Provider value={{ history, clearHistory }}>
+    <ToastHistoryContext.Provider value={contextValue}>
       {children}
       <Toaster
-        richColors
         position="top-right"
+        richColors
         toastOptions={{ duration: 1500 }}
       />
     </ToastHistoryContext.Provider>

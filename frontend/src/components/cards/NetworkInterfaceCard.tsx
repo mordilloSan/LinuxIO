@@ -30,13 +30,13 @@ const formatBps = (bps?: number) =>
   typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
 
 export interface NetworkInterfaceCardProps {
-  iface: NetworkInterface;
-  expanded: boolean;
   editForm: Record<string, any>;
-  setEditForm: (form: Record<string, any>) => void;
-  onToggle: () => void;
+  expanded: boolean;
+  iface: NetworkInterface;
   onClose: () => void;
   onSave: (iface: NetworkInterface) => void;
+  onToggle: () => void;
+  setEditForm: (form: Record<string, any>) => void;
 }
 
 const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
@@ -56,7 +56,7 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
       hoverLift={!expanded}
       style={{ padding: 8, position: "relative", cursor: "pointer" }}
     >
-      <AppTooltip title={getStatusTooltip(iface.state)} arrow>
+      <AppTooltip arrow title={getStatusTooltip(iface.state)}>
         <span
           style={{
             position: "absolute",
@@ -79,8 +79,8 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
       </AppTooltip>
 
       <div
-        style={{ display: "flex", alignItems: "flex-start" }}
         onClick={onToggle}
+        style={{ display: "flex", alignItems: "flex-start" }}
       >
         <div
           style={{
@@ -93,40 +93,40 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
           }}
         >
           <Icon
+            color={primaryColor}
+            height={36}
             icon={getInterfaceIcon(iface.type)}
             width={36}
-            height={36}
-            color={primaryColor}
           />
         </div>
         <div style={{ flexGrow: 1 }}>
-          <AppTypography variant="subtitle1" fontWeight={600} noWrap>
+          <AppTypography fontWeight={600} noWrap variant="subtitle1">
             {iface.name}
           </AppTypography>
-          <AppTypography variant="body2" color="text.secondary" noWrap>
+          <AppTypography color="text.secondary" noWrap variant="body2">
             IPv4: {Array.isArray(iface.ipv4) ? iface.ipv4.join(", ") : "N/A"}
           </AppTypography>
-          <AppTypography variant="body2" color="text.secondary" noWrap>
+          <AppTypography color="text.secondary" noWrap variant="body2">
             MAC: {iface.mac}
           </AppTypography>
-          <AppTypography variant="body2" color="text.secondary" noWrap>
+          <AppTypography color="text.secondary" noWrap variant="body2">
             {iface.speed === "unknown" || iface.speed.startsWith("-1")
               ? "No Carrier"
               : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
           </AppTypography>
-          <AppTypography variant="body2" color="text.secondary" noWrap>
+          <AppTypography color="text.secondary" noWrap variant="body2">
             RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
             {formatBps(iface.tx_speed)}
           </AppTypography>
         </div>
       </div>
       <NetworkInterfaceEditor
-        iface={iface}
-        expanded={expanded}
         editForm={editForm}
-        setEditForm={setEditForm}
+        expanded={expanded}
+        iface={iface}
         onClose={onClose}
         onSave={onSave}
+        setEditForm={setEditForm}
       />
     </FrostedCard>
   );

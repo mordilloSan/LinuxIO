@@ -19,13 +19,13 @@ const UnitViewToggle: React.FC<UnitViewToggleProps> = ({ viewModeKey }) => {
       }
     >
       <AppIconButton
-        size="small"
         onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
+        size="small"
       >
         {viewMode === "table" ? (
-          <Icon icon="mdi:view-grid" width={20} height={20} />
+          <Icon height={20} icon="mdi:view-grid" width={20} />
         ) : (
-          <Icon icon="mdi:table-row" width={20} height={20} />
+          <Icon height={20} icon="mdi:table-row" width={20} />
         )}
       </AppIconButton>
     </AppTooltip>

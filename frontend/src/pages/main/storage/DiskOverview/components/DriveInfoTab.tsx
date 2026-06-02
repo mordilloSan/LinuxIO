@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/AppTable";
 
 interface DriveInfoTabProps {
+  deviceInfo?: Record<string, unknown>;
   drive: DriveInfo;
   rawDriveSize?: string;
   smartData?: Record<string, unknown>;
-  deviceInfo?: Record<string, unknown>;
   smartHealth?: { passed?: boolean };
 }
 
@@ -35,7 +35,7 @@ export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
         <AppTableHead>
           <AppTableRow>
             <AppTableCell style={{ fontWeight: 600 }}>Property</AppTableCell>
-            <AppTableCell style={{ fontWeight: 600 }} align="right">
+            <AppTableCell align="right" style={{ fontWeight: 600 }}>
               Value
             </AppTableCell>
           </AppTableRow>

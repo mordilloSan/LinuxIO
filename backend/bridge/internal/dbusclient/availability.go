@@ -20,24 +20,23 @@ func (s BusNameState) Available() bool {
 	return s.Active || s.Activatable
 }
 
-func BusNameAvailable(ctx context.Context, busName string) (bool, error) {
-	var available bool
+// BusNameActive reports true only when the daemon is currently running, not
+// when it is merely D-Bus-activatable. Use this for services that must be
+// continuously running to be useful (e.g. Avahi, which only publishes mDNS
+// records while the daemon is up).
+func BusNameActive(ctx context.Context, busName string) (bool, error) {
+	var active bool
 	err := UseSystemBusWithOptions(ctx, SystemBusOptions{
 		Subsystem: "dbus",
 	}, func(ctx context.Context, conn *godbus.Conn) error {
-		var err error
-		available, err = BusNameAvailableOnConnection(ctx, conn, busName)
-		return err
+		state, err := ReadBusNameState(ctx, conn, busName)
+		if err != nil {
+			return err
+		}
+		active = state.Active
+		return nil
 	})
-	return available, err
-}
-
-func BusNameAvailableOnConnection(ctx context.Context, conn *godbus.Conn, busName string) (bool, error) {
-	state, err := ReadBusNameState(ctx, conn, busName)
-	if err != nil {
-		return false, err
-	}
-	return state.Available(), nil
+	return active, err
 }
 
 func ReadBusNameState(ctx context.Context, conn *godbus.Conn, busName string) (BusNameState, error) {

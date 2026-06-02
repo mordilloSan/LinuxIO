@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState, useMemo } from "react";
+import React, { useMemo, useState } from "react";
 
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
@@ -9,10 +9,10 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
 interface LogsDialogProps {
-  open: boolean;
-  onClose: () => void;
-  containerName?: string;
   containerId: string;
+  containerName?: string;
+  onClose: () => void;
+  open: boolean;
 }
 
 const LogsDialog: React.FC<LogsDialogProps> = ({
@@ -62,44 +62,44 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
 
   return (
     <LogDialog
-      open={open}
-      onClose={onClose}
-      titleContent={
-        <>
-          <Icon icon="mdi:magnify" width={20} height={20} />
-          <AppSearchField
-            variant="standard"
-            placeholder="Search logs…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ marginLeft: 8, flex: 1 }}
-          />
-        </>
-      }
+      error={error}
       extraActions={
         <>
           <AppTooltip title="Copy logs">
             <AppIconButton onClick={handleCopy} size="small">
-              <Icon icon="mdi:content-copy" width={20} height={20} />
+              <Icon height={20} icon="mdi:content-copy" width={20} />
             </AppIconButton>
           </AppTooltip>
           <AppTooltip title="Download logs">
             <AppIconButton onClick={handleDownload} size="small">
-              <Icon icon="mdi:download" width={20} height={20} />
+              <Icon height={20} icon="mdi:download" width={20} />
             </AppIconButton>
           </AppTooltip>
         </>
       }
-      logs={filtered}
       isLoading={isLoading}
-      error={error}
       liveMode={liveMode}
-      onLiveModeChange={setLiveMode}
+      logs={filtered}
       logsBoxRef={logsBoxRef}
+      onClose={onClose}
       onExited={() => {
         resetState();
         setSearch("");
       }}
+      onLiveModeChange={setLiveMode}
+      open={open}
+      titleContent={
+        <>
+          <Icon height={20} icon="mdi:magnify" width={20} />
+          <AppSearchField
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search logs…"
+            style={{ marginLeft: 8, flex: 1 }}
+            value={search}
+            variant="standard"
+          />
+        </>
+      }
     />
   );
 };

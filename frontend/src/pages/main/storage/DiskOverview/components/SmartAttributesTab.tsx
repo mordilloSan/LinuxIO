@@ -12,10 +12,11 @@ import {
   AppTableRow,
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
+
 interface SmartAttributesTabProps {
+  ataAttrs?: SmartAttribute[];
   isNvme: boolean;
   nvmeHealthRaw?: Record<string, unknown>;
-  ataAttrs?: SmartAttribute[];
 }
 export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
   isNvme,
@@ -32,7 +33,7 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
           <AppTableHead>
             <AppTableRow>
               <AppTableCell style={{ fontWeight: 600 }}>Attribute</AppTableCell>
-              <AppTableCell style={{ fontWeight: 600 }} align="right">
+              <AppTableCell align="right" style={{ fontWeight: 600 }}>
                 Value
               </AppTableCell>
             </AppTableRow>
@@ -221,16 +222,16 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
             <AppTableRow>
               <AppTableCell style={{ fontWeight: 600 }}>#</AppTableCell>
               <AppTableCell style={{ fontWeight: 600 }}>Attribute</AppTableCell>
-              <AppTableCell style={{ fontWeight: 600 }} align="right">
+              <AppTableCell align="right" style={{ fontWeight: 600 }}>
                 Value
               </AppTableCell>
-              <AppTableCell style={{ fontWeight: 600 }} align="right">
+              <AppTableCell align="right" style={{ fontWeight: 600 }}>
                 Worst
               </AppTableCell>
-              <AppTableCell style={{ fontWeight: 600 }} align="right">
+              <AppTableCell align="right" style={{ fontWeight: 600 }}>
                 Thresh
               </AppTableCell>
-              <AppTableCell style={{ fontWeight: 600 }} align="right">
+              <AppTableCell align="right" style={{ fontWeight: 600 }}>
                 Raw
               </AppTableCell>
             </AppTableRow>

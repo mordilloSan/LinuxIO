@@ -9,30 +9,33 @@
  *    openTerminalStream(), openJobDataStream(), etc. from @/api
  *
  * 3. IMPERATIVE API (contexts/effects/non-hook code):
- *    await linuxio.system.get_capabilities.call()
+ *    await linuxio.system.get_capabilities()
  *    await queryClient.fetchQuery(linuxio.system.get_capabilities.queryOptions())
  *
  */
 
 import {
-  useQuery,
-  useMutation,
   type QueryKey,
-  type UseQueryOptions,
+  useMutation,
+  type UseMutationResult,
   type UseMutationOptions,
+  useQuery,
+  type UseQueryOptions,
 } from "@tanstack/react-query";
 
+import type {
+  CommandInput,
+  CommandName,
+  CommandRequest,
+  CommandResult,
+  HandlerName,
+} from "./generated/linuxio-types";
+
+import { getRouteMode, routeName } from "./generated/route-metadata";
+import { isJobSnapshot, waitForJobCompletion } from "./jobs";
+import { useIsUpdating, useStreamMux } from "./linuxio";
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
-import { isJobSnapshot, waitForJobCompletion } from "./jobs";
-import { useStreamMux, useIsUpdating } from "./linuxio";
-import { getRouteMode, routeName } from "./route-metadata";
-import type {
-  HandlerName,
-  CommandName,
-  CommandArgs,
-  CommandResult,
-} from "./linuxio-types";
 
 // Cache TTL presets for staleTime / gcTime options
 export const CACHE_TTL_MS = {
@@ -62,7 +65,7 @@ const RETRYABLE_COMMANDS = new Set([
 function getRetryPolicy(
   handler: string,
   command: string,
-): core.CallOptions["retryPolicy"] {
+): core.RequestOptions["retryPolicy"] {
   const route = routeName(handler, command);
   if (
     RETRYABLE_COMMAND_PREFIXES.some((prefix) => command.startsWith(prefix)) ||
@@ -73,16 +76,10 @@ function getRetryPolicy(
   return "none";
 }
 
-function serializeArg(arg: unknown): string {
-  if (arg === undefined) return "";
-  if (typeof arg === "string") return arg;
-  if (typeof arg === "object") return JSON.stringify(arg);
-  return String(arg);
-}
-
-function serializeArgs(args: readonly unknown[]): string[] {
-  return (args ?? []).map(serializeArg);
-}
+export type RequestShape =
+  | { kind: "none" }
+  | { kind: "object" }
+  | { kind: "field"; field: string };
 
 // ============================================================================
 // Type-Safe API
@@ -101,58 +98,68 @@ type SelectableQueryOptions<TResult, TData = TResult> = Omit<
   "queryKey" | "queryFn"
 >;
 
-type ArgsConfig<TOptions> = {
-  args?: unknown[];
-} & TOptions;
-
-/**
- * Query config with explicit args for complex types
- */
-type QueryConfig<TResult> = ArgsConfig<QueryOptions<TResult>>;
-
-type SelectableQueryConfig<TResult, TData = TResult> = ArgsConfig<
-  SelectableQueryOptions<TResult, TData>
->;
-
-/**
- * Mutation options type - accepts unknown[] to support complex types
- */
-type MutationOptions<TResult> = Omit<
-  UseMutationOptions<TResult, LinuxIOError, unknown[]>,
+type MutationOptions<TRequest, TResult> = Omit<
+  UseMutationOptions<TResult, LinuxIOError, TRequest>,
   "mutationFn"
 >;
+
+type QueryOptionsArgs<
+  TInput extends readonly unknown[],
+  TResult,
+> = TInput extends readonly []
+  ? [options?: QueryOptions<TResult>]
+  : [...input: TInput, options?: QueryOptions<TResult>];
+
+type SelectableQueryOptionsArgs<
+  TInput extends readonly unknown[],
+  TResult,
+  TData,
+> = TInput extends readonly []
+  ? [options?: SelectableQueryOptions<TResult, TData>]
+  : [...input: TInput, options?: SelectableQueryOptions<TResult, TData>];
 
 /**
  * Command endpoint interface
  */
-interface CommandEndpoint<TResult> {
+export interface CommandEndpoint<
+  TInput extends readonly unknown[],
+  TRequest,
+  TResult,
+> {
   /**
-   * Framework-agnostic call (Promise-based) using the same argument serialization
-   * and cache key scheme as the React Query hooks.
+   * Framework-agnostic call (Promise-based) using the same generated request
+   * shape and cache key scheme as the React Query hooks.
    */
-  call: (...args: unknown[]) => Promise<TResult>;
+  (...args: TInput): Promise<TResult>;
 
   /** Deterministic React Query key for this command */
-  queryKey: (...args: unknown[]) => QueryKey;
+  queryKey: (...args: TInput) => QueryKey;
 
   /**
    * React Query options for `queryClient.fetchQuery/ensureQueryData`
    * and non-hook integration points.
    */
   queryOptions: (
-    ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
+    ...params: QueryOptionsArgs<TInput, TResult>
   ) => UseQueryOptions<TResult, LinuxIOError>;
 
   /**
    * React Query options with support for transformed `select` output data.
    */
   queryOptionsWithSelect: <TData = TResult>(
-    ...params: (
-      | string
-      | SelectableQueryOptions<TResult, TData>
-      | SelectableQueryConfig<TResult, TData>
-    )[]
+    ...params: SelectableQueryOptionsArgs<TInput, TResult, TData>
   ) => UseQueryOptions<TResult, LinuxIOError, TData>;
+
+  /**
+   * React Query hook for mutations
+   *
+   * @example
+   * const { mutate } = useMutation();
+   * mutate({ containerId });
+   */
+  useMutation: (
+    options?: MutationOptions<TRequest, TResult>,
+  ) => UseMutationResult<TResult, LinuxIOError, TRequest>;
 
   /**
    * React Query hook for fetching data
@@ -162,85 +169,59 @@ interface CommandEndpoint<TResult> {
    * useQuery()
    *
    * @example
-   * // String arguments
-   * useQuery("arg1", "arg2")
-   *
-   * @example
-   * // String arguments with options
-   * useQuery("arg1", { staleTime: 60000 })
-   *
-   * @example
-   * // Complex arguments (objects, arrays) with explicit args
-   * useQuery({ args: ["arg1", { complex: "object" }], staleTime: 60000 })
+   * // Single-field generated request with options
+   * useQuery(unitName, { staleTime: 60000 })
    */
   useQuery: (
-    ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
+    ...params: QueryOptionsArgs<TInput, TResult>
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError>>;
 
   /**
    * React Query hook with support for transformed `select` output data.
    */
   useQueryWithSelect: <TData = TResult>(
-    ...params: (
-      | string
-      | SelectableQueryOptions<TResult, TData>
-      | SelectableQueryConfig<TResult, TData>
-    )[]
+    ...params: SelectableQueryOptionsArgs<TInput, TResult, TData>
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError, TData>>;
-
-  /**
-   * React Query hook for mutations
-   *
-   * @example
-   * // Mutate with string args
-   * const { mutate } = useMutation();
-   * mutate(["arg1", "arg2"]);
-   *
-   * @example
-   * // Mutate with complex args (objects, arrays)
-   * const { mutate } = useMutation();
-   * mutate(["arg1", { complex: "object" }]);
-   */
-  useMutation: (
-    options?: MutationOptions<TResult>,
-  ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
 }
 
-function hasExplicitArgs(value: unknown): value is { args?: unknown[] } {
-  return !!value && typeof value === "object" && "args" in value;
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseQueryParams<TOptions extends object>(
-  params: (string | TOptions | ArgsConfig<TOptions>)[],
-): { args: unknown[]; options: TOptions | undefined } {
-  let args: unknown[] = [];
-  let options: TOptions | undefined;
-
-  if (params.length === 1 && hasExplicitArgs(params[0])) {
-    const { args: explicitArgs, ...rest } = params[0] as ArgsConfig<TOptions>;
-    args = explicitArgs ?? [];
-    options = rest as TOptions;
-    return { args, options };
+function requestForWire(requestShape: RequestShape, request: unknown): unknown {
+  switch (requestShape.kind) {
+    case "none":
+      return {};
+    case "field":
+      if (isObjectRecord(request) && requestShape.field in request) {
+        return request;
+      }
+      return { [requestShape.field]: request };
+    case "object":
+      return request ?? {};
   }
+}
 
-  for (const param of params) {
-    if (typeof param === "string") {
-      args.push(param);
-    } else if (param && typeof param === "object") {
-      options = param as TOptions;
-    }
+function queryRequestAndOptions<TOptions>(
+  requestShape: RequestShape,
+  params: unknown[],
+): { request: unknown; options: TOptions | undefined } {
+  if (requestShape.kind === "none") {
+    return { request: undefined, options: params[0] as TOptions | undefined };
   }
-
-  return { args, options };
+  return {
+    request: params[0],
+    options: params[1] as TOptions | undefined,
+  };
 }
 
 function buildQueryOptions<TResult, TData = TResult>(
   handler: string,
   command: string,
-  rawArgs: unknown[],
+  requestShape: RequestShape,
+  request: unknown,
   options?: SelectableQueryOptions<TResult, TData>,
 ): UseQueryOptions<TResult, LinuxIOError, TData> {
-  const serializedArgs = serializeArgs(rawArgs);
   const route = routeName(handler, command);
   const mode = getRouteMode(route);
   if (mode && mode !== "query") {
@@ -249,11 +230,15 @@ function buildQueryOptions<TResult, TData = TResult>(
       "invalid_route_mode",
     );
   }
+  const wireRequest = requestForWire(requestShape, request);
 
   return {
-    queryKey: ["linuxio", handler, command, ...serializedArgs],
+    queryKey:
+      requestShape.kind === "none"
+        ? ["linuxio", handler, command]
+        : ["linuxio", handler, command, wireRequest],
     queryFn: () =>
-      core.call<TResult>(handler, command, serializedArgs, {
+      core.request<TResult>(handler, command, wireRequest, {
         retryPolicy: getRetryPolicy(handler, command),
       }),
     ...(options ?? {}),
@@ -263,105 +248,121 @@ function buildQueryOptions<TResult, TData = TResult>(
 /**
  * Create a command endpoint factory
  */
-function createEndpoint<TResult>(
+export function createEndpoint<TResult>(
   handler: string,
   command: string,
-): CommandEndpoint<TResult> {
+  requestShape: RequestShape,
+): CommandEndpoint<[] | [unknown], unknown, TResult> {
   const retryPolicy = getRetryPolicy(handler, command);
-  const queryKey = (...rawArgs: unknown[]): QueryKey => {
-    const serialized = serializeArgs(rawArgs);
-    return ["linuxio", handler, command, ...serialized] as const;
+  const queryKey = (...rawArgs: [] | [unknown]): QueryKey => {
+    const request = rawArgs[0];
+    const wireRequest = requestForWire(requestShape, request);
+    return requestShape.kind === "none"
+      ? (["linuxio", handler, command] as const)
+      : (["linuxio", handler, command, wireRequest] as const);
   };
 
-  const call = (...rawArgs: unknown[]): Promise<TResult> => {
-    const serialized = serializeArgs(rawArgs);
-    return core.call<TResult>(handler, command, serialized, { retryPolicy });
+  const execute = (...rawArgs: [] | [unknown]): Promise<TResult> => {
+    const request = rawArgs[0];
+    return core.request<TResult>(
+      handler,
+      command,
+      requestForWire(requestShape, request),
+      { retryPolicy },
+    );
   };
 
   const queryOptions = (
-    ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
+    ...params: unknown[]
   ): UseQueryOptions<TResult, LinuxIOError> => {
-    const { args, options } = parseQueryParams<QueryOptions<TResult>>(params);
-    return buildQueryOptions<TResult>(handler, command, args, options);
+    const { request, options } = queryRequestAndOptions<QueryOptions<TResult>>(
+      requestShape,
+      params,
+    );
+    return buildQueryOptions<TResult>(
+      handler,
+      command,
+      requestShape,
+      request,
+      options,
+    );
   };
 
   const queryOptionsWithSelect = <TData = TResult>(
-    ...params: (
-      | string
-      | SelectableQueryOptions<TResult, TData>
-      | SelectableQueryConfig<TResult, TData>
-    )[]
+    ...params: unknown[]
   ): UseQueryOptions<TResult, LinuxIOError, TData> => {
-    const { args, options } =
-      parseQueryParams<SelectableQueryOptions<TResult, TData>>(params);
-    return buildQueryOptions<TResult, TData>(handler, command, args, options);
+    const { request, options } = queryRequestAndOptions<
+      SelectableQueryOptions<TResult, TData>
+    >(requestShape, params);
+    return buildQueryOptions<TResult, TData>(
+      handler,
+      command,
+      requestShape,
+      request,
+      options,
+    );
   };
 
-  return {
-    call,
-    queryKey,
-    queryOptions,
-    queryOptionsWithSelect,
-    useQuery(
-      ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
-    ) {
-      const { isOpen } = useStreamMux();
-      const isUpdating = useIsUpdating();
+  const endpoint = ((...rawArgs: [] | [unknown]) =>
+    execute(...rawArgs)) as CommandEndpoint<[] | [unknown], unknown, TResult>;
 
-      const baseOptions = queryOptions(...params);
-      return useQuery<TResult, LinuxIOError>({
-        ...baseOptions,
-        enabled:
-          isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
-      });
-    },
+  endpoint.queryKey = queryKey;
+  endpoint.queryOptions = queryOptions;
+  endpoint.queryOptionsWithSelect = queryOptionsWithSelect;
+  endpoint.useQuery = (
+    ...params: unknown[]
+  ): ReturnType<typeof useQuery<TResult, LinuxIOError>> => {
+    const { isOpen } = useStreamMux();
+    const isUpdating = useIsUpdating();
 
-    useQueryWithSelect<TData = TResult>(
-      ...params: (
-        | string
-        | SelectableQueryOptions<TResult, TData>
-        | SelectableQueryConfig<TResult, TData>
-      )[]
-    ) {
-      const { isOpen } = useStreamMux();
-      const isUpdating = useIsUpdating();
+    const baseOptions = queryOptions(...params);
+    return useQuery<TResult, LinuxIOError>({
+      ...baseOptions,
+      enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
+    });
+  };
 
-      const baseOptions = queryOptionsWithSelect<TData>(...params);
-      return useQuery<TResult, LinuxIOError, TData>({
-        ...baseOptions,
-        enabled:
-          isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
-      });
-    },
+  endpoint.useQueryWithSelect = (<TData = TResult>(
+    ...params: unknown[]
+  ): ReturnType<typeof useQuery<TResult, LinuxIOError, TData>> => {
+    const { isOpen } = useStreamMux();
+    const isUpdating = useIsUpdating();
 
-    useMutation(options?: MutationOptions<TResult>) {
-      const route = routeName(handler, command);
-      const mode = getRouteMode(route);
-      if (mode && mode !== "job") {
-        throw new LinuxIOError(
-          `Route ${route} is ${mode}, not mutation/job`,
-          "invalid_route_mode",
+    const baseOptions = queryOptionsWithSelect<TData>(...params);
+    return useQuery<TResult, LinuxIOError, TData>({
+      ...baseOptions,
+      enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
+    });
+  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQueryWithSelect"];
+
+  endpoint.useMutation = (options?: MutationOptions<unknown, TResult>) => {
+    const route = routeName(handler, command);
+    const mode = getRouteMode(route);
+    if (mode && mode !== "job") {
+      throw new LinuxIOError(
+        `Route ${route} is ${mode}, not mutation/job`,
+        "invalid_route_mode",
+      );
+    }
+
+    return useMutation<TResult, LinuxIOError, unknown>({
+      mutationFn: async (request: unknown) => {
+        const result = await core.request<TResult>(
+          handler,
+          command,
+          requestForWire(requestShape, request),
+          { retryPolicy },
         );
-      }
-
-      return useMutation<TResult, LinuxIOError, unknown[]>({
-        mutationFn: async (args: unknown[]) => {
-          const serializedArgs = serializeArgs(args ?? []);
-          const result = await core.call<TResult>(
-            handler,
-            command,
-            serializedArgs,
-            { retryPolicy },
-          );
-          if (isJobSnapshot(result)) {
-            return (await waitForJobCompletion(result)) as TResult;
-          }
-          return result;
-        },
-        ...options,
-      });
-    },
+        if (isJobSnapshot(result)) {
+          return (await waitForJobCompletion(result)) as TResult;
+        }
+        return result;
+      },
+      ...options,
+    });
   };
+
+  return endpoint;
 }
 
 // ============================================================================
@@ -371,97 +372,27 @@ function createEndpoint<TResult>(
 /**
  * Maps a handler's commands to their endpoints
  */
-type HandlerEndpoints<H extends HandlerName> = {
-  [C in CommandName<H>]: CommandEndpoint<CommandResult<H, C>> & {
-    call: (...args: CommandArgs<H, C>) => Promise<CommandResult<H, C>>;
-    queryKey: (...args: CommandArgs<H, C>) => QueryKey;
-    queryOptions: (
-      ...params: (
-        | string
-        | QueryOptions<CommandResult<H, C>>
-        | QueryConfig<CommandResult<H, C>>
-      )[]
-    ) => UseQueryOptions<CommandResult<H, C>, LinuxIOError>;
-    queryOptionsWithSelect: <TData = CommandResult<H, C>>(
-      ...params: (
-        | string
-        | SelectableQueryOptions<CommandResult<H, C>, TData>
-        | SelectableQueryConfig<CommandResult<H, C>, TData>
-      )[]
-    ) => UseQueryOptions<CommandResult<H, C>, LinuxIOError, TData>;
-    useQueryWithSelect: <TData = CommandResult<H, C>>(
-      ...params: (
-        | string
-        | SelectableQueryOptions<CommandResult<H, C>, TData>
-        | SelectableQueryConfig<CommandResult<H, C>, TData>
-      )[]
-    ) => ReturnType<typeof useQuery<CommandResult<H, C>, LinuxIOError, TData>>;
-  };
+export type HandlerEndpoints<H extends HandlerName> = {
+  [C in CommandName<H>]: CommandEndpoint<
+    CommandInput<H, C>,
+    CommandRequest<H, C>,
+    CommandResult<H, C>
+  >;
 };
 
 /**
  * Full typed API structure
  */
-type TypedAPI = {
+export type TypedAPI = {
   [H in HandlerName]: HandlerEndpoints<H>;
 };
-
-/**
- * Create handler namespace via Proxy
- */
-function createHandlerNamespace<H extends HandlerName>(
-  handler: H,
-): HandlerEndpoints<H> {
-  const cache = new Map<string, CommandEndpoint<unknown>>();
-
-  return new Proxy({} as HandlerEndpoints<H>, {
-    get(_, command: string) {
-      if (!cache.has(command)) {
-        cache.set(command, createEndpoint(handler, command));
-      }
-      return cache.get(command);
-    },
-  });
-}
-
-// ============================================================================
-// Export
-// ============================================================================
-
-// Handler namespace cache
-const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
-
-/**
- * LinuxIO API
- *
- * @example
- * // TYPE-SAFE API (for built-in handlers)
- * const { data } = linuxio.storage.get_drive_info.useQuery();
- * const { mutate } = linuxio.docker.start_container.useMutation();
- *
- * // CORE API (non-React, Promise-based)
- * const drives = await linuxio.storage.get_drive_info.call();
- */
-const linuxio = new Proxy({} as TypedAPI, {
-  get(_, prop: string) {
-    // `linuxio.call()` alias is intentionally removed.
-    if (prop === "call") {
-      return undefined;
-    }
-    // Return handler namespace (lazily created)
-    if (!handlerCache.has(prop)) {
-      handlerCache.set(prop, createHandlerNamespace(prop as HandlerName));
-    }
-    return handlerCache.get(prop);
-  },
-});
-
-export default linuxio;
 
 // Re-export types for convenience
 export type {
   LinuxIOSchema,
   HandlerName,
   CommandName,
+  CommandInput,
+  CommandRequest,
   CommandResult,
-} from "./linuxio-types";
+} from "./generated/linuxio-types";

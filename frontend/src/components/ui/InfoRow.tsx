@@ -1,12 +1,11 @@
 import React from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
-
 import "@/theme/section.css";
 
 interface InfoRowProps {
-  label: string;
   children: React.ReactNode;
+  label: string;
   noBorder?: boolean;
   wrap?: boolean;
 }
@@ -25,7 +24,6 @@ const InfoRow: React.FC<InfoRowProps> = ({
     }}
   >
     <AppTypography
-      variant="caption"
       color="text.secondary"
       style={{
         textTransform: "uppercase",
@@ -34,17 +32,18 @@ const InfoRow: React.FC<InfoRowProps> = ({
         flexShrink: 0,
         ...(wrap && { paddingTop: 2 }),
       }}
+      variant="caption"
     >
       {label}
     </AppTypography>
     <AppTypography
-      variant="body2"
       fontWeight={500}
       noWrap={!wrap}
       style={{
         textAlign: "right",
         ...(wrap && { whiteSpace: "normal", overflowWrap: "anywhere" }),
       }}
+      variant="body2"
     >
       {children}
     </AppTypography>

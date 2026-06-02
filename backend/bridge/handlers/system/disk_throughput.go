@@ -9,25 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	gopsdisk "github.com/shirou/gopsutil/v4/disk"
 )
-
-type DiskThroughputDevice struct {
-	Name             string  `json:"name"`
-	ReadBytesPerSec  float64 `json:"readBytesPerSec"`
-	WriteBytesPerSec float64 `json:"writeBytesPerSec"`
-	ReadOpsPerSec    float64 `json:"readOpsPerSec"`
-	WriteOpsPerSec   float64 `json:"writeOpsPerSec"`
-}
-
-type DiskThroughputResponse struct {
-	ReadBytesPerSec  float64                `json:"readBytesPerSec"`
-	WriteBytesPerSec float64                `json:"writeBytesPerSec"`
-	ReadOpsPerSec    float64                `json:"readOpsPerSec"`
-	WriteOpsPerSec   float64                `json:"writeOpsPerSec"`
-	IntervalSeconds  float64                `json:"intervalSeconds"`
-	Devices          []DiskThroughputDevice `json:"devices"`
-}
 
 var (
 	diskRateStateLock sync.Mutex
@@ -60,9 +44,9 @@ func sampleDiskCounters(ctx context.Context) map[string]gopsdisk.IOCountersStat 
 	return result
 }
 
-func FetchDiskThroughput(ctx context.Context) (DiskThroughputResponse, error) {
+func FetchDiskThroughput(ctx context.Context) (apischema.DiskThroughputResponse, error) {
 	if err := ctx.Err(); err != nil {
-		return DiskThroughputResponse{}, err
+		return apischema.DiskThroughputResponse{}, err
 	}
 	diskRateStateLock.Lock()
 	current := diskCounterSampler(ctx)
@@ -81,10 +65,10 @@ func FetchDiskThroughput(ctx context.Context) (DiskThroughputResponse, error) {
 	return buildDiskThroughputResponse(previous, current, intervalSeconds), nil
 }
 
-func buildDiskThroughputResponse(previous, current map[string]gopsdisk.IOCountersStat, intervalSeconds float64) DiskThroughputResponse {
-	response := DiskThroughputResponse{
+func buildDiskThroughputResponse(previous, current map[string]gopsdisk.IOCountersStat, intervalSeconds float64) apischema.DiskThroughputResponse {
+	response := apischema.DiskThroughputResponse{
 		IntervalSeconds: intervalSeconds,
-		Devices:         make([]DiskThroughputDevice, 0, len(current)),
+		Devices:         make([]apischema.DiskThroughputDevice, 0, len(current)),
 	}
 
 	for name, currentStat := range current {
@@ -93,7 +77,7 @@ func buildDiskThroughputResponse(previous, current map[string]gopsdisk.IOCounter
 			previousStat = currentStat
 		}
 
-		device := DiskThroughputDevice{
+		device := apischema.DiskThroughputDevice{
 			Name:             name,
 			ReadBytesPerSec:  counterRate(previousStat.ReadBytes, currentStat.ReadBytes, intervalSeconds),
 			WriteBytesPerSec: counterRate(previousStat.WriteBytes, currentStat.WriteBytes, intervalSeconds),

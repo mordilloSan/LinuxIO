@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -12,7 +13,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := newDockerHandlers(rt)
 	prepareDockerHandlers(router, handlers)
 
-	bridgeipc.RegisterRoutes(router, "docker", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "docker", []bridgeipc.Command{
 		{Name: "list_containers", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListContainers},
 		{Name: "start_container", Mode: bridgeipc.ModeJob, Handler: handlers.handleStartContainer},
 		{Name: "stop_container", Mode: bridgeipc.ModeJob, Handler: handlers.handleStopContainer},
@@ -57,7 +58,11 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 		{Name: "system_prune", Mode: bridgeipc.ModeJob, Handler: handlers.handleSystemPrune},
 	})
 
-	router.JobRunner("docker.logs.follow", func(ctx context.Context, job *bridgeipc.Job, args []string) (any, error) {
-		return runDockerLogsJob(ctx, rt, job, args)
-	}, bridgeipc.StreamDefault)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: "docker.logs.follow",
+		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.DockerLogsFollowRequest) (any, error) {
+			return runDockerLogsJob(ctx, rt, job, req)
+		},
+		Policy: bridgeipc.StreamDefault,
+	})
 }

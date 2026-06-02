@@ -31,8 +31,8 @@ function formatServerTime(iso: string): string {
 
 interface OverviewRow {
   label: string;
-  value: string;
   onEdit?: () => void;
+  value: string;
 }
 
 const SystemOverview: React.FC = () => {
@@ -102,7 +102,6 @@ const SystemOverview: React.FC = () => {
           }}
         >
           <AppTypography
-            variant="caption"
             color="text.secondary"
             style={{
               textTransform: "uppercase",
@@ -110,23 +109,24 @@ const SystemOverview: React.FC = () => {
               fontSize: "0.62rem",
               flexShrink: 0,
             }}
+            variant="caption"
           >
             {label}
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500} noWrap>
+          <AppTypography fontWeight={500} noWrap variant="body2">
             {value}
           </AppTypography>
           {onEdit && (
             <Icon
-              icon="mdi:pencil-outline"
-              width={13}
               height={13}
+              icon="mdi:pencil-outline"
               style={{
                 color: theme.palette.text.secondary,
                 flexShrink: 0,
                 alignSelf: "center",
                 opacity: 0.7,
               }}
+              width={13}
             />
           )}
         </div>
@@ -137,18 +137,18 @@ const SystemOverview: React.FC = () => {
   return (
     <>
       <DashboardCard
-        title="System Overview"
-        stats={stats}
         avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
+        stats={stats}
+        title="System Overview"
       />
       <SetHostnameDialog
-        open={hostnameDialogOpen}
         current={hostInfo?.hostname ?? ""}
         onClose={() => setHostnameDialogOpen(false)}
+        open={hostnameDialogOpen}
       />
       <SetDateTimeDialog
-        open={dateTimeDialogOpen}
         onClose={() => setDateTimeDialogOpen(false)}
+        open={dateTimeDialogOpen}
       />
     </>
   );

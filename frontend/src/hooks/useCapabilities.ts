@@ -1,33 +1,23 @@
 import { useMemo } from "react";
 
+import {
+  CAPABILITIES,
+  type CapabilityKey,
+  type CapabilityState,
+  pickCapabilityState,
+} from "@/api/capabilities";
 import useAuth from "@/hooks/useAuth";
 
-export type CapabilityKey =
-  | "dockerAvailable"
-  | "indexerAvailable"
-  | "lmSensorsAvailable"
-  | "smartmontoolsAvailable"
-  | "packageKitAvailable"
-  | "nfsClientAvailable"
-  | "nfsServerAvailable"
-  | "tunedAvailable";
+export type { CapabilityKey };
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
-export interface AccessContext {
+export type AccessContext = CapabilityState & {
   privileged: boolean;
-  dockerAvailable: boolean | null;
-  indexerAvailable: boolean | null;
-  lmSensorsAvailable: boolean | null;
-  smartmontoolsAvailable: boolean | null;
-  packageKitAvailable: boolean | null;
-  nfsClientAvailable: boolean | null;
-  nfsServerAvailable: boolean | null;
-  tunedAvailable: boolean | null;
-}
+};
 
 export interface AccessPolicy {
-  requiresPrivileged?: boolean;
   requiredCapabilities?: CapabilityKey[];
+  requiresPrivileged?: boolean;
 }
 
 export const getCapabilityStatus = (
@@ -42,57 +32,18 @@ export const isCapabilityEnabled = (
   capability: boolean | null | undefined,
 ): boolean => capability === true;
 
+const capabilityByKey = new Map(
+  CAPABILITIES.map((c) => [c.state as CapabilityKey, c]),
+);
+
 export const getCapabilityReason = (
   capability: CapabilityKey,
   status: CapabilityStatus,
 ): string => {
   if (status === "available") return "";
-
-  if (capability === "indexerAvailable") {
-    return status === "unknown"
-      ? "Indexer availability is still being checked."
-      : "Indexer API is unavailable.";
-  }
-
-  if (capability === "lmSensorsAvailable") {
-    return status === "unknown"
-      ? "lm-sensors dependency check is still running."
-      : "lm-sensors dependency is unavailable.";
-  }
-
-  if (capability === "smartmontoolsAvailable") {
-    return status === "unknown"
-      ? "smartmontools dependency check is still running."
-      : "smartmontools dependency is unavailable.";
-  }
-
-  if (capability === "packageKitAvailable") {
-    return status === "unknown"
-      ? "PackageKit availability is still being checked."
-      : "PackageKit D-Bus service is unavailable.";
-  }
-
-  if (capability === "nfsClientAvailable") {
-    return status === "unknown"
-      ? "NFS client utilities availability is still being checked."
-      : "NFS client utilities are unavailable.";
-  }
-
-  if (capability === "nfsServerAvailable") {
-    return status === "unknown"
-      ? "NFS server utilities availability is still being checked."
-      : "NFS server utilities are unavailable.";
-  }
-
-  if (capability === "tunedAvailable") {
-    return status === "unknown"
-      ? "TuneD availability is still being checked."
-      : "TuneD D-Bus service is unavailable.";
-  }
-
-  return status === "unknown"
-    ? "Docker availability is still being checked."
-    : "Docker service is unavailable.";
+  const def = capabilityByKey.get(capability);
+  if (!def) return "";
+  return status === "unknown" ? def.reasonUnknown : def.reasonUnavailable;
 };
 
 export const hasAccessPolicy = (
@@ -112,41 +63,13 @@ export const hasAccessPolicy = (
 };
 
 export const useAccessContext = (): AccessContext => {
-  const {
-    privileged,
-    dockerAvailable,
-    indexerAvailable,
-    lmSensorsAvailable,
-    smartmontoolsAvailable,
-    packageKitAvailable,
-    nfsClientAvailable,
-    nfsServerAvailable,
-    tunedAvailable,
-  } = useAuth();
-
+  const auth = useAuth();
   return useMemo(
     () => ({
-      privileged,
-      dockerAvailable,
-      indexerAvailable,
-      lmSensorsAvailable,
-      smartmontoolsAvailable,
-      packageKitAvailable,
-      nfsClientAvailable,
-      nfsServerAvailable,
-      tunedAvailable,
+      privileged: auth.privileged,
+      ...pickCapabilityState(auth),
     }),
-    [
-      privileged,
-      dockerAvailable,
-      indexerAvailable,
-      lmSensorsAvailable,
-      smartmontoolsAvailable,
-      packageKitAvailable,
-      nfsClientAvailable,
-      nfsServerAvailable,
-      tunedAvailable,
-    ],
+    [auth],
   );
 };
 

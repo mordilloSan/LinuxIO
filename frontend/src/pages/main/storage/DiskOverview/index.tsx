@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 
 import {
   DriveInfoTab,
@@ -20,11 +19,11 @@ import type {
 import { parseSizeToBytes } from "./utils";
 
 import {
+  type ApiDisk,
   jobSnapshotResult,
   linuxio,
   openJobAttachStream,
   type Stream,
-  type ApiDisk,
 } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
@@ -35,6 +34,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { FilesystemInfo } from "@/types/fs";
@@ -84,11 +84,13 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   smartmontoolsReason,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
   );
-  const [, setTestProgress] = useState<SmartTestProgressEvent | null>(null);
+  const [testProgress, setTestProgress] =
+    useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const { run: runStreamResult } = useStreamResult();
   const { mutate: runSmartTest } = linuxio.storage.run_smart_test.useMutation({
@@ -107,6 +109,101 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       }
     };
   }, []);
+
+  // Refresh recovery: if a SMART self-test job for this drive is already running
+  // (e.g. user refreshed the page mid-test), find it and re-attach so the UI
+  // keeps the buttons disabled and progress bar updating.
+  useEffect(() => {
+    const deviceName = rawDrive?.name;
+    if (!deviceName) return;
+    let canceled = false;
+    void (async () => {
+      try {
+        const jobs = await linuxio.jobs.list({ status: "active" });
+        if (canceled) return;
+        const mine = jobs.find((j) => {
+          const request = j.request as
+            | { device?: string; testType?: string }
+            | undefined;
+          return (
+            j.type === "storage.run_smart_test" &&
+            request?.device === deviceName &&
+            (j.state === "running" || j.state === "queued")
+          );
+        });
+        if (!mine) return;
+        const request = mine.request as
+          | { device?: string; testType?: string }
+          | undefined;
+        const testType: "short" | "long" =
+          request?.testType === "long" ? "long" : "short";
+        setStartPending(testType);
+        setTestProgress({
+          type: "status",
+          status: "in_progress",
+          test_type: testType,
+          device: deviceName,
+          message: "Resuming SMART self-test",
+        });
+        const label = testType === "short" ? "Short" : "Extended";
+        void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
+          open: () => openJobAttachStream(mine.id),
+          onOpen: (stream) => {
+            streamRef.current = stream;
+          },
+          onProgress: (data) => {
+            setTestProgress((prev) => ({
+              ...(prev || {}),
+              ...data,
+              test_type: data.test_type ?? prev?.test_type ?? testType,
+              device: data.device ?? prev?.device ?? deviceName,
+            }));
+          },
+          closeMessage: "SMART self-test stream closed unexpectedly",
+        })
+          .then((data) => {
+            const finalStatus = data?.status ?? "completed";
+            setTestProgress((prev) => ({
+              ...(prev || {}),
+              type: "status",
+              status: finalStatus as SmartTestProgressEvent["status"],
+              message: data?.message ?? prev?.message,
+              test_type: data?.test_type ?? prev?.test_type ?? testType,
+              device: data?.device ?? prev?.device ?? deviceName,
+            }));
+            if (finalStatus === "completed") {
+              toast.success(
+                `${label} self-test completed on /dev/${deviceName}`,
+              );
+            } else if (finalStatus === "aborted") {
+              toast.error(`${label} self-test aborted on /dev/${deviceName}`);
+            } else {
+              const detail = data?.message ? `: ${data.message}` : "";
+              toast.error(
+                `${label} self-test failed on /dev/${deviceName}${detail}`,
+              );
+            }
+            return;
+          })
+          .catch((error: unknown) => {
+            if (error instanceof Error && error.name === "AbortError") return;
+            const errorMessage =
+              error instanceof Error ? error.message : "SMART self-test failed";
+            toast.error(errorMessage);
+          })
+          .finally(() => {
+            streamRef.current = null;
+            setStartPending(null);
+          });
+      } catch {
+        // ignore — refresh recovery is best-effort
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [rawDrive?.name, runStreamResult, toast]);
+
   const handleRunTest = (testType: "short" | "long") => {
     if (!rawDrive) return;
     if (!smartmontoolsAvailable) {
@@ -127,32 +224,35 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     void (async () => {
       let jobId: string | null = null;
       try {
-        const job = await linuxio.storage.run_smart_test.call(
-          rawDrive.name,
+        const job = await linuxio.storage.run_smart_test({
+          device: rawDrive.name,
           testType,
-        );
+        });
         jobId = job.id;
       } catch {
-        runSmartTest([rawDrive.name, testType], {
-          onSuccess: () => {
-            toast.success(
-              `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
-            );
-            setStartPending(null);
+        runSmartTest(
+          { device: rawDrive.name, testType },
+          {
+            onSuccess: () => {
+              toast.success(
+                `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
+              );
+              setStartPending(null);
+            },
+            onError: () => {
+              setTestProgress((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "error",
+                      message: "Failed to start test",
+                    }
+                  : null,
+              );
+              setStartPending(null);
+            },
           },
-          onError: () => {
-            setTestProgress((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    status: "error",
-                    message: "Failed to start test",
-                  }
-                : null,
-            );
-            setStartPending(null);
-          },
-        });
+        );
         return;
       }
 
@@ -168,9 +268,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             test_type: data.test_type ?? prev?.test_type ?? testType,
             device: data.device ?? prev?.device ?? rawDrive.name,
           }));
-          if (data.status && data.status !== "starting") {
-            setStartPending(null);
-          }
         },
         closeMessage: "SMART self-test stream closed unexpectedly",
       })
@@ -184,15 +281,20 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             test_type: data?.test_type ?? prev?.test_type ?? testType,
             device: data?.device ?? prev?.device ?? rawDrive.name,
           }));
+          const label = testType === "short" ? "Short" : "Extended";
           if (finalStatus === "completed") {
             toast.success(
-              `${testType === "short" ? "Short" : "Extended"} self-test completed on /dev/${rawDrive.name}`,
+              `${label} self-test completed on /dev/${rawDrive.name}`,
             );
+          } else if (finalStatus === "aborted") {
+            toast.error(`${label} self-test aborted on /dev/${rawDrive.name}`);
           } else {
+            const detail = data?.message ? `: ${data.message}` : "";
             toast.error(
-              `${testType === "short" ? "Short" : "Extended"} self-test ${finalStatus}`,
+              `${label} self-test failed on /dev/${rawDrive.name}${detail}`,
             );
           }
+          return;
         })
         .catch((error: unknown) => {
           if (error instanceof Error && error.name === "AbortError") {
@@ -257,7 +359,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
           }}
         >
           <TabSelector
-            value={String(tabIndex)}
             onChange={(nextValue) => handleTabChange(Number(nextValue))}
             options={[
               { value: "0", label: "Overview" },
@@ -272,45 +373,47 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
               },
             ]}
             style={{ marginBottom: 0 }}
+            value={String(tabIndex)}
           />
         </div>
 
-        <TabPanel value={tabIndex} index={0}>
+        <TabPanel index={0} value={tabIndex}>
           <OverviewTab drive={drive} />
         </TabPanel>
 
-        <TabPanel value={tabIndex} index={1}>
+        <TabPanel index={1} value={tabIndex}>
           <SmartAttributesTab
+            ataAttrs={ataAttrs}
             isNvme={isNvme}
             nvmeHealthRaw={nvmeHealthRaw}
-            ataAttrs={ataAttrs}
           />
         </TabPanel>
 
-        <TabPanel value={tabIndex} index={2}>
+        <TabPanel index={2} value={tabIndex}>
           <DriveInfoTab
+            deviceInfo={deviceInfo}
             drive={drive}
             rawDriveSize={rawDrive?.size}
             smartData={smartData}
-            deviceInfo={deviceInfo}
             smartHealth={smartHealth}
           />
         </TabPanel>
 
         {isNvme && power && (
-          <TabPanel value={tabIndex} index={3}>
+          <TabPanel index={3} value={tabIndex}>
             <PowerStatesTab power={power} />
           </TabPanel>
         )}
 
-        <TabPanel value={tabIndex} index={isNvme && power ? 4 : 3}>
+        <TabPanel index={isNvme && power ? 4 : 3} value={tabIndex}>
           <SelfTestsTab
-            startPending={startPending}
-            onRunTest={handleRunTest}
-            selfTestLog={selfTestLog}
             nvmeSelfTestLog={nvmeSelfTestLog}
+            onRunTest={handleRunTest}
+            percentage={testProgress?.percentage}
+            selfTestLog={selfTestLog}
             smartmontoolsAvailable={smartmontoolsAvailable}
             smartmontoolsReason={smartmontoolsReason}
+            startPending={startPending}
           />
         </TabPanel>
       </div>
@@ -322,6 +425,7 @@ const DiskOverview: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const expanded = searchParams.get("drive");
   const selectedMountpoint = searchParams.get("fs");
   const [creatingSubvolumeMountpoint, setCreatingSubvolumeMountpoint] =
@@ -491,7 +595,7 @@ const DiskOverview: React.FC = () => {
     setCreatingSubvolumeMountpoint(null);
   };
   const handleUnmountFilesystem = (mountpoint: string) => {
-    unmountFilesystem([mountpoint]);
+    unmountFilesystem({ mountpoint });
   };
   const handleSubvolumeNameChange = (mountpoint: string, value: string) => {
     setSubvolumeDrafts((prev) => ({
@@ -506,11 +610,14 @@ const DiskOverview: React.FC = () => {
       return;
     }
     setCreatingSubvolumeMountpoint(mountpoint);
-    createBtrfsSubvolume([mountpoint, name], {
-      onSettled: () => {
-        setCreatingSubvolumeMountpoint(null);
+    createBtrfsSubvolume(
+      { mountpoint, name },
+      {
+        onSettled: () => {
+          setCreatingSubvolumeMountpoint(null);
+        },
       },
-    });
+    );
   };
   if (drivesLoading || fsLoading) {
     return <PageLoader />;
@@ -520,11 +627,11 @@ const DiskOverview: React.FC = () => {
       {!selectedMountpoint && (
         <>
           <AppTypography
-            variant="h6"
             style={{
               marginBottom: 8,
               fontWeight: 600,
             }}
+            variant="h6"
           >
             Physical Drives
           </AppTypography>
@@ -550,28 +657,28 @@ const DiskOverview: React.FC = () => {
                 drives.map((drive) =>
                   expanded && expanded !== drive.name ? null : (
                     <AppGrid
+                      animate={{ opacity: 1, scale: 1 }}
+                      component={motion.div}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.95 }}
                       key={drive.name}
+                      layout
                       size={{
                         xs: 12,
                         sm: expanded === drive.name ? 12 : 6,
                         md: expanded === drive.name ? 6 : 4,
                         lg: expanded === drive.name ? 4 : 3,
                       }}
-                      component={motion.div}
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ duration: 0.2 }}
                     >
                       <DriveCard
-                        name={drive.name}
+                        expanded={expanded === drive.name}
                         model={drive.model}
-                        transport={drive.transport}
+                        name={drive.name}
+                        onClick={() => handleToggle(drive.name)}
                         sizeBytes={drive.sizeBytes}
                         smart={drive.smart}
-                        expanded={expanded === drive.name}
-                        onClick={() => handleToggle(drive.name)}
+                        transport={drive.transport}
                       >
                         <DriveDetails
                           drive={drive}
@@ -596,11 +703,11 @@ const DiskOverview: React.FC = () => {
       {!expanded && (
         <>
           <AppTypography
-            variant="h6"
             style={{
               marginBottom: 8,
               fontWeight: 600,
             }}
+            variant="h6"
           >
             Filesystems
           </AppTypography>
@@ -621,42 +728,42 @@ const DiskOverview: React.FC = () => {
                   selectedMountpoint &&
                   selectedMountpoint !== fs.mountpoint ? null : (
                     <AppGrid
+                      animate={{ opacity: 1, scale: 1 }}
+                      component={motion.div}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.95 }}
                       key={fs.mountpoint}
+                      layout
                       size={{
                         xs: 12,
                         sm: selectedMountpoint === fs.mountpoint ? 12 : 6,
                         md: selectedMountpoint === fs.mountpoint ? 8 : 4,
                         lg: selectedMountpoint === fs.mountpoint ? 6 : 4,
                       }}
-                      component={motion.div}
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ duration: 0.2 }}
                     >
                       <FilesystemCard
-                        filesystem={fs}
-                        selected={selectedMountpoint === fs.mountpoint}
                         backingDrive={(() => {
                           const bd = findBackingDrive(fs.device, drives);
                           return bd ? { name: bd.name, model: bd.model } : null;
                         })()}
-                        nfsMount={
-                          nfsMountByMountpoint.get(fs.mountpoint) ?? null
-                        }
-                        isUnmounting={isUnmounting}
+                        filesystem={fs}
                         isCreatingSubvolume={
                           creatingSubvolumeMountpoint === fs.mountpoint &&
                           isCreatingSubvolume
                         }
-                        subvolumeName={subvolumeDrafts[fs.mountpoint] ?? ""}
-                        onClick={() => handleFilesystemToggle(fs)}
+                        isUnmounting={isUnmounting}
+                        nfsMount={
+                          nfsMountByMountpoint.get(fs.mountpoint) ?? null
+                        }
                         onBrowse={handleBrowseFilesystem}
-                        onInspectDrive={handleInspectDrive}
-                        onUnmount={handleUnmountFilesystem}
-                        onSubvolumeNameChange={handleSubvolumeNameChange}
+                        onClick={() => handleFilesystemToggle(fs)}
                         onCreateSubvolume={handleCreateSubvolume}
+                        onInspectDrive={handleInspectDrive}
+                        onSubvolumeNameChange={handleSubvolumeNameChange}
+                        onUnmount={handleUnmountFilesystem}
+                        selected={selectedMountpoint === fs.mountpoint}
+                        subvolumeName={subvolumeDrafts[fs.mountpoint] ?? ""}
                       />
                     </AppGrid>
                   ),

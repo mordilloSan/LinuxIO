@@ -1,4 +1,4 @@
-import type { DroppedEntry } from "@/hooks/useFileDragAndDrop";
+import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
 
 /**
  * Normalize upload relative path by removing redundant slashes and empty segments

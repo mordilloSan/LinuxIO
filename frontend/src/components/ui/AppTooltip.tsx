@@ -24,11 +24,11 @@ type TooltipPlacement =
   | "right-end";
 
 export interface AppTooltipProps {
-  title: React.ReactNode;
-  children: React.ReactNode;
   arrow?: boolean;
-  placement?: TooltipPlacement;
+  children: React.ReactNode;
   className?: string;
+  placement?: TooltipPlacement;
+  title: React.ReactNode;
 }
 
 // Distance (px) from the trigger edge to the tooltip bubble — matches MUI default.
@@ -152,19 +152,18 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
   return (
     <>
       <span
-        ref={wrapperRef}
         className="app-tooltip-trigger"
+        onBlur={hide}
+        onFocus={show}
         onMouseEnter={show}
         onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
+        ref={wrapperRef}
       >
         {children}
       </span>
       {visible &&
         createPortal(
           <div
-            role="tooltip"
             className={[
               "app-tooltip",
               `app-tooltip--${placement}`,
@@ -173,6 +172,7 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
             ]
               .filter(Boolean)
               .join(" ")}
+            role="tooltip"
             style={tooltipStyle}
           >
             {title}

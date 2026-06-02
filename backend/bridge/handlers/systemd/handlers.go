@@ -3,12 +3,13 @@ package systemd
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "systemd", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "systemd", []bridgeipc.Command{
 		{Name: "list_timers", Mode: bridgeipc.ModeQuery, Handler: handleListTimers},
 		{Name: "list_sockets", Mode: bridgeipc.ModeQuery, Handler: handleListSockets},
 		{Name: "list_services", Mode: bridgeipc.ModeQuery, Handler: handleListServices},
@@ -25,98 +26,58 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	})
 }
 
-func handleListTimers(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleListTimers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListTimers(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListSockets(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleListSockets(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListSockets(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListServices(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleListServices(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListServices(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUnitInfo(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	result, err := GetUnitInfo(ctx, unit)
+func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
+	result, err := GetUnitInfo(ctx, req.UnitName)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleStartService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, StartUnit(ctx, unit))
+func handleStartService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, StartUnit(ctx, req.ServiceName))
 }
 
-func handleStopService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, StopUnit(ctx, unit))
+func handleStopService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, StopUnit(ctx, req.ServiceName))
 }
 
-func handleRestartService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, RestartUnit(ctx, unit))
+func handleRestartService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, RestartUnit(ctx, req.ServiceName))
 }
 
-func handleReloadService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, ReloadUnit(ctx, unit))
+func handleReloadService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, ReloadUnit(ctx, req.ServiceName))
 }
 
-func handleEnableService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, EnableUnit(ctx, unit))
+func handleEnableService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, EnableUnit(ctx, req.ServiceName))
 }
 
-func handleDisableService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, DisableUnit(ctx, unit))
+func handleDisableService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, DisableUnit(ctx, req.ServiceName))
 }
 
-func handleMaskService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, MaskUnit(ctx, unit))
+func handleMaskService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, MaskUnit(ctx, req.ServiceName))
 }
 
-func handleUnmaskService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, UnmaskUnit(ctx, unit))
+func handleUnmaskService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, UnmaskUnit(ctx, req.ServiceName))
 }
 
-func handleResetFailedService(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	unit, err := bridgeipc.Arg(args, 0)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, nil, ResetFailedUnit(ctx, unit))
+func handleResetFailedService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+	return bridgeipc.EmitResult(emit, nil, ResetFailedUnit(ctx, req.ServiceName))
 }

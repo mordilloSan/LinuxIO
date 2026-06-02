@@ -3,40 +3,40 @@ import React, { useRef, useState } from "react";
 import "./app-text-field.css";
 
 export interface AppTextFieldProps {
+  "aria-autocomplete"?: "none" | "inline" | "list" | "both";
+  "aria-controls"?: string;
+  "aria-expanded"?: boolean;
+  autoComplete?: string;
+  autoFocus?: boolean;
+  className?: string;
+  disabled?: boolean;
+  endAdornment?: React.ReactNode;
+  error?: boolean;
+  fullWidth?: boolean;
+  helperText?: React.ReactNode;
+  id?: string;
   label?: string;
-  value?: string | number;
+  list?: string;
+  multiline?: boolean;
+  name?: string;
+  onBlur?: (e: React.FocusEvent) => void;
   onChange?: (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;
-  placeholder?: string;
-  type?: string;
-  size?: "small" | "medium";
-  variant?: "outlined" | "standard";
-  fullWidth?: boolean;
-  required?: boolean;
-  autoFocus?: boolean;
-  autoComplete?: string;
-  disabled?: boolean;
-  error?: boolean;
-  helperText?: React.ReactNode;
-  multiline?: boolean;
-  rows?: number;
-  name?: string;
-  id?: string;
-  startAdornment?: React.ReactNode;
-  endAdornment?: React.ReactNode;
-  shrinkLabel?: boolean;
-  className?: string;
-  style?: React.CSSProperties;
-  list?: string;
-  role?: string;
-  "aria-controls"?: string;
-  "aria-expanded"?: boolean;
-  "aria-autocomplete"?: "none" | "inline" | "list" | "both";
-  onFocus?: (e: React.FocusEvent) => void;
-  onBlur?: (e: React.FocusEvent) => void;
-  onKeyDown?: (e: React.KeyboardEvent) => void;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
+  onFocus?: (e: React.FocusEvent) => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+  placeholder?: string;
+  required?: boolean;
+  role?: string;
+  rows?: number;
+  shrinkLabel?: boolean;
+  size?: "small" | "medium";
+  startAdornment?: React.ReactNode;
+  style?: React.CSSProperties;
+  type?: string;
+  value?: string | number;
+  variant?: "outlined" | "standard";
 }
 
 const AppTextField = React.forwardRef<
@@ -160,9 +160,9 @@ const AppTextField = React.forwardRef<
         </label>
       )}
       <div
-        ref={wrapperRef}
         className={wrapperClasses}
         onClick={handleWrapperClick}
+        ref={wrapperRef}
       >
         {startAdornment && (
           <div className="app-text-field__adornment app-text-field__adornment--start">

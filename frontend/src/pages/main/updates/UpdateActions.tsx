@@ -9,14 +9,14 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 interface UpdateActionsProps {
-  isUpdating: boolean;
   currentPackage: string | null;
+  error?: string | null;
+  eventLog?: string[];
+  isUpdating: boolean;
+  onCancel?: () => void;
+  onClearError?: () => void;
   progress: number;
   status?: string | null;
-  eventLog?: string[];
-  error?: string | null;
-  onClearError?: () => void;
-  onCancel?: () => void;
 }
 
 const UpdateActions: React.FC<UpdateActionsProps> = ({
@@ -56,20 +56,20 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
       {/* Error Alert */}
       {error && (
         <AppAlert
-          severity="error"
-          style={{ marginBottom: 16 }}
           action={
             onClearError && (
               <AppIconButton
                 aria-label="close"
                 color="inherit"
-                size="small"
                 onClick={onClearError}
+                size="small"
               >
-                <Icon icon="mdi:close" width={18} height={18} />
+                <Icon height={18} icon="mdi:close" width={18} />
               </AppIconButton>
             )
           }
+          severity="error"
+          style={{ marginBottom: 16 }}
         >
           {error}
         </AppAlert>
@@ -86,7 +86,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
               marginBottom: theme.spacing(1),
             }}
           >
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               {getStatusText()}
             </AppTypography>
             <div
@@ -96,35 +96,35 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                 gap: theme.spacing(1),
               }}
             >
-              <AppTypography variant="body2" color="text.secondary">
+              <AppTypography color="text.secondary" variant="body2">
                 {Math.round(progress)}%
               </AppTypography>
               {onCancel && (
                 <AppTooltip title="Cancel update">
                   <AppIconButton
-                    size="small"
                     onClick={onCancel}
+                    size="small"
                     style={{ marginLeft: 2 }}
                   >
-                    <Icon icon="mdi:cancel" width={20} height={20} />
+                    <Icon height={20} icon="mdi:cancel" width={20} />
                   </AppIconButton>
                 </AppTooltip>
               )}
             </div>
           </div>
           <AppLinearProgress
-            variant="determinate"
-            value={progress}
             style={{ height: 8, borderRadius: 1 }}
+            value={progress}
+            variant="determinate"
           />
           {eventLog && eventLog.length > 0 && (
             <div style={{ marginTop: theme.spacing(1) }}>
               {eventLog.map((line, index) => (
                 <AppTypography
-                  key={`${index}-${line}`}
-                  variant="caption"
                   color="text.secondary"
+                  key={`${index}-${line}`}
                   style={{ display: "block" }}
+                  variant="caption"
                 >
                   {line}
                 </AppTypography>

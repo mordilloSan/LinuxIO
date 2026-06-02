@@ -384,5 +384,5 @@ json.Unmarshal(payload, &req) // Never parses
 
 ## See Also
 
-- [Frontend API](./frontend-api.md) - Client-side implementation
-- [Bridge Handler API](./bridge-handler-api.md) - How bridge handles streams
+- [API Contract](./api-contract.md) - Go-owned API contract and generated frontend client
+- [Handler Patterns](./bridge_handler_patterns.md) - Handler package style and adapter conventions

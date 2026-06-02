@@ -70,7 +70,7 @@ curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
-Access the dashboard at `https://localhost:8090`.
+Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered during dependency setup), you can also reach the box from any LAN device at `https://<your-hostname>.local:8090`.
 
 <details>
 <summary><strong>What gets installed?</strong></summary>
@@ -82,6 +82,7 @@ Access the dashboard at `https://localhost:8090`.
 | smartmontools | Disk SMART health data | Optional |
 | NFS utilities | Mount/browse and export NFS shares (`nfs-common` + `nfs-kernel-server` on Debian/Ubuntu, `nfs-utils` on Fedora/RHEL) | Optional |
 | Docker | Container management | Optional |
+| Avahi (mDNS) | Reach this host at `<hostname>.local` from other LAN devices | Optional |
 
 </details>
 

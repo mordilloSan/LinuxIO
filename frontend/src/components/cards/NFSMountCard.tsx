@@ -8,10 +8,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface NFSMountCardProps {
-  mount: NFSMount;
-  statusLabel: string;
-  persistenceLabel: string;
   actions: React.ReactNode;
+  mount: NFSMount;
+  persistenceLabel: string;
+  statusLabel: string;
 }
 
 const NFSMountCard: React.FC<NFSMountCardProps> = ({
@@ -31,7 +31,6 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
       }}
     >
       <AppTypography
-        variant="body1"
         fontWeight={700}
         style={{
           fontFamily: "monospace",
@@ -42,6 +41,7 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
           textOverflow: "ellipsis",
           lineHeight: 1.25,
         }}
+        variant="body1"
       >
         {mount.mountpoint}
       </AppTypography>
@@ -50,7 +50,6 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
 
     {/* Source */}
     <AppTypography
-      variant="body2"
       color="text.secondary"
       style={{
         marginBottom: 4,
@@ -61,6 +60,7 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
         overflow: "hidden",
         textOverflow: "ellipsis",
       }}
+      variant="body2"
     >
       {mount.source}
     </AppTypography>
@@ -69,9 +69,6 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
     {mount.mounted ? (
       <div style={{ width: "100%", marginBottom: 4 }}>
         <AppLinearProgress
-          variant="determinate"
-          value={mount.usedPct}
-          style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
           color={
             mount.usedPct > 90
               ? "error"
@@ -79,16 +76,19 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
                 ? "warning"
                 : "primary"
           }
+          style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
+          value={mount.usedPct}
+          variant="determinate"
         />
-        <AppTypography variant="caption" color="text.secondary">
+        <AppTypography color="text.secondary" variant="caption">
           {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
         </AppTypography>
       </div>
     ) : (
       <AppTypography
-        variant="caption"
         color="text.secondary"
         style={{ display: "block", marginBottom: 4 }}
+        variant="caption"
       >
         Not currently mounted
       </AppTypography>

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -31,14 +32,8 @@ type generalLogsRequest struct {
 }
 
 // runGeneralLogsJob streams general journal logs through the bridge job lifecycle.
-// Args: [lines, timePeriod, priority, identifier, fieldMatches...]
-// - lines: number of initial lines (default "100")
-// - timePeriod: time range like "1h", "24h", "7d" (optional)
-// - priority: max priority level 0-7 (optional, empty = all)
-// - identifier: filter by SYSLOG_IDENTIFIER (optional, empty = all)
-// - fieldMatches: optional KEY=VALUE journald match operands (ANDed)
-func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, args []string) (any, error) {
-	req := parseGeneralLogsRequest(args)
+func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, request apischema.GeneralLogsFollowRequest) (any, error) {
+	req := parseGeneralLogsRequest(request)
 	slog.Debug("starting general log job",
 		"component", "logs",
 		"route", StreamTypeGeneralLogs,
@@ -79,21 +74,21 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	return map[string]any{"status": "stopped"}, nil
 }
 
-func parseGeneralLogsRequest(args []string) generalLogsRequest {
+func parseGeneralLogsRequest(request apischema.GeneralLogsFollowRequest) generalLogsRequest {
 	req := generalLogsRequest{lines: "100"}
-	if len(args) >= 1 && strings.TrimSpace(args[0]) != "" {
-		req.lines = strings.TrimSpace(args[0])
+	if request.Lines != nil && strings.TrimSpace(*request.Lines) != "" {
+		req.lines = strings.TrimSpace(*request.Lines)
 	}
-	if len(args) >= 2 && strings.TrimSpace(args[1]) != "" {
-		req.timePeriod = strings.TrimSpace(args[1])
+	if request.TimePeriod != nil && strings.TrimSpace(*request.TimePeriod) != "" {
+		req.timePeriod = strings.TrimSpace(*request.TimePeriod)
 	}
-	if len(args) >= 3 && strings.TrimSpace(args[2]) != "" {
-		req.priority = strings.TrimSpace(args[2])
+	if request.Priority != nil && strings.TrimSpace(*request.Priority) != "" {
+		req.priority = strings.TrimSpace(*request.Priority)
 	}
-	if len(args) >= 4 && strings.TrimSpace(args[3]) != "" {
-		req.identifier = strings.TrimSpace(args[3])
+	if request.Identifier != nil && strings.TrimSpace(*request.Identifier) != "" {
+		req.identifier = strings.TrimSpace(*request.Identifier)
 	}
-	for _, raw := range args[min(4, len(args)):] {
+	for _, raw := range request.FieldFilters {
 		f := strings.TrimSpace(raw)
 		if f == "" || !journaldFieldMatch.MatchString(f) {
 			continue

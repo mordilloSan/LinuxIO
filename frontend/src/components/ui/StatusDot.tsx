@@ -3,11 +3,11 @@ import React from "react";
 import AppTooltip from "@/components/ui/AppTooltip";
 
 interface StatusDotProps {
+  absolute?: boolean;
   color: string;
   size?: number;
-  absolute?: boolean;
-  tooltip?: string;
   style?: React.CSSProperties;
+  tooltip?: string;
 }
 
 const StatusDot: React.FC<StatusDotProps> = ({
@@ -39,7 +39,7 @@ const StatusDot: React.FC<StatusDotProps> = ({
 
   if (tooltip) {
     return (
-      <AppTooltip title={tooltip} arrow>
+      <AppTooltip arrow title={tooltip}>
         {dot}
       </AppTooltip>
     );

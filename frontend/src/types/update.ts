@@ -1,10 +1,10 @@
 export interface Update {
-  package_id: string;
-  summary: string;
-  version: string;
-  issued: string;
   changelog: string;
   cve: string[];
+  issued: string;
+  package_id: string;
   restart: number;
   state: number;
+  summary: string;
+  version: string;
 }

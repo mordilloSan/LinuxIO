@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  linuxio,
-  useStreamMux,
-  openJobAttachStream,
   type ComposeProject,
+  linuxio,
+  openJobAttachStream,
   type Stream,
+  useStreamMux,
 } from "@/api";
 import IndexerStatusDialog, {
   type IndexerStat,
@@ -46,23 +46,23 @@ const getComposeProjectPaths = (project: ComposeProject) => [
 ];
 
 interface DockerIndexerDialogProps {
-  open: boolean;
   onClose: () => void;
   onComplete?: () => void;
+  open: boolean;
 }
 
 interface IndexerProgress {
-  files_indexed: number;
-  dirs_indexed: number;
   current_path?: string;
+  dirs_indexed: number;
+  files_indexed: number;
   phase?: string;
 }
 
 interface FolderIndexerResult {
-  path: string;
-  files_indexed: number;
   dirs_indexed: number;
   duration_ms?: number;
+  files_indexed: number;
+  path: string;
   total_size?: number;
 }
 
@@ -146,9 +146,9 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
 
     void (async () => {
       try {
-        const job = await linuxio.docker.indexer.call();
+        const job = await linuxio.docker.indexer();
         if (cancelled) {
-          void linuxio.jobs.cancel.call(job.id).catch(() => undefined);
+          void linuxio.jobs.cancel(job.id).catch(() => undefined);
           return;
         }
         jobIdRef.current = job.id;
@@ -195,7 +195,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
   const handleClose = () => {
     if (isRunning) {
       if (jobIdRef.current) {
-        void linuxio.jobs.cancel.call(jobIdRef.current).catch(() => undefined);
+        void linuxio.jobs.cancel(jobIdRef.current).catch(() => undefined);
       }
       closeStream();
     }
@@ -286,21 +286,21 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
 
   return (
     <IndexerStatusDialog
-      open={open}
-      onClose={handleClose}
-      onExited={resetState}
-      title="Indexing Docker Folders"
-      isRunning={isRunning}
-      success={success}
-      error={error}
-      phaseLabel={getPhaseLabel()}
-      progressStats={progressStats}
-      showProgressStats={success || progress.phase === "indexing"}
-      successDescription={successDescription}
+      detailSections={folderDetailSections}
       detailTitle={
         folderDetailSections.length > 1 ? "Docker Folder Results:" : undefined
       }
-      detailSections={folderDetailSections}
+      error={error}
+      isRunning={isRunning}
+      onClose={handleClose}
+      onExited={resetState}
+      open={open}
+      phaseLabel={getPhaseLabel()}
+      progressStats={progressStats}
+      showProgressStats={success || progress.phase === "indexing"}
+      success={success}
+      successDescription={successDescription}
+      title="Indexing Docker Folders"
     />
   );
 };

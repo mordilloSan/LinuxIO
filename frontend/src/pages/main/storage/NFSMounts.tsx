@@ -7,9 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { toast } from "sonner";
 
-import { linuxio, CACHE_TTL_MS, jobSnapshotResult, type NFSMount } from "@/api";
+import { CACHE_TTL_MS, jobSnapshotResult, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -37,6 +36,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface NFSMountsProps {
@@ -44,21 +44,21 @@ interface NFSMountsProps {
   viewMode?: "table" | "card";
 }
 interface MountNFSDialogProps {
-  open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 interface RemoveDialogProps {
-  open: boolean;
-  onClose: () => void;
   mount: NFSMount | null;
+  onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 interface EditNFSDialogProps {
-  open: boolean;
-  onClose: () => void;
   mount: NFSMount | null;
+  onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
 function getMountStatusLabel(mount: NFSMount): string {
@@ -127,10 +127,10 @@ const MountEntryActions: React.FC<{
     >
       <AppTooltip title="Edit entry">
         <AppIconButton
-          size="small"
-          color="primary"
           aria-label="Edit entry"
+          color="primary"
           onClick={wrapClick(onEdit)}
+          size="small"
         >
           <Icon icon="mdi:pencil-outline" width={18} />
         </AppIconButton>
@@ -142,11 +142,11 @@ const MountEntryActions: React.FC<{
           }}
         >
           <AppIconButton
-            size="small"
-            color="inherit"
             aria-label={mountActionLabel}
+            color="inherit"
             disabled={isMounting || mountActionDisabled}
             onClick={wrapClick(mount.mounted ? onUnmount : onMount)}
+            size="small"
             style={{
               color: mountActionColor,
             }}
@@ -160,10 +160,10 @@ const MountEntryActions: React.FC<{
       </AppTooltip>
       <AppTooltip title="Remove entry">
         <AppIconButton
-          size="small"
-          color="error"
           aria-label="Remove entry"
+          color="error"
           onClick={wrapClick(onRemove)}
+          size="small"
         >
           <Icon icon="mdi:trash-can-outline" width={18} />
         </AppIconButton>
@@ -178,6 +178,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [server, setServer] = useState("");
   const [exportPath, setExportPath] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -268,13 +269,13 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       return;
     }
     setValidationError(null);
-    mountNFS([
+    mountNFS({
       server,
       exportPath,
       mountpoint,
-      buildOptionsString(),
-      mountAtBoot ? "true" : "false",
-    ]);
+      options: buildOptionsString(),
+      persist: mountAtBoot ? "true" : "false",
+    });
   };
   const handleClose = () => {
     setServer("");
@@ -288,7 +289,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     onClose();
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Mount NFS Share</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -300,41 +301,41 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
           }}
         >
           <AppTextField
+            fullWidth
             label="NFS Server"
-            value={server}
             onChange={(e) => setServer(e.target.value)}
             placeholder="e.g., 192.168.1.100 or nas.local"
-            fullWidth
             size="small"
+            value={server}
           />
           <AppAutocomplete
-            freeSolo
-            options={exports}
-            value={exportPath}
-            onChange={setExportPath}
-            onInputChange={setExportPath}
-            loading={loadingExports}
-            label="Path on Server"
-            placeholder="e.g., /shared/data"
-            size="small"
-            fullWidth
             endAdornment={
               loadingExports ? <AppCircularProgress size={20} /> : null
             }
+            freeSolo
+            fullWidth
+            label="Path on Server"
+            loading={loadingExports}
+            onChange={setExportPath}
+            onInputChange={setExportPath}
+            options={exports}
+            placeholder="e.g., /shared/data"
+            size="small"
+            value={exportPath}
           />
           <AppTextField
+            fullWidth
             label="Local Mountpoint"
-            value={mountpoint}
             onChange={(e) => setMountpoint(e.target.value)}
             placeholder="e.g., /mnt/nfs/data"
-            fullWidth
             size="small"
+            value={mountpoint}
           />
           <AppTypography
-            variant="subtitle2"
             style={{
               marginTop: 4,
             }}
+            variant="subtitle2"
           >
             Mount Options
           </AppTypography>
@@ -357,13 +358,13 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             label="Mount read-only"
           />
           <AppTextField
+            fullWidth
+            helperText="Additional comma-separated mount options"
             label="Custom Mount Options"
-            value={customOptions}
             onChange={(e) => setCustomOptions(e.target.value)}
             placeholder="e.g., soft,timeo=100,retrans=2"
-            helperText="Additional comma-separated mount options"
-            fullWidth
             size="small"
+            value={customOptions}
           />
           {validationError && (
             <AppAlert severity="error">{validationError}</AppAlert>
@@ -371,13 +372,13 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isMounting}>
+        <AppButton disabled={isMounting} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isMounting}
           onClick={handleMount}
           variant="contained"
-          disabled={isMounting}
         >
           {isMounting ? "Mounting..." : "Mount"}
         </AppButton>
@@ -392,6 +393,7 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const { mutate: removeEntry, isPending: isRemoving } =
     linuxio.storage.unmount_nfs.useMutation({
       onSuccess: (result) => {
@@ -421,11 +423,11 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
 
   const handleRemove = () => {
     if (!mount) return;
-    removeEntry([mount.mountpoint, "true"]);
+    removeEntry({ mountpoint: mount.mountpoint, removeFstab: "true" });
   };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>Remove NFS Entry</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
@@ -454,14 +456,14 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
         )}
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose} disabled={isRemoving}>
+        <AppButton disabled={isRemoving} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleRemove}
-          variant="contained"
           color="error"
           disabled={isRemoving}
+          onClick={handleRemove}
+          variant="contained"
         >
           {isRemoving ? "Removing..." : "Remove"}
         </AppButton>
@@ -476,6 +478,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   // Use server and exportPath directly from mount data
   const server = mount?.server || "";
   const exportPath = mount?.exportPath || "";
@@ -565,11 +568,11 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   };
   const handleSave = () => {
     if (!mount) return;
-    remountNFS([
-      mount.mountpoint,
-      buildOptionsString(),
-      mountAtBoot ? "true" : "false",
-    ]);
+    remountNFS({
+      mountpoint: mount.mountpoint,
+      options: buildOptionsString(),
+      updateFstab: mountAtBoot ? "true" : "false",
+    });
   };
   const handleClose = () => {
     setReadOnly(false);
@@ -579,11 +582,11 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   };
   return (
     <GeneralDialog
-      key={mount?.mountpoint}
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
       fullWidth
+      key={mount?.mountpoint}
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
     >
       <AppDialogTitle>Edit NFS Mount Options</AppDialogTitle>
       <AppDialogContent>
@@ -596,33 +599,33 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           }}
         >
           <AppTextField
-            label="Server Address"
-            value={server}
             disabled
             fullWidth
+            label="Server Address"
             size="small"
+            value={server}
           />
           <AppTextField
-            label="Path on Server"
-            value={exportPath}
             disabled
             fullWidth
+            label="Path on Server"
             size="small"
+            value={exportPath}
           />
           {mount && (
             <AppTextField
-              label="Local Mountpoint"
-              value={mount.mountpoint}
               disabled
               fullWidth
+              label="Local Mountpoint"
               size="small"
+              value={mount.mountpoint}
             />
           )}
           <AppTypography
-            variant="subtitle2"
             style={{
               marginTop: 4,
             }}
+            variant="subtitle2"
           >
             Mount Options
           </AppTypography>
@@ -645,24 +648,24 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             label="Mount read-only"
           />
           <AppTextField
+            fullWidth
+            helperText="Additional comma-separated mount options"
             label="Custom Mount Options"
-            value={customOptions}
             onChange={(e) => setCustomOptions(e.target.value)}
             placeholder="e.g., soft,timeo=100,retrans=2"
-            helperText="Additional comma-separated mount options"
-            fullWidth
             size="small"
+            value={customOptions}
           />
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isRemounting}>
+        <AppButton disabled={isRemounting} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isRemounting}
           onClick={handleSave}
           variant="contained"
-          disabled={isRemounting}
         >
           {isRemounting ? "Saving..." : "Save"}
         </AppButton>
@@ -674,6 +677,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
@@ -714,7 +718,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       if (unmountResult.warning) {
         toast.warning(unmountResult.warning);
       } else {
-        toast.success(`Unmounted ${variables[0]}`);
+        toast.success(`Unmounted ${variables.mountpoint}`);
       }
       refetch();
     },
@@ -728,14 +732,14 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       return;
     }
     setMountDialogOpen(true);
-  }, [nfsUnavailable, nfsReason]);
+  }, [nfsUnavailable, nfsReason, toast]);
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleMountNFS);
     }
   }, [onMountCreateHandler, handleMountNFS]);
   const handleUnmount = (mount: NFSMount) => {
-    unmountEntry([mount.mountpoint, "false"]);
+    unmountEntry({ mountpoint: mount.mountpoint, removeFstab: "false" });
   };
   const handleEdit = (mount: NFSMount) => {
     setSelectedMount(mount);
@@ -755,13 +759,13 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       return;
     }
     setMountingMountpoint(mount.mountpoint);
-    mountExistingEntry([
-      mount.server,
-      mount.exportPath,
-      mount.mountpoint,
-      buildMountOptionsFromEntry(mount),
-      mount.inFstab ? "true" : "false",
-    ]);
+    mountExistingEntry({
+      server: mount.server,
+      exportPath: mount.exportPath,
+      mountpoint: mount.mountpoint,
+      options: buildMountOptionsFromEntry(mount),
+      persist: mount.inFstab ? "true" : "false",
+    });
   };
   if (loading) {
     return <PageLoader />;
@@ -824,21 +828,21 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 }}
               >
                 <NFSMountCard
-                  mount={mount}
-                  statusLabel={getMountStatusLabel(mount)}
-                  persistenceLabel={getPersistenceLabel(mount)}
                   actions={
                     <MountEntryActions
                       mount={mount}
                       mountingMountpoint={mountingMountpoint}
-                      onEdit={handleEdit}
-                      onMount={handleMountExisting}
-                      onUnmount={handleUnmount}
-                      onRemove={handleRemove}
                       nfsClientAvailable={!nfsUnavailable}
                       nfsReason={nfsReason}
+                      onEdit={handleEdit}
+                      onMount={handleMountExisting}
+                      onRemove={handleRemove}
+                      onUnmount={handleUnmount}
                     />
                   }
+                  mount={mount}
+                  persistenceLabel={getPersistenceLabel(mount)}
+                  statusLabel={getMountStatusLabel(mount)}
                 />
               </AppGrid>
             ))}
@@ -850,34 +854,78 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
               paddingBlock: 16,
             }}
           >
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No NFS entries found. Click Mount NFS to add one.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={filtered}
           columns={columns}
+          data={filtered}
+          emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
           getRowKey={(mount) => mount.mountpoint}
+          renderExpandedContent={(mount) => (
+            <div>
+              <AppTypography gutterBottom variant="subtitle2">
+                <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
+                {getPersistenceLabel(mount)}
+              </AppTypography>
+              <AppTypography gutterBottom variant="subtitle2">
+                <strong>Options:</strong>
+              </AppTypography>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 4,
+                  marginBottom: 8,
+                }}
+              >
+                {mount.options && mount.options.length > 0 ? (
+                  mount.options.map((opt, i) => (
+                    <Chip key={i} label={opt} size="small" variant="soft" />
+                  ))
+                ) : (
+                  <AppTypography color="text.secondary" variant="body2">
+                    (no options)
+                  </AppTypography>
+                )}
+              </div>
+              <AppTypography gutterBottom variant="subtitle2">
+                <strong>Filesystem Type:</strong> {mount.fsType}
+              </AppTypography>
+              {mount.mounted ? (
+                <AppTypography gutterBottom variant="subtitle2">
+                  <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
+                  {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}%
+                  used, {formatFileSize(mount.free)} free)
+                </AppTypography>
+              ) : (
+                <AppTypography gutterBottom variant="subtitle2">
+                  <strong>Storage:</strong> Not currently mounted
+                </AppTypography>
+              )}
+            </div>
+          )}
           renderMainRow={(mount) => (
             <>
               <AppTableCell>
                 <AppTypography
-                  variant="body2"
                   style={{
                     fontFamily: "monospace",
                   }}
+                  variant="body2"
                 >
                   {mount.source}
                 </AppTypography>
               </AppTableCell>
               <AppTableCell>
                 <AppTypography
-                  variant="body2"
                   style={{
                     fontFamily: "monospace",
                   }}
+                  variant="body2"
                 >
                   {mount.mountpoint}
                 </AppTypography>
@@ -904,13 +952,6 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     }}
                   >
                     <AppLinearProgress
-                      variant="determinate"
-                      value={mount.usedPct}
-                      style={{
-                        height: 6,
-                        borderRadius: 3,
-                        marginBottom: 2,
-                      }}
                       color={
                         mount.usedPct > 90
                           ? "error"
@@ -918,14 +959,21 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                             ? "warning"
                             : "primary"
                       }
+                      style={{
+                        height: 6,
+                        borderRadius: 3,
+                        marginBottom: 2,
+                      }}
+                      value={mount.usedPct}
+                      variant="determinate"
                     />
-                    <AppTypography variant="caption" color="text.secondary">
+                    <AppTypography color="text.secondary" variant="caption">
                       {formatFileSize(mount.used)} /{" "}
                       {formatFileSize(mount.size)}
                     </AppTypography>
                   </div>
                 ) : (
-                  <AppTypography variant="caption" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="caption">
                     Not mounted
                   </AppTypography>
                 )}
@@ -934,82 +982,38 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 <MountEntryActions
                   mount={mount}
                   mountingMountpoint={mountingMountpoint}
-                  onEdit={handleEdit}
-                  onMount={handleMountExisting}
-                  onUnmount={handleUnmount}
-                  onRemove={handleRemove}
                   nfsClientAvailable={!nfsUnavailable}
                   nfsReason={nfsReason}
+                  onEdit={handleEdit}
+                  onMount={handleMountExisting}
+                  onRemove={handleRemove}
+                  onUnmount={handleUnmount}
                   stopPropagation
                 />
               </AppTableCell>
             </>
           )}
-          renderExpandedContent={(mount) => (
-            <div>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
-                {getPersistenceLabel(mount)}
-              </AppTypography>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <strong>Options:</strong>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                  marginBottom: 8,
-                }}
-              >
-                {mount.options && mount.options.length > 0 ? (
-                  mount.options.map((opt, i) => (
-                    <Chip key={i} label={opt} size="small" variant="soft" />
-                  ))
-                ) : (
-                  <AppTypography variant="body2" color="text.secondary">
-                    (no options)
-                  </AppTypography>
-                )}
-              </div>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <strong>Filesystem Type:</strong> {mount.fsType}
-              </AppTypography>
-              {mount.mounted ? (
-                <AppTypography variant="subtitle2" gutterBottom>
-                  <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
-                  {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}%
-                  used, {formatFileSize(mount.free)} free)
-                </AppTypography>
-              ) : (
-                <AppTypography variant="subtitle2" gutterBottom>
-                  <strong>Storage:</strong> Not currently mounted
-                </AppTypography>
-              )}
-            </div>
-          )}
-          emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
         />
       )}
 
       <MountNFSDialog
-        open={mountDialogOpen}
         onClose={() => setMountDialogOpen(false)}
         onSuccess={() => refetch()}
+        open={mountDialogOpen}
       />
 
       <EditNFSDialog
-        open={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
         mount={selectedMount}
+        onClose={() => setEditDialogOpen(false)}
         onSuccess={() => refetch()}
+        open={editDialogOpen}
       />
 
       <RemoveDialog
-        open={removeDialogOpen}
-        onClose={() => setRemoveDialogOpen(false)}
         mount={selectedMount}
+        onClose={() => setRemoveDialogOpen(false)}
         onSuccess={() => refetch()}
+        open={removeDialogOpen}
       />
     </div>
   );

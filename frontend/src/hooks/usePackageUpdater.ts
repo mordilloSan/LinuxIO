@@ -1,5 +1,5 @@
 // src/hooks/usePackageUpdater.ts
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { linuxio, openJobAttachStream, type Stream } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
@@ -22,15 +22,15 @@ async function ensureMinimumVisible(startedAtMs: number): Promise<void> {
 
 // Progress event types from backend
 interface PkgUpdateProgress {
-  type: "item_progress" | "package" | "status" | "percentage" | "message";
+  info_code?: number;
+  item_pct?: number;
+  message?: string;
   package_id?: string;
   package_summary?: string;
-  status?: string;
-  message?: string;
-  status_code?: number;
-  info_code?: number;
   percentage?: number;
-  item_pct?: number;
+  status?: string;
+  status_code?: number;
+  type: "item_progress" | "package" | "status" | "percentage" | "message";
 }
 
 // Extract package name from package ID (e.g., "nginx;1.24.0-1ubuntu1;amd64;ubuntu" -> "nginx")
@@ -78,7 +78,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       appendEvent(`Installing: ${extractPackageName(pkg)}`);
 
       try {
-        await installPackage([pkg]);
+        await installPackage({ packageId: pkg });
         await onComplete();
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : "Update failed";
@@ -110,7 +110,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       cancelledRef.current = false;
 
       try {
-        const job = await linuxio.packages.update.call(...packages);
+        const job = await linuxio.packages.update(packages);
         jobIdRef.current = job.id;
 
         await runStreamResult<void, PkgUpdateProgress>({
@@ -208,7 +208,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       streamRef.current?.abort();
       streamRef.current = null;
       if (jobIdRef.current) {
-        void linuxio.jobs.cancel.call(jobIdRef.current).catch(() => undefined);
+        void linuxio.jobs.cancel(jobIdRef.current).catch(() => undefined);
         jobIdRef.current = null;
       }
       setUpdatingPackage(null);

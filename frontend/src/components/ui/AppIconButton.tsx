@@ -11,8 +11,8 @@ export interface AppIconButtonProps extends Omit<
   "color"
 > {
   color?: IconButtonColor;
-  size?: IconButtonSize;
   edge?: "start" | "end" | false;
+  size?: IconButtonSize;
 }
 
 const AppIconButton = React.forwardRef<HTMLButtonElement, AppIconButtonProps>(
@@ -38,7 +38,7 @@ const AppIconButton = React.forwardRef<HTMLButtonElement, AppIconButtonProps>(
       .join(" ");
 
     return (
-      <button ref={ref} type="button" className={cls} {...rest}>
+      <button className={cls} ref={ref} type="button" {...rest}>
         {children}
       </button>
     );

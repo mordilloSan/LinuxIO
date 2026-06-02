@@ -116,6 +116,20 @@ else
     Show 3 "packaging/etc/linuxio directory not found"
 fi
 
+# Avahi mDNS service file
+Show 2 "Installing Avahi service file..."
+if [[ -f "$REPO_ROOT/packaging/etc/avahi/services/linuxio.service" ]]; then
+    install -D -m 0644 "$REPO_ROOT/packaging/etc/avahi/services/linuxio.service" \
+        /etc/avahi/services/linuxio.service
+    if pgrep -x avahi-daemon >/dev/null 2>&1; then
+        Show 0 "mDNS advertisement enabled ${GREY}(reachable at <hostname>.local)${COLOUR_RESET}"
+    else
+        Show 3 "Avahi not running — file installed, will activate when avahi-daemon starts"
+    fi
+else
+    Show 3 "Avahi service file not found — mDNS advertisement skipped"
+fi
+
 # PAM
 Show 2 "Installing PAM configuration..."
 if [[ -f "$REPO_ROOT/packaging/etc/pam.d/linuxio" ]]; then
@@ -201,5 +215,11 @@ echo -e " ${BOLD}Dashboard:${COLOUR_RESET}"
 echo -e "${BULLET} https://localhost:${PORT}"
 if [[ -n "$lan_ip" ]]; then
     echo -e "${BULLET} https://${lan_ip}:${PORT}"
+fi
+if pgrep -x avahi-daemon >/dev/null 2>&1; then
+    hn=$(hostname 2>/dev/null) || hn=""
+    if [[ -n "$hn" ]]; then
+        echo -e "${BULLET} https://${hn}.local:${PORT}  ${GREY}(via mDNS)${COLOUR_RESET}"
+    fi
 fi
 echo ""

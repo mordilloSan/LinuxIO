@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 
 import {
   linuxio,
@@ -34,6 +33,7 @@ import {
 } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -42,22 +42,22 @@ interface LVMManagementProps {
   onMountCreateHandler?: (handler: () => void) => void;
 }
 interface CreateLVDialogProps {
-  open: boolean;
   onClose: () => void;
-  volumeGroups: VolumeGroup[];
   onSuccess: () => void;
+  open: boolean;
+  volumeGroups: VolumeGroup[];
 }
 interface ResizeLVDialogProps {
-  open: boolean;
-  onClose: () => void;
   lv: LogicalVolume | null;
+  onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 interface DeleteLVDialogProps {
-  open: boolean;
-  onClose: () => void;
   lv: LogicalVolume | null;
+  onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
 type LVMSectionId = "lvs" | "vgs" | "pvs";
@@ -92,6 +92,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
@@ -121,7 +122,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
       return;
     }
     setValidationError(null);
-    createLV([vgName, lvName, size]);
+    createLV({ vgName, lvName, size });
   };
   const handleClose = () => {
     setVgName("");
@@ -132,18 +133,18 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   };
   const selectedVG = volumeGroups.find((vg) => vg.name === vgName);
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Logical Volume</AppDialogTitle>
       <AppDialogContent>
         <div style={dialogStackStyle}>
           <AppSelect
-            label="Volume Group"
-            fullWidth
-            value={vgName}
-            onChange={(e) => setVgName(e.target.value)}
             disabled={volumeGroups.length === 0}
+            fullWidth
+            label="Volume Group"
+            onChange={(e) => setVgName(e.target.value)}
+            value={vgName}
           >
-            <option value="" disabled>
+            <option disabled value="">
               Select a volume group
             </option>
             {volumeGroups.map((vg) => (
@@ -168,30 +169,30 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
                   "1px solid color-mix(in srgb, currentColor 12%, transparent)",
               }}
             >
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 Available space in {selectedVG.name}
               </AppTypography>
-              <AppTypography variant="body2" fontWeight={700}>
+              <AppTypography fontWeight={700} variant="body2">
                 {formatFileSize(selectedVG.free)}
               </AppTypography>
             </div>
           )}
           <AppTextField
+            fullWidth
             label="Logical Volume Name"
-            value={lvName}
             onChange={(e) => setLvName(e.target.value)}
             placeholder="e.g., data, backup"
-            fullWidth
             size="small"
+            value={lvName}
           />
           <AppTextField
+            fullWidth
+            helperText="Use K, M, G, T suffix for size units"
             label="Size"
-            value={size}
             onChange={(e) => setSize(e.target.value)}
             placeholder="e.g., 10G, 500M"
-            helperText="Use K, M, G, T suffix for size units"
-            fullWidth
             size="small"
+            value={size}
           />
           {validationError && (
             <AppAlert severity="error">{validationError}</AppAlert>
@@ -199,13 +200,13 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isCreating}>
+        <AppButton disabled={isCreating} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isCreating || volumeGroups.length === 0}
           onClick={handleCreate}
           variant="contained"
-          disabled={isCreating || volumeGroups.length === 0}
         >
           {isCreating ? "Creating..." : "Create"}
         </AppButton>
@@ -220,6 +221,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const [newSize, setNewSize] = useState(() =>
     lv ? `${Math.round(lv.size / (1024 * 1024 * 1024))}G` : "",
   );
@@ -249,7 +251,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
       return;
     }
     setValidationError(null);
-    resizeLV([lv.vgName, lv.name, newSize]);
+    resizeLV({ vgName: lv.vgName, lvName: lv.name, newSize });
   };
   const handleClose = () => {
     setNewSize("");
@@ -258,11 +260,11 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   };
   return (
     <GeneralDialog
-      key={lv?.path}
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
       fullWidth
+      key={lv?.path}
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
     >
       <AppDialogTitle>Resize Logical Volume</AppDialogTitle>
       <AppDialogContent>
@@ -279,28 +281,28 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
                 gap: 4,
               }}
             >
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 Selected volume
               </AppTypography>
-              <AppTypography variant="body2" fontWeight={700}>
+              <AppTypography fontWeight={700} variant="body2">
                 {lv.name}
               </AppTypography>
-              <AppTypography variant="body2" color="text.secondary">
+              <AppTypography color="text.secondary" variant="body2">
                 {lv.vgName} · {formatFileSize(lv.size)}
               </AppTypography>
-              <AppTypography variant="caption" color="text.secondary">
+              <AppTypography color="text.secondary" variant="caption">
                 {lv.path}
               </AppTypography>
             </div>
           )}
           <AppTextField
+            fullWidth
+            helperText="Use K, M, G, T suffix for size units"
             label="New Size"
-            value={newSize}
             onChange={(e) => setNewSize(e.target.value)}
             placeholder="e.g., 20G, 1T"
-            helperText="Use K, M, G, T suffix for size units"
-            fullWidth
             size="small"
+            value={newSize}
           />
           {validationError && (
             <AppAlert severity="error">{validationError}</AppAlert>
@@ -308,13 +310,13 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isResizing}>
+        <AppButton disabled={isResizing} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
+          disabled={isResizing}
           onClick={handleResize}
           variant="contained"
-          disabled={isResizing}
         >
           {isResizing ? "Resizing..." : "Resize"}
         </AppButton>
@@ -329,6 +331,7 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
   const { mutate: deleteLV, isPending: isDeleting } =
     linuxio.storage.delete_lv.useMutation({
       onSuccess: () => {
@@ -350,13 +353,13 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
     });
   const handleDelete = () => {
     if (!lv) return;
-    deleteLV([lv.vgName, lv.name]);
+    deleteLV({ vgName: lv.vgName, lvName: lv.name });
   };
   const handleClose = () => {
     onClose();
   };
   return (
-    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Delete Logical Volume</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
@@ -384,14 +387,14 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
         </AppAlert>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={handleClose} disabled={isDeleting}>
+        <AppButton disabled={isDeleting} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleDelete}
-          variant="contained"
           color="error"
           disabled={isDeleting || !!lv?.mountpoint}
+          onClick={handleDelete}
+          variant="contained"
         >
           {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
@@ -417,7 +420,7 @@ const PVTable: React.FC<{
         {data.length === 0 ? (
           <AppTableRow>
             <AppTableCell colSpan={5}>
-              <AppTypography color="text.secondary" align="center">
+              <AppTypography align="center" color="text.secondary">
                 No physical volumes found
               </AppTypography>
             </AppTableCell>
@@ -426,7 +429,7 @@ const PVTable: React.FC<{
           data.map((pv) => (
             <AppTableRow key={pv.name}>
               <AppTableCell>
-                <AppTypography variant="body2" style={monospaceStyle}>
+                <AppTypography style={monospaceStyle} variant="body2">
                   {pv.name}
                 </AppTypography>
               </AppTableCell>
@@ -461,7 +464,7 @@ const VGTable: React.FC<{
         {data.length === 0 ? (
           <AppTableRow>
             <AppTableCell colSpan={5}>
-              <AppTypography color="text.secondary" align="center">
+              <AppTypography align="center" color="text.secondary">
                 No volume groups found
               </AppTypography>
             </AppTableCell>
@@ -470,7 +473,7 @@ const VGTable: React.FC<{
           data.map((vg) => (
             <AppTableRow key={vg.name}>
               <AppTableCell>
-                <AppTypography variant="body2" fontWeight={600}>
+                <AppTypography fontWeight={600} variant="body2">
                   {vg.name}
                 </AppTypography>
               </AppTableCell>
@@ -487,8 +490,8 @@ const VGTable: React.FC<{
 );
 interface LVTableProps {
   data: LogicalVolume[];
-  onResize: (lv: LogicalVolume) => void;
   onDelete: (lv: LogicalVolume) => void;
+  onResize: (lv: LogicalVolume) => void;
 }
 const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
   <AppTableContainer>
@@ -507,7 +510,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
         {data.length === 0 ? (
           <AppTableRow>
             <AppTableCell colSpan={6}>
-              <AppTypography color="text.secondary" align="center">
+              <AppTypography align="center" color="text.secondary">
                 No logical volumes found
               </AppTypography>
             </AppTableCell>
@@ -516,13 +519,13 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
           data.map((lv) => (
             <AppTableRow key={lv.path}>
               <AppTableCell>
-                <AppTypography variant="body2" fontWeight={600}>
+                <AppTypography fontWeight={600} variant="body2">
                   {lv.name}
                 </AppTypography>
                 <AppTypography
-                  variant="caption"
                   color="text.secondary"
                   style={monospaceStyle}
+                  variant="caption"
                 >
                   {lv.path}
                 </AppTypography>
@@ -531,7 +534,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
               <AppTableCell>{formatFileSize(lv.size)}</AppTableCell>
               <AppTableCell>
                 {lv.mountpoint ? (
-                  <AppTypography variant="body2" style={monospaceStyle}>
+                  <AppTypography style={monospaceStyle} variant="body2">
                     {lv.mountpoint}
                   </AppTypography>
                 ) : (
@@ -546,14 +549,14 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                     }}
                   >
                     <AppLinearProgress
-                      variant="determinate"
-                      value={lv.usedPct}
+                      color={getUsageColor(lv.usedPct)}
                       style={{
                         height: 6,
                         borderRadius: 3,
                         marginBottom: 2,
                       }}
-                      color={getUsageColor(lv.usedPct)}
+                      value={lv.usedPct}
+                      variant="determinate"
                     />
                     <AppTypography variant="caption">
                       {lv.usedPct.toFixed(1)}%
@@ -573,23 +576,23 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                   }}
                 >
                   <AppButton
-                    size="small"
-                    variant="outlined"
                     onClick={() => onResize(lv)}
+                    size="small"
                     startIcon={
-                      <Icon icon="mdi:pencil" width={18} height={18} />
+                      <Icon height={18} icon="mdi:pencil" width={18} />
                     }
+                    variant="outlined"
                   >
                     Resize
                   </AppButton>
                   <AppButton
-                    size="small"
-                    variant="outlined"
                     color="error"
                     onClick={() => onDelete(lv)}
+                    size="small"
                     startIcon={
-                      <Icon icon="mdi:delete" width={18} height={18} />
+                      <Icon height={18} icon="mdi:delete" width={18} />
                     }
+                    variant="outlined"
                   >
                     Delete
                   </AppButton>
@@ -681,89 +684,89 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
           }}
         >
           <LVMMetricCard
+            color={PANEL_ACCENTS.lvs}
+            icon="mdi:database-outline"
+            subtitle={`Provisioned ${formatFileSize(totalLvCapacity)}`}
             title="Logical Volumes"
             value={String(lvsList.length)}
-            subtitle={`Provisioned ${formatFileSize(totalLvCapacity)}`}
-            icon="mdi:database-outline"
-            color={PANEL_ACCENTS.lvs}
           />
           <LVMMetricCard
+            color={PANEL_ACCENTS.vgs}
+            icon="mdi:layers-triple-outline"
+            subtitle={`${formatFileSize(totalVgFree)} free capacity`}
             title="Volume Groups"
             value={String(vgsList.length)}
-            subtitle={`${formatFileSize(totalVgFree)} free capacity`}
-            icon="mdi:layers-triple-outline"
-            color={PANEL_ACCENTS.vgs}
           />
           <LVMMetricCard
+            color={PANEL_ACCENTS.pvs}
+            icon="mdi:harddisk"
+            subtitle={`${formatFileSize(totalPvCapacity)} raw capacity`}
             title="Physical Volumes"
             value={String(pvsList.length)}
-            subtitle={`${formatFileSize(totalPvCapacity)} raw capacity`}
-            icon="mdi:harddisk"
-            color={PANEL_ACCENTS.pvs}
           />
         </div>
 
         <LVMSectionCard
-          title="Logical Volumes"
-          subtitle={`${mountedLvCount} mounted across ${vgsList.length} volume group${vgsList.length === 1 ? "" : "s"}`}
-          count={lvsList.length}
-          icon="mdi:database-outline"
           accent={PANEL_ACCENTS.lvs}
+          count={lvsList.length}
           expanded={expanded === "lvs"}
+          icon="mdi:database-outline"
           onToggle={() => handleSectionToggle("lvs")}
+          subtitle={`${mountedLvCount} mounted across ${vgsList.length} volume group${vgsList.length === 1 ? "" : "s"}`}
+          title="Logical Volumes"
         >
           <LVTable
             data={lvsList}
-            onResize={handleResize}
             onDelete={handleDelete}
+            onResize={handleResize}
           />
         </LVMSectionCard>
 
         <LVMSectionCard
-          title="Volume Groups"
-          subtitle={`${formatFileSize(totalVgFree)} free across all groups`}
-          count={vgsList.length}
-          icon="mdi:layers-triple-outline"
           accent={PANEL_ACCENTS.vgs}
+          count={vgsList.length}
           expanded={expanded === "vgs"}
+          icon="mdi:layers-triple-outline"
           onToggle={() => handleSectionToggle("vgs")}
+          subtitle={`${formatFileSize(totalVgFree)} free across all groups`}
+          title="Volume Groups"
         >
           <VGTable data={vgsList} />
         </LVMSectionCard>
 
         <LVMSectionCard
-          title="Physical Volumes"
-          subtitle={`${formatFileSize(totalPvCapacity)} discovered device capacity`}
-          count={pvsList.length}
-          icon="mdi:harddisk"
           accent={PANEL_ACCENTS.pvs}
+          count={pvsList.length}
           expanded={expanded === "pvs"}
+          icon="mdi:harddisk"
           onToggle={() => handleSectionToggle("pvs")}
+          subtitle={`${formatFileSize(totalPvCapacity)} discovered device capacity`}
+          title="Physical Volumes"
         >
           <PVTable data={pvsList} />
         </LVMSectionCard>
       </div>
 
       <CreateLVDialog
-        open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
-        volumeGroups={vgsList}
         onSuccess={handleRefreshAll}
+        open={createDialogOpen}
+        volumeGroups={vgsList}
       />
 
       <ResizeLVDialog
         key={selectedLV?.name ?? ""}
-        open={resizeDialogOpen}
-        onClose={() => setResizeDialogOpen(false)}
         lv={selectedLV}
+        onClose={() => setResizeDialogOpen(false)}
         onSuccess={handleRefreshAll}
+        open={resizeDialogOpen}
       />
 
       <DeleteLVDialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
         lv={selectedLV}
+        onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleRefreshAll}
+        open={deleteDialogOpen}
       />
     </>
   );

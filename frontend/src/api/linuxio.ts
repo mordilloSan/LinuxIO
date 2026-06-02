@@ -7,21 +7,23 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
+
+import type { JobSnapshot } from "./generated/linuxio-types";
+
+import { isTerminalJobState } from "./job-state";
+import { request as bridgeRequest } from "./linuxio-core";
 import {
+  encodeString,
   getStreamMux,
-  subscribeMuxInstanceChanged,
-  type Stream,
-  type StreamStatus,
+  type MuxStatus,
   type ProgressFrame,
   type ResultFrame,
-  type MuxStatus,
+  type Stream,
   type StreamMultiplexer,
+  type StreamStatus,
   type StreamType,
-  encodeString,
+  subscribeMuxInstanceChanged,
 } from "./StreamMultiplexer";
-import { isTerminalJobState } from "./job-state";
-import { call as bridgeCall } from "./linuxio-core";
-import type { JobSnapshot } from "./linuxio-types";
 
 function openMuxStream(
   type: StreamType,
@@ -32,6 +34,15 @@ function openMuxStream(
     return null;
   }
   return mux.openStream(type, initialPayload);
+}
+
+function streamOpenPayload(route: string, request: unknown = {}): Uint8Array {
+  return encodeString(
+    JSON.stringify({
+      route,
+      request: request ?? {},
+    }),
+  );
 }
 
 let nextJobBackedStreamID = -1;
@@ -81,7 +92,7 @@ class JobBackedDataStream implements Stream {
 
   constructor(
     route: string,
-    private readonly args: string[],
+    private readonly request: unknown,
   ) {
     this.type = route;
     void this.start(route);
@@ -110,10 +121,10 @@ class JobBackedDataStream implements Stream {
   private async start(route: string): Promise<void> {
     try {
       const [handler, command] = routeParts(route);
-      const snapshot = await bridgeCall<JobSnapshot>(
+      const snapshot = await bridgeRequest<JobSnapshot>(
         handler,
         command,
-        this.args,
+        this.request,
       );
       if (this.closed) {
         void this.cancelJob(snapshot.id);
@@ -200,7 +211,7 @@ class JobBackedDataStream implements Stream {
 
   private async cancelJob(jobId: string): Promise<void> {
     try {
-      await bridgeCall<JobSnapshot>("jobs", "cancel", [jobId]);
+      await bridgeRequest<JobSnapshot>("jobs", "cancel", { jobId });
     } catch (error) {
       console.debug("Failed to cancel bridge job", error);
     }
@@ -214,11 +225,14 @@ class JobBackedDataStream implements Stream {
   }
 }
 
-function openJobBackedDataStream(route: string, args: string[]): Stream | null {
+function openJobBackedDataStream(
+  route: string,
+  request: unknown,
+): Stream | null {
   if (!isConnected()) {
     return null;
   }
-  return new JobBackedDataStream(route, args);
+  return new JobBackedDataStream(route, request);
 }
 
 function makeSubscribeWithRebind(
@@ -328,7 +342,7 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 
 export function openTerminalStream(cols: number, rows: number): Stream | null {
   const route = "terminal.open";
-  return openMuxStream(route, encodeString([route, cols, rows].join("\0")));
+  return openMuxStream(route, streamOpenPayload(route, { cols, rows }));
 }
 
 export function openContainerStream(
@@ -340,7 +354,7 @@ export function openContainerStream(
   const route = "container.open";
   return openMuxStream(
     route,
-    encodeString([route, containerId, shell, cols, rows].join("\0")),
+    streamOpenPayload(route, { containerId, shell, cols, rows }),
   );
 }
 
@@ -349,7 +363,7 @@ export function openDockerLogsStream(
   tail: string = "100",
 ): Stream | null {
   const route = "docker.logs.follow";
-  return openJobBackedDataStream(route, [containerId, tail]);
+  return openJobBackedDataStream(route, { containerId, tail });
 }
 
 export function openServiceLogsStream(
@@ -357,7 +371,7 @@ export function openServiceLogsStream(
   lines: string = "100",
 ): Stream | null {
   const route = "logs.service.follow";
-  return openJobBackedDataStream(route, [serviceName, lines]);
+  return openJobBackedDataStream(route, { serviceName, lines });
 }
 
 export function openGeneralLogsStream(
@@ -368,13 +382,13 @@ export function openGeneralLogsStream(
   fieldFilters: string[] = [],
 ): Stream | null {
   const route = "logs.general.follow";
-  return openJobBackedDataStream(route, [
+  return openJobBackedDataStream(route, {
     lines,
     timePeriod,
     priority,
     identifier,
-    ...fieldFilters,
-  ]);
+    fieldFilters,
+  });
 }
 
 export function openAppUpdateStream(
@@ -382,14 +396,12 @@ export function openAppUpdateStream(
   version?: string,
 ): Stream | null {
   const route = "control.app_update";
-  const parts = [runId];
-  if (version) parts.push(version);
-  return openJobBackedDataStream(route, parts);
+  return openJobBackedDataStream(route, { runId, version });
 }
 
 export function openJobAttachStream(jobId: string): Stream | null {
   const route = "jobs.attach";
-  return openMuxStream(route, encodeString([route, jobId].join("\0")));
+  return openMuxStream(route, streamOpenPayload(route, { jobId }));
 }
 
 export function openJobDataStream(
@@ -399,10 +411,10 @@ export function openJobDataStream(
   const route = "jobs.data";
   return openMuxStream(
     route,
-    encodeString([route, jobId, String(offset)].join("\0")),
+    streamOpenPayload(route, { jobId, offset: String(offset) }),
   );
 }
 
 export function openJobEventsStream(): Stream | null {
-  return openMuxStream("jobs.events", encodeString("jobs.events"));
+  return openMuxStream("jobs.events", streamOpenPayload("jobs.events"));
 }

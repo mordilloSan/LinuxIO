@@ -20,11 +20,12 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
 // --- Handler Implementations ---
-func ListInterfaces(ctx context.Context, _ []string) (any, error) {
+func ListInterfaces(ctx context.Context) (any, error) {
 	slog.Debug("ListInterfaces: listing interfaces")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
@@ -85,27 +86,27 @@ type peerRuntimeStats struct {
 	TxBps             float64
 }
 
-func parseAddInterfaceArgs(args []string) (addInterfaceRequest, error) {
-	if len(args) < 4 {
+func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addInterfaceRequest, error) {
+	if req.Name == "" || req.Addresses == "" || req.ListenPort == "" || req.EgressNic == "" {
 		return addInterfaceRequest{}, fmt.Errorf("usage: add_interface <name> <addresses> <listenPort> <egressNic> [dns] [mtu] [peers_json] [numPeers]")
 	}
 
-	name := args[0]
+	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
 		return addInterfaceRequest{}, fmt.Errorf("invalid interface name: %w", err)
 	}
 
-	addresses := normalizeAddresses(parseCSV(args[1]))
+	addresses := normalizeAddresses(parseCSV(req.Addresses))
 	if len(addresses) == 0 {
 		return addInterfaceRequest{}, fmt.Errorf("at least one address is required")
 	}
 
-	listenPort, err := strconv.Atoi(args[2])
+	listenPort, err := strconv.Atoi(req.ListenPort)
 	if err != nil {
 		return addInterfaceRequest{}, fmt.Errorf("invalid listen port: %w", err)
 	}
 
-	peers, err := parseOptionalPeers(args, 6)
+	peers, err := parseOptionalPeersValue(req.PeersJSON)
 	if err != nil {
 		return addInterfaceRequest{}, fmt.Errorf("invalid peers JSON: %w", err)
 	}
@@ -114,11 +115,11 @@ func parseAddInterfaceArgs(args []string) (addInterfaceRequest, error) {
 		name:       name,
 		addresses:  addresses,
 		listenPort: listenPort,
-		egressNic:  args[3],
-		dns:        parseOptionalCSV(args, 4),
-		mtu:        parseOptionalInt(args, 5, 0),
+		egressNic:  req.EgressNic,
+		dns:        parseOptionalCSVValue(req.DNS),
+		mtu:        parseOptionalIntValue(req.MTU, 0),
 		peers:      peers,
-		numPeers:   parseOptionalInt(args, 7, 0),
+		numPeers:   parseOptionalIntValue(req.NumPeers, 0),
 	}, nil
 }
 
@@ -129,8 +130,8 @@ func resolveInterfacePeers(req addInterfaceRequest) ([]PeerConfig, error) {
 	return generatePeers(req.addresses[0], req.numPeers)
 }
 
-func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []PeerConfig) InterfaceConfig {
-	return InterfaceConfig{
+func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []PeerConfig) WireGuardConfig {
+	return WireGuardConfig{
 		PrivateKey: privateKey,
 		Address:    req.addresses,
 		ListenPort: req.listenPort,
@@ -153,7 +154,7 @@ func readInterfaceEndpointInfo(logPrefix, egressNic string) (string, string) {
 	return publicIP, gatewayDNS
 }
 
-func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg InterfaceConfig, serverAddr, publicIP, gatewayDNS string) error {
+func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardConfig, serverAddr, publicIP, gatewayDNS string) error {
 	if len(peers) == 0 {
 		return nil
 	}
@@ -186,13 +187,13 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg InterfaceCo
 }
 
 func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string) error {
-	if _, err := UpInterface(ctx, []string{name}); err != nil {
+	if _, err := UpInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
 		return err
 	}
 
 	backendName, err := SetupNAT(ctx, name, egressNic, subnet)
 	if err != nil {
-		if _, downErr := DownInterface(ctx, []string{name}); downErr != nil {
+		if _, downErr := DownInterface(ctx, apischema.NameRequest{Name: name}); downErr != nil {
 			slog.Warn("failed to bring down interface after NAT failure",
 				"interface", name,
 				"error", downErr)
@@ -207,7 +208,7 @@ func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string
 	return nil
 }
 
-func createNextPeer(cfg InterfaceConfig) (PeerConfig, string, error) {
+func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
 	if len(cfg.Address) == 0 {
 		return PeerConfig{}, "", fmt.Errorf("interface has no address")
 	}
@@ -236,7 +237,7 @@ func createNextPeer(cfg InterfaceConfig) (PeerConfig, string, error) {
 	}, nextIP, nil
 }
 
-func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig) error {
+func exportAddedPeer(interfaceName string, peer PeerConfig, cfg WireGuardConfig) error {
 	publicIP, _ := getPublicIP()
 	if publicIP == "" {
 		slog.Warn("AddPeer: public IP lookup returned empty string")
@@ -249,7 +250,7 @@ func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig)
 
 	cfgWithPeer := cfg
 	cfgWithPeer.Peers = append(cfgWithPeer.Peers, peer)
-	peerNumber := parseOptionalInt([]string{peer.Name[4:]}, 0, 0)
+	peerNumber := parseOptionalIntString(peer.Name[4:], 0)
 	_, err := ExportPeerConfig(interfaceName, peer, cfgWithPeer, publicIP, peerNumber, gatewayDNS)
 	if err != nil {
 		return fmt.Errorf("export peer config: %w", err)
@@ -257,7 +258,7 @@ func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig)
 	return nil
 }
 
-func writePeerConfig(interfaceName string, cfg InterfaceConfig, peer PeerConfig) error {
+func writePeerConfig(interfaceName string, cfg WireGuardConfig, peer PeerConfig) error {
 	cfg.Peers = append(cfg.Peers, peer)
 	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
 		if rmErr := os.Remove(peerConfigPath(interfaceName, peer.Name)); rmErr != nil {
@@ -334,7 +335,7 @@ func readPeerAllowedIP(interfaceName, peerName string) (string, string, error) {
 	return peerPath, allowedIP, nil
 }
 
-func removePeerFromConfig(cfg InterfaceConfig, allowedIP string) (InterfaceConfig, string, bool) {
+func removePeerFromConfig(cfg WireGuardConfig, allowedIP string) (WireGuardConfig, string, bool) {
 	newPeers := make([]PeerConfig, 0, len(cfg.Peers))
 	var removedPeerPubKey string
 	found := false
@@ -531,8 +532,8 @@ func applyPeerRuntimeStats(peers []PeerInfo, statsByPub map[string]peerRuntimeSt
 	}
 }
 
-func AddInterface(ctx context.Context, args []string) (any, error) {
-	req, err := parseAddInterfaceArgs(args)
+func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRequest) (any, error) {
+	req, err := parseAddInterfaceRequest(request)
 	if err != nil {
 		slog.Error("invalid add interface arguments", "error", err)
 		return nil, err
@@ -578,13 +579,13 @@ func AddInterface(ctx context.Context, args []string) (any, error) {
 	}, nil
 }
 
-func RemoveInterface(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid remove interface arguments", "args", args)
+func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
+	if req.Name == "" {
+		slog.Error("invalid remove interface request")
 		return nil, fmt.Errorf("usage: remove_interface <name>")
 	}
 
-	name := args[0]
+	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -604,7 +605,7 @@ func RemoveInterface(ctx context.Context, args []string) (any, error) {
 	}
 
 	// Best-effort: bring it down, but don't abort on failure.
-	if _, err := DownInterface(ctx, []string{name}); err != nil {
+	if _, err := DownInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
 		slog.Warn("failed to bring down interface before removal", "interface", name, "error", err)
 	} else {
 		slog.Info("interface brought down before removal", "interface", name)
@@ -634,13 +635,13 @@ func RemoveInterface(ctx context.Context, args []string) (any, error) {
 	return "removed", nil
 }
 
-func AddPeer(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid add peer arguments", "args", args)
+func AddPeer(ctx context.Context, req apischema.InterfaceNameRequest) (any, error) {
+	if req.InterfaceName == "" {
+		slog.Error("invalid add peer request")
 		return nil, fmt.Errorf("usage: add_peer <interface>")
 	}
 
-	interfaceName := args[0]
+	interfaceName := req.InterfaceName
 	if err := validateInterfaceName(interfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -687,14 +688,14 @@ func AddPeer(ctx context.Context, args []string) (any, error) {
 	}, nil
 }
 
-func RemovePeerByName(ctx context.Context, args []string) (any, error) {
-	if len(args) < 2 {
-		slog.Error("invalid remove peer arguments", "args", args)
+func RemovePeerByName(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (any, error) {
+	if req.InterfaceName == "" || req.PeerName == "" {
+		slog.Error("invalid remove peer request")
 		return nil, fmt.Errorf("usage: remove_peer <interface> <peer>")
 	}
 
-	interfaceName := args[0]
-	peerName := args[1]
+	interfaceName := req.InterfaceName
+	peerName := req.PeerName
 	if err := validateInterfaceName(interfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -742,13 +743,13 @@ func RemovePeerByName(ctx context.Context, args []string) (any, error) {
 	return "removed", nil
 }
 
-func ListPeers(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid list peers arguments", "args", args)
+func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) (any, error) {
+	if req.InterfaceName == "" {
+		slog.Error("invalid list peers request")
 		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
 	}
 
-	interfaceName := args[0]
+	interfaceName := req.InterfaceName
 	if err := validateInterfaceName(interfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -774,12 +775,12 @@ func ListPeers(ctx context.Context, args []string) (any, error) {
 	return peers, nil
 }
 
-func UpInterface(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid up interface arguments", "args", args)
+func UpInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
+	if req.Name == "" {
+		slog.Error("invalid up interface request")
 		return nil, fmt.Errorf("usage: up_interface <name>")
 	}
-	name := args[0]
+	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -811,13 +812,13 @@ func UpInterface(ctx context.Context, args []string) (any, error) {
 	}, nil
 }
 
-func DownInterface(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid down interface arguments", "args", args)
+func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
+	if req.Name == "" {
+		slog.Error("invalid down interface request")
 		return nil, fmt.Errorf("usage: down_interface <name>")
 	}
 
-	name := args[0]
+	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -849,22 +850,22 @@ func DownInterface(ctx context.Context, args []string) (any, error) {
 	}, nil
 }
 
-func PeerQRCode(ctx context.Context, args []string) (any, error) {
-	if len(args) < 2 {
-		slog.Error("invalid peer QR code arguments", "args", args)
+func PeerQRCode(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (any, error) {
+	if req.InterfaceName == "" || req.PeerName == "" {
+		slog.Error("invalid peer QR code request")
 		return nil, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
 	}
 
-	if err := validateInterfaceName(args[0]); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", args[0], "error", err)
+	if err := validateInterfaceName(req.InterfaceName); err != nil {
+		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	if err := validateInterfaceName(args[1]); err != nil {
-		slog.Error("invalid WireGuard peer name", "peer", args[1], "error", err)
+	if err := validateInterfaceName(req.PeerName); err != nil {
+		slog.Error("invalid WireGuard peer name", "peer", req.PeerName, "error", err)
 		return nil, fmt.Errorf("invalid peer name: %w", err)
 	}
 
-	peerPath := peerConfigPath(args[0], args[1])
+	peerPath := peerConfigPath(req.InterfaceName, req.PeerName)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -886,22 +887,22 @@ func PeerQRCode(ctx context.Context, args []string) (any, error) {
 	return map[string]string{"qrcode": dataURI}, nil
 }
 
-func PeerConfigDownload(ctx context.Context, args []string) (any, error) {
-	if len(args) < 2 {
-		slog.Error("invalid peer config download arguments", "args", args)
+func PeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (any, error) {
+	if req.InterfaceName == "" || req.PeerName == "" {
+		slog.Error("invalid peer config download request")
 		return nil, fmt.Errorf("usage: peer_config_download <interface> <peername>")
 	}
 
-	if err := validateInterfaceName(args[0]); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", args[0], "error", err)
+	if err := validateInterfaceName(req.InterfaceName); err != nil {
+		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	if err := validateInterfaceName(args[1]); err != nil {
-		slog.Error("invalid WireGuard peer name", "peer", args[1], "error", err)
+	if err := validateInterfaceName(req.PeerName); err != nil {
+		slog.Error("invalid WireGuard peer name", "peer", req.PeerName, "error", err)
 		return nil, fmt.Errorf("invalid peer name: %w", err)
 	}
 
-	peerPath := peerConfigPath(args[0], args[1])
+	peerPath := peerConfigPath(req.InterfaceName, req.PeerName)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -914,42 +915,13 @@ func PeerConfigDownload(ctx context.Context, args []string) (any, error) {
 	return map[string]string{"config": string(data)}, nil
 }
 
-func GetKeys(args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid get keys arguments", "args", args)
-		return nil, fmt.Errorf("usage: get_keys <interface>")
-	}
-
-	if err := validateInterfaceName(args[0]); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", args[0], "error", err)
-		return nil, fmt.Errorf("invalid interface name: %w", err)
-	}
-
-	cfg, err := ParseWireGuardConfig(configPath(args[0]))
-	if err != nil {
-		slog.Error("failed to read interface config for keys", "interface", args[0], "error", err)
-		return nil, fmt.Errorf("read config: %w", err)
-	}
-
-	key, err := wgtypes.ParseKey(cfg.PrivateKey)
-	if err != nil {
-		slog.Error("failed to parse WireGuard private key", "interface", args[0], "error", err)
-		return nil, fmt.Errorf("parse key: %w", err)
-	}
-	slog.Info("provided interface keys", "interface", args[0])
-	return map[string]string{
-		"private_key": cfg.PrivateKey,
-		"public_key":  key.PublicKey().String(),
-	}, nil
-}
-
-func EnableInterface(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid enable interface arguments", "args", args)
+func EnableInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
+	if req.Name == "" {
+		slog.Error("invalid enable interface request")
 		return nil, fmt.Errorf("usage: enable_interface <name>")
 	}
 
-	name := args[0]
+	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
@@ -967,13 +939,13 @@ func EnableInterface(ctx context.Context, args []string) (any, error) {
 	}, nil
 }
 
-func DisableInterface(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
-		slog.Error("invalid disable interface arguments", "args", args)
+func DisableInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
+	if req.Name == "" {
+		slog.Error("invalid disable interface request")
 		return nil, fmt.Errorf("usage: disable_interface <name>")
 	}
 
-	name := args[0]
+	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)

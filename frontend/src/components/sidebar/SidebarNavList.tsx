@@ -3,11 +3,11 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 
 interface SidebarNavListItemProps {
-  href: string;
-  title: string;
-  icon?: React.ElementType | string;
   collapsed?: boolean;
   disabled?: boolean;
+  href: string;
+  icon?: React.ElementType | string;
+  title: string;
 }
 
 const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
@@ -15,7 +15,7 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
-        return <Icon icon={icon} width={24} height={24} />;
+        return <Icon height={24} icon={icon} width={24} />;
       const IconComponent = icon as React.ElementType;
       return <IconComponent />;
     };
@@ -39,8 +39,8 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
       return (
         <li>
           <span
-            className={baseClassName}
             aria-disabled="true"
+            className={baseClassName}
             title={collapsed ? title : undefined}
           >
             {content}
@@ -52,13 +52,13 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
     return (
       <li>
         <NavLink
-          to={href}
-          title={collapsed ? title : undefined}
           className={({ isActive }) =>
             [baseClassName, isActive && "app-sidebar-link--active"]
               .filter(Boolean)
               .join(" ")
           }
+          title={collapsed ? title : undefined}
+          to={href}
         >
           {content}
         </NavLink>

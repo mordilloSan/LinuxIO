@@ -54,10 +54,10 @@ function getColorForPercentage(pct: number, colors: string[]): string {
 // 1. Multi-Value Circular Gauge
 // ============================================
 interface MultiValueGaugeProps {
-  values: { value: number; color: string; label?: string }[];
+  gap?: number;
   size?: number;
   thickness?: number;
-  gap?: number;
+  values: { value: number; color: string; label?: string }[];
 }
 
 export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
@@ -91,12 +91,12 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
 
     // Build segments with an immutable running offset (no reassignments)
     interface Seg {
-      value: number;
       color: string;
       label?: string;
       percentage: number;
-      strokeDasharray: string;
       rotation: number;
+      strokeDasharray: string;
+      value: number;
     }
 
     const result = data.reduce(
@@ -126,28 +126,28 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
         height: size,
       }}
     >
-      <svg width={size} height={size}>
+      <svg height={size} width={size}>
         <circle
           cx={center}
           cy={center}
-          r={radius}
           fill="none"
+          r={radius}
           stroke={isDark ? grey[700] : grey[300]}
           strokeWidth={thickness}
         />
         {segments.map((segment, index) => (
           <circle
-            key={index}
             cx={center}
             cy={center}
-            r={radius}
             fill="none"
+            key={index}
+            r={radius}
             stroke={segment.color}
-            strokeWidth={thickness}
             strokeDasharray={segment.strokeDasharray}
             strokeLinecap="round"
-            transform={`rotate(${segment.rotation} ${center} ${center})`}
+            strokeWidth={thickness}
             style={{ transition: "stroke-dasharray 0.3s ease" }}
+            transform={`rotate(${segment.rotation} ${center} ${center})`}
           />
         ))}
       </svg>
@@ -183,11 +183,11 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
 // 2. Gradient Circular Gauge (Arc-based)
 // ============================================
 interface GradientGaugeProps {
-  value: number;
   gradientColors?: string[];
+  showPercentage?: boolean;
   size?: number;
   thickness?: number;
-  showPercentage?: boolean;
+  value: number;
 }
 
 export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
@@ -242,26 +242,26 @@ export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
         height: size,
       }}
     >
-      <svg width={size} height={size}>
+      <svg height={size} width={size}>
         <circle
           cx={center}
           cy={center}
-          r={radius}
           fill="none"
+          r={radius}
           stroke={backgroundColor}
           strokeWidth={thickness}
         />
         {segments.map((segment, index) => (
           <circle
-            key={index}
             cx={center}
             cy={center}
-            r={radius}
             fill="none"
+            key={index}
+            r={radius}
             stroke={segment.color}
-            strokeWidth={thickness}
             strokeDasharray={segment.strokeDasharray}
             strokeLinecap="round"
+            strokeWidth={thickness}
             transform={`rotate(${segment.rotation} ${center} ${center})`}
           />
         ))}

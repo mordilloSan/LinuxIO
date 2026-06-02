@@ -18,7 +18,8 @@ import (
 
 	"github.com/shirou/gopsutil/v4/disk"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // Validation patterns for NFS
@@ -78,6 +79,9 @@ func getFstabEntries() map[string]fstabEntry {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("error reading /etc/fstab", "error", err)
+	}
 	return fstabEntries
 }
 
@@ -121,13 +125,6 @@ func CheckNFSClientAvailability() (bool, error) {
 	return checkNFSCommands(requiredNFSClientCommands)
 }
 
-// CheckNFSAvailability verifies that the optional NFS client utilities are installed.
-//
-// Deprecated: use CheckNFSClientAvailability for mount/client operations.
-func CheckNFSAvailability() (bool, error) {
-	return CheckNFSClientAvailability()
-}
-
 func nfsCommandInstallHint(command string) string {
 	if command == "exportfs" {
 		return "nfs-kernel-server or nfs-utils"
@@ -146,11 +143,11 @@ func requireNFSClientAvailability() error {
 	return nil
 }
 
-func mountFromFstabEntry(mountpoint string, entry fstabEntry) NFSMount {
+func mountFromFstabEntry(mountpoint string, entry fstabEntry) apischema.NFSMount {
 	source := entry.source
 	server, exportPath := parseNFSSource(source)
 
-	return NFSMount{
+	return apischema.NFSMount{
 		Source:     source,
 		Server:     server,
 		ExportPath: exportPath,
@@ -233,7 +230,7 @@ func saveManagedNFSMountEntries(entries map[string]managedNFSMountEntry) error {
 	}
 	data = append(data, '\n')
 
-	return fsutil.WriteFileAtomic(managedNFSMountsPath, data, 0o644)
+	return utils.WriteFileAtomic(managedNFSMountsPath, data, 0o644)
 }
 
 func upsertManagedNFSMount(source, mountpoint, fstype string, options []string) error {
@@ -266,14 +263,14 @@ func removeManagedNFSMount(mountpoint string) error {
 	return saveManagedNFSMountEntries(entries)
 }
 
-func mountFromManagedEntry(entry managedNFSMountEntry) NFSMount {
+func mountFromManagedEntry(entry managedNFSMountEntry) apischema.NFSMount {
 	server, exportPath := parseNFSSource(entry.Source)
 	fstype := entry.FSType
 	if !isNFSFSType(fstype) {
 		fstype = "nfs"
 	}
 
-	return NFSMount{
+	return apischema.NFSMount{
 		Source:     entry.Source,
 		Server:     server,
 		ExportPath: exportPath,
@@ -329,7 +326,7 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 
 // ListNFSMounts returns all NFS mount entries, including active mounts and
 // persistent /etc/fstab entries that are currently inactive.
-func ListNFSMounts(ctx context.Context) ([]NFSMount, error) {
+func ListNFSMounts(ctx context.Context) ([]apischema.NFSMount, error) {
 	partitions, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return nil, err
@@ -352,7 +349,7 @@ func ListNFSMounts(ctx context.Context) ([]NFSMount, error) {
 	mergeFstabMounts(mountsByMountpoint, fstabEntries)
 	mergeManagedMounts(mountsByMountpoint, managedEntries)
 
-	mounts := make([]NFSMount, 0, len(mountsByMountpoint))
+	mounts := make([]apischema.NFSMount, 0, len(mountsByMountpoint))
 	for _, mount := range mountsByMountpoint {
 		mounts = append(mounts, mount)
 	}
@@ -367,8 +364,8 @@ func ListNFSMounts(ctx context.Context) ([]NFSMount, error) {
 	return mounts, nil
 }
 
-func collectActiveMounts(partitions []disk.PartitionStat, fstabEntries map[string]fstabEntry) map[string]NFSMount {
-	result := make(map[string]NFSMount)
+func collectActiveMounts(partitions []disk.PartitionStat, fstabEntries map[string]fstabEntry) map[string]apischema.NFSMount {
+	result := make(map[string]apischema.NFSMount)
 	for _, p := range partitions {
 		if !isNFSFSType(p.Fstype) {
 			continue
@@ -384,7 +381,7 @@ func collectActiveMounts(partitions []disk.PartitionStat, fstabEntries map[strin
 		}
 
 		server, exportPath := parseNFSSource(source)
-		mount := NFSMount{
+		mount := apischema.NFSMount{
 			Source:     source,
 			Server:     server,
 			ExportPath: exportPath,
@@ -407,7 +404,7 @@ func collectActiveMounts(partitions []disk.PartitionStat, fstabEntries map[strin
 	return result
 }
 
-func mergeFstabMounts(mounts map[string]NFSMount, fstabEntries map[string]fstabEntry) {
+func mergeFstabMounts(mounts map[string]apischema.NFSMount, fstabEntries map[string]fstabEntry) {
 	for mountpoint, entry := range fstabEntries {
 		if !isNFSFSType(entry.fstype) {
 			continue
@@ -434,7 +431,7 @@ func mergeFstabMounts(mounts map[string]NFSMount, fstabEntries map[string]fstabE
 	}
 }
 
-func mergeManagedMounts(mounts map[string]NFSMount, managedEntries map[string]managedNFSMountEntry) {
+func mergeManagedMounts(mounts map[string]apischema.NFSMount, managedEntries map[string]managedNFSMountEntry) {
 	for mountpoint, entry := range managedEntries {
 		existing, exists := mounts[mountpoint]
 		if !exists {

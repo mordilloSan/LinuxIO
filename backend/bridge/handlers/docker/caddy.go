@@ -16,6 +16,7 @@ import (
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
@@ -30,23 +31,8 @@ const (
 	proxyEnabledLabel   = "io.linuxio.container.proxy.enabled"
 )
 
-// CaddyRoute describes one proxied host.
-type CaddyRoute struct {
-	Host      string `json:"host"`
-	Container string `json:"container"`
-	Port      string `json:"port"`
-}
-
-// CaddyStatus is returned by GetCaddyStatus.
-type CaddyStatus struct {
-	Enabled    bool         `json:"enabled"`
-	BaseDomain string       `json:"baseDomain"`
-	Running    bool         `json:"running"`
-	Routes     []CaddyRoute `json:"routes"`
-}
-
-// GetCaddyStatusWithStore returns the current Caddy proxy status.
-func GetCaddyStatusWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// GetCaddyStatus returns the current Caddy proxy status.
+func GetCaddyStatus(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
@@ -55,7 +41,7 @@ func GetCaddyStatusWithStore(ctx context.Context, username string, store *config
 	running := isCaddyRunning(ctx)
 	routes, _ := buildRoutes(ctx, cfg.Docker.Proxy)
 
-	return CaddyStatus{
+	return apischema.CaddyStatusResponse{
 		Enabled:    cfg.Docker.Proxy.CaddyEnabled,
 		BaseDomain: cfg.Docker.Proxy.BaseDomain,
 		Running:    running,
@@ -63,8 +49,8 @@ func GetCaddyStatusWithStore(ctx context.Context, username string, store *config
 	}, nil
 }
 
-// EnableCaddyWithStore deploys the Caddy container and generates the initial Caddyfile.
-func EnableCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// EnableCaddy deploys the Caddy container and generates the initial Caddyfile.
+func EnableCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	if err := ensureCaddyDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create caddy config dirs: %w", err)
 	}
@@ -94,8 +80,8 @@ func EnableCaddyWithStore(ctx context.Context, username string, store *config.Us
 	return map[string]any{"message": "Caddy deployed"}, nil
 }
 
-// DisableCaddyWithStore stops and removes the Caddy container.
-func DisableCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// DisableCaddy stops and removes the Caddy container.
+func DisableCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	if err := removeCaddyContainer(ctx); err != nil {
 		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
@@ -110,8 +96,8 @@ func DisableCaddyWithStore(ctx context.Context, username string, store *config.U
 	return map[string]any{"message": "Caddy removed"}, nil
 }
 
-// ReloadCaddyWithStore regenerates the Caddyfile from current containers and reloads Caddy.
-func ReloadCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// ReloadCaddy regenerates the Caddyfile from current containers and reloads Caddy.
+func ReloadCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
@@ -246,7 +232,7 @@ func isCaddyRunning(ctx context.Context) bool {
 }
 
 // buildRoutes lists running containers with proxy labels and builds the route table.
-func buildRoutes(ctx context.Context, proxyCfg config.DockerProxy) ([]CaddyRoute, error) {
+func buildRoutes(ctx context.Context, proxyCfg config.DockerProxy) ([]apischema.CaddyRoute, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, err
@@ -258,7 +244,7 @@ func buildRoutes(ctx context.Context, proxyCfg config.DockerProxy) ([]CaddyRoute
 		return nil, err
 	}
 
-	var routes []CaddyRoute
+	var routes []apischema.CaddyRoute
 	for _, c := range list.Items {
 		port := c.Labels[ProxyPortLabel]
 		if port == "" {
@@ -275,7 +261,7 @@ func buildRoutes(ctx context.Context, proxyCfg config.DockerProxy) ([]CaddyRoute
 		}
 
 		host := buildHost(subdomain, proxyCfg.BaseDomain)
-		routes = append(routes, CaddyRoute{Host: host, Container: name, Port: port})
+		routes = append(routes, apischema.CaddyRoute{Host: host, Container: name, Port: port})
 	}
 	return routes, nil
 }
@@ -346,7 +332,7 @@ func reloadCaddyfile(ctx context.Context, proxyCfg config.DockerProxy) error {
 }
 
 // generateCaddyfile builds the Caddyfile text from routes.
-func generateCaddyfile(routes []CaddyRoute, proxyCfg config.DockerProxy) string {
+func generateCaddyfile(routes []apischema.CaddyRoute, proxyCfg config.DockerProxy) string {
 	var b strings.Builder
 
 	b.WriteString("{\n")

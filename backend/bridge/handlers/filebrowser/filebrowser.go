@@ -18,12 +18,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 var (
@@ -66,50 +68,45 @@ func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
 	}()
 }
 
-// resourceGet retrieves information about a resource
-// Args: [path, "", getContent?] or [path]
-func resourceGet(ctx context.Context, args []string) (any, error) {
+// resourceGet retrieves information about a resource.
+func resourceGet(ctx context.Context, req apischema.FileResourceGetRequest) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(args) < 1 {
+	if req.Path == "" {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
 
-	path := args[0]
-	getContent := len(args) > 2 && args[2] == "true"
+	getContent := req.GetContent != nil && *req.GetContent == "true"
 
 	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
-		Path:    path,
+		Path:    req.Path,
 		Expand:  true,
 		Content: getContent,
 	})
 	if err != nil {
-		slog.Debug("error getting file info", "path", path, "error", err)
+		slog.Debug("error getting file info", "path", req.Path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	return fileInfo, nil
 }
 
-// resourceStat returns extended metadata
-// Args: [path]
-func resourceStat(ctx context.Context, args []string) (any, error) {
+// resourceStat returns extended metadata.
+func resourceStat(ctx context.Context, req apischema.PathRequest) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(args) < 1 {
+	if req.Path == "" {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
 
-	path := args[0]
-
 	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
-		Path:   path,
+		Path:   req.Path,
 		Expand: false,
 	})
 	if err != nil {
-		slog.Debug("error getting file stat info", "path", path, "error", err)
+		slog.Debug("error getting file stat info", "path", req.Path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
@@ -119,7 +116,7 @@ func resourceStat(ctx context.Context, args []string) (any, error) {
 		return nil, fmt.Errorf("error collecting stat info: %w", err)
 	}
 
-	statData.Path = path
+	statData.Path = req.Path
 	statData.Name = fileInfo.Name
 	if statData.Size == 0 {
 		statData.Size = fileInfo.Size
@@ -128,44 +125,41 @@ func resourceStat(ctx context.Context, args []string) (any, error) {
 	return statData, nil
 }
 
-// resourceDelete deletes a resource
-// Args: [path]
-func resourceDelete(ctx context.Context, args []string, emit bridgeipc.Events) (any, error) {
-	if len(args) < 1 {
+// resourceDelete deletes a resource.
+func resourceDelete(ctx context.Context, req apischema.PathRequest, emit bridgeipc.Events) (any, error) {
+	if req.Path == "" {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
 
-	path := args[0]
-
-	if path == "/" {
+	if req.Path == "/" {
 		return nil, fmt.Errorf("bad_request:cannot delete root")
 	}
 
-	isDir, err := deleteTargetIsDir(path)
+	isDir, err := deleteTargetIsDir(req.Path)
 	if err != nil {
-		slog.Debug("error getting file info", "path", path, "error", err)
+		slog.Debug("error getting file info", "path", req.Path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
-	deleteOpts := deleteOptionsForPath(ctx, path, isDir)
+	deleteOpts := deleteOptionsForPath(ctx, req.Path, isDir)
 	reportDeleteProgress(emit, 0, deleteOpts.Total, deleteOpts.Indeterminate, "preparing")
 	deleteOpts.Progress = newDeleteProgressReporter(emit)
 
-	processed, err := services.DeleteFilesWithProgress(ctx, path, deleteOpts)
+	processed, err := services.DeleteFilesWithProgress(ctx, req.Path, deleteOpts)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil, err
 		}
-		slog.Debug("error deleting file", "path", path, "error", err)
+		slog.Debug("error deleting file", "path", req.Path, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	// Notify indexer about the deletion
-	if err := deleteFromIndexer(ctx, path); err != nil {
-		slog.Debug("failed to update indexer after delete", "path", path, "error", err)
+	if err := deleteFromIndexer(ctx, req.Path); err != nil {
+		slog.Debug("failed to update indexer after delete", "path", req.Path, "error", err)
 		// Don't fail the operation if indexer update fails
 	}
-	slog.Info("delete complete", "path", path)
+	slog.Info("delete complete", "path", req.Path)
 
 	return map[string]any{
 		"message":   "deleted",
@@ -180,7 +174,7 @@ func deleteTargetIsDir(path string) (bool, error) {
 	}
 	defer root.Close()
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	cleanPath := utils.CleanAbsPath(path)
 	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
 	if err != nil {
 		return false, err
@@ -295,17 +289,17 @@ type computedTransferSize struct {
 	known bool
 }
 
-func parseResourcePostArgs(args []string) (resourcePostRequest, error) {
-	if len(args) < 1 {
+func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePostRequest, error) {
+	if req.Path == "" {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:missing path")
 	}
 
-	path, err := url.QueryUnescape(args[0])
+	path, err := url.QueryUnescape(req.Path)
 	if err != nil {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid path encoding")
 	}
 
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	cleanPath := utils.CleanAbsPath(path)
 	if cleanPath == "/" {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:cannot create root")
 	}
@@ -314,7 +308,7 @@ func parseResourcePostArgs(args []string) (resourcePostRequest, error) {
 		cleanPath: cleanPath,
 		relPath:   strings.TrimPrefix(cleanPath, "/"),
 		isDir:     strings.HasSuffix(path, "/"),
-		override:  len(args) > 1 && args[1] == "true",
+		override:  req.Override != nil && *req.Override,
 	}, nil
 }
 
@@ -386,16 +380,16 @@ func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, c
 	}
 }
 
-func parseResourcePatchArgs(args []string) (resourcePatchRequest, error) {
-	if len(args) < 3 {
+func parseResourcePatchRequest(req apischema.ActionSourceDestinationRequest) (resourcePatchRequest, error) {
+	if req.Action == "" || req.Source == "" || req.Dest == "" {
 		return resourcePatchRequest{}, fmt.Errorf("bad_request:missing action, from, or destination")
 	}
 
-	src, err := url.QueryUnescape(args[1])
+	src, err := url.QueryUnescape(req.Source)
 	if err != nil {
 		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid source path encoding")
 	}
-	dst, err := url.QueryUnescape(args[2])
+	dst, err := url.QueryUnescape(req.Dest)
 	if err != nil {
 		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid destination path encoding")
 	}
@@ -404,10 +398,9 @@ func parseResourcePatchArgs(args []string) (resourcePatchRequest, error) {
 	}
 
 	return resourcePatchRequest{
-		action:    args[0],
-		src:       src,
-		dst:       dst,
-		overwrite: len(args) > 3 && args[3] == "true",
+		action: req.Action,
+		src:    src,
+		dst:    dst,
 	}, nil
 }
 
@@ -423,7 +416,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	if strings.HasSuffix(req.dst, "/") && !strings.HasSuffix(req.realDest, "/") {
 		req.realDest += "/"
 	}
-	req.realSrc = filepath.Clean("/" + strings.TrimPrefix(req.src, "/"))
+	req.realSrc = utils.CleanAbsPath(req.src)
 
 	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
 	if err != nil {
@@ -583,13 +576,12 @@ func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resou
 	}
 }
 
-// resourcePost creates or uploads a new resource
-// Args: [path, override?, chunkOffset?, totalSize?, body]
-func resourcePost(ctx context.Context, args []string) (any, error) {
+// resourcePost creates a new resource.
+func resourcePost(ctx context.Context, req apischema.FileResourcePostRequest) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req, err := parseResourcePostArgs(args)
+	postReq, err := parseResourcePostRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -605,20 +597,19 @@ func resourcePost(ctx context.Context, args []string) (any, error) {
 		}
 	}()
 
-	if err := ensureResourcePostType(root, req); err != nil {
+	if err := ensureResourcePostType(root, postReq); err != nil {
 		return nil, err
 	}
 
-	if req.isDir {
-		return createDirectoryResource(ctx, root, req)
+	if postReq.isDir {
+		return createDirectoryResource(ctx, root, postReq)
 	}
-	return createFileResource(ctx, root, req)
+	return createFileResource(ctx, root, postReq)
 }
 
-// resourcePatchWithProgress performs patch operations with progress feedback
-// Args: [action, from, destination, overwrite?]
-func resourcePatchWithProgress(ctx context.Context, args []string, emit bridgeipc.Events) (any, error) {
-	req, err := parseResourcePatchArgs(args)
+// resourcePatchWithProgress performs patch operations with progress feedback.
+func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, emit bridgeipc.Events) (any, error) {
+	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -629,25 +620,25 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit bridgeip
 	}
 	defer root.Close()
 
-	req, err = prepareResourcePatch(root, req)
+	patchReq, err = prepareResourcePatch(root, patchReq)
 	if err != nil {
 		return nil, err
 	}
 
-	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
+	srcInfo, err := root.Root.Stat(fsroot.ToRel(patchReq.realSrc))
 	if err != nil {
-		slog.Debug("error getting source info", "path", req.realSrc, "error", err)
+		slog.Debug("error getting source info", "path", patchReq.realSrc, "error", err)
 		return nil, fmt.Errorf("bad_request:source not found")
 	}
-	_, destStatErr := root.Root.Stat(fsroot.ToRel(req.realDest))
+	_, destStatErr := root.Root.Stat(fsroot.ToRel(patchReq.realDest))
 	destExisted := destStatErr == nil
 
-	size := computeTransferSize(ctx, req.realSrc, srcInfo)
+	size := computeTransferSize(ctx, patchReq.realSrc, srcInfo)
 	// Send initial progress.
 	slog.Info("starting filebrowser operation",
-		"action", req.action,
-		"source", req.realSrc,
-		"destination", req.realDest,
+		"action", patchReq.action,
+		"source", patchReq.realSrc,
+		"destination", patchReq.realDest,
 		"size", size.total)
 	if err := emit.Progress(FileProgress{
 		Total: size.total,
@@ -656,13 +647,13 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit bridgeip
 		return nil, fmt.Errorf("write progress: %w", err)
 	}
 
-	opts := newPatchCallbacks(ctx, emit, req.action, size.total)
-	if err := executeResourcePatch(req, opts, size); err != nil {
-		slog.Debug("error patching resource", "action", req.action, "source", req.realSrc, "destination", req.realDest, "error", err)
+	opts := newPatchCallbacks(ctx, emit, patchReq.action, size.total)
+	if err := executeResourcePatch(patchReq, opts, size); err != nil {
+		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
-	notifyIndexerAfterPatch(ctx, root, req, size, destExisted)
+	notifyIndexerAfterPatch(ctx, root, patchReq, size, destExisted)
 	return map[string]any{"message": "operation completed"}, nil
 }
 
@@ -697,19 +688,6 @@ func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 	// Fallback to timestamp-based name
 	timestamp := time.Now().Unix()
 	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, timestamp, ext))
-}
-
-func normalizeIndexerPath(path string) string {
-	if path == "" || path == "/" {
-		return "/"
-	}
-	// Strip trailing slashes - indexer is sensitive to them
-	normalized := strings.TrimRight(path, "/")
-	// Ensure leading slash
-	if !strings.HasPrefix(normalized, "/") {
-		normalized = "/" + normalized
-	}
-	return normalized
 }
 
 // indexerHTTPClient is a shared HTTP client for communicating with the indexer daemon.
@@ -768,7 +746,7 @@ func addToIndexerWithSize(ctx context.Context, path string, info os.FileInfo, si
 	}
 
 	entry := indexerEntry{
-		Path:    normalizeIndexerPath(path),
+		Path:    utils.NormalizeIndexerPath(path),
 		AbsPath: path,
 		Name:    filepath.Base(path),
 		Size:    size,
@@ -874,7 +852,7 @@ func requestIndexerReindex(ctx context.Context, path string) error {
 	}
 
 	query := url.Values{}
-	query.Set("path", normalizeIndexerPath(path))
+	query.Set("path", utils.NormalizeIndexerPath(path))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex?"+query.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to build indexer reindex request: %w", err)
@@ -908,7 +886,7 @@ func deleteFromIndexer(ctx context.Context, path string) error {
 		return nil
 	}
 
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 	deleteURL := fmt.Sprintf("http://unix/delete?path=%s", url.QueryEscape(normPath))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, deleteURL, nil)
@@ -1056,7 +1034,7 @@ type indexerStatusResponse struct {
 
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/dirsize", nil)
 	if err != nil {
@@ -1096,7 +1074,7 @@ func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
 
 // fetchEntryCountFromIndexer queries the indexer daemon for cached recursive entry counts.
 func fetchEntryCountFromIndexer(ctx context.Context, path string) (int64, error) {
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entrycount", nil)
 	if err != nil {
@@ -1182,12 +1160,7 @@ func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, 
 }
 
 // indexerStatus returns current indexer status for refresh recovery.
-// Args: []
-func indexerStatus(ctx context.Context, args []string) (any, error) {
-	if len(args) > 0 {
-		return nil, fmt.Errorf("bad_request:unexpected arguments")
-	}
-
+func indexerStatus(ctx context.Context) (any, error) {
 	status, err := fetchIndexerStatusFromIndexer(ctx)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
@@ -1200,14 +1173,11 @@ func indexerStatus(ctx context.Context, args []string) (any, error) {
 	return status, nil
 }
 
-// dirSize calculates the total size of a directory recursively
-// Args: [path]
-func dirSize(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
+// dirSize calculates the total size of a directory recursively.
+func dirSize(ctx context.Context, req apischema.PathRequest) (any, error) {
+	if req.Path == "" {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
-
-	path := args[0]
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -1216,9 +1186,9 @@ func dirSize(ctx context.Context, args []string) (any, error) {
 	defer root.Close()
 
 	// Check if path exists and is a directory
-	stat, err := root.Root.Stat(fsroot.ToRel(path))
+	stat, err := root.Root.Stat(fsroot.ToRel(req.Path))
 	if err != nil {
-		slog.Debug("error stating directory", "path", path, "error", err)
+		slog.Debug("error stating directory", "path", req.Path, "error", err)
 		return nil, fmt.Errorf("bad_request:directory not found")
 	}
 
@@ -1227,17 +1197,17 @@ func dirSize(ctx context.Context, args []string) (any, error) {
 	}
 
 	// Get directory size from the indexer daemon (precomputed)
-	size, err := fetchDirSizeFromIndexer(ctx, path)
+	size, err := fetchDirSizeFromIndexer(ctx, req.Path)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
 			return nil, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		slog.Debug("error fetching directory size from indexer", "path", path, "error", err)
+		slog.Debug("error fetching directory size from indexer", "path", req.Path, "error", err)
 		return nil, fmt.Errorf("error fetching directory size: %w", err)
 	}
 
 	return map[string]any{
-		"path": path,
+		"path": req.Path,
 		"size": size,
 	}, nil
 }
@@ -1251,12 +1221,11 @@ type subfoldersResponse struct {
 	ModTime string `json:"mod_time"`
 }
 
-// subfolders gets direct child folders with their pre-calculated sizes
-// Args: [path]
-func subfolders(ctx context.Context, args []string) (any, error) {
+// subfolders gets direct child folders with their pre-calculated sizes.
+func subfolders(ctx context.Context, req apischema.PathRequest) (any, error) {
 	path := "/"
-	if len(args) > 0 && args[0] != "" {
-		path = args[0]
+	if req.Path != "" {
+		path = req.Path
 	}
 
 	root, err := fsroot.Open()
@@ -1296,7 +1265,7 @@ func subfolders(ctx context.Context, args []string) (any, error) {
 
 // fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
 func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]subfoldersResponse, error) {
-	normPath := normalizeIndexerPath(path)
+	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/subfolders", nil)
 	if err != nil {
@@ -1338,41 +1307,39 @@ func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]subfoldersR
 	return folders, nil
 }
 
-// searchFiles searches for files/directories in the indexer database
-// Args: [query, limit?, basePath?]
-func searchFiles(ctx context.Context, args []string) (any, error) {
-	if len(args) < 1 {
+// searchFiles searches for files/directories in the indexer database.
+func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (any, error) {
+	if req.Query == "" {
 		return nil, fmt.Errorf("bad_request:missing search query")
 	}
 
-	query := args[0]
-	if strings.TrimSpace(query) == "" {
+	if strings.TrimSpace(req.Query) == "" {
 		return nil, fmt.Errorf("bad_request:search query cannot be empty")
 	}
 
 	limit := "100" // default limit
-	if len(args) > 1 && args[1] != "" {
-		limit = args[1]
+	if req.Limit != nil && *req.Limit != "" {
+		limit = *req.Limit
 	}
 
 	basePath := "/" // default to root
-	if len(args) > 2 && args[2] != "" {
-		basePath = normalizeIndexerPath(args[2])
+	if req.BasePath != nil && *req.BasePath != "" {
+		basePath = utils.NormalizeIndexerPath(*req.BasePath)
 	}
 
-	results, err := searchInIndexer(ctx, query, limit, basePath)
+	results, err := searchInIndexer(ctx, req.Query, limit, basePath)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
 			return nil, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		slog.Debug("error searching indexer", "query", query, "base_path", basePath, "error", err)
+		slog.Debug("error searching indexer", "query", req.Query, "base_path", basePath, "error", err)
 		return nil, fmt.Errorf("error searching files: %w", err)
 	}
 
 	normalizeIndexerSearchResults(results)
 
 	return map[string]any{
-		"query":   query,
+		"query":   req.Query,
 		"results": results,
 		"count":   len(results),
 	}, nil

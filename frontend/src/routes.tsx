@@ -69,10 +69,10 @@ const Page404 = lazyWithPreload(() => import("@/pages/auth/Page404"));
 // ============================================================================
 
 export interface RouteWithSidebar extends AccessPolicy {
-  path?: string;
-  element?: React.ReactNode;
-  preload?: () => Promise<unknown>;
   children?: RouteWithSidebar[];
+  element?: React.ReactNode;
+  path?: string;
+  preload?: () => Promise<unknown>;
   sidebar?: {
     title: string;
     icon: React.ElementType | string;
@@ -177,6 +177,7 @@ const coreRoutes: RouteWithSidebar[] = [
     element: <Wireguard />,
     preload: Wireguard.preload,
     requiresPrivileged: true,
+    requiredCapabilities: ["wireguardAvailable"],
     sidebar: {
       title: "Wireguard",
       icon: WireguardIcon,

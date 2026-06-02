@@ -2,12 +2,26 @@ package bridge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
+
+type jobIDRequest struct {
+	JobID string `json:"jobId"`
+}
+
+type jobListRequest struct {
+	Status string `json:"status,omitempty"`
+}
+
+type jobDataRequest struct {
+	JobID  string `json:"jobId"`
+	Offset string `json:"offset,omitempty"`
+}
 
 func (r *Router) dispatchJobPrimitive(ctx context.Context, stream net.Conn, req Request) error {
 	switch req.Route {
@@ -31,55 +45,67 @@ func (r *Router) dispatchJobPrimitive(ctx context.Context, stream net.Conn, req 
 }
 
 func (r *Router) handleJobGet(stream net.Conn, req Request) error {
-	if len(req.Args) < 1 {
+	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
-	job, ok := r.registry.GetForOwner(req.Args[0], req.Owner)
+	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
 	if !ok {
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", req.Args[0]), 404)
+		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
 func (r *Router) handleJobList(stream net.Conn, req Request) error {
-	if len(req.Args) > 0 && req.Args[0] == "active" {
+	payload, err := decodeJobPrimitiveRequest[jobListRequest](req.RawRequest)
+	if err != nil {
+		return relay.WriteResultErrorAndClose(stream, 0, "invalid jobs list request", 400)
+	}
+	if payload.Status == "active" {
 		return relay.WriteResultOKAndClose(stream, 0, r.registry.ListActiveForOwner(req.Owner))
 	}
 	return relay.WriteResultOKAndClose(stream, 0, r.registry.ListForOwner(req.Owner))
 }
 
 func (r *Router) handleJobCancel(stream net.Conn, req Request) error {
-	if len(req.Args) < 1 {
+	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
-	job, ok := r.registry.GetForOwner(req.Args[0], req.Owner)
+	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
 	if !ok {
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", req.Args[0]), 404)
+		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
 	job.Cancel()
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
 func (r *Router) handleJobAttach(stream net.Conn, req Request) error {
-	if len(req.Args) < 1 {
+	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
-	job, ok := r.registry.GetForOwner(req.Args[0], req.Owner)
+	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
 	if !ok {
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", req.Args[0]), 404)
+		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
 	return AttachJobStream(stream, job)
 }
 
 func (r *Router) handleJobData(ctx context.Context, stream net.Conn, req Request) error {
-	if len(req.Args) < 1 {
+	payload, err := decodeJobPrimitiveRequest[jobDataRequest](req.RawRequest)
+	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
-	job, ok := r.registry.GetForOwner(req.Args[0], req.Owner)
+	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
 	if !ok {
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", req.Args[0]), 404)
+		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
-	return r.registry.AttachData(ctx, job, stream, req.Args[1:])
+	var offset *string
+	if payload.Offset != "" {
+		offset = &payload.Offset
+	}
+	return r.registry.AttachData(ctx, job, stream, JobDataAttachRequest{Offset: offset})
 }
 
 func (r *Router) handleJobEvents(stream net.Conn, req Request) error {
@@ -209,6 +235,17 @@ func AttachJobStream(stream net.Conn, job *Job) error {
 			}
 		}
 	}
+}
+
+func decodeJobPrimitiveRequest[T any](raw json.RawMessage) (T, error) {
+	var payload T
+	if len(raw) == 0 {
+		raw = json.RawMessage("{}")
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return payload, err
+	}
+	return payload, nil
 }
 
 func monitorClient(stream net.Conn, abortCh, detachCh chan<- struct{}) {

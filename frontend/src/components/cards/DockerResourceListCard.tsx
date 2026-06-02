@@ -8,17 +8,17 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface DockerResourceListCardProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: React.ReactNode;
-  onViewAll: () => void;
-  columnHeaders: { label: string; hiddenXs?: boolean }[];
-  gridClassName: string;
   children: React.ReactNode;
-  isEmpty: boolean;
+  columnHeaders: { label: string; hiddenXs?: boolean }[];
   emptyText: string;
   footerText: string;
+  gridClassName: string;
+  icon: React.ReactNode;
+  isEmpty: boolean;
+  onViewAll: () => void;
   scrollHeight: number;
+  subtitle: React.ReactNode;
+  title: string;
 }
 
 const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
@@ -37,19 +37,19 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
   <FrostedCard>
     <CardIconHeader
       icon={icon}
-      title={title}
-      subtitle={subtitle}
       right={
-        <AppButton size="small" onClick={onViewAll} style={{ flexShrink: 0 }}>
+        <AppButton onClick={onViewAll} size="small" style={{ flexShrink: 0 }}>
           <span
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             View All
-            <Icon icon="mdi:chevron-right" width={20} height={20} />
+            <Icon height={20} icon="mdi:chevron-right" width={20} />
           </span>
         </AppButton>
       }
       style={{ padding: 8, paddingBottom: 6 }}
+      subtitle={subtitle}
+      title={title}
     />
 
     <div
@@ -58,11 +58,11 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
     >
       {columnHeaders.map(({ label, hiddenXs }) => (
         <AppTypography
-          key={label}
-          variant="overline"
-          color="text.secondary"
           className={hiddenXs ? "dd-hidden-xs" : undefined}
+          color="text.secondary"
+          key={label}
           style={{ fontSize: "0.65rem" }}
+          variant="overline"
         >
           {label}
         </AppTypography>
@@ -78,7 +78,7 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
         <div
           style={{ paddingInline: 8, paddingBlock: 12, textAlign: "center" }}
         >
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             {emptyText}
           </AppTypography>
         </div>
@@ -89,7 +89,7 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
 
     <AppDivider />
     <div style={{ paddingInline: 8, paddingBlock: 4 }}>
-      <AppTypography variant="caption" color="text.secondary">
+      <AppTypography color="text.secondary" variant="caption">
         {footerText}
       </AppTypography>
     </div>

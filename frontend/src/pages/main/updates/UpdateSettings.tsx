@@ -1,14 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import {
-  jobSnapshotResult,
-  linuxio,
   type AutoUpdateFrequency,
   type AutoUpdateOptions,
   type AutoUpdateRebootPolicy,
   type AutoUpdateScope,
   type AutoUpdateState,
+  jobSnapshotResult,
+  linuxio,
 } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppButton from "@/components/ui/AppButton";
@@ -17,14 +16,9 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-const updatesToastMeta = {
-  meta: {
-    href: "/updates",
-    label: "Open updates",
-  },
-};
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
@@ -42,6 +36,7 @@ export const useUpdateSettingsState = (enabled = true) => {
   } = linuxio.updates.get_auto_updates.useQuery({
     enabled,
   });
+  const toast = useScopedToast({ href: "/updates", label: "Open updates" });
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
     [rawServerState],
@@ -71,7 +66,7 @@ export const useUpdateSettingsState = (enabled = true) => {
       onSuccess: () => {
         reset();
         refetch();
-        toast.success("Automatic Updates Settings saved", updatesToastMeta);
+        toast.success("Automatic Updates Settings saved");
       },
       onError: (error: Error) => {
         toast.error(
@@ -90,14 +85,11 @@ export const useUpdateSettingsState = (enabled = true) => {
             errMsg.includes("no updates available") ||
             errMsg.includes("Prepared update not found")
           ) {
-            toast.info("No updates available to schedule", updatesToastMeta);
+            toast.info("No updates available to schedule");
           }
           return;
         }
-        toast.success(
-          "Offline update scheduled for next reboot",
-          updatesToastMeta,
-        );
+        toast.success("Offline update scheduled for next reboot");
       },
       onError: (error: Error) => {
         const errMsg = error?.message || String(error);
@@ -105,7 +97,7 @@ export const useUpdateSettingsState = (enabled = true) => {
           errMsg.includes("no updates available") ||
           errMsg.includes("Prepared update not found")
         ) {
-          toast.info("No updates available to schedule", updatesToastMeta);
+          toast.info("No updates available to schedule");
         } else {
           toast.error(
             getMutationErrorMessage(error, "Failed to schedule offline update"),
@@ -136,10 +128,10 @@ export const useUpdateSettingsState = (enabled = true) => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-    setAutoUpdates([payload]);
+    setAutoUpdates(payload);
   };
   const applyOffline = () => {
-    applyOfflineUpdates([]);
+    applyOfflineUpdates();
   };
   return {
     loading,
@@ -192,13 +184,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         control={
           <AppSwitch
             checked={currentOptions.enabled}
+            disabled={saving}
             onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 enabled: e.target.checked,
               }))
             }
-            disabled={saving}
           />
         }
         label="Enable automatic updates"
@@ -213,19 +205,19 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         }}
       >
         <div>
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             Frequency
           </AppTypography>
           <AppSelect
-            size="small"
-            value={currentOptions.frequency}
+            disabled={saving}
             onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 frequency: e.target.value as AutoUpdateFrequency,
               }))
             }
-            disabled={saving}
+            size="small"
+            value={currentOptions.frequency}
           >
             <option value="hourly">Hourly</option>
             <option value="daily">Daily</option>
@@ -234,19 +226,19 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         </div>
 
         <div>
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             Scope
           </AppTypography>
           <AppSelect
-            size="small"
-            value={currentOptions.scope}
+            disabled={saving}
             onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 scope: e.target.value as AutoUpdateScope,
               }))
             }
-            disabled={saving}
+            size="small"
+            value={currentOptions.scope}
           >
             <option value="security">Security only</option>
             <option value="updates">Security + updates</option>
@@ -255,19 +247,19 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         </div>
 
         <div>
-          <AppTypography variant="subtitle2" gutterBottom>
+          <AppTypography gutterBottom variant="subtitle2">
             Reboot policy
           </AppTypography>
           <AppSelect
-            size="small"
-            value={currentOptions.reboot_policy}
+            disabled={saving}
             onChange={(e) =>
               setDraftOverrides((prev) => ({
                 ...(prev ?? {}),
                 reboot_policy: e.target.value as AutoUpdateRebootPolicy,
               }))
             }
-            disabled={saving}
+            size="small"
+            value={currentOptions.reboot_policy}
           >
             <option value="never">Never</option>
             <option value="if_needed">If needed</option>
@@ -279,13 +271,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           control={
             <AppSwitch
               checked={currentOptions.download_only}
+              disabled={saving}
               onChange={(e) =>
                 setDraftOverrides((prev) => ({
                   ...(prev ?? {}),
                   download_only: e.target.checked,
                 }))
               }
-              disabled={saving}
             />
           }
           label="Download only (no auto-install)"
@@ -293,7 +285,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
       </div>
 
       <div>
-        <AppTypography variant="subtitle2" gutterBottom>
+        <AppTypography gutterBottom variant="subtitle2">
           Exclude packages (comma-separated)
         </AppTypography>
         <div
@@ -304,12 +296,12 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           }}
         >
           <AppTextField
-            size="small"
-            placeholder="e.g. linux-headers-*, docker-ce"
-            value={currentExcludeInput}
-            onChange={(e) => setExcludeInputOverride(e.target.value)}
             disabled={saving}
+            onChange={(e) => setExcludeInputOverride(e.target.value)}
+            placeholder="e.g. linux-headers-*, docker-ce"
+            size="small"
             style={{ width: "100%", maxWidth: 600 }}
+            value={currentExcludeInput}
           />
         </div>
       </div>
@@ -324,13 +316,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         }}
       >
         <AppButton
-          variant="contained"
-          onClick={save}
           disabled={saving || !dirty}
+          onClick={save}
+          variant="contained"
         >
           Save
         </AppButton>
-        <AppButton variant="text" onClick={reset} disabled={saving || !dirty}>
+        <AppButton disabled={saving || !dirty} onClick={reset} variant="text">
           Cancel
         </AppButton>
         <div
@@ -338,16 +330,16 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             flexGrow: 1,
           }}
         />
-        <AppButton variant="contained" onClick={applyOffline} disabled={saving}>
+        <AppButton disabled={saving} onClick={applyOffline} variant="contained">
           Apply at next reboot (offline)
         </AppButton>
         {serverState.notes?.length ? (
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{
               width: "100%",
             }}
+            variant="body2"
           >
             {serverState.notes.join(" • ")}
           </AppTypography>

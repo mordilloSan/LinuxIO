@@ -4,10 +4,10 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface FolderShareCardProps {
+  actions: React.ReactNode;
+  comment?: string;
   name: string;
   path: string;
-  comment?: string;
-  actions: React.ReactNode;
   protocolSummary: React.ReactNode;
 }
 
@@ -29,7 +29,7 @@ const FolderShareCard: React.FC<FolderShareCardProps> = ({
         marginBottom: 6,
       }}
     >
-      <AppTypography variant="body2" fontWeight={700}>
+      <AppTypography fontWeight={700} variant="body2">
         {name}
       </AppTypography>
       {actions}
@@ -37,9 +37,9 @@ const FolderShareCard: React.FC<FolderShareCardProps> = ({
 
     {/* Path */}
     <AppTypography
-      variant="body2"
       color="text.secondary"
       style={{ marginBottom: 6, fontFamily: "monospace" }}
+      variant="body2"
     >
       {path}
     </AppTypography>
@@ -47,9 +47,9 @@ const FolderShareCard: React.FC<FolderShareCardProps> = ({
     {/* Comment */}
     {comment && (
       <AppTypography
-        variant="caption"
         color="text.secondary"
         style={{ display: "block", marginBottom: 8 }}
+        variant="caption"
       >
         {comment}
       </AppTypography>

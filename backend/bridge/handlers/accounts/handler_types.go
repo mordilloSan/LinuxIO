@@ -1,12 +1,15 @@
 package accounts
 
-import bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+import (
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+)
 
 // ListUsersRequest is the request contract for accounts.list_users.
 type ListUsersRequest = bridgeipc.NoRequest
 
 // ListUsersResponse is the response contract for accounts.list_users.
-type ListUsersResponse = []User
+type ListUsersResponse = []apischema.AccountUser
 
 // GetUserDetailsRequest is the request contract for accounts.get_user_details.
 type GetUserDetailsRequest = UsernameRef
@@ -21,10 +24,7 @@ type ListUserLoginsRequest = UsernameRef
 type ListUserLoginsResponse = []UserLogin
 
 // TerminateSessionRequest is the request contract for accounts.terminate_session.
-type TerminateSessionRequest struct {
-	SessionID string `json:"sessionId"`
-	PID       int    `json:"pid"`
-}
+type TerminateSessionRequest = apischema.TerminateSessionRequest
 
 // TerminateSessionResponse is the response contract for accounts.terminate_session.
 type TerminateSessionResponse = bridgeipc.NoResponse
@@ -42,10 +42,7 @@ type DeleteUserResponse = bridgeipc.NoResponse
 type ModifyUserResponse = bridgeipc.NoResponse
 
 // ChangePasswordRequest is the request contract for accounts.change_password.
-type ChangePasswordRequest struct {
-	UsernameRef
-	Password string `json:"password"`
-}
+type ChangePasswordRequest = apischema.ChangePasswordRequest
 
 // ChangePasswordResponse is the response contract for accounts.change_password.
 type ChangePasswordResponse = bridgeipc.NoResponse

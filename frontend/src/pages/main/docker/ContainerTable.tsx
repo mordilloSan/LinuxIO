@@ -4,7 +4,6 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import ActionButton from "./ActionButton";
 
@@ -26,6 +25,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
@@ -78,8 +78,8 @@ const formatUptime = (createdUnix: number) => {
 
 interface ContainerRowProps {
   container: ContainerInfo;
-  index: number;
   editMode?: boolean;
+  index: number;
 }
 
 const ContainerRow: React.FC<ContainerRowProps> = ({
@@ -88,6 +88,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   editMode,
 }) => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const {
@@ -215,7 +216,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
     if (isManagedContainer) return;
     setAutoUpdateLoading(true);
     try {
-      await linuxio.docker.set_auto_update.call({ container: name, enabled });
+      await linuxio.docker.set_auto_update({ container: name, enabled });
       queryClient.invalidateQueries({
         queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
       });
@@ -250,7 +251,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       >
         {/* Drag handle */}
         {editMode && (
-          <AppTableCell width="28px" style={{ padding: "0 4px" }}>
+          <AppTableCell style={{ padding: "0 4px" }} width="28px">
             <span
               {...attributes}
               {...listeners}
@@ -262,7 +263,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 cursor: "grab",
               }}
             >
-              <Icon icon="mdi:drag" width={20} height={20} />
+              <Icon height={20} icon="mdi:drag" width={20} />
             </span>
           </AppTableCell>
         )}
@@ -274,8 +275,8 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               size={8}
               tooltip={displayState}
             />
-            <DockerIcon identifier={container.icon} size={24} alt={name} />
-            <AppTypography variant="body2" fontWeight={700} noWrap>
+            <DockerIcon alt={name} identifier={container.icon} size={24} />
+            <AppTypography fontWeight={700} noWrap variant="body2">
               {name}
             </AppTypography>
           </div>
@@ -284,12 +285,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Version */}
         <AppTableCell className="app-table-hide-below-md">
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
             }}
+            variant="body2"
           >
             {version}
           </AppTypography>
@@ -298,13 +299,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Uptime */}
         <AppTableCell className="app-table-hide-below-md">
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
               fontVariantNumeric: "tabular-nums",
             }}
+            variant="body2"
           >
             {uptime}
           </AppTypography>
@@ -319,13 +320,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               }
             >
               <AppTypography
-                variant="body2"
                 color="text.secondary"
                 noWrap
                 style={{
                   fontFamily: "monospace",
                   fontSize: "0.78rem",
                 }}
+                variant="body2"
               >
                 {networks[0][0]}
                 {networks.length > 1 && (
@@ -341,7 +342,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               </AppTypography>
             </AppTooltip>
           ) : (
-            <AppTypography variant="body2" color="text.disabled">
+            <AppTypography color="text.disabled" variant="body2">
               —
             </AppTypography>
           )}
@@ -360,14 +361,14 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               }
             >
               <AppTypography
-                variant="body2"
                 style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
+                variant="body2"
               >
                 {networks[0][1].IPAddress}
               </AppTypography>
             </AppTooltip>
           ) : (
-            <AppTypography variant="body2" color="text.disabled">
+            <AppTypography color="text.disabled" variant="body2">
               —
             </AppTypography>
           )}
@@ -380,9 +381,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               {ports.slice(0, 2).map((p, i) => (
                 <AppTypography
                   key={i}
-                  variant="body2"
                   noWrap
                   style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                  variant="body2"
                 >
                   <span style={{ color: theme.palette.text.primary }}>
                     {p.PrivatePort}/{p.Type}
@@ -401,13 +402,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 </AppTypography>
               ))}
               {ports.length > 2 && (
-                <AppTypography variant="caption" color="text.disabled">
+                <AppTypography color="text.disabled" variant="caption">
                   +{ports.length - 2} more
                 </AppTypography>
               )}
             </div>
           ) : (
-            <AppTypography variant="body2" color="text.disabled">
+            <AppTypography color="text.disabled" variant="body2">
               —
             </AppTypography>
           )}
@@ -423,9 +424,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               {mounts.slice(0, 2).map((m, i) => (
                 <AppTooltip key={i} title={`${m.Destination} → ${m.Source}`}>
                   <AppTypography
-                    variant="body2"
                     noWrap
                     style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                    variant="body2"
                   >
                     <span style={{ color: theme.palette.text.primary }}>
                       {m.Destination}
@@ -445,13 +446,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 </AppTooltip>
               ))}
               {mounts.length > 2 && (
-                <AppTypography variant="caption" color="text.disabled">
+                <AppTypography color="text.disabled" variant="caption">
                   +{mounts.length - 2} more
                 </AppTypography>
               )}
             </div>
           ) : (
-            <AppTypography variant="body2" color="text.disabled">
+            <AppTypography color="text.disabled" variant="body2">
               —
             </AppTypography>
           )}
@@ -460,28 +461,28 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* CPU / Memory (stacked) */}
         <AppTableCell
           align="center"
-          width="120px"
           className="app-table-hide-below-xl"
+          width="120px"
         >
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
               fontVariantNumeric: "tabular-nums",
             }}
+            variant="body2"
           >
             {cpuPercent.toFixed(1)}%
           </AppTypography>
           <AppTypography
-            variant="body2"
             color="text.secondary"
             style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
               fontVariantNumeric: "tabular-nums",
             }}
+            variant="body2"
           >
             {formatFileSize(memUsage)}
           </AppTypography>
@@ -501,17 +502,17 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               <AppTooltip title="View Logs">
                 <Chip
                   label="Managed by LinuxIO"
-                  size="small"
-                  variant="soft"
                   onClick={() => {
                     setHasLoadedLogs(true);
                     setLogDialogOpen(true);
                   }}
+                  size="small"
                   style={{
                     fontSize: "0.68rem",
                     opacity: 0.7,
                     cursor: "pointer",
                   }}
+                  variant="soft"
                 />
               </AppTooltip>
             ) : (
@@ -521,7 +522,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     <span>
                       <ActionButton
                         icon="mdi:play"
-                        onClick={() => startContainer([container.Id])}
+                        onClick={() =>
+                          startContainer({ containerId: container.Id })
+                        }
                       />
                     </span>
                   </AppTooltip>
@@ -531,7 +534,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     <span>
                       <ActionButton
                         icon="mdi:stop"
-                        onClick={() => stopContainer([container.Id])}
+                        onClick={() =>
+                          stopContainer({ containerId: container.Id })
+                        }
                       />
                     </span>
                   </AppTooltip>
@@ -540,7 +545,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   <span>
                     <ActionButton
                       icon="mdi:restart"
-                      onClick={() => restartContainer([container.Id])}
+                      onClick={() =>
+                        restartContainer({ containerId: container.Id })
+                      }
                     />
                   </span>
                 </AppTooltip>
@@ -548,7 +555,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   <span>
                     <ActionButton
                       icon="mdi:delete"
-                      onClick={() => removeContainer([container.Id])}
+                      onClick={() =>
+                        removeContainer({ containerId: container.Id })
+                      }
                     />
                   </span>
                 </AppTooltip>
@@ -593,16 +602,16 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             <AppTooltip title={autoUpdateTooltip}>
               <span style={{ display: "inline-flex" }}>
                 <AppSwitch
-                  size="small"
                   checked={autoUpdateChecked}
-                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
                   disabled={autoUpdateDisabled}
+                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+                  size="small"
                 />
               </span>
             </AppTooltip>
             <AppIconButton
-              size="small"
               onClick={() => setExpanded((v) => !v)}
+              size="small"
               style={{
                 marginLeft: 2,
                 visibility:
@@ -610,13 +619,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               }}
             >
               <Icon
-                icon="mdi:chevron-down"
-                width={20}
                 height={20}
+                icon="mdi:chevron-down"
                 style={{
                   transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
                   transition: "0.2s",
                 }}
+                width={20}
               />
             </AppIconButton>
           </div>
@@ -627,13 +636,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       {(ports.length > 2 || mounts.length > 2) && (
         <AppTableRow style={{ backgroundColor: "transparent" }}>
           <AppTableCell
-            style={{ paddingBottom: 0, paddingTop: 0 }}
             colSpan={editMode ? 10 : 9}
+            style={{ paddingBottom: 0, paddingTop: 0 }}
           >
             <AppCollapse in={expanded} timeout="auto" unmountOnExit>
               <motion.div
-                initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: -8 }}
                 style={{
                   marginInline: 8,
                   marginBottom: 4,
@@ -651,13 +660,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 {ports.length > 2 && (
                   <div>
                     <AppTypography
-                      variant="caption"
                       color="text.secondary"
                       fontWeight={600}
                       style={{
                         display: "block",
                         marginBottom: 3,
                       }}
+                      variant="caption"
                     >
                       ALL PORTS (Container → Host)
                     </AppTypography>
@@ -671,11 +680,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       {ports.map((p, i) => (
                         <AppTypography
                           key={i}
-                          variant="body2"
                           style={{
                             fontFamily: "monospace",
                             fontSize: "0.75rem",
                           }}
+                          variant="body2"
                         >
                           <span style={{ color: theme.palette.text.primary }}>
                             {p.PrivatePort}/{p.Type}
@@ -701,13 +710,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 {mounts.length > 2 && (
                   <div>
                     <AppTypography
-                      variant="caption"
                       color="text.secondary"
                       fontWeight={600}
                       style={{
                         display: "block",
                         marginBottom: 3,
                       }}
+                      variant="caption"
                     >
                       ALL VOLUMES (App → Host)
                     </AppTypography>
@@ -721,11 +730,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       {mounts.map((m, i) => (
                         <AppTypography
                           key={i}
-                          variant="body2"
                           style={{
                             fontFamily: "monospace",
                             fontSize: "0.75rem",
                           }}
+                          variant="body2"
                         >
                           <span style={{ color: theme.palette.text.primary }}>
                             {m.Destination}
@@ -755,18 +764,18 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       <Suspense fallback={null}>
         {hasLoadedLogs && (
           <LogsDialog
-            open={logDialogOpen}
-            onClose={() => setLogDialogOpen(false)}
-            containerName={name}
             containerId={container.Id}
+            containerName={name}
+            onClose={() => setLogDialogOpen(false)}
+            open={logDialogOpen}
           />
         )}
         {hasLoadedTerminal && (
           <TerminalDialog
-            open={terminalOpen}
-            onClose={() => setTerminalOpen(false)}
             containerId={container.Id}
             containerName={name}
+            onClose={() => setTerminalOpen(false)}
+            open={terminalOpen}
           />
         )}
       </Suspense>
@@ -810,7 +819,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               <AppTableCell className="app-table-hide-below-lg">
                 Container IP
               </AppTableCell>
-              <AppTableCell width="160px" className="app-table-hide-below-xl">
+              <AppTableCell className="app-table-hide-below-xl" width="160px">
                 Ports (Container→Host)
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-xl">
@@ -818,8 +827,8 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               </AppTableCell>
               <AppTableCell
                 align="center"
-                width="80px"
                 className="app-table-hide-below-xl"
+                width="80px"
               >
                 CPU / Mem
               </AppTableCell>
@@ -831,10 +840,10 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
           <AppTableBody>
             {containers.map((container, index) => (
               <ContainerRow
-                key={container.Id}
                 container={container}
-                index={index}
                 editMode={editMode}
+                index={index}
+                key={container.Id}
               />
             ))}
           </AppTableBody>
@@ -842,7 +851,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       </AppTableContainer>
       {containers.length === 0 && (
         <div style={{ textAlign: "center", paddingBlock: 16 }}>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             No containers found.
           </AppTypography>
         </div>

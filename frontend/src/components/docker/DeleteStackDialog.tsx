@@ -13,13 +13,13 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 export type DeleteOption = "containers" | "file" | "directory";
 interface DeleteStackDialogProps {
-  open: boolean;
+  configFiles: string[];
+  isLoading?: boolean;
   onClose: () => void;
   onConfirm: (option: DeleteOption) => void;
+  open: boolean;
   projectName: string;
-  configFiles: string[];
   workingDir: string;
-  isLoading?: boolean;
 }
 const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
   open,
@@ -75,10 +75,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
   };
   return (
     <GeneralDialog
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
       fullWidth
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
       paperStyle={{
         backgroundColor: theme.palette.background.default,
       }}
@@ -93,10 +93,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
         }}
       >
         <Icon
+          color={theme.palette.error.main}
+          height={24}
           icon="mdi:delete"
           width={24}
-          height={24}
-          color={theme.palette.error.main}
         />
         <AppTypography variant="h6">Delete Stack: {projectName}</AppTypography>
       </AppDialogTitle>
@@ -106,7 +106,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           paddingTop: 12,
         }}
       >
-        <AppTypography variant="body2" color="text.secondary" gutterBottom>
+        <AppTypography color="text.secondary" gutterBottom variant="body2">
           Choose what to delete:
         </AppTypography>
 
@@ -127,11 +127,10 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
 
             return (
               <button
-                key={option.value}
-                type="button"
-                onClick={() => setDeleteOption(option.value)}
-                disabled={isLoading}
                 aria-pressed={isSelected}
+                disabled={isLoading}
+                key={option.value}
+                onClick={() => setDeleteOption(option.value)}
                 style={{
                   width: "100%",
                   display: "flex",
@@ -149,6 +148,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                   cursor: isLoading ? "default" : "pointer",
                   textAlign: "left",
                 }}
+                type="button"
               >
                 <div
                   style={{
@@ -159,25 +159,25 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                   }}
                 >
                   <AppTypography
-                    variant="body1"
                     color={option.color === "error" ? "error" : undefined}
+                    variant="body1"
                   >
                     {option.title}
                   </AppTypography>
-                  <AppTypography variant="caption" color="text.secondary">
+                  <AppTypography color="text.secondary" variant="caption">
                     {option.description}
                   </AppTypography>
                 </div>
                 {isSelected && (
                   <Icon
+                    color={accentColor}
+                    height={20}
                     icon={
                       option.color === "error"
                         ? "mdi:alert-circle"
                         : "mdi:check-circle"
                     }
                     width={20}
-                    height={20}
-                    color={accentColor}
                   />
                 )}
               </button>
@@ -221,21 +221,21 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
-        <AppButton onClick={handleClose} disabled={isLoading} color="inherit">
+        <AppButton color="inherit" disabled={isLoading} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
-          onClick={handleConfirm}
-          disabled={isLoading}
-          variant="contained"
           color={deleteOption === "directory" ? "error" : "primary"}
+          disabled={isLoading}
+          onClick={handleConfirm}
           startIcon={
             deleteOption === "directory" ? (
-              <Icon icon="mdi:folder-remove" width={20} height={20} />
+              <Icon height={20} icon="mdi:folder-remove" width={20} />
             ) : (
-              <Icon icon="mdi:delete" width={20} height={20} />
+              <Icon height={20} icon="mdi:delete" width={20} />
             )
           }
+          variant="contained"
         >
           {isLoading ? "Deleting..." : "Delete"}
         </AppButton>

@@ -43,34 +43,34 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
         }}
       >
         <div>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Serial
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500} noWrap>
+          <AppTypography fontWeight={500} noWrap variant="body2">
             {drive.serial || "N/A"}
           </AppTypography>
         </div>
         <div>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Vendor
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500}>
+          <AppTypography fontWeight={500} variant="body2">
             {drive.vendor || "N/A"}
           </AppTypography>
         </div>
         <div>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Read Only
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500}>
+          <AppTypography fontWeight={500} variant="body2">
             {drive.ro ? "Yes" : "No"}
           </AppTypography>
         </div>
         <div>
-          <AppTypography variant="body2" color="text.secondary">
+          <AppTypography color="text.secondary" variant="body2">
             Transport
           </AppTypography>
-          <AppTypography variant="body2" fontWeight={500}>
+          <AppTypography fontWeight={500} variant="body2">
             {drive.transport.toUpperCase()}
           </AppTypography>
         </div>
@@ -79,10 +79,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
       {smart && (
         <>
           <AppTypography
-            variant="caption"
             color="text.secondary"
             fontWeight={600}
             style={{ textTransform: "uppercase" }}
+            variant="caption"
           >
             Health & Statistics
           </AppTypography>
@@ -97,12 +97,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
           >
             {temperature !== null && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Temperature
                 </AppTypography>
                 <AppTypography
-                  variant="body2"
-                  fontWeight={500}
                   color={
                     temperature > 70
                       ? "error"
@@ -110,6 +108,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                         ? "warning"
                         : "text.primary"
                   }
+                  fontWeight={500}
+                  variant="body2"
                 >
                   {temperature}°C
                 </AppTypography>
@@ -117,32 +117,30 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
             )}
             {powerOnHours !== null && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Power On Time
                 </AppTypography>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   {formatPowerOnTime(powerOnHours)}
                 </AppTypography>
               </div>
             )}
             {powerCycles !== null && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Power Cycles
                 </AppTypography>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   {powerCycles.toLocaleString()}
                 </AppTypography>
               </div>
             )}
             {isNvme && percentageUsed !== undefined && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Life Used
                 </AppTypography>
                 <AppTypography
-                  variant="body2"
-                  fontWeight={500}
                   color={
                     percentageUsed > 90
                       ? "error"
@@ -150,6 +148,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                         ? "warning"
                         : "text.primary"
                   }
+                  fontWeight={500}
+                  variant="body2"
                 >
                   {percentageUsed}%
                 </AppTypography>
@@ -157,37 +157,37 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
             )}
             {isNvme && dataRead !== undefined && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Data Read
                 </AppTypography>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   {formatDataUnits(dataRead)}
                 </AppTypography>
               </div>
             )}
             {isNvme && dataWritten !== undefined && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Data Written
                 </AppTypography>
-                <AppTypography variant="body2" fontWeight={500}>
+                <AppTypography fontWeight={500} variant="body2">
                   {formatDataUnits(dataWritten)}
                 </AppTypography>
               </div>
             )}
             {!isNvme && reallocatedSectors && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Reallocated Sectors
                 </AppTypography>
                 <AppTypography
-                  variant="body2"
-                  fontWeight={500}
                   color={
                     reallocatedSectors.raw.value > 0
                       ? "warning"
                       : "text.primary"
                   }
+                  fontWeight={500}
+                  variant="body2"
                 >
                   {reallocatedSectors.raw.value}
                 </AppTypography>
@@ -195,15 +195,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
             )}
             {!isNvme && pendingSectors && (
               <div>
-                <AppTypography variant="body2" color="text.secondary">
+                <AppTypography color="text.secondary" variant="body2">
                   Pending Sectors
                 </AppTypography>
                 <AppTypography
-                  variant="body2"
-                  fontWeight={500}
                   color={
                     pendingSectors.raw.value > 0 ? "warning" : "text.primary"
                   }
+                  fontWeight={500}
+                  variant="body2"
                 >
                   {pendingSectors.raw.value}
                 </AppTypography>
@@ -216,10 +216,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
       {power && (
         <>
           <AppTypography
-            variant="caption"
             color="text.secondary"
             fontWeight={600}
             style={{ textTransform: "uppercase" }}
+            variant="caption"
           >
             Power
           </AppTypography>
@@ -233,12 +233,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
               }}
             >
               <Chip
+                color="primary"
                 label={`State ${power.currentState}`}
                 size="small"
-                color="primary"
                 variant="soft"
               />
-              <AppTypography variant="body2" color="text.secondary">
+              <AppTypography color="text.secondary" variant="body2">
                 ~{power.estimatedW.toFixed(2)}W
               </AppTypography>
             </div>
@@ -247,7 +247,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
       )}
 
       {!smart && !power && (
-        <AppTypography variant="body2" color="text.secondary">
+        <AppTypography color="text.secondary" variant="body2">
           No detailed information available for this drive.
         </AppTypography>
       )}

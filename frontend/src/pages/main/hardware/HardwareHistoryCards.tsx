@@ -54,10 +54,8 @@ export const MotherboardInfoCard: React.FC = () => {
 
   return (
     <HardwareCard
-      title="Motherboard"
-      subtitle="Board & system details"
-      avatarIcon="bi:motherboard"
       accentColor={theme.palette.primary.main}
+      avatarIcon="bi:motherboard"
       rows={[
         {
           label: "Board",
@@ -83,6 +81,8 @@ export const MotherboardInfoCard: React.FC = () => {
           noWrap: false,
         },
       ]}
+      subtitle="Board & system details"
+      title="Motherboard"
     />
   );
 };
@@ -98,10 +98,8 @@ export const CPUDetailsCard: React.FC = () => {
 
   return (
     <HardwareCard
-      title="CPU"
-      subtitle="Processor specifications"
-      avatarIcon="ph:cpu"
       accentColor={theme.palette.primary.main}
+      avatarIcon="ph:cpu"
       rows={[
         {
           label: "CPU",
@@ -124,6 +122,8 @@ export const CPUDetailsCard: React.FC = () => {
               : "—",
         },
       ]}
+      subtitle="Processor specifications"
+      title="CPU"
     />
   );
 };
@@ -140,10 +140,8 @@ export const BIOSInfoCard: React.FC = () => {
 
   return (
     <HardwareCard
-      title="BIOS"
-      subtitle="Firmware information"
-      avatarIcon="mdi:chip"
       accentColor={theme.palette.warning.main}
+      avatarIcon="mdi:chip"
       rows={[
         {
           label: "Vendor",
@@ -167,6 +165,8 @@ export const BIOSInfoCard: React.FC = () => {
           noWrap: false,
         },
       ]}
+      subtitle="Firmware information"
+      title="BIOS"
     />
   );
 };
@@ -190,18 +190,13 @@ export const GPUInfoCard: React.FC = () => {
 
   return (
     <HardwareCard
-      title="GPU"
-      subtitle="Graphics card details"
-      avatarIcon="bi:gpu-card"
       accentColor={theme.palette.primary.main}
       actions={
         gpuCount > 1 ? (
           <AppSelect
-            size="small"
-            variant="standard"
             disableUnderline
-            value={selectedValue}
             onChange={(event) => setSelectedGpuAddress(event.target.value)}
+            size="small"
             style={{
               ["--app-select-input-font-size" as string]: "0.72rem",
               width: 190,
@@ -209,6 +204,8 @@ export const GPUInfoCard: React.FC = () => {
               fontSize: "0.78rem",
               lineHeight: theme.typography.body2.lineHeight,
             }}
+            value={selectedValue}
+            variant="standard"
           >
             {(gpus ?? []).map((gpu, index) => (
               <option key={gpu.address} value={gpu.address}>
@@ -218,6 +215,7 @@ export const GPUInfoCard: React.FC = () => {
           </AppSelect>
         ) : undefined
       }
+      avatarIcon="bi:gpu-card"
       rows={
         primaryGpu
           ? [
@@ -248,6 +246,8 @@ export const GPUInfoCard: React.FC = () => {
               { label: "VRAM", value: "—" },
             ]
       }
+      subtitle="Graphics card details"
+      title="GPU"
     />
   );
 };
@@ -272,14 +272,14 @@ const HistoryPlaceholder: React.FC<{
       <CardIconHeader
         icon={
           <Icon
+            color={theme.palette.primary.main}
+            height={28}
             icon={avatarIcon}
             width={28}
-            height={28}
-            color={theme.palette.primary.main}
           />
         }
-        title={title}
         style={{ marginBottom: 8 }}
+        title={title}
       />
       <div
         style={{
@@ -291,7 +291,7 @@ const HistoryPlaceholder: React.FC<{
           padding: 16,
         }}
       >
-        <AppTypography variant="body2" align="center">
+        <AppTypography align="center" variant="body2">
           Historical data not available.
         </AppTypography>
       </div>
@@ -300,17 +300,17 @@ const HistoryPlaceholder: React.FC<{
 };
 
 export const CPUHistoryCard: React.FC = () => (
-  <HistoryPlaceholder title="Processor" avatarIcon="ph:cpu" />
+  <HistoryPlaceholder avatarIcon="ph:cpu" title="Processor" />
 );
 
 export const MemoryHistoryCard: React.FC = () => (
-  <HistoryPlaceholder title="Memory" avatarIcon="la:memory" />
+  <HistoryPlaceholder avatarIcon="la:memory" title="Memory" />
 );
 
 export const NetworkHistoryCard: React.FC = () => (
-  <HistoryPlaceholder title="Network" avatarIcon="mdi:ethernet" />
+  <HistoryPlaceholder avatarIcon="mdi:ethernet" title="Network" />
 );
 
 export const DiskIOHistoryCard: React.FC = () => (
-  <HistoryPlaceholder title="Disk I/O" avatarIcon="mdi:harddisk" />
+  <HistoryPlaceholder avatarIcon="mdi:harddisk" title="Disk I/O" />
 );

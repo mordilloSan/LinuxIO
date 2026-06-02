@@ -4,13 +4,14 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers all share management handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	bridgeipc.RegisterRoutes(router, "shares", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, "shares", []bridgeipc.Command{
 		// NFS exports (server-side shares via /etc/exports)
 		{Name: "list_nfs_shares", Mode: bridgeipc.ModeQuery, Handler: handleListNFSShares},
 		{Name: "create_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleCreateNFSShare},
@@ -26,7 +27,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 // --- NFS handlers ---
 
-func handleListNFSShares(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleListNFSShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS shares")
 	shares, err := ListNFSShares(ctx)
 	if err != nil {
@@ -37,48 +38,28 @@ func handleListNFSShares(ctx context.Context, args []string, emit bridgeipc.Even
 	return bridgeipc.EmitResult(emit, shares, nil)
 }
 
-func handleCreateNFSShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 2); err != nil {
+func handleCreateNFSShare(ctx context.Context, req apischema.ShareNFSRequest, emit bridgeipc.Events) error {
+	slog.Info("creating NFS share", "path", req.Path, "count", len(req.Clients))
+	if err := CreateNFSShare(ctx, req.Path, req.Clients); err != nil {
+		slog.Error("failed to create NFS share", "path", req.Path, "error", err)
 		return err
 	}
-	path := args[0]
-	clients, err := bridgeipc.DecodeJSONArg[[]NFSClient](args, 1)
-	if err != nil {
-		return err
-	}
-	slog.Info("creating NFS share", "path", path, "count", len(clients))
-	if err := CreateNFSShare(ctx, path, clients); err != nil {
-		slog.Error("failed to create NFS share", "path", path, "error", err)
-		return err
-	}
-	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "path": req.Path}, nil)
 }
 
-func handleUpdateNFSShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 2); err != nil {
+func handleUpdateNFSShare(ctx context.Context, req apischema.ShareNFSRequest, emit bridgeipc.Events) error {
+	slog.Info("updating NFS share", "path", req.Path)
+	if err := UpdateNFSShare(ctx, req.Path, req.Clients); err != nil {
+		slog.Error("failed to update NFS share", "path", req.Path, "error", err)
 		return err
 	}
-	path := args[0]
-	clients, err := bridgeipc.DecodeJSONArg[[]NFSClient](args, 1)
-	if err != nil {
-		return err
-	}
-	slog.Info("updating NFS share", "path", path)
-	if err := UpdateNFSShare(ctx, path, clients); err != nil {
-		slog.Error("failed to update NFS share", "path", path, "error", err)
-		return err
-	}
-	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "path": path}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "path": req.Path}, nil)
 }
 
-func handleDeleteNFSShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 1); err != nil {
-		return err
-	}
-	path := args[0]
-	slog.Info("deleting NFS share", "path", path)
-	if err := DeleteNFSShare(ctx, path); err != nil {
-		slog.Error("failed to delete NFS share", "path", path, "error", err)
+func handleDeleteNFSShare(ctx context.Context, req apischema.PathRequest, emit bridgeipc.Events) error {
+	slog.Info("deleting NFS share", "path", req.Path)
+	if err := DeleteNFSShare(ctx, req.Path); err != nil {
+		slog.Error("failed to delete NFS share", "path", req.Path, "error", err)
 		return err
 	}
 	return bridgeipc.EmitResult(emit, map[string]any{"success": true}, nil)
@@ -86,7 +67,7 @@ func handleDeleteNFSShare(ctx context.Context, args []string, emit bridgeipc.Eve
 
 // --- Samba handlers ---
 
-func handleListSambaShares(ctx context.Context, args []string, emit bridgeipc.Events) error {
+func handleListSambaShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing Samba shares")
 	shares, err := ListSambaShares(ctx)
 	if err != nil {
@@ -97,54 +78,28 @@ func handleListSambaShares(ctx context.Context, args []string, emit bridgeipc.Ev
 	return bridgeipc.EmitResult(emit, shares, nil)
 }
 
-func handleCreateSambaShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 2); err != nil {
+func handleCreateSambaShare(ctx context.Context, req apischema.ShareSambaRequest, emit bridgeipc.Events) error {
+	slog.Info("creating Samba share", "name", req.Name, "path", req.Properties["path"])
+	if err := CreateSambaShare(ctx, req.Name, req.Properties); err != nil {
+		slog.Error("failed to create Samba share", "name", req.Name, "error", err)
 		return err
 	}
-	name := args[0]
-	properties, err := bridgeipc.DecodeJSONArg[map[string]string](args, 1)
-	if err != nil {
-		return err
-	}
-	slog.Info("creating Samba share", "name", name, "path", properties["path"])
-	if err := CreateSambaShare(ctx, name, properties); err != nil {
-		slog.Error("failed to create Samba share", "name", name, "error", err)
-		return err
-	}
-	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "name": name}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "name": req.Name}, nil)
 }
 
-func handleUpdateSambaShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 2); err != nil {
+func handleUpdateSambaShare(ctx context.Context, req apischema.ShareUpdateSambaRequest, emit bridgeipc.Events) error {
+	slog.Info("updating Samba share", "name", req.OldName, "new_name", req.NewName)
+	if err := UpdateSambaShare(ctx, req.OldName, req.NewName, req.Properties); err != nil {
+		slog.Error("failed to update Samba share", "name", req.OldName, "error", err)
 		return err
 	}
-	oldName := args[0]
-	newName := oldName
-	propertiesArgIndex := 1
-	if len(args) >= 3 {
-		newName = args[1]
-		propertiesArgIndex = 2
-	}
-	properties, err := bridgeipc.DecodeJSONArg[map[string]string](args, propertiesArgIndex)
-	if err != nil {
-		return err
-	}
-	slog.Info("updating Samba share", "name", oldName, "new_name", newName)
-	if err := UpdateSambaShare(ctx, oldName, newName, properties); err != nil {
-		slog.Error("failed to update Samba share", "name", oldName, "error", err)
-		return err
-	}
-	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "name": newName}, nil)
+	return bridgeipc.EmitResult(emit, map[string]any{"success": true, "name": req.NewName}, nil)
 }
 
-func handleDeleteSambaShare(ctx context.Context, args []string, emit bridgeipc.Events) error {
-	if err := bridgeipc.RequireArgs(args, 1); err != nil {
-		return err
-	}
-	name := args[0]
-	slog.Info("deleting Samba share", "name", name)
-	if err := DeleteSambaShare(ctx, name); err != nil {
-		slog.Error("failed to delete Samba share", "name", name, "error", err)
+func handleDeleteSambaShare(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
+	slog.Info("deleting Samba share", "name", req.Name)
+	if err := DeleteSambaShare(ctx, req.Name); err != nil {
+		slog.Error("failed to delete Samba share", "name", req.Name, "error", err)
 		return err
 	}
 	return bridgeipc.EmitResult(emit, map[string]any{"success": true}, nil)

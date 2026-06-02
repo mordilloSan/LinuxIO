@@ -2,14 +2,13 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import CreateUserDialog from "./components/CreateUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
 import UserCardsView from "./components/UserCardsView";
 
-import { linuxio, type AccountUser } from "@/api";
+import { type AccountUser, linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -20,17 +19,20 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
-  viewMode?: "table" | "card";
   setViewMode?: (next: "table" | "card") => void;
+  viewMode?: "table" | "card";
 }
 const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { data: users = [] } = linuxio.accounts.list_users.useQuery({
@@ -128,9 +130,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;
     if (user.isLocked) {
-      unlockUser([user.username]);
+      unlockUser({ username: user.username });
     } else {
-      lockUser([user.username]);
+      lockUser({ username: user.username });
     }
   };
 
@@ -208,10 +210,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
           }}
         >
           <AppSearchField
-            placeholder="Search users…"
-            value={search}
             onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search users…"
             style={{ width: 320 }}
+            value={search}
           />
           <span
             style={{
@@ -224,23 +226,77 @@ const UsersTab: React.FC<UsersTabProps> = ({
       )}
       {effectiveViewMode === "card" ? (
         <UserCardsView
-          users={filtered}
-          selectedUser={detailUser}
           currentUsername={currentUser?.name}
           isLocking={isLocking}
           isUnlocking={isUnlocking}
-          onSelect={setSelectedUsername}
-          onEdit={handleEditUser}
           onChangePassword={handleChangePassword}
+          onEdit={handleEditUser}
+          onSelect={setSelectedUsername}
           onToggleLock={handleToggleLock}
+          selectedUser={detailUser}
+          users={filtered}
         />
       ) : (
         <UnifiedCollapsibleTable
-          data={filtered}
           columns={columns}
+          data={filtered}
+          emptyMessage="No users found."
           getRowKey={(user) => user.username}
-          selectedKey={selectedUsername}
           onRowClick={(user) => setSelectedUsername(user.username)}
+          renderExpandedContent={(user) => (
+            <>
+              <AppTypography gutterBottom variant="subtitle2">
+                <b>Home Directory:</b>
+              </AppTypography>
+              <AppTypography
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: "0.85rem",
+                  marginBottom: 8,
+                }}
+                variant="body2"
+              >
+                {user.homeDir}
+              </AppTypography>
+
+              <AppTypography gutterBottom variant="subtitle2">
+                <b>Shell:</b>
+              </AppTypography>
+              <AppTypography
+                style={{
+                  marginBottom: 8,
+                  fontSize: "0.85rem",
+                }}
+                variant="body2"
+              >
+                {user.shell}
+              </AppTypography>
+
+              <AppTypography gutterBottom variant="subtitle2">
+                <b>All Groups:</b>
+              </AppTypography>
+              <div
+                style={{
+                  marginBottom: 8,
+                  display: "flex",
+                  flexWrap: "wrap",
+                }}
+              >
+                {getAllGroups(user).map((group, idx) => (
+                  <Chip
+                    key={group}
+                    label={idx === 0 ? `${group} (primary)` : group}
+                    size="small"
+                    style={{
+                      marginRight: 4,
+                      marginBottom: 4,
+                    }}
+                    variant="soft"
+                  />
+                ))}
+              </div>
+            </>
+          )}
           renderMainRow={(user) => (
             <>
               <AppTableCell>
@@ -253,57 +309,57 @@ const UsersTab: React.FC<UsersTabProps> = ({
                   }}
                 >
                   <AppTypography
-                    variant="body2"
                     fontWeight={500}
                     style={responsiveTextStyles}
+                    variant="body2"
                   >
                     {user.username}
                   </AppTypography>
                   {user.username === currentUser?.name && (
                     <Chip
+                      color="primary"
                       label="Your account"
                       size="small"
-                      color="primary"
-                      variant="soft"
                       style={{
                         fontSize: "0.65rem",
                         height: 20,
                       }}
+                      variant="soft"
                     />
                   )}
                   {user.isLocked && (
                     <Chip
+                      color="warning"
                       label="locked"
                       size="small"
-                      color="warning"
-                      variant="soft"
                       style={{
                         fontSize: "0.65rem",
                         height: 20,
                       }}
+                      variant="soft"
                     />
                   )}
                 </div>
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
+                <AppTypography style={responsiveTextStyles} variant="body2">
                   {user.gecos || "-"}
                 </AppTypography>
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-md">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
+                <AppTypography style={responsiveTextStyles} variant="body2">
                   {user.uid}
                 </AppTypography>
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-lg">
                 <AppTypography
-                  variant="body2"
                   color={
                     user.username === currentUser?.name
                       ? "success"
                       : "text.secondary"
                   }
                   style={responsiveTextStyles}
+                  variant="body2"
                 >
                   {formatLastLogin(user.lastLogin, user.username)}
                 </AppTypography>
@@ -330,22 +386,22 @@ const UsersTab: React.FC<UsersTabProps> = ({
                             : group
                         }
                         size="small"
-                        variant="soft"
                         style={{
                           fontSize: "0.65rem",
                           height: 20,
                         }}
+                        variant="soft"
                       />
                     ))}
                   {getAllGroups(user).length > 3 && (
                     <Chip
                       label={`+${getAllGroups(user).length - 3}`}
                       size="small"
-                      variant="soft"
                       style={{
                         fontSize: "0.65rem",
                         height: 20,
                       }}
+                      variant="soft"
                     />
                   )}
                 </div>
@@ -360,49 +416,49 @@ const UsersTab: React.FC<UsersTabProps> = ({
                 >
                   <AppTooltip title="Edit">
                     <AppIconButton
-                      size="small"
+                      disabled={user.username === "root"}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleEditUser(user);
                       }}
-                      disabled={user.username === "root"}
+                      size="small"
                     >
-                      <Icon icon="mdi:pencil" width={20} height={20} />
+                      <Icon height={20} icon="mdi:pencil" width={20} />
                     </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title="Change Password">
                     <AppIconButton
-                      size="small"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleChangePassword(user);
                       }}
+                      size="small"
                     >
                       <Icon
+                        height={20}
                         icon="mdi:form-textbox-password"
                         width={20}
-                        height={20}
                       />
                     </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
                     <AppIconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleLock(user);
-                      }}
                       disabled={
                         user.username === "root" ||
                         user.username === currentUser?.name ||
                         isLocking ||
                         isUnlocking
                       }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleLock(user);
+                      }}
+                      size="small"
                     >
                       {user.isLocked ? (
-                        <Icon icon="mdi:lock-open" width={20} height={20} />
+                        <Icon height={20} icon="mdi:lock-open" width={20} />
                       ) : (
-                        <Icon icon="mdi:lock" width={20} height={20} />
+                        <Icon height={20} icon="mdi:lock" width={20} />
                       )}
                     </AppIconButton>
                   </AppTooltip>
@@ -410,85 +466,31 @@ const UsersTab: React.FC<UsersTabProps> = ({
               </AppTableCell>
             </>
           )}
-          renderExpandedContent={(user) => (
-            <>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>Home Directory:</b>
-              </AppTypography>
-              <AppTypography
-                variant="body2"
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                }}
-              >
-                {user.homeDir}
-              </AppTypography>
-
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>Shell:</b>
-              </AppTypography>
-              <AppTypography
-                variant="body2"
-                style={{
-                  marginBottom: 8,
-                  fontSize: "0.85rem",
-                }}
-              >
-                {user.shell}
-              </AppTypography>
-
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>All Groups:</b>
-              </AppTypography>
-              <div
-                style={{
-                  marginBottom: 8,
-                  display: "flex",
-                  flexWrap: "wrap",
-                }}
-              >
-                {getAllGroups(user).map((group, idx) => (
-                  <Chip
-                    key={group}
-                    label={idx === 0 ? `${group} (primary)` : group}
-                    size="small"
-                    variant="soft"
-                    style={{
-                      marginRight: 4,
-                      marginBottom: 4,
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-          emptyMessage="No users found."
+          selectedKey={selectedUsername}
         />
       )}
 
       <CreateUserDialog
-        open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+        open={createDialogOpen}
       />
 
       {dialogUser && (
         <>
           <EditUserDialog
-            open={editDialogOpen}
             onClose={() => {
               setEditDialogOpen(false);
               setDialogUser(null);
             }}
+            open={editDialogOpen}
             user={dialogUser}
           />
           <ChangePasswordDialog
-            open={passwordDialogOpen}
             onClose={() => {
               setPasswordDialogOpen(false);
               setDialogUser(null);
             }}
+            open={passwordDialogOpen}
             username={dialogUser.username}
           />
         </>

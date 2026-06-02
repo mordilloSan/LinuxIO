@@ -5,22 +5,22 @@ import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-import { responsiveTextStyles, longTextStyles } from "@/theme/tableStyles";
+import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
 
 export interface DockerImageRow {
+  containers: number;
+  created: string;
   id: string;
   repo: string;
-  tag: string;
   shortId: string;
   size: string;
-  created: string;
-  containers: number;
+  tag: string;
 }
 
 export interface DockerImageCardProps {
   image: DockerImageRow;
-  selected: boolean;
   onSelect: (checked: boolean) => void;
+  selected: boolean;
 }
 
 const DockerImageCard: React.FC<DockerImageCardProps> = ({
@@ -49,19 +49,19 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
           }}
         >
           <AppCheckbox
-            size="small"
             checked={selected}
             onChange={(e) => onSelect(e.target.checked)}
+            size="small"
           />
-          <AppTypography variant="body2" fontWeight={700} noWrap>
+          <AppTypography fontWeight={700} noWrap variant="body2">
             {image.repo}
           </AppTypography>
         </div>
         <Chip
           label={image.tag}
           size="small"
-          variant="soft"
           style={{ fontSize: "0.75rem" }}
+          variant="soft"
         />
       </div>
 
@@ -72,18 +72,18 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
           marginBottom: theme.spacing(1.5),
         }}
       >
-        <AppTypography variant="body2" style={responsiveTextStyles}>
+        <AppTypography style={responsiveTextStyles} variant="body2">
           Size: {image.size} MB
         </AppTypography>
         <AppTypography
-          variant="body2"
           style={{ fontFamily: "monospace", ...responsiveTextStyles }}
+          variant="body2"
         >
           ID: {image.shortId}
         </AppTypography>
         <AppTypography
-          variant="body2"
           style={{ fontSize: "0.82rem", ...responsiveTextStyles }}
+          variant="body2"
         >
           Created: {image.created}
         </AppTypography>
@@ -97,24 +97,24 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
         }}
       >
         <Chip
+          color={image.containers > 0 ? "success" : "default"}
           label={`Used by ${image.containers}`}
           size="small"
           variant="soft"
-          color={image.containers > 0 ? "success" : "default"}
         />
       </div>
 
-      <AppTypography variant="caption" color="text.secondary">
+      <AppTypography color="text.secondary" variant="caption">
         Full ID
       </AppTypography>
       <AppTypography
-        variant="body2"
         style={{
           fontFamily: "monospace",
           fontSize: "0.75rem",
           marginBottom: 4,
           ...longTextStyles,
         }}
+        variant="body2"
       >
         {image.id}
       </AppTypography>

@@ -1,5 +1,5 @@
-import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import NetworkTrafficGraph from "./NetworkTrafficGraph";
@@ -140,25 +140,23 @@ const NetworkInterfaceList = () => {
           {interfaces.map((iface) =>
             expanded && expanded !== iface.name ? null : (
               <AppGrid
+                animate={{ opacity: 1, scale: 1 }}
+                component={motion.div}
+                exit={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }}
                 key={iface.name}
+                layout
                 size={
                   expanded === iface.name
                     ? { xs: 12, md: 4, lg: 3 }
                     : { xs: 12, sm: 6, md: 4, lg: 2 }
                 }
-                component={motion.div}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.2 }}
               >
                 <NetworkInterfaceCard
-                  iface={iface}
-                  expanded={expanded === iface.name}
                   editForm={editForm}
-                  setEditForm={setEditForm}
-                  onToggle={() => handleToggle(iface)}
+                  expanded={expanded === iface.name}
+                  iface={iface}
                   onClose={() =>
                     setSearchParams((prev) => {
                       prev.delete("iface");
@@ -166,6 +164,8 @@ const NetworkInterfaceList = () => {
                     })
                   }
                   onSave={handleSave}
+                  onToggle={() => handleToggle(iface)}
+                  setEditForm={setEditForm}
                 />
               </AppGrid>
             ),
@@ -174,27 +174,27 @@ const NetworkInterfaceList = () => {
           {/* Traffic graphs — appear on the right when a NIC is selected */}
           {selectedIface && (
             <AppGrid
+              animate={{ opacity: 1, x: 0 }}
+              component={motion.div}
+              exit={{ opacity: 0, x: 40 }}
+              initial={{ opacity: 0, x: 40 }}
               key="traffic-graphs"
               size={{ xs: 12, md: 8, lg: 9 }}
-              component={motion.div}
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 40 }}
               transition={{ duration: 0.3, delay: 0.05 }}
             >
               <div
-                onMouseMove={handleGraphMouseMove}
                 onMouseLeave={handleGraphMouseLeave}
+                onMouseMove={handleGraphMouseMove}
                 style={{ display: "flex", flexDirection: "column", gap: 8 }}
               >
                 <div>
                   <div style={{ height: 120, width: "100%", minWidth: 0 }}>
                     <NetworkTrafficGraph
-                      ref={rxCanvasRef}
-                      key={`rx-${selectedIface.name}`}
-                      value={selectedIface.rx_speed}
                       color={theme.chart.rx}
+                      key={`rx-${selectedIface.name}`}
                       label="RX"
+                      ref={rxCanvasRef}
+                      value={selectedIface.rx_speed}
                     />
                   </div>
                   <div
@@ -215,7 +215,7 @@ const NetworkInterfaceList = () => {
                         display: "inline-block",
                       }}
                     />
-                    <AppTypography variant="caption" style={{ opacity: 0.7 }}>
+                    <AppTypography style={{ opacity: 0.7 }} variant="caption">
                       RX: {(selectedIface.rx_speed / 1024).toFixed(1)} kB/s
                     </AppTypography>
                   </div>
@@ -223,11 +223,11 @@ const NetworkInterfaceList = () => {
                 <div>
                   <div style={{ height: 120, width: "100%", minWidth: 0 }}>
                     <NetworkTrafficGraph
-                      ref={txCanvasRef}
-                      key={`tx-${selectedIface.name}`}
-                      value={selectedIface.tx_speed}
                       color={theme.chart.tx}
+                      key={`tx-${selectedIface.name}`}
                       label="TX"
+                      ref={txCanvasRef}
+                      value={selectedIface.tx_speed}
                     />
                   </div>
                   <div
@@ -248,7 +248,7 @@ const NetworkInterfaceList = () => {
                         display: "inline-block",
                       }}
                     />
-                    <AppTypography variant="caption" style={{ opacity: 0.7 }}>
+                    <AppTypography style={{ opacity: 0.7 }} variant="caption">
                       TX: {(selectedIface.tx_speed / 1024).toFixed(1)} kB/s
                     </AppTypography>
                   </div>

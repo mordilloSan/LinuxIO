@@ -21,10 +21,10 @@ const ErrorMessage: React.FC = () => {
       }}
     >
       <Icon
+        color={theme.palette.error.main}
+        height={iconSize.lg}
         icon="mdi:alert-circle-outline"
         width={iconSize.lg}
-        height={iconSize.lg}
-        color={theme.palette.error.main}
       />
       <AppTypography color="error" variant="body1">
         Failed to load!

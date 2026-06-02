@@ -5,9 +5,9 @@ import "./app-linear-progress.css";
 type ProgressColor = "primary" | "error" | "warning" | "success";
 
 export interface AppLinearProgressProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "determinate" | "indeterminate";
-  value?: number;
   color?: ProgressColor;
+  value?: number;
+  variant?: "determinate" | "indeterminate";
 }
 
 const AppLinearProgress = React.forwardRef<
@@ -40,14 +40,14 @@ const AppLinearProgress = React.forwardRef<
 
     return (
       <div
-        ref={ref}
-        role="progressbar"
+        aria-valuemax={100}
+        aria-valuemin={0}
         aria-valuenow={
           variant === "determinate" ? Math.round(value) : undefined
         }
-        aria-valuemin={0}
-        aria-valuemax={100}
         className={cls}
+        ref={ref}
+        role="progressbar"
         {...rest}
       >
         <span className="app-linear-progress__bar" style={barStyle} />

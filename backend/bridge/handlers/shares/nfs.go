@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 const exportsFile = "/etc/exports"
@@ -58,7 +60,7 @@ func requireNFSServerAvailability() error {
 
 // ListNFSShares reads /etc/exports and returns all configured exports
 // with their active status from exportfs -v
-func ListNFSShares(ctx context.Context) ([]NFSExport, error) {
+func ListNFSShares(ctx context.Context) ([]apischema.NFSExport, error) {
 	exports, err := parseExportsFile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", exportsFile, err)
@@ -76,7 +78,7 @@ func ListNFSShares(ctx context.Context) ([]NFSExport, error) {
 }
 
 // CreateNFSShare adds a new export to /etc/exports and applies it
-func CreateNFSShare(ctx context.Context, path string, clients []NFSClient) error {
+func CreateNFSShare(ctx context.Context, path string, clients []apischema.NFSClient) error {
 	if err := requireNFSServerAvailability(); err != nil {
 		return err
 	}
@@ -115,7 +117,7 @@ func CreateNFSShare(ctx context.Context, path string, clients []NFSClient) error
 }
 
 // UpdateNFSShare modifies an existing export's clients in /etc/exports
-func UpdateNFSShare(ctx context.Context, path string, clients []NFSClient) error {
+func UpdateNFSShare(ctx context.Context, path string, clients []apischema.NFSClient) error {
 	if err := requireNFSServerAvailability(); err != nil {
 		return err
 	}
@@ -197,17 +199,17 @@ func DeleteNFSShare(ctx context.Context, path string) error {
 }
 
 // parseExportsFile reads and parses /etc/exports
-func parseExportsFile() ([]NFSExport, error) {
+func parseExportsFile() ([]apischema.NFSExport, error) {
 	file, err := os.Open(exportsFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []NFSExport{}, nil
+			return []apischema.NFSExport{}, nil
 		}
 		return nil, err
 	}
 	defer file.Close()
 
-	var exports []NFSExport
+	var exports []apischema.NFSExport
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -228,13 +230,13 @@ func parseExportsFile() ([]NFSExport, error) {
 
 // parseExportLine parses a single line from /etc/exports
 // Format: /path client1(opts) client2(opts)
-func parseExportLine(line string) (NFSExport, error) {
+func parseExportLine(line string) (apischema.NFSExport, error) {
 	matches := exportLineRegex.FindStringSubmatch(line)
 	if matches == nil {
-		return NFSExport{}, fmt.Errorf("invalid export line: %s", line)
+		return apischema.NFSExport{}, fmt.Errorf("invalid export line: %s", line)
 	}
 
-	export := NFSExport{Path: matches[1]}
+	export := apischema.NFSExport{Path: matches[1]}
 
 	clientMatches := clientRegex.FindAllStringSubmatch(matches[2], -1)
 	for _, cm := range clientMatches {
@@ -242,7 +244,7 @@ func parseExportLine(line string) (NFSExport, error) {
 		if host == "" {
 			continue
 		}
-		client := NFSClient{Host: host}
+		client := apischema.NFSClient{Host: host}
 		if len(cm) > 2 && cm[2] != "" {
 			opts := strings.Trim(cm[2], "()")
 			if opts != "" {
@@ -294,7 +296,7 @@ func getActiveExports(ctx context.Context) map[string]bool {
 }
 
 // formatExportLine builds a /etc/exports line from path and clients
-func formatExportLine(path string, clients []NFSClient) string {
+func formatExportLine(path string, clients []apischema.NFSClient) string {
 	var parts []string
 	for _, c := range clients {
 		if len(c.Options) > 0 {

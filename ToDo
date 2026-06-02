@@ -5,21 +5,21 @@
 3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - `eslint-plugin-react`
 
-4 - Session Activity And Job-Safe Idle Cleanup
-beware of ctx in handlers and if session dies bridge is orpahned doing work?
+4 - values fixed in router.go should be set in global settings file?
 
-5 - Total review of jobs code. feels dirty. Vibe Coded this part.
+5 - Session Activity And Job-Safe Idle Cleanup
+beware of ctx in handlers and if session dies bridge is orpahned doing work? Right now bridge dies and all work is canceled.
 
-6 - values fixed in router.go should be set in global settings file?
+6 - Total review of jobs code. feels dirty. Vibe Coded this part.
 
-7 - protobuf(?!) between go/react 
+7 - Higher-level mutation API: implement `useJobAction` on CommandEndpoint (typed args/result, `invalidates`/`success`/`error` config, mode guard for job-only routes), then migrate existing `.useMutation()` job-route call sites (~80) to `.useJobAction()`.
 
-8 - Remove binary protocol. Lets just use json for all...
+8 - For go api generator we have 2 main files. Lets change this for better DX
 
-9 - Higher-level mutation API: implement `useJobAction` on CommandEndpoint (typed args/result, `invalidates`/`success`/`error` config, mode guard for job-only routes), then migrate existing `.useMutation()` job-route call sites (~80) to `.useJobAction()`.
-
-10 - Bridge Handler Pattern - See docs
-
+Ccnsolidate small helper functions in utils - DONE
+Bridge Handler Pattern - See docs DONE
+Shared API betewen go/react via generator. DONE
+Remove binary protocol. Lets just use json for all... DONE
 Config should not be loaded on every page load. go template? - DONE
 user config to match config in UI - DONE
 Fix NFS distro dependency - DONE

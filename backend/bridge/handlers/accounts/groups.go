@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 const (
@@ -97,7 +99,7 @@ func GetGroup(ctx context.Context, name string) (*Group, error) {
 }
 
 // CreateGroup creates a new system group
-func CreateGroup(ctx context.Context, req CreateGroupRequest) error {
+func CreateGroup(ctx context.Context, req apischema.CreateGroupRequest) error {
 	if req.Name == "" {
 		return fmt.Errorf("group name is required")
 	}
@@ -201,7 +203,7 @@ func sameGroupMembers(current, desired []string) bool {
 }
 
 // ModifyGroupMembers sets the members of a group
-func ModifyGroupMembers(ctx context.Context, req ModifyGroupMembersRequest) error {
+func ModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMembersRequest) error {
 	if req.GroupName == "" {
 		return fmt.Errorf("group name is required")
 	}

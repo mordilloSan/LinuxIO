@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -36,27 +37,33 @@ type DockerIndexerJobResult struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router, username string, store *config.UserStore) {
-	router.JobRunner(JobTypeDockerCompose, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runDockerComposeJob(ctx, job, username, store, args)
-	}, bridgejobs.ActionDefault)
-	router.JobRunner(JobTypeDockerIndexer, func(ctx context.Context, job *bridgejobs.Job, args []string) (any, error) {
-		return runDockerIndexerJob(ctx, job, username, store)
-	}, bridgejobs.SingletonSystem)
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeDockerCompose,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
+			return runDockerComposeJob(ctx, job, username, store, req)
+		},
+		Policy: bridgejobs.ActionDefault,
+	})
+	apischema.AttachRunner(router, apischema.RunnerBinding{
+		Route: JobTypeDockerIndexer,
+		Runner: func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
+			return runDockerIndexerJob(ctx, job, username, store)
+		},
+		Policy: bridgejobs.SingletonSystem,
+	})
 }
 
-func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, args []string) (any, error) {
-	if len(args) < 2 {
+func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, req apischema.DockerComposeRequest) (any, error) {
+	if req.Action == "" || req.ProjectName == "" {
 		return nil, bridgejobs.NewError("missing required arguments: action, projectName", 400)
 	}
 
-	action := args[0]
-	projectName := args[1]
 	var composePath string
-	if len(args) >= 3 {
-		composePath = args[2]
+	if req.ComposePath != nil {
+		composePath = *req.ComposePath
 	}
 
-	configFile, workingDir, err := resolveComposeJobPaths(ctx, username, store, projectName, composePath)
+	configFile, workingDir, err := resolveComposeJobPaths(ctx, username, store, req.ProjectName, composePath)
 	if err != nil {
 		job.ReportProgress(ComposeJobMessage{Type: "error", Message: "compose file not found: " + err.Error()})
 		return nil, bridgejobs.NewError("compose file not found: "+err.Error(), 404)
@@ -77,17 +84,17 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 		reportMu.Unlock()
 	}
 
-	switch action {
+	switch req.Action {
 	case "up":
-		err = composeUpWithSDK(ctx, projectName, configFile, workingDir, false, report)
+		err = composeUp(ctx, req.ProjectName, configFile, workingDir, false, report)
 	case "down":
-		err = composeDownWithSDK(ctx, projectName, configFile, workingDir, false, report)
+		err = composeDown(ctx, req.ProjectName, configFile, workingDir, false, report)
 	case "stop":
-		err = composeStopWithSDK(ctx, projectName, configFile, workingDir, report)
+		err = composeStop(ctx, req.ProjectName, configFile, workingDir, report)
 	case "restart":
-		err = composeUpWithSDK(ctx, projectName, configFile, workingDir, true, report)
+		err = composeUp(ctx, req.ProjectName, configFile, workingDir, true, report)
 	default:
-		return nil, bridgejobs.NewError("unsupported action: "+action, 400)
+		return nil, bridgejobs.NewError("unsupported action: "+req.Action, 400)
 	}
 
 	if err != nil {
@@ -108,7 +115,7 @@ func resolveComposeJobPaths(ctx context.Context, username string, store *config.
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}
-	return findComposeFileWithStore(ctx, username, store, projectName)
+	return findComposeFile(ctx, username, store, projectName)
 }
 
 func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {

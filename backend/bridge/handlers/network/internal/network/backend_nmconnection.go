@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	ini "gopkg.in/ini.v1"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type nmConnectionBackend struct {
@@ -21,7 +23,7 @@ func (b *nmConnectionBackend) Name() string {
 	return "nmconnection"
 }
 
-func detectNMConnectionBackend(env Environment, iface string) (Backend, error) {
+func detectNMConnectionBackend(env Environment, iface string) (ConfigBackend, error) {
 	paths, err := globSorted(filepath.Join(env.NMConnectionDir, "*.nmconnection"))
 	if err != nil {
 		return nil, err
@@ -171,7 +173,7 @@ func (b *nmConnectionBackend) Enable(ctx context.Context) error {
 	}
 	targetArgs := b.connectionTargetArgs()
 	output, err := b.env.Runner.Run(ctx, "nmcli", append([]string{"connection", "up"}, targetArgs...)...)
-	return commandError("nmcli", append([]string{"connection", "up"}, targetArgs...), output, err)
+	return utils.CommandOutputError("nmcli", append([]string{"connection", "up"}, targetArgs...), output, err)
 }
 
 func (b *nmConnectionBackend) Disable(ctx context.Context) error {
@@ -184,7 +186,7 @@ func (b *nmConnectionBackend) Disable(ctx context.Context) error {
 	if fallbackErr == nil {
 		return nil
 	}
-	return commandError("nmcli", []string{"device", "disconnect", b.iface}, output, err)
+	return utils.CommandOutputError("nmcli", []string{"device", "disconnect", b.iface}, output, err)
 }
 
 func (b *nmConnectionBackend) update(ctx context.Context, updateFn func(cfg *ini.File) error) error {
@@ -219,13 +221,13 @@ func (b *nmConnectionBackend) reloadAndReapply(ctx context.Context) error {
 	if fallbackErr == nil {
 		return nil
 	}
-	return commandError("nmcli", []string{"device", "reapply", b.iface}, output, err)
+	return utils.CommandOutputError("nmcli", []string{"device", "reapply", b.iface}, output, err)
 }
 
 func (b *nmConnectionBackend) loadConnection(ctx context.Context) error {
 	args := []string{"connection", "load", b.path}
 	output, err := b.env.Runner.Run(ctx, "nmcli", args...)
-	return commandError("nmcli", args, output, err)
+	return utils.CommandOutputError("nmcli", args, output, err)
 }
 
 func (b *nmConnectionBackend) connectionTargetArgs() []string {

@@ -2,12 +2,11 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React from "react";
-import { toast } from "sonner";
 
-import { linuxio } from "@/api";
 import type { UnitInfo } from "@/api";
-import UnitCard from "@/components/cards/UnitCard";
+import { linuxio } from "@/api";
 import type { UnitListItem } from "@/components/cards/UnitCard";
+import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -18,7 +17,8 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import { useAppTheme, useAppMediaQuery } from "@/theme";
+import { useScopedToast } from "@/hooks/useScopedToast";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 export type { UnitListItem } from "@/components/cards/UnitCard";
@@ -29,26 +29,26 @@ export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 interface UnitTableViewProps<T> {
   data: T[];
   desktopColumns: UnifiedTableColumn[];
-  mobileColumns: UnifiedTableColumn[];
+  emptyMessage: string;
   getRowKey: (row: T, index: number) => string | number;
+  mobileColumns: UnifiedTableColumn[];
+  onDoubleClick?: (key: string | number) => void;
+  onSelect?: (key: string | number | null) => void;
   renderMainRow: (row: T, isMobile: boolean, index: number) => React.ReactNode;
   renderMobileExpandedContent?: (row: T, index: number) => React.ReactNode;
   selected?: string | number | null;
-  onSelect?: (key: string | number | null) => void;
-  onDoubleClick?: (key: string | number) => void;
-  emptyMessage: string;
 }
 
 interface UnitCardsViewProps<T extends UnitListItem> {
-  items: T[];
-  expanded: string | null;
-  onExpand: (name: string | null) => void;
-  renderSummaryRows: (item: T) => React.ReactNode;
-  renderSelectedRows?: (item: T) => React.ReactNode;
-  renderActions?: (item: T) => React.ReactNode;
-  renderDetailPanel: (item: T) => React.ReactNode;
-  renderBottomPanel?: (item: T) => React.ReactNode;
   emptyMessage: string;
+  expanded: string | null;
+  items: T[];
+  onExpand: (name: string | null) => void;
+  renderActions?: (item: T) => React.ReactNode;
+  renderBottomPanel?: (item: T) => React.ReactNode;
+  renderDetailPanel: (item: T) => React.ReactNode;
+  renderSelectedRows?: (item: T) => React.ReactNode;
+  renderSummaryRows: (item: T) => React.ReactNode;
 }
 
 export function statusDot(activeState: string) {
@@ -118,17 +118,17 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         {auto ? (
           <Icon
+            color="var(--app-palette-success-main)"
+            height={15}
             icon="mdi:check"
             width={15}
-            height={15}
-            color="var(--app-palette-success-main)"
           />
         ) : (
           <Icon
+            color="var(--app-palette-text-disabled)"
+            height={15}
             icon="mdi:block-helper"
             width={15}
-            height={15}
-            color="var(--app-palette-text-disabled)"
           />
         )}
         <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{label}</span>
@@ -138,12 +138,12 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
 }
 
 interface UnitStatusRowsProps {
+  activeEnterTimestamp?: number;
+  activeLabel?: string;
   activeState: string;
+  inactiveEnterTimestamp?: number;
   subState: string;
   unitFileState: string;
-  activeEnterTimestamp?: number;
-  inactiveEnterTimestamp?: number;
-  activeLabel?: string;
 }
 
 export function UnitStatusRows({
@@ -203,9 +203,9 @@ export function UnitStatusRows({
 
 const buttonIcon = (pending: boolean, iconName: string) =>
   pending ? (
-    <AppCircularProgress size={16} color="inherit" />
+    <AppCircularProgress color="inherit" size={16} />
   ) : (
-    <Icon icon={iconName} width={16} height={16} />
+    <Icon height={16} icon={iconName} width={16} />
   );
 
 export const UnitCardActions: React.FC<{
@@ -214,6 +214,7 @@ export const UnitCardActions: React.FC<{
   unitFileState: string;
   info: UnitInfo | undefined;
 }> = ({ unitName, activeState, unitFileState, info }) => {
+  const toast = useScopedToast({ href: "/services", label: "Open services" });
   const queryClient = useQueryClient();
 
   const invalidateUnit = React.useCallback(() => {
@@ -236,7 +237,7 @@ export const UnitCardActions: React.FC<{
           getMutationErrorMessage(err, `Failed to ${verb} ${unitName}`),
         ),
     }),
-    [unitName, invalidateUnit],
+    [unitName, invalidateUnit, toast],
   );
 
   const { mutate: startService, isPending: isStarting } =
@@ -277,6 +278,7 @@ export const UnitCardActions: React.FC<{
 
   return (
     <div
+      onClick={(e) => e.stopPropagation()}
       style={{
         display: "flex",
         gap: 6,
@@ -284,17 +286,16 @@ export const UnitCardActions: React.FC<{
         marginTop: 12,
         minWidth: 0,
       }}
-      onClick={(e) => e.stopPropagation()}
     >
       {isActive ? (
         <AppTooltip title="Stop">
           <AppButton
-            size="small"
-            variant="outlined"
             color="error"
-            startIcon={buttonIcon(isStopping, "mdi:stop-circle")}
-            onClick={() => stopService([unitName])}
             disabled={anyPending}
+            onClick={() => stopService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isStopping, "mdi:stop-circle")}
+            variant="outlined"
           >
             Stop
           </AppButton>
@@ -302,12 +303,12 @@ export const UnitCardActions: React.FC<{
       ) : (
         <AppTooltip title="Start">
           <AppButton
-            size="small"
-            variant="outlined"
             color="success"
-            startIcon={buttonIcon(isStarting, "mdi:play")}
-            onClick={() => startService([unitName])}
             disabled={anyPending}
+            onClick={() => startService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isStarting, "mdi:play")}
+            variant="outlined"
           >
             Start
           </AppButton>
@@ -316,11 +317,11 @@ export const UnitCardActions: React.FC<{
       <AppTooltip title="Restart (stop then start)">
         <span>
           <AppButton
-            size="small"
-            variant="outlined"
-            startIcon={buttonIcon(isRestarting, "mdi:restart")}
-            onClick={() => restartService([unitName])}
             disabled={!isActive || anyPending}
+            onClick={() => restartService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isRestarting, "mdi:restart")}
+            variant="outlined"
           >
             Restart
           </AppButton>
@@ -329,11 +330,11 @@ export const UnitCardActions: React.FC<{
       <AppTooltip title="Reload configuration without restarting (if supported)">
         <span>
           <AppButton
-            size="small"
-            variant="outlined"
-            startIcon={buttonIcon(isReloading, "mdi:refresh")}
-            onClick={() => reloadService([unitName])}
             disabled={!isActive || anyPending}
+            onClick={() => reloadService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isReloading, "mdi:refresh")}
+            variant="outlined"
           >
             Reload
           </AppButton>
@@ -343,11 +344,11 @@ export const UnitCardActions: React.FC<{
         <AppTooltip title="Disable autostart at boot">
           <span>
             <AppButton
-              size="small"
-              variant="outlined"
-              startIcon={buttonIcon(isDisabling, "mdi:block-helper")}
-              onClick={() => disableService([unitName])}
               disabled={isMasked || anyPending}
+              onClick={() => disableService({ serviceName: unitName })}
+              size="small"
+              startIcon={buttonIcon(isDisabling, "mdi:block-helper")}
+              variant="outlined"
             >
               Disable
             </AppButton>
@@ -357,12 +358,12 @@ export const UnitCardActions: React.FC<{
         <AppTooltip title="Enable autostart at boot">
           <span>
             <AppButton
-              size="small"
-              variant="outlined"
               color="success"
-              startIcon={buttonIcon(isEnabling, "mdi:play")}
-              onClick={() => enableService([unitName])}
               disabled={isMasked || anyPending}
+              onClick={() => enableService({ serviceName: unitName })}
+              size="small"
+              startIcon={buttonIcon(isEnabling, "mdi:play")}
+              variant="outlined"
             >
               Enable
             </AppButton>
@@ -372,12 +373,12 @@ export const UnitCardActions: React.FC<{
       {isMasked ? (
         <AppTooltip title="Unmask to allow the unit to be started">
           <AppButton
-            size="small"
-            variant="outlined"
             color="warning"
-            startIcon={buttonIcon(isUnmasking, "mdi:eye")}
-            onClick={() => unmaskService([unitName])}
             disabled={anyPending}
+            onClick={() => unmaskService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isUnmasking, "mdi:eye")}
+            variant="outlined"
           >
             Unmask
           </AppButton>
@@ -385,11 +386,11 @@ export const UnitCardActions: React.FC<{
       ) : (
         <AppTooltip title="Mask to completely prevent the unit from starting">
           <AppButton
-            size="small"
-            variant="outlined"
-            startIcon={buttonIcon(isMasking, "mdi:eye-off")}
-            onClick={() => maskService([unitName])}
             disabled={anyPending}
+            onClick={() => maskService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isMasking, "mdi:eye-off")}
+            variant="outlined"
           >
             Mask
           </AppButton>
@@ -398,12 +399,12 @@ export const UnitCardActions: React.FC<{
       {isFailed && (
         <AppTooltip title="Clear the failed state so the unit can be started again">
           <AppButton
-            size="small"
-            variant="outlined"
             color="warning"
-            startIcon={buttonIcon(isResettingFailed, "mdi:broom")}
-            onClick={() => resetFailedService([unitName])}
             disabled={anyPending}
+            onClick={() => resetFailedService({ serviceName: unitName })}
+            size="small"
+            startIcon={buttonIcon(isResettingFailed, "mdi:broom")}
+            variant="outlined"
           >
             Reset
           </AppButton>
@@ -430,10 +431,10 @@ export function UnitTableView<T>({
 
   return (
     <UnifiedCollapsibleTable
-      data={data}
       columns={isMobile ? mobileColumns : desktopColumns}
+      data={data}
+      emptyMessage={emptyMessage}
       getRowKey={getRowKey}
-      selectedKey={selected}
       onRowClick={
         isMobile
           ? undefined
@@ -449,7 +450,7 @@ export function UnitTableView<T>({
           : undefined
       }
       renderMainRow={(row, index) => renderMainRow(row, isMobile, index)}
-      emptyMessage={emptyMessage}
+      selectedKey={selected}
     />
   );
 }
@@ -490,8 +491,8 @@ export function UnitCardsView<T extends UnitListItem>({
         {items.map((item) => (
           <AppGrid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
             <UnitCard
-              item={item}
               isSelected={false}
+              item={item}
               onExpand={onExpand}
               renderSummaryRows={renderSummaryRows}
             />
@@ -525,26 +526,26 @@ export function UnitCardsView<T extends UnitListItem>({
           }}
         >
           <UnitCard
-            item={expandedItem}
             isSelected={true}
+            item={expandedItem}
             onExpand={onExpand}
-            renderSummaryRows={renderSummaryRows}
-            renderSelectedRows={renderSelectedRows}
             renderActions={renderActions}
+            renderSelectedRows={renderSelectedRows}
+            renderSummaryRows={renderSummaryRows}
           />
         </div>
         <motion.div
-          style={{
-            width: isCompactLayout ? "100%" : "33.33%",
-            flexShrink: 0,
-            display: "flex",
-          }}
+          animate={{ opacity: 1, x: 0, y: 0 }}
           initial={{
             opacity: 0,
             x: isCompactLayout ? 0 : 40,
             y: isCompactLayout ? 20 : 0,
           }}
-          animate={{ opacity: 1, x: 0, y: 0 }}
+          style={{
+            width: isCompactLayout ? "100%" : "33.33%",
+            flexShrink: 0,
+            display: "flex",
+          }}
           transition={{ duration: 0.25, delay: 0.05 }}
         >
           {renderDetailPanel(expandedItem)}
@@ -552,8 +553,8 @@ export function UnitCardsView<T extends UnitListItem>({
       </div>
       {renderBottomPanel && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 20 }}
           transition={{ duration: 0.25, delay: 0.1 }}
         >
           {renderBottomPanel(expandedItem)}

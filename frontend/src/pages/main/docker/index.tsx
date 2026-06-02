@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
@@ -10,7 +9,7 @@ import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
 
-import { linuxio, jobSnapshotResult } from "@/api";
+import { jobSnapshotResult, linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -19,11 +18,14 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
 const DockerPage: React.FC = () => {
   const theme = useAppTheme();
+  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
@@ -136,14 +138,14 @@ const DockerPage: React.FC = () => {
         <AppAlert severity="warning">
           <AppAlertTitle>Docker Not Available</AppAlertTitle>
           <AppTypography
-            variant="body2"
             style={{
               marginBottom: 8,
             }}
+            variant="body2"
           >
             Docker daemon is not accessible
           </AppTypography>
-          <AppTypography variant="body2" component="div">
+          <AppTypography component="div" variant="body2">
             <strong>Common causes:</strong>
             <ul
               style={{
@@ -173,6 +175,7 @@ const DockerPage: React.FC = () => {
   return (
     <>
       <TabContainer
+        defaultTab="dashboard"
         tabs={[
           {
             value: "dashboard",
@@ -181,31 +184,31 @@ const DockerPage: React.FC = () => {
             rightContent: (
               <>
                 <AppButton
-                  size="small"
-                  variant="outlined"
-                  startIcon={<Icon icon="mdi:play" width={20} height={20} />}
                   disabled={isStartingAll || stoppedContainers.length === 0}
-                  onClick={() => startAllStopped([])}
+                  onClick={() => startAllStopped()}
+                  size="small"
+                  startIcon={<Icon height={20} icon="mdi:play" width={20} />}
+                  variant="outlined"
                 >
                   Start All
                 </AppButton>
                 <AppButton
-                  size="small"
-                  variant="outlined"
                   color="warning"
-                  startIcon={<Icon icon="mdi:stop" width={20} height={20} />}
                   disabled={isStoppingAll || runningContainers.length === 0}
-                  onClick={() => stopAllRunning([])}
+                  onClick={() => stopAllRunning()}
+                  size="small"
+                  startIcon={<Icon height={20} icon="mdi:stop" width={20} />}
+                  variant="outlined"
                 >
                   Stop All
                 </AppButton>
                 <AppButton
-                  size="small"
-                  variant="outlined"
                   color="error"
-                  startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
                   disabled={isPruning}
                   onClick={() => setPruneDialogOpen(true)}
+                  size="small"
+                  startIcon={<Icon height={20} icon="mdi:broom" width={20} />}
+                  variant="outlined"
                 >
                   Prune All
                 </AppButton>
@@ -231,17 +234,17 @@ const DockerPage: React.FC = () => {
                   }
                 >
                   <AppIconButton
-                    size="small"
                     onClick={() =>
                       setContainerView(
                         containerView === "card" ? "table" : "card",
                       )
                     }
+                    size="small"
                   >
                     {containerView === "card" ? (
-                      <Icon icon="mdi:table-row" width={20} height={20} />
+                      <Icon height={20} icon="mdi:table-row" width={20} />
                     ) : (
-                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                      <Icon height={20} icon="mdi:view-grid" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
@@ -249,11 +252,11 @@ const DockerPage: React.FC = () => {
                   title={containerEditMode ? "Lock layout" : "Edit layout"}
                 >
                   <AppIconButton
-                    onClick={() => setContainerEditMode((prev) => !prev)}
                     color={containerEditMode ? "primary" : "default"}
+                    onClick={() => setContainerEditMode((prev) => !prev)}
                     size="small"
                   >
-                    <Icon icon="mdi:drag" width={20} height={20} />
+                    <Icon height={20} icon="mdi:drag" width={20} />
                   </AppIconButton>
                 </AppTooltip>
               </>
@@ -280,24 +283,24 @@ const DockerPage: React.FC = () => {
                   }
                 >
                   <AppIconButton
-                    size="small"
                     onClick={() =>
                       setStacksView(stacksView === "table" ? "card" : "table")
                     }
+                    size="small"
                   >
                     {stacksView === "table" ? (
-                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                      <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon icon="mdi:table-row" width={20} height={20} />
+                      <Icon height={20} icon="mdi:table-row" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
                 {createStackHandler && (
                   <AppButton
-                    variant="contained"
-                    size="small"
                     onClick={createStackHandler}
-                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                    size="small"
+                    startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+                    variant="contained"
                   >
                     Create Stack
                   </AppButton>
@@ -326,26 +329,26 @@ const DockerPage: React.FC = () => {
                   }
                 >
                   <AppIconButton
-                    size="small"
                     onClick={() =>
                       setNetworksView(
                         networksView === "table" ? "card" : "table",
                       )
                     }
+                    size="small"
                   >
                     {networksView === "table" ? (
-                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                      <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon icon="mdi:table-row" width={20} height={20} />
+                      <Icon height={20} icon="mdi:table-row" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
                 {createNetworkHandler && (
                   <AppButton
-                    variant="contained"
-                    size="small"
                     onClick={createNetworkHandler}
-                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                    size="small"
+                    startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+                    variant="contained"
                   >
                     Add Network
                   </AppButton>
@@ -374,24 +377,24 @@ const DockerPage: React.FC = () => {
                   }
                 >
                   <AppIconButton
-                    size="small"
                     onClick={() =>
                       setVolumesView(volumesView === "table" ? "card" : "table")
                     }
+                    size="small"
                   >
                     {volumesView === "table" ? (
-                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                      <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon icon="mdi:table-row" width={20} height={20} />
+                      <Icon height={20} icon="mdi:table-row" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
                 {createVolumeHandler && (
                   <AppButton
-                    variant="contained"
-                    size="small"
                     onClick={createVolumeHandler}
-                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                    size="small"
+                    startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+                    variant="contained"
                   >
                     Add Volume
                   </AppButton>
@@ -420,24 +423,24 @@ const DockerPage: React.FC = () => {
                   }
                 >
                   <AppIconButton
-                    size="small"
                     onClick={() =>
                       setImagesView(imagesView === "table" ? "card" : "table")
                     }
+                    size="small"
                   >
                     {imagesView === "table" ? (
-                      <Icon icon="mdi:view-grid" width={20} height={20} />
+                      <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon icon="mdi:table-row" width={20} height={20} />
+                      <Icon height={20} icon="mdi:table-row" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
                 {createImageHandler && (
                   <AppButton
-                    variant="contained"
-                    size="small"
                     onClick={createImageHandler}
-                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                    size="small"
+                    startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+                    variant="contained"
                   >
                     Add Image
                   </AppButton>
@@ -446,14 +449,13 @@ const DockerPage: React.FC = () => {
             ),
           },
         ]}
-        defaultTab="dashboard"
         urlParam="dockerTab"
       />
       <PruneDialog
-        open={pruneDialogOpen}
-        onClose={() => !isPruning && setPruneDialogOpen(false)}
-        onConfirm={(opts: PruneOptions) => systemPrune([opts])}
         isLoading={isPruning}
+        onClose={() => !isPruning && setPruneDialogOpen(false)}
+        onConfirm={(opts: PruneOptions) => systemPrune(opts)}
+        open={pruneDialogOpen}
       />
     </>
   );

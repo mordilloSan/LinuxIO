@@ -5,9 +5,9 @@ import { useDockerIcon } from "@/hooks/useDockerIcon";
 import { useAppTheme } from "@/theme";
 
 interface DockerIconProps {
+  alt?: string;
   identifier?: string;
   size?: number;
-  alt?: string;
 }
 
 /**
@@ -31,10 +31,10 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   if (isLoading) {
     return (
       <AppSkeleton
-        variant="circular"
-        width={size}
         height={size}
         style={{ flexShrink: 0 }}
+        variant="circular"
+        width={size}
       />
     );
   }
@@ -57,8 +57,8 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   // Success - show the icon
   return (
     <img
-      src={iconUri}
       alt={alt}
+      src={iconUri}
       style={{
         width: size,
         height: size,

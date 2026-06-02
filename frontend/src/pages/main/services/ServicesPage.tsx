@@ -31,10 +31,10 @@ const ServicesPage: React.FC = () => {
 
   return (
     <TabContainer
-      tabs={tabs}
-      defaultTab="services"
-      urlParam="section"
       containerStyle={{ paddingInline: 0 }}
+      defaultTab="services"
+      tabs={tabs}
+      urlParam="section"
     />
   );
 };

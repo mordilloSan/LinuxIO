@@ -25,6 +25,7 @@ const AccountsPage: React.FC = () => {
 
   return (
     <TabContainer
+      defaultTab="users"
       tabs={[
         {
           value: "users",
@@ -47,24 +48,24 @@ const AccountsPage: React.FC = () => {
                 }
               >
                 <AppIconButton
-                  size="small"
                   onClick={() =>
                     setUsersView(usersView === "table" ? "card" : "table")
                   }
+                  size="small"
                 >
                   {usersView === "table" ? (
-                    <Icon icon="mdi:view-grid" width={20} height={20} />
+                    <Icon height={20} icon="mdi:view-grid" width={20} />
                   ) : (
-                    <Icon icon="mdi:table-row" width={20} height={20} />
+                    <Icon height={20} icon="mdi:table-row" width={20} />
                   )}
                 </AppIconButton>
               </AppTooltip>
               {createUserHandler && (
                 <AppButton
-                  variant="contained"
-                  size="small"
                   onClick={createUserHandler}
-                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                  size="small"
+                  startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+                  variant="contained"
                 >
                   Add User
                 </AppButton>
@@ -93,24 +94,24 @@ const AccountsPage: React.FC = () => {
                 }
               >
                 <AppIconButton
-                  size="small"
                   onClick={() =>
                     setGroupsView(groupsView === "table" ? "card" : "table")
                   }
+                  size="small"
                 >
                   {groupsView === "table" ? (
-                    <Icon icon="mdi:view-grid" width={20} height={20} />
+                    <Icon height={20} icon="mdi:view-grid" width={20} />
                   ) : (
-                    <Icon icon="mdi:table-row" width={20} height={20} />
+                    <Icon height={20} icon="mdi:table-row" width={20} />
                   )}
                 </AppIconButton>
               </AppTooltip>
               {createGroupHandler && (
                 <AppButton
-                  variant="contained"
-                  size="small"
                   onClick={createGroupHandler}
-                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+                  size="small"
+                  startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+                  variant="contained"
                 >
                   Add Group
                 </AppButton>
@@ -119,7 +120,6 @@ const AccountsPage: React.FC = () => {
           ),
         },
       ]}
-      defaultTab="users"
       urlParam="accountsTab"
     />
   );

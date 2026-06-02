@@ -14,6 +14,7 @@ const StoragePage: React.FC = () => {
 
   return (
     <TabContainer
+      defaultTab="disks"
       tabs={[
         {
           value: "disks",
@@ -32,17 +33,16 @@ const StoragePage: React.FC = () => {
           ),
           rightContent: createLVHandler ? (
             <AppButton
-              variant="contained"
-              size="small"
               onClick={createLVHandler}
-              startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
+              size="small"
+              startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+              variant="contained"
             >
               Create LV
             </AppButton>
           ) : undefined,
         },
       ]}
-      defaultTab="disks"
       urlParam="storageTab"
     />
   );

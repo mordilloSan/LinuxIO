@@ -5,7 +5,7 @@ import CreateGroupDialog from "./components/CreateGroupDialog";
 import DeleteGroupDialog from "./components/DeleteGroupDialog";
 import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
-import { linuxio, type AccountGroup } from "@/api";
+import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -101,10 +101,10 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
         }}
       >
         <AppSearchField
-          placeholder="Search groups…"
-          value={search}
           onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search groups…"
           style={{ width: 320 }}
+          value={search}
         />
         <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
       </div>
@@ -115,32 +115,59 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
               <AppGrid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <GroupCard
                   group={group}
-                  onEditMembers={() => handleEditMembers(group)}
                   onDelete={() => handleDelete(group)}
+                  onEditMembers={() => handleEditMembers(group)}
                 />
               </AppGrid>
             ))}
           </AppGrid>
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
-            <AppTypography variant="body2" color="text.secondary">
+            <AppTypography color="text.secondary" variant="body2">
               No groups found.
             </AppTypography>
           </div>
         )
       ) : (
         <UnifiedCollapsibleTable
-          data={filtered}
           columns={columns}
+          data={filtered}
+          emptyMessage="No groups found."
           getRowKey={(group) => group.name}
+          renderExpandedContent={(group) => (
+            <>
+              <AppTypography gutterBottom variant="subtitle2">
+                <b>All Members ({group.members.length}):</b>
+              </AppTypography>
+              <div
+                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
+              >
+                {group.members.length > 0 ? (
+                  group.members.map((member) => (
+                    <Chip
+                      key={member}
+                      label={member}
+                      size="small"
+                      style={{ marginRight: 4, marginBottom: 4 }}
+                      variant="soft"
+                    />
+                  ))
+                ) : (
+                  <AppTypography color="text.secondary" variant="body2">
+                    (no members)
+                  </AppTypography>
+                )}
+              </div>
+            </>
+          )}
           renderMainRow={(group) => (
             <>
               <AppTableCell>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <AppTypography
-                    variant="body2"
                     fontWeight={500}
                     style={responsiveTextStyles}
+                    variant="body2"
                   >
                     {group.name}
                   </AppTypography>
@@ -148,14 +175,14 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     <Chip
                       label="system"
                       size="small"
-                      variant="soft"
                       style={{ fontSize: "0.65rem", height: 20 }}
+                      variant="soft"
                     />
                   )}
                 </div>
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography variant="body2" style={responsiveTextStyles}>
+                <AppTypography style={responsiveTextStyles} variant="body2">
                   {group.gid}
                 </AppTypography>
               </AppTableCell>
@@ -169,12 +196,12 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           key={member}
                           label={member}
                           size="small"
-                          variant="soft"
                           style={{ fontSize: "0.7rem" }}
+                          variant="soft"
                         />
                       ))
                   ) : (
-                    <AppTypography variant="body2" color="text.secondary">
+                    <AppTypography color="text.secondary" variant="body2">
                       (no members)
                     </AppTypography>
                   )}
@@ -182,8 +209,8 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     <Chip
                       label={`+${group.members.length - 3}`}
                       size="small"
-                      variant="soft"
                       style={{ fontSize: "0.7rem" }}
+                      variant="soft"
                     />
                   )}
                 </div>
@@ -198,90 +225,63 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                 >
                   <AppTooltip title="Edit Members">
                     <AppIconButton
-                      size="small"
+                      disabled={group.name === "root"}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleEditMembers(group);
                       }}
-                      disabled={group.name === "root"}
+                      size="small"
                     >
-                      <Icon icon="mdi:pencil" width={20} height={20} />
+                      <Icon height={20} icon="mdi:pencil" width={20} />
                     </AppIconButton>
                   </AppTooltip>
                   <AppTooltip title="Delete Group">
                     <AppIconButton
-                      size="small"
+                      disabled={group.name === "root" || group.isSystem}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(group);
                       }}
-                      disabled={group.name === "root" || group.isSystem}
+                      size="small"
                     >
-                      <Icon icon="mdi:delete" width={20} height={20} />
+                      <Icon height={20} icon="mdi:delete" width={20} />
                     </AppIconButton>
                   </AppTooltip>
                 </div>
               </AppTableCell>
             </>
           )}
-          renderExpandedContent={(group) => (
-            <>
-              <AppTypography variant="subtitle2" gutterBottom>
-                <b>All Members ({group.members.length}):</b>
-              </AppTypography>
-              <div
-                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
-              >
-                {group.members.length > 0 ? (
-                  group.members.map((member) => (
-                    <Chip
-                      key={member}
-                      label={member}
-                      size="small"
-                      variant="soft"
-                      style={{ marginRight: 4, marginBottom: 4 }}
-                    />
-                  ))
-                ) : (
-                  <AppTypography variant="body2" color="text.secondary">
-                    (no members)
-                  </AppTypography>
-                )}
-              </div>
-            </>
-          )}
-          emptyMessage="No groups found."
         />
       )}
 
       <CreateGroupDialog
-        open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+        open={createDialogOpen}
       />
 
       {selectedGroup && (
         <EditGroupMembersDialog
-          open={editMembersDialogOpen}
+          group={selectedGroup}
           onClose={() => {
             setEditMembersDialogOpen(false);
             setSelectedGroup(null);
           }}
-          group={selectedGroup}
+          open={editMembersDialogOpen}
         />
       )}
 
       {groupToDelete && (
         <DeleteGroupDialog
-          open={deleteDialogOpen}
+          groupNames={[groupToDelete.name]}
           onClose={() => {
             setDeleteDialogOpen(false);
             setGroupToDelete(null);
           }}
-          groupNames={[groupToDelete.name]}
           onSuccess={() => {
             setDeleteDialogOpen(false);
             setGroupToDelete(null);
           }}
+          open={deleteDialogOpen}
         />
       )}
     </div>

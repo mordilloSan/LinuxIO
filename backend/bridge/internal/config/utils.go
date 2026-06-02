@@ -12,7 +12,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // Homedir determines the user's home folder
@@ -125,7 +125,7 @@ func writeConfigFrom(cfgPath string, cfg Settings) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomic(cfgPath, data, filePerm)
+	return utils.WriteFileAtomic(cfgPath, data, filePerm)
 }
 
 // filepathJoinClean joins then cleans the result (normalizes).

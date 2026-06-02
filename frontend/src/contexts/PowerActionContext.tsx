@@ -1,9 +1,9 @@
 import React, {
   createContext,
-  useState,
   useCallback,
-  useMemo,
   useEffect,
+  useMemo,
+  useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -13,8 +13,8 @@ import AppTypography from "@/components/ui/AppTypography";
 type PowerActionState = "rebooting" | "poweringOff" | null;
 
 export interface PowerActionContextType {
-  triggerReboot: () => void;
   triggerPowerOff: () => void;
+  triggerReboot: () => void;
 }
 
 export const PowerActionContext = createContext<
@@ -98,12 +98,12 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
               paddingRight: "12px",
             }}
           >
-            <AppTypography variant="h5" component="div" gutterBottom>
+            <AppTypography component="div" gutterBottom variant="h5">
               {powerAction === "rebooting"
                 ? "Rebooting..."
                 : "Shutting Down..."}
             </AppTypography>
-            <AppTypography variant="body1" style={{ opacity: 0.8 }}>
+            <AppTypography style={{ opacity: 0.8 }} variant="body1">
               {powerAction === "rebooting"
                 ? "Please wait while the system restarts. You will be redirected once the server is back online."
                 : "The system is shutting down. You may close this window."}

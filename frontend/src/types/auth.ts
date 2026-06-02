@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 
-import type { CapabilitiesResponse } from "@/api/linuxio-types";
+import type { CapabilitiesResponse, CapabilityState } from "@/api/capabilities";
 
 /**
  * Generic utility for creating discriminated union action types.
@@ -25,41 +25,25 @@ export interface AuthUser {
 /**
  * Reducer-managed state representing the authentication context.
  */
-export interface AuthState {
+export interface AuthState extends CapabilityState {
   isAuthenticated: boolean;
   isInitialized: boolean;
-  user: AuthUser | null;
   privileged: boolean;
-  dockerAvailable: boolean | null;
-  indexerAvailable: boolean | null;
-  lmSensorsAvailable: boolean | null;
-  smartmontoolsAvailable: boolean | null;
-  packageKitAvailable: boolean | null;
-  nfsClientAvailable: boolean | null;
-  nfsServerAvailable: boolean | null;
-  tunedAvailable: boolean | null;
+  user: AuthUser | null;
 }
 
 /**
  * The shape of the public API exposed by `useAuth()` or `AuthContext`.
  */
-export interface AuthContextType {
+export interface AuthContextType extends CapabilityState {
   isAuthenticated: boolean;
   isInitialized: boolean;
-  user: AuthUser | null;
-  privileged: boolean;
-  dockerAvailable: boolean | null;
-  indexerAvailable: boolean | null;
-  lmSensorsAvailable: boolean | null;
-  smartmontoolsAvailable: boolean | null;
-  packageKitAvailable: boolean | null;
-  nfsClientAvailable: boolean | null;
-  nfsServerAvailable: boolean | null;
-  tunedAvailable: boolean | null;
   method: "session";
+  privileged: boolean;
+  refreshCapabilities: () => Promise<CapabilitiesResponse>;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshCapabilities: () => Promise<CapabilitiesResponse>;
+  user: AuthUser | null;
 }
 
 /**
@@ -91,42 +75,17 @@ export const AUTH_ACTIONS = {
  * Used to infer strong types for the reducer's action object.
  */
 export interface AuthActionTypes {
+  [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.INITIALIZE_START]: undefined;
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;
     privileged: boolean;
-    dockerAvailable?: boolean | null;
-    indexerAvailable?: boolean | null;
-    lmSensorsAvailable?: boolean | null;
-    smartmontoolsAvailable?: boolean | null;
-    packageKitAvailable?: boolean | null;
-    nfsClientAvailable?: boolean | null;
-    nfsServerAvailable?: boolean | null;
-    tunedAvailable?: boolean | null;
-  };
-  [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
+  } & Partial<CapabilityState>;
+  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: Partial<CapabilityState>;
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
-    dockerAvailable?: boolean | null;
-    indexerAvailable?: boolean | null;
-    lmSensorsAvailable?: boolean | null;
-    smartmontoolsAvailable?: boolean | null;
-    packageKitAvailable?: boolean | null;
-    nfsClientAvailable?: boolean | null;
-    nfsServerAvailable?: boolean | null;
-    tunedAvailable?: boolean | null;
-  };
-  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: {
-    dockerAvailable?: boolean | null;
-    indexerAvailable?: boolean | null;
-    lmSensorsAvailable?: boolean | null;
-    smartmontoolsAvailable?: boolean | null;
-    packageKitAvailable?: boolean | null;
-    nfsClientAvailable?: boolean | null;
-    nfsServerAvailable?: boolean | null;
-    tunedAvailable?: boolean | null;
-  };
+  } & Partial<CapabilityState>;
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
 
@@ -139,18 +98,10 @@ export interface UpdateInfo {
   release_url?: string;
 }
 
-export interface LoginResponse {
-  success: boolean;
+export interface LoginResponse extends CapabilitiesResponse {
   privileged: boolean;
+  success: boolean;
   update?: UpdateInfo;
-  docker_available: boolean;
-  indexer_available: boolean;
-  lm_sensors_available: boolean;
-  smartmontools_available: boolean;
-  packagekit_available: boolean;
-  nfs_client_available: boolean;
-  nfs_server_available: boolean;
-  tuned_available: boolean;
 }
 
 export type LoginErrorCode =
@@ -164,8 +115,8 @@ export type LoginErrorCode =
   | "login_failed";
 
 export interface LoginErrorResponse {
-  error?: string;
   code?: LoginErrorCode;
+  error?: string;
 }
 /**
  * Props accepted by the `<AuthProvider>` component.

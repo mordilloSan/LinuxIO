@@ -18,35 +18,35 @@ import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
   items: T[];
-  selected: string | null;
-  onSelect: (name: string | null) => void;
   onDoubleClick: (name: string) => void;
+  onSelect: (name: string | null) => void;
+  selected: string | null;
 }
 
 interface UnitCardsViewRenderProps<T> {
-  items: T[];
   expanded: string | null;
+  items: T[];
   onExpand: (name: string | null) => void;
   renderDetailPanel: (item: T) => React.ReactNode;
 }
 
 interface UnitListTabProps<T extends UnitListItem> {
-  viewMode: TableCardViewMode;
+  compareItems: (a: T, b: T) => number;
+  data: T[] | undefined;
+  error: unknown;
+  errorMessage: string;
+  isError: boolean;
+  isPending: boolean;
+  matchesSearch: (item: T, search: string) => boolean;
+  renderCardsView: (props: UnitCardsViewRenderProps<T>) => React.ReactNode;
+  renderDetailPanel: (item: T, onClose: () => void) => React.ReactNode;
+  renderTableView: (props: UnitTableViewRenderProps<T>) => React.ReactNode;
+  searchPlaceholder: string;
   setViewMode: (
     next: TableCardViewMode | ((prev: TableCardViewMode) => TableCardViewMode),
   ) => void;
-  data: T[] | undefined;
-  isPending: boolean;
-  isError: boolean;
-  error: unknown;
-  searchPlaceholder: string;
-  errorMessage: string;
-  compareItems: (a: T, b: T) => number;
-  matchesSearch: (item: T, search: string) => boolean;
-  renderTableView: (props: UnitTableViewRenderProps<T>) => React.ReactNode;
-  renderCardsView: (props: UnitCardsViewRenderProps<T>) => React.ReactNode;
-  renderDetailPanel: (item: T, onClose: () => void) => React.ReactNode;
   urlParam: string;
+  viewMode: TableCardViewMode;
 }
 
 function UnitListTab<T extends UnitListItem>({
@@ -150,10 +150,10 @@ function UnitListTab<T extends UnitListItem>({
             }}
           >
             <AppSearchField
-              placeholder={searchPlaceholder}
-              value={search}
               onChange={(event) => setSearch(event.target.value)}
+              placeholder={searchPlaceholder}
               style={{ width: 320 }}
+              value={search}
             />
             <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
           </div>
@@ -167,7 +167,7 @@ function UnitListTab<T extends UnitListItem>({
                 renderDetailPanel(item, () => handleCardExpand(null)),
             })
           ) : (
-            <AppGrid container spacing={3} alignItems="flex-start">
+            <AppGrid alignItems="flex-start" container spacing={3}>
               <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
                 {renderTableView({
                   items: filtered,
