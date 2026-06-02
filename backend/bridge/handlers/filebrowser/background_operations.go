@@ -360,10 +360,6 @@ func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string) (targetRel, te
 	return targetRel, tempRel, tempPath, nil
 }
 
-func cleanupArchiveTarget(root *fsroot.FSRoot, targetRel, targetPath string) {
-	removeWithDebug(root, targetRel, targetPath)
-}
-
 func removeWithDebug(root *fsroot.FSRoot, targetRel, targetPath string) {
 	if err := root.Root.Remove(targetRel); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Debug("failed to remove failed archive", "path", targetPath, "error", err)
@@ -589,15 +585,15 @@ func runCompressJob(ctx context.Context, job *bridgejobs.Job, store *config.User
 	err = createArchive(req.Format, tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
 	if err == ipc.ErrAborted {
 		slog.Info("compress aborted, cleaning up", "path", targetPath)
-		cleanupArchiveTarget(root, tempRel, tempPath)
+		removeWithDebug(root, tempRel, tempPath)
 		return nil, abortErr(ctx)
 	}
 	if err != nil {
-		cleanupArchiveTarget(root, tempRel, tempPath)
+		removeWithDebug(root, tempRel, tempPath)
 		return nil, bridgejobs.NewError(fmt.Sprintf("compression failed: %v", err), 500)
 	}
 	if err := root.Root.Rename(tempRel, targetRel); err != nil {
-		cleanupArchiveTarget(root, tempRel, tempPath)
+		removeWithDebug(root, tempRel, tempPath)
 		return nil, bridgejobs.NewError(fmt.Sprintf("finalize archive: %v", err), 500)
 	}
 
