@@ -26,15 +26,16 @@ var ExtraTypes = []TypeSpec{
 }
 
 type CPUInfoResponse struct {
-	Cores        int                `json:"cores"`
-	Family       string             `json:"family"`
-	LoadAverage  CPULoadAverage     `json:"loadAverage"`
-	MHz          float64            `json:"mhz"`
-	Model        string             `json:"model"`
-	ModelName    string             `json:"modelName"`
-	PerCoreUsage []float64          `json:"perCoreUsage"`
-	Temperature  map[string]float64 `json:"temperature"`
-	VendorID     string             `json:"vendorId"`
+	Cores              int                `json:"cores"`
+	CurrentFrequencies []float64          `json:"currentFrequencies"`
+	Family             string             `json:"family"`
+	LoadAverage        *CPULoadAverage    `json:"loadAverage,omitempty"`
+	MHz                float64            `json:"mhz"`
+	Model              string             `json:"model"`
+	ModelName          string             `json:"modelName"`
+	PerCoreUsage       []float64          `json:"perCoreUsage"`
+	Temperature        map[string]float64 `json:"temperature"`
+	VendorID           string             `json:"vendorId"`
 }
 
 type CPULoadAverage struct {

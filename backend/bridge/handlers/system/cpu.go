@@ -10,28 +10,9 @@ import (
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/load"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
-
-// ---------- Types ----------
-
-type CPUInfoResponse struct {
-	VendorID           string             `json:"vendorId"`
-	ModelName          string             `json:"modelName"`
-	Family             string             `json:"family"`
-	Model              string             `json:"model"`
-	BaseMHz            float64            `json:"mhz"`
-	CurrentFrequencies []float64          `json:"currentFrequencies"` // MHz per logical core
-	Cores              int                `json:"cores"`              // logical cores
-	LoadAverage        *load.AvgStat      `json:"loadAverage,omitempty"`
-	PerCoreUsage       []float64          `json:"perCoreUsage"` // %
-	Temperature        map[string]float64 `json:"temperature"`  // e.g. {"core0": 42.5, "package": 55.1}
-}
-
-type LoadInfoResponse struct {
-	Load1  float64 `json:"load1"`
-	Load5  float64 `json:"load5"`
-	Load15 float64 `json:"load15"`
-}
 
 // ---------- Helpers ----------
 
@@ -106,7 +87,7 @@ func FetchPreferredCPUTemperature(ctx context.Context) (float64, bool) {
 
 // ---------- Fetchers ----------
 
-func FetchCPUInfo(ctx context.Context) (*CPUInfoResponse, error) {
+func FetchCPUInfo(ctx context.Context) (*apischema.CPUInfoResponse, error) {
 	info, err := cpu.InfoWithContext(ctx)
 	if err != nil || len(info) == 0 {
 		return nil, err
@@ -119,28 +100,35 @@ func FetchCPUInfo(ctx context.Context) (*CPUInfoResponse, error) {
 
 	cpuData := info[0]
 
-	return &CPUInfoResponse{
+	return &apischema.CPUInfoResponse{
 		VendorID:           cpuData.VendorID,
 		ModelName:          cpuData.ModelName,
 		Family:             cpuData.Family,
 		Model:              cpuData.Model,
-		BaseMHz:            cpuData.Mhz,
+		MHz:                cpuData.Mhz,
 		CurrentFrequencies: currentFreqs,
 		Cores:              counts,
-		LoadAverage:        loadAvg,
+		LoadAverage:        cpuLoadAverage(loadAvg),
 		PerCoreUsage:       percent,
 		Temperature:        safeTemperatureMap(ctx),
 	}, nil
 }
 
-func FetchLoadInfo(ctx context.Context) (*LoadInfoResponse, error) {
+func FetchLoadInfo(ctx context.Context) (*apischema.CPULoadAverage, error) {
 	loadAvg, err := load.AvgWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &LoadInfoResponse{
+	return cpuLoadAverage(loadAvg), nil
+}
+
+func cpuLoadAverage(loadAvg *load.AvgStat) *apischema.CPULoadAverage {
+	if loadAvg == nil {
+		return nil
+	}
+	return &apischema.CPULoadAverage{
 		Load1:  loadAvg.Load1,
 		Load5:  loadAvg.Load5,
 		Load15: loadAvg.Load15,
-	}, nil
+	}
 }

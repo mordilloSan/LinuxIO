@@ -192,8 +192,9 @@ export interface BootIDRequest {
 
 export interface CPUInfoResponse {
   cores: number;
+  currentFrequencies: number[];
   family: string;
-  loadAverage: CPULoadAverage;
+  loadAverage?: CPULoadAverage;
   mhz: number;
   model: string;
   modelName: string;
