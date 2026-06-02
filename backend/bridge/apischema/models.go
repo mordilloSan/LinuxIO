@@ -1,5 +1,7 @@
 package apischema
 
+import "github.com/mordilloSan/LinuxIO/backend/common/session"
+
 type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
@@ -1036,26 +1038,8 @@ type OfflineUpdatesResponse struct {
 }
 
 type CapabilitiesResponse struct {
-	DockerAvailable        bool    `json:"docker_available"`
-	DockerError            *string `json:"docker_error,omitempty"`
-	IndexerAvailable       bool    `json:"indexer_available"`
-	IndexerError           *string `json:"indexer_error,omitempty"`
-	LMSensorsAvailable     bool    `json:"lm_sensors_available"`
-	LMSensorsError         *string `json:"lm_sensors_error,omitempty"`
-	SmartmontoolsAvailable bool    `json:"smartmontools_available"`
-	SmartmontoolsError     *string `json:"smartmontools_error,omitempty"`
-	PackageKitAvailable    bool    `json:"packagekit_available"`
-	PackageKitError        *string `json:"packagekit_error,omitempty"`
-	NFSClientAvailable     bool    `json:"nfs_client_available"`
-	NFSClientError         *string `json:"nfs_client_error,omitempty"`
-	NFSServerAvailable     bool    `json:"nfs_server_available"`
-	NFSServerError         *string `json:"nfs_server_error,omitempty"`
-	TunedAvailable         bool    `json:"tuned_available"`
-	TunedError             *string `json:"tuned_error,omitempty"`
-	AvahiAvailable         bool    `json:"avahi_available"`
-	AvahiError             *string `json:"avahi_error,omitempty"`
-	WireGuardAvailable     bool    `json:"wireguard_available"`
-	WireGuardError         *string `json:"wireguard_error,omitempty"`
+	CapabilitiesAvailable session.CapabilitiesAvailable
+	CapabilitiesError     session.CapabilitiesError
 }
 
 type AppConfig struct {

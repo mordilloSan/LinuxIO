@@ -32,18 +32,10 @@ type loginErrorResponse struct {
 }
 
 type loginSuccessResponse struct {
-	Success                bool        `json:"success"`
-	Privileged             bool        `json:"privileged"`
-	DockerAvailable        bool        `json:"docker_available"`
-	IndexerAvailable       bool        `json:"indexer_available"`
-	LMSensorsAvailable     bool        `json:"lm_sensors_available"`
-	SmartmontoolsAvailable bool        `json:"smartmontools_available"`
-	PackageKitAvailable    bool        `json:"packagekit_available"`
-	NFSClientAvailable     bool        `json:"nfs_client_available"`
-	NFSServerAvailable     bool        `json:"nfs_server_available"`
-	TunedAvailable         bool        `json:"tuned_available"`
-	AvahiAvailable         bool        `json:"avahi_available"`
-	Update                 *UpdateInfo `json:"update,omitempty"`
+	session.CapabilitiesAvailable
+	Success    bool        `json:"success"`
+	Privileged bool        `json:"privileged"`
+	Update     *UpdateInfo `json:"update,omitempty"`
 }
 
 func writeLoginError(w http.ResponseWriter, status int, code, message string) {
@@ -117,17 +109,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		"remote_host", remoteHost)
 
 	response := loginSuccessResponse{
-		Success:                true,
-		Privileged:             sess.Privileged,
-		DockerAvailable:        sess.Capabilities.DockerAvailable,
-		IndexerAvailable:       sess.Capabilities.IndexerAvailable,
-		LMSensorsAvailable:     sess.Capabilities.LMSensorsAvailable,
-		SmartmontoolsAvailable: sess.Capabilities.SmartmontoolsAvailable,
-		PackageKitAvailable:    sess.Capabilities.PackageKitAvailable,
-		NFSClientAvailable:     sess.Capabilities.NFSClientAvailable,
-		NFSServerAvailable:     sess.Capabilities.NFSServerAvailable,
-		TunedAvailable:         sess.Capabilities.TunedAvailable,
-		AvahiAvailable:         sess.Capabilities.AvahiAvailable,
+		Success:               true,
+		Privileged:            sess.Privileged,
+		CapabilitiesAvailable: sess.Capabilities,
 	}
 
 	// Only check for updates if user is privileged

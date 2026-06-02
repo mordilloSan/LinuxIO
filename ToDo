@@ -14,6 +14,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 7 - Higher-level mutation API: implement `useJobAction` on CommandEndpoint (typed args/result, `invalidates`/`success`/`error` config, mode guard for job-only routes), then migrate existing `.useMutation()` job-route call sites (~80) to `.useJobAction()`.
 
+8 - For go api generator we have 2 main files. Lets change this for better DX
+
 Bridge Handler Pattern - See docs DONE
 Shared API betewen go/react via generator. DONE
 Remove binary protocol. Lets just use json for all... DONE

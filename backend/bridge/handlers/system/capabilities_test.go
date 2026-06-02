@@ -5,14 +5,17 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // TestCapabilityRegistryCoversWireFields ensures every *_available field on
-// capabilitiesResponse has a matching capabilityRegistry entry (and vice
-// versa). Without this check, adding a wire field but forgetting the registry
-// entry would silently leave the field at its zero value, and adding a
-// registry entry without the matching wire field would panic at runtime via
-// setCapabilityField.
+// session.CapabilitiesAvailable (the single source the wire/session/login
+// structs all embed) has a matching capabilityRegistry entry (and vice versa).
+// Without this check, adding a wire field but forgetting the registry entry
+// would silently leave the field at its zero value, and adding a registry entry
+// without the matching wire field would panic at runtime via setCapabilityField.
 func TestCapabilityRegistryCoversWireFields(t *testing.T) {
 	wireNames := wireAvailableFields(t)
 
@@ -43,12 +46,17 @@ func TestCapabilityRegistryCoversWireFields(t *testing.T) {
 }
 
 // wireAvailableFields returns the set of wire prefixes derived from JSON tags
-// shaped `<prefix>_available` on capabilitiesResponse.
+// shaped `<prefix>_available` on session.CapabilitiesAvailable.
 func wireAvailableFields(t *testing.T) map[string]bool {
 	t.Helper()
-	v := reflect.TypeFor[capabilitiesResponse]()
+	return availableTagsOf(reflect.TypeFor[session.CapabilitiesAvailable]())
+}
+
+// availableTagsOf returns the set of wire prefixes derived from JSON tags shaped
+// `<prefix>_available` on the given struct type.
+func availableTagsOf(typ reflect.Type) map[string]bool {
 	names := make(map[string]bool)
-	for field := range v.Fields() {
+	for field := range typ.Fields() {
 		tag := field.Tag.Get("json")
 		tag, _, _ = strings.Cut(tag, ",")
 		prefix, ok := strings.CutSuffix(tag, "_available")
@@ -67,7 +75,7 @@ func wireAvailableFields(t *testing.T) map[string]bool {
 func TestSetCapabilityFieldRoundTrips(t *testing.T) {
 	for _, spec := range capabilityRegistry {
 		t.Run(spec.Name, func(t *testing.T) {
-			var out capabilitiesResponse
+			var out apischema.CapabilitiesResponse
 			marker := "marker-for-" + spec.Name
 			setCapabilityField(&out, spec.Name, true, marker)
 

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
@@ -14,29 +15,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
-
-type capabilitiesResponse struct {
-	DockerAvailable        bool   `json:"docker_available"`
-	IndexerAvailable       bool   `json:"indexer_available"`
-	LMSensorsAvailable     bool   `json:"lm_sensors_available"`
-	SmartmontoolsAvailable bool   `json:"smartmontools_available"`
-	PackageKitAvailable    bool   `json:"packagekit_available"`
-	NFSClientAvailable     bool   `json:"nfs_client_available"`
-	NFSServerAvailable     bool   `json:"nfs_server_available"`
-	TunedAvailable         bool   `json:"tuned_available"`
-	AvahiAvailable         bool   `json:"avahi_available"`
-	WireGuardAvailable     bool   `json:"wireguard_available"`
-	DockerError            string `json:"docker_error,omitempty"`
-	IndexerError           string `json:"indexer_error,omitempty"`
-	LMSensorsError         string `json:"lm_sensors_error,omitempty"`
-	SmartmontoolsError     string `json:"smartmontools_error,omitempty"`
-	PackageKitError        string `json:"packagekit_error,omitempty"`
-	NFSClientError         string `json:"nfs_client_error,omitempty"`
-	NFSServerError         string `json:"nfs_server_error,omitempty"`
-	TunedError             string `json:"tuned_error,omitempty"`
-	AvahiError             string `json:"avahi_error,omitempty"`
-	WireGuardError         string `json:"wireguard_error,omitempty"`
-}
 
 // CapabilitySpec describes a single capability: how to detect it, how to
 // install it from the UI (if installable), and how to label it in logs.
@@ -50,17 +28,10 @@ type CapabilitySpec struct {
 // InstallSpec describes what `system.install_capability` should do for one
 // capability. Either or both of the package/service halves may be set.
 type InstallSpec struct {
-	// PackageDebian / PackageRHEL: name of the package to install on each
-	// distro family (looked up via PackageKit Resolve). Empty = no package
-	// step.
 	PackageDebian string
 	PackageRHEL   string
-	// ServiceDebian / ServiceRHEL: systemd unit to enable+start after install.
-	// Empty = no service step.
 	ServiceDebian string
 	ServiceRHEL   string
-	// EnableService: when true, also `systemctl enable` the unit, not just
-	// start it.
 	EnableService bool
 }
 
@@ -210,40 +181,46 @@ func logUnavailableCapability(name, message string) {
 }
 
 // setCapabilityField writes (ok, errMsg) into the matching fields of out for
-// the given wire name. A bare switch keeps the wire struct strongly typed; the
-// anti-drift test guarantees every wire field has a registry entry, so no
-// silent misses are possible.
-func setCapabilityField(out *capabilitiesResponse, name string, ok bool, errMsg string) {
+// the given wire name. The available/error fields are promoted from the
+// embedded session.Capabilities* structs (the single source of truth); the
+// bare switch keeps them strongly typed, and the anti-drift test guarantees
+// every wire name has a matching field, so no silent misses are possible.
+func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok bool, errMsg string) {
+	var errPtr *string
+	if errMsg != "" {
+		msg := errMsg
+		errPtr = &msg
+	}
 	switch name {
 	case "docker":
-		out.DockerAvailable, out.DockerError = ok, errMsg
+		out.CapabilitiesAvailable.DockerAvailable, out.CapabilitiesError.DockerError = ok, errPtr
 	case "indexer":
-		out.IndexerAvailable, out.IndexerError = ok, errMsg
+		out.CapabilitiesAvailable.IndexerAvailable, out.CapabilitiesError.IndexerError = ok, errPtr
 	case "lm_sensors":
-		out.LMSensorsAvailable, out.LMSensorsError = ok, errMsg
+		out.CapabilitiesAvailable.LMSensorsAvailable, out.CapabilitiesError.LMSensorsError = ok, errPtr
 	case "smartmontools":
-		out.SmartmontoolsAvailable, out.SmartmontoolsError = ok, errMsg
+		out.CapabilitiesAvailable.SmartmontoolsAvailable, out.CapabilitiesError.SmartmontoolsError = ok, errPtr
 	case "packagekit":
-		out.PackageKitAvailable, out.PackageKitError = ok, errMsg
+		out.CapabilitiesAvailable.PackageKitAvailable, out.CapabilitiesError.PackageKitError = ok, errPtr
 	case "nfs_client":
-		out.NFSClientAvailable, out.NFSClientError = ok, errMsg
+		out.CapabilitiesAvailable.NFSClientAvailable, out.CapabilitiesError.NFSClientError = ok, errPtr
 	case "nfs_server":
-		out.NFSServerAvailable, out.NFSServerError = ok, errMsg
+		out.CapabilitiesAvailable.NFSServerAvailable, out.CapabilitiesError.NFSServerError = ok, errPtr
 	case "tuned":
-		out.TunedAvailable, out.TunedError = ok, errMsg
+		out.CapabilitiesAvailable.TunedAvailable, out.CapabilitiesError.TunedError = ok, errPtr
 	case "avahi":
-		out.AvahiAvailable, out.AvahiError = ok, errMsg
+		out.CapabilitiesAvailable.AvahiAvailable, out.CapabilitiesError.AvahiError = ok, errPtr
 	case "wireguard":
-		out.WireGuardAvailable, out.WireGuardError = ok, errMsg
+		out.CapabilitiesAvailable.WireGuardAvailable, out.CapabilitiesError.WireGuardError = ok, errPtr
 	default:
 		panic("system: unknown capability wire name " + name)
 	}
 }
 
-func buildCapabilitiesResponse(ctx context.Context) capabilitiesResponse {
+func buildCapabilitiesResponse(ctx context.Context) apischema.CapabilitiesResponse {
 	slog.Info("Checking system capabilities.")
 
-	var out capabilitiesResponse
+	var out apischema.CapabilitiesResponse
 	summary := make([]string, 0, len(capabilityRegistry))
 
 	for _, spec := range capabilityRegistry {

@@ -51,7 +51,7 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 		t.Fatalf("SetPrivileged did not persist")
 	}
 
-	caps := Capabilities{
+	caps := CapabilitiesAvailable{
 		DockerAvailable:        true,
 		IndexerAvailable:       true,
 		LMSensorsAvailable:     false,

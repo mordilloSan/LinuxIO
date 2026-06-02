@@ -223,24 +223,24 @@ export interface CaddyStatusResponse {
 
 export interface CapabilitiesResponse {
   docker_available: boolean;
-  docker_error?: string;
   indexer_available: boolean;
-  indexer_error?: string;
   lm_sensors_available: boolean;
-  lm_sensors_error?: string;
   smartmontools_available: boolean;
-  smartmontools_error?: string;
   packagekit_available: boolean;
-  packagekit_error?: string;
   nfs_client_available: boolean;
-  nfs_client_error?: string;
   nfs_server_available: boolean;
-  nfs_server_error?: string;
   tuned_available: boolean;
-  tuned_error?: string;
   avahi_available: boolean;
-  avahi_error?: string;
   wireguard_available: boolean;
+  docker_error?: string;
+  indexer_error?: string;
+  lm_sensors_error?: string;
+  smartmontools_error?: string;
+  packagekit_error?: string;
+  nfs_client_error?: string;
+  nfs_server_error?: string;
+  tuned_error?: string;
+  avahi_error?: string;
   wireguard_error?: string;
 }
 

@@ -70,9 +70,9 @@ func writeCapabilitiesRequest(stream io.Writer) error {
 	})
 }
 
-func decodeCapabilitiesResult(frame *relay.StreamFrame) (session.Capabilities, error) {
+func decodeCapabilitiesResult(frame *relay.StreamFrame) (session.CapabilitiesAvailable, error) {
 	var (
-		caps   session.Capabilities
+		caps   session.CapabilitiesAvailable
 		result relay.ResultFrame
 	)
 
@@ -95,11 +95,11 @@ func decodeCapabilitiesResult(frame *relay.StreamFrame) (session.Capabilities, e
 	return caps, nil
 }
 
-func readCapabilitiesResponse(stream io.Reader) (session.Capabilities, error) {
+func readCapabilitiesResponse(stream io.Reader) (session.CapabilitiesAvailable, error) {
 	for {
 		frame, err := relay.ReadRelayFrame(stream)
 		if err != nil {
-			return session.Capabilities{}, fmt.Errorf("read capabilities response: %w", err)
+			return session.CapabilitiesAvailable{}, fmt.Errorf("read capabilities response: %w", err)
 		}
 
 		switch frame.Opcode {
@@ -108,29 +108,29 @@ func readCapabilitiesResponse(stream io.Reader) (session.Capabilities, error) {
 		case relay.OpStreamResult:
 			return decodeCapabilitiesResult(frame)
 		case relay.OpStreamClose:
-			return session.Capabilities{}, fmt.Errorf("capabilities stream closed before result")
+			return session.CapabilitiesAvailable{}, fmt.Errorf("capabilities stream closed before result")
 		default:
-			return session.Capabilities{}, fmt.Errorf("unexpected capabilities opcode: 0x%02x", frame.Opcode)
+			return session.CapabilitiesAvailable{}, fmt.Errorf("unexpected capabilities opcode: 0x%02x", frame.Opcode)
 		}
 	}
 }
 
-func fetchSessionCapabilities(ctx context.Context, sessionID string) (session.Capabilities, error) {
+func fetchSessionCapabilities(ctx context.Context, sessionID string) (session.CapabilitiesAvailable, error) {
 	yamuxSession, err := GetYamuxSession(sessionID)
 	if err != nil {
-		return session.Capabilities{}, fmt.Errorf("get yamux session: %w", err)
+		return session.CapabilitiesAvailable{}, fmt.Errorf("get yamux session: %w", err)
 	}
 
 	openCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	stream, err := yamuxSession.Open(openCtx)
 	if err != nil {
-		return session.Capabilities{}, fmt.Errorf("open capabilities stream: %w", err)
+		return session.CapabilitiesAvailable{}, fmt.Errorf("open capabilities stream: %w", err)
 	}
 	defer stream.Close()
 
 	if err := writeCapabilitiesRequest(stream); err != nil {
-		return session.Capabilities{}, fmt.Errorf("write capabilities request: %w", err)
+		return session.CapabilitiesAvailable{}, fmt.Errorf("write capabilities request: %w", err)
 	}
 
 	return readCapabilitiesResponse(stream)
