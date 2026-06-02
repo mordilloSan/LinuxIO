@@ -543,6 +543,7 @@ type Socket struct {
 
 type UpgradeItem struct {
 	Package string `json:"package"`
+	Version string `json:"version,omitempty"`
 }
 
 type UpdateHistoryRow struct {

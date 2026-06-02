@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/autoupdate"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
@@ -532,14 +533,9 @@ func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
 
 // --- Update History (log parsing) ---
 
-type UpgradeItem struct {
-	Package string `json:"package"`
-	Version string `json:"version,omitempty"`
-}
-
 type UpdateHistoryEntry struct {
-	Date     string        `json:"date"`
-	Upgrades []UpgradeItem `json:"upgrades"`
+	Date     string                  `json:"date"`
+	Upgrades []apischema.UpgradeItem `json:"upgrades"`
 }
 
 type dpkgLogPatterns struct {
@@ -568,7 +564,7 @@ func GetUpdateHistory(ctx context.Context) ([]UpdateHistoryEntry, error) {
 
 // parseDpkgLogs reads dpkg.log plus all rotated variants (.1, .2.gz, …).
 func parseDpkgLogs(ctx context.Context) []UpdateHistoryEntry {
-	historyMap := make(map[string][]UpgradeItem)
+	historyMap := make(map[string][]apischema.UpgradeItem)
 	pendingPackages := make(map[string]string)
 	matches, _ := filepath.Glob("/var/log/dpkg.log*")
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
@@ -591,7 +587,7 @@ func parseDpkgLogFile(
 	ctx context.Context,
 	logPath string,
 	patterns dpkgLogPatterns,
-	historyMap map[string][]UpgradeItem,
+	historyMap map[string][]apischema.UpgradeItem,
 	pendingPackages map[string]string,
 ) {
 	reader, closer, err := openLogFile(logPath)
@@ -613,7 +609,7 @@ func parseDpkgLogFile(
 	}
 }
 
-func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
+func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]apischema.UpgradeItem, pendingPackages map[string]string) {
 	if m := patterns.install.FindStringSubmatch(line); len(m) == 5 {
 		recordDpkgInstall(m[1], m[3], m[4], historyMap, pendingPackages)
 		return
@@ -623,20 +619,20 @@ func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[stri
 	}
 }
 
-func recordDpkgInstall(date, pkg, version string, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
+func recordDpkgInstall(date, pkg, version string, historyMap map[string][]apischema.UpgradeItem, pendingPackages map[string]string) {
 	if version == "<none>" {
 		pendingPackages[pkg] = date
 		return
 	}
-	historyMap[date] = append(historyMap[date], UpgradeItem{Package: pkg, Version: version})
+	historyMap[date] = append(historyMap[date], apischema.UpgradeItem{Package: pkg, Version: version})
 }
 
-func recordDpkgConfigure(pkg, version string, historyMap map[string][]UpgradeItem, pendingPackages map[string]string) {
+func recordDpkgConfigure(pkg, version string, historyMap map[string][]apischema.UpgradeItem, pendingPackages map[string]string) {
 	origDate, exists := pendingPackages[pkg]
 	if !exists {
 		return
 	}
-	historyMap[origDate] = append(historyMap[origDate], UpgradeItem{Package: pkg, Version: version})
+	historyMap[origDate] = append(historyMap[origDate], apischema.UpgradeItem{Package: pkg, Version: version})
 	delete(pendingPackages, pkg)
 }
 
@@ -673,7 +669,7 @@ func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
 	scanner := bufio.NewScanner(file)
 	upgradeRe := regexp.MustCompile(`Upgrade:\s+([^\s-]+)-([^-]+-[^\s]+)`)
 
-	historyMap := make(map[string][]UpgradeItem)
+	historyMap := make(map[string][]apischema.UpgradeItem)
 
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
@@ -687,7 +683,7 @@ func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
 		date := parts[0]
 
 		if matches := upgradeRe.FindStringSubmatch(line); len(matches) > 2 {
-			historyMap[date] = append(historyMap[date], UpgradeItem{
+			historyMap[date] = append(historyMap[date], apischema.UpgradeItem{
 				Package: matches[1],
 				Version: matches[2],
 			})
@@ -700,7 +696,7 @@ func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
 	return mapToSortedHistory(historyMap)
 }
 
-func mapToSortedHistory(historyMap map[string][]UpgradeItem) []UpdateHistoryEntry {
+func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []UpdateHistoryEntry {
 	var dates []string
 	for date := range historyMap {
 		dates = append(dates, date)

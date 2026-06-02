@@ -1547,6 +1547,7 @@ export interface UpdatesSetAutoUpdatesRequest {
 
 export interface UpgradeItem {
   package: string;
+  version?: string;
 }
 
 export interface UsernameRequest {
