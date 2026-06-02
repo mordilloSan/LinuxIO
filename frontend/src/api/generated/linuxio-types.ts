@@ -190,23 +190,23 @@ export interface BootIDRequest {
   bootId: string;
 }
 
+export interface AvgStat {
+  load1: number;
+  load5: number;
+  load15: number;
+}
+
 export interface CPUInfoResponse {
   cores: number;
   currentFrequencies: number[];
   family: string;
-  loadAverage?: CPULoadAverage;
+  loadAverage?: AvgStat;
   mhz: number;
   model: string;
   modelName: string;
   perCoreUsage: number[];
   temperature: Record<string, number>;
   vendorId: string;
-}
-
-export interface CPULoadAverage {
-  load1: number;
-  load5: number;
-  load15: number;
 }
 
 export interface CaddyRoute {

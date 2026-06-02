@@ -1,6 +1,9 @@
 package apischema
 
-import "github.com/mordilloSan/LinuxIO/backend/common/session"
+import (
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/shirou/gopsutil/v4/load"
+)
 
 type AutoUpdateFrequency string
 type AutoUpdateScope string
@@ -29,19 +32,13 @@ type CPUInfoResponse struct {
 	Cores              int                `json:"cores"`
 	CurrentFrequencies []float64          `json:"currentFrequencies"`
 	Family             string             `json:"family"`
-	LoadAverage        *CPULoadAverage    `json:"loadAverage,omitempty"`
+	LoadAverage        *load.AvgStat      `json:"loadAverage,omitempty"`
 	MHz                float64            `json:"mhz"`
 	Model              string             `json:"model"`
 	ModelName          string             `json:"modelName"`
 	PerCoreUsage       []float64          `json:"perCoreUsage"`
 	Temperature        map[string]float64 `json:"temperature"`
 	VendorID           string             `json:"vendorId"`
-}
-
-type CPULoadAverage struct {
-	Load1  float64 `json:"load1"`
-	Load5  float64 `json:"load5"`
-	Load15 float64 `json:"load15"`
 }
 
 type MemoryInfoResponse struct {

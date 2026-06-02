@@ -108,27 +108,8 @@ func FetchCPUInfo(ctx context.Context) (*apischema.CPUInfoResponse, error) {
 		MHz:                cpuData.Mhz,
 		CurrentFrequencies: currentFreqs,
 		Cores:              counts,
-		LoadAverage:        cpuLoadAverage(loadAvg),
+		LoadAverage:        loadAvg,
 		PerCoreUsage:       percent,
 		Temperature:        safeTemperatureMap(ctx),
 	}, nil
-}
-
-func FetchLoadInfo(ctx context.Context) (*apischema.CPULoadAverage, error) {
-	loadAvg, err := load.AvgWithContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return cpuLoadAverage(loadAvg), nil
-}
-
-func cpuLoadAverage(loadAvg *load.AvgStat) *apischema.CPULoadAverage {
-	if loadAvg == nil {
-		return nil
-	}
-	return &apischema.CPULoadAverage{
-		Load1:  loadAvg.Load1,
-		Load5:  loadAvg.Load5,
-		Load15: loadAvg.Load15,
-	}
 }
