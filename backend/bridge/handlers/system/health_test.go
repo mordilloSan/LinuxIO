@@ -96,7 +96,7 @@ func TestApplyFailedLoginAlertDismissal(t *testing.T) {
 		},
 	}
 
-	applyFailedLoginAlertDismissal(summary, &config.Dismissals{FailedLoginAlertID: alertID})
+	applyFailedLoginAlertDismissal(summary, &config.PersistedDismissals{FailedLoginAlertID: alertID})
 
 	require.Nil(t, summary.FailedLoginAlert)
 }
@@ -113,7 +113,7 @@ func TestApplyFailedLoginAlertDismissalKeepsNewAlert(t *testing.T) {
 		},
 	}
 
-	applyFailedLoginAlertDismissal(summary, &config.Dismissals{FailedLoginAlertID: failedLoginAlertID("user", "miguel", "login_def")})
+	applyFailedLoginAlertDismissal(summary, &config.PersistedDismissals{FailedLoginAlertID: failedLoginAlertID("user", "miguel", "login_def")})
 
 	require.NotNil(t, summary.FailedLoginAlert)
 	require.Equal(t, alertID, summary.FailedLoginAlert.ID)

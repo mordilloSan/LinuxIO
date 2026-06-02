@@ -16,7 +16,7 @@ func cloneSettings(in *Settings) *Settings {
 	return &out
 }
 
-func cloneAppSettings(in AppSettings) AppSettings {
+func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
 	out := in
 	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
 	out.DashboardOrder = cloneStringSlice(in.DashboardOrder)

@@ -533,17 +533,12 @@ func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
 
 // --- Update History (log parsing) ---
 
-type UpdateHistoryEntry struct {
-	Date     string                  `json:"date"`
-	Upgrades []apischema.UpgradeItem `json:"upgrades"`
-}
-
 type dpkgLogPatterns struct {
 	install   *regexp.Regexp
 	configure *regexp.Regexp
 }
 
-func GetUpdateHistory(ctx context.Context) ([]UpdateHistoryEntry, error) {
+func GetUpdateHistory(ctx context.Context) ([]apischema.UpdateHistoryRow, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -559,11 +554,11 @@ func GetUpdateHistory(ctx context.Context) ([]UpdateHistoryEntry, error) {
 		return parseDnfHistory(ctx, "/var/log/dnf.log"), nil
 	}
 	slog.Warn("No known package manager log found")
-	return []UpdateHistoryEntry{}, nil
+	return []apischema.UpdateHistoryRow{}, nil
 }
 
 // parseDpkgLogs reads dpkg.log plus all rotated variants (.1, .2.gz, …).
-func parseDpkgLogs(ctx context.Context) []UpdateHistoryEntry {
+func parseDpkgLogs(ctx context.Context) []apischema.UpdateHistoryRow {
 	historyMap := make(map[string][]apischema.UpgradeItem)
 	pendingPackages := make(map[string]string)
 	matches, _ := filepath.Glob("/var/log/dpkg.log*")
@@ -655,7 +650,7 @@ func openLogFile(path string) (io.Reader, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
+func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHistoryRow {
 	if err := ctx.Err(); err != nil {
 		return nil
 	}
@@ -696,16 +691,16 @@ func parseDnfHistory(ctx context.Context, logPath string) []UpdateHistoryEntry {
 	return mapToSortedHistory(historyMap)
 }
 
-func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []UpdateHistoryEntry {
+func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []apischema.UpdateHistoryRow {
 	var dates []string
 	for date := range historyMap {
 		dates = append(dates, date)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(dates)))
 
-	var history []UpdateHistoryEntry
+	var history []apischema.UpdateHistoryRow
 	for _, date := range dates {
-		history = append(history, UpdateHistoryEntry{
+		history = append(history, apischema.UpdateHistoryRow{
 			Date:     date,
 			Upgrades: historyMap[date],
 		})

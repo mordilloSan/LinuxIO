@@ -92,7 +92,7 @@ type countProgressLimiter struct {
 	lastAt      time.Time
 }
 
-func newProgressLimiter(jobSettings config.JobSettings, total int64) *progressLimiter {
+func newProgressLimiter(jobSettings config.PersistedJobSettings, total int64) *progressLimiter {
 	jobSettings = config.EffectiveJobSettings(jobSettings)
 	minBytes := int64(jobSettings.ProgressMinBytesMB) * 1024 * 1024
 	if minBytes <= 0 {
@@ -110,7 +110,7 @@ func newProgressLimiter(jobSettings config.JobSettings, total int64) *progressLi
 	}
 }
 
-func newCountProgressLimiter(jobSettings config.JobSettings) *countProgressLimiter {
+func newCountProgressLimiter(jobSettings config.PersistedJobSettings) *countProgressLimiter {
 	jobSettings = config.EffectiveJobSettings(jobSettings)
 	minInterval := time.Duration(jobSettings.ProgressMinIntervalMs) * time.Millisecond
 	if minInterval <= 0 {
@@ -173,7 +173,7 @@ func (l *countProgressLimiter) Set(processed, total int64) (int64, int, bool) {
 	return l.processed, pct, true
 }
 
-func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore) config.JobSettings {
+func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore) config.PersistedJobSettings {
 	if job == nil || strings.TrimSpace(job.Owner().Username) == "" {
 		return config.DefaultJobSettings()
 	}
@@ -184,7 +184,7 @@ func jobSettingsForJob(ctx context.Context, job *bridgejobs.Job, store *config.U
 	return config.EffectiveJobSettings(cfg.Jobs)
 }
 
-func archiveCompressionWorkers(jobSettings config.JobSettings) int {
+func archiveCompressionWorkers(jobSettings config.PersistedJobSettings) int {
 	workers := jobSettings.ArchiveCompressionWorkers
 	if workers <= 0 {
 		return runtime.GOMAXPROCS(0)
@@ -192,7 +192,7 @@ func archiveCompressionWorkers(jobSettings config.JobSettings) int {
 	return workers
 }
 
-func archiveExtractWorkers(jobSettings config.JobSettings) int {
+func archiveExtractWorkers(jobSettings config.PersistedJobSettings) int {
 	workers := jobSettings.ArchiveExtractWorkers
 	if workers <= 0 {
 		return runtime.GOMAXPROCS(0)
@@ -451,7 +451,7 @@ func parseChmodRequest(req apischema.FileChmodRequest) (path, modeStr, owner, gr
 	return req.Path, req.Mode, req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
 }
 
-func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.JobSettings, phase string) func(processed, total int64) {
+func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.PersistedJobSettings, phase string) func(processed, total int64) {
 	limiter := newCountProgressLimiter(jobSettings)
 	return func(processed, total int64) {
 		processed, pct, ok := limiter.Set(processed, total)

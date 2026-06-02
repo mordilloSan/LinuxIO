@@ -40,7 +40,7 @@ func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, r
 
 	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
 		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.Dismissals{}
+			cfg.Dismissals = &config.PersistedDismissals{}
 		}
 		cfg.Dismissals.UncleanShutdownBootID = bootID
 		return nil
@@ -60,7 +60,7 @@ func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, 
 
 	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
 		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.Dismissals{}
+			cfg.Dismissals = &config.PersistedDismissals{}
 		}
 		cfg.Dismissals.FailedLoginAlertID = alertID
 		return nil
@@ -95,7 +95,7 @@ func hasDismissibleHealthSignal(summary *apischema.SystemHealthSummary) bool {
 		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
 }
 
-func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismissals *config.Dismissals) {
+func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismissals *config.PersistedDismissals) {
 	bootID := utils.StringValue(summary.UncleanShutdownBootID)
 	if !summary.UncleanShutdown || bootID == "" {
 		return
@@ -106,7 +106,7 @@ func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismi
 	}
 }
 
-func applyFailedLoginAlertDismissal(summary *apischema.SystemHealthSummary, dismissals *config.Dismissals) {
+func applyFailedLoginAlertDismissal(summary *apischema.SystemHealthSummary, dismissals *config.PersistedDismissals) {
 	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
 		return
 	}

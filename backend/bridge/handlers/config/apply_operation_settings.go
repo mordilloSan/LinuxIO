@@ -2,7 +2,7 @@ package config
 
 import bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 
-func applyJobSettingsUpdate(jobs *bridgeconfig.JobSettings, payload *configJobSettingsPayload) error {
+func applyJobSettingsUpdate(jobs *bridgeconfig.PersistedJobSettings, payload *configJobSettingsPayload) error {
 	if err := applyOptionalNonNegativeInt(&jobs.ProgressMinIntervalMs, payload.ProgressMinIntervalMs, "jobs.progressMinIntervalMs"); err != nil {
 		return err
 	}
