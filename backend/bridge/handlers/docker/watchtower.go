@@ -19,14 +19,14 @@ const (
 	watchtowerComposePath = "/var/lib/linuxIO/watchtower/docker-compose.yml"
 )
 
-// SyncWatchtowerStackWithStore regenerates the global Watchtower compose file
+// SyncWatchtowerStack regenerates the global Watchtower compose file
 // from the current user's AutoUpdateStacks config and starts/restarts (or stops)
 // Watchtower accordingly. Called after every auto-update toggle and on login.
 // Errors are logged but not returned — the toggle saves the config regardless.
 func SyncWatchtowerStackDetached(username string, store *config.UserStore) {
 	ctx, cancel := detachedWatchtowerContext()
 	defer cancel()
-	SyncWatchtowerStackWithStore(ctx, username, store)
+	SyncWatchtowerStack(ctx, username, store)
 }
 
 // detachedWatchtowerContext bounds intentionally detached Watchtower syncs
@@ -35,7 +35,7 @@ func detachedWatchtowerContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 2*time.Minute)
 }
 
-func SyncWatchtowerStackWithStore(ctx context.Context, username string, store *config.UserStore) {
+func SyncWatchtowerStack(ctx context.Context, username string, store *config.UserStore) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		slog.Warn("failed to load docker config for watchtower", "component", "docker", "subsystem", "watchtower", "user", username, "error", err)
@@ -59,7 +59,7 @@ func SyncWatchtowerStackWithStore(ctx context.Context, username string, store *c
 	}
 
 	// Start or recreate Watchtower with the new config.
-	if err := composeUpWithSDK(ctx, watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
+	if err := composeUp(ctx, watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
 		slog.Warn("watchtower compose up failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	} else {
 		slog.Info("watchtower synced", "containers", len(containerNames))
@@ -73,7 +73,7 @@ func stopWatchtower(ctx context.Context) {
 		return // Nothing to stop.
 	}
 
-	if err := composeDownWithSDK(ctx, watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, false, nil); err != nil {
+	if err := composeDown(ctx, watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, false, nil); err != nil {
 		slog.Warn("watchtower compose down failed", "component", "docker", "subsystem", "watchtower", "path", watchtowerComposePath, "error", err)
 	}
 

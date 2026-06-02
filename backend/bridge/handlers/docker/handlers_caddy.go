@@ -47,22 +47,22 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, req apischema.D
 }
 
 func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetCaddyStatusWithStore(ctx, h.username, h.store)
+	result, err := GetCaddyStatus(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleEnableCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := EnableCaddyWithStore(ctx, h.username, h.store)
+	result, err := EnableCaddy(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleDisableCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := DisableCaddyWithStore(ctx, h.username, h.store)
+	result, err := DisableCaddy(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleReloadCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := ReloadCaddyWithStore(ctx, h.username, h.store)
+	result, err := ReloadCaddy(ctx, h.username, h.store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 

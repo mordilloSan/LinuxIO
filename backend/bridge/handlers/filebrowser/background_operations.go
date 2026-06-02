@@ -217,28 +217,28 @@ func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeFileCompress,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
-			return runCompressJobWithStore(ctx, job, store, req)
+			return runCompressJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeFileExtract,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
-			return runExtractJobWithStore(ctx, job, store, req)
+			return runExtractJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeFileCopy,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-			return runCopyJobWithStore(ctx, job, store, req)
+			return runCopyJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeFileMove,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-			return runMoveJobWithStore(ctx, job, store, req)
+			return runMoveJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
@@ -260,14 +260,14 @@ func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeFileArchive,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
-			return runArchiveJobWithStore(ctx, job, store, req)
+			return runArchiveJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.StreamDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeFileChmod,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
-			return runChmodJobWithStore(ctx, job, store, req)
+			return runChmodJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
@@ -491,7 +491,7 @@ func prepareTransfer(root *fsroot.FSRoot, req transferRequest) (transferRequest,
 	return req, nil
 }
 
-func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodRequest) (any, error) {
+func runChmodJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodRequest) (any, error) {
 	path, modeStr, owner, group, recursive, err := parseChmodRequest(req)
 	if err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 400)
@@ -549,7 +549,7 @@ func runChmodJobWithStore(ctx context.Context, job *bridgejobs.Job, store *confi
 	}, nil
 }
 
-func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileCompressRequest) (any, error) {
+func runCompressJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileCompressRequest) (any, error) {
 	if req.Format == "" || req.TargetPath == "" || len(req.Paths) == 0 {
 		return nil, bridgejobs.NewError("missing format, destination, or paths", 400)
 	}
@@ -614,7 +614,7 @@ func runCompressJobWithStore(ctx context.Context, job *bridgejobs.Job, store *co
 	}, nil
 }
 
-func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileExtractRequest) (any, error) {
+func runExtractJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileExtractRequest) (any, error) {
 	archivePath, destination, err := parseExtractRequest(req)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing archive path", 400)
@@ -668,7 +668,7 @@ func runExtractJobWithStore(ctx context.Context, job *bridgejobs.Job, store *con
 	}, nil
 }
 
-func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
+func runCopyJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
 	req, err := transferRequestFromAPI(apiReq)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing source or destination", 400)
@@ -728,7 +728,7 @@ func runCopyJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config
 	}, nil
 }
 
-func runMoveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
+func runMoveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
 	req, err := transferRequestFromAPI(apiReq)
 	if err != nil {
 		return nil, bridgejobs.NewError("missing source or destination", 400)

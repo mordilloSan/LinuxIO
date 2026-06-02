@@ -83,7 +83,7 @@ func runCompose(ctx context.Context, projectName, configFile, workingDir string,
 	return cmd.Wait()
 }
 
-func composeUpWithSDK(
+func composeUp(
 	ctx context.Context,
 	projectName, configFile, workingDir string,
 	removeOrphans bool,
@@ -99,7 +99,7 @@ func composeUpWithSDK(
 	return runCompose(ctx, projectName, configFile, workingDir, emitter, args...)
 }
 
-func composeDownWithSDK(
+func composeDown(
 	ctx context.Context,
 	projectName, configFile, workingDir string,
 	removeOrphans bool,
@@ -115,7 +115,7 @@ func composeDownWithSDK(
 	return runCompose(ctx, projectName, configFile, workingDir, emitter, args...)
 }
 
-func composeStopWithSDK(
+func composeStop(
 	ctx context.Context,
 	projectName, configFile, workingDir string,
 	emitter composeLineEmitter,
@@ -126,7 +126,7 @@ func composeStopWithSDK(
 	return runCompose(ctx, projectName, configFile, workingDir, emitter, "stop")
 }
 
-func composeValidateContentWithSDK(ctx context.Context, content string) error {
+func composeValidateContent(ctx context.Context, content string) error {
 	f, err := os.CreateTemp("", "linuxio-compose-*.yml")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)

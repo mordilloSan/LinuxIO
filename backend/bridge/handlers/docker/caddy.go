@@ -31,8 +31,8 @@ const (
 	proxyEnabledLabel   = "io.linuxio.container.proxy.enabled"
 )
 
-// GetCaddyStatusWithStore returns the current Caddy proxy status.
-func GetCaddyStatusWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// GetCaddyStatus returns the current Caddy proxy status.
+func GetCaddyStatus(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
@@ -49,8 +49,8 @@ func GetCaddyStatusWithStore(ctx context.Context, username string, store *config
 	}, nil
 }
 
-// EnableCaddyWithStore deploys the Caddy container and generates the initial Caddyfile.
-func EnableCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// EnableCaddy deploys the Caddy container and generates the initial Caddyfile.
+func EnableCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	if err := ensureCaddyDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create caddy config dirs: %w", err)
 	}
@@ -80,8 +80,8 @@ func EnableCaddyWithStore(ctx context.Context, username string, store *config.Us
 	return map[string]any{"message": "Caddy deployed"}, nil
 }
 
-// DisableCaddyWithStore stops and removes the Caddy container.
-func DisableCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// DisableCaddy stops and removes the Caddy container.
+func DisableCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	if err := removeCaddyContainer(ctx); err != nil {
 		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
@@ -96,8 +96,8 @@ func DisableCaddyWithStore(ctx context.Context, username string, store *config.U
 	return map[string]any{"message": "Caddy removed"}, nil
 }
 
-// ReloadCaddyWithStore regenerates the Caddyfile from current containers and reloads Caddy.
-func ReloadCaddyWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// ReloadCaddy regenerates the Caddyfile from current containers and reloads Caddy.
+func ReloadCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err

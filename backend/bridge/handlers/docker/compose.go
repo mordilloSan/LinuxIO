@@ -27,8 +27,8 @@ var validRestartPolicy = regexp.MustCompile(`^(no|always|unless-stopped|on-failu
 var validIPCMode = regexp.MustCompile(`^(host|private|shareable|service:.+)$`)
 var validPIDMode = regexp.MustCompile(`^(host|service:.+)$`)
 
-// ListComposeProjectsWithStore discovers all compose projects by analyzing container labels and configured Docker folders.
-func ListComposeProjectsWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// ListComposeProjects discovers all compose projects by analyzing container labels and configured Docker folders.
+func ListComposeProjects(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -43,7 +43,7 @@ func ListComposeProjectsWithStore(ctx context.Context, username string, store *c
 	projects := discoverComposeProjectsFromContainers(ctx, cli, containers.Items)
 
 	// Search configured folders for offline stacks (compose files without running containers).
-	if err := discoverOfflineStacksWithStore(ctx, username, store, projects); err != nil {
+	if err := discoverOfflineStacks(ctx, username, store, projects); err != nil {
 		slog.
 			// Log but don't fail - offline discovery is best effort.
 			Debug("failed to discover offline stacks from docker folders", "error", err)
@@ -202,9 +202,9 @@ func finalizeComposeProjects(projects map[string]*apischema.ComposeProject, cfg 
 	return result
 }
 
-// GetComposeProjectWithStore returns detailed information about a specific compose project
-func GetComposeProjectWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
-	projects, err := ListComposeProjectsWithStore(ctx, username, store)
+// GetComposeProject returns detailed information about a specific compose project
+func GetComposeProject(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	projects, err := ListComposeProjects(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -223,8 +223,8 @@ func GetComposeProjectWithStore(ctx context.Context, username string, store *con
 	return nil, fmt.Errorf("project '%s' not found", projectName)
 }
 
-// ComposeUpWithStore starts a compose project
-func ComposeUpWithStore(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (any, error) {
+// ComposeUp starts a compose project
+func ComposeUp(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (any, error) {
 	var configFile string
 	var workingDir string
 
@@ -234,7 +234,7 @@ func ComposeUpWithStore(ctx context.Context, username string, store *config.User
 		workingDir = filepath.Dir(composePath)
 	} else {
 		// Try to get the project from existing containers first
-		project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
+		project, err := GetComposeProject(ctx, username, store, projectName)
 		if err == nil {
 			// Project exists with containers
 			composeProject, ok := project.(*apischema.ComposeProject)
@@ -254,7 +254,7 @@ func ComposeUpWithStore(ctx context.Context, username string, store *config.User
 		} else {
 			// Project not found in containers - might be a new stack
 			// Try to find the compose file in standard locations
-			configFile, workingDir, err = findComposeFileWithStore(ctx, username, store, projectName)
+			configFile, workingDir, err = findComposeFile(ctx, username, store, projectName)
 			if err != nil {
 				return nil, fmt.Errorf("project '%s' not found and no compose file found: %w", projectName, err)
 			}
@@ -262,7 +262,7 @@ func ComposeUpWithStore(ctx context.Context, username string, store *config.User
 	}
 
 	collector := &composeMessageCollector{}
-	err := composeUpWithSDK(ctx, projectName, configFile, workingDir, false, collector.Emit)
+	err := composeUp(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
@@ -271,8 +271,8 @@ func ComposeUpWithStore(ctx context.Context, username string, store *config.User
 	return map[string]string{"message": "Project started successfully", "output": collector.String()}, nil
 }
 
-// findComposeFileWithStore attempts to locate a compose file for a project
-func findComposeFileWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
+// findComposeFile attempts to locate a compose file for a project
+func findComposeFile(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
 	sanitized := sanitizeStackName(projectName)
 
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
@@ -313,9 +313,9 @@ func findComposeFileInBases(ctx context.Context, basePaths []string, stackName s
 	return "", "", false, nil
 }
 
-// ComposeDownWithStore stops and removes a compose project
-func ComposeDownWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
-	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
+// ComposeDown stops and removes a compose project
+func ComposeDown(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func ComposeDownWithStore(ctx context.Context, username string, store *config.Us
 	}
 
 	collector := &composeMessageCollector{}
-	err = composeDownWithSDK(ctx, projectName, configFile, workingDir, false, collector.Emit)
+	err = composeDown(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
@@ -351,14 +351,14 @@ type DeleteStackOptions struct {
 	DeleteDirectory bool `json:"delete_directory"` // Delete the entire stack directory
 }
 
-// DeleteStackWithStore removes a compose stack with options to delete files
-func DeleteStackWithStore(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (any, error) {
+// DeleteStack removes a compose stack with options to delete files
+func DeleteStack(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (any, error) {
 	// Get project info first
-	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
+	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
 		// Project might not exist in Docker, but we might still have files to delete
 		// Try to find compose file in configured Docker folders.
-		configFile, workingDir, findErr := findComposeFileWithStore(ctx, username, store, projectName)
+		configFile, workingDir, findErr := findComposeFile(ctx, username, store, projectName)
 		if findErr != nil {
 			return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
 		}
@@ -391,7 +391,7 @@ func DeleteStackWithStore(ctx context.Context, username string, store *config.Us
 	// First, run docker compose down to remove containers and networks
 	if configFile != "" {
 		collector := &composeMessageCollector{}
-		cmdErr := composeDownWithSDK(ctx, projectName, configFile, workingDir, false, collector.Emit)
+		cmdErr := composeDown(ctx, projectName, configFile, workingDir, false, collector.Emit)
 		if cmdErr != nil {
 			slog.Warn("docker compose down failed",
 				"project", projectName,
@@ -466,8 +466,8 @@ func deleteComposeFile(ctx context.Context, result map[string]any, projectName, 
 	return result, nil
 }
 
-// ComposeRestartWithStore restarts a compose project
-func ComposeRestartWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+// ComposeRestart restarts a compose project
+func ComposeRestart(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
 	configFile, workingDir, err := resolveComposeRestartTarget(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
@@ -475,7 +475,7 @@ func ComposeRestartWithStore(ctx context.Context, username string, store *config
 
 	// Use up+remove-orphans semantics for restart so compose file changes are applied.
 	collector := &composeMessageCollector{}
-	err = composeUpWithSDK(ctx, projectName, configFile, workingDir, true, collector.Emit)
+	err = composeUp(ctx, projectName, configFile, workingDir, true, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
@@ -485,7 +485,7 @@ func ComposeRestartWithStore(ctx context.Context, username string, store *config
 }
 
 func resolveComposeRestartTarget(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
-	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
+	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err == nil {
 		if composeProject, ok := project.(*apischema.ComposeProject); ok {
 			if configFile, workingDir := resolveComposeRestartTargetFromProject(ctx, projectName, composeProject); configFile != "" {
@@ -494,7 +494,7 @@ func resolveComposeRestartTarget(ctx context.Context, username string, store *co
 		}
 	}
 
-	configFile, workingDir, err := findComposeFileWithStore(ctx, username, store, projectName)
+	configFile, workingDir, err := findComposeFile(ctx, username, store, projectName)
 	if err != nil {
 		return "", "", fmt.Errorf("compose file not found: %w", err)
 	}
@@ -590,9 +590,9 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 	return filepath.Dir(configFile)
 }
 
-// ComposeStopWithStore stops a compose project without removing containers
-func ComposeStopWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
-	project, err := GetComposeProjectWithStore(ctx, username, store, projectName)
+// ComposeStop stops a compose project without removing containers
+func ComposeStop(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +613,7 @@ func ComposeStopWithStore(ctx context.Context, username string, store *config.Us
 	}
 
 	collector := &composeMessageCollector{}
-	err = composeStopWithSDK(ctx, projectName, configFile, workingDir, collector.Emit)
+	err = composeStop(ctx, projectName, configFile, workingDir, collector.Emit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
@@ -811,7 +811,7 @@ func ValidateComposeFile(ctx context.Context, content string) (any, error) {
 		return result, nil
 	}
 
-	if sdkErr := composeValidateContentWithSDK(ctx, content); sdkErr != nil {
+	if sdkErr := composeValidateContent(ctx, content); sdkErr != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, apischema.ValidateComposeError{
 			Message: strings.TrimPrefix(sdkErr.Error(), "load compose project: "),
@@ -1000,8 +1000,8 @@ func dockerFoldersFromConfig(cfg *config.Settings) []string {
 	return folders
 }
 
-// GetDockerFoldersWithStore returns the configured Docker folder paths from user config.
-func GetDockerFoldersWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// GetDockerFolders returns the configured Docker folder paths from user config.
+func GetDockerFolders(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	folders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
@@ -1012,8 +1012,8 @@ func GetDockerFoldersWithStore(ctx context.Context, username string, store *conf
 	}, nil
 }
 
-// GetComposeFilePathWithStore builds the full path for a compose file
-func GetComposeFilePathWithStore(ctx context.Context, username string, store *config.UserStore, stackName string) (any, error) {
+// GetComposeFilePath builds the full path for a compose file
+func GetComposeFilePath(ctx context.Context, username string, store *config.UserStore, stackName string) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1453,8 +1453,8 @@ func indexDockerFolderPath(ctx context.Context, username, dockerFolder string) e
 	return nil
 }
 
-// IndexDockerFoldersWithStore is the handler function for indexing all configured Docker folders.
-func IndexDockerFoldersWithStore(ctx context.Context, username string, store *config.UserStore) (any, error) {
+// IndexDockerFolders is the handler function for indexing all configured Docker folders.
+func IndexDockerFolders(ctx context.Context, username string, store *config.UserStore) (any, error) {
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load user config: %w", err)
@@ -1495,9 +1495,9 @@ func extractStackIcon(composePath string) (string, error) {
 	return "", nil
 }
 
-// discoverOfflineStacksWithStore searches configured Docker folders for compose files and adds them as offline stacks.
+// discoverOfflineStacks searches configured Docker folders for compose files and adds them as offline stacks.
 // Each stack directory contributes at most one canonical compose file.
-func discoverOfflineStacksWithStore(ctx context.Context, username string, store *config.UserStore, projects map[string]*apischema.ComposeProject) error {
+func discoverOfflineStacks(ctx context.Context, username string, store *config.UserStore, projects map[string]*apischema.ComposeProject) error {
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return fmt.Errorf("failed to load user config: %w", err)
@@ -1595,10 +1595,10 @@ func extractComposeIcon(composePath string) string {
 	return icon
 }
 
-// DeleteComposeStackWithStore runs docker compose down and deletes the compose file(s)
-func DeleteComposeStackWithStore(ctx context.Context, username string, store *config.UserStore, projectName string) error {
+// DeleteComposeStack runs docker compose down and deletes the compose file(s)
+func DeleteComposeStack(ctx context.Context, username string, store *config.UserStore, projectName string) error {
 	// Get project details to find config files
-	projects, err := ListComposeProjectsWithStore(ctx, username, store)
+	projects, err := ListComposeProjects(ctx, username, store)
 	if err != nil {
 		return fmt.Errorf("failed to list compose projects: %w", err)
 	}
@@ -1628,7 +1628,7 @@ func DeleteComposeStackWithStore(ctx context.Context, username string, store *co
 			"working_dir", project.WorkingDir)
 
 		collector := &composeMessageCollector{}
-		err := composeDownWithSDK(
+		err := composeDown(
 			ctx,
 			projectName,
 			project.ConfigFiles[0],

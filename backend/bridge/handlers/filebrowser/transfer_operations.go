@@ -206,7 +206,7 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.Path
 	}
 }
 
-func runArchiveJobWithStore(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
+func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
 	if req.Format == "" || len(req.Paths) == 0 {
 		return nil, bridgejobs.NewError("missing format or paths", 400)
 	}

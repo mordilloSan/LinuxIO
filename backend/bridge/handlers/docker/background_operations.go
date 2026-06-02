@@ -86,13 +86,13 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 
 	switch req.Action {
 	case "up":
-		err = composeUpWithSDK(ctx, req.ProjectName, configFile, workingDir, false, report)
+		err = composeUp(ctx, req.ProjectName, configFile, workingDir, false, report)
 	case "down":
-		err = composeDownWithSDK(ctx, req.ProjectName, configFile, workingDir, false, report)
+		err = composeDown(ctx, req.ProjectName, configFile, workingDir, false, report)
 	case "stop":
-		err = composeStopWithSDK(ctx, req.ProjectName, configFile, workingDir, report)
+		err = composeStop(ctx, req.ProjectName, configFile, workingDir, report)
 	case "restart":
-		err = composeUpWithSDK(ctx, req.ProjectName, configFile, workingDir, true, report)
+		err = composeUp(ctx, req.ProjectName, configFile, workingDir, true, report)
 	default:
 		return nil, bridgejobs.NewError("unsupported action: "+req.Action, 400)
 	}
@@ -115,7 +115,7 @@ func resolveComposeJobPaths(ctx context.Context, username string, store *config.
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}
-	return findComposeFileWithStore(ctx, username, store, projectName)
+	return findComposeFile(ctx, username, store, projectName)
 }
 
 func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {

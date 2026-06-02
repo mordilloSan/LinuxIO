@@ -369,17 +369,6 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 	return updates, nil
 }
 
-func GetUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
-	details, err := getUpdatesWithDetails(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if details == nil {
-		details = make([]UpdateDetail, 0)
-	}
-	return details, nil
-}
-
 // InstallByName resolves a package by name via PackageKit and installs it.
 // Returns nil (no-op) if the package is already installed. Returns an error
 // if the package cannot be found in any enabled repository.
