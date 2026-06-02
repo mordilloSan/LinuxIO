@@ -6,6 +6,8 @@
  * Adding a capability = adding one entry to this list.
  */
 
+import type { CapabilitiesResponse as GeneratedCapabilitiesResponse } from "./generated/linuxio-types";
+
 export interface CapabilityDef {
   /** Underlying dependency name (binary, package, or service). */
   dependency: string;
@@ -162,13 +164,15 @@ export const CAPABILITIES = [
 
 export type CapabilityWire = (typeof CAPABILITIES)[number]["wire"];
 export type CapabilityKey = (typeof CAPABILITIES)[number]["state"];
-export type CapabilityValueKey = `${CapabilityWire}_available`;
-export type CapabilityErrorKey = `${CapabilityWire}_error`;
-
-/** Wire-format response from `system.get_capabilities`. */
-export type CapabilitiesResponse = {
-  [K in CapabilityWire as `${K}_available`]: boolean;
-} & { [K in CapabilityWire as `${K}_error`]?: string };
+export type CapabilitiesResponse = GeneratedCapabilitiesResponse;
+export type CapabilityValueKey = Extract<
+  keyof CapabilitiesResponse,
+  `${CapabilityWire}_available`
+>;
+export type CapabilityErrorKey = Extract<
+  keyof CapabilitiesResponse,
+  `${CapabilityWire}_error`
+>;
 
 /** Frontend state shape: one tri-state field per capability (`null` = unknown). */
 export type CapabilityState = Record<CapabilityKey, boolean | null>;

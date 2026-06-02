@@ -83,13 +83,24 @@ func TestSetCapabilityFieldRoundTrips(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
-			body := string(data)
-			if !strings.Contains(body, `"`+spec.Name+`_available":true`) {
-				t.Errorf("expected %s_available=true in %s", spec.Name, body)
-			}
-			if !strings.Contains(body, `"`+spec.Name+`_error":"`+marker+`"`) {
-				t.Errorf("expected %s_error=%q in %s", spec.Name, marker, body)
-			}
+			assertTopLevelCapabilityJSON(t, data, spec.Name, marker)
 		})
+	}
+}
+
+func assertTopLevelCapabilityJSON(t *testing.T, data []byte, name, marker string) {
+	t.Helper()
+
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	available, ok := payload[name+"_available"].(bool)
+	if !ok || !available {
+		t.Errorf("expected top-level %s_available=true in %s", name, data)
+	}
+	errValue, ok := payload[name+"_error"].(string)
+	if !ok || errValue != marker {
+		t.Errorf("expected top-level %s_error=%q in %s", name, marker, data)
 	}
 }

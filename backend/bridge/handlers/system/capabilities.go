@@ -193,25 +193,25 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 	}
 	switch name {
 	case "docker":
-		out.CapabilitiesAvailable.DockerAvailable, out.CapabilitiesError.DockerError = ok, errPtr
+		out.DockerAvailable, out.DockerError = ok, errPtr
 	case "indexer":
-		out.CapabilitiesAvailable.IndexerAvailable, out.CapabilitiesError.IndexerError = ok, errPtr
+		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "lm_sensors":
-		out.CapabilitiesAvailable.LMSensorsAvailable, out.CapabilitiesError.LMSensorsError = ok, errPtr
+		out.LMSensorsAvailable, out.LMSensorsError = ok, errPtr
 	case "smartmontools":
-		out.CapabilitiesAvailable.SmartmontoolsAvailable, out.CapabilitiesError.SmartmontoolsError = ok, errPtr
+		out.SmartmontoolsAvailable, out.SmartmontoolsError = ok, errPtr
 	case "packagekit":
-		out.CapabilitiesAvailable.PackageKitAvailable, out.CapabilitiesError.PackageKitError = ok, errPtr
+		out.PackageKitAvailable, out.PackageKitError = ok, errPtr
 	case "nfs_client":
-		out.CapabilitiesAvailable.NFSClientAvailable, out.CapabilitiesError.NFSClientError = ok, errPtr
+		out.NFSClientAvailable, out.NFSClientError = ok, errPtr
 	case "nfs_server":
-		out.CapabilitiesAvailable.NFSServerAvailable, out.CapabilitiesError.NFSServerError = ok, errPtr
+		out.NFSServerAvailable, out.NFSServerError = ok, errPtr
 	case "tuned":
-		out.CapabilitiesAvailable.TunedAvailable, out.CapabilitiesError.TunedError = ok, errPtr
+		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":
-		out.CapabilitiesAvailable.AvahiAvailable, out.CapabilitiesError.AvahiError = ok, errPtr
+		out.AvahiAvailable, out.AvahiError = ok, errPtr
 	case "wireguard":
-		out.CapabilitiesAvailable.WireGuardAvailable, out.CapabilitiesError.WireGuardError = ok, errPtr
+		out.WireGuardAvailable, out.WireGuardError = ok, errPtr
 	default:
 		panic("system: unknown capability wire name " + name)
 	}

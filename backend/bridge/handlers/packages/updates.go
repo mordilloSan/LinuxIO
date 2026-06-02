@@ -323,37 +323,6 @@ func finalizeSingleUpdateDetail(detail *UpdateDetail, packageID string) (*Update
 	return detail, nil
 }
 
-func collectUpdateDetails(ctx context.Context, sigCh <-chan *dbusclient.Signal, metaByPkg map[string]packageUpdateMeta) ([]UpdateDetail, error) {
-	var details []UpdateDetail
-
-	for {
-		select {
-		case sig := <-sigCh:
-			if isTransactionFinished(sig) {
-				return details, nil
-			}
-			if sig.Name != pkgkit.TransactionIface+".UpdateDetail" {
-				continue
-			}
-
-			pkgID, err := dbusclient.AsString(sig.Body[0])
-			if err != nil {
-				return nil, fmt.Errorf("invalid pkgID: %w", err)
-			}
-
-			meta := metaByPkg[pkgID]
-			detail, err := buildUpdateDetail(sig.Body, meta.Summary, meta.InfoEnum)
-			if err != nil {
-				return nil, err
-			}
-
-			details = append(details, detail)
-		case <-ctx.Done():
-			return details, nil
-		}
-	}
-}
-
 // --- D-Bus Public Wrappers with Retry ---
 
 // GetUpdatesBasic returns package updates with basic info only (fast).
@@ -478,46 +447,6 @@ func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail
 		return err
 	})
 	return detail, err
-}
-
-func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
-	var details []UpdateDetail
-	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.ClientSession) error {
-		updatesTrans, err := session.CreateTransaction(20)
-		if err != nil {
-			return err
-		}
-		defer pkgkit.LogClose(session.Context(), updatesTrans)
-
-		if err = updatesTrans.Call("GetUpdates", uint64(0)); err != nil {
-			return err
-		}
-
-		updatesCtx, cancelUpdates := context.WithTimeout(session.Context(), 15*time.Second)
-		defer cancelUpdates()
-
-		pkgIDs, metaByPkg := collectUpdatePackages(updatesCtx, updatesTrans.Signals())
-		if len(pkgIDs) == 0 {
-			return nil
-		}
-
-		detailsTrans, err := session.CreateTransaction(20)
-		if err != nil {
-			return err
-		}
-		defer pkgkit.LogClose(session.Context(), detailsTrans)
-
-		if err = detailsTrans.Call("GetUpdateDetail", pkgIDs); err != nil {
-			return err
-		}
-
-		detailsCtx, cancelDetails := context.WithTimeout(session.Context(), 15*time.Second)
-		defer cancelDetails()
-
-		details, err = collectUpdateDetails(detailsCtx, detailsTrans.Signals(), metaByPkg)
-		return err
-	})
-	return details, err
 }
 
 // --- Update History (log parsing) ---

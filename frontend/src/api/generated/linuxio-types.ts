@@ -222,7 +222,7 @@ export interface CaddyStatusResponse {
   routes: CaddyRoute[];
 }
 
-export interface CapabilitiesAvailable {
+export interface CapabilitiesResponse {
   docker_available: boolean;
   indexer_available: boolean;
   lm_sensors_available: boolean;
@@ -233,9 +233,6 @@ export interface CapabilitiesAvailable {
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
-}
-
-export interface CapabilitiesError {
   docker_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
@@ -246,11 +243,6 @@ export interface CapabilitiesError {
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
-}
-
-export interface CapabilitiesResponse {
-  capabilitiesAvailable: CapabilitiesAvailable;
-  capabilitiesError: CapabilitiesError;
 }
 
 export interface CapabilityRequest {

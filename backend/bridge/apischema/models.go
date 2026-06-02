@@ -1072,8 +1072,8 @@ type OfflineUpdatesResponse struct {
 }
 
 type CapabilitiesResponse struct {
-	CapabilitiesAvailable session.CapabilitiesAvailable
-	CapabilitiesError     session.CapabilitiesError
+	session.CapabilitiesAvailable
+	session.CapabilitiesError
 }
 
 type AppConfig struct {
