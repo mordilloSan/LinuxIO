@@ -10,31 +10,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const maxIndexerConfigPayloadBytes = 1 << 20
-
-// Config is the stable JSON configuration shape exposed by the indexer daemon.
-type Config struct {
-	IndexPath            string `json:"index_path"`
-	IndexName            string `json:"index_name"`
-	IncludeHidden        bool   `json:"include_hidden"`
-	IncludeNetworkMounts bool   `json:"include_network_mounts"`
-	FreshIndex           bool   `json:"fresh_index"`
-	KeepIndexes          int    `json:"keep_indexes"`
-	DBPath               string `json:"db_path"`
-	DBBusyTimeout        string `json:"db_busy_timeout"`
-	DBJournalMode        string `json:"db_journal_mode"`
-	DBSynchronous        string `json:"db_synchronous"`
-	DBAutoVacuum         string `json:"db_auto_vacuum"`
-	DBMaxOpenConns       int    `json:"db_max_open_conns"`
-	DBMaxIdleConns       int    `json:"db_max_idle_conns"`
-	DBConnMaxIdleTime    string `json:"db_conn_max_idle_time"`
-	SocketPath           string `json:"socket_path"`
-	ListenAddr           string `json:"listen_addr"`
-	Interval             string `json:"interval"`
-}
 
 type configPatch struct {
 	IndexPath            *string `json:"index_path,omitempty"`
@@ -56,31 +36,26 @@ type configPatch struct {
 	Interval             *string `json:"interval,omitempty"`
 }
 
-type ConfigSetResult struct {
-	Config          Config `json:"config"`
-	RestartRequired bool   `json:"restart_required"`
-}
-
-func FetchConfig(ctx context.Context) (Config, error) {
+func FetchConfig(ctx context.Context) (apischema.IndexerConfig, error) {
 	resp, err := sendConfigRequest(ctx, http.MethodGet, nil)
 	if err != nil {
-		return Config{}, err
+		return apischema.IndexerConfig{}, err
 	}
 	cfg, err := decodeConfigResponse(resp)
 	if err != nil {
-		return Config{}, fmt.Errorf("fetch indexer config: %w", err)
+		return apischema.IndexerConfig{}, fmt.Errorf("fetch indexer config: %w", err)
 	}
 	return cfg, nil
 }
 
-func UpdateConfig(ctx context.Context, payload []byte) (Config, bool, error) {
+func UpdateConfig(ctx context.Context, payload []byte) (apischema.IndexerConfig, bool, error) {
 	body, err := normalizeConfigPatchPayload(payload)
 	if err != nil {
-		return Config{}, false, err
+		return apischema.IndexerConfig{}, false, err
 	}
 	resp, err := sendConfigRequest(ctx, http.MethodPut, bytes.NewReader(body))
 	if err != nil {
-		return Config{}, false, err
+		return apischema.IndexerConfig{}, false, err
 	}
 	restartRequired := strings.EqualFold(
 		resp.Header.Get("X-Indexer-Restart-Required"),
@@ -88,7 +63,7 @@ func UpdateConfig(ctx context.Context, payload []byte) (Config, bool, error) {
 	)
 	cfg, err := decodeConfigResponse(resp)
 	if err != nil {
-		return Config{}, false, fmt.Errorf("update indexer config: %w", err)
+		return apischema.IndexerConfig{}, false, fmt.Errorf("update indexer config: %w", err)
 	}
 	return cfg, restartRequired, nil
 }
@@ -109,7 +84,7 @@ func sendConfigRequest(ctx context.Context, method string, body io.Reader) (*htt
 	return resp, nil
 }
 
-func decodeConfigResponse(resp *http.Response) (Config, error) {
+func decodeConfigResponse(resp *http.Response) (apischema.IndexerConfig, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -118,13 +93,13 @@ func decodeConfigResponse(resp *http.Response) (Config, error) {
 		if message == "" {
 			message = resp.Status
 		}
-		return Config{}, fmt.Errorf("%s", message)
+		return apischema.IndexerConfig{}, fmt.Errorf("%s", message)
 	}
 
-	var cfg Config
+	var cfg apischema.IndexerConfig
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxIndexerConfigPayloadBytes))
 	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("decode response: %w", err)
+		return apischema.IndexerConfig{}, fmt.Errorf("decode response: %w", err)
 	}
 	return cfg, nil
 }

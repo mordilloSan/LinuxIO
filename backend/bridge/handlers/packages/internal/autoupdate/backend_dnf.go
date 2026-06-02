@@ -14,8 +14,8 @@ import (
 
 type dnfBackend struct{}
 
-func newDnfBackend() Backend     { return &dnfBackend{} }
-func (*dnfBackend) Name() string { return "dnf-automatic" }
+func newDnfBackend() UpdateBackend { return &dnfBackend{} }
+func (*dnfBackend) Name() string   { return "dnf-automatic" }
 func (*dnfBackend) Detect(context.Context) bool {
 	return fileExists("/usr/bin/dnf-automatic") || fileExists("/usr/lib/systemd/system/dnf-automatic.timer")
 }
@@ -24,12 +24,12 @@ func (b *dnfBackend) Read() (AutoUpdateState, error) {
 	return AutoUpdateState{
 		Backend: b.Name(),
 		Options: AutoUpdateOptions{
-			Enabled:      timerEnabled("dnf-automatic.timer"),
-			Frequency:    readTimerFrequency("dnf-automatic.timer"),
-			Scope:        readDnfScope(),
-			DownloadOnly: readDnfDownloadOnly(),
-			RebootPolicy: "never", // DNF automatic doesn't have native reboot support
-			ExcludePkgs:  readDnfExcludePackages(),
+			Enabled:         timerEnabled("dnf-automatic.timer"),
+			Frequency:       AutoUpdateFrequency(readTimerFrequency("dnf-automatic.timer")),
+			Scope:           AutoUpdateScope(readDnfScope()),
+			DownloadOnly:    readDnfDownloadOnly(),
+			RebootPolicy:    "never", // DNF automatic doesn't have native reboot support
+			ExcludePackages: readDnfExcludePackages(),
 		},
 	}, nil
 }
@@ -46,7 +46,7 @@ func (b *dnfBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 	}
 
 	timer := "dnf-automatic.timer"
-	oncal, err := onCalendarFor(o.Frequency)
+	oncal, err := onCalendarFor(string(o.Frequency))
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ emit_via = motd
 
 [base]
 %srandom_sleep = 0
-`, dnfApplyUpdatesValue(o), dnfUpgradeType(o.Scope), dnfExcludeLine(o.ExcludePkgs))
+`, dnfApplyUpdatesValue(o), dnfUpgradeType(o.Scope), dnfExcludeLine(o.ExcludePackages))
 	return utils.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644)
 }
 
@@ -82,7 +82,7 @@ func dnfApplyUpdatesValue(o AutoUpdateOptions) string {
 	return "True"
 }
 
-func dnfUpgradeType(scope string) string {
+func dnfUpgradeType(scope AutoUpdateScope) string {
 	if scope == "updates" || scope == "all" {
 		return "default"
 	}

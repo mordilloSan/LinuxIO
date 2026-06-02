@@ -13,14 +13,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
-
-// InstallCapabilityResult is the final job payload returned by
-// system.install_capability with the freshly re-detected capability state.
-type InstallCapabilityResult struct {
-	Available bool   `json:"available"`
-	Error     string `json:"error,omitempty"`
-}
 
 // InstallCapabilityProgress is reported on the job event stream so the UI
 // can show what stage we're in. Frontend mirrors this shape.
@@ -73,13 +67,13 @@ func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, req apisc
 	return result, nil
 }
 
-func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (InstallCapabilityResult, error) {
+func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (apischema.InstallCapabilityResult, error) {
 	spec, ok := system.CapabilitySpecByName(name)
 	if !ok {
-		return InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
+		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
 	}
 	if spec.Install == nil {
-		return InstallCapabilityResult{}, fmt.Errorf("capability %q is not installable from the UI", name)
+		return apischema.InstallCapabilityResult{}, fmt.Errorf("capability %q is not installable from the UI", name)
 	}
 
 	family := detectDistroFamily()
@@ -91,7 +85,7 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (I
 		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", pkg))
 		slog.Info("Installing capability package.", "capability", name, "package", pkg)
 		if err := InstallByName(ctx, pkg); err != nil {
-			return InstallCapabilityResult{}, fmt.Errorf("install %s: %w", pkg, err)
+			return apischema.InstallCapabilityResult{}, fmt.Errorf("install %s: %w", pkg, err)
 		}
 	}
 
@@ -100,23 +94,23 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (I
 			reportProgress(job, stageEnableService, fmt.Sprintf("Enabling %s", service))
 			slog.Info("Enabling capability service.", "capability", name, "unit", service)
 			if err := systemd.EnableUnit(ctx, service); err != nil {
-				return InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
+				return apischema.InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
 			}
 		}
 		reportProgress(job, stageStartService, fmt.Sprintf("Starting %s", service))
 		slog.Info("Starting capability service.", "capability", name, "unit", service)
 		if err := systemd.StartUnit(ctx, service); err != nil {
-			return InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
+			return apischema.InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
 		}
 		reportProgress(job, stageWaitActive, fmt.Sprintf("Waiting for %s to become active", service))
 		if err := waitUnitActive(ctx, service, serviceActiveTimeout); err != nil {
-			return InstallCapabilityResult{}, err
+			return apischema.InstallCapabilityResult{}, err
 		}
 	}
 
 	reportProgress(job, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName))
 	available, errMsg := detectWithRetry(ctx, spec, detectRetryTimeout)
-	return InstallCapabilityResult{Available: available, Error: errMsg}, nil
+	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
 }
 
 func reportProgress(job *bridgejobs.Job, stage, message string) {

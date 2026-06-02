@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -36,20 +37,14 @@ var indexerCLIFallbackDirs = []string{
 	"/sbin",
 }
 
-type TimerIntervalSetResult struct {
-	Config    Config `json:"config"`
-	Interval  string `json:"interval"`
-	TimerUnit string `json:"timer_unit"`
-}
-
-func SetTimerInterval(ctx context.Context, raw string) (TimerIntervalSetResult, error) {
+func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSetResult, error) {
 	interval, err := normalizeTimerInterval(raw)
 	if err != nil {
-		return TimerIntervalSetResult{}, err
+		return apischema.IndexerTimerSetResult{}, err
 	}
 	binary, err := findIndexerCLI()
 	if err != nil {
-		return TimerIntervalSetResult{}, err
+		return apischema.IndexerTimerSetResult{}, err
 	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, indexerTimerCommandTimeout)
@@ -57,18 +52,18 @@ func SetTimerInterval(ctx context.Context, raw string) (TimerIntervalSetResult, 
 
 	output, runErr := indexerCLIOutput(cmdCtx, binary, "config", "set", "--interval", interval)
 	if runErr != nil {
-		return TimerIntervalSetResult{}, indexerCLICommandError("set timer interval", runErr, output)
+		return apischema.IndexerTimerSetResult{}, indexerCLICommandError("set timer interval", runErr, output)
 	}
 
 	cfg, err := readIndexerCLIConfig(cmdCtx, binary)
 	if err != nil {
-		return TimerIntervalSetResult{
+		return apischema.IndexerTimerSetResult{
 			Interval:  interval,
 			TimerUnit: indexerTimerUnitName,
 		}, err
 	}
 
-	return TimerIntervalSetResult{
+	return apischema.IndexerTimerSetResult{
 		Config:    cfg,
 		Interval:  cfg.Interval,
 		TimerUnit: indexerTimerUnitName,
@@ -110,15 +105,15 @@ func findIndexerCLI() (string, error) {
 	return "", fmt.Errorf("indexer CLI not found")
 }
 
-func readIndexerCLIConfig(ctx context.Context, binary string) (Config, error) {
+func readIndexerCLIConfig(ctx context.Context, binary string) (apischema.IndexerConfig, error) {
 	output, err := indexerCLIOutput(ctx, binary, "config")
 	if err != nil {
-		return Config{}, indexerCLICommandError("read timer config", err, output)
+		return apischema.IndexerConfig{}, indexerCLICommandError("read timer config", err, output)
 	}
 	decoder := json.NewDecoder(io.LimitReader(bytes.NewReader(output), maxIndexerConfigPayloadBytes))
-	var cfg Config
+	var cfg apischema.IndexerConfig
 	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("decode indexer config: %w", err)
+		return apischema.IndexerConfig{}, fmt.Errorf("decode indexer config: %w", err)
 	}
 	return cfg, nil
 }

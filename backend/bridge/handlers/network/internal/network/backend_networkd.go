@@ -18,7 +18,7 @@ func (b *networkdBackend) Name() string {
 	return "systemd-networkd"
 }
 
-func detectNetworkdBackend(env Environment, iface string) (Backend, error) {
+func detectNetworkdBackend(env Environment, iface string) (ConfigBackend, error) {
 	paths, err := globSorted(filepath.Join(env.NetworkdDir, "*.network"))
 	if err != nil {
 		return nil, err

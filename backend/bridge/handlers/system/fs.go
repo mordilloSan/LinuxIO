@@ -30,7 +30,7 @@ func FetchFileSystemInfo(ctx context.Context, includeAll bool) ([]apischema.File
 			Device:            p.Device,
 			Mountpoint:        p.Mountpoint,
 			FSType:            p.Fstype,
-			ReadOnly:          utils.BoolPtr(utils.HasReadOnlyOpt(p.Opts)),
+			ReadOnly:          new(utils.HasReadOnlyOpt(p.Opts)),
 			Total:             usage.Total,
 			Used:              usage.Used,
 			Free:              usage.Free,

@@ -16,6 +16,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 8 - For go api generator we have 2 main files. Lets change this for better DX
 
+9 - consolidate small helper functions in utils
+
 Bridge Handler Pattern - See docs DONE
 Shared API betewen go/react via generator. DONE
 Remove binary protocol. Lets just use json for all... DONE

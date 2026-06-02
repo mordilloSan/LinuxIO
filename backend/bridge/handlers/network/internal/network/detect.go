@@ -10,7 +10,7 @@ import (
 
 var ErrUnsupportedBackend = errors.New("unsupported network backend")
 
-func OpenBackend(env Environment, iface string) (Backend, error) {
+func OpenBackend(env Environment, iface string) (ConfigBackend, error) {
 	if strings.TrimSpace(iface) == "" {
 		return nil, fmt.Errorf("interface name is required")
 	}
@@ -48,7 +48,7 @@ func ReadConfigBestEffort(env Environment, iface string) (InterfaceConfig, bool,
 	return config, true, nil
 }
 
-func detectIfcfgBackend(env Environment, iface string) (Backend, error) {
+func detectIfcfgBackend(env Environment, iface string) (ConfigBackend, error) {
 	path := filepath.Join(env.IfcfgDir, "ifcfg-"+iface)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {

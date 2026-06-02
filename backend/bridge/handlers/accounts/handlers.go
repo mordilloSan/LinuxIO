@@ -54,7 +54,7 @@ func handleTerminateSession(ctx context.Context, req apischema.TerminateSessionR
 }
 
 func handleCreateUser(ctx context.Context, req apischema.CreateUserRequest, emit bridgeipc.Events) error {
-	if err := CreateUser(ctx, createUserRequest(req)); err != nil {
+	if err := CreateUser(ctx, req); err != nil {
 		return err
 	}
 	return bridgeipc.EmitResult(emit, nil, nil)
@@ -68,7 +68,7 @@ func handleDeleteUser(ctx context.Context, req apischema.UsernameRequest, emit b
 }
 
 func handleModifyUser(ctx context.Context, req apischema.ModifyUserRequest, emit bridgeipc.Events) error {
-	if err := ModifyUser(ctx, modifyUserRequest(req)); err != nil {
+	if err := ModifyUser(ctx, req); err != nil {
 		return err
 	}
 	return bridgeipc.EmitResult(emit, nil, nil)
@@ -101,7 +101,7 @@ func handleListGroups(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc
 }
 
 func handleCreateGroup(ctx context.Context, req apischema.CreateGroupRequest, emit bridgeipc.Events) error {
-	if err := CreateGroup(ctx, CreateGroupRequest(req)); err != nil {
+	if err := CreateGroup(ctx, req); err != nil {
 		return err
 	}
 	return bridgeipc.EmitResult(emit, nil, nil)
@@ -115,10 +115,7 @@ func handleDeleteGroup(ctx context.Context, req apischema.GroupNameRequest, emit
 }
 
 func handleModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMembersRequest, emit bridgeipc.Events) error {
-	if err := ModifyGroupMembers(ctx, ModifyGroupMembersRequest{
-		GroupNameRef: GroupNameRef{GroupName: req.GroupName},
-		Members:      req.Members,
-	}); err != nil {
+	if err := ModifyGroupMembers(ctx, req); err != nil {
 		return err
 	}
 	return bridgeipc.EmitResult(emit, nil, nil)

@@ -130,8 +130,8 @@ func resolveInterfacePeers(req addInterfaceRequest) ([]PeerConfig, error) {
 	return generatePeers(req.addresses[0], req.numPeers)
 }
 
-func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []PeerConfig) InterfaceConfig {
-	return InterfaceConfig{
+func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []PeerConfig) WireGuardConfig {
+	return WireGuardConfig{
 		PrivateKey: privateKey,
 		Address:    req.addresses,
 		ListenPort: req.listenPort,
@@ -154,7 +154,7 @@ func readInterfaceEndpointInfo(logPrefix, egressNic string) (string, string) {
 	return publicIP, gatewayDNS
 }
 
-func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg InterfaceConfig, serverAddr, publicIP, gatewayDNS string) error {
+func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardConfig, serverAddr, publicIP, gatewayDNS string) error {
 	if len(peers) == 0 {
 		return nil
 	}
@@ -208,7 +208,7 @@ func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string
 	return nil
 }
 
-func createNextPeer(cfg InterfaceConfig) (PeerConfig, string, error) {
+func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
 	if len(cfg.Address) == 0 {
 		return PeerConfig{}, "", fmt.Errorf("interface has no address")
 	}
@@ -237,7 +237,7 @@ func createNextPeer(cfg InterfaceConfig) (PeerConfig, string, error) {
 	}, nextIP, nil
 }
 
-func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig) error {
+func exportAddedPeer(interfaceName string, peer PeerConfig, cfg WireGuardConfig) error {
 	publicIP, _ := getPublicIP()
 	if publicIP == "" {
 		slog.Warn("AddPeer: public IP lookup returned empty string")
@@ -258,7 +258,7 @@ func exportAddedPeer(interfaceName string, peer PeerConfig, cfg InterfaceConfig)
 	return nil
 }
 
-func writePeerConfig(interfaceName string, cfg InterfaceConfig, peer PeerConfig) error {
+func writePeerConfig(interfaceName string, cfg WireGuardConfig, peer PeerConfig) error {
 	cfg.Peers = append(cfg.Peers, peer)
 	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
 		if rmErr := os.Remove(peerConfigPath(interfaceName, peer.Name)); rmErr != nil {
@@ -335,7 +335,7 @@ func readPeerAllowedIP(interfaceName, peerName string) (string, string, error) {
 	return peerPath, allowedIP, nil
 }
 
-func removePeerFromConfig(cfg InterfaceConfig, allowedIP string) (InterfaceConfig, string, bool) {
+func removePeerFromConfig(cfg WireGuardConfig, allowedIP string) (WireGuardConfig, string, bool) {
 	newPeers := make([]PeerConfig, 0, len(cfg.Peers))
 	var removedPeerPubKey string
 	found := false

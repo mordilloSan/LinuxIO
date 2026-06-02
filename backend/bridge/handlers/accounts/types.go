@@ -1,20 +1,5 @@
 package accounts
 
-// User represents a system user account
-type User struct {
-	Username     string   `json:"username"`
-	UID          int      `json:"uid"`
-	GID          int      `json:"gid"`
-	Gecos        string   `json:"gecos"`
-	HomeDir      string   `json:"homeDir"`
-	Shell        string   `json:"shell"`
-	PrimaryGroup string   `json:"primaryGroup"`
-	Groups       []string `json:"groups"`
-	IsSystem     bool     `json:"isSystem"`
-	IsLocked     bool     `json:"isLocked"`
-	LastLogin    string   `json:"lastLogin"`
-}
-
 // UserLogin represents one login event for a user account.
 type UserLogin struct {
 	ID        string `json:"id"`
@@ -122,46 +107,4 @@ type UsernameRef struct {
 // GroupNameRef identifies a group by name.
 type GroupNameRef struct {
 	GroupName string `json:"groupName"`
-}
-
-// UserProfileFields contains profile fields used when creating a user.
-type UserProfileFields struct {
-	FullName string   `json:"fullName"`
-	HomeDir  string   `json:"homeDir"`
-	Shell    string   `json:"shell"`
-	Groups   []string `json:"groups"`
-}
-
-// UserProfilePatch contains optional profile fields used when modifying a user.
-type UserProfilePatch struct {
-	FullName *string  `json:"fullName,omitempty"`
-	HomeDir  *string  `json:"homeDir,omitempty"`
-	Shell    *string  `json:"shell,omitempty"`
-	Groups   []string `json:"groups,omitempty"`
-}
-
-// CreateUserRequest contains the fields for creating a new user.
-type CreateUserRequest struct {
-	UsernameRef
-	Password string `json:"password"`
-	UserProfileFields
-	CreateHome bool `json:"createHome"`
-}
-
-// ModifyUserRequest contains the fields for modifying a user.
-type ModifyUserRequest struct {
-	UsernameRef
-	UserProfilePatch
-}
-
-// CreateGroupRequest contains the fields for creating a new group.
-type CreateGroupRequest struct {
-	Name string `json:"name"`
-	GID  *int   `json:"gid,omitempty"`
-}
-
-// ModifyGroupMembersRequest contains the fields for modifying group members.
-type ModifyGroupMembersRequest struct {
-	GroupNameRef
-	Members []string `json:"members"`
 }

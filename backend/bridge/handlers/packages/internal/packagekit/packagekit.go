@@ -25,18 +25,18 @@ type OperationOptions struct {
 	NoRetry bool
 }
 
-type Session struct {
+type ClientSession struct {
 	session dbusclient.SystemSession
 }
 
 type Transaction struct {
-	session Session
+	session ClientSession
 	object  dbusclient.BusObject
 	path    dbusclient.ObjectPath
 	sub     *dbusclient.SignalSubscription
 }
 
-func Run(ctx context.Context, opts OperationOptions, fn func(Session) error) error {
+func Run(ctx context.Context, opts OperationOptions, fn func(ClientSession) error) error {
 	if fn == nil {
 		return fmt.Errorf("nil PackageKit callback")
 	}
@@ -60,7 +60,7 @@ func Run(ctx context.Context, opts OperationOptions, fn func(Session) error) err
 			if err := session.RequireAvailable(); err != nil {
 				return err
 			}
-			return fn(Session{session: session})
+			return fn(ClientSession{session: session})
 		})
 	})
 }
@@ -81,11 +81,11 @@ func WithGate(ctx context.Context, fn func() error) error {
 	}
 }
 
-func (s Session) Context() context.Context {
+func (s ClientSession) Context() context.Context {
 	return s.session.Context()
 }
 
-func (s Session) CreateTransaction(buffer int) (*Transaction, error) {
+func (s ClientSession) CreateTransaction(buffer int) (*Transaction, error) {
 	var path dbusclient.ObjectPath
 	if err := s.session.CallStore(dbusclient.PackageKitCreateTransaction, dbusclient.CallPolicy{}, nil, &path); err != nil {
 		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
@@ -104,11 +104,11 @@ func (s Session) CreateTransaction(buffer int) (*Transaction, error) {
 	}, nil
 }
 
-func (s Session) UpdatePrepared() (bool, error) {
+func (s ClientSession) UpdatePrepared() (bool, error) {
 	return dbusclient.GetProperty[bool](s.Context(), s.session.Object(), OfflineIface, "UpdatePrepared")
 }
 
-func (s Session) TriggerOffline(action string) error {
+func (s ClientSession) TriggerOffline(action string) error {
 	if err := s.session.Call(OfflineIface+".Trigger", dbusclient.CallPolicy{}, action); err != nil {
 		return fmt.Errorf("failed to trigger offline update: %w", err)
 	}

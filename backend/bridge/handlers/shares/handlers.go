@@ -39,9 +39,8 @@ func handleListNFSShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridge
 }
 
 func handleCreateNFSShare(ctx context.Context, req apischema.ShareNFSRequest, emit bridgeipc.Events) error {
-	clients := nfsClients(req.Clients)
-	slog.Info("creating NFS share", "path", req.Path, "count", len(clients))
-	if err := CreateNFSShare(ctx, req.Path, clients); err != nil {
+	slog.Info("creating NFS share", "path", req.Path, "count", len(req.Clients))
+	if err := CreateNFSShare(ctx, req.Path, req.Clients); err != nil {
 		slog.Error("failed to create NFS share", "path", req.Path, "error", err)
 		return err
 	}
@@ -49,9 +48,8 @@ func handleCreateNFSShare(ctx context.Context, req apischema.ShareNFSRequest, em
 }
 
 func handleUpdateNFSShare(ctx context.Context, req apischema.ShareNFSRequest, emit bridgeipc.Events) error {
-	clients := nfsClients(req.Clients)
 	slog.Info("updating NFS share", "path", req.Path)
-	if err := UpdateNFSShare(ctx, req.Path, clients); err != nil {
+	if err := UpdateNFSShare(ctx, req.Path, req.Clients); err != nil {
 		slog.Error("failed to update NFS share", "path", req.Path, "error", err)
 		return err
 	}

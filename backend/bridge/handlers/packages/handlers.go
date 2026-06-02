@@ -45,12 +45,12 @@ func handleGetAutoUpdates(ctx context.Context, _ bridgeipc.NoRequest, emit bridg
 
 func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdatesRequest, emit bridgeipc.Events) error {
 	result, err := setAutoUpdates(ctx, AutoUpdateOptions{
-		Enabled:      req.Enabled,
-		Frequency:    req.Frequency,
-		Scope:        req.Scope,
-		DownloadOnly: req.DownloadOnly,
-		RebootPolicy: req.RebootPolicy,
-		ExcludePkgs:  req.ExcludePackages,
+		Enabled:         req.Enabled,
+		Frequency:       apischema.AutoUpdateFrequency(req.Frequency),
+		Scope:           apischema.AutoUpdateScope(req.Scope),
+		DownloadOnly:    req.DownloadOnly,
+		RebootPolicy:    apischema.AutoUpdateRebootPolicy(req.RebootPolicy),
+		ExcludePackages: req.ExcludePackages,
 	})
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -16,7 +16,7 @@ func (b *ifupdownBackend) Name() string {
 	return "ifupdown"
 }
 
-func detectIfupdownBackend(env Environment, iface string) (Backend, error) {
+func detectIfupdownBackend(env Environment, iface string) (ConfigBackend, error) {
 	paths := []string{env.IfupdownMain}
 	extra, err := globSorted(filepath.Join(env.IfupdownDir, "*"))
 	if err != nil {

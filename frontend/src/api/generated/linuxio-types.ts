@@ -186,14 +186,14 @@ export interface AutoUpdateState {
   options: AutoUpdateOptions;
 }
 
-export interface BootIDRequest {
-  bootId: string;
-}
-
 export interface AvgStat {
   load1: number;
   load5: number;
   load15: number;
+}
+
+export interface BootIDRequest {
+  bootId: string;
 }
 
 export interface CPUInfoResponse {
@@ -222,7 +222,7 @@ export interface CaddyStatusResponse {
   routes: CaddyRoute[];
 }
 
-export interface CapabilitiesResponse {
+export interface CapabilitiesAvailable {
   docker_available: boolean;
   indexer_available: boolean;
   lm_sensors_available: boolean;
@@ -233,6 +233,9 @@ export interface CapabilitiesResponse {
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
+}
+
+export interface CapabilitiesError {
   docker_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
@@ -243,6 +246,11 @@ export interface CapabilitiesResponse {
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
+}
+
+export interface CapabilitiesResponse {
+  capabilitiesAvailable: CapabilitiesAvailable;
+  capabilitiesError: CapabilitiesError;
 }
 
 export interface CapabilityRequest {
@@ -1549,6 +1557,11 @@ export interface Update {
   version: string;
 }
 
+export interface UpdateHistoryRow {
+  date: string;
+  upgrades: UpgradeItem[];
+}
+
 export interface UpdateItem {
   arch?: string;
   currentVersion?: string;
@@ -1559,11 +1572,6 @@ export interface UpdateItem {
 
 export interface UpdatesFastResponse {
   updates?: UpdateItem[];
-}
-
-export interface UpdateHistoryRow {
-  date: string;
-  upgrades: UpgradeItem[];
 }
 
 export interface UpdatesSetAutoUpdatesRequest {

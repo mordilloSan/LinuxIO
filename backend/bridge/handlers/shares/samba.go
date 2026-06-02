@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
@@ -37,13 +38,13 @@ var (
 )
 
 // ListSambaShares reads smb.conf and returns all user-defined shares
-func ListSambaShares(ctx context.Context) ([]SambaShare, error) {
+func ListSambaShares(ctx context.Context) ([]apischema.SambaShare, error) {
 	sections, err := parseSmbConf()
 	if err != nil {
 		return nil, err
 	}
 
-	var shares []SambaShare
+	var shares []apischema.SambaShare
 	for name, props := range sections {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -51,7 +52,7 @@ func ListSambaShares(ctx context.Context) ([]SambaShare, error) {
 		if reservedSections[strings.ToLower(name)] {
 			continue
 		}
-		shares = append(shares, SambaShare{
+		shares = append(shares, apischema.SambaShare{
 			Name:       name,
 			Properties: props,
 		})

@@ -38,7 +38,7 @@ func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch, emit
 	if err != nil {
 		return err
 	}
-	return bridgeipc.EmitResult(emit, ConfigSetResult{
+	return bridgeipc.EmitResult(emit, apischema.IndexerConfigSetResult{
 		Config:          cfg,
 		RestartRequired: restartRequired,
 	}, nil)

@@ -19,7 +19,7 @@ func (b *netplanBackend) Name() string {
 	return "netplan"
 }
 
-func detectNetplanBackend(env Environment, iface string) (Backend, error) {
+func detectNetplanBackend(env Environment, iface string) (ConfigBackend, error) {
 	var matches []string
 	var kinds []string
 	for _, pattern := range []string{"*.yaml", "*.yml"} {

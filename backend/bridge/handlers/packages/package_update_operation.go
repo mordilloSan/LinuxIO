@@ -155,7 +155,7 @@ func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, req apischema
 }
 
 func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
-	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
 		trans, err := session.CreateTransaction(100)
 		if err != nil {
 			return err

@@ -1,23 +1,20 @@
 package autoupdate
 
-import "context"
+import (
+	"context"
 
-type AutoUpdateOptions struct {
-	Enabled      bool     `json:"enabled"`
-	Frequency    string   `json:"frequency"` // "hourly"|"daily"|"weekly"
-	Scope        string   `json:"scope"`     // "security"|"updates"|"all"
-	DownloadOnly bool     `json:"download_only"`
-	RebootPolicy string   `json:"reboot_policy"` // "never"|"if_needed"|"always"|"schedule"
-	ExcludePkgs  []string `json:"exclude_packages"`
-}
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+)
 
-type AutoUpdateState struct {
-	Backend string            `json:"backend"`
-	Options AutoUpdateOptions `json:"options"`
-	Notes   []string          `json:"notes,omitempty"`
-}
+type (
+	AutoUpdateFrequency    = apischema.AutoUpdateFrequency
+	AutoUpdateOptions      = apischema.AutoUpdateOptions
+	AutoUpdateRebootPolicy = apischema.AutoUpdateRebootPolicy
+	AutoUpdateScope        = apischema.AutoUpdateScope
+	AutoUpdateState        = apischema.AutoUpdateState
+)
 
-type Backend interface {
+type UpdateBackend interface {
 	Name() string
 	Detect(context.Context) bool
 	Read() (AutoUpdateState, error)
@@ -25,8 +22,8 @@ type Backend interface {
 	ApplyOfflineNow(context.Context) error // optional; may return not-implemented
 }
 
-func SelectBackend(ctx context.Context) Backend {
-	backs := []Backend{
+func SelectBackend(ctx context.Context) UpdateBackend {
+	backs := []UpdateBackend{
 		newAptBackend(), // Debian/Ubuntu
 		newDnfBackend(), // Fedora/RHEL
 	}
@@ -38,7 +35,7 @@ func SelectBackend(ctx context.Context) Backend {
 	return nil
 }
 
-func NewPkgKitBackendIfAvailable(ctx context.Context) Backend {
+func NewPkgKitBackendIfAvailable(ctx context.Context) UpdateBackend {
 	b := newPkgKitBackend()
 	if b.Detect(ctx) {
 		return b

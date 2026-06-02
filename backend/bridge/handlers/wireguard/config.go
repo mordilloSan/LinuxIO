@@ -9,8 +9,8 @@ import (
 )
 
 // --- Config Parsing ---
-func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
-	var cfg InterfaceConfig
+func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
+	var cfg WireGuardConfig
 
 	iniFile, err := ini.LoadSources(ini.LoadOptions{
 		AllowNonUniqueSections: true,
@@ -61,7 +61,7 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 	return cfg, nil
 }
 
-func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
+func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	iniFile := ini.Empty(ini.LoadOptions{AllowNonUniqueSections: true})
 
 	// Create Interface section

@@ -416,7 +416,7 @@ const (
 
 func resolvePackageIDs(ctx context.Context, name string, filter uint64) ([]string, error) {
 	var ids []string
-	err := pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
 		trans, err := session.CreateTransaction(20)
 		if err != nil {
 			return err
@@ -447,7 +447,7 @@ func GetSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail
 // Only calls GetUpdates, skips the slow GetUpdateDetail call.
 func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 	var updates []UpdateDetail
-	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.Session) error {
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.ClientSession) error {
 		trans, err := session.CreateTransaction(20)
 		if err != nil {
 			return err
@@ -471,7 +471,7 @@ func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 // getSingleUpdateDetail fetches detailed info for a single package.
 func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail, error) {
 	var detail *UpdateDetail
-	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.Session) error {
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.ClientSession) error {
 		trans, err := session.CreateTransaction(20)
 		if err != nil {
 			return err
@@ -493,7 +493,7 @@ func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail
 
 func getUpdatesWithDetails(ctx context.Context) ([]UpdateDetail, error) {
 	var details []UpdateDetail
-	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.Session) error {
+	err := pkgkit.Run(ctx, pkgkit.OperationOptions{}, func(session pkgkit.ClientSession) error {
 		updatesTrans, err := session.CreateTransaction(20)
 		if err != nil {
 			return err
@@ -716,7 +716,7 @@ func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []UpdateH
 // InstallPackage installs a specific PackageKit package by package ID
 // (typically obtained from a previous Resolve or GetUpdates response).
 func InstallPackage(ctx context.Context, packageID string) error {
-	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.Session) error {
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
 		trans, err := session.CreateTransaction(20)
 		if err != nil {
 			return err

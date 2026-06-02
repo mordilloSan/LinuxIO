@@ -16,8 +16,8 @@ import (
 
 type aptBackend struct{}
 
-func newAptBackend() Backend     { return &aptBackend{} }
-func (*aptBackend) Name() string { return "apt-unattended" }
+func newAptBackend() UpdateBackend { return &aptBackend{} }
+func (*aptBackend) Name() string   { return "apt-unattended" }
 func (*aptBackend) Detect(context.Context) bool {
 	return fileExists("/usr/bin/apt")
 }
@@ -31,11 +31,11 @@ func (b *aptBackend) Read() (AutoUpdateState, error) {
 		return AutoUpdateState{
 			Backend: b.Name(),
 			Options: AutoUpdateOptions{
-				Enabled:      false,
-				Frequency:    "daily",
-				Scope:        "security",
-				RebootPolicy: "never",
-				ExcludePkgs:  []string{},
+				Enabled:         false,
+				Frequency:       "daily",
+				Scope:           "security",
+				RebootPolicy:    "never",
+				ExcludePackages: []string{},
 			},
 			Notes: []string{"Install unattended-upgrades to enable: sudo apt install unattended-upgrades"},
 		}, nil
@@ -44,12 +44,12 @@ func (b *aptBackend) Read() (AutoUpdateState, error) {
 	st := AutoUpdateState{
 		Backend: b.Name(),
 		Options: AutoUpdateOptions{
-			Enabled:      timerEnabled("apt-daily-upgrade.timer") || timerEnabled("apt-daily.timer"),
-			Frequency:    readTimerFrequency("apt-daily.timer"),
-			Scope:        readScope(),
-			DownloadOnly: !timerEnabled("apt-daily-upgrade.timer") && timerEnabled("apt-daily.timer"),
-			RebootPolicy: readRebootPolicy(),
-			ExcludePkgs:  readExcludePackages(),
+			Enabled:         timerEnabled("apt-daily-upgrade.timer") || timerEnabled("apt-daily.timer"),
+			Frequency:       AutoUpdateFrequency(readTimerFrequency("apt-daily.timer")),
+			Scope:           AutoUpdateScope(readScope()),
+			DownloadOnly:    !timerEnabled("apt-daily-upgrade.timer") && timerEnabled("apt-daily.timer"),
+			RebootPolicy:    AutoUpdateRebootPolicy(readRebootPolicy()),
+			ExcludePackages: readExcludePackages(),
 		},
 	}
 	return st, nil
@@ -74,7 +74,7 @@ func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 		return fmt.Errorf("failed to write 50unattended-upgrades: %w", writeErr)
 	}
 
-	oncal, err := onCalendarFor(o.Frequency)
+	oncal, err := onCalendarFor(string(o.Frequency))
 	if err != nil {
 		return fmt.Errorf("invalid frequency: %w", err)
 	}
@@ -123,11 +123,11 @@ Unattended-Upgrade::Package-Blacklist {
 %s};
 Unattended-Upgrade::Automatic-Reboot "%s";
 Unattended-Upgrade::Automatic-Reboot-Time "03:30";
-`, formatOrigins(aptAllowedOrigins(o.Scope)), formatAptBlacklist(o.ExcludePkgs), aptRebootSetting(o.RebootPolicy))
+`, formatOrigins(aptAllowedOrigins(o.Scope)), formatAptBlacklist(o.ExcludePackages), aptRebootSetting(o.RebootPolicy))
 	return utils.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content), 0o644)
 }
 
-func aptAllowedOrigins(scope string) []string {
+func aptAllowedOrigins(scope AutoUpdateScope) []string {
 	origins := []string{`${distro_id}:${distro_codename}-security`}
 	if scope == "updates" || scope == "all" {
 		origins = append(origins, `${distro_id}:${distro_codename}-updates`)
@@ -153,7 +153,7 @@ func formatAptBlacklist(packages []string) string {
 	return blacklist.String()
 }
 
-func aptRebootSetting(policy string) string {
+func aptRebootSetting(policy AutoUpdateRebootPolicy) string {
 	if policy == "always" || policy == "if_needed" {
 		return "true"
 	}

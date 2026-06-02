@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -44,8 +46,8 @@ func Available(ctx context.Context) (bool, error) {
 	return state.Available() || availability.available, nil
 }
 
-func GetStatus(ctx context.Context) (PowerStatus, error) {
-	var status PowerStatus
+func GetStatus(ctx context.Context) (apischema.PowerStatus, error) {
+	var status apischema.PowerStatus
 	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		status, err = getStatus(session)
@@ -54,8 +56,8 @@ func GetStatus(ctx context.Context) (PowerStatus, error) {
 	return status, err
 }
 
-func StartTuned(ctx context.Context) (PowerStatus, error) {
-	var status PowerStatus
+func StartTuned(ctx context.Context) (apischema.PowerStatus, error) {
+	var status apischema.PowerStatus
 	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
 		if err := ensureTunedRunning(session); err != nil {
 			status, _ = getStatus(session)
@@ -68,13 +70,13 @@ func StartTuned(ctx context.Context) (PowerStatus, error) {
 	return status, err
 }
 
-func SetProfile(ctx context.Context, profile string) (PowerStatus, error) {
+func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, error) {
 	profile = strings.TrimSpace(profile)
 	if !profileNameRE.MatchString(profile) {
-		return PowerStatus{}, fmt.Errorf("invalid TuneD profile name")
+		return apischema.PowerStatus{}, fmt.Errorf("invalid TuneD profile name")
 	}
 
-	var status PowerStatus
+	var status apischema.PowerStatus
 	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		status, err = getStatus(session)
@@ -92,7 +94,7 @@ func SetProfile(ctx context.Context, profile string) (PowerStatus, error) {
 			status, _ = getStatus(session)
 		}
 
-		if len(status.Profiles) > 0 && !slices.ContainsFunc(status.Profiles, func(p TunedProfile) bool { return p.Name == profile }) {
+		if len(status.Profiles) > 0 && !slices.ContainsFunc(status.Profiles, func(p apischema.TunedProfile) bool { return p.Name == profile }) {
 			return fmt.Errorf("TuneD profile %q is not available", profile)
 		}
 
@@ -113,8 +115,8 @@ func SetProfile(ctx context.Context, profile string) (PowerStatus, error) {
 	return status, err
 }
 
-func DisableTuned(ctx context.Context) (PowerStatus, error) {
-	var status PowerStatus
+func DisableTuned(ctx context.Context) (apischema.PowerStatus, error) {
+	var status apischema.PowerStatus
 	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		status, err = getStatus(session)
@@ -142,12 +144,12 @@ func withTunedSession(ctx context.Context, fn func(dbusclient.SystemSession) err
 	return dbusclient.Tuned.UseSession(ctx, fn)
 }
 
-func getStatus(session dbusclient.SystemSession) (PowerStatus, error) {
+func getStatus(session dbusclient.SystemSession) (apischema.PowerStatus, error) {
 	status := baseStatus()
 
 	tunedState, err := dbusclient.Tuned.BusNameState(session.Context())
 	if err != nil {
-		status.Error = err.Error()
+		status.Error = utils.OptionalString(err.Error())
 		return status, nil
 	}
 
@@ -186,15 +188,15 @@ func getStatus(session dbusclient.SystemSession) (PowerStatus, error) {
 
 	profiles, err := readProfiles(session)
 	if err != nil {
-		status.Error = err.Error()
+		status.Error = utils.OptionalString(err.Error())
 	} else {
 		status.Profiles = profiles
 	}
 
 	if active, err := activeProfile(session); err == nil {
 		status.ActiveProfile = active
-	} else if status.Error == "" {
-		status.Error = err.Error()
+	} else if status.Error == nil {
+		status.Error = utils.OptionalString(err.Error())
 	}
 
 	if recommended, err := recommendedProfile(session); err == nil {
@@ -205,12 +207,12 @@ func getStatus(session dbusclient.SystemSession) (PowerStatus, error) {
 	return status, nil
 }
 
-func baseStatus() PowerStatus {
-	return PowerStatus{
+func baseStatus() apischema.PowerStatus {
+	return apischema.PowerStatus{
 		Backend:        "tuned",
 		PackageName:    tunedPackageName,
 		InstallCommand: installCommandHint(),
-		Profiles:       make([]TunedProfile, 0),
+		Profiles:       make([]apischema.TunedProfile, 0),
 	}
 }
 
@@ -358,7 +360,7 @@ func recommendedProfile(session dbusclient.SystemSession) (string, error) {
 	return profile, err
 }
 
-func readProfiles(session dbusclient.SystemSession) ([]TunedProfile, error) {
+func readProfiles(session dbusclient.SystemSession) ([]apischema.TunedProfile, error) {
 	var records []tunedProfileRecord
 	if err := session.CallStore(tunedControlIface+".profiles2", dbusclient.CallPolicy{}, nil, &records); err == nil {
 		return profilesFromRecords(records), nil
@@ -368,19 +370,19 @@ func readProfiles(session dbusclient.SystemSession) ([]TunedProfile, error) {
 	if err := session.CallStore(tunedControlIface+".profiles", dbusclient.CallPolicy{}, nil, &names); err != nil {
 		return nil, err
 	}
-	profiles := make([]TunedProfile, 0, len(names))
+	profiles := make([]apischema.TunedProfile, 0, len(names))
 	for _, name := range names {
-		profiles = append(profiles, TunedProfile{Name: name})
+		profiles = append(profiles, apischema.TunedProfile{Name: name})
 	}
 	return profiles, nil
 }
 
-func profilesFromRecords(records []tunedProfileRecord) []TunedProfile {
-	profiles := make([]TunedProfile, 0, len(records))
+func profilesFromRecords(records []tunedProfileRecord) []apischema.TunedProfile {
+	profiles := make([]apischema.TunedProfile, 0, len(records))
 	for _, record := range records {
-		profiles = append(profiles, TunedProfile{
+		profiles = append(profiles, apischema.TunedProfile{
 			Name:        record.Name,
-			Description: record.Description,
+			Description: utils.OptionalString(record.Description),
 		})
 	}
 	return profiles
@@ -464,7 +466,7 @@ func boolStringResult(body []any) (bool, string, error) {
 	return false, "", fmt.Errorf("unexpected TuneD result signature")
 }
 
-func markProfiles(profiles []TunedProfile, active, recommended string) {
+func markProfiles(profiles []apischema.TunedProfile, active, recommended string) {
 	for i := range profiles {
 		profiles[i].Active = profiles[i].Name == active
 		profiles[i].Recommended = profiles[i].Name == recommended

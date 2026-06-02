@@ -28,7 +28,7 @@ func addPeerSection(iniFile *ini.File, peer PeerConfig) error {
 	return nil
 }
 
-func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceConfig, publicIP string, peerNumber int, dnsOverride string) (string, error) {
+func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg WireGuardConfig, publicIP string, peerNumber int, dnsOverride string) (string, error) {
 	// Ensure peer directory exists
 	peerDir := peerDirPath(interfaceName)
 	if err := os.MkdirAll(peerDir, 0o700); err != nil {

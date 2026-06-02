@@ -21,7 +21,7 @@ func (b *nmConnectionBackend) Name() string {
 	return "nmconnection"
 }
 
-func detectNMConnectionBackend(env Environment, iface string) (Backend, error) {
+func detectNMConnectionBackend(env Environment, iface string) (ConfigBackend, error) {
 	paths, err := globSorted(filepath.Join(env.NMConnectionDir, "*.nmconnection"))
 	if err != nil {
 		return nil, err

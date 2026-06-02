@@ -13,15 +13,15 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-type Manager string
+type UpdateManager string
 
 const (
-	MgrAPT    Manager = "apt"
-	MgrDNF    Manager = "dnf"
-	MgrYUM    Manager = "yum"
-	MgrZypper Manager = "zypper"
-	MgrPacman Manager = "pacman"
-	MgrAPK    Manager = "apk"
+	MgrAPT    UpdateManager = "apt"
+	MgrDNF    UpdateManager = "dnf"
+	MgrYUM    UpdateManager = "yum"
+	MgrZypper UpdateManager = "zypper"
+	MgrPacman UpdateManager = "pacman"
+	MgrAPK    UpdateManager = "apk"
 )
 
 func GetUpdatesFast(parent context.Context) (*apischema.UpdatesFastResponse, error) {
@@ -56,7 +56,7 @@ func seen(bin string) bool {
 	return err == nil
 }
 
-func pickCommand() (Manager, string, []string) {
+func pickCommand() (UpdateManager, string, []string) {
 	switch {
 	case seen("apt"):
 		return MgrAPT, "apt", []string{"list", "--upgradable"}
