@@ -19,21 +19,15 @@ var Routes = routes.All()
 
 // RegisterHandlers registers all terminal handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteListShells, Handle: handleListShells},
-	})
-	apischema.AttachDuplex(router, apischema.DuplexBinding{
-		Route: RouteOpen,
-		Handle: func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
-			return HandleTerminalSession(ctx, rt, stream, req)
-		},
-	})
-	apischema.AttachDuplex(router, apischema.DuplexBinding{
-		Route: RouteContainerOpen,
-		Handle: func(ctx context.Context, stream net.Conn, req apischema.ContainerOpenRequest) error {
-			return HandleContainerTerminalSession(ctx, rt, stream, req)
-		},
-	})
+	apischema.RegisterRoutes(router,
+		RouteListShells.Handle(handleListShells),
+	)
+	apischema.AttachDuplex(router, RouteOpen.Duplex(func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
+		return HandleTerminalSession(ctx, rt, stream, req)
+	}))
+	apischema.AttachDuplex(router, RouteContainerOpen.Duplex(func(ctx context.Context, stream net.Conn, req apischema.ContainerOpenRequest) error {
+		return HandleContainerTerminalSession(ctx, rt, stream, req)
+	}))
 }
 
 func handleListShells(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {

@@ -15,11 +15,7 @@ import (
 func RegisterJobRoutes(router *bridgejobs.Router) {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  RouteUpdate,
-		Runner: runPackageUpdateJob,
-		Policy: policy,
-	})
+	apischema.AttachRunner(router, RouteUpdate.Run(runPackageUpdateJob, policy))
 }
 
 // PkgUpdateProgress represents progress for package update operations.

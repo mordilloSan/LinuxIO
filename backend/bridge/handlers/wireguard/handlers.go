@@ -27,20 +27,20 @@ var Routes = routes.All()
 
 // RegisterHandlers registers wireguard handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteListInterfaces, Handle: handleListInterfaces},
-		{Route: RouteAddInterface, Handle: handleAddInterface},
-		{Route: RouteRemoveInterface, Handle: handleRemoveInterface},
-		{Route: RouteListPeers, Handle: handleListPeers},
-		{Route: RouteAddPeer, Handle: handleAddPeer},
-		{Route: RouteRemovePeer, Handle: handleRemovePeer},
-		{Route: RoutePeerQrcode, Handle: handlePeerQRCode},
-		{Route: RoutePeerConfigDownload, Handle: handlePeerConfigDownload},
-		{Route: RouteUpInterface, Handle: handleUpInterface},
-		{Route: RouteDownInterface, Handle: handleDownInterface},
-		{Route: RouteEnableInterface, Handle: handleEnableInterface},
-		{Route: RouteDisableInterface, Handle: handleDisableInterface},
-	})
+	apischema.RegisterRoutes(router,
+		RouteListInterfaces.Handle(handleListInterfaces),
+		RouteAddInterface.Handle(handleAddInterface),
+		RouteRemoveInterface.Handle(handleRemoveInterface),
+		RouteListPeers.Handle(handleListPeers),
+		RouteAddPeer.Handle(handleAddPeer),
+		RouteRemovePeer.Handle(handleRemovePeer),
+		RoutePeerQrcode.Handle(handlePeerQRCode),
+		RoutePeerConfigDownload.Handle(handlePeerConfigDownload),
+		RouteUpInterface.Handle(handleUpInterface),
+		RouteDownInterface.Handle(handleDownInterface),
+		RouteEnableInterface.Handle(handleEnableInterface),
+		RouteDisableInterface.Handle(handleDisableInterface),
+	)
 }
 
 func handleListInterfaces(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

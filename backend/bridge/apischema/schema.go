@@ -134,6 +134,22 @@ func (r RouteSpec) ResultSpec() TypeSpec {
 	return r.Result
 }
 
+func (r RouteSpec) Handle(handle any, options ...bridgeipc.RouteOption) HandlerBinding {
+	return HandlerBinding{Route: r, Handle: handle, Options: options}
+}
+
+func (r RouteSpec) HandleWithPolicy(handle any, policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) HandlerBinding {
+	return HandlerBinding{Route: r, Handle: handle, Policy: policy, Options: options}
+}
+
+func (r RouteSpec) Run(runner any, policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) RunnerBinding {
+	return RunnerBinding{Route: r, Runner: runner, Policy: policy, Options: options}
+}
+
+func (r RouteSpec) Duplex(handle any, options ...bridgeipc.RouteOption) DuplexBinding {
+	return DuplexBinding{Route: r, Handle: handle, Options: options}
+}
+
 type HandlerBinding struct {
 	Route   RouteSpec
 	Handle  any
@@ -172,14 +188,14 @@ func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
 	}
 }
 
-func AttachHandlers(router *bridgeipc.Router, bindings []HandlerBinding) {
+func AttachHandlers(router *bridgeipc.Router, bindings ...HandlerBinding) {
 	for _, binding := range bindings {
 		AttachHandler(router, binding)
 	}
 }
 
-func RegisterRoutes(router *bridgeipc.Router, bindings []HandlerBinding) {
-	AttachHandlers(router, bindings)
+func RegisterRoutes(router *bridgeipc.Router, bindings ...HandlerBinding) {
+	AttachHandlers(router, bindings...)
 }
 
 func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {

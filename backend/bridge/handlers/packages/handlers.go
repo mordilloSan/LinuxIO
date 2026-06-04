@@ -26,15 +26,15 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 	RegisterCapabilityJobRoutes(router)
 
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteUpdatesGetUpdatesBasic, Handle: handleGetUpdatesBasic},
-		{Route: RouteUpdatesGetUpdateDetail, Handle: handleGetUpdateDetail},
-		{Route: RouteUpdatesInstallPackage, Handle: handleInstallPackage},
-		{Route: RouteUpdatesGetAutoUpdates, Handle: handleGetAutoUpdates},
-		{Route: RouteUpdatesSetAutoUpdates, Handle: handleSetAutoUpdates},
-		{Route: RouteUpdatesApplyOfflineUpdates, Handle: handleApplyOfflineUpdates},
-		{Route: RouteUpdatesGetUpdateHistory, Handle: handleGetUpdateHistory},
-	})
+	apischema.RegisterRoutes(router,
+		RouteUpdatesGetUpdatesBasic.Handle(handleGetUpdatesBasic),
+		RouteUpdatesGetUpdateDetail.Handle(handleGetUpdateDetail),
+		RouteUpdatesInstallPackage.Handle(handleInstallPackage),
+		RouteUpdatesGetAutoUpdates.Handle(handleGetAutoUpdates),
+		RouteUpdatesSetAutoUpdates.Handle(handleSetAutoUpdates),
+		RouteUpdatesApplyOfflineUpdates.Handle(handleApplyOfflineUpdates),
+		RouteUpdatesGetUpdateHistory.Handle(handleGetUpdateHistory),
+	)
 }
 
 func handleGetUpdatesBasic(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

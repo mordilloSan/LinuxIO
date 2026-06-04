@@ -36,18 +36,18 @@ var Routes = routes.All()
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router, rt.Store)
 
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteResourceGet, Handle: handleResourceGet},
-		{Route: RouteResourceStat, Handle: handleResourceStat},
-		{Route: RouteResourceDelete, Handle: handleResourceDelete},
-		{Route: RouteResourcePost, Handle: handleResourcePost},
-		{Route: RouteResourcePatch, Handle: handleResourcePatch},
-		{Route: RouteDirSize, Handle: handleDirSize},
-		{Route: RouteIndexerStatus, Handle: handleIndexerStatus},
-		{Route: RouteSubfolders, Handle: handleSubfolders},
-		{Route: RouteSearch, Handle: handleSearch},
-		{Route: RouteUsersGroups, Handle: handleUsersGroups},
-	})
+	apischema.RegisterRoutes(router,
+		RouteResourceGet.Handle(handleResourceGet),
+		RouteResourceStat.Handle(handleResourceStat),
+		RouteResourceDelete.Handle(handleResourceDelete),
+		RouteResourcePost.Handle(handleResourcePost),
+		RouteResourcePatch.Handle(handleResourcePatch),
+		RouteDirSize.Handle(handleDirSize),
+		RouteIndexerStatus.Handle(handleIndexerStatus),
+		RouteSubfolders.Handle(handleSubfolders),
+		RouteSearch.Handle(handleSearch),
+		RouteUsersGroups.Handle(handleUsersGroups),
+	)
 }
 
 func handleResourceGet(ctx context.Context, req apischema.FileResourceGetRequest, emit bridgeipc.Events) error {

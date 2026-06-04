@@ -33,22 +33,22 @@ var Routes = routes.All()
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteListPVs, Handle: handleListPVs},
-		{Route: RouteListVGs, Handle: handleListVGs},
-		{Route: RouteListLVs, Handle: handleListLVs},
-		{Route: RouteCreateLv, Handle: handleCreateLV},
-		{Route: RouteDeleteLv, Handle: handleDeleteLV},
-		{Route: RouteResizeLv, Handle: handleResizeLV},
-		{Route: RouteListNFSMounts, Handle: handleListNFSMounts},
-		{Route: RouteListNFSExports, Handle: handleListNFSExports},
-		{Route: RouteMountNFS, Handle: handleMountNFS},
-		{Route: RouteUnmountNFS, Handle: handleUnmountNFS},
-		{Route: RouteRemountNFS, Handle: handleRemountNFS},
-		{Route: RouteUnmountFilesystem, Handle: handleUnmountFilesystem},
-		{Route: RouteCreateBtrfsSubvolume, Handle: handleCreateBtrfsSubvolume},
-		{Route: RouteGetDriveInfo, Handle: handleGetDriveInfo},
-	})
+	apischema.RegisterRoutes(router,
+		RouteListPVs.Handle(handleListPVs),
+		RouteListVGs.Handle(handleListVGs),
+		RouteListLVs.Handle(handleListLVs),
+		RouteCreateLv.Handle(handleCreateLV),
+		RouteDeleteLv.Handle(handleDeleteLV),
+		RouteResizeLv.Handle(handleResizeLV),
+		RouteListNFSMounts.Handle(handleListNFSMounts),
+		RouteListNFSExports.Handle(handleListNFSExports),
+		RouteMountNFS.Handle(handleMountNFS),
+		RouteUnmountNFS.Handle(handleUnmountNFS),
+		RouteRemountNFS.Handle(handleRemountNFS),
+		RouteUnmountFilesystem.Handle(handleUnmountFilesystem),
+		RouteCreateBtrfsSubvolume.Handle(handleCreateBtrfsSubvolume),
+		RouteGetDriveInfo.Handle(handleGetDriveInfo),
+	)
 }
 
 func handleListPVs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

@@ -18,12 +18,12 @@ var RouteStart = routes.Job("power.start", apischema.NoRequest(), apischema.Type
 var Routes = routes.All()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteGetStatus, Handle: handleGetStatus},
-		{Route: RouteStart, Handle: handleStart},
-		{Route: RouteSetProfile, Handle: handleSetProfile},
-		{Route: RouteDisable, Handle: handleDisable},
-	})
+	apischema.RegisterRoutes(router,
+		RouteGetStatus.Handle(handleGetStatus),
+		RouteStart.Handle(handleStart),
+		RouteSetProfile.Handle(handleSetProfile),
+		RouteDisable.Handle(handleDisable),
+	)
 }
 
 func handleGetStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

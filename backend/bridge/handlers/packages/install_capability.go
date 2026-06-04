@@ -44,11 +44,7 @@ const (
 func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 10 * time.Minute
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  system.RouteInstallCapability,
-		Runner: runInstallCapabilityJob,
-		Policy: policy,
-	})
+	apischema.AttachRunner(router, system.RouteInstallCapability.Run(runInstallCapabilityJob, policy))
 }
 
 func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, req apischema.CapabilityRequest) (any, error) {

@@ -203,63 +203,27 @@ type ChmodProgress struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteCompress,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
-			return runCompressJob(ctx, job, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteExtract,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
-			return runExtractJob(ctx, job, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteCopy,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-			return runCopyJob(ctx, job, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteMove,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-			return runMoveJob(ctx, job, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  RouteIndex,
-		Runner: runIndexerJob,
-		Policy: bridgejobs.SingletonSystem,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  RouteUpload,
-		Runner: runUploadJob,
-		Policy: bridgejobs.StreamDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  RouteDownload,
-		Runner: runDownloadJob,
-		Policy: bridgejobs.StreamDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteArchive,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
-			return runArchiveJob(ctx, job, store, req)
-		},
-		Policy: bridgejobs.StreamDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteChmod,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
-			return runChmodJob(ctx, job, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
+	apischema.AttachRunner(router, RouteCompress.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
+		return runCompressJob(ctx, job, store, req)
+	}, bridgejobs.ActionDefault))
+	apischema.AttachRunner(router, RouteExtract.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
+		return runExtractJob(ctx, job, store, req)
+	}, bridgejobs.ActionDefault))
+	apischema.AttachRunner(router, RouteCopy.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
+		return runCopyJob(ctx, job, store, req)
+	}, bridgejobs.ActionDefault))
+	apischema.AttachRunner(router, RouteMove.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
+		return runMoveJob(ctx, job, store, req)
+	}, bridgejobs.ActionDefault))
+	apischema.AttachRunner(router, RouteIndex.Run(runIndexerJob, bridgejobs.SingletonSystem))
+	apischema.AttachRunner(router, RouteUpload.Run(runUploadJob, bridgejobs.StreamDefault))
+	apischema.AttachRunner(router, RouteDownload.Run(runDownloadJob, bridgejobs.StreamDefault))
+	apischema.AttachRunner(router, RouteArchive.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
+		return runArchiveJob(ctx, job, store, req)
+	}, bridgejobs.StreamDefault))
+	apischema.AttachRunner(router, RouteChmod.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
+		return runChmodJob(ctx, job, store, req)
+	}, bridgejobs.ActionDefault))
 	bridgejobs.RegisterDataAttacher(RouteUpload.Route, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(RouteDownload.Route, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(RouteArchive.Route, attachFileTransferData)

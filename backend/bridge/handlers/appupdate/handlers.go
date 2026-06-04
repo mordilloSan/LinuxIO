@@ -18,18 +18,14 @@ var Routes = routes.All()
 
 // RegisterHandlers registers control handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: control.RouteVersion, Handle: handleVersion},
-	})
+	apischema.RegisterRoutes(router,
+		control.RouteVersion.Handle(handleVersion),
+	)
 	policy := bridgeipc.SingletonSystem
 	policy.Timeout = 30 * time.Minute
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteControlAppUpdate,
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
-			return runAppUpdateJob(ctx, rt, job, req)
-		},
-		Policy: policy,
-	})
+	apischema.AttachRunner(router, RouteControlAppUpdate.Run(func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
+		return runAppUpdateJob(ctx, rt, job, req)
+	}, policy))
 }
 
 func handleVersion(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

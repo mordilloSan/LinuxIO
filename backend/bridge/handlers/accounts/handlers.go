@@ -31,23 +31,23 @@ var Routes = routes.All()
 
 // RegisterHandlers registers accounts handlers with the IPC system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteListUsers, Handle: handleListUsers},
-		{Route: RouteGetUserDetails, Handle: handleGetUserDetails},
-		{Route: RouteListUserLogins, Handle: handleListUserLogins},
-		{Route: RouteTerminateSession, Handle: handleTerminateSession},
-		{Route: RouteCreateUser, Handle: handleCreateUser},
-		{Route: RouteDeleteUser, Handle: handleDeleteUser},
-		{Route: RouteModifyUser, Handle: handleModifyUser},
-		{Route: RouteChangePassword, Handle: handleChangePassword},
-		{Route: RouteLockUser, Handle: handleLockUser},
-		{Route: RouteUnlockUser, Handle: handleUnlockUser},
-		{Route: RouteListGroups, Handle: handleListGroups},
-		{Route: RouteCreateGroup, Handle: handleCreateGroup},
-		{Route: RouteDeleteGroup, Handle: handleDeleteGroup},
-		{Route: RouteModifyGroupMembers, Handle: handleModifyGroupMembers},
-		{Route: RouteListShells, Handle: handleListShells},
-	})
+	apischema.RegisterRoutes(router,
+		RouteListUsers.Handle(handleListUsers),
+		RouteGetUserDetails.Handle(handleGetUserDetails),
+		RouteListUserLogins.Handle(handleListUserLogins),
+		RouteTerminateSession.Handle(handleTerminateSession),
+		RouteCreateUser.Handle(handleCreateUser),
+		RouteDeleteUser.Handle(handleDeleteUser),
+		RouteModifyUser.Handle(handleModifyUser),
+		RouteChangePassword.Handle(handleChangePassword),
+		RouteLockUser.Handle(handleLockUser),
+		RouteUnlockUser.Handle(handleUnlockUser),
+		RouteListGroups.Handle(handleListGroups),
+		RouteCreateGroup.Handle(handleCreateGroup),
+		RouteDeleteGroup.Handle(handleDeleteGroup),
+		RouteModifyGroupMembers.Handle(handleModifyGroupMembers),
+		RouteListShells.Handle(handleListShells),
+	)
 }
 
 func handleListUsers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

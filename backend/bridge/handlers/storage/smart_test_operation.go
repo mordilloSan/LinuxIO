@@ -20,11 +20,7 @@ type SmartTestProgress struct {
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router) {
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  RouteRunSmartTest,
-		Runner: runSmartTestJob,
-		Policy: bridgejobs.ActionDefault,
-	})
+	apischema.AttachRunner(router, RouteRunSmartTest.Run(runSmartTestJob, bridgejobs.ActionDefault))
 }
 
 // pollInterval picks how often to poll smartctl based on test type. Short tests

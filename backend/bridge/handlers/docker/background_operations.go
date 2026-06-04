@@ -35,20 +35,12 @@ type DockerIndexerJobResult struct {
 func RegisterJobRoutes(router *bridgejobs.Router, rt runtime.Runtime) {
 	username := rt.Username()
 	store := rt.Store
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteCompose,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
-			return runDockerComposeJob(ctx, job, username, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteIndexer,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
-			return runDockerIndexerJob(ctx, job, username, store)
-		},
-		Policy: bridgejobs.SingletonSystem,
-	})
+	apischema.AttachRunner(router, RouteCompose.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
+		return runDockerComposeJob(ctx, job, username, store, req)
+	}, bridgejobs.ActionDefault))
+	apischema.AttachRunner(router, RouteIndexer.Run(func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
+		return runDockerIndexerJob(ctx, job, username, store)
+	}, bridgejobs.SingletonSystem))
 }
 
 func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, req apischema.DockerComposeRequest) (any, error) {

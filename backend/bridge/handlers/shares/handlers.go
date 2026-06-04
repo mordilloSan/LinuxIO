@@ -24,18 +24,18 @@ var Routes = routes.All()
 
 // RegisterHandlers registers all share management handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+	apischema.RegisterRoutes(router,
 		// NFS exports (server-side shares via /etc/exports)
-		{Route: RouteListNFSShares, Handle: handleListNFSShares},
-		{Route: RouteCreateNFSShare, Handle: handleCreateNFSShare},
-		{Route: RouteUpdateNFSShare, Handle: handleUpdateNFSShare},
-		{Route: RouteDeleteNFSShare, Handle: handleDeleteNFSShare},
+		RouteListNFSShares.Handle(handleListNFSShares),
+		RouteCreateNFSShare.Handle(handleCreateNFSShare),
+		RouteUpdateNFSShare.Handle(handleUpdateNFSShare),
+		RouteDeleteNFSShare.Handle(handleDeleteNFSShare),
 		// Samba shares (via /etc/samba/smb.conf)
-		{Route: RouteListSambaShares, Handle: handleListSambaShares},
-		{Route: RouteCreateSambaShare, Handle: handleCreateSambaShare},
-		{Route: RouteUpdateSambaShare, Handle: handleUpdateSambaShare},
-		{Route: RouteDeleteSambaShare, Handle: handleDeleteSambaShare},
-	})
+		RouteListSambaShares.Handle(handleListSambaShares),
+		RouteCreateSambaShare.Handle(handleCreateSambaShare),
+		RouteUpdateSambaShare.Handle(handleUpdateSambaShare),
+		RouteDeleteSambaShare.Handle(handleDeleteSambaShare),
+	)
 }
 
 // --- NFS handlers ---

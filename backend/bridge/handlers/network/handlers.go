@@ -23,15 +23,15 @@ var RouteSetMTU = routes.Job("network.set_mtu", apischema.TypeOf[apischema.Inter
 var Routes = routes.All()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteGetNetworkInfo, Handle: handleGetNetworkInfo},
-		{Route: RouteSetIPv4Manual, Handle: handleSetIPv4Manual},
-		{Route: RouteSetIPv4, Handle: handleSetIPv4},
-		{Route: RouteSetIPv6, Handle: handleSetIPv6},
-		{Route: RouteSetMTU, Handle: handleSetMTU},
-		{Route: RouteEnableConnection, Handle: handleEnableConnection},
-		{Route: RouteDisableConnection, Handle: handleDisableConnection},
-	})
+	apischema.RegisterRoutes(router,
+		RouteGetNetworkInfo.Handle(handleGetNetworkInfo),
+		RouteSetIPv4Manual.Handle(handleSetIPv4Manual),
+		RouteSetIPv4.Handle(handleSetIPv4),
+		RouteSetIPv6.Handle(handleSetIPv6),
+		RouteSetMTU.Handle(handleSetMTU),
+		RouteEnableConnection.Handle(handleEnableConnection),
+		RouteDisableConnection.Handle(handleDisableConnection),
+	)
 }
 
 func handleGetNetworkInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

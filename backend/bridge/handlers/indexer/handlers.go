@@ -20,12 +20,12 @@ var Routes = routes.All()
 
 // RegisterHandlers registers indexer admin handlers with the bridge.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteGetConfig, Handle: handleGetConfig},
-		{Route: RouteGetStatus, Handle: handleGetStatus},
-		{Route: RouteSetConfig, Handle: handleSetConfig},
-		{Route: RouteSetTimerInterval, Handle: handleSetTimerInterval},
-	})
+	apischema.RegisterRoutes(router,
+		RouteGetConfig.Handle(handleGetConfig),
+		RouteGetStatus.Handle(handleGetStatus),
+		RouteSetConfig.Handle(handleSetConfig),
+		RouteSetTimerInterval.Handle(handleSetTimerInterval),
+	)
 }
 
 func handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

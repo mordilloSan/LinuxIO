@@ -27,21 +27,21 @@ var RouteUnmaskService = routes.Job("systemd.unmask_service", apischema.TypeOf[a
 var Routes = routes.All()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteListTimers, Handle: handleListTimers},
-		{Route: RouteListSockets, Handle: handleListSockets},
-		{Route: RouteListServices, Handle: handleListServices},
-		{Route: RouteGetUnitInfo, Handle: handleGetUnitInfo},
-		{Route: RouteStartService, Handle: handleStartService},
-		{Route: RouteStopService, Handle: handleStopService},
-		{Route: RouteRestartService, Handle: handleRestartService},
-		{Route: RouteReloadService, Handle: handleReloadService},
-		{Route: RouteEnableService, Handle: handleEnableService},
-		{Route: RouteDisableService, Handle: handleDisableService},
-		{Route: RouteMaskService, Handle: handleMaskService},
-		{Route: RouteUnmaskService, Handle: handleUnmaskService},
-		{Route: RouteResetFailedService, Handle: handleResetFailedService},
-	})
+	apischema.RegisterRoutes(router,
+		RouteListTimers.Handle(handleListTimers),
+		RouteListSockets.Handle(handleListSockets),
+		RouteListServices.Handle(handleListServices),
+		RouteGetUnitInfo.Handle(handleGetUnitInfo),
+		RouteStartService.Handle(handleStartService),
+		RouteStopService.Handle(handleStopService),
+		RouteRestartService.Handle(handleRestartService),
+		RouteReloadService.Handle(handleReloadService),
+		RouteEnableService.Handle(handleEnableService),
+		RouteDisableService.Handle(handleDisableService),
+		RouteMaskService.Handle(handleMaskService),
+		RouteUnmaskService.Handle(handleUnmaskService),
+		RouteResetFailedService.Handle(handleResetFailedService),
+	)
 }
 
 func handleListTimers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

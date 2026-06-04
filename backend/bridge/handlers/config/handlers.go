@@ -19,10 +19,10 @@ var Routes = routes.All()
 // RegisterHandlers registers config handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := configHandlers{rt: rt}
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteGet, Handle: handlers.handleGetConfig},
-		{Route: RouteSet, Handle: handlers.handleSetConfig},
-	})
+	apischema.RegisterRoutes(router,
+		RouteGet.Handle(handlers.handleGetConfig),
+		RouteSet.Handle(handlers.handleSetConfig),
+	)
 }
 
 func (h configHandlers) handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

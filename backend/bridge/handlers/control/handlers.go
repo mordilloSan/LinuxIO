@@ -19,11 +19,11 @@ var Routes = routes.All()
 
 // RegisterHandlers registers host control handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteReboot, Handle: handleReboot},
-		{Route: RoutePowerOff, Handle: handlePowerOff},
-		{Route: RouteLogoff, Handle: handleLogoff},
-	})
+	apischema.RegisterRoutes(router,
+		RouteReboot.Handle(handleReboot),
+		RoutePowerOff.Handle(handlePowerOff),
+		RouteLogoff.Handle(handleLogoff),
+	)
 }
 
 func handleReboot(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

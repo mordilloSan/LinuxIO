@@ -16,18 +16,10 @@ var RouteServiceFollow = routes.Runner("logs.service.follow", apischema.TypeOf[a
 var Routes = routes.All()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteGeneralFollow,
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.GeneralLogsFollowRequest) (any, error) {
-			return runGeneralLogsJob(ctx, rt, job, req)
-		},
-		Policy: bridgeipc.StreamDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: RouteServiceFollow,
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
-			return runServiceLogsJob(ctx, rt, job, req)
-		},
-		Policy: bridgeipc.StreamDefault,
-	})
+	apischema.AttachRunner(router, RouteGeneralFollow.Run(func(ctx context.Context, job *bridgeipc.Job, req apischema.GeneralLogsFollowRequest) (any, error) {
+		return runGeneralLogsJob(ctx, rt, job, req)
+	}, bridgeipc.StreamDefault))
+	apischema.AttachRunner(router, RouteServiceFollow.Run(func(ctx context.Context, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
+		return runServiceLogsJob(ctx, rt, job, req)
+	}, bridgeipc.StreamDefault))
 }

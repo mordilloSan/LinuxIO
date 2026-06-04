@@ -15,9 +15,9 @@ var RouteSetHostname = routes.Job("hostname.set_hostname", apischema.TypeOf[apis
 var Routes = routes.All()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteSetHostname, Handle: handleSetHostname},
-	})
+	apischema.RegisterRoutes(router,
+		RouteSetHostname.Handle(handleSetHostname),
+	)
 }
 
 func handleSetHostname(ctx context.Context, req apischema.HostnameRequest, emit bridgeipc.Events) error {

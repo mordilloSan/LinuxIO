@@ -21,15 +21,15 @@ var RouteSetTimezone = routes.Job("datetime.set_timezone", apischema.TypeOf[apis
 var Routes = routes.All()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: RouteGetNTPStatus, Handle: handleGetNTPStatus},
-		{Route: RouteSetNTP, Handle: handleSetNTP},
-		{Route: RouteSetServerTime, Handle: handleSetServerTime},
-		{Route: RouteGetTimezone, Handle: handleGetTimezone},
-		{Route: RouteSetTimezone, Handle: handleSetTimezone},
-		{Route: RouteGetNTPServers, Handle: handleGetNTPServers},
-		{Route: RouteSetNTPServers, Handle: handleSetNTPServers},
-	})
+	apischema.RegisterRoutes(router,
+		RouteGetNTPStatus.Handle(handleGetNTPStatus),
+		RouteSetNTP.Handle(handleSetNTP),
+		RouteSetServerTime.Handle(handleSetServerTime),
+		RouteGetTimezone.Handle(handleGetTimezone),
+		RouteSetTimezone.Handle(handleSetTimezone),
+		RouteGetNTPServers.Handle(handleGetNTPServers),
+		RouteSetNTPServers.Handle(handleSetNTPServers),
+	)
 }
 
 func handleGetNTPStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

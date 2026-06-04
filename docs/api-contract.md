@@ -149,20 +149,20 @@ var RouteGetUnitInfo = routes.Query(
 )
 
 var Routes = routes.All()
-```
 
-```go
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+    apischema.RegisterRoutes(router,
+        RouteGetUnitInfo.Handle(handleGetUnitInfo),
+    )
+}
+
 func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
     result, err := GetUnitInfo(ctx, req.UnitName)
     return bridgeipc.EmitResult(emit, result, err)
 }
 ```
 
-```go
-apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-    {Route: RouteGetUnitInfo, Handle: handleGetUnitInfo},
-})
-```
+The route spec is package-level because codegen and route coverage read `Routes`. The handler binding sits beside it in the same file as `RouteGetUnitInfo.Handle(handleGetUnitInfo)`, so the contract and dispatch target are reviewed together.
 
 Runner route:
 
@@ -176,14 +176,10 @@ var RouteUpdate = routes.Runner(
 )
 
 var Routes = routes.All()
-```
 
-```go
-apischema.AttachRunner(router, apischema.RunnerBinding{
-    Route:  RouteUpdate,
-    Runner: runPackageUpdateJob,
-    Policy: bridgeipc.SingletonSystem,
-})
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+    apischema.AttachRunner(router, RouteUpdate.Run(runPackageUpdateJob, bridgeipc.SingletonSystem))
+}
 ```
 
 Duplex route:
@@ -199,15 +195,12 @@ var RouteOpen = routes.Duplex(
 )
 
 var Routes = routes.All()
-```
 
-```go
-apischema.AttachDuplex(router, apischema.DuplexBinding{
-    Route: RouteOpen,
-    Handle: func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+    apischema.AttachDuplex(router, RouteOpen.Duplex(func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
         return HandleTerminalSession(ctx, rt, stream, req)
-    },
-})
+    }))
+}
 ```
 
 ## Jobs
@@ -254,13 +247,12 @@ For the common case where request/result structs already exist, adding a route t
 If the request or response type is new, also add the Go struct in `backend/bridge/apischema/contracts.go` or `backend/bridge/apischema/models.go`.
 If the handler family is new, add one entry to `backend/bridge/handlers/register.go`.
 
+The practical checklist:
+
 1. Define or reuse exported Go request/response structs in `backend/bridge/apischema`.
-   - Put shared request structs and small shared responses in `contracts.go`.
-   - Put API response/domain models in `models.go`.
-   - Use exported fields with JSON tags.
-2. Add one named `RouteSpec` to `backend/bridge/handlers/<domain>/handlers.go`.
+2. Add one named route spec to `backend/bridge/handlers/<domain>/handlers.go`.
 3. Implement the typed handler, runner, or duplex function in that handler package.
-4. Bind it from the same package's `RegisterHandlers`.
+4. Bind it in the same file with `.Handle(...)`, `.Run(...)`, or `.Duplex(...)`.
 5. Run `make generate`.
 6. Use the generated endpoint from `@/api`.
 
@@ -282,19 +274,19 @@ var RouteSearch = routes.Query(
     apischema.TypeOf[apischema.PackageSearchRequest](),
     apischema.TypeOf[apischema.PackageSearchResult](),
 )
-```
 
-```go
+var Routes = routes.All()
+
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+    apischema.RegisterRoutes(router,
+        RouteSearch.Handle(handlePackageSearch),
+    )
+}
+
 func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest, emit bridgeipc.Events) error {
     result, err := SearchPackages(ctx, req.Query)
     return bridgeipc.EmitResult(emit, result, err)
 }
-```
-
-```go
-apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-    {Route: RouteSearch, Handle: handlePackageSearch},
-})
 ```
 
 After `make generate`, the frontend gets:
