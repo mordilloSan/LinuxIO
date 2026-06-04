@@ -5,18 +5,26 @@ import (
 	"encoding/json"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var routes = apischema.NewRouteCatalog()
+
+var RouteGetConfig = routes.Query("indexer.get_config", apischema.NoRequest(), apischema.TypeOf[apischema.IndexerConfig](), apischema.Privileged())
+var RouteGetStatus = routes.Query("indexer.get_status", apischema.NoRequest(), apischema.TypeOf[apischema.IndexerDaemonStatus](), apischema.Privileged())
+var RouteSetConfig = routes.Job("indexer.set_config", apischema.TypeOf[apischema.IndexerConfigPatch](), apischema.TypeOf[apischema.IndexerConfigSetResult](), apischema.Privileged())
+var RouteSetTimerInterval = routes.Job("indexer.set_timer_interval", apischema.TypeOf[apischema.IntervalRequest](), apischema.TypeOf[apischema.IndexerTimerSetResult](), apischema.Privileged())
+
+var Routes = routes.All()
+
 // RegisterHandlers registers indexer admin handlers with the bridge.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: indexerapi.GetConfig, Handle: handleGetConfig},
-		{Route: indexerapi.GetStatus, Handle: handleGetStatus},
-		{Route: indexerapi.SetConfig, Handle: handleSetConfig},
-		{Route: indexerapi.SetTimerInterval, Handle: handleSetTimerInterval},
+		{Route: RouteGetConfig, Handle: handleGetConfig},
+		{Route: RouteGetStatus, Handle: handleGetStatus},
+		{Route: RouteSetConfig, Handle: handleSetConfig},
+		{Route: RouteSetTimerInterval, Handle: handleSetTimerInterval},
 	})
 }
 

@@ -4,7 +4,7 @@ This is the canonical guide for LinuxIO's Go-owned API contract between the fron
 
 ## Summary
 
-- Go owns route names, modes, request types, and result types. Route declarations live beside each handler family in `backend/bridge/handlers/<domain>/api`.
+- Go owns route names, modes, request types, and result types. Route declarations live with each handler family's registration in `backend/bridge/handlers/<domain>/handlers.go`.
 - TypeScript API files under `frontend/src/api/generated` are generated. Do not edit them by hand.
 - API requests use JSON stream-open envelopes: `{"route":"handler.command","request":{...}}`.
 - The relay/mux framing is still binary for stream multiplexing, terminal bytes, and job data.
@@ -47,7 +47,7 @@ For request routes:
 
 | File | Role |
 |------|------|
-| `backend/bridge/handlers/<domain>/api/routes.go` | One `RouteSpec` per route in that handler family: route name, mode, kind, request, result, policy, privilege, and `NoEndpoint`. |
+| `backend/bridge/handlers/<domain>/handlers.go` | One `RouteSpec` per route in that handler family plus the typed route-to-handler binding. |
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
@@ -142,7 +142,7 @@ Handler route:
 ```go
 var routes = apischema.NewRouteCatalog()
 
-var GetUnitInfo = routes.Query(
+var RouteGetUnitInfo = routes.Query(
     "systemd.get_unit_info",
     apischema.TypeOf[apischema.UnitNameRequest](),
     apischema.TypeOf[apischema.UnitInfo](),
@@ -160,7 +160,7 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit 
 
 ```go
 apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-    {Route: systemdapi.GetUnitInfo, Handle: handleGetUnitInfo},
+    {Route: RouteGetUnitInfo, Handle: handleGetUnitInfo},
 })
 ```
 
@@ -169,7 +169,7 @@ Runner route:
 ```go
 var routes = apischema.NewRouteCatalog()
 
-var Update = routes.Runner(
+var RouteUpdate = routes.Runner(
     "packages.update",
     apischema.TypeOf[apischema.PackageUpdateRequest](),
     apischema.TypeOf[apischema.JobSnapshot](),
@@ -180,7 +180,7 @@ var Routes = routes.All()
 
 ```go
 apischema.AttachRunner(router, apischema.RunnerBinding{
-    Route:  packagesapi.Update,
+    Route:  RouteUpdate,
     Runner: runPackageUpdateJob,
     Policy: bridgeipc.SingletonSystem,
 })
@@ -191,7 +191,7 @@ Duplex route:
 ```go
 var routes = apischema.NewRouteCatalog()
 
-var Open = routes.Duplex(
+var RouteOpen = routes.Duplex(
     "terminal.open",
     apischema.TypeOf[apischema.TerminalOpenRequest](),
     apischema.NoResponse(),
@@ -203,7 +203,7 @@ var Routes = routes.All()
 
 ```go
 apischema.AttachDuplex(router, apischema.DuplexBinding{
-    Route: terminalapi.Open,
+    Route: RouteOpen,
     Handle: func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
         return HandleTerminalSession(ctx, rt, stream, req)
     },
@@ -247,10 +247,9 @@ Terminal and container streams are true duplex routes. Logs and app update expos
 
 ## Adding An Endpoint
 
-For the common case where request/result structs already exist, adding a route touches two files in one handler family:
+For the common case where request/result structs already exist, adding a route touches one handler-family file:
 
-1. `backend/bridge/handlers/<domain>/api/routes.go` for the `RouteSpec`.
-2. The relevant `backend/bridge/handlers/<domain>/...` package for the typed handler and its registration in `RegisterHandlers`.
+1. `backend/bridge/handlers/<domain>/handlers.go` for the `RouteSpec`, typed handler adapter, and registration in `RegisterHandlers`.
 
 If the request or response type is new, also add the Go struct in `backend/bridge/apischema/contracts.go` or `backend/bridge/apischema/models.go`.
 If the handler family is new, add one entry to `backend/bridge/handlers/register.go`.
@@ -259,9 +258,9 @@ If the handler family is new, add one entry to `backend/bridge/handlers/register
    - Put shared request structs and small shared responses in `contracts.go`.
    - Put API response/domain models in `models.go`.
    - Use exported fields with JSON tags.
-2. Add one named `RouteSpec` to `backend/bridge/handlers/<domain>/api/routes.go`.
-3. Implement the typed handler, runner, or duplex function.
-4. Register it from the relevant package's `RegisterHandlers`.
+2. Add one named `RouteSpec` to `backend/bridge/handlers/<domain>/handlers.go`.
+3. Implement the typed handler, runner, or duplex function in that handler package.
+4. Bind it from the same package's `RegisterHandlers`.
 5. Run `make generate`.
 6. Use the generated endpoint from `@/api`.
 
@@ -278,7 +277,7 @@ type PackageSearchResult struct {
 ```
 
 ```go
-var Search = routes.Query(
+var RouteSearch = routes.Query(
     "packages.search",
     apischema.TypeOf[apischema.PackageSearchRequest](),
     apischema.TypeOf[apischema.PackageSearchResult](),
@@ -294,7 +293,7 @@ func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest
 
 ```go
 apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-    {Route: packagesapi.Search, Handle: handlePackageSearch},
+    {Route: RouteSearch, Handle: handlePackageSearch},
 })
 ```
 
@@ -311,7 +310,7 @@ For a stream-only route, set `NoEndpoint: true` in the route spec and add a focu
 Declare privilege in the route spec:
 
 ```go
-var Reboot = routes.Job(
+var RouteReboot = routes.Job(
     "control.reboot",
     apischema.NoRequest(),
     apischema.NoResponse(),

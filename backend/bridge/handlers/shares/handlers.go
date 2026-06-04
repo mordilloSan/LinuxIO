@@ -5,24 +5,36 @@ import (
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	sharesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+var routes = apischema.NewRouteCatalog()
+
+var RouteCreateNFSShare = routes.Job("shares.create_nfs_share", apischema.TypeOf[apischema.ShareNFSRequest](), apischema.TypeOf[apischema.SuccessPathResponse]())
+var RouteCreateSambaShare = routes.Job("shares.create_samba_share", apischema.TypeOf[apischema.ShareSambaRequest](), apischema.TypeOf[apischema.SuccessNameResponse]())
+var RouteDeleteNFSShare = routes.Job("shares.delete_nfs_share", apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.SuccessResponse]())
+var RouteDeleteSambaShare = routes.Job("shares.delete_samba_share", apischema.TypeOf[apischema.NameRequest](), apischema.TypeOf[apischema.SuccessResponse]())
+var RouteListNFSShares = routes.Query("shares.list_nfs_shares", apischema.NoRequest(), apischema.TypeOf[[]apischema.NFSExport]())
+var RouteListSambaShares = routes.Query("shares.list_samba_shares", apischema.NoRequest(), apischema.TypeOf[[]apischema.SambaShare]())
+var RouteUpdateNFSShare = routes.Job("shares.update_nfs_share", apischema.TypeOf[apischema.ShareNFSRequest](), apischema.TypeOf[apischema.SuccessPathResponse]())
+var RouteUpdateSambaShare = routes.Job("shares.update_samba_share", apischema.TypeOf[apischema.ShareUpdateSambaRequest](), apischema.TypeOf[apischema.SuccessNameResponse]())
+
+var Routes = routes.All()
 
 // RegisterHandlers registers all share management handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
 		// NFS exports (server-side shares via /etc/exports)
-		{Route: sharesapi.ListNFSShares, Handle: handleListNFSShares},
-		{Route: sharesapi.CreateNFSShare, Handle: handleCreateNFSShare},
-		{Route: sharesapi.UpdateNFSShare, Handle: handleUpdateNFSShare},
-		{Route: sharesapi.DeleteNFSShare, Handle: handleDeleteNFSShare},
+		{Route: RouteListNFSShares, Handle: handleListNFSShares},
+		{Route: RouteCreateNFSShare, Handle: handleCreateNFSShare},
+		{Route: RouteUpdateNFSShare, Handle: handleUpdateNFSShare},
+		{Route: RouteDeleteNFSShare, Handle: handleDeleteNFSShare},
 		// Samba shares (via /etc/samba/smb.conf)
-		{Route: sharesapi.ListSambaShares, Handle: handleListSambaShares},
-		{Route: sharesapi.CreateSambaShare, Handle: handleCreateSambaShare},
-		{Route: sharesapi.UpdateSambaShare, Handle: handleUpdateSambaShare},
-		{Route: sharesapi.DeleteSambaShare, Handle: handleDeleteSambaShare},
+		{Route: RouteListSambaShares, Handle: handleListSambaShares},
+		{Route: RouteCreateSambaShare, Handle: handleCreateSambaShare},
+		{Route: RouteUpdateSambaShare, Handle: handleUpdateSambaShare},
+		{Route: RouteDeleteSambaShare, Handle: handleDeleteSambaShare},
 	})
 }
 

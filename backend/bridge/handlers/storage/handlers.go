@@ -5,30 +5,49 @@ import (
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	storageapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+var routes = apischema.NewRouteCatalog()
+
+var RouteCreateBtrfsSubvolume = routes.Job("storage.create_btrfs_subvolume", apischema.TypeOf[apischema.MountpointNameRequest](), apischema.TypeOf[apischema.StoragePathResult]())
+var RouteCreateLv = routes.Job("storage.create_lv", apischema.TypeOf[apischema.CreateLogicalVolumeRequest](), apischema.TypeOf[apischema.StorageCreateLVResult]())
+var RouteDeleteLv = routes.Job("storage.delete_lv", apischema.TypeOf[apischema.VolumeGroupLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]())
+var RouteGetDriveInfo = routes.Query("storage.get_drive_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.ApiDisk]())
+var RouteListLVs = routes.Query("storage.list_lvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.LogicalVolume]())
+var RouteListNFSExports = routes.Query("storage.list_nfs_exports", apischema.TypeOf[apischema.ServerRequest](), apischema.TypeOf[[]string]())
+var RouteListNFSMounts = routes.Query("storage.list_nfs_mounts", apischema.NoRequest(), apischema.TypeOf[[]apischema.NFSMount]())
+var RouteListPVs = routes.Query("storage.list_pvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.PhysicalVolume]())
+var RouteListVGs = routes.Query("storage.list_vgs", apischema.NoRequest(), apischema.TypeOf[[]apischema.VolumeGroup]())
+var RouteMountNFS = routes.Job("storage.mount_nfs", apischema.TypeOf[apischema.ServerExportMountOptionsPersistRequest](), apischema.TypeOf[apischema.StorageMountResult]())
+var RouteRemountNFS = routes.Job("storage.remount_nfs", apischema.TypeOf[apischema.MountpointOptionsUpdateFstabRequest](), apischema.TypeOf[apischema.StorageMountResult]())
+var RouteResizeLv = routes.Job("storage.resize_lv", apischema.TypeOf[apischema.ResizeLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]())
+var RouteRunSmartTest = routes.Runner("storage.run_smart_test", apischema.TypeOf[apischema.DeviceTestTypeRequest](), apischema.TypeOf[apischema.JobSnapshot]())
+var RouteUnmountFilesystem = routes.Job("storage.unmount_filesystem", apischema.TypeOf[apischema.MountpointRequest](), apischema.TypeOf[apischema.StorageMountResult]())
+var RouteUnmountNFS = routes.Job("storage.unmount_nfs", apischema.TypeOf[apischema.MountpointRemoveFstabRequest](), apischema.TypeOf[apischema.StorageWarningResult]())
+
+var Routes = routes.All()
 
 // RegisterHandlers registers all storage handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: storageapi.ListPVs, Handle: handleListPVs},
-		{Route: storageapi.ListVGs, Handle: handleListVGs},
-		{Route: storageapi.ListLVs, Handle: handleListLVs},
-		{Route: storageapi.CreateLv, Handle: handleCreateLV},
-		{Route: storageapi.DeleteLv, Handle: handleDeleteLV},
-		{Route: storageapi.ResizeLv, Handle: handleResizeLV},
-		{Route: storageapi.ListNFSMounts, Handle: handleListNFSMounts},
-		{Route: storageapi.ListNFSExports, Handle: handleListNFSExports},
-		{Route: storageapi.MountNFS, Handle: handleMountNFS},
-		{Route: storageapi.UnmountNFS, Handle: handleUnmountNFS},
-		{Route: storageapi.RemountNFS, Handle: handleRemountNFS},
-		{Route: storageapi.UnmountFilesystem, Handle: handleUnmountFilesystem},
-		{Route: storageapi.CreateBtrfsSubvolume, Handle: handleCreateBtrfsSubvolume},
-		{Route: storageapi.GetDriveInfo, Handle: handleGetDriveInfo},
+		{Route: RouteListPVs, Handle: handleListPVs},
+		{Route: RouteListVGs, Handle: handleListVGs},
+		{Route: RouteListLVs, Handle: handleListLVs},
+		{Route: RouteCreateLv, Handle: handleCreateLV},
+		{Route: RouteDeleteLv, Handle: handleDeleteLV},
+		{Route: RouteResizeLv, Handle: handleResizeLV},
+		{Route: RouteListNFSMounts, Handle: handleListNFSMounts},
+		{Route: RouteListNFSExports, Handle: handleListNFSExports},
+		{Route: RouteMountNFS, Handle: handleMountNFS},
+		{Route: RouteUnmountNFS, Handle: handleUnmountNFS},
+		{Route: RouteRemountNFS, Handle: handleRemountNFS},
+		{Route: RouteUnmountFilesystem, Handle: handleUnmountFilesystem},
+		{Route: RouteCreateBtrfsSubvolume, Handle: handleCreateBtrfsSubvolume},
+		{Route: RouteGetDriveInfo, Handle: handleGetDriveInfo},
 	})
 }
 

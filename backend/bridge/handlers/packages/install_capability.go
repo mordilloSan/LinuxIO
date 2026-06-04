@@ -11,7 +11,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	systemapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
@@ -46,7 +45,7 @@ func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 10 * time.Minute
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  systemapi.InstallCapability,
+		Route:  system.RouteInstallCapability,
 		Runner: runInstallCapabilityJob,
 		Policy: policy,
 	})

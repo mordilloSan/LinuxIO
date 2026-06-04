@@ -12,12 +12,11 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	dockerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routeDockerLogsFollow = dockerapi.LogsFollow.Route
+var routeDockerLogsFollow = RouteLogsFollow.Route
 
 var dockerLogANSIRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 

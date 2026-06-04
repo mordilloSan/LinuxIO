@@ -12,12 +12,11 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	logsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var streamTypeServiceLogs = logsapi.ServiceFollow.Route
+var streamTypeServiceLogs = RouteServiceFollow.Route
 
 // runServiceLogsJob streams service logs from journalctl through the bridge job lifecycle.
 func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {

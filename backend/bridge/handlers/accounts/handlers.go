@@ -5,29 +5,48 @@ import (
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	accountsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var routes = apischema.NewRouteCatalog()
+
+var RouteChangePassword = routes.Job("accounts.change_password", apischema.TypeOf[apischema.ChangePasswordRequest](), apischema.NoResponse())
+var RouteCreateGroup = routes.Job("accounts.create_group", apischema.TypeOf[apischema.CreateGroupRequest](), apischema.NoResponse())
+var RouteCreateUser = routes.Job("accounts.create_user", apischema.TypeOf[apischema.CreateUserRequest](), apischema.NoResponse())
+var RouteDeleteGroup = routes.Job("accounts.delete_group", apischema.TypeOf[apischema.GroupNameRequest](), apischema.NoResponse())
+var RouteDeleteUser = routes.Job("accounts.delete_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
+var RouteGetUserDetails = routes.Query("accounts.get_user_details", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[apischema.AccountUserDetails]())
+var RouteListGroups = routes.Query("accounts.list_groups", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountGroup]())
+var RouteListShells = routes.Query("accounts.list_shells", apischema.NoRequest(), apischema.TypeOf[[]string]())
+var RouteListUserLogins = routes.Query("accounts.list_user_logins", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[[]apischema.AccountUserLogin]())
+var RouteListUsers = routes.Query("accounts.list_users", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountUser]())
+var RouteLockUser = routes.Job("accounts.lock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
+var RouteModifyGroupMembers = routes.Job("accounts.modify_group_members", apischema.TypeOf[apischema.ModifyGroupMembersRequest](), apischema.NoResponse())
+var RouteModifyUser = routes.Job("accounts.modify_user", apischema.TypeOf[apischema.ModifyUserRequest](), apischema.NoResponse())
+var RouteTerminateSession = routes.Job("accounts.terminate_session", apischema.TypeOf[apischema.TerminateSessionRequest](), apischema.NoResponse())
+var RouteUnlockUser = routes.Job("accounts.unlock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
+
+var Routes = routes.All()
+
 // RegisterHandlers registers accounts handlers with the IPC system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: accountsapi.ListUsers, Handle: handleListUsers},
-		{Route: accountsapi.GetUserDetails, Handle: handleGetUserDetails},
-		{Route: accountsapi.ListUserLogins, Handle: handleListUserLogins},
-		{Route: accountsapi.TerminateSession, Handle: handleTerminateSession},
-		{Route: accountsapi.CreateUser, Handle: handleCreateUser},
-		{Route: accountsapi.DeleteUser, Handle: handleDeleteUser},
-		{Route: accountsapi.ModifyUser, Handle: handleModifyUser},
-		{Route: accountsapi.ChangePassword, Handle: handleChangePassword},
-		{Route: accountsapi.LockUser, Handle: handleLockUser},
-		{Route: accountsapi.UnlockUser, Handle: handleUnlockUser},
-		{Route: accountsapi.ListGroups, Handle: handleListGroups},
-		{Route: accountsapi.CreateGroup, Handle: handleCreateGroup},
-		{Route: accountsapi.DeleteGroup, Handle: handleDeleteGroup},
-		{Route: accountsapi.ModifyGroupMembers, Handle: handleModifyGroupMembers},
-		{Route: accountsapi.ListShells, Handle: handleListShells},
+		{Route: RouteListUsers, Handle: handleListUsers},
+		{Route: RouteGetUserDetails, Handle: handleGetUserDetails},
+		{Route: RouteListUserLogins, Handle: handleListUserLogins},
+		{Route: RouteTerminateSession, Handle: handleTerminateSession},
+		{Route: RouteCreateUser, Handle: handleCreateUser},
+		{Route: RouteDeleteUser, Handle: handleDeleteUser},
+		{Route: RouteModifyUser, Handle: handleModifyUser},
+		{Route: RouteChangePassword, Handle: handleChangePassword},
+		{Route: RouteLockUser, Handle: handleLockUser},
+		{Route: RouteUnlockUser, Handle: handleUnlockUser},
+		{Route: RouteListGroups, Handle: handleListGroups},
+		{Route: RouteCreateGroup, Handle: handleCreateGroup},
+		{Route: RouteDeleteGroup, Handle: handleDeleteGroup},
+		{Route: RouteModifyGroupMembers, Handle: handleModifyGroupMembers},
+		{Route: RouteListShells, Handle: handleListShells},
 	})
 }
 

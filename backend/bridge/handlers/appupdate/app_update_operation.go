@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	appupdateapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate/api"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -20,7 +19,7 @@ import (
 
 const updateStatusPath = "/run/linuxio/update-status.json"
 
-var routeAppUpdate = appupdateapi.ControlAppUpdate.Route
+var routeAppUpdate = RouteControlAppUpdate.Route
 
 var validRunIDRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 

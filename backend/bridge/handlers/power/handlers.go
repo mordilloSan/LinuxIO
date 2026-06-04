@@ -4,17 +4,25 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	powerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var routes = apischema.NewRouteCatalog()
+
+var RouteDisable = routes.Job("power.disable", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+var RouteGetStatus = routes.Query("power.get_status", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+var RouteSetProfile = routes.Job("power.set_profile", apischema.TypeOf[apischema.ProfileRequest](), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+var RouteStart = routes.Job("power.start", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+
+var Routes = routes.All()
+
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: powerapi.GetStatus, Handle: handleGetStatus},
-		{Route: powerapi.Start, Handle: handleStart},
-		{Route: powerapi.SetProfile, Handle: handleSetProfile},
-		{Route: powerapi.Disable, Handle: handleDisable},
+		{Route: RouteGetStatus, Handle: handleGetStatus},
+		{Route: RouteStart, Handle: handleStart},
+		{Route: RouteSetProfile, Handle: handleSetProfile},
+		{Route: RouteDisable, Handle: handleDisable},
 	})
 }
 

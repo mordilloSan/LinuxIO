@@ -4,20 +4,31 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	datetimeapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var routes = apischema.NewRouteCatalog()
+
+var RouteGetNTPServers = routes.Query("datetime.get_ntp_servers", apischema.NoRequest(), apischema.TypeOf[[]string]())
+var RouteGetNTPStatus = routes.Query("datetime.get_ntp_status", apischema.NoRequest(), apischema.TypeOf[bool]())
+var RouteGetTimezone = routes.Query("datetime.get_timezone", apischema.NoRequest(), apischema.TypeOf[string]())
+var RouteSetNTP = routes.Job("datetime.set_ntp", apischema.TypeOf[apischema.EnabledRequest](), apischema.NoResponse())
+var RouteSetNTPServers = routes.Job("datetime.set_ntp_servers", apischema.TypeOf[apischema.NTPServersRequest](), apischema.NoResponse())
+var RouteSetServerTime = routes.Job("datetime.set_server_time", apischema.TypeOf[apischema.ISOTimeRequest](), apischema.NoResponse())
+var RouteSetTimezone = routes.Job("datetime.set_timezone", apischema.TypeOf[apischema.TimezoneRequest](), apischema.NoResponse())
+
+var Routes = routes.All()
+
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: datetimeapi.GetNTPStatus, Handle: handleGetNTPStatus},
-		{Route: datetimeapi.SetNTP, Handle: handleSetNTP},
-		{Route: datetimeapi.SetServerTime, Handle: handleSetServerTime},
-		{Route: datetimeapi.GetTimezone, Handle: handleGetTimezone},
-		{Route: datetimeapi.SetTimezone, Handle: handleSetTimezone},
-		{Route: datetimeapi.GetNTPServers, Handle: handleGetNTPServers},
-		{Route: datetimeapi.SetNTPServers, Handle: handleSetNTPServers},
+		{Route: RouteGetNTPStatus, Handle: handleGetNTPStatus},
+		{Route: RouteSetNTP, Handle: handleSetNTP},
+		{Route: RouteSetServerTime, Handle: handleSetServerTime},
+		{Route: RouteGetTimezone, Handle: handleGetTimezone},
+		{Route: RouteSetTimezone, Handle: handleSetTimezone},
+		{Route: RouteGetNTPServers, Handle: handleGetNTPServers},
+		{Route: RouteSetNTPServers, Handle: handleSetNTPServers},
 	})
 }
 

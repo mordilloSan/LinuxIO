@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	logsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -22,7 +21,7 @@ import (
 // untrusted UI input from being passed straight to journalctl.
 var journaldFieldMatch = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=.*$`)
 
-var streamTypeGeneralLogs = logsapi.GeneralFollow.Route
+var streamTypeGeneralLogs = RouteGeneralFollow.Route
 
 type generalLogsRequest struct {
 	lines        string

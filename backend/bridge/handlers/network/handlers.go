@@ -6,20 +6,31 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	networkapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var routes = apischema.NewRouteCatalog()
+
+var RouteDisableConnection = routes.Job("network.disable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse())
+var RouteEnableConnection = routes.Job("network.enable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse())
+var RouteGetNetworkInfo = routes.Query("network.get_network_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.NetworkInterface]())
+var RouteSetIPv4 = routes.Job("network.set_ipv4", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse())
+var RouteSetIPv4Manual = routes.Job("network.set_ipv4_manual", apischema.TypeOf[apischema.IPv4ManualRequest](), apischema.NoResponse())
+var RouteSetIPv6 = routes.Job("network.set_ipv6", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse())
+var RouteSetMTU = routes.Job("network.set_mtu", apischema.TypeOf[apischema.InterfaceMTURequest](), apischema.NoResponse())
+
+var Routes = routes.All()
+
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: networkapi.GetNetworkInfo, Handle: handleGetNetworkInfo},
-		{Route: networkapi.SetIPv4Manual, Handle: handleSetIPv4Manual},
-		{Route: networkapi.SetIPv4, Handle: handleSetIPv4},
-		{Route: networkapi.SetIPv6, Handle: handleSetIPv6},
-		{Route: networkapi.SetMTU, Handle: handleSetMTU},
-		{Route: networkapi.EnableConnection, Handle: handleEnableConnection},
-		{Route: networkapi.DisableConnection, Handle: handleDisableConnection},
+		{Route: RouteGetNetworkInfo, Handle: handleGetNetworkInfo},
+		{Route: RouteSetIPv4Manual, Handle: handleSetIPv4Manual},
+		{Route: RouteSetIPv4, Handle: handleSetIPv4},
+		{Route: RouteSetIPv6, Handle: handleSetIPv6},
+		{Route: RouteSetMTU, Handle: handleSetMTU},
+		{Route: RouteEnableConnection, Handle: handleEnableConnection},
+		{Route: RouteDisableConnection, Handle: handleDisableConnection},
 	})
 }
 

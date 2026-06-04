@@ -4,10 +4,22 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	packagesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+var routes = apischema.NewRouteCatalog()
+
+var RouteUpdate = routes.Runner("packages.update", apischema.TypeOf[apischema.PackageUpdateRequest](), apischema.TypeOf[apischema.JobSnapshot]())
+var RouteUpdatesApplyOfflineUpdates = routes.Job("updates.apply_offline_updates", apischema.NoRequest(), apischema.TypeOf[apischema.OfflineUpdatesResponse]())
+var RouteUpdatesGetAutoUpdates = routes.Query("updates.get_auto_updates", apischema.NoRequest(), apischema.TypeOf[apischema.AutoUpdateState]())
+var RouteUpdatesGetUpdateDetail = routes.Query("updates.get_update_detail", apischema.TypeOf[apischema.PackageIDRequest](), apischema.TypeOf[apischema.Update]())
+var RouteUpdatesGetUpdateHistory = routes.Query("updates.get_update_history", apischema.NoRequest(), apischema.TypeOf[[]apischema.UpdateHistoryRow]())
+var RouteUpdatesGetUpdatesBasic = routes.Query("updates.get_updates_basic", apischema.NoRequest(), apischema.TypeOf[[]apischema.Update]())
+var RouteUpdatesInstallPackage = routes.Job("updates.install_package", apischema.TypeOf[apischema.PackageIDRequest](), apischema.NoResponse())
+var RouteUpdatesSetAutoUpdates = routes.Job("updates.set_auto_updates", apischema.TypeOf[apischema.UpdatesSetAutoUpdatesRequest](), apischema.TypeOf[apischema.AutoUpdateState]())
+
+var Routes = routes.All()
 
 // RegisterHandlers registers package + update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
@@ -15,13 +27,13 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterCapabilityJobRoutes(router)
 
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: packagesapi.UpdatesGetUpdatesBasic, Handle: handleGetUpdatesBasic},
-		{Route: packagesapi.UpdatesGetUpdateDetail, Handle: handleGetUpdateDetail},
-		{Route: packagesapi.UpdatesInstallPackage, Handle: handleInstallPackage},
-		{Route: packagesapi.UpdatesGetAutoUpdates, Handle: handleGetAutoUpdates},
-		{Route: packagesapi.UpdatesSetAutoUpdates, Handle: handleSetAutoUpdates},
-		{Route: packagesapi.UpdatesApplyOfflineUpdates, Handle: handleApplyOfflineUpdates},
-		{Route: packagesapi.UpdatesGetUpdateHistory, Handle: handleGetUpdateHistory},
+		{Route: RouteUpdatesGetUpdatesBasic, Handle: handleGetUpdatesBasic},
+		{Route: RouteUpdatesGetUpdateDetail, Handle: handleGetUpdateDetail},
+		{Route: RouteUpdatesInstallPackage, Handle: handleInstallPackage},
+		{Route: RouteUpdatesGetAutoUpdates, Handle: handleGetAutoUpdates},
+		{Route: RouteUpdatesSetAutoUpdates, Handle: handleSetAutoUpdates},
+		{Route: RouteUpdatesApplyOfflineUpdates, Handle: handleApplyOfflineUpdates},
+		{Route: RouteUpdatesGetUpdateHistory, Handle: handleGetUpdateHistory},
 	})
 }
 

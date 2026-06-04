@@ -4,17 +4,25 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	controlapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var routes = apischema.NewRouteCatalog()
+
+var RouteLogoff = routes.Job("control.logoff", apischema.TypeOf[apischema.SessionIDRequest](), apischema.NoResponse())
+var RoutePowerOff = routes.Job("control.power_off", apischema.NoRequest(), apischema.NoResponse())
+var RouteReboot = routes.Job("control.reboot", apischema.NoRequest(), apischema.NoResponse())
+var RouteVersion = routes.Query("control.version", apischema.NoRequest(), apischema.TypeOf[apischema.VersionResponse]())
+
+var Routes = routes.All()
+
 // RegisterHandlers registers host control handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: controlapi.Reboot, Handle: handleReboot},
-		{Route: controlapi.PowerOff, Handle: handlePowerOff},
-		{Route: controlapi.Logoff, Handle: handleLogoff},
+		{Route: RouteReboot, Handle: handleReboot},
+		{Route: RoutePowerOff, Handle: handlePowerOff},
+		{Route: RouteLogoff, Handle: handleLogoff},
 	})
 }
 

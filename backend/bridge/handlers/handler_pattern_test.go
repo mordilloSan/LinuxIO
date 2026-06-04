@@ -92,9 +92,28 @@ func checkHandlerDecl(t *testing.T, path string, decl ast.Decl) {
 }
 
 func checkHandlerGenDecl(t *testing.T, path string, decl *ast.GenDecl) {
-	if decl.Tok != token.IMPORT {
-		t.Errorf("%s: handlers.go must not declare %s blocks; move state/helpers to another file", path, strings.ToLower(decl.Tok.String()))
+	if decl.Tok == token.IMPORT {
+		return
 	}
+	if decl.Tok == token.VAR && isAllowedRouteDecl(decl) {
+		return
+	}
+	t.Errorf("%s: handlers.go must not declare %s blocks except route specs; move state/helpers to another file", path, strings.ToLower(decl.Tok.String()))
+}
+
+func isAllowedRouteDecl(decl *ast.GenDecl) bool {
+	for _, spec := range decl.Specs {
+		value, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			return false
+		}
+		for _, name := range value.Names {
+			if name.Name != "routes" && name.Name != "Routes" && !strings.HasPrefix(name.Name, "Route") {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func checkHandlerFuncDecl(t *testing.T, path string, decl *ast.FuncDecl) {

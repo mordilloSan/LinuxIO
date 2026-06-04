@@ -4,38 +4,66 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+var routes = apischema.NewRouteCatalog()
+
+var RouteDismissFailedLoginAlert = routes.Job("system.dismiss_failed_login_alert", apischema.TypeOf[apischema.AlertIDRequest](), apischema.TypeOf[apischema.MessageResponse]())
+var RouteDismissUncleanShutdown = routes.Job("system.dismiss_unclean_shutdown", apischema.TypeOf[apischema.BootIDRequest](), apischema.TypeOf[apischema.MessageResponse]())
+var RouteGetCapabilities = routes.Query("system.get_capabilities", apischema.NoRequest(), apischema.TypeOf[apischema.CapabilitiesResponse]())
+var RouteGetCPUInfo = routes.Query("system.get_cpu_info", apischema.NoRequest(), apischema.TypeOf[apischema.CPUInfoResponse]())
+var RouteGetDiskThroughput = routes.Query("system.get_disk_throughput", apischema.NoRequest(), apischema.TypeOf[apischema.DiskThroughputResponse]())
+var RouteGetFsInfo = routes.Query("system.get_fs_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.FilesystemInfo]())
+var RouteGetGPUInfo = routes.Query("system.get_gpu_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.GpuDevice]())
+var RouteGetHealthSummary = routes.Query("system.get_health_summary", apischema.NoRequest(), apischema.TypeOf[apischema.SystemHealthSummary]())
+var RouteGetHostInfo = routes.Query("system.get_host_info", apischema.NoRequest(), apischema.TypeOf[apischema.HostInfo]())
+var RouteGetMemoryInfo = routes.Query("system.get_memory_info", apischema.NoRequest(), apischema.TypeOf[apischema.MemoryInfoResponse]())
+var RouteGetMemoryModules = routes.Query("system.get_memory_modules", apischema.NoRequest(), apischema.TypeOf[[]apischema.MemoryModule]())
+var RouteGetMotherboardInfo = routes.Query("system.get_motherboard_info", apischema.NoRequest(), apischema.TypeOf[apischema.MotherboardInfo]())
+var RouteGetNetworkInfo = routes.Query("system.get_network_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.InterfaceStats]())
+var RouteGetPciDevices = routes.Query("system.get_pci_devices", apischema.NoRequest(), apischema.TypeOf[[]apischema.PCIDevice]())
+var RouteGetProcesses = routes.Query("system.get_processes", apischema.NoRequest(), apischema.TypeOf[[]apischema.ProcessInfo]())
+var RouteGetSensorInfo = routes.Query("system.get_sensor_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.SensorGroup]())
+var RouteGetServerTime = routes.Query("system.get_server_time", apischema.NoRequest(), apischema.TypeOf[string]())
+var RouteGetServices = routes.Query("system.get_services", apischema.NoRequest(), apischema.NoResponse(), apischema.NoEndpoint())
+var RouteGetSystemInfo = routes.Query("system.get_system_info", apischema.NoRequest(), apischema.TypeOf[apischema.SystemInfo]())
+var RouteGetTimezones = routes.Query("system.get_timezones", apischema.NoRequest(), apischema.TypeOf[[]string]())
+var RouteGetUpdatesFast = routes.Query("system.get_updates_fast", apischema.NoRequest(), apischema.TypeOf[apischema.UpdatesFastResponse]())
+var RouteGetUptime = routes.Query("system.get_uptime", apischema.NoRequest(), apischema.TypeOf[float64]())
+var RouteInstallCapability = routes.Runner("system.install_capability", apischema.TypeOf[apischema.CapabilityRequest](), apischema.TypeOf[apischema.JobSnapshot](), apischema.Privileged())
+var RouteListFailedLoginEvents = routes.Query("system.list_failed_login_events", apischema.TypeOf[apischema.FailedLoginEventsRequest](), apischema.TypeOf[[]apischema.AccountUserLogin](), apischema.Privileged())
+
+var Routes = routes.All()
 
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := systemHandlers{rt: rt}
 	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
-		{Route: systemapi.GetCapabilities, Handle: handleGetCapabilities},
-		{Route: systemapi.GetCPUInfo, Handle: handleGetCPUInfo},
-		{Route: systemapi.GetSensorInfo, Handle: handleGetSensorInfo},
-		{Route: systemapi.GetMotherboardInfo, Handle: handleGetMotherboardInfo},
-		{Route: systemapi.GetMemoryInfo, Handle: handleGetMemoryInfo},
-		{Route: systemapi.GetHostInfo, Handle: handleGetHostInfo},
-		{Route: systemapi.GetUptime, Handle: handleGetUptime},
-		{Route: systemapi.GetFsInfo, Handle: handleGetFilesystemInfo},
-		{Route: systemapi.GetProcesses, Handle: handleGetProcesses},
-		{Route: systemapi.GetServices, Handle: handleGetServices},
-		{Route: systemapi.GetGPUInfo, Handle: handleGetGPUInfo},
-		{Route: systemapi.GetUpdatesFast, Handle: handleGetUpdatesFast},
-		{Route: systemapi.GetNetworkInfo, Handle: handleGetNetworkInfo},
-		{Route: systemapi.GetDiskThroughput, Handle: handleGetDiskThroughput},
-		{Route: systemapi.GetSystemInfo, Handle: handleGetSystemInfo},
-		{Route: systemapi.GetPciDevices, Handle: handleGetPCIDevices},
-		{Route: systemapi.GetMemoryModules, Handle: handleGetMemoryModules},
-		{Route: systemapi.GetHealthSummary, Handle: handlers.handleGetHealthSummary},
-		{Route: systemapi.ListFailedLoginEvents, Handle: handlers.handleListFailedLoginEvents},
-		{Route: systemapi.DismissUncleanShutdown, Handle: handlers.handleDismissUncleanShutdown},
-		{Route: systemapi.DismissFailedLoginAlert, Handle: handlers.handleDismissFailedLoginAlert},
-		{Route: systemapi.GetServerTime, Handle: handleGetServerTime},
-		{Route: systemapi.GetTimezones, Handle: handleGetTimezones},
+		{Route: RouteGetCapabilities, Handle: handleGetCapabilities},
+		{Route: RouteGetCPUInfo, Handle: handleGetCPUInfo},
+		{Route: RouteGetSensorInfo, Handle: handleGetSensorInfo},
+		{Route: RouteGetMotherboardInfo, Handle: handleGetMotherboardInfo},
+		{Route: RouteGetMemoryInfo, Handle: handleGetMemoryInfo},
+		{Route: RouteGetHostInfo, Handle: handleGetHostInfo},
+		{Route: RouteGetUptime, Handle: handleGetUptime},
+		{Route: RouteGetFsInfo, Handle: handleGetFilesystemInfo},
+		{Route: RouteGetProcesses, Handle: handleGetProcesses},
+		{Route: RouteGetServices, Handle: handleGetServices},
+		{Route: RouteGetGPUInfo, Handle: handleGetGPUInfo},
+		{Route: RouteGetUpdatesFast, Handle: handleGetUpdatesFast},
+		{Route: RouteGetNetworkInfo, Handle: handleGetNetworkInfo},
+		{Route: RouteGetDiskThroughput, Handle: handleGetDiskThroughput},
+		{Route: RouteGetSystemInfo, Handle: handleGetSystemInfo},
+		{Route: RouteGetPciDevices, Handle: handleGetPCIDevices},
+		{Route: RouteGetMemoryModules, Handle: handleGetMemoryModules},
+		{Route: RouteGetHealthSummary, Handle: handlers.handleGetHealthSummary},
+		{Route: RouteListFailedLoginEvents, Handle: handlers.handleListFailedLoginEvents},
+		{Route: RouteDismissUncleanShutdown, Handle: handlers.handleDismissUncleanShutdown},
+		{Route: RouteDismissFailedLoginAlert, Handle: handlers.handleDismissFailedLoginAlert},
+		{Route: RouteGetServerTime, Handle: handleGetServerTime},
+		{Route: RouteGetTimezones, Handle: handleGetTimezones},
 	})
 }
 

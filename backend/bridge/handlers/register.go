@@ -6,44 +6,25 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
-	accountsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate"
-	appupdateapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	configapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
-	controlapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
-	datetimeapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	dockerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
-	filebrowserapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname"
-	hostnameapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer/api"
-	jobsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs/api"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
-	logsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
-	networkapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
-	packagesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
-	powerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
-	sharesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
-	storageapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	systemapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
-	terminalapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
-	wireguardapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -55,26 +36,26 @@ type Family struct {
 }
 
 var Families = []Family{
-	{Name: "appupdate", Routes: appupdateapi.Routes, Register: appupdate.RegisterHandlers},
-	{Name: "system", Routes: systemapi.Routes, Register: system.RegisterHandlers},
-	{Name: "accounts", Routes: accountsapi.Routes, Register: accounts.RegisterHandlers},
-	{Name: "docker", Routes: dockerapi.Routes, Register: docker.RegisterHandlers},
-	{Name: "filebrowser", Routes: filebrowserapi.Routes, Register: filebrowser.RegisterHandlers},
-	{Name: "indexer", Routes: indexerapi.Routes, Register: indexer.RegisterHandlers},
-	{Name: "config", Routes: configapi.Routes, Register: config.RegisterHandlers},
-	{Name: "control", Routes: controlapi.Routes, Register: control.RegisterHandlers},
-	{Name: "power", Routes: powerapi.Routes, Register: power.RegisterHandlers},
-	{Name: "systemd", Routes: systemdapi.Routes, Register: systemd.RegisterHandlers},
-	{Name: "hostname", Routes: hostnameapi.Routes, Register: hostname.RegisterHandlers},
-	{Name: "datetime", Routes: datetimeapi.Routes, Register: datetime.RegisterHandlers},
-	{Name: "network", Routes: networkapi.Routes, Register: network.RegisterHandlers},
-	{Name: "packages", Routes: packagesapi.Routes, Register: packages.RegisterHandlers},
-	{Name: "terminal", Routes: terminalapi.Routes, Register: terminal.RegisterHandlers},
-	{Name: "wireguard", Routes: wireguardapi.Routes, Register: wireguard.RegisterHandlers},
-	{Name: "storage", Routes: storageapi.Routes, Register: storage.RegisterHandlers},
-	{Name: "shares", Routes: sharesapi.Routes, Register: shares.RegisterHandlers},
-	{Name: "logs", Routes: logsapi.Routes, Register: logs.RegisterHandlers},
-	{Name: "jobs", Routes: jobsapi.Routes},
+	{Name: "appupdate", Routes: appupdate.Routes, Register: appupdate.RegisterHandlers},
+	{Name: "system", Routes: system.Routes, Register: system.RegisterHandlers},
+	{Name: "accounts", Routes: accounts.Routes, Register: accounts.RegisterHandlers},
+	{Name: "docker", Routes: docker.Routes, Register: docker.RegisterHandlers},
+	{Name: "filebrowser", Routes: filebrowser.Routes, Register: filebrowser.RegisterHandlers},
+	{Name: "indexer", Routes: indexer.Routes, Register: indexer.RegisterHandlers},
+	{Name: "config", Routes: config.Routes, Register: config.RegisterHandlers},
+	{Name: "control", Routes: control.Routes, Register: control.RegisterHandlers},
+	{Name: "power", Routes: power.Routes, Register: power.RegisterHandlers},
+	{Name: "systemd", Routes: systemd.Routes, Register: systemd.RegisterHandlers},
+	{Name: "hostname", Routes: hostname.Routes, Register: hostname.RegisterHandlers},
+	{Name: "datetime", Routes: datetime.Routes, Register: datetime.RegisterHandlers},
+	{Name: "network", Routes: network.Routes, Register: network.RegisterHandlers},
+	{Name: "packages", Routes: packages.Routes, Register: packages.RegisterHandlers},
+	{Name: "terminal", Routes: terminal.Routes, Register: terminal.RegisterHandlers},
+	{Name: "wireguard", Routes: wireguard.Routes, Register: wireguard.RegisterHandlers},
+	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},
+	{Name: "shares", Routes: shares.Routes, Register: shares.RegisterHandlers},
+	{Name: "logs", Routes: logs.Routes, Register: logs.RegisterHandlers},
+	{Name: "jobs", Routes: jobs.Routes},
 }
 
 var Routes = collectRoutes(Families)
