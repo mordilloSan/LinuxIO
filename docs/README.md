@@ -19,3 +19,4 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | [Docker Icons](./docker-icons.md) | Docker icon resolution and labels. |
 | [Notifications](./notifications.md) | Planned notification system design. |
 | [Session Activity Timeout Plan](./session-activity-timeout-plan.md) | Planned session idle and job-safe cleanup design. |
+| [Transient Units Plan](./transient-units-plan.md) | Planned bridge-survivable jobs via systemd transient units. |

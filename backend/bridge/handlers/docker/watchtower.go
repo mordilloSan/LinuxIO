@@ -11,6 +11,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 )
 
 const (
@@ -23,10 +24,10 @@ const (
 // from the current user's AutoUpdateStacks config and starts/restarts (or stops)
 // Watchtower accordingly. Called after every auto-update toggle and on login.
 // Errors are logged but not returned — the toggle saves the config regardless.
-func SyncWatchtowerStackDetached(username string, store *config.UserStore) {
+func SyncWatchtowerStackDetached(rt runtime.Runtime) {
 	ctx, cancel := detachedWatchtowerContext()
 	defer cancel()
-	SyncWatchtowerStack(ctx, username, store)
+	SyncWatchtowerStack(ctx, rt.Username(), rt.Store)
 }
 
 // detachedWatchtowerContext bounds intentionally detached Watchtower syncs

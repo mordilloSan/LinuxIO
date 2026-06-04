@@ -10,8 +10,7 @@ import (
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	store := rt.Store
-	RegisterJobRoutes(router, store)
+	RegisterJobRoutes(router, rt.Store)
 
 	apischema.RegisterRoutes(router, "filebrowser", []bridgeipc.Command{
 		{Name: "resource_get", Mode: bridgeipc.ModeQuery, Handler: handleResourceGet},

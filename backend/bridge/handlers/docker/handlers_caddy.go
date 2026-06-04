@@ -10,7 +10,7 @@ import (
 )
 
 func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	cfg, _, err := config.SnapshotForUser(ctx, h.username, h.store)
+	cfg, _, err := config.SnapshotForUser(ctx, h.rt.Username(), h.rt.Store)
 	if err != nil {
 		return err
 	}
@@ -26,7 +26,7 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, req apischema.D
 		return bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := config.UpdateForUser(ctx, h.username, h.store, func(cfg *config.Settings) error {
+	if _, _, err := config.UpdateForUser(ctx, h.rt.Username(), h.rt.Store, func(cfg *config.Settings) error {
 		if req.Enabled {
 			if !slices.Contains(cfg.Docker.AutoUpdateStacks, req.Container) {
 				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, req.Container)
@@ -41,28 +41,28 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, req apischema.D
 		return err
 	}
 
-	go SyncWatchtowerStackDetached(h.username, h.store)
+	go SyncWatchtowerStackDetached(h.rt)
 
 	return bridgeipc.EmitResult(emit, map[string]any{"message": "auto-update updated"}, nil)
 }
 
 func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetCaddyStatus(ctx, h.username, h.store)
+	result, err := GetCaddyStatus(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleEnableCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := EnableCaddy(ctx, h.username, h.store)
+	result, err := EnableCaddy(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleDisableCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := DisableCaddy(ctx, h.username, h.store)
+	result, err := DisableCaddy(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h dockerHandlers) handleReloadCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	result, err := ReloadCaddy(ctx, h.username, h.store)
+	result, err := ReloadCaddy(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 

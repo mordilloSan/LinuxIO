@@ -11,6 +11,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -36,7 +37,9 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router, username string, store *config.UserStore) {
+func RegisterJobRoutes(router *bridgejobs.Router, rt runtime.Runtime) {
+	username := rt.Username()
+	store := rt.Store
 	apischema.AttachRunner(router, apischema.RunnerBinding{
 		Route: JobTypeDockerCompose,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
