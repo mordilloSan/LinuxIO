@@ -5,23 +5,24 @@ import (
 	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	terminalapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers all terminal handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "terminal", []bridgeipc.Command{
-		{Name: "list_shells", Mode: bridgeipc.ModeQuery, Handler: handleListShells},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: terminalapi.ListShells, Handle: handleListShells},
 	})
 	apischema.AttachDuplex(router, apischema.DuplexBinding{
-		Route: "terminal.open",
+		Route: terminalapi.Open,
 		Handle: func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
 			return HandleTerminalSession(ctx, rt, stream, req)
 		},
 	})
 	apischema.AttachDuplex(router, apischema.DuplexBinding{
-		Route: "container.open",
+		Route: terminalapi.ContainerOpen,
 		Handle: func(ctx context.Context, stream net.Conn, req apischema.ContainerOpenRequest) error {
 			return HandleContainerTerminalSession(ctx, rt, stream, req)
 		},

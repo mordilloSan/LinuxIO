@@ -5,23 +5,24 @@ import (
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	sharesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers all share management handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "shares", []bridgeipc.Command{
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
 		// NFS exports (server-side shares via /etc/exports)
-		{Name: "list_nfs_shares", Mode: bridgeipc.ModeQuery, Handler: handleListNFSShares},
-		{Name: "create_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleCreateNFSShare},
-		{Name: "update_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleUpdateNFSShare},
-		{Name: "delete_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleDeleteNFSShare},
+		{Route: sharesapi.ListNFSShares, Handle: handleListNFSShares},
+		{Route: sharesapi.CreateNFSShare, Handle: handleCreateNFSShare},
+		{Route: sharesapi.UpdateNFSShare, Handle: handleUpdateNFSShare},
+		{Route: sharesapi.DeleteNFSShare, Handle: handleDeleteNFSShare},
 		// Samba shares (via /etc/samba/smb.conf)
-		{Name: "list_samba_shares", Mode: bridgeipc.ModeQuery, Handler: handleListSambaShares},
-		{Name: "create_samba_share", Mode: bridgeipc.ModeJob, Handler: handleCreateSambaShare},
-		{Name: "update_samba_share", Mode: bridgeipc.ModeJob, Handler: handleUpdateSambaShare},
-		{Name: "delete_samba_share", Mode: bridgeipc.ModeJob, Handler: handleDeleteSambaShare},
+		{Route: sharesapi.ListSambaShares, Handle: handleListSambaShares},
+		{Route: sharesapi.CreateSambaShare, Handle: handleCreateSambaShare},
+		{Route: sharesapi.UpdateSambaShare, Handle: handleUpdateSambaShare},
+		{Route: sharesapi.DeleteSambaShare, Handle: handleDeleteSambaShare},
 	})
 }
 

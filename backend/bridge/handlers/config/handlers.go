@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	configapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -12,9 +13,9 @@ import (
 // RegisterHandlers registers config handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := configHandlers{rt: rt}
-	apischema.RegisterRoutes(router, "config", []bridgeipc.Command{
-		{Name: "get", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetConfig},
-		{Name: "set", Mode: bridgeipc.ModeJob, Handler: handlers.handleSetConfig},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: configapi.Get, Handle: handlers.handleGetConfig},
+		{Route: configapi.Set, Handle: handlers.handleSetConfig},
 	})
 }
 

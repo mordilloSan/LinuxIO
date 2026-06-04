@@ -4,25 +4,26 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "systemd", []bridgeipc.Command{
-		{Name: "list_timers", Mode: bridgeipc.ModeQuery, Handler: handleListTimers},
-		{Name: "list_sockets", Mode: bridgeipc.ModeQuery, Handler: handleListSockets},
-		{Name: "list_services", Mode: bridgeipc.ModeQuery, Handler: handleListServices},
-		{Name: "get_unit_info", Mode: bridgeipc.ModeQuery, Handler: handleGetUnitInfo},
-		{Name: "start_service", Mode: bridgeipc.ModeJob, Handler: handleStartService},
-		{Name: "stop_service", Mode: bridgeipc.ModeJob, Handler: handleStopService},
-		{Name: "restart_service", Mode: bridgeipc.ModeJob, Handler: handleRestartService},
-		{Name: "reload_service", Mode: bridgeipc.ModeJob, Handler: handleReloadService},
-		{Name: "enable_service", Mode: bridgeipc.ModeJob, Handler: handleEnableService},
-		{Name: "disable_service", Mode: bridgeipc.ModeJob, Handler: handleDisableService},
-		{Name: "mask_service", Mode: bridgeipc.ModeJob, Handler: handleMaskService},
-		{Name: "unmask_service", Mode: bridgeipc.ModeJob, Handler: handleUnmaskService},
-		{Name: "reset_failed_service", Mode: bridgeipc.ModeJob, Handler: handleResetFailedService},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: systemdapi.ListTimers, Handle: handleListTimers},
+		{Route: systemdapi.ListSockets, Handle: handleListSockets},
+		{Route: systemdapi.ListServices, Handle: handleListServices},
+		{Route: systemdapi.GetUnitInfo, Handle: handleGetUnitInfo},
+		{Route: systemdapi.StartService, Handle: handleStartService},
+		{Route: systemdapi.StopService, Handle: handleStopService},
+		{Route: systemdapi.RestartService, Handle: handleRestartService},
+		{Route: systemdapi.ReloadService, Handle: handleReloadService},
+		{Route: systemdapi.EnableService, Handle: handleEnableService},
+		{Route: systemdapi.DisableService, Handle: handleDisableService},
+		{Route: systemdapi.MaskService, Handle: handleMaskService},
+		{Route: systemdapi.UnmaskService, Handle: handleUnmaskService},
+		{Route: systemdapi.ResetFailedService, Handle: handleResetFailedService},
 	})
 }
 

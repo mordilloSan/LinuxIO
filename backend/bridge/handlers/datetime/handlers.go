@@ -4,19 +4,20 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	datetimeapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "datetime", []bridgeipc.Command{
-		{Name: "get_ntp_status", Mode: bridgeipc.ModeQuery, Handler: handleGetNTPStatus},
-		{Name: "set_ntp", Mode: bridgeipc.ModeJob, Handler: handleSetNTP},
-		{Name: "set_server_time", Mode: bridgeipc.ModeJob, Handler: handleSetServerTime},
-		{Name: "get_timezone", Mode: bridgeipc.ModeQuery, Handler: handleGetTimezone},
-		{Name: "set_timezone", Mode: bridgeipc.ModeJob, Handler: handleSetTimezone},
-		{Name: "get_ntp_servers", Mode: bridgeipc.ModeQuery, Handler: handleGetNTPServers},
-		{Name: "set_ntp_servers", Mode: bridgeipc.ModeJob, Handler: handleSetNTPServers},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: datetimeapi.GetNTPStatus, Handle: handleGetNTPStatus},
+		{Route: datetimeapi.SetNTP, Handle: handleSetNTP},
+		{Route: datetimeapi.SetServerTime, Handle: handleSetServerTime},
+		{Route: datetimeapi.GetTimezone, Handle: handleGetTimezone},
+		{Route: datetimeapi.SetTimezone, Handle: handleSetTimezone},
+		{Route: datetimeapi.GetNTPServers, Handle: handleGetNTPServers},
+		{Route: datetimeapi.SetNTPServers, Handle: handleSetNTPServers},
 	})
 }
 

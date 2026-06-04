@@ -1,29 +1,35 @@
-package apischema
+package apischema_test
 
 import (
 	"encoding/json"
 	"reflect"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func TestRoutesAreUniqueAndComplete(t *testing.T) {
-	seen := make(map[string]RouteSpec, len(Routes))
-	for _, route := range Routes {
+	seen := make(map[string]apischema.RouteSpec, len(handlers.Routes))
+	for _, route := range handlers.Routes {
 		if route.Route == "" {
 			t.Fatal("empty route")
 		}
-		if route.Mode != bridgeipc.ModeQuery && route.Mode != bridgeipc.ModeJob && route.Mode != bridgeipc.ModeDuplex {
+		if route.Mode != bridgeipc.ModeQuery &&
+			route.Mode != bridgeipc.ModeJob &&
+			route.Mode != bridgeipc.ModeDuplex {
 			t.Fatalf("%s has invalid mode %q", route.Route, route.Mode)
 		}
-		if route.Kind != KindHandler && route.Kind != KindRunner && route.Kind != KindDuplex {
+		if route.Kind != apischema.KindHandler &&
+			route.Kind != apischema.KindRunner &&
+			route.Kind != apischema.KindDuplex {
 			t.Fatalf("%s has invalid kind %q", route.Route, route.Kind)
 		}
-		if route.Kind == KindDuplex && route.Mode != bridgeipc.ModeDuplex {
+		if route.Kind == apischema.KindDuplex && route.Mode != bridgeipc.ModeDuplex {
 			t.Fatalf("%s is duplex kind but has mode %q", route.Route, route.Mode)
 		}
-		if route.Kind == KindRunner && route.Mode != bridgeipc.ModeJob {
+		if route.Kind == apischema.KindRunner && route.Mode != bridgeipc.ModeJob {
 			t.Fatalf("%s is runner kind but has mode %q", route.Route, route.Mode)
 		}
 		if _, exists := seen[route.Route]; exists {
@@ -85,8 +91,8 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			spec := MustRoute(tc.route)
-			decoded, err := requestDecoder(spec.Request)(json.RawMessage(tc.raw))
+			spec := handlers.MustRoute(tc.route)
+			decoded, err := apischema.RequestDecoder(spec.Request)(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatalf("requestDecoder() error = %v", err)
 			}
@@ -99,26 +105,26 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 
 func TestEndpointExcludesDuplexAndStreamOnlyJobs(t *testing.T) {
 	for _, route := range []string{"jobs.attach", "jobs.data", "terminal.open", "container.open"} {
-		spec := MustRoute(route)
+		spec := handlers.MustRoute(route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should not generate a React Query endpoint", route)
 		}
 	}
 
 	for _, route := range []string{"docker.logs.follow", "logs.general.follow", "logs.service.follow"} {
-		spec := MustRoute(route)
+		spec := handlers.MustRoute(route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should remain stream-opener only in this phase", route)
 		}
 	}
 
-	if !MustRoute("system.get_cpu_info").Endpoint() {
+	if !handlers.MustRoute("system.get_cpu_info").Endpoint() {
 		t.Fatal("query route should generate an endpoint")
 	}
 }
 
 func TestRoutesDeclareContractFields(t *testing.T) {
-	for _, route := range Routes {
+	for _, route := range handlers.Routes {
 		if route.Request.GoType == nil {
 			t.Fatalf("%s should declare a request contract", route.Route)
 		}

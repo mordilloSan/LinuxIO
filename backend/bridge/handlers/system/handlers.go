@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	systemapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -11,30 +12,30 @@ import (
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := systemHandlers{rt: rt}
-	apischema.RegisterRoutes(router, "system", []bridgeipc.Command{
-		{Name: "get_capabilities", Mode: bridgeipc.ModeQuery, Handler: handleGetCapabilities},
-		{Name: "get_cpu_info", Mode: bridgeipc.ModeQuery, Handler: handleGetCPUInfo},
-		{Name: "get_sensor_info", Mode: bridgeipc.ModeQuery, Handler: handleGetSensorInfo},
-		{Name: "get_motherboard_info", Mode: bridgeipc.ModeQuery, Handler: handleGetMotherboardInfo},
-		{Name: "get_memory_info", Mode: bridgeipc.ModeQuery, Handler: handleGetMemoryInfo},
-		{Name: "get_host_info", Mode: bridgeipc.ModeQuery, Handler: handleGetHostInfo},
-		{Name: "get_uptime", Mode: bridgeipc.ModeQuery, Handler: handleGetUptime},
-		{Name: "get_fs_info", Mode: bridgeipc.ModeQuery, Handler: handleGetFilesystemInfo},
-		{Name: "get_processes", Mode: bridgeipc.ModeQuery, Handler: handleGetProcesses},
-		{Name: "get_services", Mode: bridgeipc.ModeQuery, Handler: handleGetServices},
-		{Name: "get_gpu_info", Mode: bridgeipc.ModeQuery, Handler: handleGetGPUInfo},
-		{Name: "get_updates_fast", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesFast},
-		{Name: "get_network_info", Mode: bridgeipc.ModeQuery, Handler: handleGetNetworkInfo},
-		{Name: "get_disk_throughput", Mode: bridgeipc.ModeQuery, Handler: handleGetDiskThroughput},
-		{Name: "get_system_info", Mode: bridgeipc.ModeQuery, Handler: handleGetSystemInfo},
-		{Name: "get_pci_devices", Mode: bridgeipc.ModeQuery, Handler: handleGetPCIDevices},
-		{Name: "get_memory_modules", Mode: bridgeipc.ModeQuery, Handler: handleGetMemoryModules},
-		{Name: "get_health_summary", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetHealthSummary},
-		{Name: "list_failed_login_events", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListFailedLoginEvents, Privileged: true},
-		{Name: "dismiss_unclean_shutdown", Mode: bridgeipc.ModeJob, Handler: handlers.handleDismissUncleanShutdown},
-		{Name: "dismiss_failed_login_alert", Mode: bridgeipc.ModeJob, Handler: handlers.handleDismissFailedLoginAlert},
-		{Name: "get_server_time", Mode: bridgeipc.ModeQuery, Handler: handleGetServerTime},
-		{Name: "get_timezones", Mode: bridgeipc.ModeQuery, Handler: handleGetTimezones},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: systemapi.GetCapabilities, Handle: handleGetCapabilities},
+		{Route: systemapi.GetCPUInfo, Handle: handleGetCPUInfo},
+		{Route: systemapi.GetSensorInfo, Handle: handleGetSensorInfo},
+		{Route: systemapi.GetMotherboardInfo, Handle: handleGetMotherboardInfo},
+		{Route: systemapi.GetMemoryInfo, Handle: handleGetMemoryInfo},
+		{Route: systemapi.GetHostInfo, Handle: handleGetHostInfo},
+		{Route: systemapi.GetUptime, Handle: handleGetUptime},
+		{Route: systemapi.GetFsInfo, Handle: handleGetFilesystemInfo},
+		{Route: systemapi.GetProcesses, Handle: handleGetProcesses},
+		{Route: systemapi.GetServices, Handle: handleGetServices},
+		{Route: systemapi.GetGPUInfo, Handle: handleGetGPUInfo},
+		{Route: systemapi.GetUpdatesFast, Handle: handleGetUpdatesFast},
+		{Route: systemapi.GetNetworkInfo, Handle: handleGetNetworkInfo},
+		{Route: systemapi.GetDiskThroughput, Handle: handleGetDiskThroughput},
+		{Route: systemapi.GetSystemInfo, Handle: handleGetSystemInfo},
+		{Route: systemapi.GetPciDevices, Handle: handleGetPCIDevices},
+		{Route: systemapi.GetMemoryModules, Handle: handleGetMemoryModules},
+		{Route: systemapi.GetHealthSummary, Handle: handlers.handleGetHealthSummary},
+		{Route: systemapi.ListFailedLoginEvents, Handle: handlers.handleListFailedLoginEvents},
+		{Route: systemapi.DismissUncleanShutdown, Handle: handlers.handleDismissUncleanShutdown},
+		{Route: systemapi.DismissFailedLoginAlert, Handle: handlers.handleDismissFailedLoginAlert},
+		{Route: systemapi.GetServerTime, Handle: handleGetServerTime},
+		{Route: systemapi.GetTimezones, Handle: handleGetTimezones},
 	})
 }
 

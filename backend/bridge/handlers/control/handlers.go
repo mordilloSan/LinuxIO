@@ -4,16 +4,17 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	controlapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers host control handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "control", []bridgeipc.Command{
-		{Name: "reboot", Mode: bridgeipc.ModeJob, Handler: handleReboot},
-		{Name: "power_off", Mode: bridgeipc.ModeJob, Handler: handlePowerOff},
-		{Name: "logoff", Mode: bridgeipc.ModeJob, Handler: handleLogoff},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: controlapi.Reboot, Handle: handleReboot},
+		{Route: controlapi.PowerOff, Handle: handlePowerOff},
+		{Route: controlapi.Logoff, Handle: handleLogoff},
 	})
 }
 

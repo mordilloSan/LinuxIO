@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	filebrowserapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
@@ -22,18 +23,6 @@ import (
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
-)
-
-const (
-	JobTypeFileCompress = "filebrowser.compress"
-	JobTypeFileExtract  = "filebrowser.extract"
-	JobTypeFileCopy     = "filebrowser.copy"
-	JobTypeFileMove     = "filebrowser.move"
-	JobTypeFileIndexer  = "filebrowser.index"
-	JobTypeFileUpload   = "filebrowser.upload"
-	JobTypeFileDownload = "filebrowser.download"
-	JobTypeFileArchive  = "filebrowser.archive"
-	JobTypeFileChmod    = "filebrowser.chmod"
 )
 
 var heavyArchiveLimiter archiveResourceLimiter
@@ -216,65 +205,65 @@ type ChmodProgress struct {
 
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeFileCompress,
+		Route: filebrowserapi.Compress,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
 			return runCompressJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeFileExtract,
+		Route: filebrowserapi.Extract,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
 			return runExtractJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeFileCopy,
+		Route: filebrowserapi.Copy,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
 			return runCopyJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeFileMove,
+		Route: filebrowserapi.Move,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
 			return runMoveJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypeFileIndexer,
+		Route:  filebrowserapi.Index,
 		Runner: runIndexerJob,
 		Policy: bridgejobs.SingletonSystem,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypeFileUpload,
+		Route:  filebrowserapi.Upload,
 		Runner: runUploadJob,
 		Policy: bridgejobs.StreamDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypeFileDownload,
+		Route:  filebrowserapi.Download,
 		Runner: runDownloadJob,
 		Policy: bridgejobs.StreamDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeFileArchive,
+		Route: filebrowserapi.Archive,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
 			return runArchiveJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.StreamDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeFileChmod,
+		Route: filebrowserapi.Chmod,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
 			return runChmodJob(ctx, job, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
-	bridgejobs.RegisterDataAttacher(JobTypeFileUpload, attachFileTransferData)
-	bridgejobs.RegisterDataAttacher(JobTypeFileDownload, attachFileTransferData)
-	bridgejobs.RegisterDataAttacher(JobTypeFileArchive, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(filebrowserapi.Upload.Route, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(filebrowserapi.Download.Route, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(filebrowserapi.Archive.Route, attachFileTransferData)
 }
 
 func newJobPhaseCallbacks(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {

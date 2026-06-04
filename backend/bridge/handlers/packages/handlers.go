@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	packagesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -13,14 +14,14 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 	RegisterCapabilityJobRoutes(router)
 
-	apischema.RegisterRoutes(router, "updates", []bridgeipc.Command{
-		{Name: "get_updates_basic", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdatesBasic},
-		{Name: "get_update_detail", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdateDetail},
-		{Name: "install_package", Mode: bridgeipc.ModeJob, Handler: handleInstallPackage},
-		{Name: "get_auto_updates", Mode: bridgeipc.ModeQuery, Handler: handleGetAutoUpdates},
-		{Name: "set_auto_updates", Mode: bridgeipc.ModeJob, Handler: handleSetAutoUpdates},
-		{Name: "apply_offline_updates", Mode: bridgeipc.ModeJob, Handler: handleApplyOfflineUpdates},
-		{Name: "get_update_history", Mode: bridgeipc.ModeQuery, Handler: handleGetUpdateHistory},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: packagesapi.UpdatesGetUpdatesBasic, Handle: handleGetUpdatesBasic},
+		{Route: packagesapi.UpdatesGetUpdateDetail, Handle: handleGetUpdateDetail},
+		{Route: packagesapi.UpdatesInstallPackage, Handle: handleInstallPackage},
+		{Route: packagesapi.UpdatesGetAutoUpdates, Handle: handleGetAutoUpdates},
+		{Route: packagesapi.UpdatesSetAutoUpdates, Handle: handleSetAutoUpdates},
+		{Route: packagesapi.UpdatesApplyOfflineUpdates, Handle: handleApplyOfflineUpdates},
+		{Route: packagesapi.UpdatesGetUpdateHistory, Handle: handleGetUpdateHistory},
 	})
 }
 

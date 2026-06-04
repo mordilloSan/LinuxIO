@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers indexer admin handlers with the bridge.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "indexer", []bridgeipc.Command{
-		{Name: "get_config", Mode: bridgeipc.ModeQuery, Handler: handleGetConfig, Privileged: true},
-		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
-		{Name: "set_config", Mode: bridgeipc.ModeJob, Handler: handleSetConfig, Privileged: true},
-		{Name: "set_timer_interval", Mode: bridgeipc.ModeJob, Handler: handleSetTimerInterval, Privileged: true},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: indexerapi.GetConfig, Handle: handleGetConfig},
+		{Route: indexerapi.GetStatus, Handle: handleGetStatus},
+		{Route: indexerapi.SetConfig, Handle: handleSetConfig},
+		{Route: indexerapi.SetTimerInterval, Handle: handleSetTimerInterval},
 	})
 }
 

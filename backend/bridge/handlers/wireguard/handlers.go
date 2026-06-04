@@ -4,25 +4,26 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	wireguardapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers wireguard handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "wireguard", []bridgeipc.Command{
-		{Name: "list_interfaces", Mode: bridgeipc.ModeQuery, Handler: handleListInterfaces},
-		{Name: "add_interface", Mode: bridgeipc.ModeJob, Handler: handleAddInterface},
-		{Name: "remove_interface", Mode: bridgeipc.ModeJob, Handler: handleRemoveInterface},
-		{Name: "list_peers", Mode: bridgeipc.ModeQuery, Handler: handleListPeers},
-		{Name: "add_peer", Mode: bridgeipc.ModeJob, Handler: handleAddPeer},
-		{Name: "remove_peer", Mode: bridgeipc.ModeJob, Handler: handleRemovePeer},
-		{Name: "peer_qrcode", Mode: bridgeipc.ModeQuery, Handler: handlePeerQRCode},
-		{Name: "peer_config_download", Mode: bridgeipc.ModeQuery, Handler: handlePeerConfigDownload},
-		{Name: "up_interface", Mode: bridgeipc.ModeJob, Handler: handleUpInterface},
-		{Name: "down_interface", Mode: bridgeipc.ModeJob, Handler: handleDownInterface},
-		{Name: "enable_interface", Mode: bridgeipc.ModeJob, Handler: handleEnableInterface},
-		{Name: "disable_interface", Mode: bridgeipc.ModeJob, Handler: handleDisableInterface},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: wireguardapi.ListInterfaces, Handle: handleListInterfaces},
+		{Route: wireguardapi.AddInterface, Handle: handleAddInterface},
+		{Route: wireguardapi.RemoveInterface, Handle: handleRemoveInterface},
+		{Route: wireguardapi.ListPeers, Handle: handleListPeers},
+		{Route: wireguardapi.AddPeer, Handle: handleAddPeer},
+		{Route: wireguardapi.RemovePeer, Handle: handleRemovePeer},
+		{Route: wireguardapi.PeerQrcode, Handle: handlePeerQRCode},
+		{Route: wireguardapi.PeerConfigDownload, Handle: handlePeerConfigDownload},
+		{Route: wireguardapi.UpInterface, Handle: handleUpInterface},
+		{Route: wireguardapi.DownInterface, Handle: handleDownInterface},
+		{Route: wireguardapi.EnableInterface, Handle: handleEnableInterface},
+		{Route: wireguardapi.DisableInterface, Handle: handleDisableInterface},
 	})
 }
 

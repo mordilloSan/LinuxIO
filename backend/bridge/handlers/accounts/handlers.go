@@ -5,28 +5,29 @@ import (
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	accountsapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // RegisterHandlers registers accounts handlers with the IPC system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "accounts", []bridgeipc.Command{
-		{Name: "list_users", Mode: bridgeipc.ModeQuery, Handler: handleListUsers},
-		{Name: "get_user_details", Mode: bridgeipc.ModeQuery, Handler: handleGetUserDetails},
-		{Name: "list_user_logins", Mode: bridgeipc.ModeQuery, Handler: handleListUserLogins},
-		{Name: "terminate_session", Mode: bridgeipc.ModeJob, Handler: handleTerminateSession},
-		{Name: "create_user", Mode: bridgeipc.ModeJob, Handler: handleCreateUser},
-		{Name: "delete_user", Mode: bridgeipc.ModeJob, Handler: handleDeleteUser},
-		{Name: "modify_user", Mode: bridgeipc.ModeJob, Handler: handleModifyUser},
-		{Name: "change_password", Mode: bridgeipc.ModeJob, Handler: handleChangePassword},
-		{Name: "lock_user", Mode: bridgeipc.ModeJob, Handler: handleLockUser},
-		{Name: "unlock_user", Mode: bridgeipc.ModeJob, Handler: handleUnlockUser},
-		{Name: "list_groups", Mode: bridgeipc.ModeQuery, Handler: handleListGroups},
-		{Name: "create_group", Mode: bridgeipc.ModeJob, Handler: handleCreateGroup},
-		{Name: "delete_group", Mode: bridgeipc.ModeJob, Handler: handleDeleteGroup},
-		{Name: "modify_group_members", Mode: bridgeipc.ModeJob, Handler: handleModifyGroupMembers},
-		{Name: "list_shells", Mode: bridgeipc.ModeQuery, Handler: handleListShells},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: accountsapi.ListUsers, Handle: handleListUsers},
+		{Route: accountsapi.GetUserDetails, Handle: handleGetUserDetails},
+		{Route: accountsapi.ListUserLogins, Handle: handleListUserLogins},
+		{Route: accountsapi.TerminateSession, Handle: handleTerminateSession},
+		{Route: accountsapi.CreateUser, Handle: handleCreateUser},
+		{Route: accountsapi.DeleteUser, Handle: handleDeleteUser},
+		{Route: accountsapi.ModifyUser, Handle: handleModifyUser},
+		{Route: accountsapi.ChangePassword, Handle: handleChangePassword},
+		{Route: accountsapi.LockUser, Handle: handleLockUser},
+		{Route: accountsapi.UnlockUser, Handle: handleUnlockUser},
+		{Route: accountsapi.ListGroups, Handle: handleListGroups},
+		{Route: accountsapi.CreateGroup, Handle: handleCreateGroup},
+		{Route: accountsapi.DeleteGroup, Handle: handleDeleteGroup},
+		{Route: accountsapi.ModifyGroupMembers, Handle: handleModifyGroupMembers},
+		{Route: accountsapi.ListShells, Handle: handleListShells},
 	})
 }
 

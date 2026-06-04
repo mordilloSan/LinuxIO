@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -90,7 +91,7 @@ func header() string {
 }
 
 func renderRouteMetadata() string {
-	return renderRouteMetadataForRoutes(apischema.Routes)
+	return renderRouteMetadataForRoutes(handlers.Routes)
 }
 
 func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
@@ -112,7 +113,7 @@ func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 }
 
 func renderTypes() string {
-	return renderTypesForRoutes(apischema.Routes)
+	return renderTypesForRoutes(handlers.Routes)
 }
 
 func renderTypesForRoutes(routes []apischema.RouteSpec) string {
@@ -180,7 +181,7 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 }
 
 func renderClient() string {
-	return renderClientForRoutes(apischema.Routes)
+	return renderClientForRoutes(handlers.Routes)
 }
 
 func renderClientForRoutes(routes []apischema.RouteSpec) string {

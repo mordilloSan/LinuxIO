@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	storageapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage/api"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
-
-const JobTypeStorageSmartTest = "storage.run_smart_test"
 
 type SmartTestProgress struct {
 	Type       string `json:"type"`
@@ -23,7 +22,7 @@ type SmartTestProgress struct {
 
 func RegisterJobRoutes(router *bridgejobs.Router) {
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypeStorageSmartTest,
+		Route:  storageapi.RunSmartTest,
 		Runner: runSmartTestJob,
 		Policy: bridgejobs.ActionDefault,
 	})

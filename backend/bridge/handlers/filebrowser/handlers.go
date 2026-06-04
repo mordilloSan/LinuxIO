@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	filebrowserapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -12,17 +13,17 @@ import (
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router, rt.Store)
 
-	apischema.RegisterRoutes(router, "filebrowser", []bridgeipc.Command{
-		{Name: "resource_get", Mode: bridgeipc.ModeQuery, Handler: handleResourceGet},
-		{Name: "resource_stat", Mode: bridgeipc.ModeQuery, Handler: handleResourceStat},
-		{Name: "resource_delete", Mode: bridgeipc.ModeJob, Handler: handleResourceDelete},
-		{Name: "resource_post", Mode: bridgeipc.ModeJob, Handler: handleResourcePost},
-		{Name: "resource_patch", Mode: bridgeipc.ModeJob, Handler: handleResourcePatch},
-		{Name: "dir_size", Mode: bridgeipc.ModeQuery, Handler: handleDirSize},
-		{Name: "indexer_status", Mode: bridgeipc.ModeQuery, Handler: handleIndexerStatus},
-		{Name: "subfolders", Mode: bridgeipc.ModeQuery, Handler: handleSubfolders},
-		{Name: "search", Mode: bridgeipc.ModeQuery, Handler: handleSearch},
-		{Name: "users_groups", Mode: bridgeipc.ModeQuery, Handler: handleUsersGroups},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: filebrowserapi.ResourceGet, Handle: handleResourceGet},
+		{Route: filebrowserapi.ResourceStat, Handle: handleResourceStat},
+		{Route: filebrowserapi.ResourceDelete, Handle: handleResourceDelete},
+		{Route: filebrowserapi.ResourcePost, Handle: handleResourcePost},
+		{Route: filebrowserapi.ResourcePatch, Handle: handleResourcePatch},
+		{Route: filebrowserapi.DirSize, Handle: handleDirSize},
+		{Route: filebrowserapi.IndexerStatus, Handle: handleIndexerStatus},
+		{Route: filebrowserapi.Subfolders, Handle: handleSubfolders},
+		{Route: filebrowserapi.Search, Handle: handleSearch},
+		{Route: filebrowserapi.UsersGroups, Handle: handleUsersGroups},
 	})
 }
 

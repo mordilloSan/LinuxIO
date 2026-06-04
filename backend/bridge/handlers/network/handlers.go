@@ -6,19 +6,20 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	networkapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "network", []bridgeipc.Command{
-		{Name: "get_network_info", Mode: bridgeipc.ModeQuery, Handler: handleGetNetworkInfo},
-		{Name: "set_ipv4_manual", Mode: bridgeipc.ModeJob, Handler: handleSetIPv4Manual},
-		{Name: "set_ipv4", Mode: bridgeipc.ModeJob, Handler: handleSetIPv4},
-		{Name: "set_ipv6", Mode: bridgeipc.ModeJob, Handler: handleSetIPv6},
-		{Name: "set_mtu", Mode: bridgeipc.ModeJob, Handler: handleSetMTU},
-		{Name: "enable_connection", Mode: bridgeipc.ModeJob, Handler: handleEnableConnection},
-		{Name: "disable_connection", Mode: bridgeipc.ModeJob, Handler: handleDisableConnection},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: networkapi.GetNetworkInfo, Handle: handleGetNetworkInfo},
+		{Route: networkapi.SetIPv4Manual, Handle: handleSetIPv4Manual},
+		{Route: networkapi.SetIPv4, Handle: handleSetIPv4},
+		{Route: networkapi.SetIPv6, Handle: handleSetIPv6},
+		{Route: networkapi.SetMTU, Handle: handleSetMTU},
+		{Route: networkapi.EnableConnection, Handle: handleEnableConnection},
+		{Route: networkapi.DisableConnection, Handle: handleDisableConnection},
 	})
 }
 

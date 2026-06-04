@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"reflect"
-	"sort"
 	"strings"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -55,57 +54,28 @@ func (r RouteSpec) ResultSpec() TypeSpec {
 	return r.Result
 }
 
-func Route(route string) (RouteSpec, bool) {
-	for _, spec := range Routes {
-		if spec.Route == route {
-			return spec, true
-		}
-	}
-	return RouteSpec{}, false
-}
-
-func MustRoute(route string) RouteSpec {
-	spec, ok := Route(route)
-	if !ok {
-		panic("apischema: unknown route " + route)
-	}
-	return spec
-}
-
-func RoutesFor(handler string) []RouteSpec {
-	var out []RouteSpec
-	prefix := handler + "."
-	for _, spec := range Routes {
-		if strings.HasPrefix(spec.Route, prefix) {
-			out = append(out, spec)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Route < out[j].Route })
-	return out
-}
-
 type HandlerBinding struct {
-	Route   string
+	Route   RouteSpec
 	Handle  any
 	Policy  bridgeipc.JobPolicy
 	Options []bridgeipc.RouteOption
 }
 
 type RunnerBinding struct {
-	Route   string
+	Route   RouteSpec
 	Runner  any
 	Policy  bridgeipc.JobPolicy
 	Options []bridgeipc.RouteOption
 }
 
 type DuplexBinding struct {
-	Route   string
+	Route   RouteSpec
 	Handle  any
 	Options []bridgeipc.RouteOption
 }
 
 func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
-	spec := MustRoute(binding.Route)
+	spec := requireRouteSpec(binding.Route)
 	if spec.Kind != KindHandler {
 		panic(fmt.Sprintf("apischema: route %s is %s, not handler", spec.Route, spec.Kind))
 	}
@@ -128,27 +98,12 @@ func AttachHandlers(router *bridgeipc.Router, bindings []HandlerBinding) {
 	}
 }
 
-func RegisterRoutes(router *bridgeipc.Router, component string, commands []bridgeipc.Command) {
-	for _, cmd := range commands {
-		route := component + "." + cmd.Name
-		spec := MustRoute(route)
-		if cmd.Mode != "" && cmd.Mode != spec.Mode {
-			panic(fmt.Sprintf("apischema: %s declared as %s but schema says %s", route, cmd.Mode, spec.Mode))
-		}
-		binding := HandlerBinding{
-			Route:  route,
-			Handle: cmd.Handler,
-			Policy: cmd.Policy,
-		}
-		if cmd.Privileged {
-			binding.Options = append(binding.Options, bridgeipc.Privileged)
-		}
-		AttachHandler(router, binding)
-	}
+func RegisterRoutes(router *bridgeipc.Router, bindings []HandlerBinding) {
+	AttachHandlers(router, bindings)
 }
 
 func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {
-	spec := MustRoute(binding.Route)
+	spec := requireRouteSpec(binding.Route)
 	if spec.Kind != KindRunner {
 		panic(fmt.Sprintf("apischema: route %s is %s, not runner", spec.Route, spec.Kind))
 	}
@@ -161,7 +116,7 @@ func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {
 }
 
 func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
-	spec := MustRoute(binding.Route)
+	spec := requireRouteSpec(binding.Route)
 	if spec.Kind != KindDuplex {
 		panic(fmt.Sprintf("apischema: route %s is %s, not duplex", spec.Route, spec.Kind))
 	}
@@ -171,6 +126,17 @@ func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
 	opts := routeOptions(spec, binding.Options)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requestDecoder(spec.Request)))
 	router.Duplex(spec.Route, adaptDuplex(spec, binding.Handle), opts...)
+}
+
+func RequestDecoder(spec TypeSpec) bridgeipc.RequestDecoder {
+	return requestDecoder(spec)
+}
+
+func requireRouteSpec(spec RouteSpec) RouteSpec {
+	if spec.Route == "" {
+		panic("apischema: route spec cannot be empty")
+	}
+	return spec
 }
 
 func requestDecoder(spec TypeSpec) bridgeipc.RequestDecoder {

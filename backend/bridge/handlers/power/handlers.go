@@ -4,16 +4,17 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	powerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "power", []bridgeipc.Command{
-		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
-		{Name: "start", Mode: bridgeipc.ModeJob, Handler: handleStart, Privileged: true},
-		{Name: "set_profile", Mode: bridgeipc.ModeJob, Handler: handleSetProfile, Privileged: true},
-		{Name: "disable", Mode: bridgeipc.ModeJob, Handler: handleDisable, Privileged: true},
+	apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+		{Route: powerapi.GetStatus, Handle: handleGetStatus},
+		{Route: powerapi.Start, Handle: handleStart},
+		{Route: powerapi.SetProfile, Handle: handleSetProfile},
+		{Route: powerapi.Disable, Handle: handleDisable},
 	})
 }
 

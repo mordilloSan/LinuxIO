@@ -7,18 +7,17 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	packagesapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/api"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const JobTypePackageUpdate = "packages.update"
-
 func RegisterJobRoutes(router *bridgejobs.Router) {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypePackageUpdate,
+		Route:  packagesapi.Update,
 		Runner: runPackageUpdateJob,
 		Policy: policy,
 	})

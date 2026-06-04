@@ -4,7 +4,7 @@ This is the canonical guide for LinuxIO's Go-owned API contract between the fron
 
 ## Summary
 
-- Go owns route names, modes, request types, and result types in `backend/bridge/apischema`.
+- Go owns route names, modes, request types, and result types. Route declarations live beside each handler family in `backend/bridge/handlers/<domain>/api`.
 - TypeScript API files under `frontend/src/api/generated` are generated. Do not edit them by hand.
 - API requests use JSON stream-open envelopes: `{"route":"handler.command","request":{...}}`.
 - The relay/mux framing is still binary for stream multiplexing, terminal bytes, and job data.
@@ -47,7 +47,8 @@ For request routes:
 
 | File | Role |
 |------|------|
-| `backend/bridge/apischema/routes.go` | One `RouteSpec` per route: route name, mode, kind, request, result, policy, privilege, and `NoEndpoint`. |
+| `backend/bridge/handlers/<domain>/api/routes.go` | One `RouteSpec` per route in that handler family: route name, mode, kind, request, result, policy, privilege, and `NoEndpoint`. |
+| `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
 | `backend/bridge/apischema/schema.go` | Contract helpers, request decoders, and typed registration adapters. |
@@ -139,7 +140,13 @@ linuxio.docker.start_container.useMutation().mutate({ containerId });
 Handler route:
 
 ```go
-{Kind: KindHandler, Route: "systemd.get_unit_info", Mode: bridgeipc.ModeQuery, Request: TypeOf[UnitNameRequest](), Result: TypeOf[UnitInfo]()},
+var GetUnitInfo = apischema.RouteSpec{
+    Kind:    apischema.KindHandler,
+    Route:   "systemd.get_unit_info",
+    Mode:    bridgeipc.ModeQuery,
+    Request: apischema.TypeOf[apischema.UnitNameRequest](),
+    Result:  apischema.TypeOf[apischema.UnitInfo](),
+}
 ```
 
 ```go
@@ -150,20 +157,26 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit 
 ```
 
 ```go
-apischema.RegisterRoutes(router, "systemd", []bridgeipc.Command{
-    {Name: "get_unit_info", Mode: bridgeipc.ModeQuery, Handler: handleGetUnitInfo},
+apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+    {Route: systemdapi.GetUnitInfo, Handle: handleGetUnitInfo},
 })
 ```
 
 Runner route:
 
 ```go
-{Kind: KindRunner, Route: "packages.update", Mode: bridgeipc.ModeJob, Request: TypeOf[PackageUpdateRequest](), Result: TypeOf[JobSnapshot]()},
+var Update = apischema.RouteSpec{
+    Kind:    apischema.KindRunner,
+    Route:   "packages.update",
+    Mode:    bridgeipc.ModeJob,
+    Request: apischema.TypeOf[apischema.PackageUpdateRequest](),
+    Result:  apischema.TypeOf[apischema.JobSnapshot](),
+}
 ```
 
 ```go
 apischema.AttachRunner(router, apischema.RunnerBinding{
-    Route:  "packages.update",
+    Route:  packagesapi.Update,
     Runner: runPackageUpdateJob,
     Policy: bridgeipc.SingletonSystem,
 })
@@ -172,12 +185,19 @@ apischema.AttachRunner(router, apischema.RunnerBinding{
 Duplex route:
 
 ```go
-{Kind: KindDuplex, Route: "terminal.open", Mode: bridgeipc.ModeDuplex, Request: TypeOf[TerminalOpenRequest](), Result: NoResponse(), NoEndpoint: true},
+var Open = apischema.RouteSpec{
+    Kind:       apischema.KindDuplex,
+    Route:      "terminal.open",
+    Mode:       bridgeipc.ModeDuplex,
+    Request:    apischema.TypeOf[apischema.TerminalOpenRequest](),
+    Result:     apischema.NoResponse(),
+    NoEndpoint: true,
+}
 ```
 
 ```go
 apischema.AttachDuplex(router, apischema.DuplexBinding{
-    Route: "terminal.open",
+    Route: terminalapi.Open,
     Handle: func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
         return HandleTerminalSession(ctx, rt, stream, req)
     },
@@ -221,18 +241,19 @@ Terminal and container streams are true duplex routes. Logs and app update expos
 
 ## Adding An Endpoint
 
-For the common case where request/result structs already exist, adding a route touches two Go places:
+For the common case where request/result structs already exist, adding a route touches two files in one handler family:
 
-1. `backend/bridge/apischema/routes.go` for the `RouteSpec`.
+1. `backend/bridge/handlers/<domain>/api/routes.go` for the `RouteSpec`.
 2. The relevant `backend/bridge/handlers/<domain>/...` package for the typed handler and its registration in `RegisterHandlers`.
 
 If the request or response type is new, also add the Go struct in `backend/bridge/apischema/contracts.go` or `backend/bridge/apischema/models.go`.
+If the handler family is new, add one entry to `backend/bridge/handlers/register.go`.
 
 1. Define or reuse exported Go request/response structs in `backend/bridge/apischema`.
    - Put shared request structs and small shared responses in `contracts.go`.
    - Put API response/domain models in `models.go`.
    - Use exported fields with JSON tags.
-2. Add one `RouteSpec` to `backend/bridge/apischema/routes.go`.
+2. Add one named `RouteSpec` to `backend/bridge/handlers/<domain>/api/routes.go`.
 3. Implement the typed handler, runner, or duplex function.
 4. Register it from the relevant package's `RegisterHandlers`.
 5. Run `make generate`.
@@ -251,7 +272,13 @@ type PackageSearchResult struct {
 ```
 
 ```go
-{Kind: KindHandler, Route: "packages.search", Mode: bridgeipc.ModeQuery, Request: TypeOf[PackageSearchRequest](), Result: TypeOf[PackageSearchResult]()},
+var Search = apischema.RouteSpec{
+    Kind:    apischema.KindHandler,
+    Route:   "packages.search",
+    Mode:    bridgeipc.ModeQuery,
+    Request: apischema.TypeOf[apischema.PackageSearchRequest](),
+    Result:  apischema.TypeOf[apischema.PackageSearchResult](),
+}
 ```
 
 ```go
@@ -262,8 +289,8 @@ func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest
 ```
 
 ```go
-apischema.RegisterRoutes(router, "packages", []bridgeipc.Command{
-    {Name: "search", Mode: bridgeipc.ModeQuery, Handler: handlePackageSearch},
+apischema.RegisterRoutes(router, []apischema.HandlerBinding{
+    {Route: packagesapi.Search, Handle: handlePackageSearch},
 })
 ```
 
@@ -280,7 +307,14 @@ For a stream-only route, set `NoEndpoint: true` in the route spec and add a focu
 Declare privilege in the route spec:
 
 ```go
-{Kind: KindHandler, Route: "control.reboot", Privileged: true, Mode: bridgeipc.ModeJob, Request: NoRequest(), Result: NoResponse()},
+var Reboot = apischema.RouteSpec{
+    Kind:       apischema.KindHandler,
+    Route:      "control.reboot",
+    Privileged: true,
+    Mode:       bridgeipc.ModeJob,
+    Request:    apischema.NoRequest(),
+    Result:     apischema.NoResponse(),
+}
 ```
 
 The dispatcher checks the authenticated session before running the route. Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin gate.

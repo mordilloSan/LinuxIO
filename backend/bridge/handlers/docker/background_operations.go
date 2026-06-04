@@ -9,16 +9,12 @@ import (
 	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	dockerapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-)
-
-const (
-	JobTypeDockerCompose = "docker.compose"
-	JobTypeDockerIndexer = "docker.indexer"
 )
 
 // ComposeJobMessage represents a message emitted by a Docker compose job.
@@ -41,14 +37,14 @@ func RegisterJobRoutes(router *bridgejobs.Router, rt runtime.Runtime) {
 	username := rt.Username()
 	store := rt.Store
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeDockerCompose,
+		Route: dockerapi.Compose,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
 			return runDockerComposeJob(ctx, job, username, store, req)
 		},
 		Policy: bridgejobs.ActionDefault,
 	})
 	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeDockerIndexer,
+		Route: dockerapi.Indexer,
 		Runner: func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
 			return runDockerIndexerJob(ctx, job, username, store)
 		},
