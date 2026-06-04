@@ -80,12 +80,12 @@ Browser sends/receives binary WebSocket messages:
 Standard yamux multiplexing using `github.com/libp2p/go-yamux/v5`.
 
 ```go
-// Webserver side: client that opens streams
-session, _ := yamux.Client(conn, ipc.YamuxConfig(), nil)
+// Webserver side: client that opens streams (wrapped by relay.NewYamuxClient)
+session, _ := yamux.Client(conn, relay.YamuxConfig(), nil)
 stream, _ := session.Open(context.Background())
 
-// Bridge side: server that accepts streams
-session, _ := yamux.Server(conn, ipc.YamuxConfig(), nil)
+// Bridge side: server that accepts streams (wrapped by relay.NewYamuxServer)
+session, _ := yamux.Server(conn, relay.YamuxConfig(), nil)
 stream, _ := session.Accept()
 ```
 
@@ -114,24 +114,24 @@ Server just reads/writes bytes from/to streams.
 
 The bridge is **not** a long-running server that the webserver dials. Instead:
 
-1. On login, `bridge.StartBridge()` calls the auth daemon over a Unix socket.
-2. The auth daemon validates PAM credentials, checks `sudo -v`, then forks `linuxio-bridge`.
-3. The forked bridge receives `FD 3` — one half of a `socketpair` — as its network connection.
-4. The webserver receives the other half as a `net.Conn` from the auth daemon response.
-5. `ipc.NewYamuxClient(conn)` wraps that connection into a yamux client session.
+1. On login, `bridge.StartBridge()` dials the auth daemon over a Unix socket.
+2. The auth daemon validates PAM credentials, checks sudo, then forks `linuxio-bridge`.
+3. No new socketpair is created. The auth daemon **reuses the accepted connection**: it `dup2`s the webserver↔auth-daemon socket onto the bridge's `FD 3`, then execs the bridge.
+4. The webserver keeps its end of the connection it dialed. That `net.Conn` now reaches the forked bridge directly — the auth daemon is no longer in the data path.
+5. `relay.NewYamuxClient(conn)` wraps that connection into a yamux client session.
 6. The session is stored in `yamuxSessions` keyed by `SessionID` for subsequent WebSocket connections.
 
 ```go
 // bridge/bridge.go — called at login
-func StartBridge(sm *session.Manager, sessionID, username, password string, verbose bool) (*session.Session, error) {
-    result, _ := Authenticate(req) // calls auth daemon, gets net.Conn back
+func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+    result, _ := Authenticate(req) // dials auth daemon; conn now reaches the forked bridge
     sess, _ := sm.CreateSessionWithID(sessionID, result.User, result.Privileged)
     attachBridgeSession(sess, result.Conn)
     return sess, nil
 }
 
 func attachBridgeSession(sess *session.Session, conn net.Conn) error {
-    yamuxSession, _ := ipc.NewYamuxClient(conn) // webserver = yamux client
+    yamuxSession, _ := relay.NewYamuxClient(conn) // webserver = yamux client
     yamuxSessions.sessions[sess.SessionID] = yamuxSession
     return nil
 }
@@ -140,11 +140,11 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 On the bridge side:
 
 ```go
-// bridge/main.go — bridge process entry point
+// backend/bridge/cmd — bridge process entry point (lifecycle.go + yamux.go)
 const clientConnFD = 3
 clientFile := os.NewFile(uintptr(clientConnFD), "client-conn")
-clientConn, _ := net.FileConn(clientFile)  // bridge = yamux server
-handleYamuxSession(clientConn)             // yamux.Server(conn, ...)
+clientConn, _ := net.FileConn(clientFile)  // openClientConnection()
+handleYamuxSession(clientConn)             // relay.NewYamuxServer(conn) — bridge = yamux server
 ```
 
 ## Server Implementation
@@ -380,9 +380,10 @@ json.Unmarshal(payload, &req) // Never parses
 | Auth middleware (`wsAuthMiddleware`) | `backend/webserver/web/websocket.go` |
 | Yamux session pool (`GetYamuxSession`) | `backend/webserver/bridge/bridge.go` |
 | Bridge launch (`StartBridge`) | `backend/webserver/bridge/bridge.go` |
-| Yamux config + wrappers | `backend/common/ipc/yamux.go` |
+| Yamux config + wrappers | `backend/common/ipc/relay/yamux.go` |
 
 ## See Also
 
+- [Process & Systemd Architecture](./process-systemd-architecture.md) - The four binaries, socket activation, and how the bridge connection is created at login
 - [API Contract](./api-contract.md) - Go-owned API contract and generated frontend client
 - [Handler Patterns](./bridge_handler_patterns.md) - Handler package style and adapter conventions
