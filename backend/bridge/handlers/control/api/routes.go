@@ -1,18 +1,12 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var Logoff = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "control.logoff", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.SessionIDRequest](), Result: apischema.NoResponse()}
-var PowerOff = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "control.power_off", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.NoResponse()}
-var Reboot = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "control.reboot", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.NoResponse()}
-var Version = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "control.version", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.VersionResponse]()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	Logoff,
-	PowerOff,
-	Reboot,
-	Version,
-}
+var Logoff = routes.Job("control.logoff", apischema.TypeOf[apischema.SessionIDRequest](), apischema.NoResponse())
+var PowerOff = routes.Job("control.power_off", apischema.NoRequest(), apischema.NoResponse())
+var Reboot = routes.Job("control.reboot", apischema.NoRequest(), apischema.NoResponse())
+var Version = routes.Query("control.version", apischema.NoRequest(), apischema.TypeOf[apischema.VersionResponse]())
+
+var Routes = routes.All()

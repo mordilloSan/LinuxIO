@@ -1,18 +1,12 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var Disable = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "power.disable", Privileged: true, Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.PowerStatus]()}
-var GetStatus = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "power.get_status", Privileged: true, Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.PowerStatus]()}
-var SetProfile = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "power.set_profile", Privileged: true, Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ProfileRequest](), Result: apischema.TypeOf[apischema.PowerStatus]()}
-var Start = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "power.start", Privileged: true, Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.PowerStatus]()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	Disable,
-	GetStatus,
-	SetProfile,
-	Start,
-}
+var Disable = routes.Job("power.disable", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+var GetStatus = routes.Query("power.get_status", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+var SetProfile = routes.Job("power.set_profile", apischema.TypeOf[apischema.ProfileRequest](), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+var Start = routes.Job("power.start", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
+
+var Routes = routes.All()

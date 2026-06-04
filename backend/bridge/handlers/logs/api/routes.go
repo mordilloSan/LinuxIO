@@ -1,14 +1,10 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var GeneralFollow = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "logs.general.follow", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.GeneralLogsFollowRequest](), Result: apischema.NoResponse(), NoEndpoint: true}
-var ServiceFollow = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "logs.service.follow", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ServiceLogsFollowRequest](), Result: apischema.NoResponse(), NoEndpoint: true}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	GeneralFollow,
-	ServiceFollow,
-}
+var GeneralFollow = routes.Runner("logs.general.follow", apischema.TypeOf[apischema.GeneralLogsFollowRequest](), apischema.NoResponse(), apischema.NoEndpoint())
+var ServiceFollow = routes.Runner("logs.service.follow", apischema.TypeOf[apischema.ServiceLogsFollowRequest](), apischema.NoResponse(), apischema.NoEndpoint())
+
+var Routes = routes.All()

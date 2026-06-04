@@ -1,100 +1,53 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var ClearIconCache = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.clear_icon_cache", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var Compose = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "docker.compose", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.DockerComposeRequest](), Result: apischema.TypeOf[apischema.JobSnapshot]()}
-var ComposeDown = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.compose_down", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ProjectNameRequest](), Result: apischema.TypeOf[any]()}
-var ComposeRestart = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.compose_restart", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ProjectNameRequest](), Result: apischema.TypeOf[any]()}
-var ComposeStop = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.compose_stop", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ProjectNameRequest](), Result: apischema.TypeOf[any]()}
-var ComposeUp = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.compose_up", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ProjectNameRequest](), Result: apischema.TypeOf[any]()}
-var ConnectToProxy = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.connect_to_proxy", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ContainerIDRequest](), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var CreateNetwork = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.create_network", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.NameRequest](), Result: apischema.NoResponse()}
-var CreateVolume = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.create_volume", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.NameRequest](), Result: apischema.NoResponse()}
-var DeleteComposeStack = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.delete_compose_stack", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ProjectNameRequest](), Result: apischema.NoResponse(), NoEndpoint: true}
-var DeleteImage = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.delete_image", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ImageIDRequest](), Result: apischema.NoResponse()}
-var DeleteNetwork = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.delete_network", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.IDRequest](), Result: apischema.NoResponse()}
-var DeleteStack = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.delete_stack", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.DeleteStackRequest](), Result: apischema.TypeOf[apischema.DeleteStackResult]()}
-var DeleteVolume = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.delete_volume", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.NameRequest](), Result: apischema.NoResponse()}
-var DisableCaddy = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.disable_caddy", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var EnableCaddy = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.enable_caddy", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var GetCaddyStatus = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_caddy_status", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.CaddyStatusResponse]()}
-var GetComposeFilePath = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_compose_file_path", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.StackNameRequest](), Result: apischema.TypeOf[apischema.ComposeFilePathResponse]()}
-var GetComposeProject = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_compose_project", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.ProjectNameRequest](), Result: apischema.TypeOf[apischema.ComposeProject]()}
-var GetDockerFolders = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_docker_folders", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.DockerFoldersResponse]()}
-var GetDockerInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_docker_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.DockerSystemInfo]()}
-var GetIcon = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_icon", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.IdentifierRequest](), Result: apischema.TypeOf[apischema.DockerIconDataResponse]()}
-var GetIconInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_icon_info", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.IdentifierRequest](), Result: apischema.TypeOf[apischema.DockerIconInfoResponse]()}
-var GetIconURI = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.get_icon_uri", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.IdentifierRequest](), Result: apischema.TypeOf[apischema.DockerIconURIResponse]()}
-var Indexer = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "docker.indexer", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.JobSnapshot]()}
-var ListAutoUpdateContainers = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.list_auto_update_containers", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]string]()}
-var ListComposeProjects = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.list_compose_projects", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.ComposeProject]()}
-var ListContainers = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.list_containers", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.ContainerInfo]()}
-var ListImages = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.list_images", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.DockerImage]()}
-var ListNetworks = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.list_networks", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.DockerNetwork]()}
-var ListVolumes = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.list_volumes", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.DockerVolume]()}
-var LogsFollow = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "docker.logs.follow", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.DockerLogsFollowRequest](), Result: apischema.NoResponse(), NoEndpoint: true}
-var NormalizeCompose = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.normalize_compose", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.ContentRequest](), Result: apischema.NoResponse(), NoEndpoint: true}
-var ReindexDockerFolders = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.reindex_docker_folders", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.NoResponse(), NoEndpoint: true}
-var ReloadCaddy = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.reload_caddy", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var RemoveContainer = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.remove_container", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ContainerIDRequest](), Result: apischema.NoResponse()}
-var RestartContainer = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.restart_container", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ContainerIDRequest](), Result: apischema.NoResponse()}
-var SetAutoUpdate = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.set_auto_update", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.DockerSetAutoUpdateRequest](), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var StartAllStopped = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.start_all_stopped", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.DockerStartedFailedResponse]()}
-var StartContainer = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.start_container", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ContainerIDRequest](), Result: apischema.NoResponse()}
-var StopAllRunning = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.stop_all_running", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.DockerStoppedFailedResponse]()}
-var StopContainer = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.stop_container", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ContainerIDRequest](), Result: apischema.NoResponse()}
-var SystemPrune = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.system_prune", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.DockerSystemPruneRequest](), Result: apischema.TypeOf[apischema.DockerSystemPruneResponse]()}
-var ValidateCompose = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.validate_compose", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.ContentRequest](), Result: apischema.TypeOf[apischema.ValidateComposeResponse]()}
-var ValidateStackDirectory = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "docker.validate_stack_directory", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.DirPathRequest](), Result: apischema.TypeOf[apischema.DirectoryValidationResult]()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	ClearIconCache,
-	Compose,
-	ComposeDown,
-	ComposeRestart,
-	ComposeStop,
-	ComposeUp,
-	ConnectToProxy,
-	CreateNetwork,
-	CreateVolume,
-	DeleteComposeStack,
-	DeleteImage,
-	DeleteNetwork,
-	DeleteStack,
-	DeleteVolume,
-	DisableCaddy,
-	EnableCaddy,
-	GetCaddyStatus,
-	GetComposeFilePath,
-	GetComposeProject,
-	GetDockerFolders,
-	GetDockerInfo,
-	GetIcon,
-	GetIconInfo,
-	GetIconURI,
-	Indexer,
-	ListAutoUpdateContainers,
-	ListComposeProjects,
-	ListContainers,
-	ListImages,
-	ListNetworks,
-	ListVolumes,
-	LogsFollow,
-	NormalizeCompose,
-	ReindexDockerFolders,
-	ReloadCaddy,
-	RemoveContainer,
-	RestartContainer,
-	SetAutoUpdate,
-	StartAllStopped,
-	StartContainer,
-	StopAllRunning,
-	StopContainer,
-	SystemPrune,
-	ValidateCompose,
-	ValidateStackDirectory,
-}
+var ClearIconCache = routes.Job("docker.clear_icon_cache", apischema.NoRequest(), apischema.TypeOf[apischema.MessageResponse]())
+var Compose = routes.Runner("docker.compose", apischema.TypeOf[apischema.DockerComposeRequest](), apischema.TypeOf[apischema.JobSnapshot]())
+var ComposeDown = routes.Job("docker.compose_down", apischema.TypeOf[apischema.ProjectNameRequest](), apischema.TypeOf[any]())
+var ComposeRestart = routes.Job("docker.compose_restart", apischema.TypeOf[apischema.ProjectNameRequest](), apischema.TypeOf[any]())
+var ComposeStop = routes.Job("docker.compose_stop", apischema.TypeOf[apischema.ProjectNameRequest](), apischema.TypeOf[any]())
+var ComposeUp = routes.Job("docker.compose_up", apischema.TypeOf[apischema.ProjectNameRequest](), apischema.TypeOf[any]())
+var ConnectToProxy = routes.Job("docker.connect_to_proxy", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.TypeOf[apischema.MessageResponse]())
+var CreateNetwork = routes.Job("docker.create_network", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
+var CreateVolume = routes.Job("docker.create_volume", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
+var DeleteComposeStack = routes.Job("docker.delete_compose_stack", apischema.TypeOf[apischema.ProjectNameRequest](), apischema.NoResponse(), apischema.NoEndpoint())
+var DeleteImage = routes.Job("docker.delete_image", apischema.TypeOf[apischema.ImageIDRequest](), apischema.NoResponse())
+var DeleteNetwork = routes.Job("docker.delete_network", apischema.TypeOf[apischema.IDRequest](), apischema.NoResponse())
+var DeleteStack = routes.Job("docker.delete_stack", apischema.TypeOf[apischema.DeleteStackRequest](), apischema.TypeOf[apischema.DeleteStackResult]())
+var DeleteVolume = routes.Job("docker.delete_volume", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
+var DisableCaddy = routes.Job("docker.disable_caddy", apischema.NoRequest(), apischema.TypeOf[apischema.MessageResponse]())
+var EnableCaddy = routes.Job("docker.enable_caddy", apischema.NoRequest(), apischema.TypeOf[apischema.MessageResponse]())
+var GetCaddyStatus = routes.Query("docker.get_caddy_status", apischema.NoRequest(), apischema.TypeOf[apischema.CaddyStatusResponse]())
+var GetComposeFilePath = routes.Query("docker.get_compose_file_path", apischema.TypeOf[apischema.StackNameRequest](), apischema.TypeOf[apischema.ComposeFilePathResponse]())
+var GetComposeProject = routes.Query("docker.get_compose_project", apischema.TypeOf[apischema.ProjectNameRequest](), apischema.TypeOf[apischema.ComposeProject]())
+var GetDockerFolders = routes.Query("docker.get_docker_folders", apischema.NoRequest(), apischema.TypeOf[apischema.DockerFoldersResponse]())
+var GetDockerInfo = routes.Query("docker.get_docker_info", apischema.NoRequest(), apischema.TypeOf[apischema.DockerSystemInfo]())
+var GetIcon = routes.Query("docker.get_icon", apischema.TypeOf[apischema.IdentifierRequest](), apischema.TypeOf[apischema.DockerIconDataResponse]())
+var GetIconInfo = routes.Query("docker.get_icon_info", apischema.TypeOf[apischema.IdentifierRequest](), apischema.TypeOf[apischema.DockerIconInfoResponse]())
+var GetIconURI = routes.Query("docker.get_icon_uri", apischema.TypeOf[apischema.IdentifierRequest](), apischema.TypeOf[apischema.DockerIconURIResponse]())
+var Indexer = routes.Runner("docker.indexer", apischema.NoRequest(), apischema.TypeOf[apischema.JobSnapshot]())
+var ListAutoUpdateContainers = routes.Query("docker.list_auto_update_containers", apischema.NoRequest(), apischema.TypeOf[[]string]())
+var ListComposeProjects = routes.Query("docker.list_compose_projects", apischema.NoRequest(), apischema.TypeOf[[]apischema.ComposeProject]())
+var ListContainers = routes.Query("docker.list_containers", apischema.NoRequest(), apischema.TypeOf[[]apischema.ContainerInfo]())
+var ListImages = routes.Query("docker.list_images", apischema.NoRequest(), apischema.TypeOf[[]apischema.DockerImage]())
+var ListNetworks = routes.Query("docker.list_networks", apischema.NoRequest(), apischema.TypeOf[[]apischema.DockerNetwork]())
+var ListVolumes = routes.Query("docker.list_volumes", apischema.NoRequest(), apischema.TypeOf[[]apischema.DockerVolume]())
+var LogsFollow = routes.Runner("docker.logs.follow", apischema.TypeOf[apischema.DockerLogsFollowRequest](), apischema.NoResponse(), apischema.NoEndpoint())
+var NormalizeCompose = routes.Query("docker.normalize_compose", apischema.TypeOf[apischema.ContentRequest](), apischema.NoResponse(), apischema.NoEndpoint())
+var ReindexDockerFolders = routes.Job("docker.reindex_docker_folders", apischema.NoRequest(), apischema.NoResponse(), apischema.NoEndpoint())
+var ReloadCaddy = routes.Job("docker.reload_caddy", apischema.NoRequest(), apischema.TypeOf[apischema.MessageResponse]())
+var RemoveContainer = routes.Job("docker.remove_container", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.NoResponse())
+var RestartContainer = routes.Job("docker.restart_container", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.NoResponse())
+var SetAutoUpdate = routes.Job("docker.set_auto_update", apischema.TypeOf[apischema.DockerSetAutoUpdateRequest](), apischema.TypeOf[apischema.MessageResponse]())
+var StartAllStopped = routes.Job("docker.start_all_stopped", apischema.NoRequest(), apischema.TypeOf[apischema.DockerStartedFailedResponse]())
+var StartContainer = routes.Job("docker.start_container", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.NoResponse())
+var StopAllRunning = routes.Job("docker.stop_all_running", apischema.NoRequest(), apischema.TypeOf[apischema.DockerStoppedFailedResponse]())
+var StopContainer = routes.Job("docker.stop_container", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.NoResponse())
+var SystemPrune = routes.Job("docker.system_prune", apischema.TypeOf[apischema.DockerSystemPruneRequest](), apischema.TypeOf[apischema.DockerSystemPruneResponse]())
+var ValidateCompose = routes.Query("docker.validate_compose", apischema.TypeOf[apischema.ContentRequest](), apischema.TypeOf[apischema.ValidateComposeResponse]())
+var ValidateStackDirectory = routes.Query("docker.validate_stack_directory", apischema.TypeOf[apischema.DirPathRequest](), apischema.TypeOf[apischema.DirectoryValidationResult]())
+
+var Routes = routes.All()

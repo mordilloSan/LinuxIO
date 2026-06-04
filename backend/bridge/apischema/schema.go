@@ -24,6 +24,86 @@ type RouteSpec struct {
 	Result  TypeSpec
 }
 
+type RouteSpecOption func(*RouteSpec)
+
+func Privileged() RouteSpecOption {
+	return func(spec *RouteSpec) {
+		spec.Privileged = true
+	}
+}
+
+func NoEndpoint() RouteSpecOption {
+	return func(spec *RouteSpec) {
+		spec.NoEndpoint = true
+	}
+}
+
+func WithPolicy(policy bridgeipc.JobPolicy) RouteSpecOption {
+	return func(spec *RouteSpec) {
+		spec.Policy = policy
+	}
+}
+
+type RouteCatalog struct {
+	routes []RouteSpec
+}
+
+func NewRouteCatalog() *RouteCatalog {
+	return &RouteCatalog{}
+}
+
+func (c *RouteCatalog) Query(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return c.add(RouteSpec{
+		Kind:    KindHandler,
+		Route:   route,
+		Mode:    bridgeipc.ModeQuery,
+		Request: request,
+		Result:  result,
+	}, opts...)
+}
+
+func (c *RouteCatalog) Job(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return c.add(RouteSpec{
+		Kind:    KindHandler,
+		Route:   route,
+		Mode:    bridgeipc.ModeJob,
+		Request: request,
+		Result:  result,
+	}, opts...)
+}
+
+func (c *RouteCatalog) Runner(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return c.add(RouteSpec{
+		Kind:    KindRunner,
+		Route:   route,
+		Mode:    bridgeipc.ModeJob,
+		Request: request,
+		Result:  result,
+	}, opts...)
+}
+
+func (c *RouteCatalog) Duplex(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return c.add(RouteSpec{
+		Kind:    KindDuplex,
+		Route:   route,
+		Mode:    bridgeipc.ModeDuplex,
+		Request: request,
+		Result:  result,
+	}, opts...)
+}
+
+func (c *RouteCatalog) All() []RouteSpec {
+	return append([]RouteSpec(nil), c.routes...)
+}
+
+func (c *RouteCatalog) add(spec RouteSpec, opts ...RouteSpecOption) RouteSpec {
+	for _, opt := range opts {
+		opt(&spec)
+	}
+	c.routes = append(c.routes, spec)
+	return spec
+}
+
 type Kind string
 
 const (

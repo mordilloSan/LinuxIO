@@ -140,13 +140,15 @@ linuxio.docker.start_container.useMutation().mutate({ containerId });
 Handler route:
 
 ```go
-var GetUnitInfo = apischema.RouteSpec{
-    Kind:    apischema.KindHandler,
-    Route:   "systemd.get_unit_info",
-    Mode:    bridgeipc.ModeQuery,
-    Request: apischema.TypeOf[apischema.UnitNameRequest](),
-    Result:  apischema.TypeOf[apischema.UnitInfo](),
-}
+var routes = apischema.NewRouteCatalog()
+
+var GetUnitInfo = routes.Query(
+    "systemd.get_unit_info",
+    apischema.TypeOf[apischema.UnitNameRequest](),
+    apischema.TypeOf[apischema.UnitInfo](),
+)
+
+var Routes = routes.All()
 ```
 
 ```go
@@ -165,13 +167,15 @@ apischema.RegisterRoutes(router, []apischema.HandlerBinding{
 Runner route:
 
 ```go
-var Update = apischema.RouteSpec{
-    Kind:    apischema.KindRunner,
-    Route:   "packages.update",
-    Mode:    bridgeipc.ModeJob,
-    Request: apischema.TypeOf[apischema.PackageUpdateRequest](),
-    Result:  apischema.TypeOf[apischema.JobSnapshot](),
-}
+var routes = apischema.NewRouteCatalog()
+
+var Update = routes.Runner(
+    "packages.update",
+    apischema.TypeOf[apischema.PackageUpdateRequest](),
+    apischema.TypeOf[apischema.JobSnapshot](),
+)
+
+var Routes = routes.All()
 ```
 
 ```go
@@ -185,14 +189,16 @@ apischema.AttachRunner(router, apischema.RunnerBinding{
 Duplex route:
 
 ```go
-var Open = apischema.RouteSpec{
-    Kind:       apischema.KindDuplex,
-    Route:      "terminal.open",
-    Mode:       bridgeipc.ModeDuplex,
-    Request:    apischema.TypeOf[apischema.TerminalOpenRequest](),
-    Result:     apischema.NoResponse(),
-    NoEndpoint: true,
-}
+var routes = apischema.NewRouteCatalog()
+
+var Open = routes.Duplex(
+    "terminal.open",
+    apischema.TypeOf[apischema.TerminalOpenRequest](),
+    apischema.NoResponse(),
+    apischema.NoEndpoint(),
+)
+
+var Routes = routes.All()
 ```
 
 ```go
@@ -272,13 +278,11 @@ type PackageSearchResult struct {
 ```
 
 ```go
-var Search = apischema.RouteSpec{
-    Kind:    apischema.KindHandler,
-    Route:   "packages.search",
-    Mode:    bridgeipc.ModeQuery,
-    Request: apischema.TypeOf[apischema.PackageSearchRequest](),
-    Result:  apischema.TypeOf[apischema.PackageSearchResult](),
-}
+var Search = routes.Query(
+    "packages.search",
+    apischema.TypeOf[apischema.PackageSearchRequest](),
+    apischema.TypeOf[apischema.PackageSearchResult](),
+)
 ```
 
 ```go
@@ -307,14 +311,12 @@ For a stream-only route, set `NoEndpoint: true` in the route spec and add a focu
 Declare privilege in the route spec:
 
 ```go
-var Reboot = apischema.RouteSpec{
-    Kind:       apischema.KindHandler,
-    Route:      "control.reboot",
-    Privileged: true,
-    Mode:       bridgeipc.ModeJob,
-    Request:    apischema.NoRequest(),
-    Result:     apischema.NoResponse(),
-}
+var Reboot = routes.Job(
+    "control.reboot",
+    apischema.NoRequest(),
+    apischema.NoResponse(),
+    apischema.Privileged(),
+)
 ```
 
 The dispatcher checks the authenticated session before running the route. Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin gate.

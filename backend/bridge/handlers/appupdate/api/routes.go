@@ -1,12 +1,9 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var ControlAppUpdate = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "control.app_update", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.AppUpdateRequest](), Result: apischema.NoResponse(), NoEndpoint: true}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	ControlAppUpdate,
-}
+var ControlAppUpdate = routes.Runner("control.app_update", apischema.TypeOf[apischema.AppUpdateRequest](), apischema.NoResponse(), apischema.NoEndpoint())
+
+var Routes = routes.All()

@@ -1,40 +1,23 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var ChangePassword = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.change_password", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ChangePasswordRequest](), Result: apischema.NoResponse()}
-var CreateGroup = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.create_group", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.CreateGroupRequest](), Result: apischema.NoResponse()}
-var CreateUser = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.create_user", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.CreateUserRequest](), Result: apischema.NoResponse()}
-var DeleteGroup = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.delete_group", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.GroupNameRequest](), Result: apischema.NoResponse()}
-var DeleteUser = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.delete_user", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.UsernameRequest](), Result: apischema.NoResponse()}
-var GetUserDetails = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.get_user_details", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.UsernameRequest](), Result: apischema.TypeOf[apischema.AccountUserDetails]()}
-var ListGroups = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.list_groups", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.AccountGroup]()}
-var ListShells = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.list_shells", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]string]()}
-var ListUserLogins = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.list_user_logins", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.UsernameRequest](), Result: apischema.TypeOf[[]apischema.AccountUserLogin]()}
-var ListUsers = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.list_users", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.AccountUser]()}
-var LockUser = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.lock_user", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.UsernameRequest](), Result: apischema.NoResponse()}
-var ModifyGroupMembers = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.modify_group_members", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ModifyGroupMembersRequest](), Result: apischema.NoResponse()}
-var ModifyUser = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.modify_user", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.ModifyUserRequest](), Result: apischema.NoResponse()}
-var TerminateSession = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.terminate_session", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.TerminateSessionRequest](), Result: apischema.NoResponse()}
-var UnlockUser = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "accounts.unlock_user", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.UsernameRequest](), Result: apischema.NoResponse()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	ChangePassword,
-	CreateGroup,
-	CreateUser,
-	DeleteGroup,
-	DeleteUser,
-	GetUserDetails,
-	ListGroups,
-	ListShells,
-	ListUserLogins,
-	ListUsers,
-	LockUser,
-	ModifyGroupMembers,
-	ModifyUser,
-	TerminateSession,
-	UnlockUser,
-}
+var ChangePassword = routes.Job("accounts.change_password", apischema.TypeOf[apischema.ChangePasswordRequest](), apischema.NoResponse())
+var CreateGroup = routes.Job("accounts.create_group", apischema.TypeOf[apischema.CreateGroupRequest](), apischema.NoResponse())
+var CreateUser = routes.Job("accounts.create_user", apischema.TypeOf[apischema.CreateUserRequest](), apischema.NoResponse())
+var DeleteGroup = routes.Job("accounts.delete_group", apischema.TypeOf[apischema.GroupNameRequest](), apischema.NoResponse())
+var DeleteUser = routes.Job("accounts.delete_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
+var GetUserDetails = routes.Query("accounts.get_user_details", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[apischema.AccountUserDetails]())
+var ListGroups = routes.Query("accounts.list_groups", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountGroup]())
+var ListShells = routes.Query("accounts.list_shells", apischema.NoRequest(), apischema.TypeOf[[]string]())
+var ListUserLogins = routes.Query("accounts.list_user_logins", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[[]apischema.AccountUserLogin]())
+var ListUsers = routes.Query("accounts.list_users", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountUser]())
+var LockUser = routes.Job("accounts.lock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
+var ModifyGroupMembers = routes.Job("accounts.modify_group_members", apischema.TypeOf[apischema.ModifyGroupMembersRequest](), apischema.NoResponse())
+var ModifyUser = routes.Job("accounts.modify_user", apischema.TypeOf[apischema.ModifyUserRequest](), apischema.NoResponse())
+var TerminateSession = routes.Job("accounts.terminate_session", apischema.TypeOf[apischema.TerminateSessionRequest](), apischema.NoResponse())
+var UnlockUser = routes.Job("accounts.unlock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
+
+var Routes = routes.All()

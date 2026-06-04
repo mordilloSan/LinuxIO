@@ -1,12 +1,9 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var SetHostname = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "hostname.set_hostname", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.HostnameRequest](), Result: apischema.NoResponse()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	SetHostname,
-}
+var SetHostname = routes.Job("hostname.set_hostname", apischema.TypeOf[apischema.HostnameRequest](), apischema.NoResponse())
+
+var Routes = routes.All()

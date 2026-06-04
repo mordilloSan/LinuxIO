@@ -1,58 +1,32 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var DismissFailedLoginAlert = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.dismiss_failed_login_alert", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.AlertIDRequest](), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var DismissUncleanShutdown = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.dismiss_unclean_shutdown", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.BootIDRequest](), Result: apischema.TypeOf[apischema.MessageResponse]()}
-var GetCapabilities = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_capabilities", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.CapabilitiesResponse]()}
-var GetCPUInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_cpu_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.CPUInfoResponse]()}
-var GetDiskThroughput = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_disk_throughput", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.DiskThroughputResponse]()}
-var GetFsInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_fs_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.FilesystemInfo]()}
-var GetGPUInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_gpu_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.GpuDevice]()}
-var GetHealthSummary = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_health_summary", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.SystemHealthSummary]()}
-var GetHostInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_host_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.HostInfo]()}
-var GetMemoryInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_memory_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.MemoryInfoResponse]()}
-var GetMemoryModules = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_memory_modules", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.MemoryModule]()}
-var GetMotherboardInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_motherboard_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.MotherboardInfo]()}
-var GetNetworkInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_network_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.InterfaceStats]()}
-var GetPciDevices = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_pci_devices", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.PCIDevice]()}
-var GetProcesses = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_processes", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.ProcessInfo]()}
-var GetSensorInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_sensor_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.SensorGroup]()}
-var GetServerTime = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_server_time", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[string]()}
-var GetServices = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_services", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.NoResponse(), NoEndpoint: true}
-var GetSystemInfo = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_system_info", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.SystemInfo]()}
-var GetTimezones = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_timezones", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]string]()}
-var GetUpdatesFast = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_updates_fast", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.UpdatesFastResponse]()}
-var GetUptime = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.get_uptime", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[float64]()}
-var InstallCapability = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "system.install_capability", Privileged: true, Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.CapabilityRequest](), Result: apischema.TypeOf[apischema.JobSnapshot]()}
-var ListFailedLoginEvents = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "system.list_failed_login_events", Privileged: true, Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.FailedLoginEventsRequest](), Result: apischema.TypeOf[[]apischema.AccountUserLogin]()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	DismissFailedLoginAlert,
-	DismissUncleanShutdown,
-	GetCapabilities,
-	GetCPUInfo,
-	GetDiskThroughput,
-	GetFsInfo,
-	GetGPUInfo,
-	GetHealthSummary,
-	GetHostInfo,
-	GetMemoryInfo,
-	GetMemoryModules,
-	GetMotherboardInfo,
-	GetNetworkInfo,
-	GetPciDevices,
-	GetProcesses,
-	GetSensorInfo,
-	GetServerTime,
-	GetServices,
-	GetSystemInfo,
-	GetTimezones,
-	GetUpdatesFast,
-	GetUptime,
-	InstallCapability,
-	ListFailedLoginEvents,
-}
+var DismissFailedLoginAlert = routes.Job("system.dismiss_failed_login_alert", apischema.TypeOf[apischema.AlertIDRequest](), apischema.TypeOf[apischema.MessageResponse]())
+var DismissUncleanShutdown = routes.Job("system.dismiss_unclean_shutdown", apischema.TypeOf[apischema.BootIDRequest](), apischema.TypeOf[apischema.MessageResponse]())
+var GetCapabilities = routes.Query("system.get_capabilities", apischema.NoRequest(), apischema.TypeOf[apischema.CapabilitiesResponse]())
+var GetCPUInfo = routes.Query("system.get_cpu_info", apischema.NoRequest(), apischema.TypeOf[apischema.CPUInfoResponse]())
+var GetDiskThroughput = routes.Query("system.get_disk_throughput", apischema.NoRequest(), apischema.TypeOf[apischema.DiskThroughputResponse]())
+var GetFsInfo = routes.Query("system.get_fs_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.FilesystemInfo]())
+var GetGPUInfo = routes.Query("system.get_gpu_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.GpuDevice]())
+var GetHealthSummary = routes.Query("system.get_health_summary", apischema.NoRequest(), apischema.TypeOf[apischema.SystemHealthSummary]())
+var GetHostInfo = routes.Query("system.get_host_info", apischema.NoRequest(), apischema.TypeOf[apischema.HostInfo]())
+var GetMemoryInfo = routes.Query("system.get_memory_info", apischema.NoRequest(), apischema.TypeOf[apischema.MemoryInfoResponse]())
+var GetMemoryModules = routes.Query("system.get_memory_modules", apischema.NoRequest(), apischema.TypeOf[[]apischema.MemoryModule]())
+var GetMotherboardInfo = routes.Query("system.get_motherboard_info", apischema.NoRequest(), apischema.TypeOf[apischema.MotherboardInfo]())
+var GetNetworkInfo = routes.Query("system.get_network_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.InterfaceStats]())
+var GetPciDevices = routes.Query("system.get_pci_devices", apischema.NoRequest(), apischema.TypeOf[[]apischema.PCIDevice]())
+var GetProcesses = routes.Query("system.get_processes", apischema.NoRequest(), apischema.TypeOf[[]apischema.ProcessInfo]())
+var GetSensorInfo = routes.Query("system.get_sensor_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.SensorGroup]())
+var GetServerTime = routes.Query("system.get_server_time", apischema.NoRequest(), apischema.TypeOf[string]())
+var GetServices = routes.Query("system.get_services", apischema.NoRequest(), apischema.NoResponse(), apischema.NoEndpoint())
+var GetSystemInfo = routes.Query("system.get_system_info", apischema.NoRequest(), apischema.TypeOf[apischema.SystemInfo]())
+var GetTimezones = routes.Query("system.get_timezones", apischema.NoRequest(), apischema.TypeOf[[]string]())
+var GetUpdatesFast = routes.Query("system.get_updates_fast", apischema.NoRequest(), apischema.TypeOf[apischema.UpdatesFastResponse]())
+var GetUptime = routes.Query("system.get_uptime", apischema.NoRequest(), apischema.TypeOf[float64]())
+var InstallCapability = routes.Runner("system.install_capability", apischema.TypeOf[apischema.CapabilityRequest](), apischema.TypeOf[apischema.JobSnapshot](), apischema.Privileged())
+var ListFailedLoginEvents = routes.Query("system.list_failed_login_events", apischema.TypeOf[apischema.FailedLoginEventsRequest](), apischema.TypeOf[[]apischema.AccountUserLogin](), apischema.Privileged())
+
+var Routes = routes.All()

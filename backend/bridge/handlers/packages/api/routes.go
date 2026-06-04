@@ -1,26 +1,16 @@
 package api
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-)
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-var Update = apischema.RouteSpec{Kind: apischema.KindRunner, Route: "packages.update", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.PackageUpdateRequest](), Result: apischema.TypeOf[apischema.JobSnapshot]()}
-var UpdatesApplyOfflineUpdates = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.apply_offline_updates", Mode: bridgeipc.ModeJob, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.OfflineUpdatesResponse]()}
-var UpdatesGetAutoUpdates = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.get_auto_updates", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[apischema.AutoUpdateState]()}
-var UpdatesGetUpdateDetail = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.get_update_detail", Mode: bridgeipc.ModeQuery, Request: apischema.TypeOf[apischema.PackageIDRequest](), Result: apischema.TypeOf[apischema.Update]()}
-var UpdatesGetUpdateHistory = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.get_update_history", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.UpdateHistoryRow]()}
-var UpdatesGetUpdatesBasic = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.get_updates_basic", Mode: bridgeipc.ModeQuery, Request: apischema.NoRequest(), Result: apischema.TypeOf[[]apischema.Update]()}
-var UpdatesInstallPackage = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.install_package", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.PackageIDRequest](), Result: apischema.NoResponse()}
-var UpdatesSetAutoUpdates = apischema.RouteSpec{Kind: apischema.KindHandler, Route: "updates.set_auto_updates", Mode: bridgeipc.ModeJob, Request: apischema.TypeOf[apischema.UpdatesSetAutoUpdatesRequest](), Result: apischema.TypeOf[apischema.AutoUpdateState]()}
+var routes = apischema.NewRouteCatalog()
 
-var Routes = []apischema.RouteSpec{
-	Update,
-	UpdatesApplyOfflineUpdates,
-	UpdatesGetAutoUpdates,
-	UpdatesGetUpdateDetail,
-	UpdatesGetUpdateHistory,
-	UpdatesGetUpdatesBasic,
-	UpdatesInstallPackage,
-	UpdatesSetAutoUpdates,
-}
+var Update = routes.Runner("packages.update", apischema.TypeOf[apischema.PackageUpdateRequest](), apischema.TypeOf[apischema.JobSnapshot]())
+var UpdatesApplyOfflineUpdates = routes.Job("updates.apply_offline_updates", apischema.NoRequest(), apischema.TypeOf[apischema.OfflineUpdatesResponse]())
+var UpdatesGetAutoUpdates = routes.Query("updates.get_auto_updates", apischema.NoRequest(), apischema.TypeOf[apischema.AutoUpdateState]())
+var UpdatesGetUpdateDetail = routes.Query("updates.get_update_detail", apischema.TypeOf[apischema.PackageIDRequest](), apischema.TypeOf[apischema.Update]())
+var UpdatesGetUpdateHistory = routes.Query("updates.get_update_history", apischema.NoRequest(), apischema.TypeOf[[]apischema.UpdateHistoryRow]())
+var UpdatesGetUpdatesBasic = routes.Query("updates.get_updates_basic", apischema.NoRequest(), apischema.TypeOf[[]apischema.Update]())
+var UpdatesInstallPackage = routes.Job("updates.install_package", apischema.TypeOf[apischema.PackageIDRequest](), apischema.NoResponse())
+var UpdatesSetAutoUpdates = routes.Job("updates.set_auto_updates", apischema.TypeOf[apischema.UpdatesSetAutoUpdatesRequest](), apischema.TypeOf[apischema.AutoUpdateState]())
+
+var Routes = routes.All()

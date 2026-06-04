@@ -7,14 +7,12 @@ Privilege is route metadata. Handlers should not perform the normal route privil
 Declare privileged operations in the relevant `backend/bridge/handlers/<domain>/api/routes.go` file:
 
 ```go
-var Reboot = apischema.RouteSpec{
-    Kind:       apischema.KindHandler,
-    Route:      "control.reboot",
-    Privileged: true,
-    Mode:       bridgeipc.ModeJob,
-    Request:    apischema.NoRequest(),
-    Result:     apischema.NoResponse(),
-}
+var Reboot = routes.Job(
+    "control.reboot",
+    apischema.NoRequest(),
+    apischema.NoResponse(),
+    apischema.Privileged(),
+)
 ```
 
 `apischema` applies that metadata when the route is registered. The dispatcher checks `req.Session.Privileged` before the handler or runner starts. Forbidden starts are typed dispatcher errors and are logged centrally.
