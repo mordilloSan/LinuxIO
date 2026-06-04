@@ -16,6 +16,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 8 - For go api generator we have 2 main files. Lets change this for better DX
 
+9 - Revisit React Compiler backend once the Rust port (facebook/react #36173) ships a native OXC integration: when Rolldown/Vite adopts `react_compiler_oxc::transform()`, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts` and run the compiler in the OXC pass (faster build, no Babel). Not ready yet — `babel-plugin-react-compiler-rust` unpublished, PR unmerged as of 2026-06.
+
 Ccnsolidate small helper functions in utils - DONE
 Bridge Handler Pattern - See docs DONE
 Shared API betewen go/react via generator. DONE

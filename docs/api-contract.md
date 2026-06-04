@@ -116,7 +116,8 @@ Every generated endpoint exposes:
 | `endpoint.useMutation(options?)` | React Query hook for job routes. |
 | `endpoint.queryKey(...input)` | Stable React Query key. |
 | `endpoint.queryOptions(...input, options?)` | Options for `queryClient.fetchQuery()` / `ensureQueryData()`. |
-| `endpoint.queryOptionsWithSelect(...input, options?)` | Query options with typed `select` output. |
+
+`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data.
 
 Input is generated from the Go request contract:
 
