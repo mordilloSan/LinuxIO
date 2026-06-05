@@ -89,6 +89,11 @@ func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *o
 			_, _ = io.WriteString(relay, line+"\n")
 		}
 	}
+	if err := sc.Err(); err != nil {
+		slog.Error("log stream scanner error",
+			"component", "control", "subsystem", "app_update",
+			"mode", strings.TrimSpace(prefix), "error", err)
+	}
 }
 
 type VersionInfo struct {

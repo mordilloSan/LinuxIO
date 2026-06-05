@@ -321,7 +321,7 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 		}
 	}
 	slog.Debug("listed NFS exports", "server", server, "count", len(exports))
-	return exports, nil
+	return exports, scanner.Err()
 }
 
 // ListNFSMounts returns all NFS mount entries, including active mounts and

@@ -291,6 +291,9 @@ func getActiveExports(ctx context.Context) map[string]bool {
 			active[p] = true
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Debug("exportfs output scan error", "error", err)
+	}
 
 	return active
 }

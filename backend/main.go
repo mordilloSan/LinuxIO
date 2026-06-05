@@ -333,6 +333,9 @@ func streamFormattedJournal(stdout io.Reader) {
 			fmt.Println(formatted)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Scanner error: %v\n", err)
+	}
 }
 
 func waitForJournalctl(cmd *exec.Cmd) {
