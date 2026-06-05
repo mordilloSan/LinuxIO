@@ -38,13 +38,21 @@ const (
 	detectRetryInterval  = 300 * time.Millisecond
 )
 
+var capabilityInstallRoutes = capabilityInstallBindings().Routes()
+
+func capabilityInstallBindings() apischema.BindingSet {
+	policy := bridgejobs.SingletonSystem
+	policy.Timeout = 10 * time.Minute
+	return apischema.Bindings(
+		apischema.Runner("system.install_capability", apischema.TypeOf[apischema.CapabilityRequest](), apischema.TypeOf[apischema.JobSnapshot](), apischema.Privileged()).Run(runInstallCapabilityJob, policy),
+	)
+}
+
 // RegisterCapabilityJobRoutes attaches the install_capability runner. It
 // streams per-stage progress events to the UI and is registered alongside
 // the other packages-package job runners from handlers.go.
 func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
-	policy := bridgejobs.SingletonSystem
-	policy.Timeout = 10 * time.Minute
-	apischema.AttachRunner(router, system.RouteInstallCapability.Run(runInstallCapabilityJob, policy))
+	capabilityInstallBindings().Register(router)
 }
 
 func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, req apischema.CapabilityRequest) (any, error) {

@@ -8,28 +8,20 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("datetime.get_ntp_status", apischema.NoRequest(), apischema.TypeOf[bool]()).Handle(handleGetNTPStatus),
+	apischema.Job("datetime.set_ntp", apischema.TypeOf[apischema.EnabledRequest](), apischema.NoResponse()).Handle(handleSetNTP),
+	apischema.Job("datetime.set_server_time", apischema.TypeOf[apischema.ISOTimeRequest](), apischema.NoResponse()).Handle(handleSetServerTime),
+	apischema.Query("datetime.get_timezone", apischema.NoRequest(), apischema.TypeOf[string]()).Handle(handleGetTimezone),
+	apischema.Job("datetime.set_timezone", apischema.TypeOf[apischema.TimezoneRequest](), apischema.NoResponse()).Handle(handleSetTimezone),
+	apischema.Query("datetime.get_ntp_servers", apischema.NoRequest(), apischema.TypeOf[[]string]()).Handle(handleGetNTPServers),
+	apischema.Job("datetime.set_ntp_servers", apischema.TypeOf[apischema.NTPServersRequest](), apischema.NoResponse()).Handle(handleSetNTPServers),
+)
 
-var RouteGetNTPServers = routes.Query("datetime.get_ntp_servers", apischema.NoRequest(), apischema.TypeOf[[]string]())
-var RouteGetNTPStatus = routes.Query("datetime.get_ntp_status", apischema.NoRequest(), apischema.TypeOf[bool]())
-var RouteGetTimezone = routes.Query("datetime.get_timezone", apischema.NoRequest(), apischema.TypeOf[string]())
-var RouteSetNTP = routes.Job("datetime.set_ntp", apischema.TypeOf[apischema.EnabledRequest](), apischema.NoResponse())
-var RouteSetNTPServers = routes.Job("datetime.set_ntp_servers", apischema.TypeOf[apischema.NTPServersRequest](), apischema.NoResponse())
-var RouteSetServerTime = routes.Job("datetime.set_server_time", apischema.TypeOf[apischema.ISOTimeRequest](), apischema.NoResponse())
-var RouteSetTimezone = routes.Job("datetime.set_timezone", apischema.TypeOf[apischema.TimezoneRequest](), apischema.NoResponse())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteGetNTPStatus.Handle(handleGetNTPStatus),
-		RouteSetNTP.Handle(handleSetNTP),
-		RouteSetServerTime.Handle(handleSetServerTime),
-		RouteGetTimezone.Handle(handleGetTimezone),
-		RouteSetTimezone.Handle(handleSetTimezone),
-		RouteGetNTPServers.Handle(handleGetNTPServers),
-		RouteSetNTPServers.Handle(handleSetNTPServers),
-	)
+	api.Register(router)
 }
 
 func handleGetNTPStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

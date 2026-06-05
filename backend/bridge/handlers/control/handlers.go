@@ -8,22 +8,17 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Job("control.reboot", apischema.NoRequest(), apischema.NoResponse()).Handle(handleReboot),
+	apischema.Job("control.power_off", apischema.NoRequest(), apischema.NoResponse()).Handle(handlePowerOff),
+	apischema.Job("control.logoff", apischema.TypeOf[apischema.SessionIDRequest](), apischema.NoResponse()).Handle(handleLogoff),
+)
 
-var RouteLogoff = routes.Job("control.logoff", apischema.TypeOf[apischema.SessionIDRequest](), apischema.NoResponse())
-var RoutePowerOff = routes.Job("control.power_off", apischema.NoRequest(), apischema.NoResponse())
-var RouteReboot = routes.Job("control.reboot", apischema.NoRequest(), apischema.NoResponse())
-var RouteVersion = routes.Query("control.version", apischema.NoRequest(), apischema.TypeOf[apischema.VersionResponse]())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 // RegisterHandlers registers host control handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteReboot.Handle(handleReboot),
-		RoutePowerOff.Handle(handlePowerOff),
-		RouteLogoff.Handle(handleLogoff),
-	)
+	api.Register(router)
 }
 
 func handleReboot(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

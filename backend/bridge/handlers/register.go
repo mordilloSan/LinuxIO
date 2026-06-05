@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"sort"
-	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
@@ -100,16 +99,4 @@ func MustRoute(route string) apischema.RouteSpec {
 		panic("handlers: unknown route " + route)
 	}
 	return spec
-}
-
-func RoutesFor(handler string) []apischema.RouteSpec {
-	var out []apischema.RouteSpec
-	prefix := handler + "."
-	for _, spec := range Routes {
-		if strings.HasPrefix(spec.Route, prefix) {
-			out = append(out, spec)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Route < out[j].Route })
-	return out
 }

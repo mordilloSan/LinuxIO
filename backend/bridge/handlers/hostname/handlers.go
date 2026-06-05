@@ -8,16 +8,14 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Job("hostname.set_hostname", apischema.TypeOf[apischema.HostnameRequest](), apischema.NoResponse()).Handle(handleSetHostname),
+)
 
-var RouteSetHostname = routes.Job("hostname.set_hostname", apischema.TypeOf[apischema.HostnameRequest](), apischema.NoResponse())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteSetHostname.Handle(handleSetHostname),
-	)
+	api.Register(router)
 }
 
 func handleSetHostname(ctx context.Context, req apischema.HostnameRequest, emit bridgeipc.Events) error {

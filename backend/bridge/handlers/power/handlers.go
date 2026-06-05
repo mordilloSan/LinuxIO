@@ -8,22 +8,17 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("power.get_status", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged()).Handle(handleGetStatus),
+	apischema.Job("power.start", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged()).Handle(handleStart),
+	apischema.Job("power.set_profile", apischema.TypeOf[apischema.ProfileRequest](), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged()).Handle(handleSetProfile),
+	apischema.Job("power.disable", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged()).Handle(handleDisable),
+)
 
-var RouteDisable = routes.Job("power.disable", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
-var RouteGetStatus = routes.Query("power.get_status", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
-var RouteSetProfile = routes.Job("power.set_profile", apischema.TypeOf[apischema.ProfileRequest](), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
-var RouteStart = routes.Job("power.start", apischema.NoRequest(), apischema.TypeOf[apischema.PowerStatus](), apischema.Privileged())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteGetStatus.Handle(handleGetStatus),
-		RouteStart.Handle(handleStart),
-		RouteSetProfile.Handle(handleSetProfile),
-		RouteDisable.Handle(handleDisable),
-	)
+	api.Register(router)
 }
 
 func handleGetStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

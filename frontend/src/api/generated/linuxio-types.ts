@@ -1608,7 +1608,8 @@ export type ValidationIssueType = "error" | "warning";
 export interface VersionResponse {
   checked_at: string;
   current_version: string;
-  latest_version: string;
+  error?: string;
+  latest_version?: string;
   update_available: boolean;
 }
 

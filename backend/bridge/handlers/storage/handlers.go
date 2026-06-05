@@ -9,46 +9,30 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("storage.list_pvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.PhysicalVolume]()).Handle(handleListPVs),
+	apischema.Query("storage.list_vgs", apischema.NoRequest(), apischema.TypeOf[[]apischema.VolumeGroup]()).Handle(handleListVGs),
+	apischema.Query("storage.list_lvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.LogicalVolume]()).Handle(handleListLVs),
+	apischema.Job("storage.create_lv", apischema.TypeOf[apischema.CreateLogicalVolumeRequest](), apischema.TypeOf[apischema.StorageCreateLVResult]()).Handle(handleCreateLV),
+	apischema.Job("storage.delete_lv", apischema.TypeOf[apischema.VolumeGroupLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]()).Handle(handleDeleteLV),
+	apischema.Job("storage.resize_lv", apischema.TypeOf[apischema.ResizeLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]()).Handle(handleResizeLV),
+	apischema.Query("storage.list_nfs_mounts", apischema.NoRequest(), apischema.TypeOf[[]apischema.NFSMount]()).Handle(handleListNFSMounts),
+	apischema.Query("storage.list_nfs_exports", apischema.TypeOf[apischema.ServerRequest](), apischema.TypeOf[[]string]()).Handle(handleListNFSExports),
+	apischema.Job("storage.mount_nfs", apischema.TypeOf[apischema.ServerExportMountOptionsPersistRequest](), apischema.TypeOf[apischema.StorageMountResult]()).Handle(handleMountNFS),
+	apischema.Job("storage.unmount_nfs", apischema.TypeOf[apischema.MountpointRemoveFstabRequest](), apischema.TypeOf[apischema.StorageWarningResult]()).Handle(handleUnmountNFS),
+	apischema.Job("storage.remount_nfs", apischema.TypeOf[apischema.MountpointOptionsUpdateFstabRequest](), apischema.TypeOf[apischema.StorageMountResult]()).Handle(handleRemountNFS),
+	apischema.Job("storage.unmount_filesystem", apischema.TypeOf[apischema.MountpointRequest](), apischema.TypeOf[apischema.StorageMountResult]()).Handle(handleUnmountFilesystem),
+	apischema.Job("storage.create_btrfs_subvolume", apischema.TypeOf[apischema.MountpointNameRequest](), apischema.TypeOf[apischema.StoragePathResult]()).Handle(handleCreateBtrfsSubvolume),
+	apischema.Query("storage.get_drive_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.ApiDisk]()).Handle(handleGetDriveInfo),
+)
 
-var RouteCreateBtrfsSubvolume = routes.Job("storage.create_btrfs_subvolume", apischema.TypeOf[apischema.MountpointNameRequest](), apischema.TypeOf[apischema.StoragePathResult]())
-var RouteCreateLv = routes.Job("storage.create_lv", apischema.TypeOf[apischema.CreateLogicalVolumeRequest](), apischema.TypeOf[apischema.StorageCreateLVResult]())
-var RouteDeleteLv = routes.Job("storage.delete_lv", apischema.TypeOf[apischema.VolumeGroupLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]())
-var RouteGetDriveInfo = routes.Query("storage.get_drive_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.ApiDisk]())
-var RouteListLVs = routes.Query("storage.list_lvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.LogicalVolume]())
-var RouteListNFSExports = routes.Query("storage.list_nfs_exports", apischema.TypeOf[apischema.ServerRequest](), apischema.TypeOf[[]string]())
-var RouteListNFSMounts = routes.Query("storage.list_nfs_mounts", apischema.NoRequest(), apischema.TypeOf[[]apischema.NFSMount]())
-var RouteListPVs = routes.Query("storage.list_pvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.PhysicalVolume]())
-var RouteListVGs = routes.Query("storage.list_vgs", apischema.NoRequest(), apischema.TypeOf[[]apischema.VolumeGroup]())
-var RouteMountNFS = routes.Job("storage.mount_nfs", apischema.TypeOf[apischema.ServerExportMountOptionsPersistRequest](), apischema.TypeOf[apischema.StorageMountResult]())
-var RouteRemountNFS = routes.Job("storage.remount_nfs", apischema.TypeOf[apischema.MountpointOptionsUpdateFstabRequest](), apischema.TypeOf[apischema.StorageMountResult]())
-var RouteResizeLv = routes.Job("storage.resize_lv", apischema.TypeOf[apischema.ResizeLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]())
-var RouteRunSmartTest = routes.Runner("storage.run_smart_test", apischema.TypeOf[apischema.DeviceTestTypeRequest](), apischema.TypeOf[apischema.JobSnapshot]())
-var RouteUnmountFilesystem = routes.Job("storage.unmount_filesystem", apischema.TypeOf[apischema.MountpointRequest](), apischema.TypeOf[apischema.StorageMountResult]())
-var RouteUnmountNFS = routes.Job("storage.unmount_nfs", apischema.TypeOf[apischema.MountpointRemoveFstabRequest](), apischema.TypeOf[apischema.StorageWarningResult]())
-
-var Routes = routes.All()
+var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes)
 
 // RegisterHandlers registers all storage handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterJobRoutes(router)
 
-	apischema.RegisterRoutes(router,
-		RouteListPVs.Handle(handleListPVs),
-		RouteListVGs.Handle(handleListVGs),
-		RouteListLVs.Handle(handleListLVs),
-		RouteCreateLv.Handle(handleCreateLV),
-		RouteDeleteLv.Handle(handleDeleteLV),
-		RouteResizeLv.Handle(handleResizeLV),
-		RouteListNFSMounts.Handle(handleListNFSMounts),
-		RouteListNFSExports.Handle(handleListNFSExports),
-		RouteMountNFS.Handle(handleMountNFS),
-		RouteUnmountNFS.Handle(handleUnmountNFS),
-		RouteRemountNFS.Handle(handleRemountNFS),
-		RouteUnmountFilesystem.Handle(handleUnmountFilesystem),
-		RouteCreateBtrfsSubvolume.Handle(handleCreateBtrfsSubvolume),
-		RouteGetDriveInfo.Handle(handleGetDriveInfo),
-	)
+	api.Register(router)
 }
 
 func handleListPVs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

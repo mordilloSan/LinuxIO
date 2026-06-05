@@ -4,14 +4,16 @@ Privilege is route metadata. Handlers should not perform the normal route privil
 
 ## Rule
 
-Declare privileged operations in the relevant `backend/bridge/handlers/<domain>/handlers.go` route spec:
+Declare privileged operations in the relevant `backend/bridge/handlers/<domain>/handlers.go` binding entry:
 
 ```go
-var RouteReboot = routes.Job(
-    "control.reboot",
-    apischema.NoRequest(),
-    apischema.NoResponse(),
-    apischema.Privileged(),
+var api = apischema.Bindings(
+    apischema.Job(
+        "control.reboot",
+        apischema.NoRequest(),
+        apischema.NoResponse(),
+        apischema.Privileged(),
+    ).Handle(handleReboot),
 )
 ```
 

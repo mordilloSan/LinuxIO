@@ -32,15 +32,27 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
+var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
+
+func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Runner("docker.compose", apischema.TypeOf[apischema.DockerComposeRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
+				return runDockerComposeJob(ctx, job, rt.Username(), rt.Store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner("docker.indexer", apischema.NoRequest(), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
+				return runDockerIndexerJob(ctx, job, rt.Username(), rt.Store)
+			},
+			bridgejobs.SingletonSystem,
+		),
+	)
+}
+
 func RegisterJobRoutes(router *bridgejobs.Router, rt runtime.Runtime) {
-	username := rt.Username()
-	store := rt.Store
-	apischema.AttachRunner(router, RouteCompose.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
-		return runDockerComposeJob(ctx, job, username, store, req)
-	}, bridgejobs.ActionDefault))
-	apischema.AttachRunner(router, RouteIndexer.Run(func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
-		return runDockerIndexerJob(ctx, job, username, store)
-	}, bridgejobs.SingletonSystem))
+	dockerJobBindings(rt).Register(router)
 }
 
 func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, req apischema.DockerComposeRequest) (any, error) {

@@ -44,63 +44,33 @@ func WithPolicy(policy bridgeipc.JobPolicy) RouteSpecOption {
 	}
 }
 
-type RouteCatalog struct {
-	routes []RouteSpec
+func Query(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindHandler, bridgeipc.ModeQuery, route, request, result, opts...)
 }
 
-func NewRouteCatalog() *RouteCatalog {
-	return &RouteCatalog{}
+func Job(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindHandler, bridgeipc.ModeJob, route, request, result, opts...)
 }
 
-func (c *RouteCatalog) Query(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return c.add(RouteSpec{
-		Kind:    KindHandler,
+func Runner(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindRunner, bridgeipc.ModeJob, route, request, result, opts...)
+}
+
+func DuplexRoute(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindDuplex, bridgeipc.ModeDuplex, route, request, result, opts...)
+}
+
+func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+	spec := RouteSpec{
+		Kind:    kind,
 		Route:   route,
-		Mode:    bridgeipc.ModeQuery,
+		Mode:    mode,
 		Request: request,
 		Result:  result,
-	}, opts...)
-}
-
-func (c *RouteCatalog) Job(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return c.add(RouteSpec{
-		Kind:    KindHandler,
-		Route:   route,
-		Mode:    bridgeipc.ModeJob,
-		Request: request,
-		Result:  result,
-	}, opts...)
-}
-
-func (c *RouteCatalog) Runner(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return c.add(RouteSpec{
-		Kind:    KindRunner,
-		Route:   route,
-		Mode:    bridgeipc.ModeJob,
-		Request: request,
-		Result:  result,
-	}, opts...)
-}
-
-func (c *RouteCatalog) Duplex(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return c.add(RouteSpec{
-		Kind:    KindDuplex,
-		Route:   route,
-		Mode:    bridgeipc.ModeDuplex,
-		Request: request,
-		Result:  result,
-	}, opts...)
-}
-
-func (c *RouteCatalog) All() []RouteSpec {
-	return append([]RouteSpec(nil), c.routes...)
-}
-
-func (c *RouteCatalog) add(spec RouteSpec, opts ...RouteSpecOption) RouteSpec {
+	}
 	for _, opt := range opts {
 		opt(&spec)
 	}
-	c.routes = append(c.routes, spec)
 	return spec
 }
 
@@ -168,6 +138,72 @@ type DuplexBinding struct {
 	Route   RouteSpec
 	Handle  any
 	Options []bridgeipc.RouteOption
+}
+
+type Binding interface {
+	addTo(*BindingSet)
+}
+
+type BindingSet struct {
+	handlers []HandlerBinding
+	runners  []RunnerBinding
+	duplexes []DuplexBinding
+	routes   []RouteSpec
+}
+
+func Bindings(bindings ...Binding) BindingSet {
+	var set BindingSet
+	for _, binding := range bindings {
+		binding.addTo(&set)
+	}
+	return set
+}
+
+func CombineRoutes(groups ...[]RouteSpec) []RouteSpec {
+	total := 0
+	for _, group := range groups {
+		total += len(group)
+	}
+	routes := make([]RouteSpec, 0, total)
+	for _, group := range groups {
+		routes = append(routes, group...)
+	}
+	return routes
+}
+
+func (s BindingSet) Routes() []RouteSpec {
+	return append([]RouteSpec(nil), s.routes...)
+}
+
+func (s BindingSet) Register(router *bridgeipc.Router) {
+	for _, binding := range s.handlers {
+		AttachHandler(router, binding)
+	}
+	for _, binding := range s.runners {
+		AttachRunner(router, binding)
+	}
+	for _, binding := range s.duplexes {
+		AttachDuplex(router, binding)
+	}
+}
+
+func (r RouteSpec) addTo(set *BindingSet) {
+	set.routes = append(set.routes, requireRouteSpec(r))
+}
+
+func (b HandlerBinding) addTo(set *BindingSet) {
+	set.handlers = append(set.handlers, b)
+	set.routes = append(set.routes, requireRouteSpec(b.Route))
+}
+
+func (b RunnerBinding) addTo(set *BindingSet) {
+	set.runners = append(set.runners, b)
+	set.routes = append(set.routes, requireRouteSpec(b.Route))
+}
+
+func (b DuplexBinding) addTo(set *BindingSet) {
+	set.duplexes = append(set.duplexes, b)
+	set.routes = append(set.routes, requireRouteSpec(b.Route))
 }
 
 func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {

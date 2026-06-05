@@ -9,20 +9,19 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var Routes = routeBindings(runtime.Runtime{}).Routes()
 
-var RouteGet = routes.Query("config.get", apischema.NoRequest(), apischema.TypeOf[apischema.AppConfig]())
-var RouteSet = routes.Job("config.set", apischema.TypeOf[apischema.ConfigSetPayload](), apischema.TypeOf[apischema.ConfigSetResult]())
-
-var Routes = routes.All()
+func routeBindings(rt runtime.Runtime) apischema.BindingSet {
+	handlers := configHandlers{rt: rt}
+	return apischema.Bindings(
+		apischema.Query("config.get", apischema.NoRequest(), apischema.TypeOf[apischema.AppConfig]()).Handle(handlers.handleGetConfig),
+		apischema.Job("config.set", apischema.TypeOf[apischema.ConfigSetPayload](), apischema.TypeOf[apischema.ConfigSetResult]()).Handle(handlers.handleSetConfig),
+	)
+}
 
 // RegisterHandlers registers config handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	handlers := configHandlers{rt: rt}
-	apischema.RegisterRoutes(router,
-		RouteGet.Handle(handlers.handleGetConfig),
-		RouteSet.Handle(handlers.handleSetConfig),
-	)
+	routeBindings(rt).Register(router)
 }
 
 func (h configHandlers) handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

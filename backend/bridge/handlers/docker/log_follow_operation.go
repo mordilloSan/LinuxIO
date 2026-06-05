@@ -16,7 +16,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routeDockerLogsFollow = RouteLogsFollow.Route
+const routeDockerLogsFollow = "docker.logs.follow"
 
 var dockerLogANSIRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 

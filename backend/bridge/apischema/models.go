@@ -823,7 +823,8 @@ type NFSMount struct {
 type VersionResponse struct {
 	CheckedAt       string `json:"checked_at"`
 	CurrentVersion  string `json:"current_version"`
-	LatestVersion   string `json:"latest_version"`
+	Error           string `json:"error,omitempty"`
+	LatestVersion   string `json:"latest_version,omitempty"`
 	UpdateAvailable bool   `json:"update_available"`
 }
 

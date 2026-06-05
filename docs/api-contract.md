@@ -47,7 +47,7 @@ For request routes:
 
 | File | Role |
 |------|------|
-| `backend/bridge/handlers/<domain>/handlers.go` | One `RouteSpec` per route in that handler family plus the typed route-to-handler binding. |
+| `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each entry contains the route contract and the typed handler binding together. |
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
@@ -140,20 +140,18 @@ linuxio.docker.start_container.useMutation().mutate({ containerId });
 Handler route:
 
 ```go
-var routes = apischema.NewRouteCatalog()
-
-var RouteGetUnitInfo = routes.Query(
-    "systemd.get_unit_info",
-    apischema.TypeOf[apischema.UnitNameRequest](),
-    apischema.TypeOf[apischema.UnitInfo](),
+var api = apischema.Bindings(
+    apischema.Query(
+        "systemd.get_unit_info",
+        apischema.TypeOf[apischema.UnitNameRequest](),
+        apischema.TypeOf[apischema.UnitInfo](),
+    ).Handle(handleGetUnitInfo),
 )
 
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-    apischema.RegisterRoutes(router,
-        RouteGetUnitInfo.Handle(handleGetUnitInfo),
-    )
+    api.Register(router)
 }
 
 func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
@@ -162,44 +160,48 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit 
 }
 ```
 
-The route spec is package-level because codegen and route coverage read `Routes`. The handler binding sits beside it in the same file as `RouteGetUnitInfo.Handle(handleGetUnitInfo)`, so the contract and dispatch target are reviewed together.
+Codegen and route coverage read `Routes`, which is derived from the binding table. Runtime registration also reads the same binding table, so a normal route is declared once.
 
 Runner route:
 
 ```go
-var routes = apischema.NewRouteCatalog()
+var packageUpdateRoutes = packageUpdateBindings().Routes()
 
-var RouteUpdate = routes.Runner(
-    "packages.update",
-    apischema.TypeOf[apischema.PackageUpdateRequest](),
-    apischema.TypeOf[apischema.JobSnapshot](),
-)
+func packageUpdateBindings() apischema.BindingSet {
+    return apischema.Bindings(
+        apischema.Runner(
+            "packages.update",
+            apischema.TypeOf[apischema.PackageUpdateRequest](),
+            apischema.TypeOf[apischema.JobSnapshot](),
+        ).Run(runPackageUpdateJob, bridgeipc.SingletonSystem),
+    )
+}
 
-var Routes = routes.All()
-
-func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-    apischema.AttachRunner(router, RouteUpdate.Run(runPackageUpdateJob, bridgeipc.SingletonSystem))
+func RegisterJobRoutes(router *bridgeipc.Router) {
+    packageUpdateBindings().Register(router)
 }
 ```
 
 Duplex route:
 
 ```go
-var routes = apischema.NewRouteCatalog()
+var Routes = routeBindings(runtime.Runtime{}).Routes()
 
-var RouteOpen = routes.Duplex(
-    "terminal.open",
-    apischema.TypeOf[apischema.TerminalOpenRequest](),
-    apischema.NoResponse(),
-    apischema.NoEndpoint(),
-)
-
-var Routes = routes.All()
+func routeBindings(rt runtime.Runtime) apischema.BindingSet {
+    return apischema.Bindings(
+        apischema.DuplexRoute(
+            "terminal.open",
+            apischema.TypeOf[apischema.TerminalOpenRequest](),
+            apischema.NoResponse(),
+            apischema.NoEndpoint(),
+        ).Duplex(func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
+            return HandleTerminalSession(ctx, rt, stream, req)
+        }),
+    )
+}
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-    apischema.AttachDuplex(router, RouteOpen.Duplex(func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
-        return HandleTerminalSession(ctx, rt, stream, req)
-    }))
+    routeBindings(rt).Register(router)
 }
 ```
 
@@ -242,7 +244,7 @@ Terminal and container streams are true duplex routes. Logs and app update expos
 
 For the common case where request/result structs already exist, adding a route touches one handler-family file:
 
-1. `backend/bridge/handlers/<domain>/handlers.go` for the `RouteSpec`, typed handler adapter, and registration in `RegisterHandlers`.
+1. `backend/bridge/handlers/<domain>/handlers.go` for one `apischema.Bindings(...)` entry and the typed handler adapter.
 
 If the request or response type is new, also add the Go struct in `backend/bridge/apischema/contracts.go` or `backend/bridge/apischema/models.go`.
 If the handler family is new, add one entry to `backend/bridge/handlers/register.go`.
@@ -250,9 +252,9 @@ If the handler family is new, add one entry to `backend/bridge/handlers/register
 The practical checklist:
 
 1. Define or reuse exported Go request/response structs in `backend/bridge/apischema`.
-2. Add one named route spec to `backend/bridge/handlers/<domain>/handlers.go`.
+2. Add one binding entry to `backend/bridge/handlers/<domain>/handlers.go`.
 3. Implement the typed handler, runner, or duplex function in that handler package.
-4. Bind it in the same file with `.Handle(...)`, `.Run(...)`, or `.Duplex(...)`.
+4. Ensure the family `Routes` is derived from the binding set.
 5. Run `make generate`.
 6. Use the generated endpoint from `@/api`.
 
@@ -269,18 +271,18 @@ type PackageSearchResult struct {
 ```
 
 ```go
-var RouteSearch = routes.Query(
-    "packages.search",
-    apischema.TypeOf[apischema.PackageSearchRequest](),
-    apischema.TypeOf[apischema.PackageSearchResult](),
+var api = apischema.Bindings(
+    apischema.Query(
+        "packages.search",
+        apischema.TypeOf[apischema.PackageSearchRequest](),
+        apischema.TypeOf[apischema.PackageSearchResult](),
+    ).Handle(handlePackageSearch),
 )
 
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-    apischema.RegisterRoutes(router,
-        RouteSearch.Handle(handlePackageSearch),
-    )
+    api.Register(router)
 }
 
 func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest, emit bridgeipc.Events) error {
@@ -297,16 +299,20 @@ const result = await linuxio.packages.search(query);
 
 For a stream-only route, set `NoEndpoint: true` in the route spec and add a focused stream opener in `frontend/src/api/linuxio.ts`.
 
+Keep each route contract in the same binding table that attaches its handler or runner, even when the public route name belongs to a different frontend namespace. For example, `appupdate` owns the `control.version` binding because it owns the implementation, and `packages` owns the `system.install_capability` binding because it runs the installer job.
+
 ## Privilege
 
 Declare privilege in the route spec:
 
 ```go
-var RouteReboot = routes.Job(
-    "control.reboot",
-    apischema.NoRequest(),
-    apischema.NoResponse(),
-    apischema.Privileged(),
+var api = apischema.Bindings(
+    apischema.Job(
+        "control.reboot",
+        apischema.NoRequest(),
+        apischema.NoResponse(),
+        apischema.Privileged(),
+    ).Handle(handleReboot),
 )
 ```
 

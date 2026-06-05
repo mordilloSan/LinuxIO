@@ -17,9 +17,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-const updateStatusPath = "/run/linuxio/update-status.json"
-
-var routeAppUpdate = RouteControlAppUpdate.Route
+const (
+	routeAppUpdate   = "control.app_update"
+	updateStatusPath = "/run/linuxio/update-status.json"
+)
 
 var validRunIDRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 

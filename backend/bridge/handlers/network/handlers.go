@@ -10,28 +10,20 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("network.get_network_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.NetworkInterface]()).Handle(handleGetNetworkInfo),
+	apischema.Job("network.set_ipv4_manual", apischema.TypeOf[apischema.IPv4ManualRequest](), apischema.NoResponse()).Handle(handleSetIPv4Manual),
+	apischema.Job("network.set_ipv4", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse()).Handle(handleSetIPv4),
+	apischema.Job("network.set_ipv6", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse()).Handle(handleSetIPv6),
+	apischema.Job("network.set_mtu", apischema.TypeOf[apischema.InterfaceMTURequest](), apischema.NoResponse()).Handle(handleSetMTU),
+	apischema.Job("network.enable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse()).Handle(handleEnableConnection),
+	apischema.Job("network.disable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse()).Handle(handleDisableConnection),
+)
 
-var RouteDisableConnection = routes.Job("network.disable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse())
-var RouteEnableConnection = routes.Job("network.enable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse())
-var RouteGetNetworkInfo = routes.Query("network.get_network_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.NetworkInterface]())
-var RouteSetIPv4 = routes.Job("network.set_ipv4", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse())
-var RouteSetIPv4Manual = routes.Job("network.set_ipv4_manual", apischema.TypeOf[apischema.IPv4ManualRequest](), apischema.NoResponse())
-var RouteSetIPv6 = routes.Job("network.set_ipv6", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse())
-var RouteSetMTU = routes.Job("network.set_mtu", apischema.TypeOf[apischema.InterfaceMTURequest](), apischema.NoResponse())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteGetNetworkInfo.Handle(handleGetNetworkInfo),
-		RouteSetIPv4Manual.Handle(handleSetIPv4Manual),
-		RouteSetIPv4.Handle(handleSetIPv4),
-		RouteSetIPv6.Handle(handleSetIPv6),
-		RouteSetMTU.Handle(handleSetMTU),
-		RouteEnableConnection.Handle(handleEnableConnection),
-		RouteDisableConnection.Handle(handleDisableConnection),
-	)
+	api.Register(router)
 }
 
 func handleGetNetworkInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

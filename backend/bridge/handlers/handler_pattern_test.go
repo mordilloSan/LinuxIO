@@ -108,7 +108,7 @@ func isAllowedRouteDecl(decl *ast.GenDecl) bool {
 			return false
 		}
 		for _, name := range value.Names {
-			if name.Name != "routes" && name.Name != "Routes" && !strings.HasPrefix(name.Name, "Route") {
+			if name.Name != "api" && name.Name != "routes" && name.Name != "Routes" && !strings.HasPrefix(name.Name, "Route") {
 				return false
 			}
 		}
@@ -117,7 +117,7 @@ func isAllowedRouteDecl(decl *ast.GenDecl) bool {
 }
 
 func checkHandlerFuncDecl(t *testing.T, path string, decl *ast.FuncDecl) {
-	if decl.Name.Name != "RegisterHandlers" && !strings.HasPrefix(decl.Name.Name, "handle") {
+	if decl.Name.Name != "RegisterHandlers" && decl.Name.Name != "routeBindings" && !strings.HasPrefix(decl.Name.Name, "handle") {
 		t.Errorf("%s: unexpected function %s in handlers.go; only RegisterHandlers and handle* adapters are allowed", path, decl.Name.Name)
 	}
 }

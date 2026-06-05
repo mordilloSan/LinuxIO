@@ -8,39 +8,26 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("wireguard.list_interfaces", apischema.NoRequest(), apischema.TypeOf[[]apischema.WireGuardInterface]()).Handle(handleListInterfaces),
+	apischema.Job("wireguard.add_interface", apischema.TypeOf[apischema.WireGuardAddInterfaceRequest](), apischema.NoResponse()).Handle(handleAddInterface),
+	apischema.Job("wireguard.remove_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleRemoveInterface),
+	apischema.Query("wireguard.list_peers", apischema.TypeOf[apischema.InterfaceNameRequest](), apischema.TypeOf[[]apischema.Peer]()).Handle(handleListPeers),
+	apischema.Job("wireguard.add_peer", apischema.TypeOf[apischema.InterfaceNameRequest](), apischema.NoResponse()).Handle(handleAddPeer),
+	apischema.Job("wireguard.remove_peer", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.NoResponse()).Handle(handleRemovePeer),
+	apischema.Query("wireguard.peer_qrcode", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.TypeOf[apischema.QRCodeResponse]()).Handle(handlePeerQRCode),
+	apischema.Query("wireguard.peer_config_download", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.TypeOf[apischema.PeerConfigDownload]()).Handle(handlePeerConfigDownload),
+	apischema.Job("wireguard.up_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleUpInterface),
+	apischema.Job("wireguard.down_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleDownInterface),
+	apischema.Job("wireguard.enable_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleEnableInterface),
+	apischema.Job("wireguard.disable_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleDisableInterface),
+)
 
-var RouteAddInterface = routes.Job("wireguard.add_interface", apischema.TypeOf[apischema.WireGuardAddInterfaceRequest](), apischema.NoResponse())
-var RouteAddPeer = routes.Job("wireguard.add_peer", apischema.TypeOf[apischema.InterfaceNameRequest](), apischema.NoResponse())
-var RouteDisableInterface = routes.Job("wireguard.disable_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
-var RouteDownInterface = routes.Job("wireguard.down_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
-var RouteEnableInterface = routes.Job("wireguard.enable_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
-var RouteListInterfaces = routes.Query("wireguard.list_interfaces", apischema.NoRequest(), apischema.TypeOf[[]apischema.WireGuardInterface]())
-var RouteListPeers = routes.Query("wireguard.list_peers", apischema.TypeOf[apischema.InterfaceNameRequest](), apischema.TypeOf[[]apischema.Peer]())
-var RoutePeerConfigDownload = routes.Query("wireguard.peer_config_download", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.TypeOf[apischema.PeerConfigDownload]())
-var RoutePeerQrcode = routes.Query("wireguard.peer_qrcode", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.TypeOf[apischema.QRCodeResponse]())
-var RouteRemoveInterface = routes.Job("wireguard.remove_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
-var RouteRemovePeer = routes.Job("wireguard.remove_peer", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.NoResponse())
-var RouteUpInterface = routes.Job("wireguard.up_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 // RegisterHandlers registers wireguard handlers with the new handler system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteListInterfaces.Handle(handleListInterfaces),
-		RouteAddInterface.Handle(handleAddInterface),
-		RouteRemoveInterface.Handle(handleRemoveInterface),
-		RouteListPeers.Handle(handleListPeers),
-		RouteAddPeer.Handle(handleAddPeer),
-		RouteRemovePeer.Handle(handleRemovePeer),
-		RoutePeerQrcode.Handle(handlePeerQRCode),
-		RoutePeerConfigDownload.Handle(handlePeerConfigDownload),
-		RouteUpInterface.Handle(handleUpInterface),
-		RouteDownInterface.Handle(handleDownInterface),
-		RouteEnableInterface.Handle(handleEnableInterface),
-		RouteDisableInterface.Handle(handleDisableInterface),
-	)
+	api.Register(router)
 }
 
 func handleListInterfaces(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

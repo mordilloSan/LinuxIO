@@ -21,7 +21,7 @@ import (
 // untrusted UI input from being passed straight to journalctl.
 var journaldFieldMatch = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=.*$`)
 
-var streamTypeGeneralLogs = RouteGeneralFollow.Route
+const streamTypeGeneralLogs = "logs.general.follow"
 
 type generalLogsRequest struct {
 	lines        string

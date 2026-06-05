@@ -9,45 +9,29 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("accounts.list_users", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountUser]()).Handle(handleListUsers),
+	apischema.Query("accounts.get_user_details", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[apischema.AccountUserDetails]()).Handle(handleGetUserDetails),
+	apischema.Query("accounts.list_user_logins", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[[]apischema.AccountUserLogin]()).Handle(handleListUserLogins),
+	apischema.Job("accounts.terminate_session", apischema.TypeOf[apischema.TerminateSessionRequest](), apischema.NoResponse()).Handle(handleTerminateSession),
+	apischema.Job("accounts.create_user", apischema.TypeOf[apischema.CreateUserRequest](), apischema.NoResponse()).Handle(handleCreateUser),
+	apischema.Job("accounts.delete_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse()).Handle(handleDeleteUser),
+	apischema.Job("accounts.modify_user", apischema.TypeOf[apischema.ModifyUserRequest](), apischema.NoResponse()).Handle(handleModifyUser),
+	apischema.Job("accounts.change_password", apischema.TypeOf[apischema.ChangePasswordRequest](), apischema.NoResponse()).Handle(handleChangePassword),
+	apischema.Job("accounts.lock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse()).Handle(handleLockUser),
+	apischema.Job("accounts.unlock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse()).Handle(handleUnlockUser),
+	apischema.Query("accounts.list_groups", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountGroup]()).Handle(handleListGroups),
+	apischema.Job("accounts.create_group", apischema.TypeOf[apischema.CreateGroupRequest](), apischema.NoResponse()).Handle(handleCreateGroup),
+	apischema.Job("accounts.delete_group", apischema.TypeOf[apischema.GroupNameRequest](), apischema.NoResponse()).Handle(handleDeleteGroup),
+	apischema.Job("accounts.modify_group_members", apischema.TypeOf[apischema.ModifyGroupMembersRequest](), apischema.NoResponse()).Handle(handleModifyGroupMembers),
+	apischema.Query("accounts.list_shells", apischema.NoRequest(), apischema.TypeOf[[]string]()).Handle(handleListShells),
+)
 
-var RouteChangePassword = routes.Job("accounts.change_password", apischema.TypeOf[apischema.ChangePasswordRequest](), apischema.NoResponse())
-var RouteCreateGroup = routes.Job("accounts.create_group", apischema.TypeOf[apischema.CreateGroupRequest](), apischema.NoResponse())
-var RouteCreateUser = routes.Job("accounts.create_user", apischema.TypeOf[apischema.CreateUserRequest](), apischema.NoResponse())
-var RouteDeleteGroup = routes.Job("accounts.delete_group", apischema.TypeOf[apischema.GroupNameRequest](), apischema.NoResponse())
-var RouteDeleteUser = routes.Job("accounts.delete_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
-var RouteGetUserDetails = routes.Query("accounts.get_user_details", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[apischema.AccountUserDetails]())
-var RouteListGroups = routes.Query("accounts.list_groups", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountGroup]())
-var RouteListShells = routes.Query("accounts.list_shells", apischema.NoRequest(), apischema.TypeOf[[]string]())
-var RouteListUserLogins = routes.Query("accounts.list_user_logins", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[[]apischema.AccountUserLogin]())
-var RouteListUsers = routes.Query("accounts.list_users", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountUser]())
-var RouteLockUser = routes.Job("accounts.lock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
-var RouteModifyGroupMembers = routes.Job("accounts.modify_group_members", apischema.TypeOf[apischema.ModifyGroupMembersRequest](), apischema.NoResponse())
-var RouteModifyUser = routes.Job("accounts.modify_user", apischema.TypeOf[apischema.ModifyUserRequest](), apischema.NoResponse())
-var RouteTerminateSession = routes.Job("accounts.terminate_session", apischema.TypeOf[apischema.TerminateSessionRequest](), apischema.NoResponse())
-var RouteUnlockUser = routes.Job("accounts.unlock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 // RegisterHandlers registers accounts handlers with the IPC system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteListUsers.Handle(handleListUsers),
-		RouteGetUserDetails.Handle(handleGetUserDetails),
-		RouteListUserLogins.Handle(handleListUserLogins),
-		RouteTerminateSession.Handle(handleTerminateSession),
-		RouteCreateUser.Handle(handleCreateUser),
-		RouteDeleteUser.Handle(handleDeleteUser),
-		RouteModifyUser.Handle(handleModifyUser),
-		RouteChangePassword.Handle(handleChangePassword),
-		RouteLockUser.Handle(handleLockUser),
-		RouteUnlockUser.Handle(handleUnlockUser),
-		RouteListGroups.Handle(handleListGroups),
-		RouteCreateGroup.Handle(handleCreateGroup),
-		RouteDeleteGroup.Handle(handleDeleteGroup),
-		RouteModifyGroupMembers.Handle(handleModifyGroupMembers),
-		RouteListShells.Handle(handleListShells),
-	)
+	api.Register(router)
 }
 
 func handleListUsers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {

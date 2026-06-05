@@ -9,25 +9,27 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var Routes = routeBindings(runtime.Runtime{}).Routes()
 
-var RouteContainerOpen = routes.Duplex("container.open", apischema.TypeOf[apischema.ContainerOpenRequest](), apischema.NoResponse(), apischema.NoEndpoint())
-var RouteListShells = routes.Query("terminal.list_shells", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.TypeOf[[]string]())
-var RouteOpen = routes.Duplex("terminal.open", apischema.TypeOf[apischema.TerminalOpenRequest](), apischema.NoResponse(), apischema.NoEndpoint())
-
-var Routes = routes.All()
+func routeBindings(rt runtime.Runtime) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Query("terminal.list_shells", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.TypeOf[[]string]()).Handle(handleListShells),
+		apischema.DuplexRoute("terminal.open", apischema.TypeOf[apischema.TerminalOpenRequest](), apischema.NoResponse(), apischema.NoEndpoint()).Duplex(
+			func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
+				return HandleTerminalSession(ctx, rt, stream, req)
+			},
+		),
+		apischema.DuplexRoute("container.open", apischema.TypeOf[apischema.ContainerOpenRequest](), apischema.NoResponse(), apischema.NoEndpoint()).Duplex(
+			func(ctx context.Context, stream net.Conn, req apischema.ContainerOpenRequest) error {
+				return HandleContainerTerminalSession(ctx, rt, stream, req)
+			},
+		),
+	)
+}
 
 // RegisterHandlers registers all terminal handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteListShells.Handle(handleListShells),
-	)
-	apischema.AttachDuplex(router, RouteOpen.Duplex(func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
-		return HandleTerminalSession(ctx, rt, stream, req)
-	}))
-	apischema.AttachDuplex(router, RouteContainerOpen.Duplex(func(ctx context.Context, stream net.Conn, req apischema.ContainerOpenRequest) error {
-		return HandleContainerTerminalSession(ctx, rt, stream, req)
-	}))
+	routeBindings(rt).Register(router)
 }
 
 func handleListShells(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {

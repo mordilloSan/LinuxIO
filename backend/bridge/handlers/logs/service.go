@@ -16,7 +16,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var streamTypeServiceLogs = RouteServiceFollow.Route
+const streamTypeServiceLogs = "logs.service.follow"
 
 // runServiceLogsJob streams service logs from journalctl through the bridge job lifecycle.
 func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {

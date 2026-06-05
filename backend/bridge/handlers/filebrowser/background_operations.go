@@ -202,31 +202,63 @@ type ChmodProgress struct {
 	Phase     string `json:"phase,omitempty"`
 }
 
+const (
+	routeArchive  = "filebrowser.archive"
+	routeDownload = "filebrowser.download"
+	routeUpload   = "filebrowser.upload"
+)
+
+var fileJobRoutes = fileJobBindings(nil).Routes()
+
+func fileJobBindings(store *config.UserStore) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Runner("filebrowser.compress", apischema.TypeOf[apischema.FileCompressRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
+				return runCompressJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner("filebrowser.extract", apischema.TypeOf[apischema.FileExtractRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
+				return runExtractJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner("filebrowser.copy", apischema.TypeOf[apischema.SourceDestinationRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
+				return runCopyJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner("filebrowser.move", apischema.TypeOf[apischema.SourceDestinationRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
+				return runMoveJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner("filebrowser.index", apischema.TypeOf[apischema.OptionalPathRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(runIndexerJob, bridgejobs.SingletonSystem),
+		apischema.Runner(routeUpload, apischema.TypeOf[apischema.FileUploadRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(runUploadJob, bridgejobs.StreamDefault),
+		apischema.Runner(routeDownload, apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(runDownloadJob, bridgejobs.StreamDefault),
+		apischema.Runner(routeArchive, apischema.TypeOf[apischema.FileArchiveRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
+				return runArchiveJob(ctx, job, store, req)
+			},
+			bridgejobs.StreamDefault,
+		),
+		apischema.Runner("filebrowser.chmod", apischema.TypeOf[apischema.FileChmodRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
+				return runChmodJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+	)
+}
+
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
-	apischema.AttachRunner(router, RouteCompress.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
-		return runCompressJob(ctx, job, store, req)
-	}, bridgejobs.ActionDefault))
-	apischema.AttachRunner(router, RouteExtract.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
-		return runExtractJob(ctx, job, store, req)
-	}, bridgejobs.ActionDefault))
-	apischema.AttachRunner(router, RouteCopy.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-		return runCopyJob(ctx, job, store, req)
-	}, bridgejobs.ActionDefault))
-	apischema.AttachRunner(router, RouteMove.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-		return runMoveJob(ctx, job, store, req)
-	}, bridgejobs.ActionDefault))
-	apischema.AttachRunner(router, RouteIndex.Run(runIndexerJob, bridgejobs.SingletonSystem))
-	apischema.AttachRunner(router, RouteUpload.Run(runUploadJob, bridgejobs.StreamDefault))
-	apischema.AttachRunner(router, RouteDownload.Run(runDownloadJob, bridgejobs.StreamDefault))
-	apischema.AttachRunner(router, RouteArchive.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
-		return runArchiveJob(ctx, job, store, req)
-	}, bridgejobs.StreamDefault))
-	apischema.AttachRunner(router, RouteChmod.Run(func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
-		return runChmodJob(ctx, job, store, req)
-	}, bridgejobs.ActionDefault))
-	bridgejobs.RegisterDataAttacher(RouteUpload.Route, attachFileTransferData)
-	bridgejobs.RegisterDataAttacher(RouteDownload.Route, attachFileTransferData)
-	bridgejobs.RegisterDataAttacher(RouteArchive.Route, attachFileTransferData)
+	fileJobBindings(store).Register(router)
+	bridgejobs.RegisterDataAttacher(routeUpload, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(routeDownload, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(routeArchive, attachFileTransferData)
 }
 
 func newJobPhaseCallbacks(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {

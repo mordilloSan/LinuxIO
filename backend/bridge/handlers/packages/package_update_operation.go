@@ -12,10 +12,18 @@ import (
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func RegisterJobRoutes(router *bridgejobs.Router) {
+var packageUpdateRoutes = packageUpdateBindings().Routes()
+
+func packageUpdateBindings() apischema.BindingSet {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
-	apischema.AttachRunner(router, RouteUpdate.Run(runPackageUpdateJob, policy))
+	return apischema.Bindings(
+		apischema.Runner("packages.update", apischema.TypeOf[apischema.PackageUpdateRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(runPackageUpdateJob, policy),
+	)
+}
+
+func RegisterJobRoutes(router *bridgejobs.Router) {
+	packageUpdateBindings().Register(router)
 }
 
 // PkgUpdateProgress represents progress for package update operations.

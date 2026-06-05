@@ -19,8 +19,16 @@ type SmartTestProgress struct {
 	Percentage *int   `json:"percentage,omitempty"`
 }
 
+var smartTestRoutes = smartTestBindings().Routes()
+
+func smartTestBindings() apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Runner("storage.run_smart_test", apischema.TypeOf[apischema.DeviceTestTypeRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(runSmartTestJob, bridgejobs.ActionDefault),
+	)
+}
+
 func RegisterJobRoutes(router *bridgejobs.Router) {
-	apischema.AttachRunner(router, RouteRunSmartTest.Run(runSmartTestJob, bridgejobs.ActionDefault))
+	smartTestBindings().Register(router)
 }
 
 // pollInterval picks how often to poll smartctl based on test type. Short tests

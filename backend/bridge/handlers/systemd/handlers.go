@@ -8,40 +8,26 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var routes = apischema.NewRouteCatalog()
+var api = apischema.Bindings(
+	apischema.Query("systemd.list_timers", apischema.NoRequest(), apischema.TypeOf[[]apischema.Timer]()).Handle(handleListTimers),
+	apischema.Query("systemd.list_sockets", apischema.NoRequest(), apischema.TypeOf[[]apischema.Socket]()).Handle(handleListSockets),
+	apischema.Query("systemd.list_services", apischema.NoRequest(), apischema.TypeOf[[]apischema.Service]()).Handle(handleListServices),
+	apischema.Query("systemd.get_unit_info", apischema.TypeOf[apischema.UnitNameRequest](), apischema.TypeOf[apischema.UnitInfo]()).Handle(handleGetUnitInfo),
+	apischema.Job("systemd.start_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleStartService),
+	apischema.Job("systemd.stop_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleStopService),
+	apischema.Job("systemd.restart_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleRestartService),
+	apischema.Job("systemd.reload_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleReloadService),
+	apischema.Job("systemd.enable_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleEnableService),
+	apischema.Job("systemd.disable_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleDisableService),
+	apischema.Job("systemd.mask_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleMaskService),
+	apischema.Job("systemd.unmask_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleUnmaskService),
+	apischema.Job("systemd.reset_failed_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleResetFailedService),
+)
 
-var RouteDisableService = routes.Job("systemd.disable_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteEnableService = routes.Job("systemd.enable_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteGetUnitInfo = routes.Query("systemd.get_unit_info", apischema.TypeOf[apischema.UnitNameRequest](), apischema.TypeOf[apischema.UnitInfo]())
-var RouteListServices = routes.Query("systemd.list_services", apischema.NoRequest(), apischema.TypeOf[[]apischema.Service]())
-var RouteListSockets = routes.Query("systemd.list_sockets", apischema.NoRequest(), apischema.TypeOf[[]apischema.Socket]())
-var RouteListTimers = routes.Query("systemd.list_timers", apischema.NoRequest(), apischema.TypeOf[[]apischema.Timer]())
-var RouteMaskService = routes.Job("systemd.mask_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteReloadService = routes.Job("systemd.reload_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteResetFailedService = routes.Job("systemd.reset_failed_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteRestartService = routes.Job("systemd.restart_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteStartService = routes.Job("systemd.start_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteStopService = routes.Job("systemd.stop_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-var RouteUnmaskService = routes.Job("systemd.unmask_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse())
-
-var Routes = routes.All()
+var Routes = api.Routes()
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router,
-		RouteListTimers.Handle(handleListTimers),
-		RouteListSockets.Handle(handleListSockets),
-		RouteListServices.Handle(handleListServices),
-		RouteGetUnitInfo.Handle(handleGetUnitInfo),
-		RouteStartService.Handle(handleStartService),
-		RouteStopService.Handle(handleStopService),
-		RouteRestartService.Handle(handleRestartService),
-		RouteReloadService.Handle(handleReloadService),
-		RouteEnableService.Handle(handleEnableService),
-		RouteDisableService.Handle(handleDisableService),
-		RouteMaskService.Handle(handleMaskService),
-		RouteUnmaskService.Handle(handleUnmaskService),
-		RouteResetFailedService.Handle(handleResetFailedService),
-	)
+	api.Register(router)
 }
 
 func handleListTimers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
