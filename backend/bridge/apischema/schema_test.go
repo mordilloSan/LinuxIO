@@ -92,7 +92,7 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			spec := handlers.MustRoute(tc.route)
-			decoded, err := apischema.RequestDecoder(spec.Request)(json.RawMessage(tc.raw))
+			decoded, err := apischema.RequestDecoder(spec)(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatalf("requestDecoder() error = %v", err)
 			}

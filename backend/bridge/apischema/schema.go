@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"reflect"
 	"strings"
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -22,6 +21,8 @@ type RouteSpec struct {
 
 	Request TypeSpec
 	Result  TypeSpec
+
+	Decode bridgeipc.RequestDecoder
 }
 
 type RouteSpecOption func(*RouteSpec)
@@ -44,29 +45,44 @@ func WithPolicy(policy bridgeipc.JobPolicy) RouteSpecOption {
 	}
 }
 
-func Query[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindHandler, bridgeipc.ModeQuery, route, TypeOf[Request](), TypeOf[Result](), opts...)
+type Route[Request, Result any] struct {
+	spec RouteSpec
 }
 
-func Job[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindHandler, bridgeipc.ModeJob, route, TypeOf[Request](), TypeOf[Result](), opts...)
+type HandlerFunc[Request any] func(ctx context.Context, req Request, emit bridgeipc.Events) error
+type RunnerFunc[Request any] func(ctx context.Context, job *bridgeipc.Job, req Request) (any, error)
+type DuplexFunc[Request any] func(ctx context.Context, stream net.Conn, req Request) error
+
+func Query[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindHandler, bridgeipc.ModeQuery, name, opts...)
 }
 
-func Runner[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindRunner, bridgeipc.ModeJob, route, TypeOf[Request](), TypeOf[Result](), opts...)
+func Job[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindHandler, bridgeipc.ModeJob, name, opts...)
 }
 
-func DuplexRoute[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindDuplex, bridgeipc.ModeDuplex, route, TypeOf[Request](), TypeOf[Result](), opts...)
+func Runner[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindRunner, bridgeipc.ModeJob, name, opts...)
 }
 
-func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
+func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindDuplex, bridgeipc.ModeDuplex, name, opts...)
+}
+
+func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return Route[Request, Result]{
+		spec: routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), requestDecoder[Request](), opts...),
+	}
+}
+
+func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, result TypeSpec, decode bridgeipc.RequestDecoder, opts ...RouteSpecOption) RouteSpec {
 	spec := RouteSpec{
 		Kind:    kind,
 		Route:   route,
 		Mode:    mode,
 		Request: request,
 		Result:  result,
+		Decode:  decode,
 	}
 	for _, opt := range opts {
 		opt(&spec)
@@ -104,39 +120,64 @@ func (r RouteSpec) ResultSpec() TypeSpec {
 	return r.Result
 }
 
-func (r RouteSpec) Handle(handle any, options ...bridgeipc.RouteOption) HandlerBinding {
-	return HandlerBinding{Route: r, Handle: handle, Options: options}
+func (r Route[Request, Result]) Handle(handle HandlerFunc[Request], options ...bridgeipc.RouteOption) HandlerBinding {
+	return HandlerBinding{
+		Route:   r.spec,
+		Decode:  r.spec.Decode,
+		Handle:  wrapHandler(r.spec.Route, handle),
+		Options: options,
+	}
 }
 
-func (r RouteSpec) HandleWithPolicy(handle any, policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) HandlerBinding {
-	return HandlerBinding{Route: r, Handle: handle, Policy: policy, Options: options}
+func (r Route[Request, Result]) HandleWithPolicy(handle HandlerFunc[Request], policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) HandlerBinding {
+	return HandlerBinding{
+		Route:   r.spec,
+		Decode:  r.spec.Decode,
+		Handle:  wrapHandler(r.spec.Route, handle),
+		Policy:  policy,
+		Options: options,
+	}
 }
 
-func (r RouteSpec) Run(runner any, policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) RunnerBinding {
-	return RunnerBinding{Route: r, Runner: runner, Policy: policy, Options: options}
+func (r Route[Request, Result]) Run(runner RunnerFunc[Request], policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) RunnerBinding {
+	return RunnerBinding{
+		Route:   r.spec,
+		Decode:  r.spec.Decode,
+		Runner:  wrapRunner(r.spec.Route, runner),
+		Policy:  policy,
+		Options: options,
+	}
 }
 
-func (r RouteSpec) Duplex(handle any, options ...bridgeipc.RouteOption) DuplexBinding {
-	return DuplexBinding{Route: r, Handle: handle, Options: options}
+func (r Route[Request, Result]) Duplex(handle DuplexFunc[Request], options ...bridgeipc.RouteOption) DuplexBinding {
+	return DuplexBinding{
+		Route:   r.spec,
+		Decode:  r.spec.Decode,
+		Handle:  wrapDuplex(r.spec.Route, handle),
+		Options: options,
+	}
 }
 
 type HandlerBinding struct {
 	Route   RouteSpec
-	Handle  any
+	Handle  bridgeipc.HandlerFunc
+	Decode  bridgeipc.RequestDecoder
 	Policy  bridgeipc.JobPolicy
 	Options []bridgeipc.RouteOption
 }
 
 type RunnerBinding struct {
 	Route   RouteSpec
-	Runner  any
+	Runner  bridgeipc.Runner
+	Decode  bridgeipc.RequestDecoder
 	Policy  bridgeipc.JobPolicy
 	Options []bridgeipc.RouteOption
 }
 
 type DuplexBinding struct {
 	Route   RouteSpec
-	Handle  any
+	Handle  bridgeipc.DuplexFunc
+	Decode  bridgeipc.RequestDecoder
 	Options []bridgeipc.RouteOption
 }
 
@@ -187,8 +228,8 @@ func (s BindingSet) Register(router *bridgeipc.Router) {
 	}
 }
 
-func (r RouteSpec) addTo(set *BindingSet) {
-	set.routes = append(set.routes, requireRouteSpec(r))
+func (r Route[Request, Result]) addTo(set *BindingSet) {
+	set.routes = append(set.routes, requireRouteSpec(r.spec))
 }
 
 func (b HandlerBinding) addTo(set *BindingSet) {
@@ -212,13 +253,12 @@ func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
 		panic(fmt.Sprintf("apischema: route %s is %s, not handler", spec.Route, spec.Kind))
 	}
 	opts := routeOptions(spec, binding.Options)
-	opts = append(opts, bridgeipc.WithRequestDecoder(requestDecoder(spec.Request)))
-	handle := adaptHandler(spec, binding.Handle)
+	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
 	switch spec.Mode {
 	case bridgeipc.ModeQuery:
-		router.Query(spec.Route, handle, opts...)
+		router.Query(spec.Route, binding.Handle, opts...)
 	case bridgeipc.ModeJob:
-		router.Job(spec.Route, handle, jobPolicy(spec, binding.Policy), opts...)
+		router.Job(spec.Route, binding.Handle, jobPolicy(spec, binding.Policy), opts...)
 	default:
 		panic(fmt.Sprintf("apischema: route %s is %s, not query/job", spec.Route, spec.Mode))
 	}
@@ -243,8 +283,8 @@ func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {
 		panic(fmt.Sprintf("apischema: route %s is %s, not job", spec.Route, spec.Mode))
 	}
 	opts := routeOptions(spec, binding.Options)
-	opts = append(opts, bridgeipc.WithRequestDecoder(requestDecoder(spec.Request)))
-	router.JobRunner(spec.Route, adaptRunner(spec, binding.Runner), jobPolicy(spec, binding.Policy), opts...)
+	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
+	router.JobRunner(spec.Route, binding.Runner, jobPolicy(spec, binding.Policy), opts...)
 }
 
 func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
@@ -256,12 +296,12 @@ func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
 		panic(fmt.Sprintf("apischema: route %s is %s, not duplex", spec.Route, spec.Mode))
 	}
 	opts := routeOptions(spec, binding.Options)
-	opts = append(opts, bridgeipc.WithRequestDecoder(requestDecoder(spec.Request)))
-	router.Duplex(spec.Route, adaptDuplex(spec, binding.Handle), opts...)
+	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
+	router.Duplex(spec.Route, binding.Handle, opts...)
 }
 
-func RequestDecoder(spec TypeSpec) bridgeipc.RequestDecoder {
-	return requestDecoder(spec)
+func RequestDecoder(spec RouteSpec) bridgeipc.RequestDecoder {
+	return requireDecoder(spec, spec.Decode)
 }
 
 func requireRouteSpec(spec RouteSpec) RouteSpec {
@@ -271,137 +311,63 @@ func requireRouteSpec(spec RouteSpec) RouteSpec {
 	return spec
 }
 
-func requestDecoder(spec TypeSpec) bridgeipc.RequestDecoder {
+func requestDecoder[Request any]() bridgeipc.RequestDecoder {
 	return func(raw json.RawMessage) (any, error) {
 		if len(raw) == 0 || string(raw) == "null" {
 			raw = json.RawMessage("{}")
 		}
-		return decodeRequestValue(spec, raw)
+		var req Request
+		if err := json.Unmarshal(raw, &req); err != nil {
+			return nil, err
+		}
+		return req, nil
 	}
 }
 
-func decodeRequestValue(spec TypeSpec, raw json.RawMessage) (any, error) {
-	t := spec.GoType
-	if t == nil {
-		return nil, nil
-	}
-	target := reflect.New(deref(t))
-	if err := json.Unmarshal(raw, target.Interface()); err != nil {
-		return nil, err
-	}
-	return target.Elem().Interface(), nil
-}
-
-var (
-	contextType = reflect.TypeFor[context.Context]()
-	errorType   = reflect.TypeFor[error]()
-	eventsType  = reflect.TypeFor[bridgeipc.Events]()
-	jobType     = reflect.TypeFor[*bridgeipc.Job]()
-	connType    = reflect.TypeFor[net.Conn]()
-)
-
-func adaptHandler(spec RouteSpec, handle any) bridgeipc.HandlerFunc {
-	fn := reflect.ValueOf(handle)
-	reqType := requestType(spec)
-	validateFunc(spec.Route, "handler", fn, []reflect.Type{contextType, reqType, eventsType}, []reflect.Type{errorType})
+func wrapHandler[Request any](route string, handle HandlerFunc[Request]) bridgeipc.HandlerFunc {
 	return func(ctx context.Context, request any, emit bridgeipc.Events) error {
-		out := fn.Call([]reflect.Value{
-			reflect.ValueOf(ctx),
-			requestValue(request, reqType),
-			reflect.ValueOf(emit),
-		})
-		return callError(out[0])
+		req, err := typedRequest[Request](route, request)
+		if err != nil {
+			return err
+		}
+		return handle(ctx, req, emit)
 	}
 }
 
-func adaptRunner(spec RouteSpec, runner any) bridgeipc.Runner {
-	fn := reflect.ValueOf(runner)
-	reqType := requestType(spec)
-	validateFunc(spec.Route, "runner", fn, []reflect.Type{contextType, jobType, reqType}, []reflect.Type{reflect.TypeFor[any](), errorType})
+func wrapRunner[Request any](route string, runner RunnerFunc[Request]) bridgeipc.Runner {
 	return func(ctx context.Context, job *bridgeipc.Job, request any) (any, error) {
-		out := fn.Call([]reflect.Value{
-			reflect.ValueOf(ctx),
-			reflect.ValueOf(job),
-			requestValue(request, reqType),
-		})
-		return out[0].Interface(), callError(out[1])
+		req, err := typedRequest[Request](route, request)
+		if err != nil {
+			return nil, err
+		}
+		return runner(ctx, job, req)
 	}
 }
 
-func adaptDuplex(spec RouteSpec, handle any) bridgeipc.DuplexFunc {
-	fn := reflect.ValueOf(handle)
-	reqType := requestType(spec)
-	validateFunc(spec.Route, "duplex", fn, []reflect.Type{contextType, connType, reqType}, []reflect.Type{errorType})
+func wrapDuplex[Request any](route string, handle DuplexFunc[Request]) bridgeipc.DuplexFunc {
 	return func(ctx context.Context, stream net.Conn, request any) error {
-		out := fn.Call([]reflect.Value{
-			reflect.ValueOf(ctx),
-			reflect.ValueOf(stream),
-			requestValue(request, reqType),
-		})
-		return callError(out[0])
-	}
-}
-
-func validateFunc(route, kind string, fn reflect.Value, in []reflect.Type, out []reflect.Type) {
-	if !fn.IsValid() || fn.Kind() != reflect.Func {
-		panic(fmt.Sprintf("apischema: %s %s is not a function", route, kind))
-	}
-	t := fn.Type()
-	if t.NumIn() != len(in) || t.NumOut() != len(out) {
-		panic(fmt.Sprintf("apischema: %s %s has signature %s", route, kind, t))
-	}
-	for i, want := range in {
-		got := t.In(i)
-		if !want.AssignableTo(got) {
-			panic(fmt.Sprintf("apischema: %s %s arg %d is %s, want %s", route, kind, i, got, want))
+		req, err := typedRequest[Request](route, request)
+		if err != nil {
+			return err
 		}
-	}
-	for i, want := range out {
-		got := t.Out(i)
-		if !got.AssignableTo(want) {
-			panic(fmt.Sprintf("apischema: %s %s return %d is %s, want %s", route, kind, i, got, want))
-		}
+		return handle(ctx, stream, req)
 	}
 }
 
-func requestType(spec RouteSpec) reflect.Type {
-	t := deref(spec.Request.GoType)
-	if t == nil {
-		return reflect.TypeFor[NoRequest]()
+func typedRequest[Request any](route string, request any) (Request, error) {
+	req, ok := request.(Request)
+	if ok {
+		return req, nil
 	}
-	return t
+	var zero Request
+	return zero, fmt.Errorf("%w: %s decoded request is %T, want %T", bridgeipc.ErrInvalidArgs, route, request, zero)
 }
 
-func requestValue(request any, target reflect.Type) reflect.Value {
-	if request == nil {
-		return reflect.Zero(target)
+func requireDecoder(spec RouteSpec, decode bridgeipc.RequestDecoder) bridgeipc.RequestDecoder {
+	if decode == nil {
+		panic(fmt.Sprintf("apischema: route %s has no request decoder", spec.Route))
 	}
-	value := reflect.ValueOf(request)
-	if value.Type().AssignableTo(target) {
-		return value
-	}
-	if value.Type().ConvertibleTo(target) {
-		return value.Convert(target)
-	}
-	return reflect.Zero(target)
-}
-
-func callError(value reflect.Value) error {
-	if value.IsNil() {
-		return nil
-	}
-	err, ok := value.Interface().(error)
-	if !ok {
-		return nil
-	}
-	return err
-}
-
-func deref(t reflect.Type) reflect.Type {
-	for t != nil && t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	return t
+	return decode
 }
 
 func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.RouteOption {

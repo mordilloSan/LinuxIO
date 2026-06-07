@@ -308,6 +308,130 @@ var api = apischema.Bindings(
 
 The dispatcher checks the authenticated session before running the route. Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin gate.
 
+## Remaining Plan
+
+The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. The remaining cleanup is about making that boundary easier to reason about, not changing the public frontend API again.
+
+### 1. Keep Reflection Generator-Only
+
+Goal: `reflect` is allowed in `backend/common/tools/linuxio-api-gen`, but not in runtime dispatch.
+
+Current acceptable uses:
+
+| File | Reason |
+|------|--------|
+| `backend/common/tools/linuxio-api-gen/main.go` | Reflects Go structs into generated TypeScript. |
+| `backend/bridge/apischema/contracts.go` | Stores `reflect.Type` metadata for the generator through `TypeSpec`. |
+| `*_test.go` files | Test comparison/introspection only. |
+
+Remaining runtime cleanup:
+
+1. Keep `apischema/schema.go` free of runtime reflection.
+2. Replace the TuneD DBus reflection fallback in `backend/bridge/handlers/power/tuned.go` with a concrete response decoder.
+3. If `TypeSpec` starts feeling too runtime-shaped, move the type metadata into a codegen-only package or generated manifest and keep runtime route registration data-only.
+
+### 2. Decide JSON Codecs Versus Protobuf-Style Codegen
+
+JSON envelopes are the current transport contract:
+
+```json
+{"route":"handler.command","request":{}}
+```
+
+The remaining question is how far to push generated transport code.
+
+Option A: keep `encoding/json`.
+
+- Lowest churn.
+- Human-readable payloads.
+- Still uses reflection internally inside Go's JSON package.
+- Good enough unless request volume or payload size becomes a real problem.
+
+Option B: generate Go JSON codecs.
+
+- Keeps JSON on the wire.
+- Removes most JSON reflection from hot paths.
+- More generator work and more generated Go to review.
+- Useful if we want strict generated decoders without adopting protobuf.
+
+Option C: protobuf or protobuf-like schemas.
+
+- Strongest generated transport boundary.
+- Less readable wire payloads.
+- Bigger migration because the frontend and Go bridge need generated codec packages.
+- Best reserved for a deliberate transport project, not mixed into handler cleanup.
+
+Recommendation for now: keep JSON envelopes, keep `encoding/json`, and only revisit generated codecs if profiling or schema drift justifies it.
+
+### 3. Keep Route Declarations Local
+
+Goal: adding a normal endpoint should still be one local binding-table edit plus any new request/result structs.
+
+Rules:
+
+1. One `apischema.Bindings(...)` block owns route string, mode, request type, result type, policy, and handler/runner attachment.
+2. Do not export `RouteX` variables unless another package genuinely needs that route value.
+3. `Routes = api.Routes()` remains the codegen/catalog source for that family.
+4. `backend/bridge/handlers/register.go` changes only when adding or removing a handler family.
+
+The only unavoidable second file for a new route is the shared contract file when the route needs a new exported request or response model.
+
+### 4. Tighten Shared Contracts
+
+Goal: `apischema/contracts.go` and `apischema/models.go` stay reviewable.
+
+Next cleanup passes:
+
+1. Move highly domain-specific request structs closer to their handler family if they are not reused elsewhere.
+2. Keep only genuinely shared fragments in `contracts.go`.
+3. Keep API response/domain models in `models.go` only when they are actually generated for frontend use.
+4. Periodically run a usage scan before moving or deleting contract types.
+
+### 5. Frontend API Surface
+
+Goal: feature code imports one generated `linuxio` surface and does not know about transport details.
+
+Current shape:
+
+```typescript
+await linuxio.system.get_cpu_info();
+await linuxio.jobs.cancel(jobId);
+linuxio.system.get_cpu_info.useQuery();
+linuxio.docker.start_container.useMutation();
+```
+
+Remaining cleanup:
+
+1. Keep `frontend/src/api/generated/*` generated only.
+2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for direct calls and React Query hooks.
+3. Keep stream helpers in `frontend/src/api/linuxio.ts` because streams are not normal request/response endpoints.
+4. Avoid adding another hand-written typed API layer.
+
+### 6. Verification Gates
+
+Before considering this API contract work settled, run:
+
+```bash
+make generate
+cd backend && go test ./...
+make tsc-only
+make lint-only
+make golint-only
+make build-vite
+git diff --check
+```
+
+Final scans should show:
+
+```bash
+rg "DecodeJSONArg|serializeStringArg" backend frontend/src
+rg -F 'join("\0")' backend frontend/src
+rg -F 'route\0' backend frontend/src
+rg "reflect\\.|fn\\.Call|ValueOf" backend/bridge/apischema/schema.go backend/bridge/handlers
+```
+
+Expected result: no legacy string transport helpers, no `DecodeJSONArg`, and no runtime reflection in `apischema`.
+
 ## Verification
 
 For API contract work, run:
