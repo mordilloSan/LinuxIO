@@ -9,19 +9,19 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("systemd.list_timers", apischema.NoRequest(), apischema.TypeOf[[]apischema.Timer]()).Handle(handleListTimers),
-	apischema.Query("systemd.list_sockets", apischema.NoRequest(), apischema.TypeOf[[]apischema.Socket]()).Handle(handleListSockets),
-	apischema.Query("systemd.list_services", apischema.NoRequest(), apischema.TypeOf[[]apischema.Service]()).Handle(handleListServices),
-	apischema.Query("systemd.get_unit_info", apischema.TypeOf[apischema.UnitNameRequest](), apischema.TypeOf[apischema.UnitInfo]()).Handle(handleGetUnitInfo),
-	apischema.Job("systemd.start_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleStartService),
-	apischema.Job("systemd.stop_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleStopService),
-	apischema.Job("systemd.restart_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleRestartService),
-	apischema.Job("systemd.reload_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleReloadService),
-	apischema.Job("systemd.enable_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleEnableService),
-	apischema.Job("systemd.disable_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleDisableService),
-	apischema.Job("systemd.mask_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleMaskService),
-	apischema.Job("systemd.unmask_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleUnmaskService),
-	apischema.Job("systemd.reset_failed_service", apischema.TypeOf[apischema.ServiceNameRequest](), apischema.NoResponse()).Handle(handleResetFailedService),
+	apischema.Query[apischema.NoRequest, []apischema.Timer]("systemd.list_timers").Handle(handleListTimers),
+	apischema.Query[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets").Handle(handleListSockets),
+	apischema.Query[apischema.NoRequest, []apischema.Service]("systemd.list_services").Handle(handleListServices),
+	apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").Handle(handleGetUnitInfo),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").Handle(handleStartService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").Handle(handleStopService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").Handle(handleRestartService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reload_service").Handle(handleReloadService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.enable_service").Handle(handleEnableService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.disable_service").Handle(handleDisableService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.mask_service").Handle(handleMaskService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.unmask_service").Handle(handleUnmaskService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reset_failed_service").Handle(handleResetFailedService),
 )
 
 var Routes = api.Routes()
@@ -30,17 +30,17 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleListTimers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListTimers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListTimers(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListSockets(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListSockets(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListSockets(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleListServices(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListServices(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListServices(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

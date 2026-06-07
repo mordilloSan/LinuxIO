@@ -35,12 +35,6 @@ var (
 	ErrReservedJobRoute = errors.New("reserved jobs route")
 )
 
-// NoRequest marks a route that takes no request payload.
-type NoRequest struct{}
-
-// NoResponse marks a route that returns no result payload.
-type NoResponse struct{}
-
 type HandlerFunc func(ctx context.Context, request any, emit Events) error
 type DuplexFunc func(ctx context.Context, stream net.Conn, request any) error
 

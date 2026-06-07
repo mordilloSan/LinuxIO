@@ -89,7 +89,7 @@ Every route has one schema kind:
 | `KindRunner` | `func(context.Context, *bridgeipc.Job, TRequest) (any, error)` |
 | `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
 
-Use `apischema.NoRequest()` for no request payload and `apischema.NoResponse()` for no result payload. Typed handlers receive `bridgeipc.NoRequest` when the route has no request.
+Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for no result payload. They are API contract marker types owned by `apischema`.
 
 ## Frontend Shape
 
@@ -124,7 +124,7 @@ Input is generated from the Go request contract:
 
 | Go request shape | Direct/query input | Wire request |
 |------------------|--------------------|--------------|
-| `bridgeipc.NoRequest` | `linuxio.system.get_cpu_info()` | `{}` |
+| `apischema.NoRequest` | `linuxio.system.get_cpu_info()` | `{}` |
 | one required JSON field | `linuxio.filebrowser.dir_size(path)` | `{ "path": path }` |
 | multi-field or optional object | `linuxio.docker.system_prune(request)` | `request` |
 
@@ -141,10 +141,8 @@ Handler route:
 
 ```go
 var api = apischema.Bindings(
-    apischema.Query(
+    apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo](
         "systemd.get_unit_info",
-        apischema.TypeOf[apischema.UnitNameRequest](),
-        apischema.TypeOf[apischema.UnitInfo](),
     ).Handle(handleGetUnitInfo),
 )
 
@@ -169,10 +167,8 @@ var packageUpdateRoutes = packageUpdateBindings().Routes()
 
 func packageUpdateBindings() apischema.BindingSet {
     return apischema.Bindings(
-        apischema.Runner(
+        apischema.Runner[apischema.PackageUpdateRequest, apischema.JobSnapshot](
             "packages.update",
-            apischema.TypeOf[apischema.PackageUpdateRequest](),
-            apischema.TypeOf[apischema.JobSnapshot](),
         ).Run(runPackageUpdateJob, bridgeipc.SingletonSystem),
     )
 }
@@ -189,10 +185,8 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
     return apischema.Bindings(
-        apischema.DuplexRoute(
+        apischema.DuplexRoute[apischema.TerminalOpenRequest, apischema.NoResponse](
             "terminal.open",
-            apischema.TypeOf[apischema.TerminalOpenRequest](),
-            apischema.NoResponse(),
             apischema.NoEndpoint(),
         ).Duplex(func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
             return HandleTerminalSession(ctx, rt, stream, req)
@@ -272,10 +266,8 @@ type PackageSearchResult struct {
 
 ```go
 var api = apischema.Bindings(
-    apischema.Query(
+    apischema.Query[apischema.PackageSearchRequest, apischema.PackageSearchResult](
         "packages.search",
-        apischema.TypeOf[apischema.PackageSearchRequest](),
-        apischema.TypeOf[apischema.PackageSearchResult](),
     ).Handle(handlePackageSearch),
 )
 
@@ -307,10 +299,8 @@ Declare privilege in the route spec:
 
 ```go
 var api = apischema.Bindings(
-    apischema.Job(
+    apischema.Job[apischema.NoRequest, apischema.NoResponse](
         "control.reboot",
-        apischema.NoRequest(),
-        apischema.NoResponse(),
         apischema.Privileged(),
     ).Handle(handleReboot),
 )

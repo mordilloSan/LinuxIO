@@ -9,18 +9,18 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("wireguard.list_interfaces", apischema.NoRequest(), apischema.TypeOf[[]apischema.WireGuardInterface]()).Handle(handleListInterfaces),
-	apischema.Job("wireguard.add_interface", apischema.TypeOf[apischema.WireGuardAddInterfaceRequest](), apischema.NoResponse()).Handle(handleAddInterface),
-	apischema.Job("wireguard.remove_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleRemoveInterface),
-	apischema.Query("wireguard.list_peers", apischema.TypeOf[apischema.InterfaceNameRequest](), apischema.TypeOf[[]apischema.Peer]()).Handle(handleListPeers),
-	apischema.Job("wireguard.add_peer", apischema.TypeOf[apischema.InterfaceNameRequest](), apischema.NoResponse()).Handle(handleAddPeer),
-	apischema.Job("wireguard.remove_peer", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.NoResponse()).Handle(handleRemovePeer),
-	apischema.Query("wireguard.peer_qrcode", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.TypeOf[apischema.QRCodeResponse]()).Handle(handlePeerQRCode),
-	apischema.Query("wireguard.peer_config_download", apischema.TypeOf[apischema.InterfaceNamePeerNameRequest](), apischema.TypeOf[apischema.PeerConfigDownload]()).Handle(handlePeerConfigDownload),
-	apischema.Job("wireguard.up_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleUpInterface),
-	apischema.Job("wireguard.down_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleDownInterface),
-	apischema.Job("wireguard.enable_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleEnableInterface),
-	apischema.Job("wireguard.disable_interface", apischema.TypeOf[apischema.NameRequest](), apischema.NoResponse()).Handle(handleDisableInterface),
+	apischema.Query[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces").Handle(handleListInterfaces),
+	apischema.Job[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").Handle(handleAddInterface),
+	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").Handle(handleRemoveInterface),
+	apischema.Query[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers").Handle(handleListPeers),
+	apischema.Job[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").Handle(handleAddPeer),
+	apischema.Job[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").Handle(handleRemovePeer),
+	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode").Handle(handlePeerQRCode),
+	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download").Handle(handlePeerConfigDownload),
+	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").Handle(handleUpInterface),
+	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").Handle(handleDownInterface),
+	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").Handle(handleEnableInterface),
+	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").Handle(handleDisableInterface),
 )
 
 var Routes = api.Routes()
@@ -30,7 +30,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleListInterfaces(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListInterfaces(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListInterfaces(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

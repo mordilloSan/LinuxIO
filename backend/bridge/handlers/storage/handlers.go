@@ -10,20 +10,20 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("storage.list_pvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.PhysicalVolume]()).Handle(handleListPVs),
-	apischema.Query("storage.list_vgs", apischema.NoRequest(), apischema.TypeOf[[]apischema.VolumeGroup]()).Handle(handleListVGs),
-	apischema.Query("storage.list_lvs", apischema.NoRequest(), apischema.TypeOf[[]apischema.LogicalVolume]()).Handle(handleListLVs),
-	apischema.Job("storage.create_lv", apischema.TypeOf[apischema.CreateLogicalVolumeRequest](), apischema.TypeOf[apischema.StorageCreateLVResult]()).Handle(handleCreateLV),
-	apischema.Job("storage.delete_lv", apischema.TypeOf[apischema.VolumeGroupLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]()).Handle(handleDeleteLV),
-	apischema.Job("storage.resize_lv", apischema.TypeOf[apischema.ResizeLogicalVolumeRequest](), apischema.TypeOf[apischema.SuccessResponse]()).Handle(handleResizeLV),
-	apischema.Query("storage.list_nfs_mounts", apischema.NoRequest(), apischema.TypeOf[[]apischema.NFSMount]()).Handle(handleListNFSMounts),
-	apischema.Query("storage.list_nfs_exports", apischema.TypeOf[apischema.ServerRequest](), apischema.TypeOf[[]string]()).Handle(handleListNFSExports),
-	apischema.Job("storage.mount_nfs", apischema.TypeOf[apischema.ServerExportMountOptionsPersistRequest](), apischema.TypeOf[apischema.StorageMountResult]()).Handle(handleMountNFS),
-	apischema.Job("storage.unmount_nfs", apischema.TypeOf[apischema.MountpointRemoveFstabRequest](), apischema.TypeOf[apischema.StorageWarningResult]()).Handle(handleUnmountNFS),
-	apischema.Job("storage.remount_nfs", apischema.TypeOf[apischema.MountpointOptionsUpdateFstabRequest](), apischema.TypeOf[apischema.StorageMountResult]()).Handle(handleRemountNFS),
-	apischema.Job("storage.unmount_filesystem", apischema.TypeOf[apischema.MountpointRequest](), apischema.TypeOf[apischema.StorageMountResult]()).Handle(handleUnmountFilesystem),
-	apischema.Job("storage.create_btrfs_subvolume", apischema.TypeOf[apischema.MountpointNameRequest](), apischema.TypeOf[apischema.StoragePathResult]()).Handle(handleCreateBtrfsSubvolume),
-	apischema.Query("storage.get_drive_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.ApiDisk]()).Handle(handleGetDriveInfo),
+	apischema.Query[apischema.NoRequest, []apischema.PhysicalVolume]("storage.list_pvs").Handle(handleListPVs),
+	apischema.Query[apischema.NoRequest, []apischema.VolumeGroup]("storage.list_vgs").Handle(handleListVGs),
+	apischema.Query[apischema.NoRequest, []apischema.LogicalVolume]("storage.list_lvs").Handle(handleListLVs),
+	apischema.Job[apischema.CreateLogicalVolumeRequest, apischema.StorageCreateLVResult]("storage.create_lv").Handle(handleCreateLV),
+	apischema.Job[apischema.VolumeGroupLogicalVolumeRequest, apischema.SuccessResponse]("storage.delete_lv").Handle(handleDeleteLV),
+	apischema.Job[apischema.ResizeLogicalVolumeRequest, apischema.SuccessResponse]("storage.resize_lv").Handle(handleResizeLV),
+	apischema.Query[apischema.NoRequest, []apischema.NFSMount]("storage.list_nfs_mounts").Handle(handleListNFSMounts),
+	apischema.Query[apischema.ServerRequest, []string]("storage.list_nfs_exports").Handle(handleListNFSExports),
+	apischema.Job[apischema.ServerExportMountOptionsPersistRequest, apischema.StorageMountResult]("storage.mount_nfs").Handle(handleMountNFS),
+	apischema.Job[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_nfs").Handle(handleUnmountNFS),
+	apischema.Job[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_nfs").Handle(handleRemountNFS),
+	apischema.Job[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
+	apischema.Job[apischema.MountpointNameRequest, apischema.StoragePathResult]("storage.create_btrfs_subvolume").Handle(handleCreateBtrfsSubvolume),
+	apischema.Query[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info").Handle(handleGetDriveInfo),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes)
@@ -35,7 +35,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleListPVs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListPVs(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing physical volumes")
 	pvs, err := ListPhysicalVolumes(ctx)
 	if err != nil {
@@ -46,7 +46,7 @@ func handleListPVs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Ev
 	return bridgeipc.EmitResult(emit, pvs, nil)
 }
 
-func handleListVGs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListVGs(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing volume groups")
 	vgs, err := ListVolumeGroups(ctx)
 	if err != nil {
@@ -57,7 +57,7 @@ func handleListVGs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Ev
 	return bridgeipc.EmitResult(emit, vgs, nil)
 }
 
-func handleListLVs(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListLVs(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing logical volumes")
 	lvs, err := ListLogicalVolumes(ctx)
 	if err != nil {
@@ -101,7 +101,7 @@ func handleResizeLV(ctx context.Context, req apischema.ResizeLogicalVolumeReques
 	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleListNFSMounts(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListNFSMounts(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS mounts")
 	mounts, err := ListNFSMounts(ctx)
 	if err != nil {
@@ -187,7 +187,7 @@ func handleCreateBtrfsSubvolume(ctx context.Context, req apischema.MountpointNam
 	return bridgeipc.EmitResult(emit, result, nil)
 }
 
-func handleGetDriveInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetDriveInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	driveInfo, err := FetchDriveInfo(ctx)
 	if err != nil {
 		return err

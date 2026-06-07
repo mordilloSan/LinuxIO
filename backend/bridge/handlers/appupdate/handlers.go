@@ -15,8 +15,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	policy := bridgeipc.SingletonSystem
 	policy.Timeout = 30 * time.Minute
 	return apischema.Bindings(
-		apischema.Query("control.version", apischema.NoRequest(), apischema.TypeOf[apischema.VersionResponse]()).Handle(handleVersion),
-		apischema.Runner(routeAppUpdate, apischema.TypeOf[apischema.AppUpdateRequest](), apischema.NoResponse(), apischema.NoEndpoint()).Run(
+		apischema.Query[apischema.NoRequest, apischema.VersionResponse]("control.version").Handle(handleVersion),
+		apischema.Runner[apischema.AppUpdateRequest, apischema.NoResponse](routeAppUpdate, apischema.NoEndpoint()).Run(
 			func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
 				return runAppUpdateJob(ctx, rt, job, req)
 			},
@@ -30,7 +30,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	routeBindings(rt).Register(router)
 }
 
-func handleVersion(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleVersion(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	info, err := getVersionInfo(ctx)
 	return bridgeipc.EmitResult(emit, info, err)
 }

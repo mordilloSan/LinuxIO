@@ -9,13 +9,13 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("updates.get_updates_basic", apischema.NoRequest(), apischema.TypeOf[[]apischema.Update]()).Handle(handleGetUpdatesBasic),
-	apischema.Query("updates.get_update_detail", apischema.TypeOf[apischema.PackageIDRequest](), apischema.TypeOf[apischema.Update]()).Handle(handleGetUpdateDetail),
-	apischema.Job("updates.install_package", apischema.TypeOf[apischema.PackageIDRequest](), apischema.NoResponse()).Handle(handleInstallPackage),
-	apischema.Query("updates.get_auto_updates", apischema.NoRequest(), apischema.TypeOf[apischema.AutoUpdateState]()).Handle(handleGetAutoUpdates),
-	apischema.Job("updates.set_auto_updates", apischema.TypeOf[apischema.UpdatesSetAutoUpdatesRequest](), apischema.TypeOf[apischema.AutoUpdateState]()).Handle(handleSetAutoUpdates),
-	apischema.Job("updates.apply_offline_updates", apischema.NoRequest(), apischema.TypeOf[apischema.OfflineUpdatesResponse]()).Handle(handleApplyOfflineUpdates),
-	apischema.Query("updates.get_update_history", apischema.NoRequest(), apischema.TypeOf[[]apischema.UpdateHistoryRow]()).Handle(handleGetUpdateHistory),
+	apischema.Query[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").Handle(handleGetUpdatesBasic),
+	apischema.Query[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").Handle(handleGetUpdateDetail),
+	apischema.Job[apischema.PackageIDRequest, apischema.NoResponse]("updates.install_package").Handle(handleInstallPackage),
+	apischema.Query[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
+	apischema.Job[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
+	apischema.Job[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
+	apischema.Query[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history").Handle(handleGetUpdateHistory),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), packageUpdateRoutes, capabilityInstallRoutes)
@@ -28,7 +28,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetUpdatesBasic(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetUpdatesBasic(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetUpdatesBasic(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -42,7 +42,7 @@ func handleInstallPackage(ctx context.Context, req apischema.PackageIDRequest, e
 	return bridgeipc.EmitResult(emit, nil, InstallPackage(ctx, req.PackageID))
 }
 
-func handleGetAutoUpdates(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetAutoUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := getAutoUpdates(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -59,12 +59,12 @@ func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdat
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleApplyOfflineUpdates(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleApplyOfflineUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := applyOfflineUpdates(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetUpdateHistory(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetUpdateHistory(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetUpdateHistory(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

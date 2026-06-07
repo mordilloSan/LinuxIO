@@ -18,7 +18,7 @@ func packageUpdateBindings() apischema.BindingSet {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.Runner("packages.update", apischema.TypeOf[apischema.PackageUpdateRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(runPackageUpdateJob, policy),
+		apischema.Runner[apischema.PackageUpdateRequest, apischema.JobSnapshot]("packages.update").Run(runPackageUpdateJob, policy),
 	)
 }
 

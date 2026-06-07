@@ -3,12 +3,12 @@ package jobs
 import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
 var api = apischema.Bindings(
-	apischema.DuplexRoute("jobs.attach", apischema.TypeOf[apischema.JobIDRequest](), apischema.NoResponse(), apischema.NoEndpoint()),
-	apischema.Job("jobs.cancel", apischema.TypeOf[apischema.JobIDRequest](), apischema.TypeOf[apischema.JobSnapshot]()),
-	apischema.DuplexRoute("jobs.data", apischema.TypeOf[apischema.JobDataRequest](), apischema.NoResponse(), apischema.NoEndpoint()),
-	apischema.DuplexRoute("jobs.events", apischema.NoRequest(), apischema.NoResponse(), apischema.NoEndpoint()),
-	apischema.Query("jobs.get", apischema.TypeOf[apischema.JobIDRequest](), apischema.TypeOf[apischema.JobSnapshot]()),
-	apischema.Query("jobs.list", apischema.TypeOf[apischema.JobListRequest](), apischema.TypeOf[[]apischema.JobSnapshot]()),
+	apischema.DuplexRoute[apischema.JobIDRequest, apischema.NoResponse]("jobs.attach", apischema.NoEndpoint()),
+	apischema.Job[apischema.JobIDRequest, apischema.JobSnapshot]("jobs.cancel"),
+	apischema.DuplexRoute[apischema.JobDataRequest, apischema.NoResponse]("jobs.data", apischema.NoEndpoint()),
+	apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("jobs.events", apischema.NoEndpoint()),
+	apischema.Query[apischema.JobIDRequest, apischema.JobSnapshot]("jobs.get"),
+	apischema.Query[apischema.JobListRequest, []apischema.JobSnapshot]("jobs.list"),
 )
 
 var Routes = api.Routes()

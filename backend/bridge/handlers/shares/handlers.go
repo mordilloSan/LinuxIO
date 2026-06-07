@@ -11,15 +11,15 @@ import (
 
 var api = apischema.Bindings(
 	// NFS exports (server-side shares via /etc/exports)
-	apischema.Query("shares.list_nfs_shares", apischema.NoRequest(), apischema.TypeOf[[]apischema.NFSExport]()).Handle(handleListNFSShares),
-	apischema.Job("shares.create_nfs_share", apischema.TypeOf[apischema.ShareNFSRequest](), apischema.TypeOf[apischema.SuccessPathResponse]()).Handle(handleCreateNFSShare),
-	apischema.Job("shares.update_nfs_share", apischema.TypeOf[apischema.ShareNFSRequest](), apischema.TypeOf[apischema.SuccessPathResponse]()).Handle(handleUpdateNFSShare),
-	apischema.Job("shares.delete_nfs_share", apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.SuccessResponse]()).Handle(handleDeleteNFSShare),
+	apischema.Query[apischema.NoRequest, []apischema.NFSExport]("shares.list_nfs_shares").Handle(handleListNFSShares),
+	apischema.Job[apischema.ShareNFSRequest, apischema.SuccessPathResponse]("shares.create_nfs_share").Handle(handleCreateNFSShare),
+	apischema.Job[apischema.ShareNFSRequest, apischema.SuccessPathResponse]("shares.update_nfs_share").Handle(handleUpdateNFSShare),
+	apischema.Job[apischema.PathRequest, apischema.SuccessResponse]("shares.delete_nfs_share").Handle(handleDeleteNFSShare),
 	// Samba shares (via /etc/samba/smb.conf)
-	apischema.Query("shares.list_samba_shares", apischema.NoRequest(), apischema.TypeOf[[]apischema.SambaShare]()).Handle(handleListSambaShares),
-	apischema.Job("shares.create_samba_share", apischema.TypeOf[apischema.ShareSambaRequest](), apischema.TypeOf[apischema.SuccessNameResponse]()).Handle(handleCreateSambaShare),
-	apischema.Job("shares.update_samba_share", apischema.TypeOf[apischema.ShareUpdateSambaRequest](), apischema.TypeOf[apischema.SuccessNameResponse]()).Handle(handleUpdateSambaShare),
-	apischema.Job("shares.delete_samba_share", apischema.TypeOf[apischema.NameRequest](), apischema.TypeOf[apischema.SuccessResponse]()).Handle(handleDeleteSambaShare),
+	apischema.Query[apischema.NoRequest, []apischema.SambaShare]("shares.list_samba_shares").Handle(handleListSambaShares),
+	apischema.Job[apischema.ShareSambaRequest, apischema.SuccessNameResponse]("shares.create_samba_share").Handle(handleCreateSambaShare),
+	apischema.Job[apischema.ShareUpdateSambaRequest, apischema.SuccessNameResponse]("shares.update_samba_share").Handle(handleUpdateSambaShare),
+	apischema.Job[apischema.NameRequest, apischema.SuccessResponse]("shares.delete_samba_share").Handle(handleDeleteSambaShare),
 )
 
 var Routes = api.Routes()
@@ -31,7 +31,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 // --- NFS handlers ---
 
-func handleListNFSShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListNFSShares(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS shares")
 	shares, err := ListNFSShares(ctx)
 	if err != nil {
@@ -71,7 +71,7 @@ func handleDeleteNFSShare(ctx context.Context, req apischema.PathRequest, emit b
 
 // --- Samba handlers ---
 
-func handleListSambaShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListSambaShares(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing Samba shares")
 	shares, err := ListSambaShares(ctx)
 	if err != nil {

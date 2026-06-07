@@ -36,14 +36,14 @@ var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
 
 func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner("docker.compose", apischema.TypeOf[apischema.DockerComposeRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Run(
+		apischema.Runner[apischema.DockerComposeRequest, apischema.JobSnapshot]("docker.compose").Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
 				return runDockerComposeJob(ctx, job, rt.Username(), rt.Store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
-		apischema.Runner("docker.indexer", apischema.NoRequest(), apischema.TypeOf[apischema.JobSnapshot]()).Run(
-			func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
+		apischema.Runner[apischema.NoRequest, apischema.JobSnapshot]("docker.indexer").Run(
+			func(ctx context.Context, job *bridgejobs.Job, _ apischema.NoRequest) (any, error) {
 				return runDockerIndexerJob(ctx, job, rt.Username(), rt.Store)
 			},
 			bridgejobs.SingletonSystem,

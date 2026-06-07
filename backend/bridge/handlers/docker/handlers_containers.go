@@ -7,7 +7,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListContainers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleListContainers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListContainers(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -32,12 +32,12 @@ func (h dockerHandlers) handleRestartContainer(ctx context.Context, req apischem
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := StartAllStopped(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleStopAllRunning(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleStopAllRunning(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := StopAllRunning(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

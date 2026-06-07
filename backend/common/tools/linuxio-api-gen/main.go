@@ -13,7 +13,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func main() {
@@ -218,7 +217,7 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 }
 
 func requestShape(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[bridgeipc.NoRequest]()) {
+	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
 		return `{ kind: "none" }`
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
@@ -268,14 +267,14 @@ func newTSRenderer() *tsRenderer {
 }
 
 func (r *tsRenderer) requestRef(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[bridgeipc.NoRequest]()) {
+	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
 		return "void"
 	}
 	return r.typeRef(request)
 }
 
 func (r *tsRenderer) inputTupleRef(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[bridgeipc.NoRequest]()) {
+	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
 		return "[]"
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
@@ -294,10 +293,10 @@ func (r *tsRenderer) reflectType(t reflect.Type) string {
 	if t == nil {
 		return "unknown"
 	}
-	if sameType(t, reflect.TypeFor[bridgeipc.NoResponse]()) {
+	if sameType(t, reflect.TypeFor[apischema.NoResponse]()) {
 		return "void"
 	}
-	if sameType(t, reflect.TypeFor[bridgeipc.NoRequest]()) {
+	if sameType(t, reflect.TypeFor[apischema.NoRequest]()) {
 		return "{}"
 	}
 	if t.PkgPath() == "time" && t.Name() == "Time" {

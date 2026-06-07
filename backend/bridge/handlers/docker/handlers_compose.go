@@ -7,7 +7,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListComposeProjects(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleListComposeProjects(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListComposeProjects(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -46,7 +46,7 @@ func (h dockerHandlers) handleDeleteStack(ctx context.Context, req apischema.Del
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetDockerFolders(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -71,7 +71,7 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req ap
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleReindexDockerFolders(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleReindexDockerFolders(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := IndexDockerFolders(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -11,13 +11,13 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("network.get_network_info", apischema.NoRequest(), apischema.TypeOf[[]apischema.NetworkInterface]()).Handle(handleGetNetworkInfo),
-	apischema.Job("network.set_ipv4_manual", apischema.TypeOf[apischema.IPv4ManualRequest](), apischema.NoResponse()).Handle(handleSetIPv4Manual),
-	apischema.Job("network.set_ipv4", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse()).Handle(handleSetIPv4),
-	apischema.Job("network.set_ipv6", apischema.TypeOf[apischema.InterfaceMethodRequest](), apischema.NoResponse()).Handle(handleSetIPv6),
-	apischema.Job("network.set_mtu", apischema.TypeOf[apischema.InterfaceMTURequest](), apischema.NoResponse()).Handle(handleSetMTU),
-	apischema.Job("network.enable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse()).Handle(handleEnableConnection),
-	apischema.Job("network.disable_connection", apischema.TypeOf[apischema.InterfaceRequest](), apischema.NoResponse()).Handle(handleDisableConnection),
+	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
+	apischema.Job[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").Handle(handleSetIPv4Manual),
+	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").Handle(handleSetIPv4),
+	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").Handle(handleSetIPv6),
+	apischema.Job[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").Handle(handleSetMTU),
+	apischema.Job[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").Handle(handleEnableConnection),
+	apischema.Job[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").Handle(handleDisableConnection),
 )
 
 var Routes = api.Routes()
@@ -26,7 +26,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetNetworkInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetNetworkInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

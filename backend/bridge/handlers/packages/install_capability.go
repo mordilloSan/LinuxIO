@@ -44,7 +44,7 @@ func capabilityInstallBindings() apischema.BindingSet {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 10 * time.Minute
 	return apischema.Bindings(
-		apischema.Runner("system.install_capability", apischema.TypeOf[apischema.CapabilityRequest](), apischema.TypeOf[apischema.JobSnapshot](), apischema.Privileged()).Run(runInstallCapabilityJob, policy),
+		apischema.Runner[apischema.CapabilityRequest, apischema.JobSnapshot]("system.install_capability", apischema.Privileged()).Run(runInstallCapabilityJob, policy),
 	)
 }
 

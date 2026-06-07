@@ -9,16 +9,16 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("filebrowser.resource_get", apischema.TypeOf[apischema.FileResourceGetRequest](), apischema.TypeOf[apischema.ApiResource]()).Handle(handleResourceGet),
-	apischema.Query("filebrowser.resource_stat", apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.ResourceStatData]()).Handle(handleResourceStat),
-	apischema.Job("filebrowser.resource_delete", apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.JobSnapshot]()).Handle(handleResourceDelete),
-	apischema.Job("filebrowser.resource_post", apischema.TypeOf[apischema.FileResourcePostRequest](), apischema.NoResponse()).Handle(handleResourcePost),
-	apischema.Job("filebrowser.resource_patch", apischema.TypeOf[apischema.ActionSourceDestinationRequest](), apischema.NoResponse()).Handle(handleResourcePatch),
-	apischema.Query("filebrowser.dir_size", apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.DirectorySizeData]()).Handle(handleDirSize),
-	apischema.Query("filebrowser.indexer_status", apischema.NoRequest(), apischema.TypeOf[apischema.IndexerStatusResponse]()).Handle(handleIndexerStatus),
-	apischema.Query("filebrowser.subfolders", apischema.TypeOf[apischema.PathRequest](), apischema.TypeOf[apischema.SubfoldersResponse]()).Handle(handleSubfolders),
-	apischema.Query("filebrowser.search", apischema.TypeOf[apischema.FileSearchRequest](), apischema.TypeOf[apischema.SearchResponse]()).Handle(handleSearch),
-	apischema.Query("filebrowser.users_groups", apischema.NoRequest(), apischema.TypeOf[apischema.UsersGroupsResponse]()).Handle(handleUsersGroups),
+	apischema.Query[apischema.FileResourceGetRequest, apischema.ApiResource]("filebrowser.resource_get").Handle(handleResourceGet),
+	apischema.Query[apischema.PathRequest, apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
+	apischema.Job[apischema.PathRequest, apischema.JobSnapshot]("filebrowser.resource_delete").Handle(handleResourceDelete),
+	apischema.Job[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").Handle(handleResourcePost),
+	apischema.Job[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").Handle(handleResourcePatch),
+	apischema.Query[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
+	apischema.Query[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),
+	apischema.Query[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").Handle(handleSubfolders),
+	apischema.Query[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search").Handle(handleSearch),
+	apischema.Query[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups").Handle(handleUsersGroups),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), fileJobRoutes)
@@ -60,7 +60,7 @@ func handleDirSize(ctx context.Context, req apischema.PathRequest, emit bridgeip
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleIndexerStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleIndexerStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := indexerStatus(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -75,7 +75,7 @@ func handleSearch(ctx context.Context, req apischema.FileSearchRequest, emit bri
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleUsersGroups(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleUsersGroups(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := usersGroups(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -10,21 +10,21 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("accounts.list_users", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountUser]()).Handle(handleListUsers),
-	apischema.Query("accounts.get_user_details", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[apischema.AccountUserDetails]()).Handle(handleGetUserDetails),
-	apischema.Query("accounts.list_user_logins", apischema.TypeOf[apischema.UsernameRequest](), apischema.TypeOf[[]apischema.AccountUserLogin]()).Handle(handleListUserLogins),
-	apischema.Job("accounts.terminate_session", apischema.TypeOf[apischema.TerminateSessionRequest](), apischema.NoResponse()).Handle(handleTerminateSession),
-	apischema.Job("accounts.create_user", apischema.TypeOf[apischema.CreateUserRequest](), apischema.NoResponse()).Handle(handleCreateUser),
-	apischema.Job("accounts.delete_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse()).Handle(handleDeleteUser),
-	apischema.Job("accounts.modify_user", apischema.TypeOf[apischema.ModifyUserRequest](), apischema.NoResponse()).Handle(handleModifyUser),
-	apischema.Job("accounts.change_password", apischema.TypeOf[apischema.ChangePasswordRequest](), apischema.NoResponse()).Handle(handleChangePassword),
-	apischema.Job("accounts.lock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse()).Handle(handleLockUser),
-	apischema.Job("accounts.unlock_user", apischema.TypeOf[apischema.UsernameRequest](), apischema.NoResponse()).Handle(handleUnlockUser),
-	apischema.Query("accounts.list_groups", apischema.NoRequest(), apischema.TypeOf[[]apischema.AccountGroup]()).Handle(handleListGroups),
-	apischema.Job("accounts.create_group", apischema.TypeOf[apischema.CreateGroupRequest](), apischema.NoResponse()).Handle(handleCreateGroup),
-	apischema.Job("accounts.delete_group", apischema.TypeOf[apischema.GroupNameRequest](), apischema.NoResponse()).Handle(handleDeleteGroup),
-	apischema.Job("accounts.modify_group_members", apischema.TypeOf[apischema.ModifyGroupMembersRequest](), apischema.NoResponse()).Handle(handleModifyGroupMembers),
-	apischema.Query("accounts.list_shells", apischema.NoRequest(), apischema.TypeOf[[]string]()).Handle(handleListShells),
+	apischema.Query[apischema.NoRequest, []apischema.AccountUser]("accounts.list_users").Handle(handleListUsers),
+	apischema.Query[apischema.UsernameRequest, apischema.AccountUserDetails]("accounts.get_user_details").Handle(handleGetUserDetails),
+	apischema.Query[apischema.UsernameRequest, []apischema.AccountUserLogin]("accounts.list_user_logins").Handle(handleListUserLogins),
+	apischema.Job[apischema.TerminateSessionRequest, apischema.NoResponse]("accounts.terminate_session").Handle(handleTerminateSession),
+	apischema.Job[apischema.CreateUserRequest, apischema.NoResponse]("accounts.create_user").Handle(handleCreateUser),
+	apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("accounts.delete_user").Handle(handleDeleteUser),
+	apischema.Job[apischema.ModifyUserRequest, apischema.NoResponse]("accounts.modify_user").Handle(handleModifyUser),
+	apischema.Job[apischema.ChangePasswordRequest, apischema.NoResponse]("accounts.change_password").Handle(handleChangePassword),
+	apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("accounts.lock_user").Handle(handleLockUser),
+	apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("accounts.unlock_user").Handle(handleUnlockUser),
+	apischema.Query[apischema.NoRequest, []apischema.AccountGroup]("accounts.list_groups").Handle(handleListGroups),
+	apischema.Job[apischema.CreateGroupRequest, apischema.NoResponse]("accounts.create_group").Handle(handleCreateGroup),
+	apischema.Job[apischema.GroupNameRequest, apischema.NoResponse]("accounts.delete_group").Handle(handleDeleteGroup),
+	apischema.Job[apischema.ModifyGroupMembersRequest, apischema.NoResponse]("accounts.modify_group_members").Handle(handleModifyGroupMembers),
+	apischema.Query[apischema.NoRequest, []string]("accounts.list_shells").Handle(handleListShells),
 )
 
 var Routes = api.Routes()
@@ -34,7 +34,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleListUsers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListUsers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListUsers(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -99,7 +99,7 @@ func handleUnlockUser(ctx context.Context, req apischema.UsernameRequest, emit b
 	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleListGroups(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListGroups(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListGroups(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -125,7 +125,7 @@ func handleModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMemb
 	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleListShells(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListShells(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListShells(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

@@ -18,7 +18,7 @@ It must not contain package state types, package variables, constants, helper fu
 Every adapter in `handlers.go` should receive a typed request and return through `bridgeipc.EmitResult`:
 
 ```go
-func handleListTimers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListTimers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
     result, err := ListTimers(ctx)
     return bridgeipc.EmitResult(emit, result, err)
 }

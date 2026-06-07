@@ -44,20 +44,20 @@ func WithPolicy(policy bridgeipc.JobPolicy) RouteSpecOption {
 	}
 }
 
-func Query(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindHandler, bridgeipc.ModeQuery, route, request, result, opts...)
+func Query[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindHandler, bridgeipc.ModeQuery, route, TypeOf[Request](), TypeOf[Result](), opts...)
 }
 
-func Job(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindHandler, bridgeipc.ModeJob, route, request, result, opts...)
+func Job[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindHandler, bridgeipc.ModeJob, route, TypeOf[Request](), TypeOf[Result](), opts...)
 }
 
-func Runner(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindRunner, bridgeipc.ModeJob, route, request, result, opts...)
+func Runner[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindRunner, bridgeipc.ModeJob, route, TypeOf[Request](), TypeOf[Result](), opts...)
 }
 
-func DuplexRoute(route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
-	return routeSpec(KindDuplex, bridgeipc.ModeDuplex, route, request, result, opts...)
+func DuplexRoute[Request, Result any](route string, opts ...RouteSpecOption) RouteSpec {
+	return routeSpec(KindDuplex, bridgeipc.ModeDuplex, route, TypeOf[Request](), TypeOf[Result](), opts...)
 }
 
 func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, result TypeSpec, opts ...RouteSpecOption) RouteSpec {
@@ -367,7 +367,7 @@ func validateFunc(route, kind string, fn reflect.Value, in []reflect.Type, out [
 func requestType(spec RouteSpec) reflect.Type {
 	t := deref(spec.Request.GoType)
 	if t == nil {
-		return reflect.TypeFor[bridgeipc.NoRequest]()
+		return reflect.TypeFor[NoRequest]()
 	}
 	return t
 }

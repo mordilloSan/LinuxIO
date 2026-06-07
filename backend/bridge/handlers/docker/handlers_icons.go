@@ -26,7 +26,7 @@ func (h dockerHandlers) handleGetIconInfo(ctx context.Context, req apischema.Ide
 	return bridgeipc.EmitResult(emit, GetIconInfo(ctx, req.Identifier), nil)
 }
 
-func (h dockerHandlers) handleClearIconCache(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleClearIconCache(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	if err := ClearIconCache(ctx); err != nil {
 		return err
 	}

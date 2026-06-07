@@ -14,8 +14,8 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := configHandlers{rt: rt}
 	return apischema.Bindings(
-		apischema.Query("config.get", apischema.NoRequest(), apischema.TypeOf[apischema.AppConfig]()).Handle(handlers.handleGetConfig),
-		apischema.Job("config.set", apischema.TypeOf[apischema.ConfigSetPayload](), apischema.TypeOf[apischema.ConfigSetResult]()).Handle(handlers.handleSetConfig),
+		apischema.Query[apischema.NoRequest, apischema.AppConfig]("config.get").Handle(handlers.handleGetConfig),
+		apischema.Job[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
 	)
 }
 
@@ -24,13 +24,13 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	routeBindings(rt).Register(router)
 }
 
-func (h configHandlers) handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	slog.Debug("config.get requested", "component", "config", "user", h.rt.Username())
-	result, err := GetConfigForUser(ctx, h.rt.Username(), h.rt.Store)
+func (h configHandlers) handleGetConfig(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+	slog.Debug("config.get requested", "component", "config", "user", h.rt.Session.User.Username)
+	result, err := GetConfigForUser(ctx, h.rt.Session.User.Username, h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload, emit bridgeipc.Events) error {
-	result, err := SetConfigForUser(ctx, req, h.rt.Username(), h.rt.Store)
+	result, err := SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

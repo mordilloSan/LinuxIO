@@ -8,10 +8,8 @@ Declare privileged operations in the relevant `backend/bridge/handlers/<domain>/
 
 ```go
 var api = apischema.Bindings(
-    apischema.Job(
+    apischema.Job[apischema.NoRequest, apischema.NoResponse](
         "control.reboot",
-        apischema.NoRequest(),
-        apischema.NoResponse(),
         apischema.Privileged(),
     ).Handle(handleReboot),
 )

@@ -10,10 +10,10 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query("indexer.get_config", apischema.NoRequest(), apischema.TypeOf[apischema.IndexerConfig](), apischema.Privileged()).Handle(handleGetConfig),
-	apischema.Query("indexer.get_status", apischema.NoRequest(), apischema.TypeOf[apischema.IndexerDaemonStatus](), apischema.Privileged()).Handle(handleGetStatus),
-	apischema.Job("indexer.set_config", apischema.TypeOf[apischema.IndexerConfigPatch](), apischema.TypeOf[apischema.IndexerConfigSetResult](), apischema.Privileged()).Handle(handleSetConfig),
-	apischema.Job("indexer.set_timer_interval", apischema.TypeOf[apischema.IntervalRequest](), apischema.TypeOf[apischema.IndexerTimerSetResult](), apischema.Privileged()).Handle(handleSetTimerInterval),
+	apischema.Query[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.Privileged()).Handle(handleGetConfig),
+	apischema.Query[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).Handle(handleGetStatus),
+	apischema.Job[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Job[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
 )
 
 var Routes = api.Routes()
@@ -23,12 +23,12 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetConfig(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	cfg, err := FetchConfig(ctx)
 	return bridgeipc.EmitResult(emit, cfg, err)
 }
 
-func handleGetStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	status, err := FetchStatus(ctx)
 	return bridgeipc.EmitResult(emit, status, err)
 }

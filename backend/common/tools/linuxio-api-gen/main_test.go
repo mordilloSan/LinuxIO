@@ -135,8 +135,8 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 			Kind:    apischema.KindHandler,
 			Route:   "golden.noop",
 			Mode:    bridgeipc.ModeQuery,
-			Request: apischema.NoRequest(),
-			Result:  apischema.NoResponse(),
+			Request: apischema.TypeOf[apischema.NoRequest](),
+			Result:  apischema.TypeOf[apischema.NoResponse](),
 		},
 		{
 			Kind:    apischema.KindHandler,
@@ -163,8 +163,8 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 			Kind:       apischema.KindDuplex,
 			Route:      "golden.stream",
 			Mode:       bridgeipc.ModeDuplex,
-			Request:    apischema.NoRequest(),
-			Result:     apischema.NoResponse(),
+			Request:    apischema.TypeOf[apischema.NoRequest](),
+			Result:     apischema.TypeOf[apischema.NoResponse](),
 			NoEndpoint: true,
 		},
 	}

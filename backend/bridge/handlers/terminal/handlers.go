@@ -13,13 +13,13 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Query("terminal.list_shells", apischema.TypeOf[apischema.ContainerIDRequest](), apischema.TypeOf[[]string]()).Handle(handleListShells),
-		apischema.DuplexRoute("terminal.open", apischema.TypeOf[apischema.TerminalOpenRequest](), apischema.NoResponse(), apischema.NoEndpoint()).Duplex(
+		apischema.Query[apischema.ContainerIDRequest, []string]("terminal.list_shells").Handle(handleListShells),
+		apischema.DuplexRoute[apischema.TerminalOpenRequest, apischema.NoResponse]("terminal.open", apischema.NoEndpoint()).Duplex(
 			func(ctx context.Context, stream net.Conn, req apischema.TerminalOpenRequest) error {
 				return HandleTerminalSession(ctx, rt, stream, req)
 			},
 		),
-		apischema.DuplexRoute("container.open", apischema.TypeOf[apischema.ContainerOpenRequest](), apischema.NoResponse(), apischema.NoEndpoint()).Duplex(
+		apischema.DuplexRoute[apischema.ContainerOpenRequest, apischema.NoResponse]("container.open", apischema.NoEndpoint()).Duplex(
 			func(ctx context.Context, stream net.Conn, req apischema.ContainerOpenRequest) error {
 				return HandleContainerTerminalSession(ctx, rt, stream, req)
 			},

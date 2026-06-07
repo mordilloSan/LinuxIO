@@ -9,7 +9,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	cfg, _, err := config.SnapshotForUser(ctx, h.rt.Username(), h.rt.Store)
 	if err != nil {
 		return err
@@ -46,22 +46,22 @@ func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, req apischema.D
 	return bridgeipc.EmitResult(emit, map[string]any{"message": "auto-update updated"}, nil)
 }
 
-func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetCaddyStatus(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleEnableCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleEnableCaddy(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := EnableCaddy(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleDisableCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleDisableCaddy(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := DisableCaddy(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleReloadCaddy(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleReloadCaddy(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ReloadCaddy(ctx, h.rt.Username(), h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }

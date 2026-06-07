@@ -9,9 +9,9 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Job("control.reboot", apischema.NoRequest(), apischema.NoResponse()).Handle(handleReboot),
-	apischema.Job("control.power_off", apischema.NoRequest(), apischema.NoResponse()).Handle(handlePowerOff),
-	apischema.Job("control.logoff", apischema.TypeOf[apischema.SessionIDRequest](), apischema.NoResponse()).Handle(handleLogoff),
+	apischema.Job[apischema.NoRequest, apischema.NoResponse]("control.reboot").Handle(handleReboot),
+	apischema.Job[apischema.NoRequest, apischema.NoResponse]("control.power_off").Handle(handlePowerOff),
+	apischema.Job[apischema.SessionIDRequest, apischema.NoResponse]("control.logoff").Handle(handleLogoff),
 )
 
 var Routes = api.Routes()
@@ -21,11 +21,11 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleReboot(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleReboot(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, nil, Reboot(ctx))
 }
 
-func handlePowerOff(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handlePowerOff(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	return bridgeipc.EmitResult(emit, nil, PowerOff(ctx))
 }
 
