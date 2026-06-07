@@ -327,8 +327,7 @@ Current acceptable uses:
 Remaining runtime cleanup:
 
 1. Keep `apischema/schema.go` free of runtime reflection.
-2. Replace the TuneD DBus reflection fallback in `backend/bridge/handlers/power/tuned.go` with a concrete response decoder.
-3. If `TypeSpec` starts feeling too runtime-shaped, move the type metadata into a codegen-only package or generated manifest and keep runtime route registration data-only.
+2. If `TypeSpec` starts feeling too runtime-shaped, move the type metadata into a codegen-only package or generated manifest and keep runtime route registration data-only.
 
 ### 2. Decide JSON Codecs Versus Protobuf-Style Codegen
 
