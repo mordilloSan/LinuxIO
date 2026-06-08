@@ -5,8 +5,19 @@ import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
+
+const LOG_LINE_OPTIONS = [
+  { value: "50", label: "50" },
+  { value: "100", label: "100" },
+  { value: "200", label: "200" },
+  { value: "500", label: "500" },
+  { value: "1000", label: "1000" },
+  { value: "2000", label: "2000" },
+  { value: "5000", label: "5000" },
+];
 
 interface LogsDialogProps {
   containerId: string;
@@ -22,6 +33,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   containerId,
 }) => {
   const [search, setSearch] = useState("");
+  const [tailLines, setTailLines] = useState("100");
 
   const {
     logs,
@@ -34,7 +46,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   } = useLogStream({
     open,
     createStream: (tail) => openDockerLogsStream(containerId, tail),
-    initialTail: "100",
+    initialTail: tailLines,
   });
 
   const filtered = useMemo(() => {
@@ -58,6 +70,12 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     a.download = `${containerName || "container"}-logs.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleTailLinesChange = (value: string) => {
+    if (value === tailLines) return;
+    resetState();
+    setTailLines(value);
   };
 
   return (
@@ -85,16 +103,35 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       onExited={() => {
         resetState();
         setSearch("");
+        setTailLines("100");
       }}
       onLiveModeChange={setLiveMode}
       open={open}
       titleContent={
         <>
-          <Icon height={20} icon="mdi:magnify" width={20} />
+          <AppSelect
+            label="Lines"
+            onChange={(event) => handleTailLinesChange(event.target.value)}
+            size="small"
+            style={{ width: 112, flexShrink: 0 }}
+            value={tailLines}
+          >
+            {LOG_LINE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </AppSelect>
+          <Icon
+            height={20}
+            icon="mdi:magnify"
+            style={{ marginLeft: 8, flexShrink: 0 }}
+            width={20}
+          />
           <AppSearchField
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search logs…"
-            style={{ marginLeft: 8, flex: 1 }}
+            style={{ marginLeft: 4, flex: 1, minWidth: 120 }}
             value={search}
             variant="standard"
           />

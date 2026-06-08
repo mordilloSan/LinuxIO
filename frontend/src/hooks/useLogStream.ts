@@ -137,7 +137,7 @@ export function useLogStream({
       onResult: handleStreamResult,
       onClose: handleStreamClose,
     });
-  }, [open, muxIsOpen, streamRef]);
+  }, [initialTail, open, muxIsOpen, streamRef]);
 
   // Handle live mode toggle.
   useEffect(() => {
