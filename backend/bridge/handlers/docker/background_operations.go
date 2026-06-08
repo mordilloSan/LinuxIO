@@ -29,11 +29,11 @@ type ComposeJobMessage struct {
 // schema so the same struct is used to both decode Docker's output and to
 // encode the payload sent to the frontend.
 type ComposeProgress struct {
-	ID       string `json:"id"`                 // layer id (e.g. "fbcfea79c1c4") or group (e.g. "Image alpine:3.17")
+	ID       string `json:"id"` // layer id (e.g. "fbcfea79c1c4") or group (e.g. "Image alpine:3.17")
 	ParentID string `json:"parent_id,omitempty"`
-	Text     string `json:"text"`               // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
-	Status   string `json:"status"`             // "Working" | "Done" | "Error"
-	Details  string `json:"details,omitempty"`  // Docker's humanized current (e.g. "2.097MB")
+	Text     string `json:"text"`              // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
+	Status   string `json:"status"`            // "Working" | "Done" | "Error"
+	Details  string `json:"details,omitempty"` // Docker's humanized current (e.g. "2.097MB")
 	Current  int64  `json:"current,omitempty"`
 	Total    int64  `json:"total,omitempty"`
 	Percent  int    `json:"percent,omitempty"`

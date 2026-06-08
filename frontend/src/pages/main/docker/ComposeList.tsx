@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
@@ -19,8 +19,12 @@ import {
 } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { getComposeStatusColor } from "@/constants/statusColors";
+import {
+  getComposeStatusColor,
+  getContainerStatusColor,
+} from "@/constants/statusColors";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import type { ContainerInfo, ContainerPort } from "@/types/container";
 import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
 
 interface ComposeService {
@@ -37,6 +41,7 @@ interface ComposeService {
 export interface ComposeProject {
   auto_update?: boolean;
   config_files: string[];
+  containers: ContainerInfo[];
   icon?: string;
   name: string;
   services: Record<string, ComposeService>;
@@ -55,6 +60,44 @@ interface ComposeListProps {
   projects: ComposeProject[];
   viewMode?: "table" | "card";
 }
+
+const getContainerName = (container: ContainerInfo) =>
+  container.Names?.[0]?.replace(/^\//, "") || container.Id.slice(0, 12);
+
+const getContainerServiceName = (container: ContainerInfo) =>
+  container.Labels?.["com.docker.compose.service"] || "-";
+
+const getContainerDisplayState = (container: ContainerInfo) => {
+  const status = container.Status.toLowerCase();
+  if (status.includes("unhealthy")) return "Unhealthy";
+  if (status.includes("healthy")) return "Healthy";
+  if (container.State === "running") return "Running";
+  if (container.State === "exited") return "Stopped";
+  if (container.State === "dead") return "Dead";
+  return container.State || "Unknown";
+};
+
+const getDedupedContainerPorts = (container: ContainerInfo) => {
+  const seen = new Set<string>();
+  return (container.Ports ?? [])
+    .filter((port) => {
+      const key = port.PublicPort
+        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
+        : `${port.PrivatePort}/${port.Type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort(
+      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
+    );
+};
+
+const formatContainerPort = (port: ContainerPort) =>
+  port.PublicPort
+    ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
+    : `${port.PrivatePort}/${port.Type}`;
+
 const ComposeList: React.FC<ComposeListProps> = ({
   projects,
   onStart,
@@ -73,10 +116,21 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
+  const containersByProject = useMemo(() => {
+    return new Map(
+      projects.map((project) => [
+        project.name,
+        [...(project.containers ?? [])].sort((a, b) =>
+          getContainerName(a).localeCompare(getContainerName(b)),
+        ),
+      ]),
+    );
+  }, [projects]);
   const getStatusColor = (status: string) => {
     return getComposeStatusColor(status);
   };
   const getTotalContainers = (project: ComposeProject) => {
+    if (project.containers?.length) return project.containers.length;
     return Object.values(project.services).reduce(
       (acc, service) => acc + service.container_count,
       0,
@@ -349,75 +403,91 @@ const ComposeList: React.FC<ComposeListProps> = ({
   // Render expanded content
   const renderExpandedContent = useCallback(
     (project: ComposeProject) => {
+      const containers = containersByProject.get(project.name) ?? [];
       return (
         <>
           <AppTable>
             <AppTableHead>
               <AppTableRow>
-                <AppTableCell>Service Name</AppTableCell>
+                <AppTableCell>Container Name</AppTableCell>
+                <AppTableCell className="app-table-hide-below-md">
+                  Service
+                </AppTableCell>
                 <AppTableCell className="app-table-hide-below-sm">
                   Image
                 </AppTableCell>
                 <AppTableCell>State</AppTableCell>
-                <AppTableCell className="app-table-hide-below-md">
-                  Containers
-                </AppTableCell>
                 <AppTableCell className="app-table-hide-below-md">
                   Ports
                 </AppTableCell>
               </AppTableRow>
             </AppTableHead>
             <AppTableBody>
-              {Object.values(project.services).map((service) => (
-                <AppTableRow key={service.name}>
-                  <AppTableCell>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: theme.spacing(1),
-                      }}
-                    >
-                      <DockerIcon
-                        alt={service.name}
-                        identifier={service.icon}
-                        size={20}
+              {containers.map((container) => {
+                const name = getContainerName(container);
+                const serviceName = getContainerServiceName(container);
+                const ports = getDedupedContainerPorts(container);
+                const displayState = getContainerDisplayState(container);
+                return (
+                  <AppTableRow key={container.Id}>
+                    <AppTableCell>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: theme.spacing(1),
+                        }}
+                      >
+                        <DockerIcon
+                          alt={name}
+                          identifier={container.icon}
+                          size={20}
+                        />
+                        {name}
+                      </div>
+                    </AppTableCell>
+                    <AppTableCell className="app-table-hide-below-md">
+                      {serviceName}
+                    </AppTableCell>
+                    <AppTableCell className="app-table-hide-below-sm">
+                      <AppTypography
+                        noWrap
+                        style={{
+                          maxWidth: 260,
+                        }}
+                        variant="body2"
+                      >
+                        {container.Image}
+                      </AppTypography>
+                    </AppTableCell>
+                    <AppTableCell>
+                      <Chip
+                        color={getContainerStatusColor(displayState)}
+                        label={displayState}
+                        size="small"
+                        sx={{
+                          textTransform: "capitalize",
+                        }}
+                        variant="soft"
                       />
-                      {service.name}
-                    </div>
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-sm">
-                    <AppTypography
-                      noWrap
-                      style={{
-                        maxWidth: 200,
-                      }}
-                      variant="body2"
-                    >
-                      {service.image}
+                    </AppTableCell>
+                    <AppTableCell className="app-table-hide-below-md">
+                      {ports.length > 0
+                        ? ports.map(formatContainerPort).join(", ")
+                        : "-"}
+                    </AppTableCell>
+                  </AppTableRow>
+                );
+              })}
+              {containers.length === 0 && (
+                <AppTableRow>
+                  <AppTableCell>
+                    <AppTypography color="text.secondary" variant="body2">
+                      No containers found for this stack.
                     </AppTypography>
                   </AppTableCell>
-                  <AppTableCell>
-                    <Chip
-                      color={
-                        service.state === "running" ? "success" : "default"
-                      }
-                      label={service.state}
-                      size="small"
-                      sx={{
-                        textTransform: "capitalize",
-                      }}
-                      variant="soft"
-                    />
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-md">
-                    {service.container_count}
-                  </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-md">
-                    {service.ports.length > 0 ? service.ports.join(", ") : "-"}
-                  </AppTableCell>
                 </AppTableRow>
-              ))}
+              )}
             </AppTableBody>
           </AppTable>
           <div
@@ -449,7 +519,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         </>
       );
     },
-    [theme],
+    [containersByProject, theme],
   );
   const searchBar = (
     <div

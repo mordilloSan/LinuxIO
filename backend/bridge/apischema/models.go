@@ -472,6 +472,7 @@ type ComposeService struct {
 type ComposeProject struct {
 	AutoUpdate  bool                       `json:"auto_update"`
 	ConfigFiles []string                   `json:"config_files"`
+	Containers  []ContainerInfo            `json:"containers"`
 	Icon        string                     `json:"icon,omitempty"`
 	Name        string                     `json:"name"`
 	Services    map[string]*ComposeService `json:"services"`

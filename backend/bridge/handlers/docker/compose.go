@@ -69,6 +69,7 @@ func discoverComposeProjectsFromContainers(
 		}
 		project := ensureComposeProject(ctx, cli, projects, projectName, ctr)
 		updateComposeProjectService(project, ctr)
+		updateComposeProjectContainer(project, ctr)
 	}
 	return projects
 }
@@ -92,6 +93,7 @@ func ensureComposeProject(
 	)
 	project := &apischema.ComposeProject{
 		Name:        projectName,
+		Containers:  []apischema.ContainerInfo{},
 		Services:    make(map[string]*apischema.ComposeService),
 		ConfigFiles: configFiles,
 		WorkingDir:  ctr.Labels["com.docker.compose.project.working_dir"],
@@ -165,6 +167,14 @@ func updateComposeProjectService(project *apischema.ComposeProject, ctr containe
 	service.Ports = append(service.Ports, collectComposeServicePorts(ctr)...)
 }
 
+func updateComposeProjectContainer(project *apischema.ComposeProject, ctr container.Summary) {
+	iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
+	project.Containers = append(
+		project.Containers,
+		containerInfoFromSummary(ctr, nil, iconIdentifier, resolvedURL, proxyPort),
+	)
+}
+
 func ensureComposeService(project *apischema.ComposeProject, serviceName string) *apischema.ComposeService {
 	if service, exists := project.Services[serviceName]; exists {
 		return service
@@ -191,6 +201,9 @@ func collectComposeServicePorts(ctr container.Summary) []string {
 func finalizeComposeProjects(projects map[string]*apischema.ComposeProject, cfg *config.Settings) []*apischema.ComposeProject {
 	result := make([]*apischema.ComposeProject, 0, len(projects))
 	for _, project := range projects {
+		if project.Containers == nil {
+			project.Containers = []apischema.ContainerInfo{}
+		}
 		project.Status = calculateProjectStatus(project)
 		if cfg != nil {
 			project.AutoUpdate = slices.Contains(cfg.Docker.AutoUpdateStacks, project.Name)
@@ -1559,6 +1572,7 @@ func addOfflineComposeProject(projects map[string]*apischema.ComposeProject, com
 		Name:        projectName,
 		Icon:        extractComposeIcon(composePath),
 		Status:      "stopped",
+		Containers:  []apischema.ContainerInfo{},
 		Services:    make(map[string]*apischema.ComposeService),
 		ConfigFiles: []string{composePath},
 		WorkingDir:  filepath.Dir(composePath),

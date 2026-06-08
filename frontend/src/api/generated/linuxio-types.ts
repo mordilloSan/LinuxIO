@@ -263,6 +263,7 @@ export interface ComposeFilePathResponse {
 export interface ComposeProject {
   auto_update: boolean;
   config_files: string[];
+  containers: ContainerInfo[];
   icon?: string;
   name: string;
   services: Record<string, ComposeService>;
