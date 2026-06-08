@@ -18,9 +18,25 @@ import (
 
 // ComposeJobMessage represents a message emitted by a Docker compose job.
 type ComposeJobMessage struct {
-	Type    string `json:"type"`    // "stdout", "stderr", "error", "complete"
-	Message string `json:"message"` // The actual message content
-	Code    int    `json:"code,omitempty"`
+	Type     string           `json:"type"`    // "stdout", "stderr", "error", "complete", "progress"
+	Message  string           `json:"message"` // The actual message content (humanized for progress)
+	Code     int              `json:"code,omitempty"`
+	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
+}
+
+// ComposeProgress is a single structured progress event parsed from
+// `docker compose --progress=json`. The JSON tags mirror Docker's own event
+// schema so the same struct is used to both decode Docker's output and to
+// encode the payload sent to the frontend.
+type ComposeProgress struct {
+	ID       string `json:"id"`                 // layer id (e.g. "fbcfea79c1c4") or group (e.g. "Image alpine:3.17")
+	ParentID string `json:"parent_id,omitempty"`
+	Text     string `json:"text"`               // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
+	Status   string `json:"status"`             // "Working" | "Done" | "Error"
+	Details  string `json:"details,omitempty"`  // Docker's humanized current (e.g. "2.097MB")
+	Current  int64  `json:"current,omitempty"`
+	Total    int64  `json:"total,omitempty"`
+	Percent  int    `json:"percent,omitempty"`
 }
 
 type DockerIndexerJobResult struct {
@@ -72,13 +88,15 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	}
 
 	var reportMu sync.Mutex
-	report := func(msgType, message string) {
-		if strings.TrimSpace(message) == "" {
+	report := func(msgType, message string, progress *ComposeProgress) {
+		if strings.TrimSpace(message) == "" && progress == nil {
 			return
 		}
 		reportMu.Lock()
-		msg := ComposeJobMessage{Type: msgType, Message: message}
-		if msgType == "stdout" || msgType == "stderr" {
+		msg := ComposeJobMessage{Type: msgType, Message: message, Progress: progress}
+		// stdout/stderr/progress are high-frequency streaming output; emit them
+		// transiently (no replay). Terminal states use durable progress.
+		if msgType == "stdout" || msgType == "stderr" || msgType == "progress" {
 			job.ReportTransientProgress(msg)
 		} else {
 			job.ReportProgress(msg)
@@ -104,7 +122,7 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 			return nil, context.Canceled
 		}
 		msg := "command failed: " + err.Error()
-		report("error", msg)
+		report("error", msg, nil)
 		return nil, bridgejobs.NewError(msg, 500)
 	}
 
