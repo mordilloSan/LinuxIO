@@ -342,26 +342,49 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 // Returns nil (no-op) if the package is already installed. Returns an error
 // if the package cannot be found in any enabled repository.
 func InstallByName(ctx context.Context, name string) error {
+	id, err := resolveInstallablePackageID(ctx, name)
+	if err != nil || id == "" {
+		return err
+	}
+	return InstallPackage(ctx, id)
+}
+
+// InstallByNameWithProgress is InstallByName but streams PackageKit progress
+// signals (percentage/status) to the supplied reporter while the package
+// installs, so callers (e.g. capability install) can show a real progress bar.
+func InstallByNameWithProgress(ctx context.Context, name string, report pkgUpdateReporter) error {
+	id, err := resolveInstallablePackageID(ctx, name)
+	if err != nil || id == "" {
+		return err
+	}
+	return installPackageWithProgress(ctx, id, report)
+}
+
+// resolveInstallablePackageID resolves a package name to the package ID that
+// should be installed. It returns ("", nil) when the package is already
+// installed (a no-op for callers) and an error when the name can't be found.
+func resolveInstallablePackageID(ctx context.Context, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return fmt.Errorf("package name is required")
+		return "", fmt.Errorf("package name is required")
 	}
 
 	notInstalled, err := resolvePackageIDs(ctx, name, pkgkitFilterNotInstalled|pkgkitFilterNewest)
 	if err != nil {
-		return fmt.Errorf("resolve %s: %w", name, err)
+		return "", fmt.Errorf("resolve %s: %w", name, err)
 	}
-	if len(notInstalled) == 0 {
-		installed, err := resolvePackageIDs(ctx, name, pkgkitFilterInstalled|pkgkitFilterNewest)
-		if err != nil {
-			return fmt.Errorf("resolve %s (installed): %w", name, err)
-		}
-		if len(installed) > 0 {
-			return nil // already installed
-		}
-		return fmt.Errorf("package %q not found in any enabled repository", name)
+	if len(notInstalled) > 0 {
+		return notInstalled[0], nil
 	}
-	return InstallPackage(ctx, notInstalled[0])
+
+	installed, err := resolvePackageIDs(ctx, name, pkgkitFilterInstalled|pkgkitFilterNewest)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s (installed): %w", name, err)
+	}
+	if len(installed) > 0 {
+		return "", nil // already installed
+	}
+	return "", fmt.Errorf("package %q not found in any enabled repository", name)
 }
 
 // PackageKit filter bitmask values. See
@@ -647,4 +670,29 @@ func awaitPackageKitSignal(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 		return err
 	}
 	return nil
+}
+
+// installPackageWithProgress installs a package ID like InstallPackage, but
+// drains the PackageKit signal stream through the shared update-signal handlers
+// so percentage/status progress reaches the reporter instead of being
+// discarded. A nil reporter behaves like InstallPackage (progress ignored).
+func installPackageWithProgress(ctx context.Context, packageID string, report pkgUpdateReporter) error {
+	if report == nil {
+		report = func(*PkgUpdateProgress) error { return nil }
+	}
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
+		trans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
+		}
+		defer pkgkit.LogClose(session.Context(), trans)
+
+		if err := trans.Call("InstallPackages", uint64(0), []string{packageID}); err != nil {
+			return err
+		}
+
+		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
+		defer cancel()
+		return awaitPackageUpdateSignals(waitCtx, trans, report)
+	})
 }

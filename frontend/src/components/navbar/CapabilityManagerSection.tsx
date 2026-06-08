@@ -38,6 +38,8 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface InstallCapabilityProgress {
   message: string;
+  /** Single global 0-100 percentage that only moves forward across stages. */
+  percentage?: number;
   stage: string;
 }
 
@@ -146,7 +148,11 @@ const CapabilityManagerSection: React.FC = () => {
           onProgress: (progress) => {
             if (!mountedRef.current) return;
             if (progress?.message) {
-              setInstallStatus(progress.message);
+              setInstallStatus(
+                typeof progress.percentage === "number"
+                  ? `${progress.message} (${progress.percentage}%)`
+                  : progress.message,
+              );
             }
           },
         });
