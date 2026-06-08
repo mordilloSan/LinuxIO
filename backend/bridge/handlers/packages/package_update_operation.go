@@ -338,7 +338,9 @@ func parseTransactionProperties(
 
 func writePercentageProgress(report pkgUpdateReporter, props map[string]dbusclient.Variant, status uint32) {
 	pct, ok := propertyUint32(props, "Percentage")
-	if !ok || !isRealWorkStatus(status) {
+	// PackageKit reports 101 for "unknown"; forwarding it would make the bar
+	// jump to 101% and then drop. Skip it so consumers keep the last value.
+	if !ok || pct > 100 || !isRealWorkStatus(status) {
 		return
 	}
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
