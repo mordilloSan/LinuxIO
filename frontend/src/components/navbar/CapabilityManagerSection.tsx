@@ -71,6 +71,7 @@ const CapabilityManagerSection: React.FC = () => {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [installingWire, setInstallingWire] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [installPercent, setInstallPercent] = useState<number | null>(null);
   const mountedRef = useRef(true);
   const { run: runStreamResult } = useStreamResult();
 
@@ -138,6 +139,7 @@ const CapabilityManagerSection: React.FC = () => {
     async (wire: string) => {
       setInstallingWire(wire);
       setInstallStatus("Starting…");
+      setInstallPercent(null);
       try {
         const job = await linuxio.system.install_capability(wire);
         const result = await runStreamResult<
@@ -147,12 +149,11 @@ const CapabilityManagerSection: React.FC = () => {
           open: () => openJobAttachStream(job.id),
           onProgress: (progress) => {
             if (!mountedRef.current) return;
+            if (typeof progress?.percentage === "number") {
+              setInstallPercent(progress.percentage);
+            }
             if (progress?.message) {
-              setInstallStatus(
-                typeof progress.percentage === "number"
-                  ? `${progress.message} (${progress.percentage}%)`
-                  : progress.message,
-              );
+              setInstallStatus(progress.message);
             }
           },
         });
@@ -173,6 +174,7 @@ const CapabilityManagerSection: React.FC = () => {
         if (mountedRef.current) {
           setInstallingWire(null);
           setInstallStatus(null);
+          setInstallPercent(null);
         }
       }
     },
@@ -315,7 +317,11 @@ const CapabilityManagerSection: React.FC = () => {
                             }
                             variant="outlined"
                           >
-                            {installing ? "Installing…" : "Install"}
+                            {installing
+                              ? installPercent !== null
+                                ? `${installPercent}%`
+                                : "Installing…"
+                              : "Install"}
                           </AppButton>
                         </span>
                       </AppTooltip>
