@@ -1,0 +1,42 @@
+.compose-expanded-table .app-table-cell {
+  padding-block: 7px;
+}
+
+.compose-expanded-table .app-table-head .app-table-cell {
+  color: var(--color-text-disabled);
+  font-weight: 700;
+}
+
+.compose-container-row .app-table-cell {
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-divider), transparent 42%);
+}
+
+.compose-container-row:last-child .app-table-cell {
+  border-bottom: none;
+}
+
+.compose-container-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compose-container-name-text {
+  min-width: 0;
+}
+
+.compose-container-id {
+  display: block;
+  font-family: monospace;
+  line-height: 1.15;
+}
+
+.compose-container-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 160px;
+}
