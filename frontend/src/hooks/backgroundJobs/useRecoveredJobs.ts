@@ -4,6 +4,7 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 import { toast } from "sonner";
 
@@ -19,6 +20,9 @@ import type {
 
 import {
   bindStreamHandlers,
+  CAPABILITIES,
+  type CapabilityDef,
+  type InstallCapabilityResult,
   isJobLocallyHandled,
   isTerminalJobState,
   type JobEvent,
@@ -31,6 +35,7 @@ import {
 } from "@/api";
 import { INVALIDATIONS_BY_JOB_TYPE } from "@/constants/backgroundJobQueryInvalidations";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import useAuth from "@/hooks/useAuth";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import {
   createProgressSpeedCalculator,
@@ -96,6 +101,52 @@ export function useRecoveredJobs(
   const queryClient = useQueryClient();
   const { status: streamMuxStatus } = useStreamMux();
   const { run: runStreamResult } = useStreamResult();
+  const { refreshCapabilities } = useAuth();
+
+  // De-dupes capability-install completion toasts so the attach path and the
+  // terminal fallback (events stream) can never both fire for one job.
+  const installToastedRef = useRef(new Set<string>());
+
+  // Single source of truth for capability-install completion feedback. Owned by
+  // this global handler (not CapabilityManagerSection) so the toast still fires
+  // when the Settings dialog has been closed mid-install.
+  const emitCapabilityCompletion = useCallback(
+    (
+      jobId: string,
+      wire: string,
+      result?: InstallCapabilityResult,
+      errorMessage?: string,
+    ) => {
+      if (installToastedRef.current.has(jobId)) return;
+      installToastedRef.current.add(jobId);
+
+      const def = CAPABILITIES.find((c) => c.wire === wire) as
+        | CapabilityDef
+        | undefined;
+      const label = def?.label ?? wire;
+      // Surface an "Open …" action link on the notification for capabilities
+      // that have a dedicated page (omitted for ones that don't).
+      const opts = def?.route ? { meta: def.route } : undefined;
+
+      if (errorMessage !== undefined) {
+        toast.error(errorMessage || `Failed to install ${label}`, opts);
+        return;
+      }
+
+      // Any successful job result (available or not) refreshes app-wide state.
+      void refreshCapabilities();
+      if (result?.available) {
+        toast.success(`${label} installed`, opts);
+      } else {
+        const reason = result?.error ? `: ${result.error}` : ".";
+        toast.warning(
+          `${label} installed but is still unavailable${reason}`,
+          opts,
+        );
+      }
+    },
+    [refreshCapabilities],
+  );
   const {
     activeCompressionIdsRef,
     activeExtractionIdsRef,
@@ -596,24 +647,40 @@ export function useRecoveredJobs(
                 ),
               );
             },
-            onSuccess: () => {
+            onSuccess: (result) => {
               setBackgroundJobs((prev) =>
                 prev.map((item) =>
                   item.id === job.id ? { ...item, progress: 100 } : item,
                 ),
               );
+              if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
+                const cap =
+                  requestString(request, "capability") ?? "capability";
+                emitCapabilityCompletion(
+                  job.id,
+                  cap,
+                  result as InstallCapabilityResult,
+                );
+              }
             },
             onError: (error) => {
               if (abortController.signal.aborted) return;
-              // Some long-running jobs are owned by a specific page/component
-              // that already fires its own scoped error toast. Skip the
-              // generic one here to avoid duplicates.
-              //   - storage.run_smart_test     -> DiskOverview
-              //   - system.install_capability  -> CapabilityManagerSection
-              if (
-                job.type === JobTypes.JOB_TYPE_STORAGE_SMART_TEST ||
-                job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY
-              ) {
+              // Capability install is now surfaced here (survives the Settings
+              // dialog closing). storage.run_smart_test is still owned by a
+              // specific page (DiskOverview) that fires its own scoped toast, so
+              // skip the generic one to avoid duplicates.
+              if (job.type === JobTypes.JOB_TYPE_STORAGE_SMART_TEST) {
+                return;
+              }
+              if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
+                const cap =
+                  requestString(request, "capability") ?? "capability";
+                emitCapabilityCompletion(
+                  job.id,
+                  cap,
+                  undefined,
+                  error instanceof Error ? error.message : "",
+                );
                 return;
               }
               toast.error(
@@ -635,6 +702,7 @@ export function useRecoveredJobs(
       removeIndexer,
       removeBackgroundJob,
       runStreamResult,
+      emitCapabilityCompletion,
     ],
   );
 
@@ -662,6 +730,31 @@ export function useRecoveredJobs(
           //    handler (those handlers are responsible for their own
           //    invalidations).
           if (!isTerminalJobState(job.state)) return;
+
+          // Airtight fallback: attachRecoveredJob() bails on already-terminal
+          // jobs, so a capability install first observed in a terminal state
+          // would never toast via the attach path. emitCapabilityCompletion is
+          // de-duped, so this is a no-op when the attach path already fired.
+          if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
+            const cap =
+              requestString(requestObject(job.request), "capability") ??
+              "capability";
+            if (job.state === "failed" || job.state === "canceled") {
+              emitCapabilityCompletion(
+                job.id,
+                cap,
+                undefined,
+                job.error?.message ?? "",
+              );
+            } else {
+              emitCapabilityCompletion(
+                job.id,
+                cap,
+                job.result as InstallCapabilityResult,
+              );
+            }
+          }
+
           if (isJobLocallyHandled(job.id)) return;
           const keysFn = INVALIDATIONS_BY_JOB_TYPE[job.type];
           if (!keysFn) return;
@@ -684,5 +777,10 @@ export function useRecoveredJobs(
       cleanupEvents?.();
       eventStream?.close();
     };
-  }, [attachRecoveredJob, queryClient, streamMuxStatus]);
+  }, [
+    attachRecoveredJob,
+    emitCapabilityCompletion,
+    queryClient,
+    streamMuxStatus,
+  ]);
 }

@@ -34,6 +34,12 @@ export interface CapabilityDef {
   reasonUnavailable: string;
   /** Message when status is "unknown". */
   reasonUnknown: string;
+  /**
+   * Optional destination surfaced as an action link ("Open …") on the
+   * install-completion notification. Omit for capabilities with no dedicated
+   * page (e.g. TuneD, Avahi).
+   */
+  route?: { href: string; label: string };
   /** camelCase field used in auth state (e.g. "dockerAvailable"). */
   state: string;
   /** snake_case prefix used on the wire (e.g. "docker" -> "docker_available", "docker_error"). */
@@ -74,6 +80,7 @@ export const CAPABILITIES = [
     reasonUnknown: "lm-sensors dependency check is still running.",
     reasonUnavailable: "lm-sensors dependency is unavailable.",
     installable: { requiresPackageKit: true },
+    route: { href: "/hardware", label: "Open hardware" },
   },
   {
     wire: "smartmontools",
@@ -86,6 +93,7 @@ export const CAPABILITIES = [
     reasonUnknown: "smartmontools dependency check is still running.",
     reasonUnavailable: "smartmontools dependency is unavailable.",
     installable: { requiresPackageKit: true },
+    route: { href: "/storage", label: "Open storage" },
   },
   {
     wire: "packagekit",
@@ -109,6 +117,7 @@ export const CAPABILITIES = [
     reasonUnknown: "NFS client utilities availability is still being checked.",
     reasonUnavailable: "NFS client utilities are unavailable.",
     installable: { requiresPackageKit: true },
+    route: { href: "/shares", label: "Open shares" },
   },
   {
     wire: "nfs_server",
@@ -121,6 +130,7 @@ export const CAPABILITIES = [
     reasonUnknown: "NFS server utilities availability is still being checked.",
     reasonUnavailable: "NFS server utilities are unavailable.",
     installable: { requiresPackageKit: true },
+    route: { href: "/shares", label: "Open shares" },
   },
   {
     wire: "tuned",
@@ -157,6 +167,7 @@ export const CAPABILITIES = [
     reasonUnknown: "WireGuard tools availability is still being checked.",
     reasonUnavailable: "WireGuard tools are unavailable.",
     installable: { requiresPackageKit: true },
+    route: { href: "/wireguard", label: "Open WireGuard" },
   },
 ] as const satisfies readonly CapabilityDef[];
 

@@ -133,7 +133,7 @@ const CapabilityManagerSection: React.FC = () => {
   );
 
   const handleInstall = useCallback(
-    async (wire: string, label: string) => {
+    async (wire: string) => {
       setInstallingWire(wire);
       setInstallStatus("Starting…");
       try {
@@ -151,24 +151,18 @@ const CapabilityManagerSection: React.FC = () => {
           },
         });
         if (!mountedRef.current) return;
+        // Optimistically reflect the result while the panel is open. The
+        // completion toast and app-wide capability refresh are owned by the
+        // global background-job handler (useRecoveredJobs) so they still fire
+        // if this dialog has been closed mid-install.
         setLatest((previous) => ({
           ...(previous ?? ({} as CapabilitiesResponse)),
           [`${wire}_available`]: result.available,
           [`${wire}_error`]: result.error ?? "",
         }));
         setLastChecked(new Date());
-        if (result.available) {
-          toast.success(`${label} installed`);
-        } else {
-          const reason = result.error ? `: ${result.error}` : ".";
-          toast.warning(`${label} installed but is still unavailable${reason}`);
-        }
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : `Failed to install ${label}`;
-        if (mountedRef.current) {
-          toast.error(message);
-        }
+      } catch {
+        // The global background-job handler owns the install error toast.
       } finally {
         if (mountedRef.current) {
           setInstallingWire(null);
@@ -297,9 +291,7 @@ const CapabilityManagerSection: React.FC = () => {
                           <AppButton
                             color="primary"
                             disabled={installDisabled}
-                            onClick={() =>
-                              void handleInstall(row.wire, row.label)
-                            }
+                            onClick={() => void handleInstall(row.wire)}
                             size="small"
                             startIcon={
                               <Icon
