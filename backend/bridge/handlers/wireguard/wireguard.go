@@ -22,6 +22,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // --- Handler Implementations ---
@@ -563,6 +564,10 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		slog.Error("failed to write WireGuard interface config", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("write config: %w", err)
 	}
+	if err := SaveInterfaceDNS(req.name, req.dns); err != nil {
+		slog.Error("failed to save WireGuard interface DNS", "interface", req.name, "error", err)
+		return nil, fmt.Errorf("save interface DNS: %w", err)
+	}
 
 	subnet := req.addresses[0]
 	if err := bringUpInterfaceWithNAT(ctx, req.name, req.egressNic, subnet); err != nil {
@@ -602,6 +607,9 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 		if err := RemoveNATConfig(name); err != nil {
 			slog.Warn("failed to remove NAT config", "interface", name, "error", err)
 		}
+	}
+	if err := RemoveInterfaceDNS(name); err != nil {
+		slog.Warn("failed to remove interface DNS metadata", "interface", name, "error", err)
 	}
 
 	// Best-effort: bring it down, but don't abort on failure.
@@ -653,6 +661,11 @@ func AddPeer(ctx context.Context, req apischema.InterfaceNameRequest) (any, erro
 	if err != nil {
 		slog.Error("failed to read interface config", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("read config: %w", err)
+	}
+	if dns, dnsErr := LoadInterfaceDNS(interfaceName); dnsErr != nil {
+		slog.Warn("failed to load interface DNS metadata", "interface", interfaceName, "error", dnsErr)
+	} else if len(dns) > 0 {
+		cfg.DNS = dns
 	}
 
 	peer, nextIP, err := createNextPeer(cfg)
@@ -803,7 +816,7 @@ func UpInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", string(out))
-		return nil, fmt.Errorf("bring up interface: %w", err)
+		return nil, fmt.Errorf("bring up interface: %w", utils.CommandOutputError("wg-quick", []string{"up", name}, out, err))
 	}
 	slog.Info("WireGuard interface brought up", "interface", name)
 	return map[string]any{
@@ -841,7 +854,7 @@ func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", string(out))
-		return nil, fmt.Errorf("bring down interface: %w", err)
+		return nil, fmt.Errorf("bring down interface: %w", utils.CommandOutputError("wg-quick", []string{"down", name}, out, err))
 	}
 	slog.Info("WireGuard interface brought down", "interface", name)
 	return map[string]any{

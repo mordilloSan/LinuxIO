@@ -75,7 +75,6 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	setKeyIfNotEmpty(ifSec, "Address", strings.Join(cfg.Address, ","))
 	setKeyIfPositive(ifSec, "ListenPort", cfg.ListenPort)
 	setKey(ifSec, "PrivateKey", cfg.PrivateKey)
-	setKeyIfNotEmpty(ifSec, "DNS", strings.Join(cfg.DNS, ","))
 	setKeyIfPositive(ifSec, "MTU", cfg.MTU)
 
 	// Create Peer sections
