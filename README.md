@@ -4,6 +4,9 @@
 [![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/mordilloSan/LinuxIO?filename=backend/go.mod)](backend/go.mod)
+[![React](https://img.shields.io/badge/react-19.2.4-61dafb?logo=react&logoColor=white)](frontend/package.json)
+[![Platform](https://img.shields.io/badge/platform-linux-fcc624?logo=linux&logoColor=black)](README.md)
 
 <h1>Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
 
@@ -92,7 +95,7 @@ Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.26.3+
 - Node.js 24+
 - Make
 
@@ -219,14 +222,14 @@ make clean             # Remove build artifacts
 
 ### Frontend
 
-- **React 19** with TypeScript
+- **React 19.2.4** with TypeScript
 - **Vite** for fast builds
 - **Material-UI** (Mira theme)
 - **TanStack Query** for data fetching
 
 ### Backend
 
-- **Go 1.26**
+- **Go 1.26.3**
 - **Gorilla WebSocket**
 - **PAM** authentication
 
@@ -279,7 +282,7 @@ docs(readme): update installation instructions
 
 ## License
 
-This project is licensed under the [Apache License](LICENSE).
+This project is licensed under the [GNU General Public License v2.0](LICENSE).
 
 ---
 

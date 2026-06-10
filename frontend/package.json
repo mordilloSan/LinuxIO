@@ -4,7 +4,7 @@
   "author": "MordilloSan <miguelgalizamariz@gmail.com>",
   "private": true,
   "type": "module",
-  "license": "Apache License v2.0",
+  "license": "GPL-2.0-only",
   "engines": {
     "node": "24"
   },
