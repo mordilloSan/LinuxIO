@@ -1,6 +1,7 @@
 import React from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
 export interface UnitListItem {
@@ -77,31 +78,30 @@ function UnitCard<T extends UnitListItem>({
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: "bold",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
+          <AppTypography
+            component="div"
+            fontSize="0.875rem"
+            fontWeight="bold"
+            noWrap
+            title={item.name}
+            variant="body2"
           >
             {item.name}
-          </div>
+          </AppTypography>
           {item.description && (
-            <div
+            <AppTypography
+              component="div"
+              color="text.secondary"
+              fontSize="0.7rem"
+              noWrap
               style={{
                 marginTop: 2,
-                fontSize: "0.7rem",
-                color: "var(--app-palette-text-secondary)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
               }}
               title={item.description}
+              variant="caption"
             >
               {item.description}
-            </div>
+            </AppTypography>
           )}
         </div>
         <span

@@ -33,6 +33,8 @@ const TerminalDialog = React.lazy(
   () => import("@/pages/main/docker/TerminalDialog"),
 );
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
   if (status.includes("unhealthy")) return "warning.main";
@@ -65,7 +67,7 @@ interface ContainerCardProps {
 
 const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const queryClient = useQueryClient();
 
   // dialogs
@@ -313,6 +315,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         </div>
         <div style={{ flex: 0.95, minWidth: 0 }}>
           <AppTypography
+            copyText={name}
             fontWeight={600}
             noWrap
             style={{
@@ -321,6 +324,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               marginBottom: 2,
               fontSize: "1.05rem",
             }}
+            title={name}
+            toastMeta={DOCKER_TOAST_META}
             variant="subtitle1"
           >
             {name}

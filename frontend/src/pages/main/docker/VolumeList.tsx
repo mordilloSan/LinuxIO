@@ -320,10 +320,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                   <AppTypography gutterBottom variant="subtitle2">
                     <b>Created:</b>
                   </AppTypography>
-                  <AppTypography
-                    className="expand-panel__mono"
-                    variant="body2"
-                  >
+                  <AppTypography className="expand-panel__mono" variant="body2">
                     {new Date(volume.CreatedAt).toLocaleString()}
                   </AppTypography>
                 </div>

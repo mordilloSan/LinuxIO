@@ -39,6 +39,8 @@ import "./compose-list.css";
 const LogsDialog = React.lazy(() => import("./LogsDialog"));
 const TerminalDialog = React.lazy(() => import("./TerminalDialog"));
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 interface ComposeService {
   container_count: number;
   container_ids: string[];
@@ -130,7 +132,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
     useState<ContainerInfo | null>(null);
   const theme = useAppTheme();
   const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
@@ -321,7 +323,14 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 identifier={project.icon}
                 size={28}
               />
-              <AppTypography fontWeight={700} variant="body2">
+              <AppTypography
+                copyText={project.name}
+                fontWeight={700}
+                noWrap
+                title={project.name}
+                toastMeta={DOCKER_TOAST_META}
+                variant="body2"
+              >
                 {project.name}
               </AppTypography>
             </div>
@@ -330,49 +339,51 @@ const ComposeList: React.FC<ComposeListProps> = ({
             {getTotalContainers(project)}
           </AppTableCell>
           <AppTableCell className="app-table-hide-below-sm">
-            <AppTooltip title={project.config_files.join(", ") || "Unknown"}>
-              <div
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <Icon
+                height={20}
+                icon="mdi:folder-open"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
+                  marginRight: 4,
+                  opacity: 0.7,
                 }}
-              >
-                <Icon
-                  height={20}
-                  icon="mdi:folder-open"
-                  style={{
-                    marginRight: 4,
-                    opacity: 0.7,
-                  }}
-                  width={20}
-                />
-                <AppTypography
-                  noWrap
-                  style={{
-                    maxWidth: 200,
-                  }}
-                  variant="body2"
-                >
-                  {project.config_files[0]?.split("/").pop() ||
-                    "docker-compose.yml"}
-                </AppTypography>
-              </div>
-            </AppTooltip>
-          </AppTableCell>
-          <AppTableCell className="app-table-hide-below-lg">
-            <AppTooltip title={project.working_dir || "Unknown"}>
+                width={20}
+              />
               <AppTypography
+                copyText={project.config_files.join(", ") || "Unknown"}
                 noWrap
                 style={{
-                  maxWidth: 600,
-                  fontSize: "0.85rem",
-                  color: "var(--mui-palette-text-secondary)",
+                  maxWidth: 200,
                 }}
+                title={project.config_files.join(", ") || "Unknown"}
+                toastMeta={DOCKER_TOAST_META}
                 variant="body2"
               >
-                {project.working_dir || "-"}
+                {project.config_files[0]?.split("/").pop() ||
+                  "docker-compose.yml"}
               </AppTypography>
-            </AppTooltip>
+            </div>
+          </AppTableCell>
+          <AppTableCell className="app-table-hide-below-lg">
+            <AppTypography
+              copyText={project.working_dir || "Unknown"}
+              noWrap
+              style={{
+                maxWidth: 600,
+                fontSize: "0.85rem",
+                color: "var(--mui-palette-text-secondary)",
+              }}
+              title={project.working_dir || "Unknown"}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
+            >
+              {project.working_dir || "-"}
+            </AppTypography>
           </AppTableCell>
           <AppTableCell align="right">
             <div
@@ -521,12 +532,19 @@ const ComposeList: React.FC<ComposeListProps> = ({
               const name = getContainerName(container);
               const serviceName = getContainerServiceName(container);
               const ports = getDedupedContainerPorts(container);
+              const portsText =
+                ports.length > 0
+                  ? ports.map(formatContainerPort).join(", ")
+                  : "-";
               const displayState = getContainerDisplayState(container);
               const isManagedContainer = isLinuxIOManagedContainer(
                 container.Labels,
               );
               return (
-                <AppTableRow className="compose-container-row" key={container.Id}>
+                <AppTableRow
+                  className="compose-container-row"
+                  key={container.Id}
+                >
                   <AppTableCell>
                     <div className="compose-container-name">
                       <DockerIcon
@@ -535,13 +553,24 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         size={24}
                       />
                       <div className="compose-container-name-text">
-                        <AppTypography fontWeight={700} noWrap variant="body2">
+                        <AppTypography
+                          copyText={name}
+                          fontWeight={700}
+                          noWrap
+                          title={name}
+                          toastMeta={DOCKER_TOAST_META}
+                          variant="body2"
+                        >
                           {name}
                         </AppTypography>
                         <AppTypography
                           className="compose-container-id"
                           color="text.secondary"
+                          copyText={container.Id}
                           noWrap
+                          title={container.Id}
+                          toastMeta={DOCKER_TOAST_META}
+                          tooltipOnlyWhenTruncated={false}
                           variant="caption"
                         >
                           {container.Id.slice(0, 12)}
@@ -550,14 +579,25 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     </div>
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-md">
-                    {serviceName}
+                    <AppTypography
+                      copyText={serviceName}
+                      noWrap
+                      title={serviceName}
+                      toastMeta={DOCKER_TOAST_META}
+                      variant="body2"
+                    >
+                      {serviceName}
+                    </AppTypography>
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-sm">
                     <AppTypography
+                      copyText={container.Image}
                       noWrap
                       style={{
                         maxWidth: 260,
                       }}
+                      title={container.Image}
+                      toastMeta={DOCKER_TOAST_META}
                       variant="body2"
                     >
                       {container.Image}
@@ -575,41 +615,47 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     />
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-md">
-                    {ports.length > 0
-                      ? ports.map(formatContainerPort).join(", ")
-                      : "-"}
+                    <AppTypography
+                      copyText={ports.length > 0 ? portsText : undefined}
+                      noWrap
+                      title={portsText}
+                      toastMeta={DOCKER_TOAST_META}
+                      variant="body2"
+                    >
+                      {portsText}
+                    </AppTypography>
                   </AppTableCell>
                   <AppTableCell align="right">
                     <div className="compose-container-actions">
-                      {!isManagedContainer &&
-                        container.State !== "running" && (
-                          <AppTooltip title="Start container">
-                            <AppIconButton
-                              disabled={isLoading}
-                              onClick={() => void handleStartContainer(container)}
-                              size="small"
-                            >
-                              <Icon height={18} icon="mdi:play" width={18} />
-                            </AppIconButton>
-                          </AppTooltip>
-                        )}
-                      {!isManagedContainer &&
-                        container.State === "running" && (
-                          <AppTooltip title="Stop container">
-                            <AppIconButton
-                              disabled={isLoading}
-                              onClick={() => void handleStopContainer(container)}
-                              size="small"
-                            >
-                              <Icon height={18} icon="mdi:stop" width={18} />
-                            </AppIconButton>
-                          </AppTooltip>
-                        )}
+                      {!isManagedContainer && container.State !== "running" && (
+                        <AppTooltip title="Start container">
+                          <AppIconButton
+                            disabled={isLoading}
+                            onClick={() => void handleStartContainer(container)}
+                            size="small"
+                          >
+                            <Icon height={18} icon="mdi:play" width={18} />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
+                      {!isManagedContainer && container.State === "running" && (
+                        <AppTooltip title="Stop container">
+                          <AppIconButton
+                            disabled={isLoading}
+                            onClick={() => void handleStopContainer(container)}
+                            size="small"
+                          >
+                            <Icon height={18} icon="mdi:stop" width={18} />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
                       {!isManagedContainer && (
                         <AppTooltip title="Restart container">
                           <AppIconButton
                             disabled={isLoading}
-                            onClick={() => void handleRestartContainer(container)}
+                            onClick={() =>
+                              void handleRestartContainer(container)
+                            }
                             size="small"
                           >
                             <Icon height={18} icon="mdi:restart" width={18} />
@@ -649,7 +695,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
                             }
                             size="small"
                           >
-                            <Icon height={18} icon="mdi:open-in-new" width={18} />
+                            <Icon
+                              height={18}
+                              icon="mdi:open-in-new"
+                              width={18}
+                            />
                           </AppIconButton>
                         </AppTooltip>
                       )}
@@ -657,7 +707,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         <AppTooltip title="Remove container">
                           <AppIconButton
                             disabled={isLoading}
-                            onClick={() => void handleRemoveContainer(container)}
+                            onClick={() =>
+                              void handleRemoveContainer(container)
+                            }
                             size="small"
                           >
                             <Icon height={18} icon="mdi:delete" width={18} />

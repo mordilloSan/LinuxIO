@@ -480,7 +480,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
                   <b>Options:</b>
                 </AppTypography>
                 <div className="expand-panel__chips">
-                  {network.Options && Object.keys(network.Options).length > 0 ? (
+                  {network.Options &&
+                  Object.keys(network.Options).length > 0 ? (
                     Object.entries(network.Options).map(([key, val]) => (
                       <Chip
                         key={key}
@@ -526,102 +527,102 @@ const NetworkList: React.FC<NetworkListProps> = ({
                   <b>Connected Containers:</b>
                 </AppTypography>
                 <div>
-                {network.Containers &&
-                Object.keys(network.Containers).length > 0 ? (
-                  <AppTable
-                    style={{
-                      backgroundColor: alpha(
-                        theme.palette.text.primary,
-                        theme.palette.mode === "dark" ? 0.2 : 0.08,
-                      ),
-                      overflowX: "auto",
-                      display: "block",
-                    }}
-                  >
-                    <AppTableHead>
-                      <AppTableRow>
-                        <AppTableCell>
-                          <b>Name</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>Container ID</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>IPv4</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>IPv6</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>MAC</b>
-                        </AppTableCell>
-                      </AppTableRow>
-                    </AppTableHead>
-                    <AppTableBody>
-                      {Object.entries(network.Containers).map(
-                        ([id, info]: [string, any]) => (
-                          <AppTableRow key={id}>
-                            <AppTableCell>
-                              <AppTypography
-                                style={responsiveTextStyles}
-                                variant="body2"
-                              >
-                                {info.Name || "-"}
-                              </AppTypography>
-                            </AppTableCell>
-                            <AppTableCell
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "0.85rem",
-                                ...longTextStyles,
-                              }}
-                            >
-                              {id.slice(0, 12)}
-                            </AppTableCell>
-                            <AppTableCell>
-                              <AppTypography
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                                variant="body2"
-                              >
-                                {info.IPv4Address?.replace(/\/.*/, "") || "-"}
-                              </AppTypography>
-                            </AppTableCell>
-                            <AppTableCell>
-                              <AppTypography
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                                variant="body2"
-                              >
-                                {info.IPv6Address?.replace(/\/.*/, "") || "-"}
-                              </AppTypography>
-                            </AppTableCell>
-                            <AppTableCell
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "0.85rem",
-                                ...longTextStyles,
-                              }}
-                            >
-                              {info.MacAddress || "-"}
-                            </AppTableCell>
-                          </AppTableRow>
+                  {network.Containers &&
+                  Object.keys(network.Containers).length > 0 ? (
+                    <AppTable
+                      style={{
+                        backgroundColor: alpha(
+                          theme.palette.text.primary,
+                          theme.palette.mode === "dark" ? 0.2 : 0.08,
                         ),
-                      )}
-                    </AppTableBody>
-                  </AppTable>
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no containers)
-                  </AppTypography>
-                )}
-              </div>
+                        overflowX: "auto",
+                        display: "block",
+                      }}
+                    >
+                      <AppTableHead>
+                        <AppTableRow>
+                          <AppTableCell>
+                            <b>Name</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>Container ID</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>IPv4</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>IPv6</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>MAC</b>
+                          </AppTableCell>
+                        </AppTableRow>
+                      </AppTableHead>
+                      <AppTableBody>
+                        {Object.entries(network.Containers).map(
+                          ([id, info]: [string, any]) => (
+                            <AppTableRow key={id}>
+                              <AppTableCell>
+                                <AppTypography
+                                  style={responsiveTextStyles}
+                                  variant="body2"
+                                >
+                                  {info.Name || "-"}
+                                </AppTypography>
+                              </AppTableCell>
+                              <AppTableCell
+                                style={{
+                                  fontFamily: "monospace",
+                                  fontSize: "0.85rem",
+                                  ...longTextStyles,
+                                }}
+                              >
+                                {id.slice(0, 12)}
+                              </AppTableCell>
+                              <AppTableCell>
+                                <AppTypography
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.85rem",
+                                    ...longTextStyles,
+                                  }}
+                                  variant="body2"
+                                >
+                                  {info.IPv4Address?.replace(/\/.*/, "") || "-"}
+                                </AppTypography>
+                              </AppTableCell>
+                              <AppTableCell>
+                                <AppTypography
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.85rem",
+                                    ...longTextStyles,
+                                  }}
+                                  variant="body2"
+                                >
+                                  {info.IPv6Address?.replace(/\/.*/, "") || "-"}
+                                </AppTypography>
+                              </AppTableCell>
+                              <AppTableCell
+                                style={{
+                                  fontFamily: "monospace",
+                                  fontSize: "0.85rem",
+                                  ...longTextStyles,
+                                }}
+                              >
+                                {info.MacAddress || "-"}
+                              </AppTableCell>
+                            </AppTableRow>
+                          ),
+                        )}
+                      </AppTableBody>
+                    </AppTable>
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no containers)
+                    </AppTypography>
+                  )}
+                </div>
               </div>
             </div>
           )}

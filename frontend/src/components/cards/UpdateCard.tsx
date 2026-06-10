@@ -40,10 +40,8 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
         }}
       >
         <AppTypography
+          noWrap
           style={{
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
             maxWidth: "90%",
           }}
           variant="h6"
@@ -56,10 +54,8 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       <AppTypography
         color="text.secondary"
         gutterBottom
+        noWrap
         style={{
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
           maxWidth: "90%",
         }}
         variant="body2"
@@ -69,10 +65,8 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       <AppTypography
         color="text.secondary"
         gutterBottom
+        noWrap
         style={{
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
           maxWidth: "90%",
         }}
         variant="body2"

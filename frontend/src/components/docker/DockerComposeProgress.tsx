@@ -40,23 +40,26 @@ const LayerRow: React.FC<{ task: ComposeTask }> = ({ task }) => {
     >
       <AppTypography
         color="text.secondary"
+        noWrap
         style={{
           width: 96,
           flexShrink: 0,
           fontFamily: "monospace",
           fontSize: "0.75rem",
-          whiteSpace: "nowrap",
         }}
+        title={task.id}
+        tooltipOnlyWhenTruncated={false}
       >
         {shortId(task.id)}
       </AppTypography>
       <AppTypography
+        noWrap
         style={{
           width: 150,
           flexShrink: 0,
           fontSize: "0.8rem",
-          whiteSpace: "nowrap",
         }}
+        title={task.text}
       >
         {task.text}
       </AppTypography>
@@ -69,12 +72,12 @@ const LayerRow: React.FC<{ task: ComposeTask }> = ({ task }) => {
       </div>
       <AppTypography
         color="text.secondary"
+        noWrap
         style={{
           width: 130,
           flexShrink: 0,
           textAlign: "right",
           fontSize: "0.75rem",
-          whiteSpace: "nowrap",
           fontVariantNumeric: "tabular-nums",
         }}
       >

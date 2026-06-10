@@ -21,7 +21,6 @@ export const getTableRowStyles = (theme: AppTheme, index: number) => {
   };
 };
 
-
 export const tableContainerStyles = {
   overflowX: "auto",
   "@media (max-width: 600px)": {

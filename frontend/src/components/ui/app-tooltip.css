@@ -5,6 +5,11 @@
   vertical-align: top;
 }
 
+.app-tooltip-trigger--copy,
+.app-tooltip-trigger--copy > * {
+  cursor: pointer;
+}
+
 /* ── Base tooltip bubble ── */
 .app-tooltip {
   position: fixed;
@@ -29,7 +34,7 @@
 .app-tooltip--content-width {
   max-width: calc(100vw - 24px);
   width: max-content;
-  white-space: normal;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 

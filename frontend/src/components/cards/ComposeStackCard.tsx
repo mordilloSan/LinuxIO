@@ -19,6 +19,8 @@ const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
 };
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 type ComposeStackCardProps =
   | { isPending: true }
   | {
@@ -140,7 +142,14 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
         }}
       >
         <DockerIcon alt={project.name} identifier={project.icon} size={36} />
-        <AppTypography fontWeight={600} noWrap variant="subtitle1">
+        <AppTypography
+          copyText={project.name}
+          fontWeight={600}
+          noWrap
+          title={project.name}
+          toastMeta={DOCKER_TOAST_META}
+          variant="subtitle1"
+        >
           {project.name}
         </AppTypography>
       </div>

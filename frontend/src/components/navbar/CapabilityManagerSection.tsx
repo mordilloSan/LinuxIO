@@ -335,9 +335,16 @@ const CapabilityManagerSection: React.FC = () => {
                   </div>
                 </div>
                 <div className="capability-manager__detail">
-                  <span className="capability-manager__dependency">
+                  <AppTypography
+                    className="capability-manager__dependency"
+                    component="span"
+                    noWrap
+                    style={{ color: "var(--app-palette-text-primary)" }}
+                    title={row.dependency}
+                    variant="body2"
+                  >
                     {row.dependency}
-                  </span>
+                  </AppTypography>
                   <span>
                     {installing && installStatus ? installStatus : row.detail}
                   </span>

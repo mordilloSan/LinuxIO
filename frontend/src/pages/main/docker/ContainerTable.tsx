@@ -37,6 +37,8 @@ const TerminalDialog = React.lazy(
   () => import("@/pages/main/docker/TerminalDialog"),
 );
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const getDisplayState = (container: ContainerInfo) => {
@@ -73,7 +75,6 @@ const formatUptime = (createdUnix: number) => {
   return `${m}m`;
 };
 
-
 // ── Per-row component ─────────────────────────────────────────────────────────
 
 interface ContainerRowProps {
@@ -88,7 +89,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   editMode,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const {
@@ -184,6 +185,15 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
     () => Object.entries(container.NetworkSettings?.Networks ?? {}),
     [container.NetworkSettings],
   );
+  const networkNamesText = networks
+    .map(([networkName]) => networkName)
+    .join(", ");
+  const networkAddressesText = networks
+    .map(
+      ([networkName, endpoint]) =>
+        `${networkName}: ${endpoint.IPAddress || "—"}`,
+    )
+    .join("\n");
 
   // Volumes
   const mounts = useMemo(
@@ -276,7 +286,14 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               tooltip={displayState}
             />
             <DockerIcon alt={name} identifier={container.icon} size={24} />
-            <AppTypography fontWeight={700} noWrap variant="body2">
+            <AppTypography
+              copyText={name}
+              fontWeight={700}
+              noWrap
+              title={name}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
+            >
               {name}
             </AppTypography>
           </div>
@@ -314,33 +331,31 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Network */}
         <AppTableCell className="app-table-hide-below-lg">
           {networks.length > 0 ? (
-            <AppTooltip
-              title={
-                networks.length > 1 ? networks.map(([n]) => n).join(", ") : ""
-              }
+            <AppTypography
+              color="text.secondary"
+              copyText={networkNamesText}
+              noWrap
+              style={{
+                fontFamily: "monospace",
+                fontSize: "0.78rem",
+              }}
+              title={networkNamesText}
+              toastMeta={DOCKER_TOAST_META}
+              tooltipOnlyWhenTruncated={networks.length === 1}
+              variant="body2"
             >
-              <AppTypography
-                color="text.secondary"
-                noWrap
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.78rem",
-                }}
-                variant="body2"
-              >
-                {networks[0][0]}
-                {networks.length > 1 && (
-                  <span
-                    style={{
-                      marginLeft: 2,
-                      color: theme.palette.text.disabled,
-                    }}
-                  >
-                    +{networks.length - 1}
-                  </span>
-                )}
-              </AppTypography>
-            </AppTooltip>
+              {networks[0][0]}
+              {networks.length > 1 && (
+                <span
+                  style={{
+                    marginLeft: 2,
+                    color: theme.palette.text.disabled,
+                  }}
+                >
+                  +{networks.length - 1}
+                </span>
+              )}
+            </AppTypography>
           ) : (
             <AppTypography color="text.disabled" variant="body2">
               —
@@ -351,22 +366,17 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Container IP */}
         <AppTableCell className="app-table-hide-below-lg">
           {networks.length > 0 && networks[0][1].IPAddress ? (
-            <AppTooltip
-              title={
-                networks.length > 1
-                  ? networks
-                      .map(([n, ep]) => `${n}: ${ep.IPAddress}`)
-                      .join("\n")
-                  : ""
-              }
+            <AppTypography
+              copyText={networkAddressesText}
+              noWrap
+              style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
+              title={networkAddressesText}
+              toastMeta={DOCKER_TOAST_META}
+              tooltipOnlyWhenTruncated={networks.length === 1}
+              variant="body2"
             >
-              <AppTypography
-                style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
-                variant="body2"
-              >
-                {networks[0][1].IPAddress}
-              </AppTypography>
-            </AppTooltip>
+              {networks[0][1].IPAddress}
+            </AppTypography>
           ) : (
             <AppTypography color="text.disabled" variant="body2">
               —
@@ -378,20 +388,19 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         <AppTableCell className="app-table-hide-below-xl">
           {ports.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {ports.slice(0, 2).map((p, i) => (
-                <AppTooltip key={i} title={`${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`}>
+              {ports.slice(0, 2).map((p, i) => {
+                const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
+                return (
                   <AppTypography
+                    copyText={text}
+                    key={i}
                     noWrap
-                    onClick={() => {
-                      const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
-                      navigator.clipboard.writeText(text);
-                      toast.success("Copied to clipboard");
-                    }}
                     style={{
                       fontFamily: "monospace",
                       fontSize: "0.75rem",
-                      cursor: "pointer"
                     }}
+                    title={text}
+                    toastMeta={DOCKER_TOAST_META}
                     variant="body2"
                   >
                     <span style={{ color: theme.palette.text.primary }}>
@@ -409,25 +418,26 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       {p.PublicPort ?? "—"}
                     </span>
                   </AppTypography>
-                </AppTooltip>
-              ))}
+                );
+              })}
               <AppCollapse in={expanded} timeout={600}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                >
                   {ports.length > 2 &&
-                    ports.slice(2).map((p, i) => (
-                      <AppTooltip key={i + 2} title={`${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`}>
+                    ports.slice(2).map((p, i) => {
+                      const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
+                      return (
                         <AppTypography
+                          copyText={text}
+                          key={i + 2}
                           noWrap
-                          onClick={() => {
-                            const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
-                            navigator.clipboard.writeText(text);
-                            toast.success("Copied to clipboard");
-                          }}
                           style={{
                             fontFamily: "monospace",
                             fontSize: "0.75rem",
-                            cursor: "pointer"
                           }}
+                          title={text}
+                          toastMeta={DOCKER_TOAST_META}
                           variant="body2"
                         >
                           <span style={{ color: theme.palette.text.primary }}>
@@ -445,8 +455,8 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                             {p.PublicPort ?? "—"}
                           </span>
                         </AppTypography>
-                      </AppTooltip>
-                    ))}
+                      );
+                    })}
                 </div>
               </AppCollapse>
               {!expanded && ports.length > 2 && (
@@ -463,27 +473,25 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         </AppTableCell>
 
         {/* Volumes (App → Host) */}
-        <AppTableCell className="app-table-hide-below-xl" style={{ maxWidth: 280 }}>
+        <AppTableCell
+          className="app-table-hide-below-xl"
+          style={{ maxWidth: 280 }}
+        >
           {mounts.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {mounts.slice(0, 2).map((m, i) => (
-                <AppTooltip
-                  className="app-tooltip--content-width"
-                  key={i}
-                  title={`${m.Destination} → ${m.Source}`}
-                >
+              {mounts.slice(0, 2).map((m, i) => {
+                const text = `${m.Destination} → ${m.Source}`;
+                return (
                   <AppTypography
+                    copyText={text}
+                    key={i}
                     noWrap
-                    onClick={() => {
-                      const text = `${m.Destination} → ${m.Source}`;
-                      navigator.clipboard.writeText(text);
-                      toast.success("Copied to clipboard");
-                    }}
                     style={{
                       fontFamily: "monospace",
                       fontSize: "0.75rem",
-                      cursor: "pointer"
                     }}
+                    title={text}
+                    toastMeta={DOCKER_TOAST_META}
                     variant="body2"
                   >
                     <span style={{ color: theme.palette.text.primary }}>
@@ -501,29 +509,26 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       {m.Source}
                     </span>
                   </AppTypography>
-                </AppTooltip>
-              ))}
+                );
+              })}
               <AppCollapse in={expanded} timeout={600}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                >
                   {mounts.length > 2 &&
-                    mounts.slice(2).map((m, i) => (
-                      <AppTooltip
-                        className="app-tooltip--content-width"
-                        key={i + 2}
-                        title={`${m.Destination} → ${m.Source}`}
-                      >
+                    mounts.slice(2).map((m, i) => {
+                      const text = `${m.Destination} → ${m.Source}`;
+                      return (
                         <AppTypography
+                          copyText={text}
+                          key={i + 2}
                           noWrap
-                          onClick={() => {
-                            const text = `${m.Destination} → ${m.Source}`;
-                            navigator.clipboard.writeText(text);
-                            toast.success("Copied to clipboard");
-                          }}
                           style={{
                             fontFamily: "monospace",
                             fontSize: "0.75rem",
-                            cursor: "pointer"
                           }}
+                          title={text}
+                          toastMeta={DOCKER_TOAST_META}
                           variant="body2"
                         >
                           <span style={{ color: theme.palette.text.primary }}>
@@ -541,8 +546,8 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                             {m.Source}
                           </span>
                         </AppTypography>
-                      </AppTooltip>
-                    ))}
+                      );
+                    })}
                 </div>
               </AppCollapse>
               {!expanded && mounts.length > 2 && (

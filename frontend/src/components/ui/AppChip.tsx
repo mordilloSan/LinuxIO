@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
 import { AppTheme, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -45,6 +46,18 @@ export interface AppChipProps extends NativeChipProps {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const getPlainText = (node: React.ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node).trim();
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(getPlainText).filter(Boolean).join(" ").trim();
+  }
+
+  return "";
+};
 
 const getPaletteColor = (theme: AppTheme, color: AppChipColor) => {
   switch (color) {
@@ -306,6 +319,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
     ref,
   ) => {
     const theme = useAppTheme();
+    const isInsideTooltip = useIsInsideAppTooltip();
     const chipColor = getPaletteColor(theme, color);
     const isDefaultColor = color === "default";
     const isOutlined = variant === "outlined";
@@ -344,7 +358,13 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
       }
     };
 
-    return (
+    const tooltipText =
+      typeof title === "string" && title.trim()
+        ? title.trim()
+        : getPlainText(label);
+    const showTruncatedTooltip = Boolean(tooltipText && !isInsideTooltip);
+
+    const chip = (
       <span
         {...nativeProps}
         aria-disabled={disabled || undefined}
@@ -407,7 +427,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
           } as React.CSSProperties
         }
         tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
-        title={title}
+        title={showTruncatedTooltip ? undefined : title}
       >
         <span className="app-chip__label" style={labelStyle}>
           {label}
@@ -427,6 +447,16 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
           </button>
         )}
       </span>
+    );
+
+    if (!showTruncatedTooltip) {
+      return chip;
+    }
+
+    return (
+      <AppTooltip contentWidth onlyWhenTruncated title={tooltipText}>
+        {chip}
+      </AppTooltip>
     );
   },
 );

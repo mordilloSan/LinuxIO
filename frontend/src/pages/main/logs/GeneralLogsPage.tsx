@@ -716,14 +716,15 @@ const GeneralLogsPage: React.FC = () => {
               <AppTooltip title={`Open ${target!.unit} in services`}>
                 <AppTypography
                   className="log-identifier-link"
+                  noWrap
                   onClick={(e) => handleIdentifierClick(log, e)}
                   role="link"
                   style={{
                     fontSize: "0.85rem",
-                    whiteSpace: "nowrap",
                     display: "inline-block",
                   }}
                   tabIndex={0}
+                  title={log.identifier}
                   variant="body2"
                 >
                   {log.identifier}
@@ -731,7 +732,9 @@ const GeneralLogsPage: React.FC = () => {
               </AppTooltip>
             ) : (
               <AppTypography
-                style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+                noWrap
+                style={{ fontSize: "0.85rem" }}
+                title={log.identifier}
                 variant="body2"
               >
                 {log.identifier}
@@ -740,7 +743,9 @@ const GeneralLogsPage: React.FC = () => {
           </AppTableCell>
           <AppTableCell style={{ width: "1%" }}>
             <AppTypography
-              style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
+              noWrap
+              style={{ fontSize: "0.83rem" }}
+              title={log.timestamp}
               variant="body2"
             >
               {log.timestamp}

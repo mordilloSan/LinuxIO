@@ -1,5 +1,8 @@
 import React from "react";
 
+import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
+import type { ToastMeta } from "@/contexts/ToastContext";
+
 import "./app-typography.css";
 
 type Variant =
@@ -50,6 +53,18 @@ const COLOR_MAP: Record<SemanticColor, string> = {
   inherit: "inherit",
 };
 
+const getPlainText = (node: React.ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node).trim();
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(getPlainText).filter(Boolean).join(" ").trim();
+  }
+
+  return "";
+};
+
 export interface AppTypographyProps extends Omit<
   React.HTMLAttributes<HTMLElement>,
   "color"
@@ -58,10 +73,15 @@ export interface AppTypographyProps extends Omit<
   children?: React.ReactNode;
   color?: SemanticColor | (string & {});
   component?: React.ElementType;
+  copyErrorMessage?: React.ReactNode;
+  copySuccessMessage?: React.ReactNode;
+  copyText?: string;
   fontSize?: string | number;
   fontWeight?: number | string;
   gutterBottom?: boolean;
   noWrap?: boolean;
+  toastMeta?: ToastMeta;
+  tooltipOnlyWhenTruncated?: boolean;
   variant?: Variant;
 }
 
@@ -76,14 +96,21 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
       align,
       gutterBottom,
       component,
+      copyErrorMessage,
+      copySuccessMessage,
+      copyText,
       className,
       style,
+      toastMeta,
+      tooltipOnlyWhenTruncated = true,
       children,
+      title,
       ...rest
     },
     ref,
   ) => {
     const Tag = (component ?? VARIANT_ELEMENT[variant]) as React.ElementType;
+    const isInsideTooltip = useIsInsideAppTooltip();
 
     const resolvedColor = color
       ? (COLOR_MAP[color as SemanticColor] ?? color)
@@ -107,10 +134,36 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
       ...style,
     };
 
-    return (
-      <Tag className={cls} ref={ref} style={merged} {...rest}>
+    const tooltipText =
+      typeof title === "string" && title.trim()
+        ? title.trim()
+        : getPlainText(children);
+    const showTruncatedTooltip = Boolean(
+      noWrap && tooltipText && !isInsideTooltip,
+    );
+    const tagProps = showTruncatedTooltip ? rest : { ...rest, title };
+    const element = (
+      <Tag className={cls} ref={ref} style={merged} {...tagProps}>
         {children}
       </Tag>
+    );
+
+    if (!showTruncatedTooltip) {
+      return element;
+    }
+
+    return (
+      <AppTooltip
+        contentWidth
+        copyErrorMessage={copyErrorMessage}
+        copySuccessMessage={copySuccessMessage}
+        copyText={copyText}
+        onlyWhenTruncated={tooltipOnlyWhenTruncated}
+        title={tooltipText}
+        toastMeta={toastMeta}
+      >
+        {element}
+      </AppTooltip>
     );
   },
 );

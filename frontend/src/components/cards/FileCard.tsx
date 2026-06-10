@@ -8,6 +8,7 @@ import React, {
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -270,41 +271,42 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               value={renameValue}
             />
           ) : (
-            <div
+            <AppTypography
+              component="div"
+              color="text.primary"
+              fontSize="0.90rem"
+              fontWeight={400}
+              noWrap
               style={{
-                fontWeight: 400,
-                fontSize: "0.90rem",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                color: theme.palette.text.primary,
                 lineHeight: 1.2,
                 opacity: 1,
               }}
+              title={name}
+              variant="body1"
             >
               {name}
-            </div>
+            </AppTypography>
           )}
 
           {/* Directory path and type badge for search results */}
           {showFullPath && (
             <>
               {path && (
-                <div
+                <AppTypography
+                  component="div"
+                  color="text.secondary"
+                  fontSize="0.75rem"
+                  noWrap
                   style={{
-                    fontSize: "0.75rem",
-                    color: theme.palette.text.secondary,
                     opacity: 0.7,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
                     lineHeight: 1.2,
                     marginTop: "2px",
                   }}
                   title={path}
+                  variant="body2"
                 >
                   {path.replace(/\/[^/]*$/, "") || "/"}
-                </div>
+                </AppTypography>
               )}
             </>
           )}

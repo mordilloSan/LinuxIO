@@ -13,6 +13,8 @@ export interface VolumeCardProps {
   volume: DockerVolume;
 }
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 const VolumeCard: React.FC<VolumeCardProps> = ({
   volume,
   selected,
@@ -37,7 +39,14 @@ const VolumeCard: React.FC<VolumeCardProps> = ({
           onChange={(e) => onSelect(e.target.checked)}
           size="small"
         />
-        <AppTypography fontWeight={700} noWrap variant="body2">
+        <AppTypography
+          copyText={volume.Name}
+          fontWeight={700}
+          noWrap
+          title={volume.Name}
+          toastMeta={DOCKER_TOAST_META}
+          variant="body2"
+        >
           {volume.Name}
         </AppTypography>
       </div>

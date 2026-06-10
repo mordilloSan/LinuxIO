@@ -32,13 +32,11 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
     >
       <AppTypography
         fontWeight={700}
+        noWrap
         style={{
           fontFamily: "monospace",
           flex: 1,
           minWidth: 0,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
           lineHeight: 1.25,
         }}
         variant="body1"
@@ -51,14 +49,12 @@ const NFSMountCard: React.FC<NFSMountCardProps> = ({
     {/* Source */}
     <AppTypography
       color="text.secondary"
+      noWrap
       style={{
         marginBottom: 4,
         fontFamily: "monospace",
         fontSize: "0.8rem",
         lineHeight: 1.3,
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
       }}
       variant="body2"
     >

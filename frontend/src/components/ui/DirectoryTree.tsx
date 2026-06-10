@@ -10,6 +10,7 @@ import React, {
 import { linuxio } from "@/api";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
+import AppTypography from "@/components/ui/AppTypography";
 
 import "./directory-tree.css";
 
@@ -84,7 +85,17 @@ const TreeNode: React.FC<{
           icon={expanded ? "mdi:folder-open" : "mdi:folder"}
           width={18}
         />
-        <span className="directory-tree__label">{node.name}</span>
+        <AppTypography
+          className="directory-tree__label"
+          color="inherit"
+          component="span"
+          fontSize="inherit"
+          noWrap
+          title={node.path}
+          variant="body2"
+        >
+          {node.name}
+        </AppTypography>
       </div>
       <AppCollapse in={expanded} unmountOnExit>
         {node.children?.map((child) => (
