@@ -378,6 +378,10 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       }
     };
 
+    // One-shot async config load (stream mux + react-query fetchQuery), not a
+    // synchronous external store — useSyncExternalStore can't express async
+    // loading, so this rule misfires here.
+    // eslint-disable-next-line react-you-might-not-need-an-effect/no-external-store-subscription
     fetchConfig();
 
     return () => {

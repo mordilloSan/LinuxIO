@@ -7,6 +7,7 @@ import importPlugin from "eslint-plugin-import-x";
 import prettier from "eslint-plugin-prettier";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
+import reactYouMightNotNeedAnEffect from "eslint-plugin-react-you-might-not-need-an-effect";
 import unusedImports from "eslint-plugin-unused-imports";
 import globals from "globals";
 
@@ -108,6 +109,18 @@ export default [
   },
 
   ...tanstackQuery.configs["flat/recommended"],
+
+  {
+    ...reactYouMightNotNeedAnEffect.configs.strict,
+    rules: {
+      ...reactYouMightNotNeedAnEffect.configs.strict.rules,
+      "react-you-might-not-need-an-effect/no-event-handler": "off",
+      "react-you-might-not-need-an-effect/no-pass-data-to-parent": "off",
+      "react-you-might-not-need-an-effect/no-external-store-subscription":
+        "warn",
+      "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn",
+    },
+  },
 
   prettierConfig,
 ];

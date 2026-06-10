@@ -1,9 +1,10 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
 } from "react";
 
 import type { AppSettings, ThemeColorsByMode } from "@/types/config";
@@ -750,26 +751,24 @@ export function useAppTheme() {
 export function useAppMediaQuery(query: string) {
   const normalizedQuery = query.trim().replace(/^@media\s*/i, "");
 
-  const [matches, setMatches] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia(normalizedQuery).matches
-      : false,
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      const mediaQueryList = window.matchMedia(normalizedQuery);
+      mediaQueryList.addEventListener("change", onStoreChange);
+      return () => mediaQueryList.removeEventListener("change", onStoreChange);
+    },
+    [normalizedQuery],
   );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const mediaQueryList = window.matchMedia(normalizedQuery);
-    const update = (event: MediaQueryListEvent) => {
-      setMatches(event.matches);
-    };
-
-    setMatches(mediaQueryList.matches);
-    mediaQueryList.addEventListener("change", update);
-    return () => mediaQueryList.removeEventListener("change", update);
-  }, [normalizedQuery]);
-
-  return matches;
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      typeof window !== "undefined"
+        ? window.matchMedia(normalizedQuery).matches
+        : false,
+    () => false,
+  );
 }
 
 export default buildAppTheme;
