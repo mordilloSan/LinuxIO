@@ -13,8 +13,8 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import PathPickerField from "@/components/ui/PathPickerField";
 import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
@@ -264,20 +264,17 @@ const DockerFolderSettingsSection: React.FC = () => {
                 <Icon height={22} icon="mdi:folder-open-outline" width={22} />
               </div>
 
-              <AppTextField
+              <PathPickerField
                 disabled={isSaving}
+                editable
                 error={Boolean(errorTexts[index])}
-                fullWidth
                 helperText={
                   errorTexts[index] ||
                   "Absolute path only. Root (/) is not allowed."
                 }
                 label={index === 0 ? "Path" : `Path ${index + 1}`}
-                onChange={(event) =>
-                  handleDraftChange(index, event.target.value)
-                }
+                onChange={(value) => handleDraftChange(index, value)}
                 placeholder="/home/user/docker"
-                size="small"
                 style={{ flex: 1 }}
                 value={draft}
               />

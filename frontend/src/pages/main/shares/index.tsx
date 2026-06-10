@@ -36,7 +36,7 @@ import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import DirectoryTree from "@/components/ui/DirectoryTree";
+import PathPickerField from "@/components/ui/PathPickerField";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -265,52 +265,6 @@ function renderProtocolSummary(group: ShareGroup): React.ReactNode {
   );
 }
 
-const FolderPathPicker: React.FC<{
-  value: string;
-  onChange: (path: string) => void;
-}> = ({ value, onChange }) => {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <div ref={anchorRef}>
-        <AppTextField
-          endAdornment={
-            <Icon
-              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              style={{ opacity: 0.5 }}
-              width={18}
-            />
-          }
-          fullWidth
-          label="Folder Path"
-          onClick={() => {
-            setAnchorEl(anchorRef.current);
-            setOpen(true);
-          }}
-          placeholder="Click to select a folder"
-          shrinkLabel
-          size="small"
-          style={{ cursor: "pointer" }}
-          value={value}
-        />
-      </div>
-      <AppPopover
-        anchorEl={anchorEl}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        matchAnchorWidth
-        onClose={() => setOpen(false)}
-        open={open}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-      >
-        <DirectoryTree onSelect={onChange} selectedPath={value} />
-      </AppPopover>
-    </>
-  );
-};
-
 const NFSOptionsDropdown: React.FC<{
   options: ClientOptions;
   onChange: (next: ClientOptions) => void;
@@ -521,7 +475,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
             marginTop: 8,
           }}
         >
-          <FolderPathPicker onChange={setPath} value={path} />
+          <PathPickerField label="Folder Path" onChange={setPath} value={path} />
 
           <div
             style={{
