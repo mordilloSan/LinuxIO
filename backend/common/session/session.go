@@ -78,6 +78,7 @@ type Timing struct {
 
 type CapabilitiesAvailable struct {
 	DockerAvailable        bool `json:"docker_available"`
+	WatchtowerAvailable    bool `json:"watchtower_available"`
 	IndexerAvailable       bool `json:"indexer_available"`
 	LMSensorsAvailable     bool `json:"lm_sensors_available"`
 	SmartmontoolsAvailable bool `json:"smartmontools_available"`
@@ -91,6 +92,7 @@ type CapabilitiesAvailable struct {
 
 type CapabilitiesError struct {
 	DockerError        *string `json:"docker_error,omitempty"`
+	WatchtowerError    *string `json:"watchtower_error,omitempty"`
 	IndexerError       *string `json:"indexer_error,omitempty"`
 	LMSensorsError     *string `json:"lm_sensors_error,omitempty"`
 	SmartmontoolsError *string `json:"smartmontools_error,omitempty"`

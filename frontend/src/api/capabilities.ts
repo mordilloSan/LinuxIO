@@ -25,6 +25,8 @@ export interface CapabilityDef {
      *  package step). The Install button is disabled when PackageKit is
      *  unavailable. False for pure service-start actions. */
     requiresPackageKit: boolean;
+    /** True when the optional component requires Docker to be reachable. */
+    requiresDocker?: boolean;
   };
   /** Display name in the capability manager. */
   label: string;
@@ -57,6 +59,18 @@ export const CAPABILITIES = [
     icon: "mdi:docker",
     reasonUnknown: "Docker availability is still being checked.",
     reasonUnavailable: "Docker service is unavailable.",
+  },
+  {
+    wire: "watchtower",
+    state: "watchtowerAvailable",
+    label: "Watchtower",
+    description: "Container auto-update engine",
+    readyText: "LinuxIO Watchtower binary is installed.",
+    dependency: "linuxio-watchtower",
+    icon: "mdi:update",
+    reasonUnknown: "Watchtower availability is still being checked.",
+    reasonUnavailable: "LinuxIO Watchtower binary is not installed.",
+    installable: { requiresPackageKit: false, requiresDocker: true },
   },
   {
     wire: "indexer",

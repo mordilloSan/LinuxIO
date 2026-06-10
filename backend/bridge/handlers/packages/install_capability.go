@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -28,6 +29,7 @@ type InstallCapabilityProgress struct {
 
 const (
 	stageResolve        = "resolve"
+	stageInstallAsset   = "install_asset"
 	stageInstallPackage = "install_package"
 	stageEnableService  = "enable_service"
 	stageStartService   = "start_service"
@@ -101,6 +103,16 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (a
 	pkg := pickByFamily(family, spec.Install.PackageDebian, spec.Install.PackageRHEL)
 	service := pickByFamily(family, spec.Install.ServiceDebian, spec.Install.ServiceRHEL)
 
+	if err := checkCapabilityInstallPrerequisites(ctx, job, spec); err != nil {
+		return apischema.InstallCapabilityResult{}, err
+	}
+
+	if spec.Install.OptionalComponent != "" {
+		if err := installOptionalComponent(ctx, job, spec); err != nil {
+			return apischema.InstallCapabilityResult{}, err
+		}
+	}
+
 	if pkg != "" {
 		reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", pkg), pctResolve)
 		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", pkg), pctInstallStart)
@@ -133,6 +145,30 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (a
 	reportProgress(job, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := detectWithRetry(ctx, spec, detectRetryTimeout)
 	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
+}
+
+func checkCapabilityInstallPrerequisites(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
+	if !spec.Install.RequiresDocker {
+		return nil
+	}
+	reportProgress(job, stageResolve, "Checking Docker availability", pctResolve)
+	available, err := docker.CheckDockerAvailability(ctx)
+	if err != nil {
+		return fmt.Errorf("docker is required to install %s: %w", spec.LogName, err)
+	}
+	if !available {
+		return fmt.Errorf("docker is required to install %s", spec.LogName)
+	}
+	return nil
+}
+
+func installOptionalComponent(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
+	switch spec.Install.OptionalComponent {
+	case system.OptionalComponentWatchtower:
+		return installWatchtower(ctx, job)
+	default:
+		return fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
+	}
 }
 
 func reportProgress(job *bridgejobs.Job, stage, message string, pct uint32) {

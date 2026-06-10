@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -14,6 +16,7 @@ import (
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // CapabilitySpec describes a single capability: how to detect it, how to
@@ -33,7 +36,17 @@ type InstallSpec struct {
 	ServiceDebian string
 	ServiceRHEL   string
 	EnableService bool
+
+	// OptionalComponent names a LinuxIO-managed install that is not provided by
+	// the distro package manager.
+	OptionalComponent string
+	RequiresDocker    bool
 }
+
+const (
+	OptionalComponentWatchtower = "watchtower"
+	WatchtowerBinaryName        = "linuxio-watchtower"
+)
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -41,6 +54,17 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Docker service",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(docker.CheckDockerAvailability(ctx))
+		},
+	},
+	{
+		Name:    "watchtower",
+		LogName: "Watchtower",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkWatchtowerAvailability())
+		},
+		Install: &InstallSpec{
+			OptionalComponent: OptionalComponentWatchtower,
+			RequiresDocker:    true,
 		},
 	},
 	{
@@ -152,6 +176,24 @@ func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	return true, nil
 }
 
+func checkWatchtowerAvailability() (bool, error) {
+	path := filepath.Join(version.BinDir, WatchtowerBinaryName)
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, fmt.Errorf("%s not found", path)
+		}
+		return false, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return false, fmt.Errorf("%s is a directory", path)
+	}
+	if info.Mode()&0o111 == 0 {
+		return false, fmt.Errorf("%s is not executable", path)
+	}
+	return true, nil
+}
+
 func checkedCapability(ok bool, err error) (bool, string) {
 	return checkedCapabilityErr(ok, err, nil)
 }
@@ -194,6 +236,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 	switch name {
 	case "docker":
 		out.DockerAvailable, out.DockerError = ok, errPtr
+	case "watchtower":
+		out.WatchtowerAvailable, out.WatchtowerError = ok, errPtr
 	case "indexer":
 		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "lm_sensors":

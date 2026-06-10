@@ -224,6 +224,7 @@ export interface CaddyStatusResponse {
 
 export interface CapabilitiesResponse {
   docker_available: boolean;
+  watchtower_available: boolean;
   indexer_available: boolean;
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
@@ -234,6 +235,7 @@ export interface CapabilitiesResponse {
   avahi_available: boolean;
   wireguard_available: boolean;
   docker_error?: string;
+  watchtower_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
   smartmontools_error?: string;

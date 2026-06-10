@@ -181,6 +181,9 @@ open-pr:
 	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
+	  if [ -n "$(strip $(RELEASE_PRE_PR_TARGETS))" ]; then \
+	    $(MAKE) --no-print-directory $(RELEASE_PRE_PR_TARGETS); \
+	  fi; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  CREATED=0; \

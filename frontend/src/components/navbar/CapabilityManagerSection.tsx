@@ -77,6 +77,8 @@ const CapabilityManagerSection: React.FC = () => {
 
   const packageKitAvailable =
     latest?.packagekit_available ?? auth.packageKitAvailable ?? false;
+  const dockerAvailable =
+    latest?.docker_available ?? auth.dockerAvailable ?? false;
 
   const rows = useMemo(
     () =>
@@ -260,14 +262,20 @@ const CapabilityManagerSection: React.FC = () => {
             showInstall &&
             row.installable?.requiresPackageKit === true &&
             !packageKitAvailable;
+          const blockedByDocker =
+            showInstall &&
+            row.installable?.requiresDocker === true &&
+            !dockerAvailable;
           const installing = installingWire === row.wire;
           const installDisabled =
-            installingWire !== null || blockedByPackageKit;
+            installingWire !== null || blockedByPackageKit || blockedByDocker;
           const installTooltip = blockedByPackageKit
             ? "Install requires PackageKit, which is itself unavailable. Install PackageKit from a shell first."
-            : installing
-              ? "Installing…"
-              : `Install ${row.label}`;
+            : blockedByDocker
+              ? "Install requires Docker to be available first."
+              : installing
+                ? "Installing…"
+                : `Install ${row.label}`;
 
           return (
             <FrostedCard
