@@ -475,7 +475,11 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
             marginTop: 8,
           }}
         >
-          <PathPickerField label="Folder Path" onChange={setPath} value={path} />
+          <PathPickerField
+            label="Folder Path"
+            onChange={setPath}
+            value={path}
+          />
 
           <div
             style={{

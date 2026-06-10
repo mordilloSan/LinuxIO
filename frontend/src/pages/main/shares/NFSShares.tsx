@@ -317,7 +317,11 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
             marginTop: 8,
           }}
         >
-          <PathPickerField label="Export Path" onChange={setPath} value={path} />
+          <PathPickerField
+            label="Export Path"
+            onChange={setPath}
+            value={path}
+          />
           <AppTypography style={{ marginTop: 4 }} variant="subtitle2">
             Client Access Rules
           </AppTypography>
