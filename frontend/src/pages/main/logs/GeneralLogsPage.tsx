@@ -770,18 +770,9 @@ const GeneralLogsPage: React.FC = () => {
         fieldFilters,
       );
       return (
-        <>
+        <div className="expand-panel">
           {filterableEntries.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: theme.spacing(0.75),
-                marginTop: theme.spacing(-1),
-                marginBottom: theme.spacing(3.5),
-              }}
-            >
+            <div className="expand-panel__chips">
               {filterableEntries.map(({ key, value }) => {
                 const filter = `${key}=${value}`;
                 return (
@@ -799,27 +790,28 @@ const GeneralLogsPage: React.FC = () => {
               })}
             </div>
           )}
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Full Message:</b>
-          </AppTypography>
-          <AppPaper
-            style={{
-              padding: 8,
-              marginBottom: 8,
-              backgroundColor: theme.codeBlock.background,
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxWidth: "100%",
-              overflowX: "auto",
-            }}
-          >
-            {log.message}
-          </AppPaper>
+          <div>
+            <AppTypography gutterBottom variant="subtitle2">
+              <b>Full Message:</b>
+            </AppTypography>
+            <AppPaper
+              style={{
+                padding: 8,
+                backgroundColor: theme.codeBlock.background,
+                fontFamily: "monospace",
+                fontSize: "0.85rem",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                maxWidth: "100%",
+                overflowX: "auto",
+              }}
+            >
+              {log.message}
+            </AppPaper>
+          </div>
 
           {log.rawJson && (
-            <>
+            <div>
               <AppTypography gutterBottom variant="subtitle2">
                 <b>Raw Journal Entry:</b>
               </AppTypography>
@@ -847,9 +839,9 @@ const GeneralLogsPage: React.FC = () => {
                   {JSON.stringify(log.rawJson, null, 2)}
                 </pre>
               </AppPaper>
-            </>
+            </div>
           )}
-        </>
+        </div>
       );
     },
     [theme, fieldFilters, addFieldFilter],

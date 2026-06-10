@@ -244,58 +244,41 @@ const UsersTab: React.FC<UsersTabProps> = ({
           getRowKey={(user) => user.username}
           onRowClick={(user) => setSelectedUsername(user.username)}
           renderExpandedContent={(user) => (
-            <>
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Home Directory:</b>
-              </AppTypography>
-              <AppTypography
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                }}
-                variant="body2"
-              >
-                {user.homeDir}
-              </AppTypography>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Shell:</b>
-              </AppTypography>
-              <AppTypography
-                style={{
-                  marginBottom: 8,
-                  fontSize: "0.85rem",
-                }}
-                variant="body2"
-              >
-                {user.shell}
-              </AppTypography>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>All Groups:</b>
-              </AppTypography>
-              <div
-                style={{
-                  marginBottom: 8,
-                  display: "flex",
-                  flexWrap: "wrap",
-                }}
-              >
-                {getAllGroups(user).map((group, idx) => (
-                  <Chip
-                    key={group}
-                    label={idx === 0 ? `${group} (primary)` : group}
-                    size="small"
-                    style={{
-                      marginRight: 4,
-                      marginBottom: 4,
-                    }}
-                    variant="soft"
-                  />
-                ))}
+            <div className="expand-panel">
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Home Directory:</b>
+                </AppTypography>
+                <AppTypography className="expand-panel__mono" variant="body2">
+                  {user.homeDir}
+                </AppTypography>
               </div>
-            </>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Shell:</b>
+                </AppTypography>
+                <AppTypography className="expand-panel__mono" variant="body2">
+                  {user.shell}
+                </AppTypography>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>All Groups:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {getAllGroups(user).map((group, idx) => (
+                    <Chip
+                      key={group}
+                      label={idx === 0 ? `${group} (primary)` : group}
+                      size="small"
+                      variant="soft"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
           renderMainRow={(user) => (
             <>

@@ -120,3 +120,50 @@
     padding: 0 !important;
   }
 }
+
+/* ── inverse: show only below a breakpoint ───── */
+/* Mirrors app-table-hide-below-*: visible only while the matching
+   column is hidden, so detail panels can surface the missing values. */
+
+@media (min-width: 600px) {
+  .app-table-only-below-sm {
+    display: none !important;
+  }
+}
+
+@media (min-width: 900px) {
+  .app-table-only-below-md {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-table-only-below-lg {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1536px) {
+  .app-table-only-below-xl {
+    display: none !important;
+  }
+}
+
+/* ── Expanded content panels ────────────────── */
+
+.expand-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expand-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.expand-panel__mono {
+  font-family: monospace;
+  font-size: 0.85rem;
+}

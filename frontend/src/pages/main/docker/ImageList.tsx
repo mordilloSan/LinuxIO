@@ -353,80 +353,68 @@ const ImageList: React.FC<ImageListProps> = ({
           emptyMessage="No images found."
           getRowKey={(image) => `${image.id}-${image.tag}`}
           renderExpandedContent={(image) => (
-            <>
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Full Image ID:</b>
-              </AppTypography>
-              <AppTypography
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                  ...longTextStyles,
-                }}
-                variant="body2"
-              >
-                {image.id}
-              </AppTypography>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Labels:</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {image.raw.Labels &&
-                Object.keys(image.raw.Labels).length > 0 ? (
-                  Object.entries(image.raw.Labels).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{
-                        mr: 1,
-                        mb: 1,
-                        ...wrappableChipStyles,
-                      }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no labels)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Image Digests:</b>
-              </AppTypography>
+            <div className="expand-panel">
               <div>
-                {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
-                  image.raw.RepoDigests.map((digest) => (
-                    <AppTypography
-                      key={digest}
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: "0.8rem",
-                        marginBottom: 2,
-                        ...longTextStyles,
-                      }}
-                      variant="body2"
-                    >
-                      {digest}
-                    </AppTypography>
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no digests)
-                  </AppTypography>
-                )}
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Full Image ID:</b>
+                </AppTypography>
+                <AppTypography
+                  className="expand-panel__mono"
+                  style={longTextStyles}
+                  variant="body2"
+                >
+                  {image.id}
+                </AppTypography>
               </div>
-            </>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Labels:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {image.raw.Labels &&
+                  Object.keys(image.raw.Labels).length > 0 ? (
+                    Object.entries(image.raw.Labels).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        sx={wrappableChipStyles}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no labels)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Image Digests:</b>
+                </AppTypography>
+                <div>
+                  {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
+                    image.raw.RepoDigests.map((digest) => (
+                      <AppTypography
+                        key={digest}
+                        className="expand-panel__mono"
+                        style={longTextStyles}
+                        variant="body2"
+                      >
+                        {digest}
+                      </AppTypography>
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no digests)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
           renderFirstCell={(image) => (
             <AppCheckbox

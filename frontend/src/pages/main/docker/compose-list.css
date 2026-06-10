@@ -1,10 +1,11 @@
 .compose-expanded-table .app-table-cell {
-  padding-block: 7px;
+  padding-block: 2px;
 }
 
 .compose-expanded-table .app-table-head .app-table-cell {
   color: var(--color-text-disabled);
   font-weight: 700;
+  padding-bottom: 2px;
 }
 
 .compose-container-row .app-table-cell {
@@ -37,6 +38,5 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
   min-width: 160px;
 }

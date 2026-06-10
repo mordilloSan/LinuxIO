@@ -438,107 +438,94 @@ const NetworkList: React.FC<NetworkListProps> = ({
           emptyMessage="No networks found."
           getRowKey={(network) => network.Id}
           renderExpandedContent={(network) => (
-            <>
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Full Network ID:</b>
-              </AppTypography>
-              <AppTypography
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                  ...longTextStyles,
-                }}
-                variant="body2"
-              >
-                {network.Id}
-              </AppTypography>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Subnet(s):</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
-                  network.IPAM.Config.map((ipam, i) => (
-                    <Chip
-                      key={i}
-                      label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
-                      size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no IPAM config)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Options:</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {network.Options && Object.keys(network.Options).length > 0 ? (
-                  Object.entries(network.Options).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no options)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Labels:</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {network.Labels && Object.keys(network.Labels).length > 0 ? (
-                  Object.entries(network.Labels).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no labels)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Connected Containers:</b>
-              </AppTypography>
+            <div className="expand-panel">
               <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Full Network ID:</b>
+                </AppTypography>
+                <AppTypography
+                  className="expand-panel__mono"
+                  style={longTextStyles}
+                  variant="body2"
+                >
+                  {network.Id}
+                </AppTypography>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Subnet(s):</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
+                    network.IPAM.Config.map((ipam, i) => (
+                      <Chip
+                        key={i}
+                        label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
+                        size="small"
+                        sx={wrappableChipStyles}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no IPAM config)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Options:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.Options && Object.keys(network.Options).length > 0 ? (
+                    Object.entries(network.Options).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        sx={wrappableChipStyles}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no options)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Labels:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.Labels && Object.keys(network.Labels).length > 0 ? (
+                    Object.entries(network.Labels).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        sx={wrappableChipStyles}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no labels)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Connected Containers:</b>
+                </AppTypography>
+                <div>
                 {network.Containers &&
                 Object.keys(network.Containers).length > 0 ? (
                   <AppTable
@@ -635,7 +622,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
                   </AppTypography>
                 )}
               </div>
-            </>
+              </div>
+            </div>
           )}
           renderFirstCell={(network) => (
             <AppCheckbox

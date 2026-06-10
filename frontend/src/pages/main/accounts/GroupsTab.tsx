@@ -135,20 +135,17 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           emptyMessage="No groups found."
           getRowKey={(group) => group.name}
           renderExpandedContent={(group) => (
-            <>
+            <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <b>All Members ({group.members.length}):</b>
               </AppTypography>
-              <div
-                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
-              >
+              <div className="expand-panel__chips">
                 {group.members.length > 0 ? (
                   group.members.map((member) => (
                     <Chip
                       key={member}
                       label={member}
                       size="small"
-                      style={{ marginRight: 4, marginBottom: 4 }}
                       variant="soft"
                     />
                   ))
@@ -158,7 +155,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                   </AppTypography>
                 )}
               </div>
-            </>
+            </div>
           )}
           renderMainRow={(group) => (
             <>

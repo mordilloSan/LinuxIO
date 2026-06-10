@@ -645,32 +645,28 @@ const SambaShares: React.FC<SambaSharesProps> = ({
           emptyMessage="No Samba shares found. Click 'Add Share' to create one."
           getRowKey={(share) => share.name}
           renderExpandedContent={(share) => (
-            <div>
+            <div className="expand-panel">
               {share.properties["comment"] && (
                 <AppTypography gutterBottom variant="subtitle2">
                   <strong>Comment:</strong> {share.properties["comment"]}
                 </AppTypography>
               )}
-              <AppTypography gutterBottom variant="subtitle2">
-                <strong>All Properties:</strong>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                }}
-              >
-                {Object.entries(share.properties)
-                  .filter(([key]) => key !== "path")
-                  .map(([key, value]) => (
-                    <Chip
-                      key={key}
-                      label={`${key} = ${value}`}
-                      size="small"
-                      variant="soft"
-                    />
-                  ))}
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <strong>All Properties:</strong>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {Object.entries(share.properties)
+                    .filter(([key]) => key !== "path")
+                    .map(([key, value]) => (
+                      <Chip
+                        key={key}
+                        label={`${key} = ${value}`}
+                        size="small"
+                        variant="soft"
+                      />
+                    ))}
+                </div>
               </div>
             </div>
           )}

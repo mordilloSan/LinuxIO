@@ -169,10 +169,8 @@ function UnifiedCollapsibleTable<T>({
                           >
                             <div
                               style={{
-                                margin: 16,
-                                borderRadius: 16,
-                                padding: 16,
                                 overflowX: "auto",
+                                padding: "10px 0",
                               }}
                             >
                               {renderExpandedContent(row, index)}

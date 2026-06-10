@@ -1029,7 +1029,7 @@ function renderExpandedContent(
           <AppTypography gutterBottom variant="subtitle2">
             <strong>SMB</strong>
           </AppTypography>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <div className="expand-panel__chips">
             {Object.entries(group.samba.properties).map(([key, value]) => (
               <Chip
                 key={key}
@@ -1057,18 +1057,11 @@ function renderExpandedContent(
           </AppTypography>
           {group.nfs.clients.length > 0 ? (
             group.nfs.clients.map((client, index) => (
-              <div key={index} style={{ marginBottom: 6 }}>
+              <div key={index}>
                 <AppTypography variant="body2">
                   <strong>{client.host}</strong>
                 </AppTypography>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 4,
-                    marginTop: 2,
-                  }}
-                >
+                <div className="expand-panel__chips">
                   {client.options?.length ? (
                     client.options.map((option) => (
                       <Chip

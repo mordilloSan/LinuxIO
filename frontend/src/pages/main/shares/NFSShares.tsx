@@ -730,23 +730,16 @@ const NFSShares: React.FC<NFSSharesProps> = ({
           emptyMessage="No NFS exports found. Click 'Add Export' to create one."
           getRowKey={(share) => share.path}
           renderExpandedContent={(share) => (
-            <div>
+            <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <strong>Client Access Rules:</strong>
               </AppTypography>
               {share.clients.map((client: NFSClient, i: number) => (
-                <div key={i} style={{ marginBottom: 4 }}>
+                <div key={i}>
                   <AppTypography variant="body2">
                     <strong>{client.host}</strong>
                   </AppTypography>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginTop: 2,
-                    }}
-                  >
+                  <div className="expand-panel__chips">
                     {client.options?.length > 0 ? (
                       client.options.map((opt: string, j: number) => (
                         <Chip key={j} label={opt} size="small" variant="soft" />

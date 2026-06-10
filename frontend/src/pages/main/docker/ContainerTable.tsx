@@ -2,7 +2,6 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
 
 import ActionButton from "./ActionButton";
@@ -73,6 +72,7 @@ const formatUptime = (createdUnix: number) => {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 };
+
 
 // ── Per-row component ─────────────────────────────────────────────────────────
 
@@ -379,29 +379,77 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
           {ports.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {ports.slice(0, 2).map((p, i) => (
-                <AppTypography
-                  key={i}
-                  noWrap
-                  style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
-                  variant="body2"
-                >
-                  <span style={{ color: theme.palette.text.primary }}>
-                    {p.PrivatePort}/{p.Type}
-                  </span>
-                  <span
-                    style={{
-                      color: theme.palette.text.disabled,
-                      marginInline: 2,
+                <AppTooltip key={i} title={`${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`}>
+                  <AppTypography
+                    noWrap
+                    onClick={() => {
+                      const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
+                      navigator.clipboard.writeText(text);
+                      toast.success("Copied to clipboard");
                     }}
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: "0.75rem",
+                      cursor: "pointer"
+                    }}
+                    variant="body2"
                   >
-                    →
-                  </span>
-                  <span style={{ color: theme.palette.text.secondary }}>
-                    {p.PublicPort ?? "—"}
-                  </span>
-                </AppTypography>
+                    <span style={{ color: theme.palette.text.primary }}>
+                      {p.PrivatePort}/{p.Type}
+                    </span>
+                    <span
+                      style={{
+                        color: theme.palette.text.disabled,
+                        marginInline: 2,
+                      }}
+                    >
+                      →
+                    </span>
+                    <span style={{ color: theme.palette.text.secondary }}>
+                      {p.PublicPort ?? "—"}
+                    </span>
+                  </AppTypography>
+                </AppTooltip>
               ))}
-              {ports.length > 2 && (
+              <AppCollapse in={expanded} timeout={600}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {ports.length > 2 &&
+                    ports.slice(2).map((p, i) => (
+                      <AppTooltip key={i + 2} title={`${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`}>
+                        <AppTypography
+                          noWrap
+                          onClick={() => {
+                            const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
+                            navigator.clipboard.writeText(text);
+                            toast.success("Copied to clipboard");
+                          }}
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: "0.75rem",
+                            cursor: "pointer"
+                          }}
+                          variant="body2"
+                        >
+                          <span style={{ color: theme.palette.text.primary }}>
+                            {p.PrivatePort}/{p.Type}
+                          </span>
+                          <span
+                            style={{
+                              color: theme.palette.text.disabled,
+                              marginInline: 2,
+                            }}
+                          >
+                            →
+                          </span>
+                          <span style={{ color: theme.palette.text.secondary }}>
+                            {p.PublicPort ?? "—"}
+                          </span>
+                        </AppTypography>
+                      </AppTooltip>
+                    ))}
+                </div>
+              </AppCollapse>
+              {!expanded && ports.length > 2 && (
                 <AppTypography color="text.disabled" variant="caption">
                   +{ports.length - 2} more
                 </AppTypography>
@@ -415,17 +463,27 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         </AppTableCell>
 
         {/* Volumes (App → Host) */}
-        <AppTableCell
-          className="app-table-hide-below-xl"
-          style={{ maxWidth: 280 }}
-        >
+        <AppTableCell className="app-table-hide-below-xl" style={{ maxWidth: 280 }}>
           {mounts.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {mounts.slice(0, 2).map((m, i) => (
-                <AppTooltip key={i} title={`${m.Destination} → ${m.Source}`}>
+                <AppTooltip
+                  className="app-tooltip--content-width"
+                  key={i}
+                  title={`${m.Destination} → ${m.Source}`}
+                >
                   <AppTypography
                     noWrap
-                    style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                    onClick={() => {
+                      const text = `${m.Destination} → ${m.Source}`;
+                      navigator.clipboard.writeText(text);
+                      toast.success("Copied to clipboard");
+                    }}
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: "0.75rem",
+                      cursor: "pointer"
+                    }}
                     variant="body2"
                   >
                     <span style={{ color: theme.palette.text.primary }}>
@@ -445,7 +503,49 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   </AppTypography>
                 </AppTooltip>
               ))}
-              {mounts.length > 2 && (
+              <AppCollapse in={expanded} timeout={600}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {mounts.length > 2 &&
+                    mounts.slice(2).map((m, i) => (
+                      <AppTooltip
+                        className="app-tooltip--content-width"
+                        key={i + 2}
+                        title={`${m.Destination} → ${m.Source}`}
+                      >
+                        <AppTypography
+                          noWrap
+                          onClick={() => {
+                            const text = `${m.Destination} → ${m.Source}`;
+                            navigator.clipboard.writeText(text);
+                            toast.success("Copied to clipboard");
+                          }}
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: "0.75rem",
+                            cursor: "pointer"
+                          }}
+                          variant="body2"
+                        >
+                          <span style={{ color: theme.palette.text.primary }}>
+                            {m.Destination}
+                          </span>
+                          <span
+                            style={{
+                              color: theme.palette.text.disabled,
+                              marginInline: 2,
+                            }}
+                          >
+                            →
+                          </span>
+                          <span style={{ color: theme.palette.text.secondary }}>
+                            {m.Source}
+                          </span>
+                        </AppTypography>
+                      </AppTooltip>
+                    ))}
+                </div>
+              </AppCollapse>
+              {!expanded && mounts.length > 2 && (
                 <AppTypography color="text.disabled" variant="caption">
                   +{mounts.length - 2} more
                 </AppTypography>
@@ -610,6 +710,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               </span>
             </AppTooltip>
             <AppIconButton
+              className="container-expand-toggle"
               onClick={() => setExpanded((v) => !v)}
               size="small"
               style={{
@@ -631,135 +732,6 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
           </div>
         </AppTableCell>
       </AppTableRow>
-
-      {/* Expanded row — full ports + volumes */}
-      {(ports.length > 2 || mounts.length > 2) && (
-        <AppTableRow style={{ backgroundColor: "transparent" }}>
-          <AppTableCell
-            colSpan={editMode ? 10 : 9}
-            style={{ paddingBottom: 0, paddingTop: 0 }}
-          >
-            <AppCollapse in={expanded} timeout="auto" unmountOnExit>
-              <motion.div
-                animate={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: -8 }}
-                style={{
-                  marginInline: 8,
-                  marginBottom: 4,
-                  borderRadius: 8,
-                  padding: 6,
-                  display: "flex",
-                  gap: 16,
-                  flexWrap: "wrap",
-                  backgroundColor: alpha(
-                    theme.palette.text.primary,
-                    theme.palette.mode === "dark" ? 0.04 : 0.03,
-                  ),
-                }}
-              >
-                {ports.length > 2 && (
-                  <div>
-                    <AppTypography
-                      color="text.secondary"
-                      fontWeight={600}
-                      style={{
-                        display: "block",
-                        marginBottom: 3,
-                      }}
-                      variant="caption"
-                    >
-                      ALL PORTS (Container → Host)
-                    </AppTypography>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                      }}
-                    >
-                      {ports.map((p, i) => (
-                        <AppTypography
-                          key={i}
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.75rem",
-                          }}
-                          variant="body2"
-                        >
-                          <span style={{ color: theme.palette.text.primary }}>
-                            {p.PrivatePort}/{p.Type}
-                          </span>
-                          <span
-                            style={{
-                              color: theme.palette.text.disabled,
-                              marginInline: 3,
-                            }}
-                          >
-                            →
-                          </span>
-                          <span style={{ color: theme.palette.text.secondary }}>
-                            {p.PublicPort
-                              ? `${p.IP && p.IP !== "0.0.0.0" ? p.IP + ":" : ""}${p.PublicPort}`
-                              : "—"}
-                          </span>
-                        </AppTypography>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {mounts.length > 2 && (
-                  <div>
-                    <AppTypography
-                      color="text.secondary"
-                      fontWeight={600}
-                      style={{
-                        display: "block",
-                        marginBottom: 3,
-                      }}
-                      variant="caption"
-                    >
-                      ALL VOLUMES (App → Host)
-                    </AppTypography>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                      }}
-                    >
-                      {mounts.map((m, i) => (
-                        <AppTypography
-                          key={i}
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.75rem",
-                          }}
-                          variant="body2"
-                        >
-                          <span style={{ color: theme.palette.text.primary }}>
-                            {m.Destination}
-                          </span>
-                          <span
-                            style={{
-                              color: theme.palette.text.disabled,
-                              marginInline: 3,
-                            }}
-                          >
-                            →
-                          </span>
-                          <span style={{ color: theme.palette.text.secondary }}>
-                            {m.Source}
-                          </span>
-                        </AppTypography>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            </AppCollapse>
-          </AppTableCell>
-        </AppTableRow>
-      )}
 
       <Suspense fallback={null}>
         {hasLoadedLogs && (
