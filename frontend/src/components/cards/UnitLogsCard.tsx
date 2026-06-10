@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import { openServiceLogsStream } from "@/api";
+import { openServiceLogsStream, type Stream } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
@@ -12,16 +12,23 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {
+  /** Stream factory; defaults to the systemd service log stream for `unitName`. */
+  createStream?: (tail: string) => Stream | null;
   title: string;
-  unitName: string;
+  unitName?: string;
 }
 
-const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
+const UnitLogsCard: React.FC<UnitLogsCardProps> = ({
+  unitName,
+  title,
+  createStream,
+}) => {
   const theme = useAppTheme();
   const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
     useLogStream({
       open: true,
-      createStream: (tail) => openServiceLogsStream(unitName, tail),
+      createStream:
+        createStream ?? ((tail) => openServiceLogsStream(unitName ?? "", tail)),
     });
 
   return (

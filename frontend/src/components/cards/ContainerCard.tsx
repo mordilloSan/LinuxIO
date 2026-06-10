@@ -1,22 +1,17 @@
+import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
+import ContainerInfoSections from "../../pages/main/docker/ContainerInfoSections";
 import AppCircularProgress from "../ui/AppCircularProgress";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import AppCollapse from "@/components/ui/AppCollapse";
-import AppDivider from "@/components/ui/AppDivider";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -63,9 +58,15 @@ const resolveColor = (palette: any, path: string): string => {
 
 interface ContainerCardProps {
   container: ContainerInfo;
+  onSelect?: () => void;
+  selected?: boolean;
 }
 
-const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
+const ContainerCard: React.FC<ContainerCardProps> = ({
+  container,
+  onSelect,
+  selected = false,
+}) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const queryClient = useQueryClient();
@@ -75,30 +76,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
   const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
-
-  // expand / collapse
-  const [expanded, setExpanded] = useState(false);
-  const ports = useMemo(() => {
-    const seen = new Set<string>();
-    return (container.Ports ?? []).filter((p) => {
-      const key = p.PublicPort
-        ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
-        : `${p.PrivatePort}/${p.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [container.Ports]);
-  const hasPorts = ports.length > 0;
-
-  useEffect(() => {
-    if (!expanded) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(false);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [expanded]);
 
   // derived
   const name = useMemo(
@@ -252,18 +229,134 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const memPercent =
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
+  const statusColor = resolveColor(theme.palette, getStatusColor(container));
+
+  // Service-style action buttons + auto-update, shown in the selected card.
+  const selectedActions = (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 6,
+        marginTop: 12,
+        minWidth: 0,
+      }}
+    >
+      {isManagedContainer ? (
+        <Chip
+          label="Managed by LinuxIO"
+          size="small"
+          style={{ fontSize: "0.7rem" }}
+          variant="soft"
+        />
+      ) : (
+        <>
+          {container.State === "running" ? (
+            <AppButton
+              color="error"
+              disabled={isActionPending}
+              onClick={() => handleAction("stop")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
+              variant="outlined"
+            >
+              Stop
+            </AppButton>
+          ) : (
+            <AppButton
+              color="success"
+              disabled={isActionPending}
+              onClick={() => handleAction("start")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:play" width={16} />}
+              variant="outlined"
+            >
+              Start
+            </AppButton>
+          )}
+          <AppButton
+            disabled={isActionPending}
+            onClick={() => handleAction("restart")}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
+            variant="outlined"
+          >
+            Restart
+          </AppButton>
+          <AppButton
+            color="error"
+            disabled={isActionPending}
+            onClick={() => handleAction("remove")}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
+            variant="outlined"
+          >
+            Remove
+          </AppButton>
+          <AppButton
+            disabled={isActionPending}
+            onClick={handleTerminalClick}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:console" width={16} />}
+            variant="outlined"
+          >
+            Terminal
+          </AppButton>
+        </>
+      )}
+      {container.url && (
+        <AppButton
+          onClick={() => window.open(container.url, "_blank", "noopener")}
+          size="small"
+          startIcon={<Icon height={16} icon="mdi:open-in-new" width={16} />}
+          variant="outlined"
+        >
+          Open
+        </AppButton>
+      )}
+      <AppTooltip title={autoUpdateTooltip}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            marginLeft: "auto",
+          }}
+        >
+          <AppTypography
+            color={isManagedContainer ? "text.disabled" : "text.secondary"}
+            variant="caption"
+          >
+            Auto Update
+          </AppTypography>
+          <AppSwitch
+            checked={autoUpdateChecked}
+            disabled={autoUpdateDisabled}
+            onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+            size="small"
+          />
+        </span>
+      </AppTooltip>
+    </div>
+  );
+
   return (
     <FrostedCard
-      hoverLift={hasPorts}
-      onClick={hasPorts ? () => setExpanded((v) => !v) : undefined}
-      onMouseDown={hasPorts ? (e) => e.preventDefault() : undefined}
+      hoverLift={!selected}
+      onClick={onSelect}
       style={{
-        padding: 8,
+        padding: 12,
         display: "flex",
         flexDirection: "column",
         height: "100%",
+        width: "100%",
         position: "relative",
-        cursor: hasPorts ? "pointer" : "default",
+        cursor: onSelect ? "pointer" : "default",
+        border: "none",
+        transition: "transform 0.2s, box-shadow 0.2s",
       }}
     >
       {/* Loading overlay */}
@@ -284,143 +377,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         </div>
       )}
 
-      {/* Status dot */}
-      <StatusDot
-        absolute
-        color={resolveColor(theme.palette, getStatusColor(container))}
-        tooltip={getStatusTooltip(container)}
-      />
-
-      {/* Top row: Icon + Name + Buttons */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          width: "100%",
-        }}
-      >
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            minWidth: 48,
-            minHeight: 48,
-            flexShrink: 0,
-            marginRight: 6,
-            alignSelf: "flex-start",
-          }}
-        >
-          <DockerIcon alt={name} identifier={container.icon} size={48} />
-        </div>
-        <div style={{ flex: 0.95, minWidth: 0 }}>
-          <AppTypography
-            copyText={name}
-            fontWeight={600}
-            noWrap
-            style={{
-              marginLeft: 4,
-              marginRight: 0.4,
-              marginBottom: 2,
-              fontSize: "1.05rem",
-            }}
-            title={name}
-            toastMeta={DOCKER_TOAST_META}
-            variant="subtitle1"
-          >
-            {name}
-          </AppTypography>
-          <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-            {isManagedContainer ? (
-              <AppTooltip arrow title="View Logs">
-                <Chip
-                  className="chip-interactive"
-                  label="Managed by LinuxIO"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleLogsClick();
-                  }}
-                  size="small"
-                  style={{
-                    fontSize: "0.68rem",
-                  }}
-                  variant="soft"
-                />
-              </AppTooltip>
-            ) : (
-              <>
-                {container.State !== "running" && (
-                  <AppTooltip arrow title="Start Container">
-                    <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
-                        icon="mdi:play"
-                        onClick={() => handleAction("start")}
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                {container.State === "running" && (
-                  <AppTooltip arrow title="Stop Container">
-                    <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
-                        icon="mdi:stop"
-                        onClick={() => handleAction("stop")}
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                <AppTooltip arrow title="Restart Container">
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
-                      icon="mdi:restart"
-                      onClick={() => handleAction("restart")}
-                    />
-                  </span>
-                </AppTooltip>
-                <AppTooltip arrow title="Remove Container">
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
-                      icon="mdi:delete"
-                      onClick={() => handleAction("remove")}
-                    />
-                  </span>
-                </AppTooltip>
-                <AppTooltip arrow title="View Logs">
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
-                      icon="mdi:file-document-outline"
-                      onClick={handleLogsClick}
-                    />
-                  </span>
-                </AppTooltip>
-              </>
-            )}
-            {!isManagedContainer && (
-              <AppTooltip arrow title="Open Terminal">
-                <span onClick={(e) => e.stopPropagation()}>
-                  <ActionButton
-                    icon="mdi:console"
-                    onClick={handleTerminalClick}
-                  />
-                </span>
-              </AppTooltip>
-            )}
-            {container.url && (
-              <AppTooltip arrow title="Open App">
-                <span onClick={(e) => e.stopPropagation()}>
-                  <ActionButton
-                    icon="mdi:open-in-new"
-                    onClick={() =>
-                      window.open(container.url, "_blank", "noopener")
-                    }
-                  />
-                </span>
-              </AppTooltip>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {/* Lazy dialogs (logs / terminal) */}
       <Suspense fallback={null}>
         {hasLoadedLogsDialog && (
           <LogsDialog
@@ -430,7 +387,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             open={logDialogOpen}
           />
         )}
-
         {hasLoadedTerminalDialog && (
           <TerminalDialog
             containerId={container.Id}
@@ -441,76 +397,285 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         )}
       </Suspense>
 
-      {/* Metrics area: full width */}
-      <div style={{ marginTop: 8, width: "100%" }}>
-        <MetricBar
-          color={theme.palette.primary.main}
-          label="CPU"
-          percent={cpuPercent}
-          rightLabel={`${cpuPercent.toFixed(1)}%`}
-          tooltip="CPU Usage"
-        />
-        <MetricBar
-          color={theme.palette.primary.main}
-          label="MEM"
-          percent={memPercent}
-          rightLabel={formatFileSize(memUsage)}
-          tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-        />
-      </div>
-
-      {/* Auto-update toggle */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginTop: 6,
-        }}
-      >
-        <AppTypography
-          color={isManagedContainer ? "text.disabled" : "text.secondary"}
-          variant="caption"
-        >
-          Auto Update
-        </AppTypography>
-        <AppTooltip title={autoUpdateTooltip}>
-          <span style={{ display: "inline-flex" }}>
-            <AppSwitch
-              checked={autoUpdateChecked}
-              disabled={autoUpdateDisabled}
-              onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
-              size="small"
+      {selected ? (
+        <>
+          {/* Header: icon + title/subtitle + status dot (matches service card) */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 12,
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <div style={{ width: 36, height: 36, flexShrink: 0 }}>
+                <DockerIcon alt={name} identifier={container.icon} size={36} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <AppTypography
+                  component="div"
+                  copyText={name}
+                  fontSize="0.875rem"
+                  fontWeight="bold"
+                  noWrap
+                  title={name}
+                  toastMeta={DOCKER_TOAST_META}
+                  variant="body2"
+                >
+                  {name}
+                </AppTypography>
+                <AppTypography
+                  color="text.secondary"
+                  component="div"
+                  fontSize="0.7rem"
+                  noWrap
+                  style={{ marginTop: 2 }}
+                  title={container.Image}
+                  variant="caption"
+                >
+                  {container.Image}
+                </AppTypography>
+              </div>
+            </div>
+            <span
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                backgroundColor: statusColor,
+                flexShrink: 0,
+                marginTop: 4,
+              }}
             />
-          </span>
-        </AppTooltip>
-      </div>
+          </div>
 
-      {/* Ports section */}
-      <AppCollapse in={expanded} timeout={250} unmountOnExit>
-        <AppDivider style={{ marginTop: 8, marginBottom: 12 }} />
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-          {ports.map((p, i) => {
-            const label = p.PublicPort
-              ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
-              : `${p.PrivatePort}/${p.Type}`;
-            return (
-              <Chip
-                key={i}
-                label={label}
-                size="small"
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.7rem",
-                  height: 22,
-                }}
-                variant="soft"
+          {/* Body: config sections (fills) + actions pinned to the bottom */}
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: theme.spacing(1.25),
+                minWidth: 0,
+                cursor: "default",
+              }}
+            >
+              <ContainerInfoSections
+                container={container}
+                sections={["overview", "networks", "volumes", "ports"]}
               />
-            );
-          })}
-        </div>
-      </AppCollapse>
+            </div>
+            {selectedActions}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Status dot */}
+          <StatusDot
+            absolute
+            color={statusColor}
+            tooltip={getStatusTooltip(container)}
+          />
+
+          {/* Top row: Icon + Name + action icons */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              width: "100%",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                minWidth: 48,
+                minHeight: 48,
+                flexShrink: 0,
+                marginRight: 6,
+                alignSelf: "flex-start",
+              }}
+            >
+              <DockerIcon alt={name} identifier={container.icon} size={48} />
+            </div>
+            <div style={{ flex: 0.95, minWidth: 0 }}>
+              <AppTypography
+                copyText={name}
+                fontWeight={600}
+                noWrap
+                style={{
+                  marginLeft: 4,
+                  marginRight: 0.4,
+                  marginBottom: 2,
+                  fontSize: "1.05rem",
+                }}
+                title={name}
+                toastMeta={DOCKER_TOAST_META}
+                variant="subtitle1"
+              >
+                {name}
+              </AppTypography>
+              <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                {isManagedContainer ? (
+                  <AppTooltip arrow title="View Logs">
+                    <Chip
+                      className="chip-interactive"
+                      label="Managed by LinuxIO"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLogsClick();
+                      }}
+                      size="small"
+                      style={{
+                        fontSize: "0.68rem",
+                      }}
+                      variant="soft"
+                    />
+                  </AppTooltip>
+                ) : (
+                  <>
+                    {container.State !== "running" && (
+                      <AppTooltip arrow title="Start Container">
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <ActionButton
+                            icon="mdi:play"
+                            onClick={() => handleAction("start")}
+                          />
+                        </span>
+                      </AppTooltip>
+                    )}
+                    {container.State === "running" && (
+                      <AppTooltip arrow title="Stop Container">
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <ActionButton
+                            icon="mdi:stop"
+                            onClick={() => handleAction("stop")}
+                          />
+                        </span>
+                      </AppTooltip>
+                    )}
+                    <AppTooltip arrow title="Restart Container">
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <ActionButton
+                          icon="mdi:restart"
+                          onClick={() => handleAction("restart")}
+                        />
+                      </span>
+                    </AppTooltip>
+                    <AppTooltip arrow title="Remove Container">
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <ActionButton
+                          icon="mdi:delete"
+                          onClick={() => handleAction("remove")}
+                        />
+                      </span>
+                    </AppTooltip>
+                    <AppTooltip arrow title="View Logs">
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <ActionButton
+                          icon="mdi:file-document-outline"
+                          onClick={handleLogsClick}
+                        />
+                      </span>
+                    </AppTooltip>
+                  </>
+                )}
+                {!isManagedContainer && (
+                  <AppTooltip arrow title="Open Terminal">
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:console"
+                        onClick={handleTerminalClick}
+                      />
+                    </span>
+                  </AppTooltip>
+                )}
+                {container.url && (
+                  <AppTooltip arrow title="Open App">
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:open-in-new"
+                        onClick={() =>
+                          window.open(container.url, "_blank", "noopener")
+                        }
+                      />
+                    </span>
+                  </AppTooltip>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Metrics area: full width */}
+          <div style={{ marginTop: 8, width: "100%" }}>
+            <MetricBar
+              color={theme.palette.primary.main}
+              label="CPU"
+              percent={cpuPercent}
+              rightLabel={`${cpuPercent.toFixed(1)}%`}
+              tooltip="CPU Usage"
+            />
+            <MetricBar
+              color={theme.palette.primary.main}
+              label="MEM"
+              percent={memPercent}
+              rightLabel={formatFileSize(memUsage)}
+              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+            />
+          </div>
+
+          {/* Auto-update toggle */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: 6,
+            }}
+          >
+            <AppTypography
+              color={isManagedContainer ? "text.disabled" : "text.secondary"}
+              variant="caption"
+            >
+              Auto Update
+            </AppTypography>
+            <AppTooltip title={autoUpdateTooltip}>
+              <span style={{ display: "inline-flex" }}>
+                <AppSwitch
+                  checked={autoUpdateChecked}
+                  disabled={autoUpdateDisabled}
+                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+                  size="small"
+                />
+              </span>
+            </AppTooltip>
+          </div>
+        </>
+      )}
     </FrostedCard>
   );
 };
