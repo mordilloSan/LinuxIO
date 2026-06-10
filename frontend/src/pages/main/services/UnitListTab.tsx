@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { motion } from "framer-motion";
 import { useSearchParams } from "react-router-dom";
 
 import type { UnitListItem } from "./UnitViews";
@@ -141,48 +142,55 @@ function UnitListTab<T extends UnitListItem>({
       )}
       {data !== undefined && (
         <>
-          <div
-            style={{
-              marginBottom: theme.spacing(2),
-              display: "flex",
-              alignItems: "center",
-              gap: theme.spacing(2),
-            }}
-          >
-            <AppSearchField
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={searchPlaceholder}
-              style={{ width: 320 }}
-              value={search}
-            />
-            <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
-          </div>
-
-          {viewMode === "card" ? (
-            renderCardsView({
-              items: filtered,
-              expanded,
-              onExpand: handleCardExpand,
-              renderDetailPanel: (item) =>
-                renderDetailPanel(item, () => handleCardExpand(null)),
-            })
-          ) : (
-            <AppGrid alignItems="flex-start" container spacing={3}>
-              <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
-                {renderTableView({
-                  items: filtered,
-                  selected: expanded,
-                  onSelect: setExpanded,
-                  onDoubleClick: handleOpenCardView,
-                })}
-              </AppGrid>
-              {selectedItem && (
-                <AppGrid size={{ xs: 12, md: 5 }}>
-                  {renderDetailPanel(selectedItem, () => setExpanded(null))}
-                </AppGrid>
-              )}
-            </AppGrid>
+          {!selectedItem && (
+            <div
+              style={{
+                marginBottom: theme.spacing(2),
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(2),
+              }}
+            >
+              <AppSearchField
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={searchPlaceholder}
+                style={{ width: 320 }}
+                value={search}
+              />
+              <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
+            </div>
           )}
+
+          <motion.div
+            layout="position"
+            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {viewMode === "card" ? (
+              renderCardsView({
+                items: filtered,
+                expanded,
+                onExpand: handleCardExpand,
+                renderDetailPanel: (item) =>
+                  renderDetailPanel(item, () => handleCardExpand(null)),
+              })
+            ) : (
+              <AppGrid alignItems="flex-start" container spacing={3}>
+                <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+                  {renderTableView({
+                    items: filtered,
+                    selected: expanded,
+                    onSelect: setExpanded,
+                    onDoubleClick: handleOpenCardView,
+                  })}
+                </AppGrid>
+                {selectedItem && (
+                  <AppGrid size={{ xs: 12, md: 5 }}>
+                    {renderDetailPanel(selectedItem, () => setExpanded(null))}
+                  </AppGrid>
+                )}
+              </AppGrid>
+            )}
+          </motion.div>
         </>
       )}
     </>

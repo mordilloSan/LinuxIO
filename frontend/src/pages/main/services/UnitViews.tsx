@@ -510,12 +510,19 @@ export function UnitCardsView<T extends UnitListItem>({
         gap: theme.spacing(3),
       }}
     >
-      <div
+      <motion.div
+        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, y: 14 }}
         style={{
           display: "flex",
           flexDirection: isCompactLayout ? "column" : "row",
           alignItems: "stretch",
           gap: theme.spacing(2.5),
+        }}
+        transition={{
+          duration: 0.65,
+          delay: 0.04,
+          ease: [0.22, 1, 0.36, 1],
         }}
       >
         <div
@@ -546,16 +553,24 @@ export function UnitCardsView<T extends UnitListItem>({
             flexShrink: 0,
             display: "flex",
           }}
-          transition={{ duration: 0.25, delay: 0.05 }}
+          transition={{
+            duration: 0.65,
+            delay: 0.08,
+            ease: [0.22, 1, 0.36, 1],
+          }}
         >
           {renderDetailPanel(expandedItem)}
         </motion.div>
-      </div>
+      </motion.div>
       {renderBottomPanel && (
         <motion.div
           animate={{ opacity: 1, y: 0 }}
           initial={{ opacity: 0, y: 20 }}
-          transition={{ duration: 0.25, delay: 0.1 }}
+          transition={{
+            duration: 0.65,
+            delay: 0.16,
+            ease: [0.22, 1, 0.36, 1],
+          }}
         >
           {renderBottomPanel(expandedItem)}
         </motion.div>
