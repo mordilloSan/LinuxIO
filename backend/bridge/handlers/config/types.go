@@ -51,9 +51,8 @@ type configThemeColorsPayload struct {
 }
 
 type configDockerPayload struct {
-	Folders          []string                  `json:"folders"`
-	AutoUpdateStacks []string                  `json:"autoUpdateStacks"`
-	Proxy            *configDockerProxyPayload `json:"proxy"`
+	Folders []string                  `json:"folders"`
+	Proxy   *configDockerProxyPayload `json:"proxy"`
 }
 
 type configDockerProxyPayload struct {

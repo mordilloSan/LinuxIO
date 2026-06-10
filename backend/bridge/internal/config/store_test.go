@@ -36,22 +36,18 @@ func TestUserStoreUpdatePersistsAndRefreshesMemory(t *testing.T) {
 
 	updated, err := store.Update(context.Background(), func(settings *Settings) error {
 		settings.AppSettings.Theme = ThemeLight
-		settings.Docker.AutoUpdateStacks = append(settings.Docker.AutoUpdateStacks, "app")
 		return nil
 	})
 	require.NoError(t, err)
 	require.Equal(t, ThemeLight, updated.AppSettings.Theme)
-	require.Equal(t, []string{"app"}, updated.Docker.AutoUpdateStacks)
 
 	snapshot, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, ThemeLight, snapshot.AppSettings.Theme)
-	require.Equal(t, []string{"app"}, snapshot.Docker.AutoUpdateStacks)
 
 	onDisk, err := readConfigStrict(cfgPath)
 	require.NoError(t, err)
 	require.Equal(t, ThemeLight, onDisk.AppSettings.Theme)
-	require.Equal(t, []string{"app"}, onDisk.Docker.AutoUpdateStacks)
 	require.FileExists(t, cfgPath+".lock")
 }
 

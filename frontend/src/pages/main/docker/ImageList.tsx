@@ -194,6 +194,7 @@ const ImageList: React.FC<ImageListProps> = ({
         size: (img.Size / (1024 * 1024)).toFixed(2),
         created: new Date(img.Created * 1000).toLocaleString(),
         containers: img.Containers || 0,
+        updateAvailable: img.updateAvailable,
         raw: img,
       };
     });
@@ -435,13 +436,24 @@ const ImageList: React.FC<ImageListProps> = ({
           renderMainRow={(image) => (
             <>
               <AppTableCell>
-                <AppTypography
-                  fontWeight={500}
-                  style={responsiveTextStyles}
-                  variant="body2"
-                >
-                  {image.repo}
-                </AppTypography>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <AppTypography
+                    fontWeight={500}
+                    style={responsiveTextStyles}
+                    variant="body2"
+                  >
+                    {image.repo}
+                  </AppTypography>
+                  {image.updateAvailable && (
+                    <Chip
+                      color="warning"
+                      label="Update"
+                      size="small"
+                      style={{ fontSize: "0.68rem" }}
+                      variant="soft"
+                    />
+                  )}
+                </div>
               </AppTableCell>
               <AppTableCell>
                 <Chip

@@ -284,6 +284,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
                 style={{
                   flex: isCompactLayout ? "0 0 auto" : 1,
                   width: isCompactLayout ? "100%" : undefined,
+                  minWidth: 0,
                   display: "flex",
                 }}
                 transition={{
@@ -299,6 +300,29 @@ const ContainerList: React.FC<ContainerListProps> = ({
                 />
               </motion.div>
               <motion.div
+                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 16 }}
+                style={{
+                  flex: isCompactLayout ? "0 0 auto" : 1,
+                  width: isCompactLayout ? "100%" : undefined,
+                  minWidth: 0,
+                  display: "flex",
+                }}
+                transition={{
+                  duration: 0.65,
+                  delay: 0.08,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
+              >
+                <ContainerDetailsPanel
+                  container={selectedContainer}
+                  sections={["ports", "volumes"]}
+                  showStatus={false}
+                  subtitle="ports and volumes"
+                  title="Container"
+                />
+              </motion.div>
+              <motion.div
                 animate={{ opacity: 1, x: 0, y: 0 }}
                 initial={{
                   opacity: 0,
@@ -306,13 +330,14 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   y: isCompactLayout ? 20 : 0,
                 }}
                 style={{
-                  width: isCompactLayout ? "100%" : "33.33%",
-                  flexShrink: 0,
+                  flex: isCompactLayout ? "0 0 auto" : 1,
+                  width: isCompactLayout ? "100%" : undefined,
+                  minWidth: 0,
                   display: "flex",
                 }}
                 transition={{
                   duration: 0.65,
-                  delay: 0.08,
+                  delay: 0.12,
                   ease: [0.22, 1, 0.36, 1],
                 }}
               >

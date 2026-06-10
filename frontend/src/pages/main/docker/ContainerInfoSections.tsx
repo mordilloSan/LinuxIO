@@ -7,7 +7,6 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useAppTheme } from "@/theme";
-import { longTextStyles } from "@/theme/tableStyles";
 import { ContainerInfo, ContainerPort } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -51,7 +50,9 @@ const formatPort = (port: ContainerPort) =>
     ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
     : `${port.PrivatePort}/${port.Type}`;
 
-const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+const SectionTitle: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => (
   <AppTypography fontWeight={700} style={{ margin: 0 }} variant="subtitle2">
     {children}
   </AppTypography>
@@ -59,6 +60,21 @@ const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 const emptyText = (text: string) => (
   <AppTypography color="text.secondary" variant="body2">
+    {text}
+  </AppTypography>
+);
+
+/** Single-line value that truncates and exposes the full text via a copy tooltip. */
+const TruncatedValue: React.FC<{ text: string }> = ({ text }) => (
+  <AppTypography
+    component="div"
+    copyText={text}
+    fontSize="0.75rem"
+    fontWeight={500}
+    noWrap
+    title={text}
+    variant="body2"
+  >
     {text}
   </AppTypography>
 );
@@ -122,11 +138,6 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   };
-  const wrapValueStyle: React.CSSProperties = {
-    ...valueStyle,
-    overflowWrap: "anywhere",
-  };
-
   const renderSection = (section: ContainerInfoSection): React.ReactNode => {
     switch (section) {
       case "overview":
@@ -135,13 +146,15 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
             <SectionTitle>Overview</SectionTitle>
             <div>
               <DetailRow label="ID" noBorder>
-                <span style={wrapValueStyle}>{container.Id}</span>
+                <TruncatedValue text={container.Id} />
               </DetailRow>
               <DetailRow label="Image Tag">
-                <span style={wrapValueStyle}>{container.Image}</span>
+                <TruncatedValue text={container.Image} />
               </DetailRow>
               <DetailRow label="Uptime">
-                <span style={valueStyle}>{formatUptime(container.Created)}</span>
+                <span style={valueStyle}>
+                  {formatUptime(container.Created)}
+                </span>
               </DetailRow>
             </div>
           </div>
@@ -165,7 +178,9 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
               tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
             />
             <AppDivider style={{ marginBlock: theme.spacing(1) }} />
-            <InfoRow label="Net In">{formatFileSize(metrics?.net_input)}</InfoRow>
+            <InfoRow label="Net In">
+              {formatFileSize(metrics?.net_input)}
+            </InfoRow>
             <InfoRow label="Net Out">
               {formatFileSize(metrics?.net_output)}
             </InfoRow>
@@ -251,11 +266,9 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
                     label={mount.Type}
                     noBorder={index === 0}
                   >
-                    <span style={{ ...valueStyle, ...longTextStyles }}>
-                      {mount.Source}
-                      {" -> "}
-                      {mount.Destination}
-                    </span>
+                    <TruncatedValue
+                      text={`${mount.Source} -> ${mount.Destination}`}
+                    />
                   </DetailRow>
                 ))}
               </div>

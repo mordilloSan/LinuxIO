@@ -66,7 +66,6 @@ export interface DockerProxySettings {
 }
 
 export interface DockerSettings {
-  autoUpdateStacks?: string[];
   folders: string[];
   proxy: DockerProxySettings;
 }

@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import React, {
   useCallback,
   useEffect,
@@ -5,7 +6,6 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { motion } from "framer-motion";
 import { useSearchParams } from "react-router-dom";
 
 import type { UnitListItem } from "./UnitViews";

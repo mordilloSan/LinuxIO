@@ -141,7 +141,6 @@ const defaultConfig: AppConfig = {
   },
   docker: {
     folders: ["/var/lib/linuxio/docker"],
-    autoUpdateStacks: [],
     proxy: {
       caddyEnabled: false,
       baseDomain: "",
@@ -233,9 +232,6 @@ const applyDefaults = (
         cloneArray(docker.folders) ??
         cloneArray(defaultConfig.docker.folders) ??
         [],
-      autoUpdateStacks:
-        cloneArray(docker.autoUpdateStacks) ??
-        cloneArray(defaultConfig.docker.autoUpdateStacks),
       proxy: {
         caddyEnabled:
           docker.proxy?.caddyEnabled ?? defaultConfig.docker.proxy.caddyEnabled,

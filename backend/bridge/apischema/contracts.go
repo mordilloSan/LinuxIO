@@ -278,9 +278,21 @@ type WireGuardAddInterfaceRequest struct {
 	NumPeers   *string `json:"numPeers,omitempty"`
 }
 
-type DockerSetAutoUpdateRequest struct {
-	Container string `json:"container"`
-	Enabled   bool   `json:"enabled"`
+type DockerUpdateCheckResult struct {
+	Checked int `json:"checked"`
+	Errors  int `json:"errors"`
+	Updates int `json:"updates"`
+}
+
+type DockerContainerUpdateResult struct {
+	ContainerID     string `json:"containerId"`
+	ContainerName   string `json:"containerName"`
+	Error           string `json:"error,omitempty"`
+	Image           string `json:"image"`
+	NewImageID      string `json:"newImageId,omitempty"`
+	PreviousImageID string `json:"previousImageId,omitempty"`
+	RolledBack      bool   `json:"rolledBack"`
+	Updated         bool   `json:"updated"`
 }
 
 type DockerLogsFollowRequest struct {
@@ -391,9 +403,8 @@ type ConfigHardwareSections struct {
 }
 
 type ConfigDockerPayload struct {
-	Folders          []string                  `json:"folders,omitempty"`
-	AutoUpdateStacks []string                  `json:"autoUpdateStacks,omitempty"`
-	Proxy            *ConfigDockerProxyPayload `json:"proxy,omitempty"`
+	Folders []string                  `json:"folders,omitempty"`
+	Proxy   *ConfigDockerProxyPayload `json:"proxy,omitempty"`
 }
 
 type ConfigDockerProxyPayload struct {

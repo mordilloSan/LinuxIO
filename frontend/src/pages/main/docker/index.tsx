@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
@@ -41,6 +41,32 @@ const DockerPage: React.FC = () => {
     () => containers.filter((c) => c.State === "running"),
     [containers],
   );
+  const invalidateDockerUpdateViews = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_containers.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_compose_projects.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_images.queryKey(),
+    });
+  }, [queryClient]);
+  const { mutate: checkUpdates, isPending: isCheckingUpdates } =
+    linuxio.docker.check_updates.useMutation({
+      onSuccess: (data) => {
+        const result = jobSnapshotResult<{
+          checked: number;
+          updates: number;
+        }>(data);
+        toast.success(
+          `Checked ${result.checked} container(s), found ${result.updates} update(s)`,
+        );
+        invalidateDockerUpdateViews();
+      },
+      onError: (err: Error) =>
+        toast.error(getMutationErrorMessage(err, "Failed to check updates")),
+    });
   const { mutate: startAllStopped, isPending: isStartingAll } =
     linuxio.docker.start_all_stopped.useMutation({
       onSuccess: (data: any) => {
@@ -110,6 +136,17 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
+  const renderCheckUpdatesButton = () => (
+    <AppButton
+      disabled={isCheckingUpdates}
+      onClick={() => checkUpdates()}
+      size="small"
+      startIcon={<Icon height={20} icon="mdi:update" width={20} />}
+      variant="outlined"
+    >
+      Check Updates
+    </AppButton>
+  );
   if (dockerStatus === "unknown") {
     return (
       <div
@@ -183,6 +220,7 @@ const DockerPage: React.FC = () => {
             component: <DockerDashboard />,
             rightContent: (
               <>
+                {renderCheckUpdatesButton()}
                 <AppButton
                   disabled={isStartingAll || stoppedContainers.length === 0}
                   onClick={() => startAllStopped()}
@@ -226,6 +264,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
+                {renderCheckUpdatesButton()}
                 <AppTooltip
                   title={
                     containerView === "card"
@@ -275,6 +314,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
+                {renderCheckUpdatesButton()}
                 <AppTooltip
                   title={
                     stacksView === "table"
@@ -415,6 +455,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
+                {renderCheckUpdatesButton()}
                 <AppTooltip
                   title={
                     imagesView === "table"

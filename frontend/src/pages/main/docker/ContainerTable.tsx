@@ -6,12 +6,11 @@ import React, { Suspense, useMemo, useState } from "react";
 
 import ActionButton from "./ActionButton";
 
-import { linuxio } from "@/api";
+import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppSwitch from "@/components/ui/AppSwitch";
 import {
   AppTable,
   AppTableBody,
@@ -28,7 +27,6 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
-import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -154,6 +152,31 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, `Failed to remove ${name}`)),
     });
+  const refreshContainerViews = () => {
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_containers.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_compose_projects.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_images.queryKey(),
+    });
+  };
+  const { mutate: updateContainer } =
+    linuxio.docker.update_container.useMutation({
+      onSuccess: (data) => {
+        const result = jobSnapshotResult<{ updated: boolean }>(data);
+        toast.success(
+          result.updated
+            ? `Container ${name} updated`
+            : `Container ${name} is already up to date`,
+        );
+        refreshContainerViews();
+      },
+      onError: (err: Error) =>
+        toast.error(getMutationErrorMessage(err, `Failed to update ${name}`)),
+    });
 
   // ── derived ─────────────────────────────────────────────────────────────────
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
@@ -203,42 +226,6 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       ),
     [container.Mounts],
   );
-
-  const isManagedContainer = isLinuxIOManagedContainer(container.Labels);
-
-  // ---- auto-update ----
-  const { data: rawAutoUpdateContainers } =
-    linuxio.docker.list_auto_update_containers.useQuery({
-      enabled: !isManagedContainer,
-    });
-  const autoUpdateContainers = rawAutoUpdateContainers ?? [];
-  const autoUpdate = autoUpdateContainers.includes(name);
-  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
-  const autoUpdateChecked = isManagedContainer ? true : autoUpdate;
-  const autoUpdateDisabled = autoUpdateLoading || isManagedContainer;
-  const autoUpdateTooltip = isManagedContainer
-    ? "Auto Update: Managed by LinuxIO"
-    : autoUpdate
-      ? "Auto Update: On"
-      : "Auto Update: Off";
-
-  const handleAutoUpdateToggle = async (enabled: boolean) => {
-    if (isManagedContainer) return;
-    setAutoUpdateLoading(true);
-    try {
-      await linuxio.docker.set_auto_update({ container: name, enabled });
-      queryClient.invalidateQueries({
-        queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
-      });
-      toast.success(
-        `Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`,
-      );
-    } catch {
-      toast.error(`Failed to update auto-update setting for ${name}`);
-    } finally {
-      setAutoUpdateLoading(false);
-    }
-  };
 
   const rowBg =
     index % 2 === 0
@@ -296,6 +283,15 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             >
               {name}
             </AppTypography>
+            {container.updateAvailable && (
+              <Chip
+                color="warning"
+                label="Update"
+                size="small"
+                style={{ fontSize: "0.68rem" }}
+                variant="soft"
+              />
+            )}
           </div>
         </AppTableCell>
 
@@ -603,95 +599,80 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               gap: 2,
             }}
           >
-            {isManagedContainer ? (
-              <AppTooltip title="View Logs">
-                <Chip
-                  label="Managed by LinuxIO"
-                  onClick={() => {
-                    setHasLoadedLogs(true);
-                    setLogDialogOpen(true);
-                  }}
-                  size="small"
-                  style={{
-                    fontSize: "0.68rem",
-                    opacity: 0.7,
-                    cursor: "pointer",
-                  }}
-                  variant="soft"
-                />
-              </AppTooltip>
-            ) : (
-              <>
-                {container.State !== "running" && (
-                  <AppTooltip title="Start">
-                    <span>
-                      <ActionButton
-                        icon="mdi:play"
-                        onClick={() =>
-                          startContainer({ containerId: container.Id })
-                        }
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                {container.State === "running" && (
-                  <AppTooltip title="Stop">
-                    <span>
-                      <ActionButton
-                        icon="mdi:stop"
-                        onClick={() =>
-                          stopContainer({ containerId: container.Id })
-                        }
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                <AppTooltip title="Restart">
-                  <span>
-                    <ActionButton
-                      icon="mdi:restart"
-                      onClick={() =>
-                        restartContainer({ containerId: container.Id })
-                      }
-                    />
-                  </span>
-                </AppTooltip>
-                <AppTooltip title="Remove">
-                  <span>
-                    <ActionButton
-                      icon="mdi:delete"
-                      onClick={() =>
-                        removeContainer({ containerId: container.Id })
-                      }
-                    />
-                  </span>
-                </AppTooltip>
-                <AppTooltip title="Logs">
-                  <span>
-                    <ActionButton
-                      icon="mdi:file-document-outline"
-                      onClick={() => {
-                        setHasLoadedLogs(true);
-                        setLogDialogOpen(true);
-                      }}
-                    />
-                  </span>
-                </AppTooltip>
-              </>
-            )}
-            {!isManagedContainer && (
-              <AppTooltip title="Terminal">
+            {container.State !== "running" && (
+              <AppTooltip title="Start">
                 <span>
                   <ActionButton
-                    icon="mdi:console"
-                    onClick={() => {
-                      setHasLoadedTerminal(true);
-                      setTerminalOpen(true);
-                    }}
+                    icon="mdi:play"
+                    onClick={() =>
+                      startContainer({ containerId: container.Id })
+                    }
                   />
                 </span>
               </AppTooltip>
             )}
+            {container.State === "running" && (
+              <AppTooltip title="Stop">
+                <span>
+                  <ActionButton
+                    icon="mdi:stop"
+                    onClick={() => stopContainer({ containerId: container.Id })}
+                  />
+                </span>
+              </AppTooltip>
+            )}
+            <AppTooltip title="Restart">
+              <span>
+                <ActionButton
+                  icon="mdi:restart"
+                  onClick={() =>
+                    restartContainer({ containerId: container.Id })
+                  }
+                />
+              </span>
+            </AppTooltip>
+            {container.updateAvailable && (
+              <AppTooltip title="Update">
+                <span>
+                  <ActionButton
+                    icon="mdi:update"
+                    onClick={() =>
+                      updateContainer({ containerId: container.Id })
+                    }
+                  />
+                </span>
+              </AppTooltip>
+            )}
+            <AppTooltip title="Remove">
+              <span>
+                <ActionButton
+                  icon="mdi:delete"
+                  onClick={() => removeContainer({ containerId: container.Id })}
+                />
+              </span>
+            </AppTooltip>
+            <AppTooltip title="Logs">
+              <span>
+                <ActionButton
+                  icon="mdi:file-document-outline"
+                  onClick={() => {
+                    setHasLoadedLogs(true);
+                    setLogDialogOpen(true);
+                  }}
+                />
+              </span>
+            </AppTooltip>
+            <AppTooltip title="Terminal">
+              <span>
+                <ActionButton
+                  icon="mdi:console"
+                  onClick={() => {
+                    setHasLoadedTerminal(true);
+                    setTerminalOpen(true);
+                  }}
+                />
+              </span>
+            </AppTooltip>
             {container.url && (
               <AppTooltip title="Open App">
                 <span>
@@ -704,16 +685,6 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 </span>
               </AppTooltip>
             )}
-            <AppTooltip title={autoUpdateTooltip}>
-              <span style={{ display: "inline-flex" }}>
-                <AppSwitch
-                  checked={autoUpdateChecked}
-                  disabled={autoUpdateDisabled}
-                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
-                  size="small"
-                />
-              </span>
-            </AppTooltip>
             <AppIconButton
               className="container-expand-toggle"
               onClick={() => setExpanded((v) => !v)}

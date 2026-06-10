@@ -50,10 +50,7 @@ func ListComposeProjects(ctx context.Context, username string, store *config.Use
 			Debug("failed to discover offline stacks from docker folders", "error", err)
 	}
 
-	// Load config once to check auto-update preferences.
-	cfg, _, _ := config.SnapshotForUser(ctx, username, store)
-
-	return finalizeComposeProjects(projects, cfg), nil
+	return finalizeComposeProjects(projects), nil
 }
 
 func discoverComposeProjectsFromContainers(
@@ -198,22 +195,32 @@ func collectComposeServicePorts(ctr container.Summary) []string {
 	return ports
 }
 
-func finalizeComposeProjects(projects map[string]*apischema.ComposeProject, cfg *config.Settings) []*apischema.ComposeProject {
+func finalizeComposeProjects(projects map[string]*apischema.ComposeProject) []*apischema.ComposeProject {
 	result := make([]*apischema.ComposeProject, 0, len(projects))
 	for _, project := range projects {
 		if project.Containers == nil {
 			project.Containers = []apischema.ContainerInfo{}
 		}
 		project.Status = calculateProjectStatus(project)
-		if cfg != nil {
-			project.AutoUpdate = slices.Contains(cfg.Docker.AutoUpdateStacks, project.Name)
-		}
+		project.UpdateAvailable = composeProjectUpdateAvailable(project)
 		result = append(result, project)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+func composeProjectUpdateAvailable(project *apischema.ComposeProject) bool {
+	if project == nil {
+		return false
+	}
+	for _, ctr := range project.Containers {
+		if ctr.UpdateAvailable != nil && *ctr.UpdateAvailable {
+			return true
+		}
+	}
+	return false
 }
 
 // GetComposeProject returns detailed information about a specific compose project

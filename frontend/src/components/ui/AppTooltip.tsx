@@ -225,8 +225,6 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
   });
 
   useEffect(() => {
-    refreshCopyAvailability();
-
     const target = getTarget();
     if (!target) return undefined;
 

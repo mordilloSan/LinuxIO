@@ -12,9 +12,6 @@ func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *configDocke
 	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
-	if payload.AutoUpdateStacks != nil {
-		docker.AutoUpdateStacks = payload.AutoUpdateStacks
-	}
 	if payload.Proxy != nil {
 		applyDockerProxyUpdate(&docker.Proxy, payload.Proxy)
 	}

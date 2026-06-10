@@ -368,17 +368,21 @@ type ContainerInfo struct {
 	ProxyPort       *string                   `json:"proxyPort,omitempty"`
 	State           string                    `json:"State"`
 	Status          string                    `json:"Status"`
+	UpdateAvailable *bool                     `json:"updateAvailable,omitempty"`
+	UpdateCheckedAt *int64                    `json:"updateCheckedAt,omitempty"`
+	UpdateError     *string                   `json:"updateError,omitempty"`
 	URL             *string                   `json:"url,omitempty"`
 }
 
 type DockerImage struct {
-	Containers  *int              `json:"Containers,omitempty"`
-	Created     int64             `json:"Created"`
-	ID          string            `json:"Id"`
-	Labels      map[string]string `json:"Labels,omitempty"`
-	RepoDigests []string          `json:"RepoDigests,omitempty"`
-	RepoTags    []string          `json:"RepoTags"`
-	Size        int64             `json:"Size"`
+	Containers      *int              `json:"Containers,omitempty"`
+	Created         int64             `json:"Created"`
+	ID              string            `json:"Id"`
+	Labels          map[string]string `json:"Labels,omitempty"`
+	RepoDigests     []string          `json:"RepoDigests,omitempty"`
+	RepoTags        []string          `json:"RepoTags"`
+	Size            int64             `json:"Size"`
+	UpdateAvailable *bool             `json:"updateAvailable,omitempty"`
 }
 
 type DockerNetworkContainer struct {
@@ -470,14 +474,14 @@ type ComposeService struct {
 }
 
 type ComposeProject struct {
-	AutoUpdate  bool                       `json:"auto_update"`
-	ConfigFiles []string                   `json:"config_files"`
-	Containers  []ContainerInfo            `json:"containers"`
-	Icon        string                     `json:"icon,omitempty"`
-	Name        string                     `json:"name"`
-	Services    map[string]*ComposeService `json:"services"`
-	Status      string                     `json:"status"`
-	WorkingDir  string                     `json:"working_dir"`
+	ConfigFiles     []string                   `json:"config_files"`
+	Containers      []ContainerInfo            `json:"containers"`
+	Icon            string                     `json:"icon,omitempty"`
+	Name            string                     `json:"name"`
+	Services        map[string]*ComposeService `json:"services"`
+	Status          string                     `json:"status"`
+	UpdateAvailable bool                       `json:"update_available"`
+	WorkingDir      string                     `json:"working_dir"`
 }
 
 type AutoUpdateOptions struct {
@@ -1107,9 +1111,8 @@ type DockerProxySettings struct {
 }
 
 type DockerSettings struct {
-	AutoUpdateStacks []string            `json:"autoUpdateStacks,omitempty"`
-	Folders          []string            `json:"folders"`
-	Proxy            DockerProxySettings `json:"proxy"`
+	Folders []string            `json:"folders"`
+	Proxy   DockerProxySettings `json:"proxy"`
 }
 
 type JobSettings struct {

@@ -40,7 +40,7 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 
 	for _, route := range []string{
 		"system.get_cpu_info",
-		"docker.set_auto_update",
+		"docker.update_container",
 		"jobs.attach",
 		"terminal.open",
 		"logs.general.follow",
@@ -64,8 +64,8 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 		},
 		{
 			name:  "object request",
-			route: "docker.set_auto_update",
-			raw:   `{"container":"web","enabled":true}`,
+			route: "docker.update_container",
+			raw:   `{"containerId":"web"}`,
 		},
 		{
 			name:  "optional request",

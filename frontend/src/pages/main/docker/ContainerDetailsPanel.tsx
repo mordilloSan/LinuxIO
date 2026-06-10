@@ -1,7 +1,9 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
-import ContainerInfoSections from "./ContainerInfoSections";
+import ContainerInfoSections, {
+  ContainerInfoSection,
+} from "./ContainerInfoSections";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
@@ -27,15 +29,26 @@ const getDisplayState = (container: ContainerInfo) => {
 interface ContainerDetailsPanelProps {
   container: ContainerInfo;
   onClose?: () => void;
+  sections?: ContainerInfoSection[];
+  showStatus?: boolean;
+  subtitle?: string;
+  title?: string;
+  withHeader?: boolean;
 }
 
 const ContainerDetailsPanel: React.FC<ContainerDetailsPanelProps> = ({
   container,
   onClose,
+  sections = ["monitoring"],
+  showStatus = true,
+  subtitle = "Live metrics",
+  title,
+  withHeader = true,
 }) => {
   const theme = useAppTheme();
   const name = getContainerName(container);
   const displayState = getDisplayState(container);
+  const headerTitle = title ?? name;
 
   return (
     <FrostedCard
@@ -44,6 +57,7 @@ const ContainerDetailsPanel: React.FC<ContainerDetailsPanelProps> = ({
         padding: 12,
         height: "100%",
         minHeight: 0,
+        minWidth: 0,
         flex: 1,
         display: "flex",
         flexDirection: "column",
@@ -51,65 +65,71 @@ const ContainerDetailsPanel: React.FC<ContainerDetailsPanelProps> = ({
         overflowY: "auto",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: theme.spacing(1),
-          marginBottom: theme.spacing(0.5),
-          minWidth: 0,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <AppTypography
-            component="div"
-            fontSize="0.875rem"
-            fontWeight={700}
-            noWrap
-            title={name}
-            variant="body2"
-          >
-            {name}
-          </AppTypography>
-          <AppTypography
-            color="text.secondary"
-            component="div"
-            fontSize="0.7rem"
-            noWrap
-            variant="caption"
-          >
-            Live metrics
-          </AppTypography>
-        </div>
+      {withHeader && (
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: theme.spacing(0.75),
-            flexShrink: 0,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: theme.spacing(1),
+            marginBottom: theme.spacing(0.5),
+            minWidth: 0,
           }}
         >
-          <Chip
-            color={getContainerStatusColor(displayState)}
-            label={displayState}
-            size="small"
-            style={{ fontSize: "0.75rem" }}
-            variant="soft"
-          />
-          {onClose && (
-            <AppIconButton
-              aria-label="Close container details"
-              onClick={onClose}
-              size="small"
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <AppTypography
+              component="div"
+              fontSize="0.875rem"
+              fontWeight={700}
+              noWrap
+              title={headerTitle}
+              variant="body2"
             >
-              <Icon height={18} icon="mdi:close" width={18} />
-            </AppIconButton>
+              {headerTitle}
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              component="div"
+              fontSize="0.7rem"
+              noWrap
+              variant="caption"
+            >
+              {subtitle}
+            </AppTypography>
+          </div>
+          {(showStatus || onClose) && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(0.75),
+                flexShrink: 0,
+              }}
+            >
+              {showStatus && (
+                <Chip
+                  color={getContainerStatusColor(displayState)}
+                  label={displayState}
+                  size="small"
+                  style={{ fontSize: "0.75rem" }}
+                  variant="soft"
+                />
+              )}
+              {onClose && (
+                <AppIconButton
+                  aria-label="Close container details"
+                  onClick={onClose}
+                  size="small"
+                >
+                  <Icon height={18} icon="mdi:close" width={18} />
+                </AppIconButton>
+              )}
+            </div>
           )}
         </div>
-      </div>
+      )}
 
-      <ContainerInfoSections container={container} sections={["monitoring"]} />
+      <ContainerInfoSections container={container} sections={sections} />
     </FrostedCard>
   );
 };

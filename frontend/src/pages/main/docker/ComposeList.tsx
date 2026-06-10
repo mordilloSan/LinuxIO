@@ -4,7 +4,7 @@ import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
-import { linuxio } from "@/api";
+import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
@@ -28,10 +28,6 @@ import {
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import type { ContainerInfo, ContainerPort } from "@/types/container";
-import {
-  isLinuxIOManagedComposeProject,
-  isLinuxIOManagedContainer,
-} from "@/utils/dockerManaged";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import "./compose-list.css";
@@ -53,13 +49,13 @@ interface ComposeService {
   url?: string;
 }
 export interface ComposeProject {
-  auto_update?: boolean;
   config_files: string[];
   containers: ContainerInfo[];
   icon?: string;
   name: string;
   services: Record<string, ComposeService>;
   status: string; // "running", "partial", "stopped"
+  update_available: boolean;
   working_dir: string;
 }
 interface ComposeListProps {
@@ -165,6 +161,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
     linuxio.docker.restart_container.useMutation();
   const { mutateAsync: removeContainer } =
     linuxio.docker.remove_container.useMutation();
+  const { mutateAsync: updateContainer, isPending: isUpdatingContainer } =
+    linuxio.docker.update_container.useMutation();
 
   const refreshContainerViews = useCallback(() => {
     queryClient.invalidateQueries({
@@ -172,6 +170,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
     });
     queryClient.invalidateQueries({
       queryKey: linuxio.docker.list_compose_projects.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_images.queryKey(),
     });
   }, [queryClient]);
 
@@ -231,6 +232,25 @@ const ComposeList: React.FC<ComposeListProps> = ({
       }
     },
     [refreshContainerViews, removeContainer, toast],
+  );
+
+  const handleUpdateContainer = useCallback(
+    async (container: ContainerInfo) => {
+      const name = getContainerName(container);
+      try {
+        const data = await updateContainer({ containerId: container.Id });
+        const result = jobSnapshotResult<{ updated: boolean }>(data);
+        toast.success(
+          result.updated
+            ? `Container ${name} updated`
+            : `Container ${name} is already up to date`,
+        );
+        refreshContainerViews();
+      } catch (error) {
+        toast.error(getMutationErrorMessage(error, `Failed to update ${name}`));
+      }
+    },
+    [refreshContainerViews, toast, updateContainer],
   );
 
   // Table columns configuration
@@ -333,6 +353,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
               >
                 {project.name}
               </AppTypography>
+              {project.update_available && (
+                <Chip
+                  color="warning"
+                  label="Update"
+                  size="small"
+                  style={{ fontSize: "0.68rem" }}
+                  variant="soft"
+                />
+              )}
             </div>
           </AppTableCell>
           <AppTableCell align="center" className="app-table-hide-below-sm">
@@ -393,116 +422,66 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 gap: isSmallUp ? theme.spacing(0.5) : 0,
               }}
             >
-              {isLinuxIOManagedComposeProject(project.name) ? (
-                <AppTooltip arrow title="View compose file">
-                  <Chip
-                    label="Managed by LinuxIO"
-                    onClick={
-                      onPreview && project.config_files.length > 0
-                        ? () => onPreview(project.name, project.config_files[0])
-                        : undefined
+              {onEdit && project.config_files.length > 0 && (
+                <AppTooltip title="Edit">
+                  <AppIconButton
+                    disabled={isLoading}
+                    onClick={() =>
+                      onEdit(project.name, project.config_files[0])
                     }
                     size="small"
-                    sx={{
-                      fontSize: "0.68rem",
-                      opacity: 0.7,
-                      cursor:
-                        onPreview && project.config_files.length > 0
-                          ? "pointer"
-                          : "default",
-                      "&:hover": {
-                        opacity: 1,
-                      },
-                    }}
-                    variant="soft"
-                  />
+                  >
+                    <Icon height={20} icon="mdi:pencil" width={20} />
+                  </AppIconButton>
                 </AppTooltip>
-              ) : (
-                <>
-                  {onEdit && project.config_files.length > 0 && (
-                    <AppTooltip title="Edit">
-                      <AppIconButton
-                        disabled={isLoading}
-                        onClick={() =>
-                          onEdit(project.name, project.config_files[0])
-                        }
-                        size="small"
-                      >
-                        <Icon height={20} icon="mdi:pencil" width={20} />
-                      </AppIconButton>
-                    </AppTooltip>
-                  )}
-                  {project.status === "running" ||
-                  project.status === "partial" ? (
-                    <>
-                      <AppTooltip title="Restart">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onRestart(project.name)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:restart" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Stop">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onStop(project.name)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:stop-circle" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Delete">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onDelete(project)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:delete" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                    </>
-                  ) : (
-                    <>
-                      <AppTooltip title="Start">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onStart(project.name)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:play" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Delete">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onDelete(project)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:delete" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                    </>
-                  )}
-                </>
               )}
+              {project.status === "running" || project.status === "partial" ? (
+                <>
+                  <AppTooltip title="Restart">
+                    <AppIconButton
+                      disabled={isLoading}
+                      onClick={() => onRestart(project.name)}
+                      size="small"
+                    >
+                      <Icon height={20} icon="mdi:restart" width={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title="Stop">
+                    <AppIconButton
+                      disabled={isLoading}
+                      onClick={() => onStop(project.name)}
+                      size="small"
+                    >
+                      <Icon height={20} icon="mdi:stop-circle" width={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                </>
+              ) : (
+                <AppTooltip title="Start">
+                  <AppIconButton
+                    disabled={isLoading}
+                    onClick={() => onStart(project.name)}
+                    size="small"
+                  >
+                    <Icon height={20} icon="mdi:play" width={20} />
+                  </AppIconButton>
+                </AppTooltip>
+              )}
+              <AppTooltip title="Delete">
+                <AppIconButton
+                  disabled={isLoading}
+                  onClick={() => onDelete(project)}
+                  size="small"
+                >
+                  <Icon height={20} icon="mdi:delete" width={20} />
+                </AppIconButton>
+              </AppTooltip>
             </div>
           </AppTableCell>
         </>
       );
     },
-    [
-      isLoading,
-      isSmallUp,
-      onDelete,
-      onEdit,
-      onPreview,
-      onRestart,
-      onStart,
-      onStop,
-      theme,
-    ],
+    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop, theme],
   );
 
   // Render expanded content
@@ -537,9 +516,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   ? ports.map(formatContainerPort).join(", ")
                   : "-";
               const displayState = getContainerDisplayState(container);
-              const isManagedContainer = isLinuxIOManagedContainer(
-                container.Labels,
-              );
               return (
                 <AppTableRow
                   className="compose-container-row"
@@ -575,6 +551,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         >
                           {container.Id.slice(0, 12)}
                         </AppTypography>
+                        {container.updateAvailable && (
+                          <Chip
+                            color="warning"
+                            label="Update"
+                            size="small"
+                            style={{ fontSize: "0.68rem", marginTop: 2 }}
+                            variant="soft"
+                          />
+                        )}
                       </div>
                     </div>
                   </AppTableCell>
@@ -627,7 +612,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   </AppTableCell>
                   <AppTableCell align="right">
                     <div className="compose-container-actions">
-                      {!isManagedContainer && container.State !== "running" && (
+                      {container.State !== "running" && (
                         <AppTooltip title="Start container">
                           <AppIconButton
                             disabled={isLoading}
@@ -638,7 +623,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           </AppIconButton>
                         </AppTooltip>
                       )}
-                      {!isManagedContainer && container.State === "running" && (
+                      {container.State === "running" && (
                         <AppTooltip title="Stop container">
                           <AppIconButton
                             disabled={isLoading}
@@ -649,16 +634,25 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           </AppIconButton>
                         </AppTooltip>
                       )}
-                      {!isManagedContainer && (
-                        <AppTooltip title="Restart container">
+                      <AppTooltip title="Restart container">
+                        <AppIconButton
+                          disabled={isLoading}
+                          onClick={() => void handleRestartContainer(container)}
+                          size="small"
+                        >
+                          <Icon height={18} icon="mdi:restart" width={18} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      {container.updateAvailable && (
+                        <AppTooltip title="Update container">
                           <AppIconButton
-                            disabled={isLoading}
+                            disabled={isLoading || isUpdatingContainer}
                             onClick={() =>
-                              void handleRestartContainer(container)
+                              void handleUpdateContainer(container)
                             }
                             size="small"
                           >
-                            <Icon height={18} icon="mdi:restart" width={18} />
+                            <Icon height={18} icon="mdi:update" width={18} />
                           </AppIconButton>
                         </AppTooltip>
                       )}
@@ -675,7 +669,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           />
                         </AppIconButton>
                       </AppTooltip>
-                      {!isManagedContainer && container.State === "running" && (
+                      {container.State === "running" && (
                         <AppTooltip title="Open terminal">
                           <AppIconButton
                             disabled={isLoading}
@@ -703,19 +697,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           </AppIconButton>
                         </AppTooltip>
                       )}
-                      {!isManagedContainer && (
-                        <AppTooltip title="Remove container">
-                          <AppIconButton
-                            disabled={isLoading}
-                            onClick={() =>
-                              void handleRemoveContainer(container)
-                            }
-                            size="small"
-                          >
-                            <Icon height={18} icon="mdi:delete" width={18} />
-                          </AppIconButton>
-                        </AppTooltip>
-                      )}
+                      <AppTooltip title="Remove container">
+                        <AppIconButton
+                          disabled={isLoading}
+                          onClick={() => void handleRemoveContainer(container)}
+                          size="small"
+                        >
+                          <Icon height={18} icon="mdi:delete" width={18} />
+                        </AppIconButton>
+                      </AppTooltip>
                     </div>
                   </AppTableCell>
                 </AppTableRow>
@@ -740,7 +730,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
       handleRestartContainer,
       handleStartContainer,
       handleStopContainer,
+      handleUpdateContainer,
       isLoading,
+      isUpdatingContainer,
     ],
   );
   const searchBar = (
@@ -842,7 +834,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 }}
               >
                 <ComposeStackCard
-                  isLoading={isLoading}
+                  isLoading={isLoading || isUpdatingContainer}
                   onDelete={onDelete}
                   onEdit={onEdit}
                   onPreview={onPreview}

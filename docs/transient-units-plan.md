@@ -64,7 +64,7 @@ boundary, and splits today's jobs into two shapes:
    - app update (`control.app_update`) — already uses `cmd.Start()` with a 30-min
      `SingletonSystem` policy ([appupdate](../backend/bridge/handlers/appupdate/handlers.go)).
    - package install / offline updates ([packages](../backend/bridge/handlers/packages/handlers.go)).
-   - docker image pulls for compose up / watchtower sync.
+   - docker image pulls for compose up / container updates.
 
 2. **In-process Go jobs** — work implemented against a library (compose via the
    moby SDK, the indexer) has no command-line entry point. To make these

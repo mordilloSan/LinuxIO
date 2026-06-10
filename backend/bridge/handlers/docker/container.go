@@ -86,7 +86,7 @@ func containerInfoFromSummary(
 	resolvedURL string,
 	proxyPort string,
 ) apischema.ContainerInfo {
-	return apischema.ContainerInfo{
+	info := apischema.ContainerInfo{
 		Created:         ctr.Created,
 		HostConfig:      containerHostConfigFromSummary(ctr),
 		Icon:            utils.OptionalString(iconIdentifier),
@@ -103,6 +103,12 @@ func containerInfoFromSummary(
 		Status:          ctr.Status,
 		URL:             utils.OptionalString(resolvedURL),
 	}
+	if status, ok := imageUpdateStatusForContainer(ctr.ID); ok {
+		info.UpdateAvailable = new(status.UpdateAvailable)
+		info.UpdateCheckedAt = new(status.CheckedAt.UnixMilli())
+		info.UpdateError = utils.OptionalString(status.Err)
+	}
+	return info
 }
 
 func containerHostConfigFromSummary(ctr container.Summary) *apischema.ContainerHostConfig {

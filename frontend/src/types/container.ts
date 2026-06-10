@@ -47,5 +47,8 @@ export interface ContainerInfo {
   proxyPort?: string;
   State: string;
   Status: string;
+  updateAvailable?: boolean;
+  updateCheckedAt?: number;
+  updateError?: string;
   url?: string;
 }

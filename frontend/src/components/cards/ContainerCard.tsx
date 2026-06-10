@@ -6,20 +6,18 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import ContainerInfoSections from "../../pages/main/docker/ContainerInfoSections";
 import AppCircularProgress from "../ui/AppCircularProgress";
 
-import { linuxio } from "@/api";
+import { jobSnapshotResult, linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { ContainerInfo } from "@/types/container";
-import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -144,8 +142,42 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
       },
     });
 
+  const invalidateDockerUpdateViews = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_containers.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_compose_projects.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_images.queryKey(),
+    });
+  }, [queryClient]);
+
+  const { mutate: updateContainer, isPending: isUpdatePending } =
+    linuxio.docker.update_container.useMutation({
+      onSuccess: (data) => {
+        const result = jobSnapshotResult<{ updated: boolean }>(data);
+        toast.success(
+          result.updated
+            ? `Container ${name} updated successfully`
+            : `Container ${name} is already up to date`,
+        );
+        invalidateDockerUpdateViews();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, `Failed to update container ${name}`),
+        );
+      },
+    });
+
   const isActionPending =
-    isStartPending || isStopPending || isRestartPending || isRemovePending;
+    isStartPending ||
+    isStopPending ||
+    isRestartPending ||
+    isRemovePending ||
+    isUpdatePending;
 
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
@@ -184,43 +216,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
     setTerminalOpen(true);
   };
 
-  // ---- auto-update ----
-  const isManagedContainer = isLinuxIOManagedContainer(container.Labels);
-
-  const { data: autoUpdateContainers = [] } =
-    linuxio.docker.list_auto_update_containers.useQuery({
-      enabled: !isManagedContainer,
-    });
-  const autoUpdate = autoUpdateContainers.includes(name);
-  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
-  const autoUpdateChecked = isManagedContainer ? true : autoUpdate;
-  const autoUpdateDisabled = autoUpdateLoading || isManagedContainer;
-  const autoUpdateTooltip = isManagedContainer
-    ? "Auto Update: Managed by LinuxIO"
-    : autoUpdate
-      ? "Auto Update: On"
-      : "Auto Update: Off";
-
-  const handleAutoUpdateToggle = useCallback(
-    async (enabled: boolean) => {
-      if (isManagedContainer) return;
-      setAutoUpdateLoading(true);
-      try {
-        await linuxio.docker.set_auto_update({ container: name, enabled });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
-        });
-        toast.success(
-          `Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`,
-        );
-      } catch {
-        toast.error(`Failed to update auto-update setting for ${name}`);
-      } finally {
-        setAutoUpdateLoading(false);
-      }
-    },
-    [isManagedContainer, name, queryClient, toast],
-  );
+  const handleUpdateClick = useCallback(() => {
+    updateContainer({ containerId: container.Id });
+  }, [container.Id, updateContainer]);
 
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
@@ -231,7 +229,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
 
   const statusColor = resolveColor(theme.palette, getStatusColor(container));
 
-  // Service-style action buttons + auto-update, shown in the selected card.
+  // Service-style action buttons, shown in the selected card.
   const selectedActions = (
     <div
       onClick={(e) => e.stopPropagation()}
@@ -245,68 +243,69 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
         minWidth: 0,
       }}
     >
-      {isManagedContainer ? (
-        <Chip
-          label="Managed by LinuxIO"
+      {container.State === "running" ? (
+        <AppButton
+          color="error"
+          disabled={isActionPending}
+          onClick={() => handleAction("stop")}
           size="small"
-          style={{ fontSize: "0.7rem" }}
-          variant="soft"
-        />
+          startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
+          variant="outlined"
+        >
+          Stop
+        </AppButton>
       ) : (
-        <>
-          {container.State === "running" ? (
-            <AppButton
-              color="error"
-              disabled={isActionPending}
-              onClick={() => handleAction("stop")}
-              size="small"
-              startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
-              variant="outlined"
-            >
-              Stop
-            </AppButton>
-          ) : (
-            <AppButton
-              color="success"
-              disabled={isActionPending}
-              onClick={() => handleAction("start")}
-              size="small"
-              startIcon={<Icon height={16} icon="mdi:play" width={16} />}
-              variant="outlined"
-            >
-              Start
-            </AppButton>
-          )}
-          <AppButton
-            disabled={isActionPending}
-            onClick={() => handleAction("restart")}
-            size="small"
-            startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
-            variant="outlined"
-          >
-            Restart
-          </AppButton>
-          <AppButton
-            color="error"
-            disabled={isActionPending}
-            onClick={() => handleAction("remove")}
-            size="small"
-            startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
-            variant="outlined"
-          >
-            Remove
-          </AppButton>
-          <AppButton
-            disabled={isActionPending}
-            onClick={handleTerminalClick}
-            size="small"
-            startIcon={<Icon height={16} icon="mdi:console" width={16} />}
-            variant="outlined"
-          >
-            Terminal
-          </AppButton>
-        </>
+        <AppButton
+          color="success"
+          disabled={isActionPending}
+          onClick={() => handleAction("start")}
+          size="small"
+          startIcon={<Icon height={16} icon="mdi:play" width={16} />}
+          variant="outlined"
+        >
+          Start
+        </AppButton>
       )}
+      <AppButton
+        disabled={isActionPending}
+        onClick={() => handleAction("restart")}
+        size="small"
+        startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
+        variant="outlined"
+      >
+        Restart
+      </AppButton>
+      {container.updateAvailable && (
+        <AppButton
+          color="warning"
+          disabled={isActionPending}
+          onClick={handleUpdateClick}
+          size="small"
+          startIcon={<Icon height={16} icon="mdi:update" width={16} />}
+          variant="outlined"
+        >
+          Update
+        </AppButton>
+      )}
+      <AppButton
+        color="error"
+        disabled={isActionPending}
+        onClick={() => handleAction("remove")}
+        size="small"
+        startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
+        variant="outlined"
+      >
+        Remove
+      </AppButton>
+      <AppButton
+        disabled={isActionPending}
+        onClick={handleTerminalClick}
+        size="small"
+        startIcon={<Icon height={16} icon="mdi:console" width={16} />}
+        variant="outlined"
+      >
+        Terminal
+      </AppButton>
       {container.url && (
         <AppButton
           onClick={() => window.open(container.url, "_blank", "noopener")}
@@ -317,29 +316,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
           Open
         </AppButton>
       )}
-      <AppTooltip title={autoUpdateTooltip}>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            marginLeft: "auto",
-          }}
-        >
-          <AppTypography
-            color={isManagedContainer ? "text.disabled" : "text.secondary"}
-            variant="caption"
-          >
-            Auto Update
-          </AppTypography>
-          <AppSwitch
-            checked={autoUpdateChecked}
-            disabled={autoUpdateDisabled}
-            onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
-            size="small"
-          />
-        </span>
-      </AppTooltip>
     </div>
   );
 
@@ -353,6 +329,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
         flexDirection: "column",
         height: "100%",
         width: "100%",
+        minWidth: 0,
         position: "relative",
         cursor: onSelect ? "pointer" : "default",
         border: "none",
@@ -445,6 +422,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 >
                   {container.Image}
                 </AppTypography>
+                {container.updateAvailable && (
+                  <Chip
+                    color="warning"
+                    label="Update available"
+                    size="small"
+                    style={{ fontSize: "0.68rem", marginTop: 4 }}
+                    variant="soft"
+                  />
+                )}
               </div>
             </div>
             <span
@@ -483,7 +469,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
             >
               <ContainerInfoSections
                 container={container}
-                sections={["overview", "networks", "volumes", "ports"]}
+                sections={["overview", "networks"]}
               />
             </div>
             {selectedActions}
@@ -538,80 +524,68 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 {name}
               </AppTypography>
               <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-                {isManagedContainer ? (
-                  <AppTooltip arrow title="View Logs">
-                    <Chip
-                      className="chip-interactive"
-                      label="Managed by LinuxIO"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleLogsClick();
-                      }}
-                      size="small"
-                      style={{
-                        fontSize: "0.68rem",
-                      }}
-                      variant="soft"
-                    />
-                  </AppTooltip>
-                ) : (
-                  <>
-                    {container.State !== "running" && (
-                      <AppTooltip arrow title="Start Container">
-                        <span onClick={(e) => e.stopPropagation()}>
-                          <ActionButton
-                            icon="mdi:play"
-                            onClick={() => handleAction("start")}
-                          />
-                        </span>
-                      </AppTooltip>
-                    )}
-                    {container.State === "running" && (
-                      <AppTooltip arrow title="Stop Container">
-                        <span onClick={(e) => e.stopPropagation()}>
-                          <ActionButton
-                            icon="mdi:stop"
-                            onClick={() => handleAction("stop")}
-                          />
-                        </span>
-                      </AppTooltip>
-                    )}
-                    <AppTooltip arrow title="Restart Container">
-                      <span onClick={(e) => e.stopPropagation()}>
-                        <ActionButton
-                          icon="mdi:restart"
-                          onClick={() => handleAction("restart")}
-                        />
-                      </span>
-                    </AppTooltip>
-                    <AppTooltip arrow title="Remove Container">
-                      <span onClick={(e) => e.stopPropagation()}>
-                        <ActionButton
-                          icon="mdi:delete"
-                          onClick={() => handleAction("remove")}
-                        />
-                      </span>
-                    </AppTooltip>
-                    <AppTooltip arrow title="View Logs">
-                      <span onClick={(e) => e.stopPropagation()}>
-                        <ActionButton
-                          icon="mdi:file-document-outline"
-                          onClick={handleLogsClick}
-                        />
-                      </span>
-                    </AppTooltip>
-                  </>
-                )}
-                {!isManagedContainer && (
-                  <AppTooltip arrow title="Open Terminal">
+                {container.State !== "running" && (
+                  <AppTooltip arrow title="Start Container">
                     <span onClick={(e) => e.stopPropagation()}>
                       <ActionButton
-                        icon="mdi:console"
-                        onClick={handleTerminalClick}
+                        icon="mdi:play"
+                        onClick={() => handleAction("start")}
                       />
                     </span>
                   </AppTooltip>
                 )}
+                {container.State === "running" && (
+                  <AppTooltip arrow title="Stop Container">
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:stop"
+                        onClick={() => handleAction("stop")}
+                      />
+                    </span>
+                  </AppTooltip>
+                )}
+                <AppTooltip arrow title="Restart Container">
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:restart"
+                      onClick={() => handleAction("restart")}
+                    />
+                  </span>
+                </AppTooltip>
+                {container.updateAvailable && (
+                  <AppTooltip arrow title="Update Container">
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:update"
+                        onClick={handleUpdateClick}
+                      />
+                    </span>
+                  </AppTooltip>
+                )}
+                <AppTooltip arrow title="Remove Container">
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:delete"
+                      onClick={() => handleAction("remove")}
+                    />
+                  </span>
+                </AppTooltip>
+                <AppTooltip arrow title="View Logs">
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:file-document-outline"
+                      onClick={handleLogsClick}
+                    />
+                  </span>
+                </AppTooltip>
+                <AppTooltip arrow title="Open Terminal">
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:console"
+                      onClick={handleTerminalClick}
+                    />
+                  </span>
+                </AppTooltip>
                 {container.url && (
                   <AppTooltip arrow title="Open App">
                     <span onClick={(e) => e.stopPropagation()}>
@@ -644,35 +618,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
               rightLabel={formatFileSize(memUsage)}
               tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
             />
-          </div>
-
-          {/* Auto-update toggle */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: 6,
-            }}
-          >
-            <AppTypography
-              color={isManagedContainer ? "text.disabled" : "text.secondary"}
-              variant="caption"
-            >
-              Auto Update
-            </AppTypography>
-            <AppTooltip title={autoUpdateTooltip}>
-              <span style={{ display: "inline-flex" }}>
-                <AppSwitch
-                  checked={autoUpdateChecked}
-                  disabled={autoUpdateDisabled}
-                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
-                  size="small"
-                />
-              </span>
-            </AppTooltip>
           </div>
         </>
       )}

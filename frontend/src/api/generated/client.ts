@@ -86,6 +86,7 @@ const linuxio = {
     }),
   },
   docker: {
+    check_updates: createEndpoint("docker", "check_updates", { kind: "none" }),
     clear_icon_cache: createEndpoint("docker", "clear_icon_cache", {
       kind: "none",
     }),
@@ -163,11 +164,6 @@ const linuxio = {
       field: "identifier",
     }),
     indexer: createEndpoint("docker", "indexer", { kind: "none" }),
-    list_auto_update_containers: createEndpoint(
-      "docker",
-      "list_auto_update_containers",
-      { kind: "none" },
-    ),
     list_compose_projects: createEndpoint("docker", "list_compose_projects", {
       kind: "none",
     }),
@@ -186,9 +182,6 @@ const linuxio = {
       kind: "field",
       field: "containerId",
     }),
-    set_auto_update: createEndpoint("docker", "set_auto_update", {
-      kind: "object",
-    }),
     start_all_stopped: createEndpoint("docker", "start_all_stopped", {
       kind: "none",
     }),
@@ -204,6 +197,10 @@ const linuxio = {
       field: "containerId",
     }),
     system_prune: createEndpoint("docker", "system_prune", { kind: "object" }),
+    update_container: createEndpoint("docker", "update_container", {
+      kind: "field",
+      field: "containerId",
+    }),
     validate_compose: createEndpoint("docker", "validate_compose", {
       kind: "field",
       field: "content",

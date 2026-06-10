@@ -2,49 +2,10 @@ package docker
 
 import (
 	"context"
-	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
-
-func (h dockerHandlers) handleListAutoUpdateContainers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	cfg, _, err := config.SnapshotForUser(ctx, h.rt.Username(), h.rt.Store)
-	if err != nil {
-		return err
-	}
-	names := cfg.Docker.AutoUpdateStacks
-	if names == nil {
-		names = []string{}
-	}
-	return bridgeipc.EmitResult(emit, names, nil)
-}
-
-func (h dockerHandlers) handleSetAutoUpdate(ctx context.Context, req apischema.DockerSetAutoUpdateRequest, emit bridgeipc.Events) error {
-	if req.Container == "" {
-		return bridgeipc.ErrInvalidArgs
-	}
-
-	if _, _, err := config.UpdateForUser(ctx, h.rt.Username(), h.rt.Store, func(cfg *config.Settings) error {
-		if req.Enabled {
-			if !slices.Contains(cfg.Docker.AutoUpdateStacks, req.Container) {
-				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, req.Container)
-			}
-		} else {
-			cfg.Docker.AutoUpdateStacks = slices.DeleteFunc(cfg.Docker.AutoUpdateStacks, func(name string) bool {
-				return name == req.Container
-			})
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	go SyncWatchtowerStackDetached(h.rt)
-
-	return bridgeipc.EmitResult(emit, map[string]any{"message": "auto-update updated"}, nil)
-}
 
 func (h dockerHandlers) handleGetCaddyStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetCaddyStatus(ctx, h.rt.Username(), h.rt.Store)

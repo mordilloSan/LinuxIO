@@ -170,9 +170,6 @@ func isAllowedBackground(path, funcName string) bool {
 		"docker/docker.go": {
 			"detachedDockerStartupContext": true,
 		},
-		"docker/watchtower.go": {
-			"detachedWatchtowerContext": true,
-		},
 		"filebrowser/filebrowser.go": {
 			"runDetachedIndexerUpdate": true,
 		},

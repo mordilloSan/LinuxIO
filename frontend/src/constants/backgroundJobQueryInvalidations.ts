@@ -12,7 +12,16 @@ export const INVALIDATIONS_BY_JOB_TYPE: Record<string, () => QueryKey[]> = {
   "docker.remove_container": () => [linuxio.docker.list_containers.queryKey()],
   "docker.start_all_stopped": () => [linuxio.docker.list_containers.queryKey()],
   "docker.stop_all_running": () => [linuxio.docker.list_containers.queryKey()],
-
+  "docker.check_updates": () => [
+    linuxio.docker.list_containers.queryKey(),
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_images.queryKey(),
+  ],
+  "docker.update_container": () => [
+    linuxio.docker.list_containers.queryKey(),
+    linuxio.docker.list_compose_projects.queryKey(),
+    linuxio.docker.list_images.queryKey(),
+  ],
   "docker.delete_image": () => [linuxio.docker.list_images.queryKey()],
 
   "docker.create_network": () => [linuxio.docker.list_networks.queryKey()],

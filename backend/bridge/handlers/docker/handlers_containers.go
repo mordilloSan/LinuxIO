@@ -41,3 +41,16 @@ func (h dockerHandlers) handleStopAllRunning(ctx context.Context, _ apischema.No
 	result, err := StopAllRunning(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
+
+func (h dockerHandlers) handleCheckUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+	result, err := RefreshDockerImageUpdates(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func (h dockerHandlers) handleUpdateContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
+	if req.ContainerID == "" {
+		return bridgeipc.ErrInvalidArgs
+	}
+	result, err := UpdateContainer(ctx, req.ContainerID)
+	return bridgeipc.EmitResult(emit, result, err)
+}

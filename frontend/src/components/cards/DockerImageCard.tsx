@@ -16,6 +16,7 @@ export interface DockerImageRow {
   shortId: string;
   size: string;
   tag: string;
+  updateAvailable?: boolean;
 }
 
 export interface DockerImageCardProps {
@@ -120,6 +121,14 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
           size="small"
           variant="soft"
         />
+        {image.updateAvailable && (
+          <Chip
+            color="warning"
+            label="Update available"
+            size="small"
+            variant="soft"
+          />
+        )}
       </div>
 
       <AppTypography color="text.secondary" variant="caption">
