@@ -11,19 +11,29 @@ interface AppCollapseProps {
 
 const AppCollapse: React.FC<AppCollapseProps> = ({
   in: isOpen,
-  timeout = 300,
+  timeout = 600,
   unmountOnExit = false,
   children,
 }) => {
   const [mounted, setMounted] = useState(isOpen);
-  const duration = timeout === "auto" ? 300 : timeout;
+  const duration = timeout === "auto" ? 600 : timeout;
 
   useEffect(() => {
     if (isOpen) {
+      // Two frames: the browser must paint the collapsed state first,
+      // or a freshly remounted element pops open without transitioning.
+      let secondFrameId: number | undefined;
       const frameId = window.requestAnimationFrame(() => {
-        setMounted(true);
+        secondFrameId = window.requestAnimationFrame(() => {
+          setMounted(true);
+        });
       });
-      return () => window.cancelAnimationFrame(frameId);
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        if (secondFrameId !== undefined) {
+          window.cancelAnimationFrame(secondFrameId);
+        }
+      };
     }
 
     if (!mounted || !unmountOnExit) {
@@ -39,9 +49,13 @@ const AppCollapse: React.FC<AppCollapseProps> = ({
 
   if (!isOpen && !mounted && unmountOnExit) return null;
 
+  // Remounted elements must render closed until the collapsed state has
+  // painted; permanently-mounted ones can open immediately.
+  const open = isOpen && (mounted || !unmountOnExit);
+
   return (
     <div
-      className={`app-collapse ${isOpen ? "app-collapse--open" : ""}`}
+      className={`app-collapse ${open ? "app-collapse--open" : ""}`}
       style={{ transitionDuration: `${duration}ms` }}
     >
       <div className="app-collapse__inner">{children}</div>

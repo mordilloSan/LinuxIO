@@ -200,6 +200,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
           >
             <ContainerTable
               autoUpdateDisabled={containerAutoUpdate.disabled}
+              autoUpdatePendingNames={containerAutoUpdate.pendingNames}
               autoUpdateReason={containerAutoUpdate.reason}
               autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
               checkingUpdates={checkingUpdates}
@@ -235,6 +236,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
                     <SortableCard editMode id={container.Id}>
                       <ContainerCard
                         autoUpdateDisabled={containerAutoUpdate.disabled}
+                        autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                          container.Names?.[0]?.replace("/", "") ?? "",
+                        )}
                         autoUpdateReason={containerAutoUpdate.reason}
                         autoUpdateSelected={isAutoUpdateSelected(container)}
                         container={container}
@@ -318,6 +322,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
               >
                 <ContainerCard
                   autoUpdateDisabled={containerAutoUpdate.disabled}
+                  autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                    selectedContainer.Names?.[0]?.replace("/", "") ?? "",
+                  )}
                   autoUpdateReason={containerAutoUpdate.reason}
                   autoUpdateSelected={isAutoUpdateSelected(selectedContainer)}
                   container={selectedContainer}
@@ -409,6 +416,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   >
                     <ContainerCard
                       autoUpdateDisabled={containerAutoUpdate.disabled}
+                      autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                        container.Names?.[0]?.replace("/", "") ?? "",
+                      )}
                       autoUpdateReason={containerAutoUpdate.reason}
                       autoUpdateSelected={isAutoUpdateSelected(container)}
                       container={container}

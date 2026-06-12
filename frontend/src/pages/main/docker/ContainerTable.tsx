@@ -109,6 +109,7 @@ const formatUptime = (createdUnix: number) => {
 
 interface ContainerRowProps {
   autoUpdateDisabled: boolean;
+  autoUpdatePending: boolean;
   autoUpdateReason?: string;
   autoUpdateSelected: boolean;
   checkingUpdates: boolean;
@@ -120,6 +121,7 @@ interface ContainerRowProps {
 
 const ContainerRow: React.FC<ContainerRowProps> = ({
   autoUpdateDisabled,
+  autoUpdatePending,
   autoUpdateReason,
   autoUpdateSelected,
   checkingUpdates,
@@ -251,9 +253,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   const uptime = formatUptime(container.Created);
   const autoUpdateTooltip = autoUpdateDisabled
     ? autoUpdateReason
-    : autoUpdateSelected
-      ? "Scheduled auto-update enabled"
-      : "Scheduled auto-update disabled";
+    : autoUpdatePending
+      ? "Saving auto-update setting"
+      : autoUpdateSelected
+        ? "Scheduled auto-update enabled"
+        : "Scheduled auto-update disabled";
   const handleToggleAutoUpdate = () => {
     setAutoTooltipKey((key) => key + 1);
     onToggleAutoUpdate(name);
@@ -443,8 +447,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 color={
                   autoUpdateSelected ? theme.palette.primary.main : undefined
                 }
-                disabled={autoUpdateDisabled}
+                disabled={autoUpdateDisabled || autoUpdatePending}
                 icon="mdi:timer-cog-outline"
+                loading={autoUpdatePending}
                 onClick={handleToggleAutoUpdate}
               />
             </span>
@@ -558,7 +563,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   </AppTypography>
                 );
               })}
-              <AppCollapse in={expanded} timeout={600}>
+              <AppCollapse in={expanded}>
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 1 }}
                 >
@@ -597,10 +602,19 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     })}
                 </div>
               </AppCollapse>
-              {!expanded && ports.length > 2 && (
-                <AppTypography color="text.disabled" variant="caption">
-                  +{ports.length - 2} more
-                </AppTypography>
+              {ports.length > 2 && (
+                <AppCollapse in={!expanded}>
+                  <AppTypography
+                    color="text.disabled"
+                    style={{
+                      opacity: expanded ? 0 : 1,
+                      transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                    variant="caption"
+                  >
+                    +{ports.length - 2} more
+                  </AppTypography>
+                </AppCollapse>
               )}
             </div>
           ) : (
@@ -649,7 +663,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   </AppTypography>
                 );
               })}
-              <AppCollapse in={expanded} timeout={600}>
+              <AppCollapse in={expanded}>
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 1 }}
                 >
@@ -688,10 +702,19 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     })}
                 </div>
               </AppCollapse>
-              {!expanded && mounts.length > 2 && (
-                <AppTypography color="text.disabled" variant="caption">
-                  +{mounts.length - 2} more
-                </AppTypography>
+              {mounts.length > 2 && (
+                <AppCollapse in={!expanded}>
+                  <AppTypography
+                    color="text.disabled"
+                    style={{
+                      opacity: expanded ? 0 : 1,
+                      transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                    variant="caption"
+                  >
+                    +{mounts.length - 2} more
+                  </AppTypography>
+                </AppCollapse>
               )}
             </div>
           ) : (
@@ -865,6 +888,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
 
 interface ContainerTableProps {
   autoUpdateDisabled: boolean;
+  autoUpdatePendingNames: Set<string>;
   autoUpdateReason?: string;
   autoUpdateSelectedNames: Set<string>;
   checkingUpdates?: boolean;
@@ -875,6 +899,7 @@ interface ContainerTableProps {
 
 const ContainerTable: React.FC<ContainerTableProps> = ({
   autoUpdateDisabled,
+  autoUpdatePendingNames,
   autoUpdateReason,
   autoUpdateSelectedNames,
   checkingUpdates = false,
@@ -935,6 +960,9 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
             {containers.map((container, index) => (
               <ContainerRow
                 autoUpdateDisabled={autoUpdateDisabled}
+                autoUpdatePending={autoUpdatePendingNames.has(
+                  container.Names?.[0]?.replace("/", "") ?? "",
+                )}
                 autoUpdateReason={autoUpdateReason}
                 autoUpdateSelected={autoUpdateSelectedNames.has(
                   container.Names?.[0]?.replace("/", "") ?? "",

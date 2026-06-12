@@ -56,6 +56,7 @@ const resolveColor = (palette: any, path: string): string => {
 
 interface ContainerCardProps {
   autoUpdateDisabled?: boolean;
+  autoUpdatePending?: boolean;
   autoUpdateReason?: string;
   autoUpdateSelected?: boolean;
   container: ContainerInfo;
@@ -66,6 +67,7 @@ interface ContainerCardProps {
 
 const ContainerCard: React.FC<ContainerCardProps> = ({
   autoUpdateDisabled = false,
+  autoUpdatePending = false,
   autoUpdateReason,
   autoUpdateSelected = false,
   container,
@@ -244,9 +246,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
   const statusColor = resolveColor(theme.palette, getStatusColor(container));
   const autoUpdateTooltip = autoUpdateDisabled
     ? autoUpdateReason
-    : autoUpdateSelected
-      ? "Scheduled auto-update enabled"
-      : "Scheduled auto-update disabled";
+    : autoUpdatePending
+      ? "Saving auto-update setting"
+      : autoUpdateSelected
+        ? "Scheduled auto-update enabled"
+        : "Scheduled auto-update disabled";
 
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
@@ -305,8 +309,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
               color={
                 autoUpdateSelected ? theme.palette.primary.main : undefined
               }
-              disabled={autoUpdateDisabled}
+              disabled={autoUpdateDisabled || autoUpdatePending}
               icon="mdi:timer-cog-outline"
+              loading={autoUpdatePending}
               onClick={handleAutoUpdateClick}
             />
           </span>
@@ -602,8 +607,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                             ? theme.palette.primary.main
                             : undefined
                         }
-                        disabled={autoUpdateDisabled}
+                        disabled={autoUpdateDisabled || autoUpdatePending}
                         icon="mdi:timer-cog-outline"
+                        loading={autoUpdatePending}
                         onClick={handleAutoUpdateClick}
                       />
                     </span>
