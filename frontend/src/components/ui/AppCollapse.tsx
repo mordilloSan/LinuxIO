@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from "react";
 
-import "./app-collapse.css";
+import { COLLAPSE_DURATION_MS } from "@/theme/constants";
 
-// Single source of truth for every expand/collapse animation in the app:
-// the collapse itself plus anything that moves with it (chevrons, fades).
-export const COLLAPSE_DURATION_MS = 600;
-export const COLLAPSE_TRANSITION = `${COLLAPSE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+import "./app-collapse.css";
 
 interface AppCollapseProps {
   children: React.ReactNode;

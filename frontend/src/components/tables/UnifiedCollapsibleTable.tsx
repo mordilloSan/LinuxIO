@@ -2,10 +2,7 @@ import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
-import AppCollapse, {
-  COLLAPSE_DURATION_MS,
-  COLLAPSE_TRANSITION,
-} from "@/components/ui/AppCollapse";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
   AppTable,
@@ -16,7 +13,11 @@ import {
   AppTableRow,
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
-import { shadowSm } from "@/constants";
+import {
+  COLLAPSE_DURATION_MS,
+  COLLAPSE_TRANSITION,
+  shadowSm,
+} from "@/constants";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 

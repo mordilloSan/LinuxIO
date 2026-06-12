@@ -12,7 +12,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
-import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
@@ -28,6 +28,7 @@ import {
   MotherboardInfoCard,
   NetworkHistoryCard,
 } from "@/pages/main/hardware/HardwareHistoryCards";
+import { COLLAPSE_TRANSITION } from "@/theme/constants";
 import "@/theme/section.css";
 
 // ─── constants ──────────────────────────────────────────────────────────────

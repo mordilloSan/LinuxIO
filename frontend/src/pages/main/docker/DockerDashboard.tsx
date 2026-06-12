@@ -12,7 +12,7 @@ import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
-import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -20,6 +20,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useConfigValue } from "@/hooks/useConfig";
+import { COLLAPSE_TRANSITION } from "@/theme/constants";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 

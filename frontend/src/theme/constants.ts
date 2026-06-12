@@ -4,6 +4,10 @@ export const collapsedDrawerWidth = 70; // mini sidebar width
 export const cardHeight = 220;
 export const cardBorderRadius = 16;
 
+// Collapse animations
+export const COLLAPSE_DURATION_MS = 600;
+export const COLLAPSE_TRANSITION = `${COLLAPSE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+
 // Shadows
 export const shadowSm = "0px 1px 2px 0px rgba(0, 0, 0, 0.05)";
 

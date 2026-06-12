@@ -10,7 +10,7 @@ import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
   AppTable,
@@ -26,6 +26,7 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { COLLAPSE_TRANSITION } from "@/theme/constants";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
 import { formatFileSize } from "@/utils/formaters";

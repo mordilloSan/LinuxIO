@@ -4,8 +4,8 @@ import React from "react";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
-import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
-import { GAP_SM } from "@/theme/constants";
+import AppCollapse from "@/components/ui/AppCollapse";
+import { COLLAPSE_TRANSITION, GAP_SM } from "@/theme/constants";
 
 export interface LVMSectionCardProps {
   accent: string;
