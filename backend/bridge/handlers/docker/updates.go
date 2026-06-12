@@ -45,6 +45,51 @@ func RefreshDockerImageUpdates(ctx context.Context) (apischema.DockerUpdateCheck
 	return result, nil
 }
 
+// RefreshContainerImageUpdate runs a Watchtower monitor-only one-shot for a
+// single container and refreshes only that container's update cache entry.
+func RefreshContainerImageUpdate(ctx context.Context, containerID string) (apischema.DockerUpdateCheckResult, error) {
+	cli, err := getClient()
+	if err != nil {
+		return apischema.DockerUpdateCheckResult{}, fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+
+	inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return apischema.DockerUpdateCheckResult{}, fmt.Errorf("inspect container: %w", err)
+	}
+	inspect := inspectResult.Container
+	name := strings.TrimPrefix(inspect.Name, "/")
+	if name == "" {
+		return apischema.DockerUpdateCheckResult{}, fmt.Errorf("container %s has no name", inspect.ID)
+	}
+
+	results, err := watchtowerRun(ctx, watchtower.Target{Names: []string{name}}, watchtower.Options{MonitorOnly: true})
+	if err != nil {
+		return apischema.DockerUpdateCheckResult{}, err
+	}
+	res, ok := watchtowerResultFor(results, name)
+	if !ok {
+		return apischema.DockerUpdateCheckResult{}, fmt.Errorf("watchtower reported no result for container %q", name)
+	}
+	if res.Image == "" && inspect.Config != nil {
+		res.Image = inspect.Config.Image
+	}
+
+	statuses, result := updateCheckStatuses(
+		[]watchtower.Result{res},
+		map[string]container.Summary{
+			name: {
+				ID:      inspect.ID,
+				ImageID: inspect.Image,
+			},
+		},
+		time.Now(),
+	)
+	updateImageUpdateCache(statuses)
+	return result, nil
+}
+
 // updateCheckStatuses maps Watchtower results onto cache entries, resolving
 // container/image IDs through the running-container summaries (porcelain
 // output only carries names).

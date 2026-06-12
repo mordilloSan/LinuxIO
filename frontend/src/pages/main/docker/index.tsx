@@ -15,6 +15,7 @@ import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -149,7 +150,13 @@ const DockerPage: React.FC = () => {
         disabled={isCheckingUpdates || !watchtowerEnabled}
         onClick={() => checkUpdates()}
         size="small"
-        startIcon={<Icon height={20} icon="mdi:update" width={20} />}
+        startIcon={
+          isCheckingUpdates ? (
+            <AppCircularProgress color="inherit" size={18} />
+          ) : (
+            <Icon height={20} icon="mdi:update" width={20} />
+          )
+        }
         variant="outlined"
       >
         Check Updates
@@ -299,6 +306,7 @@ const DockerPage: React.FC = () => {
             label: "Containers",
             component: (
               <ContainerList
+                checkingUpdates={isCheckingUpdates}
                 editMode={containerEditMode}
                 viewMode={containerView}
               />

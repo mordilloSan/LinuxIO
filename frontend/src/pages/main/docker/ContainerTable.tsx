@@ -9,6 +9,7 @@ import ActionButton from "./ActionButton";
 import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
@@ -61,6 +62,37 @@ const getImageVersion = (image: string) => {
   return tag || "—";
 };
 
+const getUpdateStatus = (container: ContainerInfo) => {
+  if (container.updateError) {
+    return {
+      color: "error",
+      label: "Error",
+      title: container.updateError,
+    };
+  }
+  if (container.updateAvailable === true) {
+    return {
+      color: "warning",
+      label: "Update",
+      title: "Update available",
+    };
+  }
+  if (container.updateAvailable === false || container.updateCheckedAt) {
+    return {
+      color: "success",
+      label: "Current",
+      title: container.updateCheckedAt
+        ? `Checked ${new Date(container.updateCheckedAt).toLocaleString()}`
+        : "No update available",
+    };
+  }
+  return {
+    color: "default",
+    label: "Unknown",
+    title: "Not checked",
+  };
+};
+
 const formatUptime = (createdUnix: number) => {
   const secs = Math.floor(Date.now() / 1000) - createdUnix;
   if (secs < 0) return "—";
@@ -76,15 +108,25 @@ const formatUptime = (createdUnix: number) => {
 // ── Per-row component ─────────────────────────────────────────────────────────
 
 interface ContainerRowProps {
+  autoUpdateDisabled: boolean;
+  autoUpdateReason?: string;
+  autoUpdateSelected: boolean;
+  checkingUpdates: boolean;
   container: ContainerInfo;
   editMode?: boolean;
   index: number;
+  onToggleAutoUpdate: (name: string) => void;
 }
 
 const ContainerRow: React.FC<ContainerRowProps> = ({
+  autoUpdateDisabled,
+  autoUpdateReason,
+  autoUpdateSelected,
+  checkingUpdates,
   container,
   index,
   editMode,
+  onToggleAutoUpdate,
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
@@ -102,6 +144,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogs, setHasLoadedLogs] = useState(false);
   const [hasLoadedTerminal, setHasLoadedTerminal] = useState(false);
+  const [autoTooltipKey, setAutoTooltipKey] = useState(0);
 
   const name = useMemo(
     () => container.Names?.[0]?.replace("/", "") || "Unnamed",
@@ -163,7 +206,28 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       queryKey: linuxio.docker.list_images.queryKey(),
     });
   };
-  const { mutate: updateContainer } =
+  const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
+    linuxio.docker.check_container_update.useMutation({
+      onSuccess: (data) => {
+        const result =
+          jobSnapshotResult<{
+            checked?: number;
+            updates?: number;
+          }>(data) ?? {};
+        const updates = result.updates ?? 0;
+        toast.success(
+          updates > 0
+            ? `Container ${name} has an update`
+            : `Container ${name} is up to date`,
+        );
+        refreshContainerViews();
+      },
+      onError: (err: Error) =>
+        toast.error(
+          getMutationErrorMessage(err, `Failed to check updates for ${name}`),
+        ),
+    });
+  const { mutate: updateContainer, isPending: isUpdatePending } =
     linuxio.docker.update_container.useMutation({
       onSuccess: (data) => {
         const result = jobSnapshotResult<{ updated: boolean }>(data);
@@ -183,7 +247,17 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   const memUsage = container.metrics?.mem_usage ?? 0;
   const displayState = getDisplayState(container);
   const version = getImageVersion(container.Image);
+  const updateStatus = getUpdateStatus(container);
   const uptime = formatUptime(container.Created);
+  const autoUpdateTooltip = autoUpdateDisabled
+    ? autoUpdateReason
+    : autoUpdateSelected
+      ? "Scheduled auto-update enabled"
+      : "Scheduled auto-update disabled";
+  const handleToggleAutoUpdate = () => {
+    setAutoTooltipKey((key) => key + 1);
+    onToggleAutoUpdate(name);
+  };
 
   // Deduped ports
   const ports = useMemo(() => {
@@ -283,30 +357,98 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             >
               {name}
             </AppTypography>
-            {container.updateAvailable && (
-              <Chip
-                color="warning"
-                label="Update"
-                size="small"
-                style={{ fontSize: "0.68rem" }}
-                variant="soft"
-              />
-            )}
           </div>
         </AppTableCell>
 
         {/* Version */}
-        <AppTableCell className="app-table-hide-below-md">
+        <AppTableCell
+          className="app-table-hide-below-md"
+          style={{ maxWidth: 160 }}
+        >
           <AppTypography
             color="text.secondary"
+            copyText={version}
+            noWrap
             style={{
               fontFamily: "monospace",
               fontSize: "0.78rem",
             }}
+            title={version}
+            toastMeta={DOCKER_TOAST_META}
             variant="body2"
           >
             {version}
           </AppTypography>
+        </AppTableCell>
+
+        {/* Update status + row check */}
+        <AppTableCell className="app-table-hide-below-md" width="140px">
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: 4,
+              minWidth: 0,
+            }}
+          >
+            <Chip
+              color={updateStatus.color}
+              disabled={isUpdatePending}
+              label={
+                isUpdatePending ? (
+                  <span
+                    style={{
+                      alignItems: "center",
+                      display: "inline-flex",
+                      gap: 4,
+                    }}
+                  >
+                    <AppCircularProgress color="inherit" size={12} />
+                    Updating
+                  </span>
+                ) : (
+                  updateStatus.label
+                )
+              }
+              onClick={
+                container.updateAvailable
+                  ? () => updateContainer({ containerId: container.Id })
+                  : undefined
+              }
+              size="small"
+              title={
+                container.updateAvailable ? "Apply update" : updateStatus.title
+              }
+              variant="soft"
+            />
+            <AppTooltip title="Check for updates">
+              <span>
+                <ActionButton
+                  icon="mdi:magnify"
+                  loading={isCheckingUpdate || checkingUpdates}
+                  onClick={() =>
+                    checkContainerUpdate({ containerId: container.Id })
+                  }
+                />
+              </span>
+            </AppTooltip>
+          </div>
+        </AppTableCell>
+
+        {/* Scheduled auto-update */}
+        <AppTableCell align="center" width="60px">
+          <AppTooltip key={autoTooltipKey} title={autoUpdateTooltip}>
+            <span>
+              <ActionButton
+                color={
+                  autoUpdateSelected ? theme.palette.primary.main : undefined
+                }
+                disabled={autoUpdateDisabled}
+                icon="mdi:timer-cog-outline"
+                onClick={handleToggleAutoUpdate}
+              />
+            </span>
+          </AppTooltip>
         </AppTableCell>
 
         {/* Uptime */}
@@ -631,18 +773,6 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 />
               </span>
             </AppTooltip>
-            {container.updateAvailable && (
-              <AppTooltip title="Update">
-                <span>
-                  <ActionButton
-                    icon="mdi:update"
-                    onClick={() =>
-                      updateContainer({ containerId: container.Id })
-                    }
-                  />
-                </span>
-              </AppTooltip>
-            )}
             <AppTooltip title="Remove">
               <span>
                 <ActionButton
@@ -734,13 +864,23 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
 // ── Main export ───────────────────────────────────────────────────────────────
 
 interface ContainerTableProps {
+  autoUpdateDisabled: boolean;
+  autoUpdateReason?: string;
+  autoUpdateSelectedNames: Set<string>;
+  checkingUpdates?: boolean;
   containers: ContainerInfo[];
   editMode?: boolean;
+  onToggleAutoUpdate: (name: string) => void;
 }
 
 const ContainerTable: React.FC<ContainerTableProps> = ({
+  autoUpdateDisabled,
+  autoUpdateReason,
+  autoUpdateSelectedNames,
+  checkingUpdates = false,
   containers,
   editMode = false,
+  onToggleAutoUpdate,
 }) => {
   const theme = useAppTheme();
   return (
@@ -757,6 +897,12 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               <AppTableCell>Name</AppTableCell>
               <AppTableCell className="app-table-hide-below-md">
                 Version
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md" width="140px">
+                Update
+              </AppTableCell>
+              <AppTableCell align="center" width="60px">
+                Auto
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-md">
                 Uptime
@@ -788,10 +934,17 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
           <AppTableBody>
             {containers.map((container, index) => (
               <ContainerRow
+                autoUpdateDisabled={autoUpdateDisabled}
+                autoUpdateReason={autoUpdateReason}
+                autoUpdateSelected={autoUpdateSelectedNames.has(
+                  container.Names?.[0]?.replace("/", "") ?? "",
+                )}
+                checkingUpdates={checkingUpdates}
                 container={container}
                 editMode={editMode}
                 index={index}
                 key={container.Id}
+                onToggleAutoUpdate={onToggleAutoUpdate}
               />
             ))}
           </AppTableBody>

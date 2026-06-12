@@ -47,6 +47,14 @@ func (h dockerHandlers) handleCheckUpdates(ctx context.Context, _ apischema.NoRe
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
+func (h dockerHandlers) handleCheckContainerUpdate(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
+	if req.ContainerID == "" {
+		return bridgeipc.ErrInvalidArgs
+	}
+	result, err := RefreshContainerImageUpdate(ctx, req.ContainerID)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
 func (h dockerHandlers) handleUpdateContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
 	if req.ContainerID == "" {
 		return bridgeipc.ErrInvalidArgs

@@ -33,6 +33,7 @@ export const ROUTE_MODES = {
   "datetime.set_ntp_servers": "job",
   "datetime.set_server_time": "job",
   "datetime.set_timezone": "job",
+  "docker.check_container_update": "job",
   "docker.check_updates": "job",
   "docker.clear_icon_cache": "job",
   "docker.compose": "job",

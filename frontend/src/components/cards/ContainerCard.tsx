@@ -55,14 +55,22 @@ const resolveColor = (palette: any, path: string): string => {
 };
 
 interface ContainerCardProps {
+  autoUpdateDisabled?: boolean;
+  autoUpdateReason?: string;
+  autoUpdateSelected?: boolean;
   container: ContainerInfo;
   onSelect?: () => void;
+  onToggleAutoUpdate?: (name: string) => void;
   selected?: boolean;
 }
 
 const ContainerCard: React.FC<ContainerCardProps> = ({
+  autoUpdateDisabled = false,
+  autoUpdateReason,
+  autoUpdateSelected = false,
   container,
   onSelect,
+  onToggleAutoUpdate,
   selected = false,
 }) => {
   const theme = useAppTheme();
@@ -74,6 +82,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
   const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
+  const [autoTooltipKey, setAutoTooltipKey] = useState(0);
 
   // derived
   const name = useMemo(
@@ -220,6 +229,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
     updateContainer({ containerId: container.Id });
   }, [container.Id, updateContainer]);
 
+  const handleAutoUpdateClick = useCallback(() => {
+    setAutoTooltipKey((key) => key + 1);
+    onToggleAutoUpdate?.(name);
+  }, [name, onToggleAutoUpdate]);
+
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
   const memUsage = container.metrics?.mem_usage ?? 0;
@@ -228,6 +242,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   const statusColor = resolveColor(theme.palette, getStatusColor(container));
+  const autoUpdateTooltip = autoUpdateDisabled
+    ? autoUpdateReason
+    : autoUpdateSelected
+      ? "Scheduled auto-update enabled"
+      : "Scheduled auto-update disabled";
 
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
@@ -275,6 +294,24 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
       >
         Restart
       </AppButton>
+      {onToggleAutoUpdate && (
+        <AppTooltip
+          arrow
+          key={`selected-${autoTooltipKey}`}
+          title={autoUpdateTooltip}
+        >
+          <span>
+            <ActionButton
+              color={
+                autoUpdateSelected ? theme.palette.primary.main : undefined
+              }
+              disabled={autoUpdateDisabled}
+              icon="mdi:timer-cog-outline"
+              onClick={handleAutoUpdateClick}
+            />
+          </span>
+        </AppTooltip>
+      )}
       {container.updateAvailable && (
         <AppButton
           color="warning"
@@ -552,6 +589,26 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                     />
                   </span>
                 </AppTooltip>
+                {onToggleAutoUpdate && (
+                  <AppTooltip
+                    arrow
+                    key={`compact-${autoTooltipKey}`}
+                    title={autoUpdateTooltip}
+                  >
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        color={
+                          autoUpdateSelected
+                            ? theme.palette.primary.main
+                            : undefined
+                        }
+                        disabled={autoUpdateDisabled}
+                        icon="mdi:timer-cog-outline"
+                        onClick={handleAutoUpdateClick}
+                      />
+                    </span>
+                  </AppTooltip>
+                )}
                 {container.updateAvailable && (
                   <AppTooltip arrow title="Update Container">
                     <span onClick={(e) => e.stopPropagation()}>

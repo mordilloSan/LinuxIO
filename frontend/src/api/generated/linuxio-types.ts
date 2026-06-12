@@ -1806,6 +1806,11 @@ export interface LinuxIOSchema {
   };
 
   docker: {
+    check_container_update: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: DockerUpdateCheckResult;
+    };
     check_updates: {
       input: [];
       request: void;

@@ -11,7 +11,6 @@ import {
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppChip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -53,9 +52,6 @@ const normalizeOptions = (options: DockerContainerAutoUpdateOptions) => ({
 const optionKey = (options: DockerContainerAutoUpdateOptions) =>
   JSON.stringify(normalizeOptions(options));
 
-const includesSearch = (value: string, search: string) =>
-  value.toLowerCase().includes(search.toLowerCase());
-
 const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
   onClose,
   open,
@@ -67,10 +63,9 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
   const queryClient = useQueryClient();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
-  const [selectionOverride, setSelectionOverride] = useState<string[] | null>(
-    null,
-  );
-  const [search, setSearch] = useState("");
+  const [containerNamesOverride, setContainerNamesOverride] = useState<
+    string[] | null
+  >(null);
 
   const autoUpdateQuery = linuxio.docker.get_container_auto_update.useQuery({
     enabled: open,
@@ -80,7 +75,7 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
     onSuccess: (state) => {
       toast.success("Container auto-update settings saved");
       setDraftOverrides(null);
-      setSelectionOverride(null);
+      setContainerNamesOverride(null);
       queryClient.setQueryData(
         linuxio.docker.get_container_auto_update.queryKey(),
         state,
@@ -101,7 +96,7 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
   const serverState = autoUpdateQuery.data;
   const baseOptions = serverState?.options ?? DEFAULT_OPTIONS;
   const selectedNames =
-    selectionOverride ??
+    containerNamesOverride ??
     baseOptions.container_names ??
     DEFAULT_OPTIONS.container_names;
   const currentOptions = useMemo<DockerContainerAutoUpdateOptions>(
@@ -124,25 +119,6 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
     watchtowerReason ??
     "Watchtower is unavailable.";
 
-  const selectedSet = useMemo(
-    () => new Set(currentOptions.container_names),
-    [currentOptions.container_names],
-  );
-  const containers = useMemo(
-    () => serverState?.containers ?? [],
-    [serverState?.containers],
-  );
-  const visibleContainers = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return containers;
-    return containers.filter(
-      (container) =>
-        includesSearch(container.name, query) ||
-        includesSearch(container.image, query) ||
-        includesSearch(container.state, query),
-    );
-  }, [containers, search]);
-
   const updateDraft = <K extends keyof DockerContainerAutoUpdateOptions>(
     key: K,
     value: DockerContainerAutoUpdateOptions[K],
@@ -152,40 +128,24 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
       [key]: value,
     }));
 
-  const toggleContainer = (name: string) => {
-    setSelectionOverride((prev) => {
-      const next = new Set(prev ?? currentOptions.container_names);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
-      }
-      return Array.from(next);
-    });
-  };
-
   const removeSelectedName = (name: string) => {
-    setSelectionOverride((prev) =>
+    setContainerNamesOverride((prev) =>
       (prev ?? currentOptions.container_names).filter((item) => item !== name),
     );
   };
 
   const reset = () => {
     setDraftOverrides(null);
-    setSelectionOverride(null);
-    setSearch("");
+    setContainerNamesOverride(null);
   };
 
   const save = () => {
     saveMutation.mutate(currentOptions);
   };
 
-  const selectedCount = currentOptions.container_names.length;
-  const selectedLabel =
-    selectedCount === 1
-      ? "1 selected container"
-      : `${selectedCount} selected containers`;
-  const missingNames = serverState?.missing_container_names ?? [];
+  const missingNames = (serverState?.missing_container_names ?? []).filter(
+    (name) => currentOptions.container_names.includes(name),
+  );
 
   return (
     <GeneralDialog
@@ -323,40 +283,18 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
           />
         </div>
 
-        <div
-          style={{
-            borderTop: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-            display: "grid",
-            gap: theme.spacing(1.5),
-            paddingTop: theme.spacing(2),
-          }}
-        >
+        {missingNames.length > 0 && (
           <div
             style={{
-              alignItems: "center",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: theme.spacing(1),
-              justifyContent: "space-between",
+              borderTop: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+              display: "grid",
+              gap: theme.spacing(1.25),
+              paddingTop: theme.spacing(2),
             }}
           >
             <AppTypography color="text.secondary" variant="subtitle2">
-              Containers
+              Missing Containers
             </AppTypography>
-            <AppChip label={selectedLabel} size="small" variant="outlined" />
-          </div>
-
-          <AppTextField
-            disabled={loading}
-            fullWidth
-            label="Search containers"
-            onChange={(event) => setSearch(event.target.value)}
-            size="small"
-            startAdornment={<Icon height={18} icon="mdi:magnify" width={18} />}
-            value={search}
-          />
-
-          {missingNames.length > 0 && (
             <div
               style={{
                 display: "flex",
@@ -377,84 +315,8 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
                 />
               ))}
             </div>
-          )}
-
-          <div
-            className="custom-scrollbar"
-            style={{
-              border: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-              borderRadius: 8,
-              maxHeight: 300,
-              minHeight: 140,
-              overflowY: "auto",
-            }}
-          >
-            {loading ? (
-              <AppTypography
-                color="text.secondary"
-                style={{ padding: theme.spacing(2) }}
-                variant="body2"
-              >
-                Loading containers...
-              </AppTypography>
-            ) : visibleContainers.length === 0 ? (
-              <AppTypography
-                color="text.secondary"
-                style={{ padding: theme.spacing(2) }}
-                variant="body2"
-              >
-                No containers found
-              </AppTypography>
-            ) : (
-              visibleContainers.map((container) => (
-                <label
-                  key={container.id}
-                  style={{
-                    alignItems: "center",
-                    borderBottom: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
-                    cursor: controlsDisabled ? "default" : "pointer",
-                    display: "grid",
-                    gap: theme.spacing(1.5),
-                    gridTemplateColumns: "auto minmax(0, 1fr) auto",
-                    minHeight: 52,
-                    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-                  }}
-                >
-                  <AppCheckbox
-                    checked={selectedSet.has(container.name)}
-                    disabled={controlsDisabled}
-                    onChange={() => toggleContainer(container.name)}
-                    size="small"
-                  />
-                  <span style={{ minWidth: 0 }}>
-                    <AppTypography
-                      component="span"
-                      fontWeight={600}
-                      noWrap
-                      variant="body2"
-                    >
-                      {container.name}
-                    </AppTypography>
-                    <AppTypography
-                      color="text.secondary"
-                      component="span"
-                      noWrap
-                      style={{ display: "block" }}
-                      variant="caption"
-                    >
-                      {container.image}
-                    </AppTypography>
-                  </span>
-                  <AppChip
-                    label={container.state}
-                    size="small"
-                    variant="outlined"
-                  />
-                </label>
-              ))
-            )}
           </div>
-        </div>
+        )}
       </AppDialogContent>
 
       <AppDialogActions>

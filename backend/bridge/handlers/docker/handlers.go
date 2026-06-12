@@ -47,6 +47,7 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Job[apischema.NoRequest, apischema.DockerStartedFailedResponse]("docker.start_all_stopped").Handle(handlers.handleStartAllStopped),
 		apischema.Job[apischema.NoRequest, apischema.DockerStoppedFailedResponse]("docker.stop_all_running").Handle(handlers.handleStopAllRunning),
 		apischema.Job[apischema.NoRequest, apischema.DockerUpdateCheckResult]("docker.check_updates").Handle(handlers.handleCheckUpdates),
+		apischema.Job[apischema.ContainerIDRequest, apischema.DockerUpdateCheckResult]("docker.check_container_update").Handle(handlers.handleCheckContainerUpdate),
 		apischema.Job[apischema.ContainerIDRequest, apischema.DockerContainerUpdateResult]("docker.update_container").Handle(handlers.handleUpdateContainer),
 		apischema.Query[apischema.NoRequest, apischema.DockerContainerAutoUpdateState]("docker.get_container_auto_update").Handle(handlers.handleGetContainerAutoUpdate),
 		apischema.Job[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update").Handle(handlers.handleSetContainerAutoUpdate),

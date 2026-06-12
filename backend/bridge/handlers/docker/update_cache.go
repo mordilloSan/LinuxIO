@@ -49,6 +49,20 @@ func replaceImageUpdateCache(statuses []imageUpdateStatus) {
 	imageUpdateCache.Unlock()
 }
 
+func updateImageUpdateCache(statuses []imageUpdateStatus) {
+	imageUpdateCache.Lock()
+	defer imageUpdateCache.Unlock()
+
+	for _, status := range statuses {
+		if status.ContainerID != "" {
+			imageUpdateCache.byContainerID[status.ContainerID] = status
+		}
+		if status.ImageID != "" {
+			imageUpdateCache.byImageID[status.ImageID] = status
+		}
+	}
+}
+
 func imageUpdateStatusForContainer(containerID string) (imageUpdateStatus, bool) {
 	imageUpdateCache.RLock()
 	defer imageUpdateCache.RUnlock()

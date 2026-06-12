@@ -25,6 +25,7 @@ import { useSearchParams } from "react-router-dom";
 
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import ContainerTable from "./ContainerTable";
+import { useContainerAutoUpdateControls } from "./useContainerAutoUpdateControls";
 import ContainerCard from "../../../components/cards/ContainerCard";
 
 import { linuxio, openDockerLogsStream } from "@/api";
@@ -37,11 +38,13 @@ import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface ContainerListProps {
+  checkingUpdates?: boolean;
   editMode: boolean;
   viewMode?: "card" | "table";
 }
 
 const ContainerList: React.FC<ContainerListProps> = ({
+  checkingUpdates = false,
   editMode,
   viewMode = "card",
 }) => {
@@ -55,8 +58,17 @@ const ContainerList: React.FC<ContainerListProps> = ({
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const selectedContainerId = searchParams.get("container");
   const [search, setSearch] = useState("");
+  const containerAutoUpdate = useContainerAutoUpdateControls();
 
   const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
+
+  const isAutoUpdateSelected = useCallback(
+    (container: (typeof containers)[number]) =>
+      containerAutoUpdate.selectedNames.has(
+        container.Names?.[0]?.replace("/", "") ?? "",
+      ),
+    [containerAutoUpdate.selectedNames],
+  );
 
   const updateSelectedContainer = useCallback(
     (containerId: string | null) => {
@@ -187,8 +199,13 @@ const ContainerList: React.FC<ContainerListProps> = ({
             strategy={verticalListSortingStrategy}
           >
             <ContainerTable
+              autoUpdateDisabled={containerAutoUpdate.disabled}
+              autoUpdateReason={containerAutoUpdate.reason}
+              autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
+              checkingUpdates={checkingUpdates}
               containers={orderedContainers}
               editMode={editMode}
+              onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
             />
           </SortableContext>
         </DndContext>
@@ -216,7 +233,13 @@ const ContainerList: React.FC<ContainerListProps> = ({
                     size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
                   >
                     <SortableCard editMode id={container.Id}>
-                      <ContainerCard container={container} />
+                      <ContainerCard
+                        autoUpdateDisabled={containerAutoUpdate.disabled}
+                        autoUpdateReason={containerAutoUpdate.reason}
+                        autoUpdateSelected={isAutoUpdateSelected(container)}
+                        container={container}
+                        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                      />
                     </SortableCard>
                   </AppGrid>
                 ))}
@@ -294,8 +317,12 @@ const ContainerList: React.FC<ContainerListProps> = ({
                 }}
               >
                 <ContainerCard
+                  autoUpdateDisabled={containerAutoUpdate.disabled}
+                  autoUpdateReason={containerAutoUpdate.reason}
+                  autoUpdateSelected={isAutoUpdateSelected(selectedContainer)}
                   container={selectedContainer}
                   onSelect={() => handleSelectContainer(selectedContainer.Id)}
+                  onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                   selected
                 />
               </motion.div>
@@ -381,8 +408,12 @@ const ContainerList: React.FC<ContainerListProps> = ({
                     size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
                   >
                     <ContainerCard
+                      autoUpdateDisabled={containerAutoUpdate.disabled}
+                      autoUpdateReason={containerAutoUpdate.reason}
+                      autoUpdateSelected={isAutoUpdateSelected(container)}
                       container={container}
                       onSelect={() => handleSelectContainer(container.Id)}
+                      onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                     />
                   </AppGrid>
                 ))}

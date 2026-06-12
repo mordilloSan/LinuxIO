@@ -86,6 +86,10 @@ const linuxio = {
     }),
   },
   docker: {
+    check_container_update: createEndpoint("docker", "check_container_update", {
+      kind: "field",
+      field: "containerId",
+    }),
     check_updates: createEndpoint("docker", "check_updates", { kind: "none" }),
     clear_icon_cache: createEndpoint("docker", "clear_icon_cache", {
       kind: "none",
