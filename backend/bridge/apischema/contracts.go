@@ -291,7 +291,6 @@ type DockerContainerUpdateResult struct {
 	Image           string `json:"image"`
 	NewImageID      string `json:"newImageId,omitempty"`
 	PreviousImageID string `json:"previousImageId,omitempty"`
-	RolledBack      bool   `json:"rolledBack"`
 	Updated         bool   `json:"updated"`
 }
 

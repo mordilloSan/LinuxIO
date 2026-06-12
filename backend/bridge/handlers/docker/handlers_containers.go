@@ -54,3 +54,13 @@ func (h dockerHandlers) handleUpdateContainer(ctx context.Context, req apischema
 	result, err := UpdateContainer(ctx, req.ContainerID)
 	return bridgeipc.EmitResult(emit, result, err)
 }
+
+func (h dockerHandlers) handleGetContainerAutoUpdate(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+	result, err := GetContainerAutoUpdate(ctx)
+	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func (h dockerHandlers) handleSetContainerAutoUpdate(ctx context.Context, req apischema.DockerContainerAutoUpdateOptions, emit bridgeipc.Events) error {
+	result, err := SetContainerAutoUpdate(ctx, req)
+	return bridgeipc.EmitResult(emit, result, err)
+}

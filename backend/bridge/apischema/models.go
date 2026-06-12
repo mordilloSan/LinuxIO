@@ -8,6 +8,7 @@ import (
 type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
+type DockerContainerAutoUpdateMode string
 type JobState string
 type SensorReadingKind string
 type TableCardViewMode string
@@ -15,14 +16,15 @@ type Theme string
 type ValidationIssueType string
 
 var StringEnums = map[string][]string{
-	"AutoUpdateFrequency":    {"hourly", "daily", "weekly"},
-	"AutoUpdateScope":        {"security", "updates", "all"},
-	"AutoUpdateRebootPolicy": {"never", "if_needed", "always", "schedule"},
-	"JobState":               {"queued", "running", "completed", "failed", "canceled"},
-	"SensorReadingKind":      {"number", "boolean"},
-	"TableCardViewMode":      {"card", "table"},
-	"Theme":                  {"LIGHT", "DARK"},
-	"ValidationIssueType":    {"error", "warning"},
+	"AutoUpdateFrequency":           {"hourly", "daily", "weekly"},
+	"AutoUpdateScope":               {"security", "updates", "all"},
+	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
+	"DockerContainerAutoUpdateMode": {"update", "check_only"},
+	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
+	"SensorReadingKind":             {"number", "boolean"},
+	"TableCardViewMode":             {"card", "table"},
+	"Theme":                         {"LIGHT", "DARK"},
+	"ValidationIssueType":           {"error", "warning"},
 }
 
 const (
@@ -372,6 +374,32 @@ type ContainerInfo struct {
 	UpdateCheckedAt *int64                    `json:"updateCheckedAt,omitempty"`
 	UpdateError     *string                   `json:"updateError,omitempty"`
 	URL             *string                   `json:"url,omitempty"`
+}
+
+type DockerContainerAutoUpdateOptions struct {
+	Cleanup        bool                          `json:"cleanup"`
+	ContainerNames []string                      `json:"container_names"`
+	Enabled        bool                          `json:"enabled"`
+	Mode           DockerContainerAutoUpdateMode `json:"mode"`
+	Time           string                        `json:"time"`
+}
+
+type DockerContainerAutoUpdateTarget struct {
+	ID       string `json:"id"`
+	Image    string `json:"image"`
+	Name     string `json:"name"`
+	Selected bool   `json:"selected"`
+	State    string `json:"state"`
+}
+
+type DockerContainerAutoUpdateState struct {
+	Available             bool                              `json:"available"`
+	Containers            []DockerContainerAutoUpdateTarget `json:"containers"`
+	Error                 *string                           `json:"error,omitempty"`
+	MissingContainerNames []string                          `json:"missing_container_names"`
+	Options               DockerContainerAutoUpdateOptions  `json:"options"`
+	TimerActive           bool                              `json:"timer_active"`
+	TimerEnabled          bool                              `json:"timer_enabled"`
 }
 
 type DockerImage struct {

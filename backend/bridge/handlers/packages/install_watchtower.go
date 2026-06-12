@@ -11,13 +11,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	tarpath "path"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/watchtower"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -75,14 +76,19 @@ func installWatchtower(ctx context.Context, job *bridgejobs.Job) error {
 		return fmt.Errorf("extract Watchtower binary: %w", err)
 	}
 
-	reportProgress(job, stageInstallAsset, fmt.Sprintf("Installing %s", system.WatchtowerBinaryName), 84)
-	installPath := filepath.Join(version.BinDir, system.WatchtowerBinaryName)
+	reportProgress(job, stageInstallAsset, fmt.Sprintf("Installing %s", watchtower.BinaryName), 82)
+	installPath := watchtower.BinaryPath()
 	if err := utils.WriteFileAtomic(installPath, binaryBytes, 0o755); err != nil {
 		return fmt.Errorf("install %s: %w", installPath, err)
 	}
 
+	reportProgress(job, stageInstallAsset, fmt.Sprintf("Configuring %s", watchtower.TimerName), 84)
+	if err := writeWatchtowerServiceFiles(ctx); err != nil {
+		return err
+	}
+
 	reportProgress(job, stageInstallAsset, fmt.Sprintf("Installed Watchtower %s", watchtowerVersion), pctInstallEnd)
-	slog.Info("Installed Watchtower.", "version", watchtowerVersion, "path", installPath)
+	slog.Info("Installed Watchtower.", "version", watchtowerVersion, "path", installPath, "unit", watchtower.UnitName, "timer", watchtower.TimerName)
 	return nil
 }
 
@@ -250,6 +256,54 @@ func extractWatchtowerBinary(archiveBytes []byte) ([]byte, error) {
 		return data, nil
 	}
 	return nil, fmt.Errorf("watchtower binary not found in archive")
+}
+
+func writeWatchtowerServiceFiles(ctx context.Context) error {
+	if err := ensureWatchtowerEnvFile(); err != nil {
+		return err
+	}
+
+	unitFile, err := watchtower.UnitFile()
+	if err != nil {
+		return err
+	}
+	if writeErr := utils.WriteFileAtomic(watchtower.UnitPath, unitFile, 0o644); writeErr != nil {
+		return fmt.Errorf("write %s: %w", watchtower.UnitPath, writeErr)
+	}
+
+	timerFile, err := watchtower.TimerFile()
+	if err != nil {
+		return err
+	}
+	if writeErr := utils.WriteFileAtomic(watchtower.TimerPath, timerFile, 0o644); writeErr != nil {
+		return fmt.Errorf("write %s: %w", watchtower.TimerPath, writeErr)
+	}
+	if err := systemd.DaemonReload(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureWatchtowerEnvFile() error {
+	info, err := os.Stat(watchtower.EnvPath)
+	if err == nil {
+		if info.IsDir() || !info.Mode().IsRegular() {
+			return fmt.Errorf("%s is not a regular file", watchtower.EnvPath)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", watchtower.EnvPath, err)
+	}
+
+	envFile, err := watchtower.DefaultEnvFile()
+	if err != nil {
+		return err
+	}
+	if writeErr := utils.WriteFileAtomic(watchtower.EnvPath, envFile, 0o644); writeErr != nil {
+		return fmt.Errorf("write %s: %w", watchtower.EnvPath, writeErr)
+	}
+	return nil
 }
 
 func readWatchtowerErrorBody(r io.Reader) string {

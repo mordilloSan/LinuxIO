@@ -145,6 +145,11 @@ const linuxio = {
       kind: "field",
       field: "projectName",
     }),
+    get_container_auto_update: createEndpoint(
+      "docker",
+      "get_container_auto_update",
+      { kind: "none" },
+    ),
     get_docker_folders: createEndpoint("docker", "get_docker_folders", {
       kind: "none",
     }),
@@ -182,6 +187,11 @@ const linuxio = {
       kind: "field",
       field: "containerId",
     }),
+    set_container_auto_update: createEndpoint(
+      "docker",
+      "set_container_auto_update",
+      { kind: "object" },
+    ),
     start_all_stopped: createEndpoint("docker", "start_all_stopped", {
       kind: "none",
     }),

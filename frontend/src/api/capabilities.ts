@@ -65,11 +65,11 @@ export const CAPABILITIES = [
     state: "watchtowerAvailable",
     label: "Watchtower",
     description: "Container auto-update engine",
-    readyText: "LinuxIO Watchtower binary is installed.",
+    readyText: "LinuxIO Watchtower timer is installed.",
     dependency: "linuxio-watchtower",
     icon: "mdi:update",
     reasonUnknown: "Watchtower availability is still being checked.",
-    reasonUnavailable: "LinuxIO Watchtower binary is not installed.",
+    reasonUnavailable: "LinuxIO Watchtower timer is not installed.",
     installable: { requiresPackageKit: false, requiresDocker: true },
   },
   {

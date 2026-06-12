@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -16,7 +14,7 @@ import (
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/watchtower"
 )
 
 // CapabilitySpec describes a single capability: how to detect it, how to
@@ -43,10 +41,7 @@ type InstallSpec struct {
 	RequiresDocker    bool
 }
 
-const (
-	OptionalComponentWatchtower = "watchtower"
-	WatchtowerBinaryName        = "linuxio-watchtower"
-)
+const OptionalComponentWatchtower = "watchtower"
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -60,7 +55,7 @@ var capabilityRegistry = []CapabilitySpec{
 		Name:    "watchtower",
 		LogName: "Watchtower",
 		Detect: func(_ context.Context) (bool, string) {
-			return checkedCapability(checkWatchtowerAvailability())
+			return checkedCapability(watchtower.CheckInstalled())
 		},
 		Install: &InstallSpec{
 			OptionalComponent: OptionalComponentWatchtower,
@@ -172,24 +167,6 @@ func CapabilitySpecByName(name string) (CapabilitySpec, bool) {
 func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	if _, err := exec.LookPath(command); err != nil {
 		return false, fmt.Errorf("%s not found (missing %s dependency)", command, dependencyName)
-	}
-	return true, nil
-}
-
-func checkWatchtowerAvailability() (bool, error) {
-	path := filepath.Join(version.BinDir, WatchtowerBinaryName)
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, fmt.Errorf("%s not found", path)
-		}
-		return false, fmt.Errorf("stat %s: %w", path, err)
-	}
-	if info.IsDir() {
-		return false, fmt.Errorf("%s is a directory", path)
-	}
-	if info.Mode()&0o111 == 0 {
-		return false, fmt.Errorf("%s is not executable", path)
 	}
 	return true, nil
 }

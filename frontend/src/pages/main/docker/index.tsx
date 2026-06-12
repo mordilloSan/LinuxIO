@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStacksPage from "./ComposeStacksPage";
+import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
 import ContainerList from "./ContainerList";
 import DockerDashboard from "./DockerDashboard";
 import ImageList from "./ImageList";
@@ -27,8 +28,11 @@ const DockerPage: React.FC = () => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { status: dockerStatus } = useCapability("dockerAvailable");
+  const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
+    useCapability("watchtowerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
+  const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
@@ -55,12 +59,15 @@ const DockerPage: React.FC = () => {
   const { mutate: checkUpdates, isPending: isCheckingUpdates } =
     linuxio.docker.check_updates.useMutation({
       onSuccess: (data) => {
-        const result = jobSnapshotResult<{
-          checked: number;
-          updates: number;
-        }>(data);
+        const result =
+          jobSnapshotResult<{
+            checked?: number;
+            updates?: number;
+          }>(data) ?? {};
+        const checked = result.checked ?? 0;
+        const updates = result.updates ?? 0;
         toast.success(
-          `Checked ${result.checked} container(s), found ${result.updates} update(s)`,
+          `Checked ${checked} container(s), found ${updates} update(s)`,
         );
         invalidateDockerUpdateViews();
       },
@@ -136,17 +143,50 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
-  const renderCheckUpdatesButton = () => (
-    <AppButton
-      disabled={isCheckingUpdates}
-      onClick={() => checkUpdates()}
-      size="small"
-      startIcon={<Icon height={20} icon="mdi:update" width={20} />}
-      variant="outlined"
-    >
-      Check Updates
-    </AppButton>
-  );
+  const renderCheckUpdatesButton = () => {
+    const button = (
+      <AppButton
+        disabled={isCheckingUpdates || !watchtowerEnabled}
+        onClick={() => checkUpdates()}
+        size="small"
+        startIcon={<Icon height={20} icon="mdi:update" width={20} />}
+        variant="outlined"
+      >
+        Check Updates
+      </AppButton>
+    );
+    if (watchtowerEnabled) {
+      return button;
+    }
+    return (
+      <AppTooltip title={watchtowerReason}>
+        <span>{button}</span>
+      </AppTooltip>
+    );
+  };
+  const renderAutoUpdateSettingsButton = () => {
+    const button = (
+      <AppIconButton
+        aria-label="Container auto-update settings"
+        disabled={!watchtowerEnabled}
+        onClick={() => setAutoUpdateDialogOpen(true)}
+        size="small"
+      >
+        <Icon height={20} icon="mdi:timer-cog-outline" width={20} />
+      </AppIconButton>
+    );
+    return (
+      <AppTooltip
+        title={
+          watchtowerEnabled
+            ? "Container auto-update settings"
+            : watchtowerReason
+        }
+      >
+        <span>{button}</span>
+      </AppTooltip>
+    );
+  };
   if (dockerStatus === "unknown") {
     return (
       <div
@@ -221,6 +261,7 @@ const DockerPage: React.FC = () => {
             rightContent: (
               <>
                 {renderCheckUpdatesButton()}
+                {renderAutoUpdateSettingsButton()}
                 <AppButton
                   disabled={isStartingAll || stoppedContainers.length === 0}
                   onClick={() => startAllStopped()}
@@ -265,6 +306,7 @@ const DockerPage: React.FC = () => {
             rightContent: (
               <>
                 {renderCheckUpdatesButton()}
+                {renderAutoUpdateSettingsButton()}
                 <AppTooltip
                   title={
                     containerView === "card"
@@ -315,6 +357,7 @@ const DockerPage: React.FC = () => {
             rightContent: (
               <>
                 {renderCheckUpdatesButton()}
+                {renderAutoUpdateSettingsButton()}
                 <AppTooltip
                   title={
                     stacksView === "table"
@@ -456,6 +499,7 @@ const DockerPage: React.FC = () => {
             rightContent: (
               <>
                 {renderCheckUpdatesButton()}
+                {renderAutoUpdateSettingsButton()}
                 <AppTooltip
                   title={
                     imagesView === "table"
@@ -497,6 +541,12 @@ const DockerPage: React.FC = () => {
         onClose={() => !isPruning && setPruneDialogOpen(false)}
         onConfirm={(opts: PruneOptions) => systemPrune(opts)}
         open={pruneDialogOpen}
+      />
+      <ContainerAutoUpdateDialog
+        onClose={() => setAutoUpdateDialogOpen(false)}
+        open={autoUpdateDialogOpen}
+        watchtowerEnabled={watchtowerEnabled}
+        watchtowerReason={watchtowerReason}
       />
     </>
   );

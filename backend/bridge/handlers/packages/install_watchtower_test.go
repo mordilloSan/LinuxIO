@@ -1,6 +1,8 @@
 package packages
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestWatchtowerAssetForArch(t *testing.T) {
 	const testVersion = "9.9.9"
