@@ -4,6 +4,7 @@ import React from "react";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
 import { GAP_SM } from "@/theme/constants";
 
 export interface LVMSectionCardProps {
@@ -70,7 +71,7 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
                 icon="mdi:chevron-down"
                 style={{
                   transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
-                  transition: "transform 0.2s ease",
+                  transition: `transform ${COLLAPSE_TRANSITION}`,
                 }}
                 width={22}
               />
@@ -81,7 +82,9 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
         title={title}
       />
     </div>
-    {expanded ? <div style={{ marginTop: GAP_SM }}>{children}</div> : null}
+    <AppCollapse in={expanded} unmountOnExit>
+      <div style={{ marginTop: GAP_SM }}>{children}</div>
+    </AppCollapse>
   </FrostedCard>
 );
 

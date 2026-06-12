@@ -323,7 +323,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     }
   };
   return (
-    <AppCollapse in={expanded} timeout="auto" unmountOnExit>
+    <AppCollapse in={expanded} unmountOnExit>
       <div
         style={{
           marginTop: theme.spacing(2),

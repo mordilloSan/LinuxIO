@@ -12,7 +12,7 @@ import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
-import AppCollapse from "@/components/ui/AppCollapse";
+import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -213,7 +213,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: "transform 0.2s",
+              transition: `transform ${COLLAPSE_TRANSITION}`,
               transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -313,7 +313,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: "transform 0.2s",
+              transition: `transform ${COLLAPSE_TRANSITION}`,
               transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -544,7 +544,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: "transform 0.2s",
+              transition: `transform ${COLLAPSE_TRANSITION}`,
               transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}

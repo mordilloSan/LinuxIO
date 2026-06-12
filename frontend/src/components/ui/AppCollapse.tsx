@@ -2,21 +2,23 @@ import React, { useEffect, useState } from "react";
 
 import "./app-collapse.css";
 
+// Single source of truth for every expand/collapse animation in the app:
+// the collapse itself plus anything that moves with it (chevrons, fades).
+export const COLLAPSE_DURATION_MS = 600;
+export const COLLAPSE_TRANSITION = `${COLLAPSE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+
 interface AppCollapseProps {
   children: React.ReactNode;
   in: boolean;
-  timeout?: number | "auto";
   unmountOnExit?: boolean;
 }
 
 const AppCollapse: React.FC<AppCollapseProps> = ({
   in: isOpen,
-  timeout = 600,
   unmountOnExit = false,
   children,
 }) => {
   const [mounted, setMounted] = useState(isOpen);
-  const duration = timeout === "auto" ? 600 : timeout;
 
   useEffect(() => {
     if (isOpen) {
@@ -42,10 +44,10 @@ const AppCollapse: React.FC<AppCollapseProps> = ({
 
     const timerId = window.setTimeout(() => {
       setMounted(false);
-    }, duration);
+    }, COLLAPSE_DURATION_MS);
 
     return () => window.clearTimeout(timerId);
-  }, [duration, isOpen, mounted, unmountOnExit]);
+  }, [isOpen, mounted, unmountOnExit]);
 
   if (!isOpen && !mounted && unmountOnExit) return null;
 
@@ -56,7 +58,7 @@ const AppCollapse: React.FC<AppCollapseProps> = ({
   return (
     <div
       className={`app-collapse ${open ? "app-collapse--open" : ""}`}
-      style={{ transitionDuration: `${duration}ms` }}
+      style={{ transitionDuration: `${COLLAPSE_DURATION_MS}ms` }}
     >
       <div className="app-collapse__inner">{children}</div>
     </div>

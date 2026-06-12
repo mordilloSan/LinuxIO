@@ -10,7 +10,7 @@ import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppCollapse from "@/components/ui/AppCollapse";
+import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
   AppTable,
@@ -608,7 +608,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     color="text.disabled"
                     style={{
                       opacity: expanded ? 0 : 1,
-                      transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+                      transition: `opacity ${COLLAPSE_TRANSITION}`,
                     }}
                     variant="caption"
                   >
@@ -708,7 +708,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     color="text.disabled"
                     style={{
                       opacity: expanded ? 0 : 1,
-                      transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+                      transition: `opacity ${COLLAPSE_TRANSITION}`,
                     }}
                     variant="caption"
                   >
@@ -853,7 +853,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 icon="mdi:chevron-down"
                 style={{
                   transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "0.2s",
+                  transition: `transform ${COLLAPSE_TRANSITION}`,
                 }}
                 width={20}
               />

@@ -55,7 +55,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
   return (
-    <AppCollapse in={true} timeout="auto" unmountOnExit>
+    <AppCollapse in={true} unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <AppDivider style={{ margin: "16px 0" }} />
 

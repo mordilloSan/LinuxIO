@@ -101,7 +101,7 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       </div>
 
       {/* Changelog */}
-      <AppCollapse in={isExpanded} timeout="auto" unmountOnExit>
+      <AppCollapse in={isExpanded} unmountOnExit>
         <div style={{ whiteSpace: "pre-wrap", fontSize: 14, marginTop: 32 }}>
           {isLoadingChangelog ? (
             <div

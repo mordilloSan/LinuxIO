@@ -2,7 +2,10 @@ import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
-import AppCollapse from "@/components/ui/AppCollapse";
+import AppCollapse, {
+  COLLAPSE_DURATION_MS,
+  COLLAPSE_TRANSITION,
+} from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import {
   AppTable,
@@ -144,7 +147,7 @@ function UnifiedCollapsibleTable<T>({
                               transform: isExpanded
                                 ? "rotate(180deg)"
                                 : "rotate(0deg)",
-                              transition: "0.2s",
+                              transition: `transform ${COLLAPSE_TRANSITION}`,
                             }}
                             width={22}
                           />
@@ -158,14 +161,14 @@ function UnifiedCollapsibleTable<T>({
                         colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                         style={{ paddingBottom: 0, paddingTop: 0 }}
                       >
-                        <AppCollapse
-                          in={isExpanded}
-                          timeout="auto"
-                          unmountOnExit
-                        >
+                        <AppCollapse in={isExpanded} unmountOnExit>
                           <motion.div
                             animate={{ opacity: 1, y: 0 }}
                             initial={{ opacity: 0, y: -10 }}
+                            transition={{
+                              duration: COLLAPSE_DURATION_MS / 1000,
+                              ease: [0.4, 0, 0.2, 1],
+                            }}
                           >
                             <div
                               style={{

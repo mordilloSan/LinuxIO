@@ -12,7 +12,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
-import AppCollapse from "@/components/ui/AppCollapse";
+import AppCollapse, { COLLAPSE_TRANSITION } from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import { AppTableCell } from "@/components/ui/AppTable";
@@ -98,7 +98,7 @@ const SectionHeader: React.FC<{
         height={24}
         icon="mdi:chevron-down"
         style={{
-          transition: "transform 0.2s",
+          transition: `transform ${COLLAPSE_TRANSITION}`,
           transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
         }}
         width={24}
