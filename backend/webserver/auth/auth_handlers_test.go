@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -334,9 +335,16 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	// Bridge blocks forever — holds the semaphore slot
+	// Bridge blocks until released — the first login holds the semaphore slot
+	// for the duration of the test. entered signals that startBridge has been
+	// reached, which (per Login) only happens after the semaphore is acquired.
 	block := make(chan struct{})
+	entered := make(chan struct{}, 1)
 	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
 		<-block
 		return nil, fmt.Errorf("cancelled")
 	}
@@ -349,20 +357,16 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	r := newRouterForTests(h)
 
 	// First login: blocks in startBridge, holding the semaphore
-	started := make(chan struct{})
 	go func() {
-		close(started)
 		doJSON(r, "POST", "/auth/login", LoginRequest{Username: "a", Password: "p"})
 	}()
-	<-started
 
-	// Give the goroutine a moment to enter Login and acquire the semaphore
-	// (the test is deterministic because sem=1 and startBridge blocks)
-	for range 100 {
-		if len(h.authSem) == 1 {
-			break
-		}
-		// busy-wait briefly for the goroutine to grab the slot
+	// Wait until the first login is inside startBridge; at that point the
+	// semaphore is held, so a concurrent login must be rejected.
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first login did not reach startBridge in time")
 	}
 
 	// Second login: should be rejected immediately
