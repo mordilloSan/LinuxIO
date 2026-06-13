@@ -18,19 +18,10 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 9 - Revisit React Compiler backend once the Rust port (facebook/react #36173) ships a native OXC integration: when Rolldown/Vite adopts `react_compiler_oxc::transform()`, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts` and run the compiler in the OXC pass (faster build, no Babel). Not ready yet — `babel-plugin-react-compiler-rust` unpublished, PR unmerged as of 2026-06.
 
-10 - Fix this
+10 - implement virtual on logs and filebrowser....
 
-2026/06/13 12:24:17 [DEBUG] bridge route started [mode="query" route=updates.get_updates_basic user=miguelmariz]
-2026/06/13 12:24:18 [DEBUG] bridge package has invalid PackageKit InfoEnum
-2026/06/13 12:24:18 [DEBUG] bridge package has invalid PackageKit InfoEnum
-2026/06/13 12:24:18 [DEBUG] bridge package has invalid PackageKit InfoEnum
-2026/06/13 12:24:18 [DEBUG] bridge package has invalid PackageKit InfoEnum
-2026/06/13 12:24:18 [DEBUG] bridge route completed [duration=457.826752ms mode="query" outcome=success route=updates.get_updates_basic]
-
-11 - implement virtual on logs and filebrowser....
-
-12 - Migrate to tanstackrouter?
-
+Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
+Migrate to tanstackrouter? Not Worth it
 Initial bundle: split the Iconify registry so auth/shell/sidebar icons are separate from route-specific icons.DONE
 Authenticated runtime: split `AuthGuard` into a lightweight gate plus lazy authenticated providers. DONE
 Dashboard network card: remove render-time state updates and derive or effect-sync selected interface state. DONE
