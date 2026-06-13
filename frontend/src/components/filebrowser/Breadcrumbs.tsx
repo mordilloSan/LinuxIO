@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 
+import { HomeFilledIcon } from "@/icons/svg";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 export interface BreadcrumbItem {
@@ -79,8 +80,9 @@ const breadcrumbStyles = `
     bottom: 0;
   }
 
-  .linuxio-breadcrumb-button span.material-icons {
-    font-size: 1.5rem;
+  .linuxio-breadcrumb-home-icon {
+    width: 1.5rem;
+    height: 1.5rem;
     line-height: 1;
     display: flex;
     align-items: center;
@@ -275,7 +277,9 @@ const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
             title="Home"
             type="button"
           >
-            <span className="material-icons">home</span>
+            <span className="linuxio-breadcrumb-home-icon">
+              <HomeFilledIcon />
+            </span>
           </button>
         </li>
         {breadcrumbs.map((crumb, index) => (

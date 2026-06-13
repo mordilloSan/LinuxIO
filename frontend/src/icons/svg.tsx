@@ -18,6 +18,12 @@ export const HomeIcon = () => (
   </svg>
 );
 
+export const HomeFilledIcon = () => (
+  <svg aria-hidden focusable="false" height="24" viewBox="0 0 24 24" width="24">
+    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="currentColor" />
+  </svg>
+);
+
 export const NetworkIcon = () => (
   <svg {...s}>
     <rect height="6" rx="1" width="6" x="16" y="16" />
