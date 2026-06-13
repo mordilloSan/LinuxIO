@@ -7,15 +7,25 @@ const apiMocks = vi.hoisted(() => ({
   closeStreamMux: vi.fn(),
   getCapabilities: vi.fn(),
   initStreamMux: vi.fn(() => ({
-    addStatusListener: vi.fn(() => vi.fn()),
+    addStatusListener: vi.fn(
+      (listener: (status: "open" | "closed" | "error") => void) => {
+        void listener;
+        return vi.fn();
+      },
+    ),
   })),
   redirectToSignIn: vi.fn(),
 }));
 
+const toastMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
-    error: vi.fn(),
-    success: vi.fn(),
+    error: toastMocks.error,
+    success: toastMocks.success,
   },
 }));
 
@@ -73,6 +83,8 @@ describe("AuthContext", () => {
     apiMocks.getCapabilities.mockReset();
     apiMocks.initStreamMux.mockClear();
     apiMocks.redirectToSignIn.mockClear();
+    toastMocks.error.mockClear();
+    toastMocks.success.mockClear();
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -132,5 +144,49 @@ describe("AuthContext", () => {
     );
     expect(sessionStorage.getItem("update_info")).toBeNull();
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles a real session-timeout signal from the stream mux", async () => {
+    localStorage.setItem("auth_username", "miguel");
+    localStorage.setItem("auth_privileged", "true");
+    sessionStorage.setItem("update_info", "{}");
+    const statusListeners: Array<
+      (status: "open" | "closed" | "error") => void
+    > = [];
+    const unsubscribe = vi.fn();
+    apiMocks.initStreamMux.mockReturnValue({
+      addStatusListener: vi.fn(
+        (listener: (status: "open" | "closed" | "error") => void) => {
+          statusListeners.push(listener);
+          return unsubscribe;
+        },
+      ),
+    });
+    const consoleLog = vi
+      .spyOn(console, "log")
+      .mockImplementation(() => undefined);
+
+    renderAuthProvider();
+
+    expect(
+      await screen.findByText("miguel:true:true:null"),
+    ).toBeInTheDocument();
+
+    statusListeners[0]("error");
+
+    await waitFor(() =>
+      expect(screen.getByText("none:false:false:null")).toBeInTheDocument(),
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "Session expired. Please sign in again.",
+    );
+    expect(localStorage.getItem("auth_username")).toBeNull();
+    expect(localStorage.getItem("auth_privileged")).toBeNull();
+    expect(sessionStorage.getItem("update_info")).toBeNull();
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+    expect(apiMocks.closeStreamMux).toHaveBeenCalled();
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[AuthContext] Session invalid or expired",
+    );
   });
 });
