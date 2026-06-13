@@ -29,6 +29,7 @@
       "@/pages/*": ["./src/pages/*"],
       "@/routing/*": ["./src/routing/*"],
       "@/theme/*": ["./src/theme/*"],
+      "@/test/*": ["./src/test/*"],
       "@/types/*": ["./src/types/*"],
       "@/utils/*": ["./src/utils/*"],
       "@/constants/*": ["./src/constants/*"],

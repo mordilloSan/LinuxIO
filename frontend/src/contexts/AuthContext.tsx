@@ -32,6 +32,7 @@ import {
   LoginResponse,
 } from "@/types/auth";
 import { clearConfigCache } from "@/utils/configCache";
+import { redirectToSignIn } from "@/utils/navigation";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 const AUTH_CAPABILITIES_KEY = "auth_capabilities";
@@ -208,8 +209,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       }
     }
     dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
-    // Use react-router navigate if available; otherwise:
-    window.location.assign("/sign-in");
+    redirectToSignIn();
   }, []);
 
   // Init on mount

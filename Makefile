@@ -344,9 +344,17 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	@{ \
 	  $(MAKE) --no-print-directory lint-only & \
 	  $(MAKE) --no-print-directory tsc-only & \
+	  $(MAKE) --no-print-directory test-frontend-only & \
 	  $(MAKE) --no-print-directory golint-only & \
 	  wait; \
 	} && $(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1
+
+test-frontend: ensure-node setup
+	@$(MAKE) --no-print-directory test-frontend-only
+
+test-frontend-only:
+	@echo "🧪 Running frontend unit tests..."
+	@bash -c 'cd frontend && npm run test && echo "✅ Frontend unit tests passed!"'
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -742,7 +750,8 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests (optimized)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
