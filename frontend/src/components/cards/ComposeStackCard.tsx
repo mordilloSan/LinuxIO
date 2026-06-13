@@ -120,7 +120,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
           color={statusColor}
           label={project.status}
           size="small"
-          sx={{
+          style={{
             textTransform: "capitalize",
             fontSize: "0.65rem",
           }}

@@ -26,7 +26,8 @@ import { useAppTheme } from "@/theme";
 import {
   longTextStyles,
   responsiveTextStyles,
-  wrappableChipStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface VolumeListProps {
@@ -337,7 +338,8 @@ const VolumeList: React.FC<VolumeListProps> = ({
                         key={key}
                         label={`${key}: ${val}`}
                         size="small"
-                        sx={wrappableChipStyles}
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
                         variant="soft"
                       />
                     ))
@@ -360,7 +362,8 @@ const VolumeList: React.FC<VolumeListProps> = ({
                         key={key}
                         label={`${key}: ${val}`}
                         size="small"
-                        sx={wrappableChipStyles}
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
                         variant="soft"
                       />
                     ))

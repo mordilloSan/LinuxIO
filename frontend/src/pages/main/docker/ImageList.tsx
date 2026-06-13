@@ -26,7 +26,8 @@ import { useAppTheme } from "@/theme";
 import {
   longTextStyles,
   responsiveTextStyles,
-  wrappableChipStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -380,7 +381,8 @@ const ImageList: React.FC<ImageListProps> = ({
                         key={key}
                         label={`${key}: ${val}`}
                         size="small"
-                        sx={wrappableChipStyles}
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
                         variant="soft"
                       />
                     ))

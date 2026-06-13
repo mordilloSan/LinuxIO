@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import type { AppTheme } from "@/theme";
 
 export const getTableHeaderStyles = (theme: AppTheme) => ({
@@ -52,13 +54,14 @@ export const longTextStyles = {
   },
 };
 
-export const wrappableChipStyles = {
+export const wrappableChipStyle: CSSProperties = {
   maxWidth: "100%",
   height: "auto",
-  "& .MuiChip-label": {
-    display: "block",
-    whiteSpace: "normal",
-    wordBreak: "break-word" as const,
-    overflowWrap: "anywhere" as const,
-  },
+};
+
+export const wrappableChipLabelStyle: CSSProperties = {
+  display: "block",
+  whiteSpace: "normal",
+  wordBreak: "break-word",
+  overflowWrap: "anywhere",
 };

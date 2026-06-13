@@ -315,11 +315,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 color={statusColor}
                 label={project.status}
                 size="small"
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "inline-flex",
-                  },
+                className="app-table-hide-below-sm"
+                style={{
                   textTransform: "capitalize",
                   fontSize: "0.68rem",
                 }}
@@ -591,7 +588,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       color={getContainerStatusColor(displayState)}
                       label={displayState}
                       size="small"
-                      sx={{
+                      style={{
                         textTransform: "capitalize",
                       }}
                       variant="soft"

@@ -5,7 +5,11 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { longTextStyles, wrappableChipStyles } from "@/theme/tableStyles";
+import {
+  longTextStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
+} from "@/theme/tableStyles";
 
 export interface NetworkCardProps {
   network: DockerNetwork;
@@ -101,7 +105,8 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
             key={`${network.Id}-ipam-${i}`}
             label={ipam.Subnet}
             size="small"
-            sx={wrappableChipStyles}
+            style={wrappableChipStyle}
+            labelStyle={wrappableChipLabelStyle}
             variant="outlined"
           />
         ))

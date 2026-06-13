@@ -36,7 +36,8 @@ import { useAppTheme } from "@/theme";
 import {
   longTextStyles,
   responsiveTextStyles,
-  wrappableChipStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 import { alpha } from "@/utils/color";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -463,7 +464,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         key={i}
                         label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
                         size="small"
-                        sx={wrappableChipStyles}
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
                         variant="soft"
                       />
                     ))
@@ -487,7 +489,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         key={key}
                         label={`${key}: ${val}`}
                         size="small"
-                        sx={wrappableChipStyles}
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
                         variant="soft"
                       />
                     ))
@@ -510,7 +513,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         key={key}
                         label={`${key}: ${val}`}
                         size="small"
-                        sx={wrappableChipStyles}
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
                         variant="soft"
                       />
                     ))

@@ -5,6 +5,16 @@
   vertical-align: top;
 }
 
+/* Truncated tooltip content is overflow:hidden — a click drops a text caret
+   and the browser scrolls the hidden overflow to it, sliding the ellipsis away
+   ("renders the text") with no change in width. These are hover-to-read /
+   click-to-copy affordances, not selectable text, so block selection (and that
+   scroll). Covers both copyable and plain truncated values. */
+.app-tooltip-trigger > * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .app-tooltip-trigger--copy,
 .app-tooltip-trigger--copy > * {
   cursor: pointer;
