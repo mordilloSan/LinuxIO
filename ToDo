@@ -27,6 +27,13 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 2026/06/13 12:24:18 [DEBUG] bridge package has invalid PackageKit InfoEnum
 2026/06/13 12:24:18 [DEBUG] bridge route completed [duration=457.826752ms mode="query" outcome=success route=updates.get_updates_basic]
 
+11 - implement virtual on logs and filebrowser....
+
+Initial bundle: split the Iconify registry so auth/shell/sidebar icons are separate from route-specific icons.DONE
+Authenticated runtime: split `AuthGuard` into a lightweight gate plus lazy authenticated providers. DONE
+Dashboard network card: remove render-time state updates and derive or effect-sync selected interface state. DONE
+Global fonts/icons: remove Space Grotesk and Material Icons; use the local breadcrumb home icon. DONE
+Route preload: keep intent-based preload only, with no all-route background preload - DONE
 Ccnsolidate small helper functions in utils - DONE
 Bridge Handler Pattern - See docs DONE
 Shared API betewen go/react via generator. DONE
