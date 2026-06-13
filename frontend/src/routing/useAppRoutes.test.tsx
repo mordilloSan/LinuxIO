@@ -17,8 +17,9 @@ function wrapper(auth = createAuthContextValue()) {
 function protectedChildPaths(routes: ReturnType<typeof useAppRoutes>) {
   const branch = routes.find((route) => route.path === "/");
   return (
-    branch?.children?.map((child) => ("path" in child ? child.path : undefined)) ??
-    []
+    branch?.children?.map((child) =>
+      "path" in child ? child.path : undefined,
+    ) ?? []
   );
 }
 

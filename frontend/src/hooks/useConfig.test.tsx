@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ConfigContext } from "@/contexts/ConfigContext";
-import {
-  useConfig,
-  useConfigReady,
-  useConfigValue,
-} from "@/hooks/useConfig";
+import { useConfig, useConfigReady, useConfigValue } from "@/hooks/useConfig";
 import { act, renderHook } from "@/test/render";
 import type { AppConfig, ConfigContextType } from "@/types/config";
 
