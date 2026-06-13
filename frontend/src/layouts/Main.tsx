@@ -105,7 +105,7 @@ const Dashboard: React.FC = () => {
             minHeight: 0,
             minWidth: 0,
             transition: theme.transitions.create(["margin-left", "width"], {
-              easing: theme.transitions.easing.sharp,
+              easing: theme.transitions.easing.easeInOut,
               duration: theme.transitions.duration.leavingScreen,
             }),
             marginLeft: isDesktop ? `${sidebarWidth}px` : undefined,

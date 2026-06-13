@@ -101,21 +101,14 @@
   height: 26px;
   flex: 0 0 auto;
   margin-right: 8px;
-  /* Close the icon→label gap in lockstep with the label collapse, otherwise
-     this 8px snaps instantly and reads as a jump next to the smooth width. */
   transition: margin-right var(--app-transition-duration-standard)
-    var(--app-easing-sharp);
+    var(--app-easing-standard);
 }
 
 .app-sidebar-link--collapsed .app-sidebar-link__icon {
   margin-right: 0;
 }
 
-/* Animate the label width via grid-template-columns (1fr -> 0fr) instead of
-   width: auto -> 0, which can't interpolate and snaps. Timing mirrors the
-   sidebar container's width transition (250ms / sharp) so text and width
-   shrink in lockstep. Same technique as the Docker table's AppCollapse,
-   rotated to the horizontal axis. */
 .app-sidebar-link__label {
   display: grid;
   grid-template-columns: 1fr;
@@ -123,7 +116,7 @@
   /* Expand direction: text fades in promptly as the column opens. */
   transition:
     grid-template-columns var(--app-transition-duration-standard)
-      var(--app-easing-sharp),
+      var(--app-easing-standard),
     opacity 180ms cubic-bezier(0, 0, 0.2, 1);
 }
 
@@ -146,7 +139,7 @@
      doesn't vanish before the width has finished shrinking (ease-in). */
   transition:
     grid-template-columns var(--app-transition-duration-standard)
-      var(--app-easing-sharp),
+      var(--app-easing-standard),
     opacity 250ms cubic-bezier(0.4, 0, 1, 1);
 }
 

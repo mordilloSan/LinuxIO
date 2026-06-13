@@ -51,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
     ["--sidebar-width" as string]: `${effectiveWidth}px`,
     width: effectiveWidth,
     transition: theme.transitions.create(["transform", "width"], {
-      easing: theme.transitions.easing.sharp,
+      easing: theme.transitions.easing.easeInOut,
       duration: theme.transitions.duration.standard,
     }),
   } as React.CSSProperties;
