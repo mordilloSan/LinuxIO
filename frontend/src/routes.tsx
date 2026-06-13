@@ -145,7 +145,10 @@ export const coreRoutes: RouteWithSidebar[] = [
   {
     path: "docker",
     element: <Docker />,
-    intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [
+      routeQuery(linuxio.docker.list_containers),
+    ],
     preload: Docker.preload,
     requiredCapabilities: ["dockerAvailable"],
     sidebar: {
