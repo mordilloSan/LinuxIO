@@ -331,7 +331,7 @@ const DockerPage: React.FC = () => {
                     size="small"
                   >
                     {containerView === "card" ? (
-                      <Icon height={20} icon="mdi:table-row" width={20} />
+                      <Icon height={20} icon="mdi:table" width={20} />
                     ) : (
                       <Icon height={20} icon="mdi:view-grid" width={20} />
                     )}
@@ -382,7 +382,7 @@ const DockerPage: React.FC = () => {
                     {stacksView === "table" ? (
                       <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon height={20} icon="mdi:table-row" width={20} />
+                      <Icon height={20} icon="mdi:table" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
@@ -430,7 +430,7 @@ const DockerPage: React.FC = () => {
                     {networksView === "table" ? (
                       <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon height={20} icon="mdi:table-row" width={20} />
+                      <Icon height={20} icon="mdi:table" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
@@ -476,7 +476,7 @@ const DockerPage: React.FC = () => {
                     {volumesView === "table" ? (
                       <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon height={20} icon="mdi:table-row" width={20} />
+                      <Icon height={20} icon="mdi:table" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
@@ -524,7 +524,7 @@ const DockerPage: React.FC = () => {
                     {imagesView === "table" ? (
                       <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon height={20} icon="mdi:table-row" width={20} />
+                      <Icon height={20} icon="mdi:table" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>

@@ -1115,7 +1115,7 @@ const SharesPage: React.FC = () => {
           {viewMode === "table" ? (
             <Icon height={20} icon="mdi:view-grid" width={20} />
           ) : (
-            <Icon height={20} icon="mdi:table-row" width={20} />
+            <Icon height={20} icon="mdi:table" width={20} />
           )}
         </AppIconButton>
       </AppTooltip>
@@ -1252,7 +1252,7 @@ const SharesPage: React.FC = () => {
                     {nfsView === "table" ? (
                       <Icon height={20} icon="mdi:view-grid" width={20} />
                     ) : (
-                      <Icon height={20} icon="mdi:table-row" width={20} />
+                      <Icon height={20} icon="mdi:table" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
