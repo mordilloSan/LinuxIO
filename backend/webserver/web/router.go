@@ -80,13 +80,38 @@ func mountProductionSPA(mux *http.ServeMux, ui fs.FS) {
 }
 
 // servePrecompressedAssetFS serves an immutable frontend asset, preferring a
-// Vite-generated gzip sidecar when the client supports it.
+// Vite-generated compressed sidecar when the client supports it.
 func servePrecompressedAssetFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string) {
-	gzipName := name + ".gz"
-	if _, err := fs.Stat(fsys, gzipName); err == nil {
+	type compressedVariant struct {
+		encoding string
+		name     string
+		quality  float64
+	}
+
+	var variants []compressedVariant
+	for _, variant := range []compressedVariant{
+		{encoding: "br", name: name + ".br"},
+		{encoding: "gzip", name: name + ".gz"},
+	} {
+		if _, err := fs.Stat(fsys, variant.name); err == nil {
+			variant.quality = acceptedEncodingQuality(
+				r.Header.Get("Accept-Encoding"),
+				variant.encoding,
+			)
+			variants = append(variants, variant)
+		}
+	}
+
+	if len(variants) > 0 {
 		addVaryHeader(w, "Accept-Encoding")
-		if acceptsEncoding(r.Header.Get("Accept-Encoding"), "gzip") {
-			serveFileFSAs(w, r, fsys, gzipName, name, true)
+		best := compressedVariant{}
+		for _, variant := range variants {
+			if variant.quality > best.quality {
+				best = variant
+			}
+		}
+		if best.quality > 0 {
+			serveFileFSAs(w, r, fsys, best.name, name, best.encoding)
 			return
 		}
 	}
@@ -96,10 +121,10 @@ func servePrecompressedAssetFS(w http.ResponseWriter, r *http.Request, fsys fs.F
 
 // serveFileFS serves a single uncompressed file from the fs.FS.
 func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string) {
-	serveFileFSAs(w, r, fsys, name, name, false)
+	serveFileFSAs(w, r, fsys, name, name, "")
 }
 
-func serveFileFSAs(w http.ResponseWriter, r *http.Request, fsys fs.FS, fileName, responseName string, serveGzip bool) {
+func serveFileFSAs(w http.ResponseWriter, r *http.Request, fsys fs.FS, fileName, responseName, contentEncoding string) {
 	f, err := fsys.Open(fileName)
 	if err != nil {
 		http.NotFound(w, r)
@@ -115,8 +140,8 @@ func serveFileFSAs(w http.ResponseWriter, r *http.Request, fsys fs.FS, fileName,
 
 	setContentType(w, responseName)
 	setCacheHeaders(w, responseName)
-	if serveGzip {
-		w.Header().Set("Content-Encoding", "gzip")
+	if contentEncoding != "" {
+		w.Header().Set("Content-Encoding", contentEncoding)
 	}
 
 	// If it's a ReadSeeker, use http.ServeContent for proper caching
@@ -131,7 +156,8 @@ func serveFileFSAs(w http.ResponseWriter, r *http.Request, fsys fs.FS, fileName,
 	}
 }
 
-func acceptsEncoding(header, encoding string) bool {
+func acceptedEncodingQuality(header, encoding string) float64 {
+	exactQ := -1.0
 	wildcardQ := -1.0
 	for part := range strings.SplitSeq(header, ",") {
 		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
@@ -152,13 +178,19 @@ func acceptsEncoding(header, encoding string) bool {
 			}
 		}
 		if isEncoding {
-			return q > 0
+			exactQ = q
 		}
 		if isWildcard {
 			wildcardQ = q
 		}
 	}
-	return wildcardQ > 0
+	if exactQ >= 0 {
+		return exactQ
+	}
+	if wildcardQ >= 0 {
+		return wildcardQ
+	}
+	return 0
 }
 
 func addVaryHeader(w http.ResponseWriter, value string) {

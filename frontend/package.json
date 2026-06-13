@@ -14,6 +14,8 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "build": "vite build",
     "analyze": "BUNDLE_ANALYZE=true vite build",
+    "bundle:metrics": "node scripts/bundle-metrics.mjs",
+    "bundle:budget": "node scripts/bundle-metrics.mjs --check",
     "update": "npm update && npm outdated"
   },
   "browserslist": [

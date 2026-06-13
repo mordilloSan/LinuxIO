@@ -98,6 +98,67 @@ func TestMountProductionSPA_ServesPrecompressedAssetWhenAccepted(t *testing.T) {
 	}
 }
 
+func TestMountProductionSPA_ServesBrotliAssetWhenPreferred(t *testing.T) {
+	ui := fstest.MapFS{
+		"index.html":              &fstest.MapFile{Data: []byte("<html>OK</html>")},
+		"assets/app-abc123.js":    &fstest.MapFile{Data: []byte("console.log(1)")},
+		"assets/app-abc123.js.br": &fstest.MapFile{Data: []byte("brotli-js")},
+		"assets/app-abc123.js.gz": &fstest.MapFile{Data: []byte("gzipped-js")},
+	}
+
+	mux := http.NewServeMux()
+	mountProductionSPA(mux, fs.FS(ui))
+
+	w := doGETWithHeaders(t, mux, "/assets/app-abc123.js", map[string]string{
+		"Accept-Encoding": "gzip, br",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status OK, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Encoding"); got != "br" {
+		t.Fatalf("expected br content encoding, got %q", got)
+	}
+	if got := w.Header().Get("Content-Type"); !strings.Contains(got, "application/javascript") {
+		t.Fatalf("expected JavaScript content type, got %q", got)
+	}
+	if got := w.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("expected immutable asset cache header, got %q", got)
+	}
+	if got := w.Header().Get("Vary"); got != "Accept-Encoding" {
+		t.Fatalf("expected Vary: Accept-Encoding, got %q", got)
+	}
+	if got := w.Body.String(); got != "brotli-js" {
+		t.Fatalf("expected brotli asset body, got %q", got)
+	}
+}
+
+func TestMountProductionSPA_RespectsEncodingQuality(t *testing.T) {
+	ui := fstest.MapFS{
+		"index.html":              &fstest.MapFile{Data: []byte("<html>OK</html>")},
+		"assets/app-abc123.js":    &fstest.MapFile{Data: []byte("console.log(1)")},
+		"assets/app-abc123.js.br": &fstest.MapFile{Data: []byte("brotli-js")},
+		"assets/app-abc123.js.gz": &fstest.MapFile{Data: []byte("gzipped-js")},
+	}
+
+	mux := http.NewServeMux()
+	mountProductionSPA(mux, fs.FS(ui))
+
+	w := doGETWithHeaders(t, mux, "/assets/app-abc123.js", map[string]string{
+		"Accept-Encoding": "br;q=0.5, gzip;q=1",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status OK, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("expected gzip content encoding, got %q", got)
+	}
+	if got := w.Body.String(); got != "gzipped-js" {
+		t.Fatalf("expected gzip asset body, got %q", got)
+	}
+}
+
 func TestMountProductionSPA_ServesRawAssetWhenGzipRejected(t *testing.T) {
 	ui := fstest.MapFS{
 		"index.html":              &fstest.MapFile{Data: []byte("<html>OK</html>")},
