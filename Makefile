@@ -31,7 +31,7 @@ CC ?= cc
 
 # Pinned external component versions
 WATCHTOWER_REPO ?= nicholas-fedor/watchtower
-WATCHTOWER_VERSION ?= 1.18.0
+WATCHTOWER_VERSION ?= 1.18.1
 WATCHTOWER_UPDATE_CHECK ?= 1
 ifneq ($(WATCHTOWER_UPDATE_CHECK),0)
 RELEASE_PRE_PR_TARGETS += check-watchtower-update-for-pr
