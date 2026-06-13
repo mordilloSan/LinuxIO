@@ -1,7 +1,7 @@
 /* ── background blur when any dialog is open ── */
 
 #root {
-  transition: filter var(--app-transition-duration-entering-screen)
+  transition: filter var(--app-transition-duration-standard)
     var(--app-easing-decelerate);
 }
 
@@ -27,7 +27,7 @@ body.dialog-open #root {
   inset: 0;
   background-color: rgba(0, 0, 0, 0.5);
   -webkit-tap-highlight-color: transparent;
-  animation: app-dialog-fadein var(--app-transition-duration-entering-screen)
+  animation: app-dialog-fadein var(--app-transition-duration-standard)
     var(--app-easing-decelerate);
 }
 
@@ -50,7 +50,7 @@ body.dialog-open #root {
   outline: 0;
   display: flex;
   flex-direction: column;
-  animation: app-dialog-fadein var(--app-transition-duration-entering-screen)
+  animation: app-dialog-fadein var(--app-transition-duration-standard)
     var(--app-easing-decelerate);
 }
 

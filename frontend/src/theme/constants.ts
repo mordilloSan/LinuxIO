@@ -18,7 +18,6 @@ export const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEA
 export const TRANSITION_DURATION_FAST_MS = 150;
 export const TRANSITION_DURATION_MEDIUM_MS = 200;
 export const TRANSITION_DURATION_STANDARD_MS = 250;
-export const TRANSITION_DURATION_ENTERING_SCREEN_MS = 225;
 export const TRANSITION_DURATION_SLOW_MS = 600;
 export const TRANSITION_SLOW_CSS = `${TRANSITION_DURATION_SLOW_MS}ms ${EASING_STANDARD_CSS}`;
 
@@ -32,7 +31,6 @@ export const MOTION_CSS_VARS: Record<string, string> = {
   "--app-transition-duration-fast": `${TRANSITION_DURATION_FAST_MS}ms`,
   "--app-transition-duration-medium": `${TRANSITION_DURATION_MEDIUM_MS}ms`,
   "--app-transition-duration-standard": `${TRANSITION_DURATION_STANDARD_MS}ms`,
-  "--app-transition-duration-entering-screen": `${TRANSITION_DURATION_ENTERING_SCREEN_MS}ms`,
   "--app-transition-duration-slow": `${TRANSITION_DURATION_SLOW_MS}ms`,
 };
 
