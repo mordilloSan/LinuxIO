@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 
-import { COLLAPSE_DURATION_MS } from "@/theme/constants";
+import {
+  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_SLOW_CSS,
+} from "@/theme/constants";
 
 import "./app-collapse.css";
 
@@ -41,7 +44,7 @@ const AppCollapse: React.FC<AppCollapseProps> = ({
 
     const timerId = window.setTimeout(() => {
       setMounted(false);
-    }, COLLAPSE_DURATION_MS);
+    }, TRANSITION_DURATION_SLOW_MS);
 
     return () => window.clearTimeout(timerId);
   }, [isOpen, mounted, unmountOnExit]);
@@ -55,7 +58,7 @@ const AppCollapse: React.FC<AppCollapseProps> = ({
   return (
     <div
       className={`app-collapse ${open ? "app-collapse--open" : ""}`}
-      style={{ transitionDuration: `${COLLAPSE_DURATION_MS}ms` }}
+      style={{ transition: `grid-template-rows ${TRANSITION_SLOW_CSS}` }}
     >
       <div className="app-collapse__inner">{children}</div>
     </div>

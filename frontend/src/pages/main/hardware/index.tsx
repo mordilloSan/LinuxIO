@@ -28,7 +28,7 @@ import {
   MotherboardInfoCard,
   NetworkHistoryCard,
 } from "@/pages/main/hardware/HardwareHistoryCards";
-import { COLLAPSE_TRANSITION } from "@/theme/constants";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import "@/theme/section.css";
 
 // ─── constants ──────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ const SectionHeader: React.FC<{
         height={24}
         icon="mdi:chevron-down"
         style={{
-          transition: `transform ${COLLAPSE_TRANSITION}`,
+          transition: `transform ${TRANSITION_SLOW_CSS}`,
           transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
         }}
         width={24}

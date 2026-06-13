@@ -18,6 +18,22 @@ import {
   resolvePrimaryColor,
   SEMANTIC_STATUS_COLORS,
 } from "@/theme/colors";
+import {
+  EASING_DECELERATE_CSS,
+  EASING_EMPHASIZED_CSS,
+  EASING_LINEAR_PROGRESS_PRIMARY_CSS,
+  EASING_LINEAR_PROGRESS_SECONDARY_CSS,
+  EASING_SHARP_CSS,
+  EASING_STANDARD_CSS,
+  TRANSITION_DURATION_ENTERING_SCREEN_MS,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_LEAVING_SCREEN_MS,
+  TRANSITION_DURATION_MEDIUM_MS,
+  TRANSITION_DURATION_QUICKEST_MS,
+  TRANSITION_DURATION_SHORT_MS,
+  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_STANDARD_MS,
+} from "@/theme/constants";
 import variants from "@/theme/variants";
 import { alpha, darken, lighten } from "@/utils/color";
 
@@ -238,14 +254,14 @@ function createBreakpoints() {
 
 function createTransitions() {
   const easing = {
-    easeInOut: "cubic-bezier(0.4, 0, 0.2, 1)",
-    sharp: "cubic-bezier(0.4, 0, 0.6, 1)",
+    easeInOut: EASING_STANDARD_CSS,
+    sharp: EASING_SHARP_CSS,
   } as const;
 
   const duration = {
-    shortest: 150,
-    standard: 250,
-    leavingScreen: 195,
+    shortest: TRANSITION_DURATION_FAST_MS,
+    standard: TRANSITION_DURATION_STANDARD_MS,
+    leavingScreen: TRANSITION_DURATION_LEAVING_SCREEN_MS,
   } as const;
 
   return {
@@ -544,6 +560,21 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-color-scheme": theme.colorScheme,
     "--app-font-family": theme.typography.fontFamily,
     "--app-radius-base": `${theme.shape.borderRadius}px`,
+    "--app-easing-standard": EASING_STANDARD_CSS,
+    "--app-easing-emphasized": EASING_EMPHASIZED_CSS,
+    "--app-easing-decelerate": EASING_DECELERATE_CSS,
+    "--app-easing-sharp": EASING_SHARP_CSS,
+    "--app-easing-linear-progress-primary": EASING_LINEAR_PROGRESS_PRIMARY_CSS,
+    "--app-easing-linear-progress-secondary":
+      EASING_LINEAR_PROGRESS_SECONDARY_CSS,
+    "--app-transition-duration-quickest": `${TRANSITION_DURATION_QUICKEST_MS}ms`,
+    "--app-transition-duration-short": `${TRANSITION_DURATION_SHORT_MS}ms`,
+    "--app-transition-duration-fast": `${TRANSITION_DURATION_FAST_MS}ms`,
+    "--app-transition-duration-medium": `${TRANSITION_DURATION_MEDIUM_MS}ms`,
+    "--app-transition-duration-standard": `${TRANSITION_DURATION_STANDARD_MS}ms`,
+    "--app-transition-duration-entering-screen": `${TRANSITION_DURATION_ENTERING_SCREEN_MS}ms`,
+    "--app-transition-duration-leaving-screen": `${TRANSITION_DURATION_LEAVING_SCREEN_MS}ms`,
+    "--app-transition-duration-slow": `${TRANSITION_DURATION_SLOW_MS}ms`,
     "--app-palette-primary-main": theme.palette.primary.main,
     "--app-palette-primary-light": theme.palette.primary.light,
     "--app-palette-primary-dark": theme.palette.primary.dark,

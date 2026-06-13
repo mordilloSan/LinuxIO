@@ -39,12 +39,16 @@
   align-items: center;
   gap: 8px;
   overflow: hidden;
-  transition: border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
-              border-width 150ms cubic-bezier(0.4, 0, 0.2, 1),
-              padding 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    border-color var(--app-transition-duration-medium)
+      var(--app-easing-standard),
+    border-width var(--app-transition-duration-fast) var(--app-easing-standard),
+    padding var(--app-transition-duration-fast) var(--app-easing-standard);
 }
 
-.app-select__input:hover:not(.app-select__input--disabled):not(.app-select__input--open) {
+.app-select__input:hover:not(.app-select__input--disabled):not(
+    .app-select__input--open
+  ) {
   border-color: var(--color-primary);
 }
 
@@ -88,7 +92,8 @@
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
-  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--app-transition-duration-medium)
+    var(--app-easing-standard);
 }
 
 .app-select__arrow--open {
@@ -108,7 +113,8 @@
   padding: 4px 24px 5px 0;
 }
 
-.app-select--standard .app-select__input:hover:not(.app-select__input--disabled) {
+.app-select--standard
+  .app-select__input:hover:not(.app-select__input--disabled) {
   border-bottom-color: currentColor;
 }
 
@@ -148,7 +154,8 @@
   padding: 0 1.5em 0 0;
 }
 
-.app-select--standard.app-select--no-underline .app-select__input:focus-visible {
+.app-select--standard.app-select--no-underline
+  .app-select__input:focus-visible {
   padding: 0 1.5em 0 0;
 }
 
@@ -190,9 +197,10 @@
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   border-radius: 8px;
-  box-shadow: 0px 5px 5px -3px rgba(0, 0, 0, 0.2),
-              0px 8px 10px 1px rgba(0, 0, 0, 0.14),
-              0px 3px 14px 2px rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0px 5px 5px -3px rgba(0, 0, 0, 0.2),
+    0px 8px 10px 1px rgba(0, 0, 0, 0.14),
+    0px 3px 14px 2px rgba(0, 0, 0, 0.12);
   padding: 8px 0;
   overflow-y: auto;
   max-height: 300px;

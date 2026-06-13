@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import {
-  COLLAPSE_DURATION_MS,
-  COLLAPSE_TRANSITION,
+  TRANSITION_DURATION_SLOW_MS,
+  EASING_STANDARD,
+  TRANSITION_SLOW_CSS,
   shadowSm,
 } from "@/constants";
 import { useAppTheme } from "@/theme";
@@ -148,7 +149,7 @@ function UnifiedCollapsibleTable<T>({
                               transform: isExpanded
                                 ? "rotate(180deg)"
                                 : "rotate(0deg)",
-                              transition: `transform ${COLLAPSE_TRANSITION}`,
+                              transition: `transform ${TRANSITION_SLOW_CSS}`,
                             }}
                             width={22}
                           />
@@ -167,8 +168,8 @@ function UnifiedCollapsibleTable<T>({
                             animate={{ opacity: 1, y: 0 }}
                             initial={{ opacity: 0, y: -10 }}
                             transition={{
-                              duration: COLLAPSE_DURATION_MS / 1000,
-                              ease: [0.4, 0, 0.2, 1],
+                              duration: TRANSITION_DURATION_SLOW_MS / 1000,
+                              ease: EASING_STANDARD,
                             }}
                           >
                             <div

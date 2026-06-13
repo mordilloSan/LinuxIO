@@ -26,7 +26,7 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { COLLAPSE_TRANSITION } from "@/theme/constants";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
 import { formatFileSize } from "@/utils/formaters";
@@ -609,7 +609,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     color="text.disabled"
                     style={{
                       opacity: expanded ? 0 : 1,
-                      transition: `opacity ${COLLAPSE_TRANSITION}`,
+                      transition: `opacity ${TRANSITION_SLOW_CSS}`,
                     }}
                     variant="caption"
                   >
@@ -709,7 +709,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     color="text.disabled"
                     style={{
                       opacity: expanded ? 0 : 1,
-                      transition: `opacity ${COLLAPSE_TRANSITION}`,
+                      transition: `opacity ${TRANSITION_SLOW_CSS}`,
                     }}
                     variant="caption"
                   >
@@ -854,7 +854,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 icon="mdi:chevron-down"
                 style={{
                   transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: `transform ${COLLAPSE_TRANSITION}`,
+                  transition: `transform ${TRANSITION_SLOW_CSS}`,
                 }}
                 width={20}
               />

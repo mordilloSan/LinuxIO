@@ -27,10 +27,13 @@
 
   /* transitions */
   transition:
-    background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    background-color var(--app-transition-duration-standard)
+      var(--app-easing-standard),
+    box-shadow var(--app-transition-duration-standard)
+      var(--app-easing-standard),
+    border-color var(--app-transition-duration-standard)
+      var(--app-easing-standard),
+    color var(--app-transition-duration-standard) var(--app-easing-standard);
 
   /* defaults — text variant */
   background-color: transparent;
@@ -135,13 +138,8 @@
 }
 
 .app-btn--dialog-action:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--color-primary) 13%,
-    transparent
-  );
-  box-shadow: 0 0 12px
-    color-mix(in srgb, var(--color-primary) 27%, transparent);
+  background-color: color-mix(in srgb, var(--color-primary) 13%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 27%, transparent);
 }
 
 .app-btn--dialog-action:disabled {

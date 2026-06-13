@@ -3,6 +3,7 @@ import React from "react";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 
 export interface UnitListItem {
   active_state: string;
@@ -19,8 +20,6 @@ const baseCardStyle: React.CSSProperties = {
   flexDirection: "column",
   height: "100%",
   cursor: "pointer",
-  transition:
-    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
   borderBottomWidth: 2,
   borderBottomStyle: "solid",
 };
@@ -65,6 +64,7 @@ function UnitCard<T extends UnitListItem>({
         {
           "--svc-status-color": statusColor,
           ...(isSelected ? selectedCardStyle : cardStyle),
+          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
         } as React.CSSProperties
       }
     >

@@ -16,7 +16,8 @@
   border-radius: 50%;
   color: var(--color-text-secondary);
   background-color: transparent;
-  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .app-checkbox:hover {
@@ -48,17 +49,31 @@
 }
 
 /* ── path visibility by state ─────────────────── */
-.app-checkbox__border { display: block; }
-.app-checkbox__check  { display: none; }
-.app-checkbox__dash   { display: none; }
+.app-checkbox__border {
+  display: block;
+}
+.app-checkbox__check {
+  display: none;
+}
+.app-checkbox__dash {
+  display: none;
+}
 
 /* checked */
-.app-checkbox__input:checked ~ .app-checkbox__icon .app-checkbox__border { display: none; }
-.app-checkbox__input:checked ~ .app-checkbox__icon .app-checkbox__check  { display: block; }
+.app-checkbox__input:checked ~ .app-checkbox__icon .app-checkbox__border {
+  display: none;
+}
+.app-checkbox__input:checked ~ .app-checkbox__icon .app-checkbox__check {
+  display: block;
+}
 
 /* indeterminate (set via input.indeterminate = true in JS) */
-.app-checkbox__input:indeterminate ~ .app-checkbox__icon .app-checkbox__border { display: none; }
-.app-checkbox__input:indeterminate ~ .app-checkbox__icon .app-checkbox__dash   { display: block; }
+.app-checkbox__input:indeterminate ~ .app-checkbox__icon .app-checkbox__border {
+  display: none;
+}
+.app-checkbox__input:indeterminate ~ .app-checkbox__icon .app-checkbox__dash {
+  display: block;
+}
 
 /* ── color: active state ──────────────────────── */
 .app-checkbox__input:checked ~ .app-checkbox__icon,
@@ -82,7 +97,9 @@
   background-color: color-mix(in srgb, var(--color-error) 8%, transparent);
 }
 
-.app-checkbox--error:not(:has(.app-checkbox__input:checked)):not(:has(.app-checkbox__input:indeterminate)):hover {
+.app-checkbox--error:not(:has(.app-checkbox__input:checked)):not(
+    :has(.app-checkbox__input:indeterminate)
+  ):hover {
   background-color: color-mix(in srgb, var(--color-error) 8%, transparent);
 }
 
@@ -93,8 +110,12 @@
   color: var(--color-action-disabled);
 }
 
-.app-checkbox:has(.app-checkbox__input:disabled) .app-checkbox__input:checked ~ .app-checkbox__icon,
-.app-checkbox:has(.app-checkbox__input:disabled) .app-checkbox__input:indeterminate ~ .app-checkbox__icon {
+.app-checkbox:has(.app-checkbox__input:disabled)
+  .app-checkbox__input:checked
+  ~ .app-checkbox__icon,
+.app-checkbox:has(.app-checkbox__input:disabled)
+  .app-checkbox__input:indeterminate
+  ~ .app-checkbox__icon {
   color: var(--color-action-disabled);
 }
 

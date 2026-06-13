@@ -15,6 +15,10 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { useAppTheme } from "@/theme";
+import {
+  TRANSITION_DURATION_SLOW_MS,
+  EASING_STANDARD,
+} from "@/theme/constants";
 import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
@@ -67,6 +71,7 @@ function UnitListTab<T extends UnitListItem>({
   urlParam,
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const expanded = searchParams.get(urlParam);
@@ -163,7 +168,10 @@ function UnitListTab<T extends UnitListItem>({
 
           <motion.div
             layout="position"
-            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+            transition={{
+              duration: slowTransitionDurationSeconds,
+              ease: EASING_STANDARD,
+            }}
           >
             {viewMode === "card" ? (
               renderCardsView({

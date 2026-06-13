@@ -5,7 +5,7 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
-import { COLLAPSE_TRANSITION, GAP_SM } from "@/theme/constants";
+import { TRANSITION_SLOW_CSS, GAP_SM } from "@/theme/constants";
 
 export interface LVMSectionCardProps {
   accent: string;
@@ -71,7 +71,7 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
                 icon="mdi:chevron-down"
                 style={{
                   transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
-                  transition: `transform ${COLLAPSE_TRANSITION}`,
+                  transition: `transform ${TRANSITION_SLOW_CSS}`,
                 }}
                 width={22}
               />

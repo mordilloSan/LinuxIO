@@ -20,8 +20,8 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useConfigValue } from "@/hooks/useConfig";
-import { COLLAPSE_TRANSITION } from "@/theme/constants";
 import { useAppTheme } from "@/theme";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: `transform ${COLLAPSE_TRANSITION}`,
+              transition: `transform ${TRANSITION_SLOW_CSS}`,
               transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -314,7 +314,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: `transform ${COLLAPSE_TRANSITION}`,
+              transition: `transform ${TRANSITION_SLOW_CSS}`,
               transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -545,7 +545,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: `transform ${COLLAPSE_TRANSITION}`,
+              transition: `transform ${TRANSITION_SLOW_CSS}`,
               transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}

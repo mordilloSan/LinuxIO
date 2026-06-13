@@ -36,6 +36,10 @@ import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import {
+  EASING_EMPHASIZED,
+  TRANSITION_DURATION_SLOW_MS,
+} from "@/theme/constants";
 
 interface ContainerListProps {
   checkingUpdates?: boolean;
@@ -49,6 +53,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
   viewMode = "card",
 }) => {
   const theme = useAppTheme();
+  const detailTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
@@ -280,7 +285,10 @@ const ContainerList: React.FC<ContainerListProps> = ({
 
       <motion.div
         layout="position"
-        transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+        transition={{
+          duration: detailTransitionDurationSeconds,
+          ease: EASING_EMPHASIZED,
+        }}
       >
         {selectedContainer ? (
           <div
@@ -300,9 +308,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
                 gap: theme.spacing(2.5),
               }}
               transition={{
-                duration: 0.65,
+                duration: detailTransitionDurationSeconds,
                 delay: 0.04,
-                ease: [0.22, 1, 0.36, 1],
+                ease: EASING_EMPHASIZED,
               }}
             >
               <motion.div
@@ -315,9 +323,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: 0.65,
+                  duration: detailTransitionDurationSeconds,
                   delay: 0.04,
-                  ease: [0.22, 1, 0.36, 1],
+                  ease: EASING_EMPHASIZED,
                 }}
               >
                 <ContainerCard
@@ -343,9 +351,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: 0.65,
+                  duration: detailTransitionDurationSeconds,
                   delay: 0.08,
-                  ease: [0.22, 1, 0.36, 1],
+                  ease: EASING_EMPHASIZED,
                 }}
               >
                 <ContainerDetailsPanel
@@ -370,9 +378,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: 0.65,
+                  duration: detailTransitionDurationSeconds,
                   delay: 0.12,
-                  ease: [0.22, 1, 0.36, 1],
+                  ease: EASING_EMPHASIZED,
                 }}
               >
                 <ContainerDetailsPanel
@@ -385,9 +393,9 @@ const ContainerList: React.FC<ContainerListProps> = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 20 }}
               transition={{
-                duration: 0.65,
+                duration: detailTransitionDurationSeconds,
                 delay: 0.16,
-                ease: [0.22, 1, 0.36, 1],
+                ease: EASING_EMPHASIZED,
               }}
             >
               <UnitLogsCard

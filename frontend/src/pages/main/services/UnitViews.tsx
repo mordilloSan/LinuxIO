@@ -19,6 +19,10 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import {
+  TRANSITION_DURATION_SLOW_MS,
+  EASING_STANDARD,
+} from "@/theme/constants";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 export type { UnitListItem } from "@/components/cards/UnitCard";
@@ -467,6 +471,7 @@ export function UnitCardsView<T extends UnitListItem>({
   emptyMessage,
 }: UnitCardsViewProps<T>) {
   const theme = useAppTheme();
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
@@ -520,9 +525,9 @@ export function UnitCardsView<T extends UnitListItem>({
           gap: theme.spacing(2.5),
         }}
         transition={{
-          duration: 0.65,
+          duration: slowTransitionDurationSeconds,
           delay: 0.04,
-          ease: [0.22, 1, 0.36, 1],
+          ease: EASING_STANDARD,
         }}
       >
         <div
@@ -554,9 +559,9 @@ export function UnitCardsView<T extends UnitListItem>({
             display: "flex",
           }}
           transition={{
-            duration: 0.65,
+            duration: slowTransitionDurationSeconds,
             delay: 0.08,
-            ease: [0.22, 1, 0.36, 1],
+            ease: EASING_STANDARD,
           }}
         >
           {renderDetailPanel(expandedItem)}
@@ -567,9 +572,9 @@ export function UnitCardsView<T extends UnitListItem>({
           animate={{ opacity: 1, y: 0 }}
           initial={{ opacity: 0, y: 20 }}
           transition={{
-            duration: 0.65,
+            duration: slowTransitionDurationSeconds,
             delay: 0.16,
-            ease: [0.22, 1, 0.36, 1],
+            ease: EASING_STANDARD,
           }}
         >
           {renderBottomPanel(expandedItem)}

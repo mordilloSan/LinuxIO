@@ -4,9 +4,30 @@ export const collapsedDrawerWidth = 70; // mini sidebar width
 export const cardHeight = 220;
 export const cardBorderRadius = 16;
 
-// Collapse animations
-export const COLLAPSE_DURATION_MS = 600;
-export const COLLAPSE_TRANSITION = `${COLLAPSE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+// Motion
+export const EASING_STANDARD = [0.4, 0, 0.2, 1] as const;
+export const EASING_STANDARD_CSS = `cubic-bezier(${EASING_STANDARD.join(", ")})`;
+export const EASING_EMPHASIZED = [0.22, 1, 0.36, 1] as const;
+export const EASING_EMPHASIZED_CSS = `cubic-bezier(${EASING_EMPHASIZED.join(", ")})`;
+export const EASING_DECELERATE = [0, 0, 0.2, 1] as const;
+export const EASING_DECELERATE_CSS = `cubic-bezier(${EASING_DECELERATE.join(", ")})`;
+export const EASING_SHARP = [0.4, 0, 0.6, 1] as const;
+export const EASING_SHARP_CSS = `cubic-bezier(${EASING_SHARP.join(", ")})`;
+export const EASING_LINEAR_PROGRESS_PRIMARY = [
+  0.65, 0.815, 0.735, 0.395,
+] as const;
+export const EASING_LINEAR_PROGRESS_PRIMARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_PRIMARY.join(", ")})`;
+export const EASING_LINEAR_PROGRESS_SECONDARY = [0.165, 0.84, 0.44, 1] as const;
+export const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_SECONDARY.join(", ")})`;
+export const TRANSITION_DURATION_QUICKEST_MS = 50;
+export const TRANSITION_DURATION_SHORT_MS = 100;
+export const TRANSITION_DURATION_FAST_MS = 150;
+export const TRANSITION_DURATION_MEDIUM_MS = 200;
+export const TRANSITION_DURATION_STANDARD_MS = 250;
+export const TRANSITION_DURATION_ENTERING_SCREEN_MS = 225;
+export const TRANSITION_DURATION_LEAVING_SCREEN_MS = 195;
+export const TRANSITION_DURATION_SLOW_MS = 600;
+export const TRANSITION_SLOW_CSS = `${TRANSITION_DURATION_SLOW_MS}ms ${EASING_STANDARD_CSS}`;
 
 // Shadows
 export const shadowSm = "0px 1px 2px 0px rgba(0, 0, 0, 0.05)";
