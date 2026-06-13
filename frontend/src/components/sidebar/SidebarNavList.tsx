@@ -7,11 +7,27 @@ interface SidebarNavListItemProps {
   disabled?: boolean;
   href: string;
   icon?: React.ElementType | string;
+  preload?: () => Promise<unknown>;
   title: string;
 }
 
 const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
-  ({ href, title, icon, collapsed = false, disabled = false }) => {
+  ({ href, title, icon, preload, collapsed = false, disabled = false }) => {
+    const preloadRequestedRef = React.useRef(false);
+
+    React.useEffect(() => {
+      preloadRequestedRef.current = false;
+    }, [preload]);
+
+    const handlePreloadIntent = React.useCallback(() => {
+      if (disabled || !preload || preloadRequestedRef.current) return;
+
+      preloadRequestedRef.current = true;
+      void preload().catch(() => {
+        preloadRequestedRef.current = false;
+      });
+    }, [disabled, preload]);
+
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
@@ -59,6 +75,10 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
               .filter(Boolean)
               .join(" ")
           }
+          onFocus={handlePreloadIntent}
+          onMouseDown={handlePreloadIntent}
+          onPointerEnter={handlePreloadIntent}
+          onTouchStart={handlePreloadIntent}
           title={collapsed ? title : undefined}
           to={href}
         >

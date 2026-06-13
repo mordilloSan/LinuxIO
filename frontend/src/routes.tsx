@@ -36,8 +36,17 @@ type PreloadableLazyRoute<T extends React.ComponentType<any>> =
 function lazyWithPreload<T extends React.ComponentType<any>>(
   importer: LazyRouteImporter<T>,
 ): PreloadableLazyRoute<T> {
-  const Component = lazy(importer) as PreloadableLazyRoute<T>;
-  Component.preload = importer;
+  let preloadPromise: Promise<LazyRouteModule<T>> | undefined;
+  const preload = () => {
+    preloadPromise ??= importer().catch((error) => {
+      preloadPromise = undefined;
+      throw error;
+    });
+    return preloadPromise;
+  };
+
+  const Component = lazy(preload) as PreloadableLazyRoute<T>;
+  Component.preload = preload;
   return Component;
 }
 
@@ -221,18 +230,6 @@ function buildProtectedRoutes(access: AccessContext) {
   return coreRoutes.filter((route) => hasAccessPolicy(route, access));
 }
 
-export function usePreloadProtectedRouteChunks() {
-  const access = useAccessContext();
-
-  return useMemo(() => {
-    const preloaders = buildProtectedRoutes(access)
-      .map((route) => route.preload)
-      .filter((preload): preload is () => Promise<unknown> => Boolean(preload));
-
-    return () => Promise.allSettled(preloaders.map((preload) => preload()));
-  }, [access]);
-}
-
 // ============================================================================
 // Route Builder Hook
 // ============================================================================
@@ -296,6 +293,7 @@ export function useSidebarItems() {
         href: `/${route.path ?? ""}`.replace("/*", ""), // Remove wildcard from path
         title: route.sidebar!.title,
         icon: route.sidebar!.icon,
+        preload: route.preload,
       }));
   }, [access]);
 }

@@ -110,6 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
                 href={page.href}
                 icon={page.icon}
                 key={page.title}
+                preload={page.preload}
                 title={page.title}
               />
             ))}
