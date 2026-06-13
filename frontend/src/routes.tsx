@@ -50,24 +50,57 @@ function lazyWithPreload<T extends React.ComponentType<any>>(
   return Component;
 }
 
+function withRouteIcons<T extends React.ComponentType<any>>(
+  importer: LazyRouteImporter<T>,
+): LazyRouteImporter<T> {
+  return () =>
+    Promise.all([import("@/icons/icons"), importer()]).then(
+      ([, routeModule]) => routeModule,
+    );
+}
+
 // Lazy load layouts
 const MainLayout = lazyWithPreload(() => import("@/layouts/Main"));
 const AuthLayout = lazyWithPreload(() => import("@/layouts/Auth"));
 
 // Lazy load core pages
-const Default = lazyWithPreload(() => import("@/pages/main/dashboard"));
-const Updates = lazyWithPreload(() => import("@/pages/main/updates"));
-const Docker = lazyWithPreload(() => import("@/pages/main/docker"));
-const Services = lazyWithPreload(() => import("@/pages/main/services"));
-const Logs = lazyWithPreload(() => import("@/pages/main/logs"));
-const Network = lazyWithPreload(() => import("@/pages/main/network"));
-const Hardware = lazyWithPreload(() => import("@/pages/main/hardware"));
-const Wireguard = lazyWithPreload(() => import("@/pages/main/wireguard"));
-const TerminalPage = lazyWithPreload(() => import("@/pages/main/terminal"));
-const Shares = lazyWithPreload(() => import("@/pages/main/shares"));
-const FileBrowser = lazyWithPreload(() => import("@/pages/main/filebrowser"));
-const StoragePage = lazyWithPreload(() => import("@/pages/main/storage"));
-const AccountsPage = lazyWithPreload(() => import("@/pages/main/accounts"));
+const Default = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/dashboard")),
+);
+const Updates = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/updates")),
+);
+const Docker = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/docker")),
+);
+const Services = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/services")),
+);
+const Logs = lazyWithPreload(withRouteIcons(() => import("@/pages/main/logs")));
+const Network = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/network")),
+);
+const Hardware = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/hardware")),
+);
+const Wireguard = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/wireguard")),
+);
+const TerminalPage = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/terminal")),
+);
+const Shares = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/shares")),
+);
+const FileBrowser = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/filebrowser")),
+);
+const StoragePage = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/storage")),
+);
+const AccountsPage = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/accounts")),
+);
 
 // Auth pages
 const SignIn = lazyWithPreload(() => import("@/pages/auth/Login"));

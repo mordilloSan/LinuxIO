@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import "./theme/variables.css";
-import "./icons/icons";
+import "./icons/shell";
 import App from "./App";
 import { MOTION_CSS_VARS } from "./theme/constants";
 
