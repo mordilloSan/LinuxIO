@@ -31,7 +31,9 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
     const content = (
       <>
         {icon && <span className="app-sidebar-link__icon">{renderIcon()}</span>}
-        <span className="app-sidebar-link__label">{title}</span>
+        <span className="app-sidebar-link__label">
+          <span className="app-sidebar-link__label-inner">{title}</span>
+        </span>
       </>
     );
 
