@@ -26,7 +26,7 @@
   font-family: inherit;
   font-size: 1rem;
   line-height: 1.4375em;
-  color: var(--color-text);
+  color: var(--app-palette-text-primary);
   box-sizing: border-box;
 }
 
@@ -81,7 +81,7 @@
 }
 
 .app-text-field--outlined .app-text-field__outline {
-  border-color: var(--color-action-disabled);
+  border-color: var(--app-palette-action-disabled);
   transition:
     border-color var(--app-transition-duration-medium)
       var(--app-easing-standard),
@@ -92,33 +92,33 @@
 .app-text-field--outlined
   .app-text-field__wrapper:hover
   .app-text-field__outline {
-  border-color: var(--color-primary);
+  border-color: var(--app-palette-primary-main);
 }
 
 .app-text-field--outlined.app-text-field--focused .app-text-field__outline {
-  border-color: var(--color-primary);
+  border-color: var(--app-palette-primary-main);
   border-width: 2px;
 }
 
 .app-text-field--error .app-text-field__outline {
-  border-color: var(--color-error) !important;
+  border-color: var(--app-palette-error-main) !important;
 }
 
 /* standard variant */
 .app-text-field--standard .app-text-field__wrapper {
   border: none;
-  border-bottom: 1px solid var(--color-action-disabled);
+  border-bottom: 1px solid var(--app-palette-action-disabled);
   border-radius: 0;
   transition: border-color var(--app-transition-duration-medium)
     var(--app-easing-standard);
 }
 
 .app-text-field--standard .app-text-field__wrapper:hover {
-  border-bottom-color: var(--color-text);
+  border-bottom-color: var(--app-palette-text-primary);
 }
 
 .app-text-field--standard.app-text-field--focused .app-text-field__wrapper {
-  border-bottom-color: var(--color-primary);
+  border-bottom-color: var(--app-palette-primary-main);
   border-bottom-width: 2px;
 }
 
@@ -203,7 +203,7 @@ textarea.app-text-field__input {
   left: 0;
   top: 0;
   transform-origin: top left;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
   font-family: inherit;
   font-size: 1rem;
   line-height: 1.4375em;
@@ -241,11 +241,11 @@ textarea.app-text-field__input {
 }
 
 .app-text-field--focused .app-text-field__label {
-  color: var(--color-primary);
+  color: var(--app-palette-primary-main);
 }
 
 .app-text-field--error .app-text-field__label {
-  color: var(--color-error);
+  color: var(--app-palette-error-main);
 }
 
 /* standard variant label */
@@ -268,7 +268,7 @@ textarea.app-text-field__input {
   display: flex;
   align-items: center;
   white-space: nowrap;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
 }
 
 .app-text-field__adornment--start {
@@ -295,12 +295,12 @@ textarea.app-text-field__input {
   font-size: 0.75rem;
   line-height: 1.66;
   letter-spacing: 0.03333em;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
   margin: 3px 14px 0;
 }
 
 .app-text-field--error .app-text-field__helper {
-  color: var(--color-error);
+  color: var(--app-palette-error-main);
 }
 
 /* ── disabled ──────────────────────────────── */

@@ -114,9 +114,9 @@ export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
               style={{
                 color:
                   smartHealth?.passed === true
-                    ? "var(--mui-palette-success-main)"
+                    ? "var(--app-palette-success-main)"
                     : smartHealth?.passed === false
-                      ? "var(--mui-palette-error-main)"
+                      ? "var(--app-palette-error-main)"
                       : "inherit",
               }}
             >

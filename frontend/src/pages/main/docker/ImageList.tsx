@@ -132,7 +132,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
         <AppDialogContentText
           style={{
             marginTop: 8,
-            color: "var(--mui-palette-warning-main)",
+            color: "var(--app-palette-warning-main)",
           }}
         >
           This action cannot be undone. Images in use by containers cannot be

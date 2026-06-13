@@ -40,7 +40,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
       onMouseEnter={(event) => {
         event.currentTarget.style.transform = "scale(1.005)";
         event.currentTarget.style.boxShadow =
-          "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)";
+          "0 8px 24px rgba(var(--app-palette-common-blackChannel) / 0.35)";
       }}
       onMouseLeave={(event) => {
         event.currentTarget.style.transform = "none";

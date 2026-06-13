@@ -84,7 +84,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <AppButton
             className="app-btn--dialog-action"
             onClick={onClose}
-            style={{ color: "var(--mui-palette-text-secondary)" }}
+            style={{ color: "var(--app-palette-text-secondary)" }}
             type="button"
           >
             {cancelText}

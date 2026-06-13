@@ -72,7 +72,7 @@ const breadcrumbStyles = `
     height: 0;
     border-top: 1.625em solid transparent;
     border-bottom: 1.625em solid transparent;
-    border-left: 1.2em solid var(--mui-palette-background-default);
+    border-left: 1.2em solid var(--app-palette-background-default);
     position: absolute;
     left: 0;
     top: 0;
@@ -88,11 +88,11 @@ const breadcrumbStyles = `
   }
 
   .linuxio-breadcrumb-button:hover {
-    background: var(--mui-palette-primary-main);
+    background: var(--app-palette-primary-main);
   }
 
   .linuxio-breadcrumb-button:hover::after {
-    border-left-color: var(--mui-palette-primary-main);
+    border-left-color: var(--app-palette-primary-main);
   }
 
   .linuxio-breadcrumb-button.active::after {
@@ -159,11 +159,11 @@ const breadcrumbStyles = `
     background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
   }
 
-  [data-mui-color-scheme="dark"] .linuxio-gallery-size {
+  [data-app-color-scheme="dark"] .linuxio-gallery-size {
     background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
   }
 
-  [data-mui-color-scheme="light"] .linuxio-gallery-size {
+  [data-app-color-scheme="light"] .linuxio-gallery-size {
     background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 92%);
   }
 
@@ -171,7 +171,7 @@ const breadcrumbStyles = `
     margin: 0;
     width: 100%;
     max-width: 6.25em;
-    accent-color: var(--mui-palette-primary-main);
+    accent-color: var(--app-palette-primary-main);
   }
 `;
 

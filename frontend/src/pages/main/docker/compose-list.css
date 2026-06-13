@@ -3,14 +3,14 @@
 }
 
 .compose-expanded-table .app-table-head .app-table-cell {
-  color: var(--color-text-disabled);
+  color: var(--app-palette-text-disabled);
   font-weight: 700;
   padding-bottom: 2px;
 }
 
 .compose-container-row .app-table-cell {
   border-bottom: 1px solid
-    color-mix(in srgb, var(--color-divider), transparent 42%);
+    color-mix(in srgb, var(--app-palette-divider), transparent 42%);
 }
 
 .compose-container-row:last-child .app-table-cell {

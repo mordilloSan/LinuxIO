@@ -39,28 +39,6 @@ a {
   color: inherit;
 }
 
-/* App-owned aliases preserved while existing CSS migrates away from `--color-*`. */
-:root {
-  --color-primary: var(--app-palette-primary-main);
-  --color-primary-contrast: var(--app-palette-primary-contrast-text);
-  --color-bg: var(--app-palette-background-default);
-  --color-surface: var(--app-palette-background-paper);
-  --color-text: var(--app-palette-text-primary);
-  --color-text-secondary: var(--app-palette-text-secondary);
-  --color-text-disabled: var(--app-palette-text-disabled);
-  --color-action-active: var(--app-palette-action-active);
-  --color-action-hover: var(--app-palette-action-hover);
-  --color-action-selected: var(--app-palette-action-selected);
-  --color-action-disabled: var(--app-palette-action-disabled);
-  --color-action-disabled-bg: var(--app-palette-action-disabled-background);
-  --color-action-disabled-opacity: var(--app-palette-action-disabled-opacity);
-  --color-error: var(--app-palette-error-main);
-  --color-warning: var(--app-palette-warning-main);
-  --color-success: var(--app-palette-success-main);
-  --color-info: var(--app-palette-info-main);
-  --color-divider: var(--app-palette-divider);
-}
-
 /* Global utilities */
 
 .panel {

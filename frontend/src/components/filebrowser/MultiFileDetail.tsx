@@ -123,7 +123,7 @@ const MultiFileItemRow: React.FC<{
       style={{
         border: "1px solid",
         borderColor: hovered
-          ? "color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)"
+          ? "color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)"
           : theme.palette.divider,
         borderRadius: baseBorderRadius * 1.5,
         padding: theme.spacing(1.5),
@@ -131,7 +131,7 @@ const MultiFileItemRow: React.FC<{
         flexDirection: "column",
         gap: theme.spacing(0.5),
         backgroundColor: hovered
-          ? "color-mix(in srgb, var(--mui-palette-primary-main), transparent 95%)"
+          ? "color-mix(in srgb, var(--app-palette-primary-main), transparent 95%)"
           : "transparent",
         transition: "all 120ms ease",
         transform: hovered ? "translateY(-1px)" : "none",

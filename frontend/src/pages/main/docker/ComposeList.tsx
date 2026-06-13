@@ -405,7 +405,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               style={{
                 maxWidth: 600,
                 fontSize: "0.85rem",
-                color: "var(--mui-palette-text-secondary)",
+                color: "var(--app-palette-text-secondary)",
               }}
               title={project.working_dir || "Unknown"}
               toastMeta={DOCKER_TOAST_META}

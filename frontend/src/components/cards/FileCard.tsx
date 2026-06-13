@@ -161,7 +161,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
 
     const baseBg = useMemo(() => {
       if (selected) {
-        return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
+        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
       }
       if (hidden) {
         return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
@@ -172,19 +172,19 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
 
     const baseBorderColor = useMemo(
-      () => `rgba(var(--mui-palette-dividerChannel) / ${baseBorderAlpha})`,
+      () => `rgba(var(--app-palette-dividerChannel) / ${baseBorderAlpha})`,
       [baseBorderAlpha],
     );
 
     const borderColor = useMemo(() => {
       if (selected) {
-        return `rgba(var(--mui-palette-primary-mainChannel) / 0.7)`;
+        return `rgba(var(--app-palette-primary-mainChannel) / 0.7)`;
       }
       if (!isDirectory) return "transparent";
 
       // IMPORTANT: match old behavior: hidden overwrites alpha to 0.05
       return hidden
-        ? `rgba(var(--mui-palette-dividerChannel) / 0.05)`
+        ? `rgba(var(--app-palette-dividerChannel) / 0.05)`
         : baseBorderColor;
     }, [selected, isDirectory, hidden, baseBorderColor]);
 

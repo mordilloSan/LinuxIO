@@ -68,7 +68,7 @@ const UpdateHistory: React.FC = () => {
                       style={{
                         width: "20%",
                         padding: "8px 12px",
-                        color: "var(--mui-palette-text-secondary)",
+                        color: "var(--app-palette-text-secondary)",
                         fontFamily: theme.typography.fontFamily,
                         fontSize: "0.85rem",
                         wordBreak: "break-word",

@@ -38,7 +38,7 @@
 }
 
 .app-table-row--selected {
-  background-color: var(--color-action-selected);
+  background-color: var(--app-palette-action-selected);
 }
 
 /* ── Sticky header ─────────────────────────── */
@@ -47,7 +47,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  background-color: var(--color-surface);
+  background-color: var(--app-palette-background-paper);
 }
 
 /* ── Cell ──────────────────────────────────────── */

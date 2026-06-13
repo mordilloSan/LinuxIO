@@ -590,7 +590,7 @@ const DockerDashboard: React.FC = () => {
                   }
                   style={{
                     fontSize: "0.75rem",
-                    color: "var(--mui-palette-text-secondary)",
+                    color: "var(--app-palette-text-secondary)",
                     lineHeight: 1.4,
                   }}
                   value={containerSort}
@@ -712,7 +712,7 @@ const DockerDashboard: React.FC = () => {
                   }
                   style={{
                     fontSize: "0.75rem",
-                    color: "var(--mui-palette-text-secondary)",
+                    color: "var(--app-palette-text-secondary)",
                     lineHeight: 1.4,
                   }}
                   value={imageSort}

@@ -181,7 +181,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
 
     const baseBg = useMemo(() => {
       if (selected) {
-        return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
+        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
       }
       if (hidden) {
         return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
@@ -294,8 +294,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                     backgroundColor: isDirectory
-                      ? `color-mix(in srgb, var(--mui-palette-primary-main), transparent 85%)`
-                      : `color-mix(in srgb, var(--mui-palette-text-secondary), transparent 90%)`,
+                      ? `color-mix(in srgb, var(--app-palette-primary-main), transparent 85%)`
+                      : `color-mix(in srgb, var(--app-palette-text-secondary), transparent 90%)`,
                     padding: "2px 6px",
                     borderRadius: "4px",
                     textTransform: "uppercase",

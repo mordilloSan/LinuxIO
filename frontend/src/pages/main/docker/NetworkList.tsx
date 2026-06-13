@@ -239,7 +239,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
           ))}
         </div>
         <AppDialogContentText
-          style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}
+          style={{ marginTop: 8, color: "var(--app-palette-warning-main)" }}
         >
           This action cannot be undone. Networks with connected containers
           cannot be deleted.

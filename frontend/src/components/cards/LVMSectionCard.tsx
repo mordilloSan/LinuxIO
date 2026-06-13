@@ -61,8 +61,8 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "var(--mui-palette-action-hover)",
-                color: "var(--mui-palette-text-secondary)",
+                background: "var(--app-palette-action-hover)",
+                color: "var(--app-palette-text-secondary)",
                 flexShrink: 0,
               }}
             >

@@ -249,7 +249,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         <AppTable>
           <AppTableHead>
             <AppTableRow
-              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+              style={{ borderBottom: "1px solid var(--app-palette-divider)" }}
             >
               <AppTableCell></AppTableCell>
               <AppTableCell align="center">Read</AppTableCell>
@@ -259,7 +259,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           </AppTableHead>
           <AppTableBody>
             <AppTableRow
-              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+              style={{ borderBottom: "1px solid var(--app-palette-divider)" }}
             >
               <AppTableCell>
                 <AppTypography fontWeight={500} variant="body2">
@@ -286,7 +286,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               </AppTableCell>
             </AppTableRow>
             <AppTableRow
-              style={{ borderBottom: "1px solid var(--mui-palette-divider)" }}
+              style={{ borderBottom: "1px solid var(--app-palette-divider)" }}
             >
               <AppTableCell>
                 <AppTypography fontWeight={500} variant="body2">

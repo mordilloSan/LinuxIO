@@ -582,6 +582,14 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-palette-action-disabled-background":
       theme.palette.action.disabledBackground,
     "--app-palette-action-disabled-opacity": `${theme.palette.action.disabledOpacity}`,
+    // RGB-channel + grey compat tokens, consumed via rgba(var(--x) / alpha).
+    "--app-palette-primary-mainChannel": toColorChannel(
+      theme.palette.primary.main,
+    ),
+    "--app-palette-dividerChannel": toColorChannel(theme.palette.divider),
+    "--app-palette-common-blackChannel": "0 0 0",
+    "--app-palette-grey-100": "#f5f5f5",
+    "--app-palette-grey-900": "#212121",
     "--app-header-background": theme.header.background,
     "--app-header-color": theme.header.color,
     "--app-header-search-color": theme.header.search.color,
@@ -619,8 +627,8 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
       theme.palette.mode === "dark"
-        ? "color-mix(in srgb, var(--color-info) 30%, #fff)"
-        : "var(--color-info)",
+        ? "color-mix(in srgb, var(--app-palette-info-main) 30%, #fff)"
+        : "var(--app-palette-info-main)",
     "--app-panel-text": theme.palette.text.primary,
     "--app-panel-border": theme.palette.divider,
     "--app-panel-shadow":
@@ -634,26 +642,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--accent": theme.palette.primary.main,
     "--accent-soft": theme.palette.primary.light,
     "--accent-strong": theme.palette.primary.dark,
-    "--color-primary": "var(--app-palette-primary-main)",
-    "--color-primary-contrast": "var(--app-palette-primary-contrast-text)",
-    "--color-bg": "var(--app-palette-background-default)",
-    "--color-surface": "var(--app-palette-background-paper)",
-    "--color-text": "var(--app-palette-text-primary)",
-    "--color-text-secondary": "var(--app-palette-text-secondary)",
-    "--color-text-disabled": "var(--app-palette-text-disabled)",
-    "--color-action-active": "var(--app-palette-action-active)",
-    "--color-action-hover": "var(--app-palette-action-hover)",
-    "--color-action-selected": "var(--app-palette-action-selected)",
-    "--color-action-disabled": "var(--app-palette-action-disabled)",
-    "--color-action-disabled-bg":
-      "var(--app-palette-action-disabled-background)",
-    "--color-action-disabled-opacity":
-      "var(--app-palette-action-disabled-opacity)",
-    "--color-error": "var(--app-palette-error-main)",
-    "--color-warning": "var(--app-palette-warning-main)",
-    "--color-success": "var(--app-palette-success-main)",
-    "--color-info": "var(--app-palette-info-main)",
-    "--color-divider": "var(--app-palette-divider)",
     "--app-status-success": SEMANTIC_STATUS_COLORS.success,
     "--app-status-warning": SEMANTIC_STATUS_COLORS.warning,
     "--app-status-error": SEMANTIC_STATUS_COLORS.error,
@@ -672,21 +660,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-file-document": FILE_TYPE_COLORS.document,
     "--app-file-executable": FILE_TYPE_COLORS.executable,
     "--app-overlay-dark": "rgba(0, 0, 0, 0.35)",
-    "--mui-palette-primary-main": theme.palette.primary.main,
-    "--mui-palette-primary-mainChannel": toColorChannel(
-      theme.palette.primary.main,
-    ),
-    "--mui-palette-warning-main": theme.palette.warning.main,
-    "--mui-palette-success-main": theme.palette.success.main,
-    "--mui-palette-error-main": theme.palette.error.main,
-    "--mui-palette-text-secondary": theme.palette.text.secondary,
-    "--mui-palette-divider": theme.palette.divider,
-    "--mui-palette-dividerChannel": toColorChannel(theme.palette.divider),
-    "--mui-palette-background-default": theme.palette.background.default,
-    "--mui-palette-action-hover": theme.palette.action.hover,
-    "--mui-palette-common-blackChannel": "0 0 0",
-    "--mui-palette-grey-100": "#f5f5f5",
-    "--mui-palette-grey-900": "#212121",
   };
 }
 
@@ -702,7 +675,7 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 
     const root = document.documentElement;
     root.dataset.appTheme = resolvedTheme.name.toLowerCase();
-    root.dataset.muiColorScheme = resolvedTheme.colorScheme;
+    root.dataset.appColorScheme = resolvedTheme.colorScheme;
 
     for (const [key, value] of Object.entries(cssVariables)) {
       root.style.setProperty(key, value);

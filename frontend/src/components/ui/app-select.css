@@ -49,19 +49,19 @@
 .app-select__input:hover:not(.app-select__input--disabled):not(
     .app-select__input--open
   ) {
-  border-color: var(--color-primary);
+  border-color: var(--app-palette-primary-main);
 }
 
 .app-select__input--open,
 .app-select__input:focus-visible {
-  border-color: var(--color-primary);
+  border-color: var(--app-palette-primary-main);
   border-width: 2px;
   padding: 15.5px 35px 15.5px 13px;
 }
 
 .app-select__input--disabled {
-  color: var(--color-text-disabled);
-  border-color: var(--color-action-disabled);
+  color: var(--app-palette-text-disabled);
+  border-color: var(--app-palette-action-disabled);
   cursor: default;
 }
 
@@ -89,7 +89,7 @@
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
   display: flex;
   align-items: center;
   transition: transform var(--app-transition-duration-medium)
@@ -101,7 +101,7 @@
 }
 
 .app-select__input--disabled ~ .app-select__arrow {
-  color: var(--color-action-disabled);
+  color: var(--app-palette-action-disabled);
 }
 
 /* ── Variant: standard ──────────────────────────── */
@@ -120,7 +120,7 @@
 
 .app-select--standard .app-select__input:focus-visible {
   border: none;
-  border-bottom: 2px solid var(--color-primary);
+  border-bottom: 2px solid var(--app-palette-primary-main);
   padding-left: 0;
   padding-right: 24px;
   padding-bottom: 4px;
@@ -167,12 +167,12 @@
   left: 12px;
   transform-origin: left center;
   transform: translateY(-50%) scale(0.7);
-  background: var(--color-surface);
+  background: var(--app-palette-background-paper);
   padding: 0 4px;
   font-family: inherit;
   font-size: 1rem;
   font-weight: 400;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
   line-height: 1;
   white-space: nowrap;
   pointer-events: none;
@@ -192,7 +192,7 @@
 .app-select__dropdown--portal {
   position: fixed;
   z-index: 1300;
-  background-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-background-paper) 78%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
@@ -215,25 +215,25 @@
   padding: 6px 16px;
   font-family: inherit;
   font-size: var(--app-select-option-font-size, inherit);
-  color: var(--color-text);
+  color: var(--app-palette-text-primary);
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 150ms;
 }
 
 .app-select__option:hover:not(.app-select__option--disabled) {
-  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main) 12%, transparent);
 }
 
 .app-select__option--selected {
-  background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main) 20%, transparent);
 }
 
 .app-select__option--selected:hover:not(.app-select__option--disabled) {
-  background-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main) 28%, transparent);
 }
 
 .app-select__option--disabled {
-  color: var(--color-text-disabled);
+  color: var(--app-palette-text-disabled);
   cursor: default;
 }

@@ -31,7 +31,7 @@
   width: 34px;
   height: 14px;
   border-radius: 7px;
-  background-color: var(--color-text);
+  background-color: var(--app-palette-text-primary);
   opacity: 0.38;
   transition:
     opacity var(--app-transition-duration-fast) var(--app-easing-standard),
@@ -62,13 +62,13 @@
 
 /* ── checked state ────────────────────────────── */
 .app-switch__input:checked ~ .app-switch__track {
-  background-color: var(--color-primary);
+  background-color: var(--app-palette-primary-main);
   opacity: 0.5;
 }
 
 .app-switch__input:checked ~ .app-switch__thumb {
   left: 29px;
-  background-color: var(--color-primary);
+  background-color: var(--app-palette-primary-main);
 }
 
 /* ── disabled state ───────────────────────────── */
@@ -77,7 +77,7 @@
 }
 
 .app-switch__input:disabled ~ .app-switch__thumb {
-  background-color: var(--color-action-disabled);
+  background-color: var(--app-palette-action-disabled);
   box-shadow: none;
 }
 

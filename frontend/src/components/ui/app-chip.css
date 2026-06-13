@@ -46,7 +46,7 @@
 }
 
 .app-chip--disabled {
-  opacity: var(--color-action-disabled-opacity, 0.38);
+  opacity: var(--app-palette-action-disabled-opacity, 0.38);
   pointer-events: none;
 }
 

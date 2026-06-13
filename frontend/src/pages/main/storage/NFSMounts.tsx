@@ -105,8 +105,8 @@ const MountEntryActions: React.FC<{
 
   const isMounting = mountingMountpoint === mount.mountpoint;
   const mountActionColor = mount.mounted
-    ? "var(--color-success)"
-    : "var(--color-text-secondary)";
+    ? "var(--app-palette-success-main)"
+    : "var(--app-palette-text-secondary)";
   const mountActionDisabled = !mount.mounted && !nfsClientAvailable;
   const mountActionLabel = mount.mounted ? "Unmount entry" : "Mount entry";
   const mountActionTitle = mountActionDisabled

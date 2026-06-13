@@ -14,14 +14,14 @@
   height: 42px;
   padding: 9px;
   border-radius: 50%;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
   background-color: transparent;
   transition: background-color var(--app-transition-duration-fast)
     var(--app-easing-standard);
 }
 
 .app-checkbox:hover {
-  background-color: var(--color-action-hover);
+  background-color: var(--app-palette-action-hover);
 }
 
 /* ── hidden native input ──────────────────────── */
@@ -78,36 +78,36 @@
 /* ── color: active state ──────────────────────── */
 .app-checkbox__input:checked ~ .app-checkbox__icon,
 .app-checkbox__input:indeterminate ~ .app-checkbox__icon {
-  color: var(--color-primary);
+  color: var(--app-palette-primary-main);
 }
 
 .app-checkbox:has(.app-checkbox__input:checked):hover,
 .app-checkbox:has(.app-checkbox__input:indeterminate):hover {
-  background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main) 8%, transparent);
 }
 
 /* ── color="error" variant ────────────────────── */
 .app-checkbox--error .app-checkbox__input:checked ~ .app-checkbox__icon,
 .app-checkbox--error .app-checkbox__input:indeterminate ~ .app-checkbox__icon {
-  color: var(--color-error);
+  color: var(--app-palette-error-main);
 }
 
 .app-checkbox--error:has(.app-checkbox__input:checked):hover,
 .app-checkbox--error:has(.app-checkbox__input:indeterminate):hover {
-  background-color: color-mix(in srgb, var(--color-error) 8%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-error-main) 8%, transparent);
 }
 
 .app-checkbox--error:not(:has(.app-checkbox__input:checked)):not(
     :has(.app-checkbox__input:indeterminate)
   ):hover {
-  background-color: color-mix(in srgb, var(--color-error) 8%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-error-main) 8%, transparent);
 }
 
 /* ── disabled ─────────────────────────────────── */
 .app-checkbox:has(.app-checkbox__input:disabled) {
   cursor: default;
   pointer-events: none;
-  color: var(--color-action-disabled);
+  color: var(--app-palette-action-disabled);
 }
 
 .app-checkbox:has(.app-checkbox__input:disabled)
@@ -116,7 +116,7 @@
 .app-checkbox:has(.app-checkbox__input:disabled)
   .app-checkbox__input:indeterminate
   ~ .app-checkbox__icon {
-  color: var(--color-action-disabled);
+  color: var(--app-palette-action-disabled);
 }
 
 /* ── small size ───────────────────────────────── */

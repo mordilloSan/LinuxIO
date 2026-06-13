@@ -181,7 +181,7 @@ const TerminalXTerm: React.FC = () => {
         <AppIconButton
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
           size="small"
-          style={{ color: "var(--mui-palette-text-secondary)" }}
+          style={{ color: "var(--app-palette-text-secondary)" }}
         >
           <Icon height={18} icon="mdi:minus" width={18} />
         </AppIconButton>
@@ -196,7 +196,7 @@ const TerminalXTerm: React.FC = () => {
         <AppIconButton
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
           size="small"
-          style={{ color: "var(--mui-palette-text-secondary)" }}
+          style={{ color: "var(--app-palette-text-secondary)" }}
         >
           <Icon height={18} icon="mdi:plus" width={18} />
         </AppIconButton>
@@ -207,7 +207,7 @@ const TerminalXTerm: React.FC = () => {
         <AppIconButton
           onClick={handleReset}
           size="small"
-          style={{ color: "var(--mui-palette-text-secondary)", marginLeft: 8 }}
+          style={{ color: "var(--app-palette-text-secondary)", marginLeft: 8 }}
           title="Reset Terminal"
         >
           <Icon height={18} icon="mdi:restart" width={18} />

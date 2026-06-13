@@ -85,8 +85,8 @@ body.dialog-open #root {
   scrollbar-width: thin;
   scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
   border-radius: 4px;
-  background-color: var(--color-surface);
-  color: var(--color-text);
+  background-color: var(--app-palette-background-paper);
+  color: var(--app-palette-text-primary);
   box-shadow:
     0px 11px 15px -7px rgba(0, 0, 0, 0.2),
     0px 24px 38px 3px rgba(0, 0, 0, 0.14),
@@ -148,7 +148,7 @@ body.dialog-open #root {
 
 .app-dialog-content-text {
   margin: 0 0 12px;
-  color: var(--color-text-secondary);
+  color: var(--app-palette-text-secondary);
   font-size: 1rem;
   line-height: 1.5;
 }

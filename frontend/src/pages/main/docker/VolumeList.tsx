@@ -109,7 +109,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         <AppDialogContentText
           style={{
             marginTop: 8,
-            color: "var(--mui-palette-warning-main)",
+            color: "var(--app-palette-warning-main)",
           }}
         >
           This action cannot be undone. Volumes in use by containers cannot be

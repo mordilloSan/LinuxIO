@@ -84,7 +84,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
           ))}
         </div>
         <AppDialogContentText
-          style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}
+          style={{ marginTop: 8, color: "var(--app-palette-warning-main)" }}
         >
           This action cannot be undone. Groups that are primary groups for users
           cannot be deleted.

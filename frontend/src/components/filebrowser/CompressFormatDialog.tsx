@@ -166,7 +166,7 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
         >
           <AppButton
             onClick={onClose}
-            style={{ color: "var(--mui-palette-text-secondary)" }}
+            style={{ color: "var(--app-palette-text-secondary)" }}
             type="button"
           >
             Cancel
