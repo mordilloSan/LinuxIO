@@ -92,9 +92,9 @@ jobs:
         run: npm run build
       - name: Check bundle budgets
         working-directory: frontend
-        run: npm run bundle:budget -- --markdown ../FRONTEND_BUNDLE_METRICS.md
+        run: npm run bundle:budget -- --markdown "$RUNNER_TEMP/frontend-bundle-metrics.md"
       - name: Publish bundle metrics summary
-        run: cat FRONTEND_BUNDLE_METRICS.md >> "$GITHUB_STEP_SUMMARY"
+        run: cat "$RUNNER_TEMP/frontend-bundle-metrics.md" >> "$GITHUB_STEP_SUMMARY"
 
   backend-tests:
     runs-on: ubuntu-latest

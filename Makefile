@@ -459,11 +459,6 @@ bundle-budget:
 	@echo "📏 Checking frontend bundle budgets..."
 	@bash -c 'cd frontend && npm run bundle:budget'
 
-bundle-metrics-report:
-	@echo ""
-	@echo "📊 Writing frontend bundle metrics report..."
-	@bash -c 'cd frontend && npm run bundle:metrics -- --markdown ../FRONTEND_BUNDLE_METRICS.md'
-
 analyze: ensure-node setup
 	@echo ""
 	@echo "🔬 Building frontend bundle analysis..."
@@ -809,7 +804,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite bundle-metrics bundle-budget bundle-metrics-report analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup test test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

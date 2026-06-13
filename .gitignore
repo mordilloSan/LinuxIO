@@ -16,7 +16,6 @@ linuxio-bridge
 
 # Logs and misc
 *.log
-FRONTEND_BUNDLE_METRICS.md
 .DS_Store
 .vscode/
 .claude/
