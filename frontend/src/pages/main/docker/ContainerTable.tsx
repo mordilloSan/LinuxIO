@@ -120,7 +120,7 @@ interface ContainerRowProps {
   onToggleAutoUpdate: (name: string) => void;
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({
+const ContainerRow = React.memo<ContainerRowProps>(({
   autoUpdateDisabled,
   autoUpdatePending,
   autoUpdateReason,
@@ -883,7 +883,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
       </Suspense>
     </React.Fragment>
   );
-};
+});
+
+ContainerRow.displayName = "ContainerRow";
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
