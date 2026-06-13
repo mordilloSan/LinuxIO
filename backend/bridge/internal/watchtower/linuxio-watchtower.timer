@@ -1,0 +1,11 @@
+[Unit]
+Description=Run LinuxIO Watchtower container updates
+Documentation=https://github.com/nicholas-fedor/watchtower
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+Unit=linuxio-watchtower.service
+
+[Install]
+WantedBy=timers.target

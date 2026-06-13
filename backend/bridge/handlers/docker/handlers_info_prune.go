@@ -7,7 +7,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetDockerInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

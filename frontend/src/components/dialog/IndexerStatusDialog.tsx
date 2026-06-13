@@ -219,11 +219,9 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
                       {section.subtitle && (
                         <AppTypography
                           color="text.secondary"
+                          noWrap
                           style={{
                             display: "block",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
                           }}
                           title={
                             typeof section.subtitle === "string"

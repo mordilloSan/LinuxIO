@@ -8,6 +8,7 @@ import React, {
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -160,7 +161,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
 
     const baseBg = useMemo(() => {
       if (selected) {
-        return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
+        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
       }
       if (hidden) {
         return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
@@ -171,19 +172,19 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
 
     const baseBorderColor = useMemo(
-      () => `rgba(var(--mui-palette-dividerChannel) / ${baseBorderAlpha})`,
+      () => `rgba(var(--app-palette-dividerChannel) / ${baseBorderAlpha})`,
       [baseBorderAlpha],
     );
 
     const borderColor = useMemo(() => {
       if (selected) {
-        return `rgba(var(--mui-palette-primary-mainChannel) / 0.7)`;
+        return `rgba(var(--app-palette-primary-mainChannel) / 0.7)`;
       }
       if (!isDirectory) return "transparent";
 
       // IMPORTANT: match old behavior: hidden overwrites alpha to 0.05
       return hidden
-        ? `rgba(var(--mui-palette-dividerChannel) / 0.05)`
+        ? `rgba(var(--app-palette-dividerChannel) / 0.05)`
         : baseBorderColor;
     }, [selected, isDirectory, hidden, baseBorderColor]);
 
@@ -270,41 +271,42 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               value={renameValue}
             />
           ) : (
-            <div
+            <AppTypography
+              component="div"
+              color="text.primary"
+              fontSize="0.90rem"
+              fontWeight={400}
+              noWrap
               style={{
-                fontWeight: 400,
-                fontSize: "0.90rem",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                color: theme.palette.text.primary,
                 lineHeight: 1.2,
                 opacity: 1,
               }}
+              title={name}
+              variant="body1"
             >
               {name}
-            </div>
+            </AppTypography>
           )}
 
           {/* Directory path and type badge for search results */}
           {showFullPath && (
             <>
               {path && (
-                <div
+                <AppTypography
+                  component="div"
+                  color="text.secondary"
+                  fontSize="0.75rem"
+                  noWrap
                   style={{
-                    fontSize: "0.75rem",
-                    color: theme.palette.text.secondary,
                     opacity: 0.7,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
                     lineHeight: 1.2,
                     marginTop: "2px",
                   }}
                   title={path}
+                  variant="body2"
                 >
                   {path.replace(/\/[^/]*$/, "") || "/"}
-                </div>
+                </AppTypography>
               )}
             </>
           )}

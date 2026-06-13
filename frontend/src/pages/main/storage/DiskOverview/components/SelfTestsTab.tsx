@@ -165,8 +165,8 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
                   <AppTableCell
                     style={{
                       color: entry.status?.passed
-                        ? "var(--mui-palette-success-main)"
-                        : "var(--mui-palette-error-main)",
+                        ? "var(--app-palette-success-main)"
+                        : "var(--app-palette-error-main)",
                     }}
                   >
                     {entry.status?.string || "Unknown"}
@@ -216,8 +216,8 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
                     style={{
                       color:
                         entry.self_test_result?.value === 0
-                          ? "var(--mui-palette-success-main)"
-                          : "var(--mui-palette-error-main)",
+                          ? "var(--app-palette-success-main)"
+                          : "var(--app-palette-error-main)",
                     }}
                   >
                     {entry.self_test_result?.string || "Unknown"}

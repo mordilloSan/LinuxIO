@@ -40,7 +40,6 @@ func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
 func cloneDocker(in Docker) Docker {
 	out := in
 	out.Folders = slices.Clone(in.Folders)
-	out.AutoUpdateStacks = slices.Clone(in.AutoUpdateStacks)
 	return out
 }
 

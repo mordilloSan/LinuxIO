@@ -85,7 +85,12 @@
 }
 
 .app-sidebar-link--collapsed {
-  justify-content: center;
+  /* Center the lone icon via padding (animatable) rather than
+     justify-content: center, which snaps in one frame and yanks the icon
+     ~25px toward the centre of the still-wide row before it narrows — the
+     collapse "jump". The icon only needs ~2px, so this moves smoothly.
+     14px = (70px collapsed width - 2×8px link margin - 26px icon) / 2. */
+  padding-left: 14px;
 }
 
 .app-sidebar-link__icon {
@@ -96,6 +101,8 @@
   height: 26px;
   flex: 0 0 auto;
   margin-right: 8px;
+  transition: margin-right var(--app-transition-duration-standard)
+    var(--app-easing-standard);
 }
 
 .app-sidebar-link--collapsed .app-sidebar-link__icon {
@@ -103,26 +110,37 @@
 }
 
 .app-sidebar-link__label {
+  display: grid;
+  grid-template-columns: 1fr;
+  opacity: 1;
+  /* Expand direction: text fades in promptly as the column opens. */
+  transition:
+    grid-template-columns var(--app-transition-duration-standard)
+      var(--app-easing-standard),
+    opacity 180ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.app-sidebar-link__label-inner {
   overflow: hidden;
   white-space: nowrap;
   font-size: 0.8125rem;
   font-weight: 400;
   line-height: 1.43;
-  opacity: 1;
-  transition:
-    opacity 300ms ease,
-    width 300ms ease,
-    margin 300ms ease;
 }
 
-.app-sidebar-link--active .app-sidebar-link__label {
+.app-sidebar-link--active .app-sidebar-link__label-inner {
   font-weight: 500;
 }
 
 .app-sidebar-link--collapsed .app-sidebar-link__label {
-  width: 0;
+  grid-template-columns: 0fr;
   opacity: 0;
-  margin: 0;
+  /* Collapse direction: text stays readable, then fades at the end so it
+     doesn't vanish before the width has finished shrinking (ease-in). */
+  transition:
+    grid-template-columns var(--app-transition-duration-standard)
+      var(--app-easing-standard),
+    opacity 250ms cubic-bezier(0.4, 0, 1, 1);
 }
 
 @media (max-width: 959.95px) {

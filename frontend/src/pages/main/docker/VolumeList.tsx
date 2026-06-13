@@ -26,7 +26,8 @@ import { useAppTheme } from "@/theme";
 import {
   longTextStyles,
   responsiveTextStyles,
-  wrappableChipStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
 interface VolumeListProps {
@@ -109,7 +110,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         <AppDialogContentText
           style={{
             marginTop: 8,
-            color: "var(--mui-palette-warning-main)",
+            color: "var(--app-palette-warning-main)",
           }}
         >
           This action cannot be undone. Volumes in use by containers cannot be
@@ -301,95 +302,79 @@ const VolumeList: React.FC<VolumeListProps> = ({
           emptyMessage="No volumes found."
           getRowKey={(volume) => volume.Name}
           renderExpandedContent={(volume) => (
-            <>
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Full Mountpoint:</b>
-              </AppTypography>
-              <AppTypography
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                  ...longTextStyles,
-                }}
-                variant="body2"
-              >
-                {volume.Mountpoint || "-"}
-              </AppTypography>
+            <div className="expand-panel">
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Full Mountpoint:</b>
+                </AppTypography>
+                <AppTypography
+                  className="expand-panel__mono"
+                  style={longTextStyles}
+                  variant="body2"
+                >
+                  {volume.Mountpoint || "-"}
+                </AppTypography>
+              </div>
 
               {volume.CreatedAt && (
-                <>
+                <div>
                   <AppTypography gutterBottom variant="subtitle2">
                     <b>Created:</b>
                   </AppTypography>
-                  <AppTypography
-                    style={{
-                      marginBottom: 8,
-                      fontSize: "0.85rem",
-                    }}
-                    variant="body2"
-                  >
+                  <AppTypography className="expand-panel__mono" variant="body2">
                     {new Date(volume.CreatedAt).toLocaleString()}
                   </AppTypography>
-                </>
+                </div>
               )}
 
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Labels:</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
-                  Object.entries(volume.Labels).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{
-                        mr: 1,
-                        mb: 1,
-                        ...wrappableChipStyles,
-                      }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no labels)
-                  </AppTypography>
-                )}
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Labels:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
+                    Object.entries(volume.Labels).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no labels)
+                    </AppTypography>
+                  )}
+                </div>
               </div>
 
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Options:</b>
-              </AppTypography>
               <div>
-                {volume.Options && Object.keys(volume.Options).length > 0 ? (
-                  Object.entries(volume.Options).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{
-                        mr: 1,
-                        mb: 1,
-                        ...wrappableChipStyles,
-                      }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no options)
-                  </AppTypography>
-                )}
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Options:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {volume.Options && Object.keys(volume.Options).length > 0 ? (
+                    Object.entries(volume.Options).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no options)
+                    </AppTypography>
+                  )}
+                </div>
               </div>
-            </>
+            </div>
           )}
           renderFirstCell={(volume) => (
             <AppCheckbox

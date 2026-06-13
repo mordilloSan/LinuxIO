@@ -35,60 +35,10 @@ var (
 	ErrReservedJobRoute = errors.New("reserved jobs route")
 )
 
-// NoRequest marks a route that takes no request payload.
-type NoRequest struct{}
-
-// NoResponse marks a route that returns no result payload.
-type NoResponse struct{}
-
 type HandlerFunc func(ctx context.Context, request any, emit Events) error
 type DuplexFunc func(ctx context.Context, stream net.Conn, request any) error
 
 type RequestDecoder func(raw json.RawMessage) (any, error)
-
-type Command struct {
-	Name       string
-	Handler    any
-	Mode       Mode
-	Policy     JobPolicy
-	Privileged bool
-}
-
-func RegisterRoutes(router *Router, component string, commands []Command) {
-	for _, cmd := range commands {
-		route := component + "." + cmd.Name
-		opts := []RouteOption{}
-		if cmd.Privileged {
-			opts = append(opts, Privileged)
-		}
-		handler, ok := cmd.Handler.(HandlerFunc)
-		if !ok {
-			panic("bridge command handler has incompatible signature: " + cmd.Name)
-		}
-		switch mode := commandMode(cmd); mode {
-		case ModeQuery:
-			router.Query(route, handler, opts...)
-		case ModeJob:
-			router.Job(route, handler, commandPolicy(cmd), opts...)
-		default:
-			panic("unsupported bridge command mode: " + string(mode))
-		}
-	}
-}
-
-func commandMode(cmd Command) Mode {
-	if cmd.Mode == "" {
-		panic("bridge command mode must be declared: " + cmd.Name)
-	}
-	return cmd.Mode
-}
-
-func commandPolicy(cmd Command) JobPolicy {
-	if cmd.Policy.Name != "" {
-		return cmd.Policy
-	}
-	return ActionDefault
-}
 
 type Events interface {
 	Data(chunk []byte) error

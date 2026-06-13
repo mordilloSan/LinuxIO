@@ -7,6 +7,7 @@ import (
 
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 // List all images
@@ -31,7 +32,30 @@ func ListImages(ctx context.Context) (any, error) {
 		return imageItems[i].Created > imageItems[j].Created
 	})
 
-	return imageItems, nil
+	result := make([]apischema.DockerImage, 0, len(imageItems))
+	for _, item := range imageItems {
+		result = append(result, dockerImageFromSummary(item))
+	}
+	return result, nil
+}
+
+func dockerImageFromSummary(item image.Summary) apischema.DockerImage {
+	result := apischema.DockerImage{
+		Created:     item.Created,
+		ID:          item.ID,
+		Labels:      item.Labels,
+		RepoDigests: item.RepoDigests,
+		RepoTags:    item.RepoTags,
+		Size:        item.Size,
+	}
+	if item.Containers >= 0 {
+		containers := int(item.Containers)
+		result.Containers = &containers
+	}
+	if status, ok := imageUpdateStatusForImage(item); ok {
+		result.UpdateAvailable = new(status.UpdateAvailable)
+	}
+	return result
 }
 
 // Delete an image

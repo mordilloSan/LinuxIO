@@ -21,7 +21,7 @@ import (
 // untrusted UI input from being passed straight to journalctl.
 var journaldFieldMatch = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=.*$`)
 
-const StreamTypeGeneralLogs = "logs.general.follow"
+const streamTypeGeneralLogs = "logs.general.follow"
 
 type generalLogsRequest struct {
 	lines        string
@@ -36,7 +36,7 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	req := parseGeneralLogsRequest(request)
 	slog.Debug("starting general log job",
 		"component", "logs",
-		"route", StreamTypeGeneralLogs,
+		"route", streamTypeGeneralLogs,
 		"job_id", job.ID(),
 		"lines", req.lines,
 		"time_period", req.timePeriod,
@@ -48,7 +48,7 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	if err != nil {
 		slog.Error("failed to create general log job pipe",
 			"component", "logs",
-			"route", StreamTypeGeneralLogs,
+			"route", streamTypeGeneralLogs,
 			"job_id", job.ID(),
 			"error", err)
 		return nil, err
@@ -57,7 +57,7 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	if err := cmd.Start(); err != nil {
 		slog.Error("failed to start general log job",
 			"component", "logs",
-			"route", StreamTypeGeneralLogs,
+			"route", streamTypeGeneralLogs,
 			"job_id", job.ID(),
 			"error", err)
 		return nil, err

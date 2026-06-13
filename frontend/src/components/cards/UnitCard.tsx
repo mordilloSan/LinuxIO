@@ -1,7 +1,9 @@
 import React from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 
 export interface UnitListItem {
   active_state: string;
@@ -18,8 +20,6 @@ const baseCardStyle: React.CSSProperties = {
   flexDirection: "column",
   height: "100%",
   cursor: "pointer",
-  transition:
-    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
   borderBottomWidth: 2,
   borderBottomStyle: "solid",
 };
@@ -64,6 +64,7 @@ function UnitCard<T extends UnitListItem>({
         {
           "--svc-status-color": statusColor,
           ...(isSelected ? selectedCardStyle : cardStyle),
+          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
         } as React.CSSProperties
       }
     >
@@ -77,31 +78,30 @@ function UnitCard<T extends UnitListItem>({
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: "bold",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
+          <AppTypography
+            component="div"
+            fontSize="0.875rem"
+            fontWeight="bold"
+            noWrap
+            title={item.name}
+            variant="body2"
           >
             {item.name}
-          </div>
+          </AppTypography>
           {item.description && (
-            <div
+            <AppTypography
+              component="div"
+              color="text.secondary"
+              fontSize="0.7rem"
+              noWrap
               style={{
                 marginTop: 2,
-                fontSize: "0.7rem",
-                color: "var(--app-palette-text-secondary)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
               }}
               title={item.description}
+              variant="caption"
             >
               {item.description}
-            </div>
+            </AppTypography>
           )}
         </div>
         <span

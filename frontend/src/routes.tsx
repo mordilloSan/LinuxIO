@@ -1,13 +1,4 @@
-import React, { lazy, useMemo } from "react";
-
-import { AuthGuard } from "@/components/guards/AuthGuard";
-import { GuestGuard } from "@/components/guards/GuestGuard";
-import {
-  type AccessContext,
-  type AccessPolicy,
-  hasAccessPolicy,
-  useAccessContext,
-} from "@/hooks/useCapabilities";
+import { linuxio } from "@/api";
 import {
   CpuIcon,
   DockerIcon,
@@ -23,67 +14,68 @@ import {
   UsersIcon,
   WireguardIcon,
 } from "@/icons/svg";
+import { lazyWithPreload, withRouteIcons } from "@/routing/lazyWithPreload";
+import { routeQuery, ROUTE_INTENT_PRELOAD } from "@/routing/routeIntentPreload";
+import type { RouteWithSidebar } from "@/routing/routeTypes";
 
-type LazyRouteModule<T extends React.ComponentType<any>> = { default: T };
-type LazyRouteImporter<T extends React.ComponentType<any>> = () => Promise<
-  LazyRouteModule<T>
->;
-type PreloadableLazyRoute<T extends React.ComponentType<any>> =
-  React.LazyExoticComponent<T> & {
-    preload: LazyRouteImporter<T>;
-  };
+// Layouts
+export const MainLayout = lazyWithPreload(() => import("@/layouts/Main"));
+export const AuthLayout = lazyWithPreload(() => import("@/layouts/Auth"));
 
-function lazyWithPreload<T extends React.ComponentType<any>>(
-  importer: LazyRouteImporter<T>,
-): PreloadableLazyRoute<T> {
-  const Component = lazy(importer) as PreloadableLazyRoute<T>;
-  Component.preload = importer;
-  return Component;
-}
+// Protected pages
+const Default = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/dashboard")),
+);
+const Updates = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/updates")),
+);
+const Docker = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/docker")),
+);
+const Services = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/services")),
+);
+const Logs = lazyWithPreload(withRouteIcons(() => import("@/pages/main/logs")));
+const Network = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/network")),
+);
+const Hardware = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/hardware")),
+);
+const Wireguard = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/wireguard")),
+);
+const TerminalPage = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/terminal")),
+);
+const Shares = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/shares")),
+);
+const FileBrowser = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/filebrowser")),
+);
+const StoragePage = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/storage")),
+);
+const AccountsPage = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/accounts")),
+);
 
-// Lazy load layouts
-const MainLayout = lazyWithPreload(() => import("@/layouts/Main"));
-const AuthLayout = lazyWithPreload(() => import("@/layouts/Auth"));
+// Public pages
+export const SignIn = lazyWithPreload(() => import("@/pages/auth/Login"));
+export const Page404 = lazyWithPreload(() => import("@/pages/auth/Page404"));
 
-// Lazy load core pages
-const Default = lazyWithPreload(() => import("@/pages/main/dashboard"));
-const Updates = lazyWithPreload(() => import("@/pages/main/updates"));
-const Docker = lazyWithPreload(() => import("@/pages/main/docker"));
-const Services = lazyWithPreload(() => import("@/pages/main/services"));
-const Logs = lazyWithPreload(() => import("@/pages/main/logs"));
-const Network = lazyWithPreload(() => import("@/pages/main/network"));
-const Hardware = lazyWithPreload(() => import("@/pages/main/hardware"));
-const Wireguard = lazyWithPreload(() => import("@/pages/main/wireguard"));
-const TerminalPage = lazyWithPreload(() => import("@/pages/main/terminal"));
-const Shares = lazyWithPreload(() => import("@/pages/main/shares"));
-const FileBrowser = lazyWithPreload(() => import("@/pages/main/filebrowser"));
-const StoragePage = lazyWithPreload(() => import("@/pages/main/storage"));
-const AccountsPage = lazyWithPreload(() => import("@/pages/main/accounts"));
-
-// Auth pages
-const SignIn = lazyWithPreload(() => import("@/pages/auth/Login"));
-const Page404 = lazyWithPreload(() => import("@/pages/auth/Page404"));
-
-// ============================================================================
-// Unified Route Configuration with Sidebar
-// ============================================================================
-
-export interface RouteWithSidebar extends AccessPolicy {
-  children?: RouteWithSidebar[];
-  element?: React.ReactNode;
-  path?: string;
-  preload?: () => Promise<unknown>;
-  sidebar?: {
-    title: string;
-    icon: React.ElementType | string;
-    position: number;
-  };
-}
-
-const coreRoutes: RouteWithSidebar[] = [
+export const coreRoutes: RouteWithSidebar[] = [
   {
     path: "",
     element: <Default />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [
+      routeQuery(linuxio.system.get_health_summary),
+      routeQuery(linuxio.system.get_host_info),
+      routeQuery(linuxio.system.get_uptime),
+      routeQuery(linuxio.system.get_server_time),
+    ],
     preload: Default.preload,
     sidebar: {
       title: "Dashboard",
@@ -94,6 +86,8 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "network",
     element: <Network />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [routeQuery(linuxio.network.get_network_info)],
     preload: Network.preload,
     sidebar: {
       title: "Network",
@@ -104,6 +98,9 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "updates",
     element: <Updates />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchDataWhen: (access) => access.packageKitAvailable === true,
+    prefetchQueries: [routeQuery(linuxio.updates.get_updates_basic)],
     preload: Updates.preload,
     sidebar: {
       title: "Updates",
@@ -114,6 +111,8 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "services",
     element: <Services />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [routeQuery(linuxio.systemd.list_services)],
     preload: Services.preload,
     sidebar: {
       title: "Services",
@@ -124,6 +123,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "logs",
     element: <Logs />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: Logs.preload,
     sidebar: {
       title: "Logs",
@@ -134,6 +134,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "storage",
     element: <StoragePage />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: StoragePage.preload,
     sidebar: {
       title: "Storage",
@@ -144,6 +145,8 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "docker",
     element: <Docker />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [routeQuery(linuxio.docker.list_containers)],
     preload: Docker.preload,
     requiredCapabilities: ["dockerAvailable"],
     sidebar: {
@@ -155,6 +158,11 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "accounts",
     element: <AccountsPage />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [
+      routeQuery(linuxio.accounts.list_users),
+      routeQuery(linuxio.accounts.list_groups),
+    ],
     preload: AccountsPage.preload,
     sidebar: {
       title: "Accounts",
@@ -165,6 +173,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "shares",
     element: <Shares />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: Shares.preload,
     sidebar: {
       title: "Shares",
@@ -175,6 +184,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "wireguard",
     element: <Wireguard />,
+    intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
     preload: Wireguard.preload,
     requiresPrivileged: true,
     requiredCapabilities: ["wireguardAvailable"],
@@ -187,6 +197,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "hardware",
     element: <Hardware />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: Hardware.preload,
     requiredCapabilities: ["lmSensorsAvailable"],
     sidebar: {
@@ -198,6 +209,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "filebrowser/*",
     element: <FileBrowser />,
+    intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
     preload: FileBrowser.preload,
     sidebar: {
       title: "Navigator",
@@ -208,6 +220,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "terminal",
     element: <TerminalPage />,
+    intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
     preload: TerminalPage.preload,
     sidebar: {
       title: "Terminal",
@@ -216,86 +229,3 @@ const coreRoutes: RouteWithSidebar[] = [
     },
   },
 ];
-
-function buildProtectedRoutes(access: AccessContext) {
-  return coreRoutes.filter((route) => hasAccessPolicy(route, access));
-}
-
-export function usePreloadProtectedRouteChunks() {
-  const access = useAccessContext();
-
-  return useMemo(() => {
-    const preloaders = buildProtectedRoutes(access)
-      .map((route) => route.preload)
-      .filter((preload): preload is () => Promise<unknown> => Boolean(preload));
-
-    return () => Promise.allSettled(preloaders.map((preload) => preload()));
-  }, [access]);
-}
-
-// ============================================================================
-// Route Builder Hook
-// ============================================================================
-
-export function useAppRoutes() {
-  const access = useAccessContext();
-
-  return useMemo(() => {
-    const allProtectedRoutes = buildProtectedRoutes(access);
-
-    return [
-      // Protected app
-      {
-        path: "/",
-        element: (
-          <AuthGuard>
-            <MainLayout />
-          </AuthGuard>
-        ),
-        children: [...allProtectedRoutes, { path: "*", element: <Page404 /> }],
-      },
-
-      // Sign-in (public)
-      {
-        path: "/sign-in",
-        element: <AuthLayout />,
-        children: [
-          {
-            index: true,
-            element: (
-              <GuestGuard>
-                <SignIn />
-              </GuestGuard>
-            ),
-          },
-        ],
-      },
-    ];
-  }, [access]);
-}
-
-// ============================================================================
-// Sidebar Items Extraction
-// ============================================================================
-
-export function useSidebarItems() {
-  const access = useAccessContext();
-
-  return useMemo(() => {
-    const allRoutes = buildProtectedRoutes(access);
-
-    // Convert to sidebar format and sort by position
-    return allRoutes
-      .filter((route) => route.sidebar)
-      .sort(
-        (a, b) =>
-          (a.sidebar?.position ?? Number.MAX_SAFE_INTEGER) -
-          (b.sidebar?.position ?? Number.MAX_SAFE_INTEGER),
-      )
-      .map((route) => ({
-        href: `/${route.path ?? ""}`.replace("/*", ""), // Remove wildcard from path
-        title: route.sidebar!.title,
-        icon: route.sidebar!.icon,
-      }));
-  }, [access]);
-}

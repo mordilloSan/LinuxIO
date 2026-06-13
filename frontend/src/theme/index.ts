@@ -1,9 +1,11 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useInsertionEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
 } from "react";
 
 import type { AppSettings, ThemeColorsByMode } from "@/types/config";
@@ -17,6 +19,13 @@ import {
   resolvePrimaryColor,
   SEMANTIC_STATUS_COLORS,
 } from "@/theme/colors";
+import {
+  EASING_STANDARD_CSS,
+  MOTION_CSS_VARS,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_MEDIUM_MS,
+  TRANSITION_DURATION_STANDARD_MS,
+} from "@/theme/constants";
 import variants from "@/theme/variants";
 import { alpha, darken, lighten } from "@/utils/color";
 
@@ -165,7 +174,6 @@ export interface AppTheme {
   transitions: {
     easing: {
       easeInOut: string;
-      sharp: string;
     };
     duration: {
       shortest: number;
@@ -237,14 +245,13 @@ function createBreakpoints() {
 
 function createTransitions() {
   const easing = {
-    easeInOut: "cubic-bezier(0.4, 0, 0.2, 1)",
-    sharp: "cubic-bezier(0.4, 0, 0.6, 1)",
+    easeInOut: EASING_STANDARD_CSS,
   } as const;
 
   const duration = {
-    shortest: 150,
-    standard: 250,
-    leavingScreen: 195,
+    shortest: TRANSITION_DURATION_FAST_MS,
+    standard: TRANSITION_DURATION_STANDARD_MS,
+    leavingScreen: TRANSITION_DURATION_MEDIUM_MS,
   } as const;
 
   return {
@@ -543,6 +550,7 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-color-scheme": theme.colorScheme,
     "--app-font-family": theme.typography.fontFamily,
     "--app-radius-base": `${theme.shape.borderRadius}px`,
+    ...MOTION_CSS_VARS,
     "--app-palette-primary-main": theme.palette.primary.main,
     "--app-palette-primary-light": theme.palette.primary.light,
     "--app-palette-primary-dark": theme.palette.primary.dark,
@@ -575,6 +583,14 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-palette-action-disabled-background":
       theme.palette.action.disabledBackground,
     "--app-palette-action-disabled-opacity": `${theme.palette.action.disabledOpacity}`,
+    // RGB-channel + grey compat tokens, consumed via rgba(var(--x) / alpha).
+    "--app-palette-primary-mainChannel": toColorChannel(
+      theme.palette.primary.main,
+    ),
+    "--app-palette-dividerChannel": toColorChannel(theme.palette.divider),
+    "--app-palette-common-blackChannel": "0 0 0",
+    "--app-palette-grey-100": "#f5f5f5",
+    "--app-palette-grey-900": "#212121",
     "--app-header-background": theme.header.background,
     "--app-header-color": theme.header.color,
     "--app-header-search-color": theme.header.search.color,
@@ -612,8 +628,8 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
       theme.palette.mode === "dark"
-        ? "color-mix(in srgb, var(--color-info) 30%, #fff)"
-        : "var(--color-info)",
+        ? "color-mix(in srgb, var(--app-palette-info-main) 30%, #fff)"
+        : "var(--app-palette-info-main)",
     "--app-panel-text": theme.palette.text.primary,
     "--app-panel-border": theme.palette.divider,
     "--app-panel-shadow":
@@ -627,26 +643,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--accent": theme.palette.primary.main,
     "--accent-soft": theme.palette.primary.light,
     "--accent-strong": theme.palette.primary.dark,
-    "--color-primary": "var(--app-palette-primary-main)",
-    "--color-primary-contrast": "var(--app-palette-primary-contrast-text)",
-    "--color-bg": "var(--app-palette-background-default)",
-    "--color-surface": "var(--app-palette-background-paper)",
-    "--color-text": "var(--app-palette-text-primary)",
-    "--color-text-secondary": "var(--app-palette-text-secondary)",
-    "--color-text-disabled": "var(--app-palette-text-disabled)",
-    "--color-action-active": "var(--app-palette-action-active)",
-    "--color-action-hover": "var(--app-palette-action-hover)",
-    "--color-action-selected": "var(--app-palette-action-selected)",
-    "--color-action-disabled": "var(--app-palette-action-disabled)",
-    "--color-action-disabled-bg":
-      "var(--app-palette-action-disabled-background)",
-    "--color-action-disabled-opacity":
-      "var(--app-palette-action-disabled-opacity)",
-    "--color-error": "var(--app-palette-error-main)",
-    "--color-warning": "var(--app-palette-warning-main)",
-    "--color-success": "var(--app-palette-success-main)",
-    "--color-info": "var(--app-palette-info-main)",
-    "--color-divider": "var(--app-palette-divider)",
     "--app-status-success": SEMANTIC_STATUS_COLORS.success,
     "--app-status-warning": SEMANTIC_STATUS_COLORS.warning,
     "--app-status-error": SEMANTIC_STATUS_COLORS.error,
@@ -665,21 +661,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-file-document": FILE_TYPE_COLORS.document,
     "--app-file-executable": FILE_TYPE_COLORS.executable,
     "--app-overlay-dark": "rgba(0, 0, 0, 0.35)",
-    "--mui-palette-primary-main": theme.palette.primary.main,
-    "--mui-palette-primary-mainChannel": toColorChannel(
-      theme.palette.primary.main,
-    ),
-    "--mui-palette-warning-main": theme.palette.warning.main,
-    "--mui-palette-success-main": theme.palette.success.main,
-    "--mui-palette-error-main": theme.palette.error.main,
-    "--mui-palette-text-secondary": theme.palette.text.secondary,
-    "--mui-palette-divider": theme.palette.divider,
-    "--mui-palette-dividerChannel": toColorChannel(theme.palette.divider),
-    "--mui-palette-background-default": theme.palette.background.default,
-    "--mui-palette-action-hover": theme.palette.action.hover,
-    "--mui-palette-common-blackChannel": "0 0 0",
-    "--mui-palette-grey-100": "#f5f5f5",
-    "--mui-palette-grey-900": "#212121",
   };
 }
 
@@ -690,17 +671,20 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     [resolvedTheme],
   );
 
-  useEffect(() => {
+  useInsertionEffect(() => {
     if (!resolvedTheme) return;
 
     const root = document.documentElement;
     root.dataset.appTheme = resolvedTheme.name.toLowerCase();
-    root.dataset.muiColorScheme = resolvedTheme.colorScheme;
+    root.dataset.appColorScheme = resolvedTheme.colorScheme;
 
     for (const [key, value] of Object.entries(cssVariables)) {
       root.style.setProperty(key, value);
     }
+  }, [cssVariables, resolvedTheme]);
 
+  useEffect(() => {
+    if (!resolvedTheme) return;
     try {
       localStorage.setItem(
         "linuxio_theme_bootstrap",
@@ -708,12 +692,13 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
           scheme: resolvedTheme.colorScheme,
           bg: resolvedTheme.palette.background.default,
           text: resolvedTheme.palette.text.primary,
+          primary: resolvedTheme.palette.primary.main,
         }),
       );
     } catch {
       // Best-effort cache only.
     }
-  }, [cssVariables, resolvedTheme]);
+  }, [resolvedTheme]);
 
   if (!resolvedTheme) {
     return null;
@@ -750,26 +735,24 @@ export function useAppTheme() {
 export function useAppMediaQuery(query: string) {
   const normalizedQuery = query.trim().replace(/^@media\s*/i, "");
 
-  const [matches, setMatches] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia(normalizedQuery).matches
-      : false,
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      const mediaQueryList = window.matchMedia(normalizedQuery);
+      mediaQueryList.addEventListener("change", onStoreChange);
+      return () => mediaQueryList.removeEventListener("change", onStoreChange);
+    },
+    [normalizedQuery],
   );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const mediaQueryList = window.matchMedia(normalizedQuery);
-    const update = (event: MediaQueryListEvent) => {
-      setMatches(event.matches);
-    };
-
-    setMatches(mediaQueryList.matches);
-    mediaQueryList.addEventListener("change", update);
-    return () => mediaQueryList.removeEventListener("change", update);
-  }, [normalizedQuery]);
-
-  return matches;
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      typeof window !== "undefined"
+        ? window.matchMedia(normalizedQuery).matches
+        : false,
+    () => false,
+  );
 }
 
 export default buildAppTheme;

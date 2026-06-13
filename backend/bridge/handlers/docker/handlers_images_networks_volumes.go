@@ -7,7 +7,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListImages(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleListImages(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListImages(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -17,7 +17,7 @@ func (h dockerHandlers) handleDeleteImage(ctx context.Context, req apischema.Ima
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleListNetworks(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleListNetworks(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListDockerNetworks(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -32,7 +32,7 @@ func (h dockerHandlers) handleDeleteNetwork(ctx context.Context, req apischema.I
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleListVolumes(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleListVolumes(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListVolumes(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

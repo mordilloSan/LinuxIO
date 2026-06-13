@@ -137,6 +137,12 @@ jobs:
       - name: Build frontend (Vite)
         run: make build-vite
 
+      - name: Record frontend bundle metrics
+        run: |
+          cd frontend
+          npm run bundle:metrics -- --markdown "$RUNNER_TEMP/frontend-bundle-metrics.md"
+          cat "$RUNNER_TEMP/frontend-bundle-metrics.md" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download Go modules
         working-directory: backend
         run: go mod download
@@ -229,6 +235,13 @@ jobs:
               echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
             fi
           } > CHANGELOG.md
+
+          if [[ -f "$RUNNER_TEMP/frontend-bundle-metrics.md" ]]; then
+            {
+              echo ""
+              cat "$RUNNER_TEMP/frontend-bundle-metrics.md"
+            } >> CHANGELOG.md
+          fi
 
           echo "--- Generated Changelog ---"
           cat CHANGELOG.md

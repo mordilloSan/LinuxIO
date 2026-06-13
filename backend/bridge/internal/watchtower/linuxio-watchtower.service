@@ -1,0 +1,22 @@
+[Unit]
+Description=LinuxIO Watchtower one-shot container update
+Documentation=https://github.com/nicholas-fedor/watchtower
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Watchtower resolves registry credentials from $DOCKER_CONFIG or
+# $HOME/.docker/config.json; system services get no HOME by default.
+Environment=HOME=/root
+Environment=DOCKER_CONFIG=/root/.docker
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=/etc/linuxio/watchtower.env
+# scheduled update never overlaps a manual check/update.
+ExecCondition=/bin/sh -c 'set -- $$LINUXIO_WATCHTOWER_CONTAINERS; [ "$$#" -gt 0 ] && [ "$$1" != "__linuxio_no_containers_selected__" ]'
+ExecStart=/bin/sh -c 'set -- $$LINUXIO_WATCHTOWER_CONTAINERS; exec /usr/bin/flock -w 600 /run/linuxio-watchtower.lock /usr/local/bin/linuxio-watchtower --run-once --porcelain v1 "$$@"'
+TimeoutStartSec=1h
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true

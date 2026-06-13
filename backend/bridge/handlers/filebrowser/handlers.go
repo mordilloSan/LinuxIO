@@ -8,23 +8,26 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var api = apischema.Bindings(
+	apischema.Query[apischema.FileResourceGetRequest, apischema.ApiResource]("filebrowser.resource_get").Handle(handleResourceGet),
+	apischema.Query[apischema.PathRequest, apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
+	apischema.Job[apischema.PathRequest, apischema.JobSnapshot]("filebrowser.resource_delete").Handle(handleResourceDelete),
+	apischema.Job[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").Handle(handleResourcePost),
+	apischema.Job[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").Handle(handleResourcePatch),
+	apischema.Query[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
+	apischema.Query[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),
+	apischema.Query[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").Handle(handleSubfolders),
+	apischema.Query[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search").Handle(handleSearch),
+	apischema.Query[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups").Handle(handleUsersGroups),
+)
+
+var Routes = apischema.CombineRoutes(api.Routes(), fileJobRoutes)
+
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	store := rt.Store
-	RegisterJobRoutes(router, store)
+	RegisterJobRoutes(router, rt.Store)
 
-	apischema.RegisterRoutes(router, "filebrowser", []bridgeipc.Command{
-		{Name: "resource_get", Mode: bridgeipc.ModeQuery, Handler: handleResourceGet},
-		{Name: "resource_stat", Mode: bridgeipc.ModeQuery, Handler: handleResourceStat},
-		{Name: "resource_delete", Mode: bridgeipc.ModeJob, Handler: handleResourceDelete},
-		{Name: "resource_post", Mode: bridgeipc.ModeJob, Handler: handleResourcePost},
-		{Name: "resource_patch", Mode: bridgeipc.ModeJob, Handler: handleResourcePatch},
-		{Name: "dir_size", Mode: bridgeipc.ModeQuery, Handler: handleDirSize},
-		{Name: "indexer_status", Mode: bridgeipc.ModeQuery, Handler: handleIndexerStatus},
-		{Name: "subfolders", Mode: bridgeipc.ModeQuery, Handler: handleSubfolders},
-		{Name: "search", Mode: bridgeipc.ModeQuery, Handler: handleSearch},
-		{Name: "users_groups", Mode: bridgeipc.ModeQuery, Handler: handleUsersGroups},
-	})
+	api.Register(router)
 }
 
 func handleResourceGet(ctx context.Context, req apischema.FileResourceGetRequest, emit bridgeipc.Events) error {
@@ -57,7 +60,7 @@ func handleDirSize(ctx context.Context, req apischema.PathRequest, emit bridgeip
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleIndexerStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleIndexerStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := indexerStatus(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -72,7 +75,7 @@ func handleSearch(ctx context.Context, req apischema.FileSearchRequest, emit bri
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleUsersGroups(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleUsersGroups(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := usersGroups(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

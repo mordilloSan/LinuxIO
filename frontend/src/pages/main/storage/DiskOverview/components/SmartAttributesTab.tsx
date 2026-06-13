@@ -59,9 +59,9 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
                   style={{
                     color:
                       (getSmartNumber(nvmeHealthRaw.temperature) ?? 0) > 70
-                        ? "var(--mui-palette-error-main)"
+                        ? "var(--app-palette-error-main)"
                         : (getSmartNumber(nvmeHealthRaw.temperature) ?? 0) > 50
-                          ? "var(--mui-palette-warning-main)"
+                          ? "var(--app-palette-warning-main)"
                           : "inherit",
                   }}
                 >
@@ -94,10 +94,10 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
                   style={{
                     color:
                       (getSmartNumber(nvmeHealthRaw.percentage_used) ?? 0) > 90
-                        ? "var(--mui-palette-error-main)"
+                        ? "var(--app-palette-error-main)"
                         : (getSmartNumber(nvmeHealthRaw.percentage_used) ?? 0) >
                             70
-                          ? "var(--mui-palette-warning-main)"
+                          ? "var(--app-palette-warning-main)"
                           : "inherit",
                   }}
                 >
@@ -188,7 +188,7 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
                   style={{
                     color:
                       (getSmartNumber(nvmeHealthRaw.media_errors) ?? 0) > 0
-                        ? "var(--mui-palette-error-main)"
+                        ? "var(--app-palette-error-main)"
                         : "inherit",
                   }}
                 >
@@ -251,7 +251,7 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
                       [5, 196, 197, 198].includes(attr.id) &&
                       attr.raw?.value &&
                       attr.raw.value > 0
-                        ? "var(--mui-palette-warning-main)"
+                        ? "var(--app-palette-warning-main)"
                         : "inherit",
                   }}
                 >

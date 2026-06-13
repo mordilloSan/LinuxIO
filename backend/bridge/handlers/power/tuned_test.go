@@ -22,11 +22,18 @@ func TestBoolStringResultSupportsStructBody(t *testing.T) {
 	}
 }
 
-func TestBoolStringResultSupportsReflectedStructBody(t *testing.T) {
-	ok, msg, err := boolStringResult([]any{struct {
-		OK      bool
-		Message string
-	}{true, "OK"}})
+func TestBoolStringResultSupportsStructTupleBody(t *testing.T) {
+	ok, msg, err := boolStringResult([]any{[]any{true, "OK"}})
+	if err != nil {
+		t.Fatalf("boolStringResult error: %v", err)
+	}
+	if !ok || msg != "OK" {
+		t.Fatalf("got ok=%v msg=%q", ok, msg)
+	}
+}
+
+func TestBoolStringResultSupportsConcreteStructBody(t *testing.T) {
+	ok, msg, err := boolStringResult([]any{tunedBoolStringResult{OK: true, Message: "OK"}})
 	if err != nil {
 		t.Fatalf("boolStringResult error: %v", err)
 	}

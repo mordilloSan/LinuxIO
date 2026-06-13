@@ -2,17 +2,16 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
 
 import ActionButton from "./ActionButton";
 
-import { linuxio } from "@/api";
+import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppSwitch from "@/components/ui/AppSwitch";
 import {
   AppTable,
   AppTableBody,
@@ -27,9 +26,9 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { ContainerInfo } from "@/types/container";
 import { alpha } from "@/utils/color";
-import { isLinuxIOManagedContainer } from "@/utils/dockerManaged";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -37,6 +36,8 @@ const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
   () => import("@/pages/main/docker/TerminalDialog"),
 );
+
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,37 @@ const getImageVersion = (image: string) => {
   return tag || "—";
 };
 
+const getUpdateStatus = (container: ContainerInfo) => {
+  if (container.updateError) {
+    return {
+      color: "error",
+      label: "Error",
+      title: container.updateError,
+    };
+  }
+  if (container.updateAvailable === true) {
+    return {
+      color: "warning",
+      label: "Update",
+      title: "Update available",
+    };
+  }
+  if (container.updateAvailable === false || container.updateCheckedAt) {
+    return {
+      color: "success",
+      label: "Current",
+      title: container.updateCheckedAt
+        ? `Checked ${new Date(container.updateCheckedAt).toLocaleString()}`
+        : "No update available",
+    };
+  }
+  return {
+    color: "default",
+    label: "Unknown",
+    title: "Not checked",
+  };
+};
+
 const formatUptime = (createdUnix: number) => {
   const secs = Math.floor(Date.now() / 1000) - createdUnix;
   if (secs < 0) return "—";
@@ -77,255 +109,390 @@ const formatUptime = (createdUnix: number) => {
 // ── Per-row component ─────────────────────────────────────────────────────────
 
 interface ContainerRowProps {
+  autoUpdateDisabled: boolean;
+  autoUpdatePending: boolean;
+  autoUpdateReason?: string;
+  autoUpdateSelected: boolean;
+  checkingUpdates: boolean;
   container: ContainerInfo;
   editMode?: boolean;
   index: number;
+  onToggleAutoUpdate: (name: string) => void;
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({
-  container,
-  index,
-  editMode,
-}) => {
-  const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
-  const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: container.Id });
-  const [logDialogOpen, setLogDialogOpen] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
-  const [hasLoadedLogs, setHasLoadedLogs] = useState(false);
-  const [hasLoadedTerminal, setHasLoadedTerminal] = useState(false);
+const ContainerRow = React.memo<ContainerRowProps>(
+  ({
+    autoUpdateDisabled,
+    autoUpdatePending,
+    autoUpdateReason,
+    autoUpdateSelected,
+    checkingUpdates,
+    container,
+    index,
+    editMode,
+    onToggleAutoUpdate,
+  }) => {
+    const theme = useAppTheme();
+    const toast = useScopedToast(DOCKER_TOAST_META);
+    const queryClient = useQueryClient();
+    const [expanded, setExpanded] = useState(false);
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: container.Id });
+    const [logDialogOpen, setLogDialogOpen] = useState(false);
+    const [terminalOpen, setTerminalOpen] = useState(false);
+    const [hasLoadedLogs, setHasLoadedLogs] = useState(false);
+    const [hasLoadedTerminal, setHasLoadedTerminal] = useState(false);
+    const [autoTooltipKey, setAutoTooltipKey] = useState(0);
 
-  const name = useMemo(
-    () => container.Names?.[0]?.replace("/", "") || "Unnamed",
-    [container.Names],
-  );
+    const name = useMemo(
+      () => container.Names?.[0]?.replace("/", "") || "Unnamed",
+      [container.Names],
+    );
 
-  const { mutate: startContainer } = linuxio.docker.start_container.useMutation(
-    {
-      onSuccess: () => {
-        toast.success(`Container ${name} started`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
+    const { mutate: startContainer } =
+      linuxio.docker.start_container.useMutation({
+        onSuccess: () => {
+          toast.success(`Container ${name} started`);
+          queryClient.invalidateQueries({
+            queryKey: linuxio.docker.list_containers.queryKey(),
+          });
+        },
+        onError: (err: Error) =>
+          toast.error(getMutationErrorMessage(err, `Failed to start ${name}`)),
+      });
+    const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation(
+      {
+        onSuccess: () => {
+          toast.success(`Container ${name} stopped`);
+          queryClient.invalidateQueries({
+            queryKey: linuxio.docker.list_containers.queryKey(),
+          });
+        },
+        onError: (err: Error) =>
+          toast.error(getMutationErrorMessage(err, `Failed to stop ${name}`)),
       },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, `Failed to start ${name}`)),
-    },
-  );
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation({
-    onSuccess: () => {
-      toast.success(`Container ${name} stopped`);
+    );
+    const { mutate: restartContainer } =
+      linuxio.docker.restart_container.useMutation({
+        onSuccess: () => {
+          toast.success(`Container ${name} restarted`);
+          queryClient.invalidateQueries({
+            queryKey: linuxio.docker.list_containers.queryKey(),
+          });
+        },
+        onError: (err: Error) =>
+          toast.error(
+            getMutationErrorMessage(err, `Failed to restart ${name}`),
+          ),
+      });
+    const { mutate: removeContainer } =
+      linuxio.docker.remove_container.useMutation({
+        onSuccess: () => {
+          toast.success(`Container ${name} removed`);
+          queryClient.invalidateQueries({
+            queryKey: linuxio.docker.list_containers.queryKey(),
+          });
+        },
+        onError: (err: Error) =>
+          toast.error(getMutationErrorMessage(err, `Failed to remove ${name}`)),
+      });
+    const refreshContainerViews = () => {
       queryClient.invalidateQueries({
         queryKey: linuxio.docker.list_containers.queryKey(),
       });
-    },
-    onError: (err: Error) =>
-      toast.error(getMutationErrorMessage(err, `Failed to stop ${name}`)),
-  });
-  const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} restarted`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, `Failed to restart ${name}`)),
-    });
-  const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} removed`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, `Failed to remove ${name}`)),
-    });
-
-  // ── derived ─────────────────────────────────────────────────────────────────
-  const cpuPercent = container.metrics?.cpu_percent ?? 0;
-  const memUsage = container.metrics?.mem_usage ?? 0;
-  const displayState = getDisplayState(container);
-  const version = getImageVersion(container.Image);
-  const uptime = formatUptime(container.Created);
-
-  // Deduped ports
-  const ports = useMemo(() => {
-    const seen = new Set<string>();
-    return (container.Ports ?? [])
-      .filter((p) => {
-        // Dedupe by private+public port only — collapses IPv4/IPv6 duplicate entries
-        const key = p.PublicPort
-          ? `${p.PrivatePort}/${p.Type}:${p.PublicPort}`
-          : `${p.PrivatePort}/${p.Type}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort(
-        (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-      );
-  }, [container.Ports]);
-
-  // Networks
-  const networks = useMemo(
-    () => Object.entries(container.NetworkSettings?.Networks ?? {}),
-    [container.NetworkSettings],
-  );
-
-  // Volumes
-  const mounts = useMemo(
-    () =>
-      (container.Mounts ?? []).filter(
-        (m) => m.Type === "bind" || m.Type === "volume",
-      ),
-    [container.Mounts],
-  );
-
-  const isManagedContainer = isLinuxIOManagedContainer(container.Labels);
-
-  // ---- auto-update ----
-  const { data: rawAutoUpdateContainers } =
-    linuxio.docker.list_auto_update_containers.useQuery({
-      enabled: !isManagedContainer,
-    });
-  const autoUpdateContainers = rawAutoUpdateContainers ?? [];
-  const autoUpdate = autoUpdateContainers.includes(name);
-  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
-  const autoUpdateChecked = isManagedContainer ? true : autoUpdate;
-  const autoUpdateDisabled = autoUpdateLoading || isManagedContainer;
-  const autoUpdateTooltip = isManagedContainer
-    ? "Auto Update: Managed by LinuxIO"
-    : autoUpdate
-      ? "Auto Update: On"
-      : "Auto Update: Off";
-
-  const handleAutoUpdateToggle = async (enabled: boolean) => {
-    if (isManagedContainer) return;
-    setAutoUpdateLoading(true);
-    try {
-      await linuxio.docker.set_auto_update({ container: name, enabled });
       queryClient.invalidateQueries({
-        queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
+        queryKey: linuxio.docker.list_compose_projects.queryKey(),
       });
-      toast.success(
-        `Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`,
-      );
-    } catch {
-      toast.error(`Failed to update auto-update setting for ${name}`);
-    } finally {
-      setAutoUpdateLoading(false);
-    }
-  };
+      queryClient.invalidateQueries({
+        queryKey: linuxio.docker.list_images.queryKey(),
+      });
+    };
+    const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
+      linuxio.docker.check_container_update.useMutation({
+        onSuccess: (data) => {
+          const result =
+            jobSnapshotResult<{
+              checked?: number;
+              updates?: number;
+            }>(data) ?? {};
+          const updates = result.updates ?? 0;
+          toast.success(
+            updates > 0
+              ? `Container ${name} has an update`
+              : `Container ${name} is up to date`,
+          );
+          refreshContainerViews();
+        },
+        onError: (err: Error) =>
+          toast.error(
+            getMutationErrorMessage(err, `Failed to check updates for ${name}`),
+          ),
+      });
+    const { mutate: updateContainer, isPending: isUpdatePending } =
+      linuxio.docker.update_container.useMutation({
+        onSuccess: (data) => {
+          const result = jobSnapshotResult<{ updated: boolean }>(data);
+          toast.success(
+            result.updated
+              ? `Container ${name} updated`
+              : `Container ${name} is already up to date`,
+          );
+          refreshContainerViews();
+        },
+        onError: (err: Error) =>
+          toast.error(getMutationErrorMessage(err, `Failed to update ${name}`)),
+      });
 
-  const rowBg =
-    index % 2 === 0
-      ? "transparent"
-      : alpha(
-          theme.palette.text.primary,
-          theme.palette.mode === "dark" ? 0.04 : 0.05,
+    // ── derived ─────────────────────────────────────────────────────────────────
+    const cpuPercent = container.metrics?.cpu_percent ?? 0;
+    const memUsage = container.metrics?.mem_usage ?? 0;
+    const displayState = getDisplayState(container);
+    const version = getImageVersion(container.Image);
+    const updateStatus = getUpdateStatus(container);
+    const uptime = formatUptime(container.Created);
+    const autoUpdateTooltip = autoUpdateDisabled
+      ? autoUpdateReason
+      : autoUpdatePending
+        ? "Saving auto-update setting"
+        : autoUpdateSelected
+          ? "Scheduled auto-update enabled"
+          : "Scheduled auto-update disabled";
+    const handleToggleAutoUpdate = () => {
+      setAutoTooltipKey((key) => key + 1);
+      onToggleAutoUpdate(name);
+    };
+
+    // Deduped ports
+    const ports = useMemo(() => {
+      const seen = new Set<string>();
+      return (container.Ports ?? [])
+        .filter((p) => {
+          // Dedupe by private+public port only — collapses IPv4/IPv6 duplicate entries
+          const key = p.PublicPort
+            ? `${p.PrivatePort}/${p.Type}:${p.PublicPort}`
+            : `${p.PrivatePort}/${p.Type}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort(
+          (a, b) =>
+            a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
         );
+    }, [container.Ports]);
 
-  return (
-    <React.Fragment>
-      <AppTableRow
-        ref={setNodeRef}
-        style={{
-          transform: CSS.Transform.toString(transform),
-          transition,
-          opacity: isDragging ? 0.4 : 1,
-          backgroundColor: rowBg,
-        }}
-      >
-        {/* Drag handle */}
-        {editMode && (
-          <AppTableCell style={{ padding: "0 4px" }} width="28px">
-            <span
-              {...attributes}
-              {...listeners}
-              className="drag-handle"
+    // Networks
+    const networks = useMemo(
+      () => Object.entries(container.NetworkSettings?.Networks ?? {}),
+      [container.NetworkSettings],
+    );
+    const networkNamesText = networks
+      .map(([networkName]) => networkName)
+      .join(", ");
+    const networkAddressesText = networks
+      .map(
+        ([networkName, endpoint]) =>
+          `${networkName}: ${endpoint.IPAddress || "—"}`,
+      )
+      .join("\n");
+
+    // Volumes
+    const mounts = useMemo(
+      () =>
+        (container.Mounts ?? []).filter(
+          (m) => m.Type === "bind" || m.Type === "volume",
+        ),
+      [container.Mounts],
+    );
+
+    const rowBg =
+      index % 2 === 0
+        ? "transparent"
+        : alpha(
+            theme.palette.text.primary,
+            theme.palette.mode === "dark" ? 0.04 : 0.05,
+          );
+
+    return (
+      <React.Fragment>
+        <AppTableRow
+          ref={setNodeRef}
+          style={{
+            transform: CSS.Transform.toString(transform),
+            transition,
+            opacity: isDragging ? 0.4 : 1,
+            backgroundColor: rowBg,
+          }}
+        >
+          {/* Drag handle */}
+          {editMode && (
+            <AppTableCell style={{ padding: "0 4px" }} width="28px">
+              <span
+                {...attributes}
+                {...listeners}
+                className="drag-handle"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  color: theme.palette.text.disabled,
+                  cursor: "grab",
+                }}
+              >
+                <Icon height={20} icon="mdi:drag" width={20} />
+              </span>
+            </AppTableCell>
+          )}
+          {/* Name (with status dot) */}
+          <AppTableCell>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <StatusDot
+                color={getStatusDotColor(displayState)}
+                size={8}
+                tooltip={displayState}
+              />
+              <DockerIcon alt={name} identifier={container.icon} size={24} />
+              <AppTypography
+                copyText={name}
+                fontWeight={700}
+                noWrap
+                title={name}
+                toastMeta={DOCKER_TOAST_META}
+                variant="body2"
+              >
+                {name}
+              </AppTypography>
+            </div>
+          </AppTableCell>
+
+          {/* Version */}
+          <AppTableCell
+            className="app-table-hide-below-md"
+            style={{ maxWidth: 160 }}
+          >
+            <AppTypography
+              color="text.secondary"
+              copyText={version}
+              noWrap
               style={{
-                display: "flex",
+                fontFamily: "monospace",
+                fontSize: "0.78rem",
+              }}
+              title={version}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
+            >
+              {version}
+            </AppTypography>
+          </AppTableCell>
+
+          {/* Update status + row check */}
+          <AppTableCell className="app-table-hide-below-md" width="140px">
+            <div
+              style={{
                 alignItems: "center",
-                color: theme.palette.text.disabled,
-                cursor: "grab",
+                display: "flex",
+                gap: 4,
+                minWidth: 0,
               }}
             >
-              <Icon height={20} icon="mdi:drag" width={20} />
-            </span>
+              <Chip
+                color={updateStatus.color}
+                disabled={isUpdatePending}
+                label={
+                  isUpdatePending ? (
+                    <span
+                      style={{
+                        alignItems: "center",
+                        display: "inline-flex",
+                        gap: 4,
+                      }}
+                    >
+                      <AppCircularProgress color="inherit" size={12} />
+                      Updating
+                    </span>
+                  ) : (
+                    updateStatus.label
+                  )
+                }
+                onClick={
+                  container.updateAvailable
+                    ? () => updateContainer({ containerId: container.Id })
+                    : undefined
+                }
+                size="small"
+                title={
+                  container.updateAvailable
+                    ? "Apply update"
+                    : updateStatus.title
+                }
+                variant="soft"
+              />
+              <AppTooltip title="Check for updates">
+                <span>
+                  <ActionButton
+                    icon="mdi:magnify"
+                    loading={isCheckingUpdate || checkingUpdates}
+                    onClick={() =>
+                      checkContainerUpdate({ containerId: container.Id })
+                    }
+                  />
+                </span>
+              </AppTooltip>
+            </div>
           </AppTableCell>
-        )}
-        {/* Name (with status dot) */}
-        <AppTableCell>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <StatusDot
-              color={getStatusDotColor(displayState)}
-              size={8}
-              tooltip={displayState}
-            />
-            <DockerIcon alt={name} identifier={container.icon} size={24} />
-            <AppTypography fontWeight={700} noWrap variant="body2">
-              {name}
-            </AppTypography>
-          </div>
-        </AppTableCell>
 
-        {/* Version */}
-        <AppTableCell className="app-table-hide-below-md">
-          <AppTypography
-            color="text.secondary"
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.78rem",
-            }}
-            variant="body2"
-          >
-            {version}
-          </AppTypography>
-        </AppTableCell>
+          {/* Scheduled auto-update */}
+          <AppTableCell align="center" width="60px">
+            <AppTooltip key={autoTooltipKey} title={autoUpdateTooltip}>
+              <span>
+                <ActionButton
+                  color={
+                    autoUpdateSelected ? theme.palette.primary.main : undefined
+                  }
+                  disabled={autoUpdateDisabled || autoUpdatePending}
+                  icon="mdi:timer-cog-outline"
+                  loading={autoUpdatePending}
+                  onClick={handleToggleAutoUpdate}
+                />
+              </span>
+            </AppTooltip>
+          </AppTableCell>
 
-        {/* Uptime */}
-        <AppTableCell className="app-table-hide-below-md">
-          <AppTypography
-            color="text.secondary"
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.78rem",
-              fontVariantNumeric: "tabular-nums",
-            }}
-            variant="body2"
-          >
-            {uptime}
-          </AppTypography>
-        </AppTableCell>
-
-        {/* Network */}
-        <AppTableCell className="app-table-hide-below-lg">
-          {networks.length > 0 ? (
-            <AppTooltip
-              title={
-                networks.length > 1 ? networks.map(([n]) => n).join(", ") : ""
-              }
+          {/* Uptime */}
+          <AppTableCell className="app-table-hide-below-md">
+            <AppTypography
+              color="text.secondary"
+              style={{
+                fontFamily: "monospace",
+                fontSize: "0.78rem",
+                fontVariantNumeric: "tabular-nums",
+              }}
+              variant="body2"
             >
+              {uptime}
+            </AppTypography>
+          </AppTableCell>
+
+          {/* Network */}
+          <AppTableCell className="app-table-hide-below-lg">
+            {networks.length > 0 ? (
               <AppTypography
                 color="text.secondary"
+                copyText={networkNamesText}
                 noWrap
                 style={{
                   fontFamily: "monospace",
                   fontSize: "0.78rem",
                 }}
+                title={networkNamesText}
+                toastMeta={DOCKER_TOAST_META}
+                tooltipOnlyWhenTruncated={networks.length === 1}
                 variant="body2"
               >
                 {networks[0][0]}
@@ -340,241 +507,330 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   </span>
                 )}
               </AppTypography>
-            </AppTooltip>
-          ) : (
-            <AppTypography color="text.disabled" variant="body2">
-              —
-            </AppTypography>
-          )}
-        </AppTableCell>
+            ) : (
+              <AppTypography color="text.disabled" variant="body2">
+                —
+              </AppTypography>
+            )}
+          </AppTableCell>
 
-        {/* Container IP */}
-        <AppTableCell className="app-table-hide-below-lg">
-          {networks.length > 0 && networks[0][1].IPAddress ? (
-            <AppTooltip
-              title={
-                networks.length > 1
-                  ? networks
-                      .map(([n, ep]) => `${n}: ${ep.IPAddress}`)
-                      .join("\n")
-                  : ""
-              }
-            >
+          {/* Container IP */}
+          <AppTableCell className="app-table-hide-below-lg">
+            {networks.length > 0 && networks[0][1].IPAddress ? (
               <AppTypography
+                copyText={networkAddressesText}
+                noWrap
                 style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
+                title={networkAddressesText}
+                toastMeta={DOCKER_TOAST_META}
+                tooltipOnlyWhenTruncated={networks.length === 1}
                 variant="body2"
               >
                 {networks[0][1].IPAddress}
               </AppTypography>
-            </AppTooltip>
-          ) : (
-            <AppTypography color="text.disabled" variant="body2">
-              —
-            </AppTypography>
-          )}
-        </AppTableCell>
-
-        {/* Ports (Container → Host) */}
-        <AppTableCell className="app-table-hide-below-xl">
-          {ports.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {ports.slice(0, 2).map((p, i) => (
-                <AppTypography
-                  key={i}
-                  noWrap
-                  style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
-                  variant="body2"
-                >
-                  <span style={{ color: theme.palette.text.primary }}>
-                    {p.PrivatePort}/{p.Type}
-                  </span>
-                  <span
-                    style={{
-                      color: theme.palette.text.disabled,
-                      marginInline: 2,
-                    }}
-                  >
-                    →
-                  </span>
-                  <span style={{ color: theme.palette.text.secondary }}>
-                    {p.PublicPort ?? "—"}
-                  </span>
-                </AppTypography>
-              ))}
-              {ports.length > 2 && (
-                <AppTypography color="text.disabled" variant="caption">
-                  +{ports.length - 2} more
-                </AppTypography>
-              )}
-            </div>
-          ) : (
-            <AppTypography color="text.disabled" variant="body2">
-              —
-            </AppTypography>
-          )}
-        </AppTableCell>
-
-        {/* Volumes (App → Host) */}
-        <AppTableCell
-          className="app-table-hide-below-xl"
-          style={{ maxWidth: 280 }}
-        >
-          {mounts.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {mounts.slice(0, 2).map((m, i) => (
-                <AppTooltip key={i} title={`${m.Destination} → ${m.Source}`}>
-                  <AppTypography
-                    noWrap
-                    style={{ fontFamily: "monospace", fontSize: "0.75rem" }}
-                    variant="body2"
-                  >
-                    <span style={{ color: theme.palette.text.primary }}>
-                      {m.Destination}
-                    </span>
-                    <span
-                      style={{
-                        color: theme.palette.text.disabled,
-                        marginInline: 2,
-                      }}
-                    >
-                      →
-                    </span>
-                    <span style={{ color: theme.palette.text.secondary }}>
-                      {m.Source}
-                    </span>
-                  </AppTypography>
-                </AppTooltip>
-              ))}
-              {mounts.length > 2 && (
-                <AppTypography color="text.disabled" variant="caption">
-                  +{mounts.length - 2} more
-                </AppTypography>
-              )}
-            </div>
-          ) : (
-            <AppTypography color="text.disabled" variant="body2">
-              —
-            </AppTypography>
-          )}
-        </AppTableCell>
-
-        {/* CPU / Memory (stacked) */}
-        <AppTableCell
-          align="center"
-          className="app-table-hide-below-xl"
-          width="120px"
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.78rem",
-              fontVariantNumeric: "tabular-nums",
-            }}
-            variant="body2"
-          >
-            {cpuPercent.toFixed(1)}%
-          </AppTypography>
-          <AppTypography
-            color="text.secondary"
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.78rem",
-              fontVariantNumeric: "tabular-nums",
-            }}
-            variant="body2"
-          >
-            {formatFileSize(memUsage)}
-          </AppTypography>
-        </AppTableCell>
-
-        {/* Actions + expand */}
-        <AppTableCell align="right">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 2,
-            }}
-          >
-            {isManagedContainer ? (
-              <AppTooltip title="View Logs">
-                <Chip
-                  label="Managed by LinuxIO"
-                  onClick={() => {
-                    setHasLoadedLogs(true);
-                    setLogDialogOpen(true);
-                  }}
-                  size="small"
-                  style={{
-                    fontSize: "0.68rem",
-                    opacity: 0.7,
-                    cursor: "pointer",
-                  }}
-                  variant="soft"
-                />
-              </AppTooltip>
             ) : (
-              <>
-                {container.State !== "running" && (
-                  <AppTooltip title="Start">
-                    <span>
-                      <ActionButton
-                        icon="mdi:play"
-                        onClick={() =>
-                          startContainer({ containerId: container.Id })
-                        }
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                {container.State === "running" && (
-                  <AppTooltip title="Stop">
-                    <span>
-                      <ActionButton
-                        icon="mdi:stop"
-                        onClick={() =>
-                          stopContainer({ containerId: container.Id })
-                        }
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                <AppTooltip title="Restart">
-                  <span>
-                    <ActionButton
-                      icon="mdi:restart"
-                      onClick={() =>
-                        restartContainer({ containerId: container.Id })
-                      }
-                    />
-                  </span>
-                </AppTooltip>
-                <AppTooltip title="Remove">
-                  <span>
-                    <ActionButton
-                      icon="mdi:delete"
-                      onClick={() =>
-                        removeContainer({ containerId: container.Id })
-                      }
-                    />
-                  </span>
-                </AppTooltip>
-                <AppTooltip title="Logs">
-                  <span>
-                    <ActionButton
-                      icon="mdi:file-document-outline"
-                      onClick={() => {
-                        setHasLoadedLogs(true);
-                        setLogDialogOpen(true);
-                      }}
-                    />
-                  </span>
-                </AppTooltip>
-              </>
+              <AppTypography color="text.disabled" variant="body2">
+                —
+              </AppTypography>
             )}
-            {!isManagedContainer && (
+          </AppTableCell>
+
+          {/* Ports (Container → Host) */}
+          <AppTableCell className="app-table-hide-below-xl">
+            {ports.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {ports.slice(0, 2).map((p, i) => {
+                  const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
+                  return (
+                    <AppTypography
+                      copyText={text}
+                      key={i}
+                      noWrap
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
+                      }}
+                      title={text}
+                      toastMeta={DOCKER_TOAST_META}
+                      variant="body2"
+                    >
+                      <span style={{ color: theme.palette.text.primary }}>
+                        {p.PrivatePort}/{p.Type}
+                      </span>
+                      <span
+                        style={{
+                          color: theme.palette.text.disabled,
+                          marginInline: 2,
+                        }}
+                      >
+                        →
+                      </span>
+                      <span style={{ color: theme.palette.text.secondary }}>
+                        {p.PublicPort ?? "—"}
+                      </span>
+                    </AppTypography>
+                  );
+                })}
+                <AppCollapse in={expanded}>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                  >
+                    {ports.length > 2 &&
+                      ports.slice(2).map((p, i) => {
+                        const text = `${p.PrivatePort}/${p.Type} → ${p.PublicPort ?? "—"}`;
+                        return (
+                          <AppTypography
+                            copyText={text}
+                            key={i + 2}
+                            noWrap
+                            style={{
+                              fontFamily: "monospace",
+                              fontSize: "0.75rem",
+                            }}
+                            title={text}
+                            toastMeta={DOCKER_TOAST_META}
+                            variant="body2"
+                          >
+                            <span style={{ color: theme.palette.text.primary }}>
+                              {p.PrivatePort}/{p.Type}
+                            </span>
+                            <span
+                              style={{
+                                color: theme.palette.text.disabled,
+                                marginInline: 2,
+                              }}
+                            >
+                              →
+                            </span>
+                            <span
+                              style={{ color: theme.palette.text.secondary }}
+                            >
+                              {p.PublicPort ?? "—"}
+                            </span>
+                          </AppTypography>
+                        );
+                      })}
+                  </div>
+                </AppCollapse>
+                {ports.length > 2 && (
+                  <AppCollapse in={!expanded}>
+                    <AppTypography
+                      color="text.disabled"
+                      style={{
+                        opacity: expanded ? 0 : 1,
+                        transition: `opacity ${TRANSITION_SLOW_CSS}`,
+                      }}
+                      variant="caption"
+                    >
+                      +{ports.length - 2} more
+                    </AppTypography>
+                  </AppCollapse>
+                )}
+              </div>
+            ) : (
+              <AppTypography color="text.disabled" variant="body2">
+                —
+              </AppTypography>
+            )}
+          </AppTableCell>
+
+          {/* Volumes (App → Host) */}
+          <AppTableCell
+            className="app-table-hide-below-xl"
+            style={{ maxWidth: 280 }}
+          >
+            {mounts.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {mounts.slice(0, 2).map((m, i) => {
+                  const text = `${m.Destination} → ${m.Source}`;
+                  return (
+                    <AppTypography
+                      copyText={text}
+                      key={i}
+                      noWrap
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
+                      }}
+                      title={text}
+                      toastMeta={DOCKER_TOAST_META}
+                      variant="body2"
+                    >
+                      <span style={{ color: theme.palette.text.primary }}>
+                        {m.Destination}
+                      </span>
+                      <span
+                        style={{
+                          color: theme.palette.text.disabled,
+                          marginInline: 2,
+                        }}
+                      >
+                        →
+                      </span>
+                      <span style={{ color: theme.palette.text.secondary }}>
+                        {m.Source}
+                      </span>
+                    </AppTypography>
+                  );
+                })}
+                <AppCollapse in={expanded}>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                  >
+                    {mounts.length > 2 &&
+                      mounts.slice(2).map((m, i) => {
+                        const text = `${m.Destination} → ${m.Source}`;
+                        return (
+                          <AppTypography
+                            copyText={text}
+                            key={i + 2}
+                            noWrap
+                            style={{
+                              fontFamily: "monospace",
+                              fontSize: "0.75rem",
+                            }}
+                            title={text}
+                            toastMeta={DOCKER_TOAST_META}
+                            variant="body2"
+                          >
+                            <span style={{ color: theme.palette.text.primary }}>
+                              {m.Destination}
+                            </span>
+                            <span
+                              style={{
+                                color: theme.palette.text.disabled,
+                                marginInline: 2,
+                              }}
+                            >
+                              →
+                            </span>
+                            <span
+                              style={{ color: theme.palette.text.secondary }}
+                            >
+                              {m.Source}
+                            </span>
+                          </AppTypography>
+                        );
+                      })}
+                  </div>
+                </AppCollapse>
+                {mounts.length > 2 && (
+                  <AppCollapse in={!expanded}>
+                    <AppTypography
+                      color="text.disabled"
+                      style={{
+                        opacity: expanded ? 0 : 1,
+                        transition: `opacity ${TRANSITION_SLOW_CSS}`,
+                      }}
+                      variant="caption"
+                    >
+                      +{mounts.length - 2} more
+                    </AppTypography>
+                  </AppCollapse>
+                )}
+              </div>
+            ) : (
+              <AppTypography color="text.disabled" variant="body2">
+                —
+              </AppTypography>
+            )}
+          </AppTableCell>
+
+          {/* CPU / Memory (stacked) */}
+          <AppTableCell
+            align="center"
+            className="app-table-hide-below-xl"
+            width="120px"
+          >
+            <AppTypography
+              color="text.secondary"
+              style={{
+                fontFamily: "monospace",
+                fontSize: "0.78rem",
+                fontVariantNumeric: "tabular-nums",
+              }}
+              variant="body2"
+            >
+              {cpuPercent.toFixed(1)}%
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              style={{
+                fontFamily: "monospace",
+                fontSize: "0.78rem",
+                fontVariantNumeric: "tabular-nums",
+              }}
+              variant="body2"
+            >
+              {formatFileSize(memUsage)}
+            </AppTypography>
+          </AppTableCell>
+
+          {/* Actions + expand */}
+          <AppTableCell align="right">
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              {container.State !== "running" && (
+                <AppTooltip title="Start">
+                  <span>
+                    <ActionButton
+                      icon="mdi:play"
+                      onClick={() =>
+                        startContainer({ containerId: container.Id })
+                      }
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              {container.State === "running" && (
+                <AppTooltip title="Stop">
+                  <span>
+                    <ActionButton
+                      icon="mdi:stop"
+                      onClick={() =>
+                        stopContainer({ containerId: container.Id })
+                      }
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              <AppTooltip title="Restart">
+                <span>
+                  <ActionButton
+                    icon="mdi:restart"
+                    onClick={() =>
+                      restartContainer({ containerId: container.Id })
+                    }
+                  />
+                </span>
+              </AppTooltip>
+              <AppTooltip title="Remove">
+                <span>
+                  <ActionButton
+                    icon="mdi:delete"
+                    onClick={() =>
+                      removeContainer({ containerId: container.Id })
+                    }
+                  />
+                </span>
+              </AppTooltip>
+              <AppTooltip title="Logs">
+                <span>
+                  <ActionButton
+                    icon="mdi:file-document-outline"
+                    onClick={() => {
+                      setHasLoadedLogs(true);
+                      setLogDialogOpen(true);
+                    }}
+                  />
+                </span>
+              </AppTooltip>
               <AppTooltip title="Terminal">
                 <span>
                   <ActionButton
@@ -586,213 +842,91 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   />
                 </span>
               </AppTooltip>
-            )}
-            {container.url && (
-              <AppTooltip title="Open App">
-                <span>
-                  <ActionButton
-                    icon="mdi:open-in-new"
-                    onClick={() =>
-                      window.open(container.url, "_blank", "noopener")
-                    }
-                  />
-                </span>
-              </AppTooltip>
-            )}
-            <AppTooltip title={autoUpdateTooltip}>
-              <span style={{ display: "inline-flex" }}>
-                <AppSwitch
-                  checked={autoUpdateChecked}
-                  disabled={autoUpdateDisabled}
-                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
-                  size="small"
-                />
-              </span>
-            </AppTooltip>
-            <AppIconButton
-              onClick={() => setExpanded((v) => !v)}
-              size="small"
-              style={{
-                marginLeft: 2,
-                visibility:
-                  ports.length > 2 || mounts.length > 2 ? "visible" : "hidden",
-              }}
-            >
-              <Icon
-                height={20}
-                icon="mdi:chevron-down"
+              {container.url && (
+                <AppTooltip title="Open App">
+                  <span>
+                    <ActionButton
+                      icon="mdi:open-in-new"
+                      onClick={() =>
+                        window.open(container.url, "_blank", "noopener")
+                      }
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              <AppIconButton
+                className="container-expand-toggle"
+                onClick={() => setExpanded((v) => !v)}
+                size="small"
                 style={{
-                  transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "0.2s",
-                }}
-                width={20}
-              />
-            </AppIconButton>
-          </div>
-        </AppTableCell>
-      </AppTableRow>
-
-      {/* Expanded row — full ports + volumes */}
-      {(ports.length > 2 || mounts.length > 2) && (
-        <AppTableRow style={{ backgroundColor: "transparent" }}>
-          <AppTableCell
-            colSpan={editMode ? 10 : 9}
-            style={{ paddingBottom: 0, paddingTop: 0 }}
-          >
-            <AppCollapse in={expanded} timeout="auto" unmountOnExit>
-              <motion.div
-                animate={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: -8 }}
-                style={{
-                  marginInline: 8,
-                  marginBottom: 4,
-                  borderRadius: 8,
-                  padding: 6,
-                  display: "flex",
-                  gap: 16,
-                  flexWrap: "wrap",
-                  backgroundColor: alpha(
-                    theme.palette.text.primary,
-                    theme.palette.mode === "dark" ? 0.04 : 0.03,
-                  ),
+                  marginLeft: 2,
+                  visibility:
+                    ports.length > 2 || mounts.length > 2
+                      ? "visible"
+                      : "hidden",
                 }}
               >
-                {ports.length > 2 && (
-                  <div>
-                    <AppTypography
-                      color="text.secondary"
-                      fontWeight={600}
-                      style={{
-                        display: "block",
-                        marginBottom: 3,
-                      }}
-                      variant="caption"
-                    >
-                      ALL PORTS (Container → Host)
-                    </AppTypography>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                      }}
-                    >
-                      {ports.map((p, i) => (
-                        <AppTypography
-                          key={i}
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.75rem",
-                          }}
-                          variant="body2"
-                        >
-                          <span style={{ color: theme.palette.text.primary }}>
-                            {p.PrivatePort}/{p.Type}
-                          </span>
-                          <span
-                            style={{
-                              color: theme.palette.text.disabled,
-                              marginInline: 3,
-                            }}
-                          >
-                            →
-                          </span>
-                          <span style={{ color: theme.palette.text.secondary }}>
-                            {p.PublicPort
-                              ? `${p.IP && p.IP !== "0.0.0.0" ? p.IP + ":" : ""}${p.PublicPort}`
-                              : "—"}
-                          </span>
-                        </AppTypography>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {mounts.length > 2 && (
-                  <div>
-                    <AppTypography
-                      color="text.secondary"
-                      fontWeight={600}
-                      style={{
-                        display: "block",
-                        marginBottom: 3,
-                      }}
-                      variant="caption"
-                    >
-                      ALL VOLUMES (App → Host)
-                    </AppTypography>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                      }}
-                    >
-                      {mounts.map((m, i) => (
-                        <AppTypography
-                          key={i}
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.75rem",
-                          }}
-                          variant="body2"
-                        >
-                          <span style={{ color: theme.palette.text.primary }}>
-                            {m.Destination}
-                          </span>
-                          <span
-                            style={{
-                              color: theme.palette.text.disabled,
-                              marginInline: 3,
-                            }}
-                          >
-                            →
-                          </span>
-                          <span style={{ color: theme.palette.text.secondary }}>
-                            {m.Source}
-                          </span>
-                        </AppTypography>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            </AppCollapse>
+                <Icon
+                  height={20}
+                  icon="mdi:chevron-down"
+                  style={{
+                    transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: `transform ${TRANSITION_SLOW_CSS}`,
+                  }}
+                  width={20}
+                />
+              </AppIconButton>
+            </div>
           </AppTableCell>
         </AppTableRow>
-      )}
 
-      <Suspense fallback={null}>
-        {hasLoadedLogs && (
-          <LogsDialog
-            containerId={container.Id}
-            containerName={name}
-            onClose={() => setLogDialogOpen(false)}
-            open={logDialogOpen}
-          />
-        )}
-        {hasLoadedTerminal && (
-          <TerminalDialog
-            containerId={container.Id}
-            containerName={name}
-            onClose={() => setTerminalOpen(false)}
-            open={terminalOpen}
-          />
-        )}
-      </Suspense>
-    </React.Fragment>
-  );
-};
+        <Suspense fallback={null}>
+          {hasLoadedLogs && (
+            <LogsDialog
+              containerId={container.Id}
+              containerName={name}
+              onClose={() => setLogDialogOpen(false)}
+              open={logDialogOpen}
+            />
+          )}
+          {hasLoadedTerminal && (
+            <TerminalDialog
+              containerId={container.Id}
+              containerName={name}
+              onClose={() => setTerminalOpen(false)}
+              open={terminalOpen}
+            />
+          )}
+        </Suspense>
+      </React.Fragment>
+    );
+  },
+);
+
+ContainerRow.displayName = "ContainerRow";
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
 interface ContainerTableProps {
+  autoUpdateDisabled: boolean;
+  autoUpdatePendingNames: Set<string>;
+  autoUpdateReason?: string;
+  autoUpdateSelectedNames: Set<string>;
+  checkingUpdates?: boolean;
   containers: ContainerInfo[];
   editMode?: boolean;
+  onToggleAutoUpdate: (name: string) => void;
 }
 
 const ContainerTable: React.FC<ContainerTableProps> = ({
+  autoUpdateDisabled,
+  autoUpdatePendingNames,
+  autoUpdateReason,
+  autoUpdateSelectedNames,
+  checkingUpdates = false,
   containers,
   editMode = false,
+  onToggleAutoUpdate,
 }) => {
   const theme = useAppTheme();
   return (
@@ -809,6 +943,12 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               <AppTableCell>Name</AppTableCell>
               <AppTableCell className="app-table-hide-below-md">
                 Version
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-md" width="140px">
+                Update
+              </AppTableCell>
+              <AppTableCell align="center" width="60px">
+                Auto
               </AppTableCell>
               <AppTableCell className="app-table-hide-below-md">
                 Uptime
@@ -840,10 +980,20 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
           <AppTableBody>
             {containers.map((container, index) => (
               <ContainerRow
+                autoUpdateDisabled={autoUpdateDisabled}
+                autoUpdatePending={autoUpdatePendingNames.has(
+                  container.Names?.[0]?.replace("/", "") ?? "",
+                )}
+                autoUpdateReason={autoUpdateReason}
+                autoUpdateSelected={autoUpdateSelectedNames.has(
+                  container.Names?.[0]?.replace("/", "") ?? "",
+                )}
+                checkingUpdates={checkingUpdates}
                 container={container}
                 editMode={editMode}
                 index={index}
                 key={container.Id}
+                onToggleAutoUpdate={onToggleAutoUpdate}
               />
             ))}
           </AppTableBody>

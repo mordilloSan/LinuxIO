@@ -581,7 +581,7 @@ function NavbarNotificationsDropdown() {
                       >
                         <div
                           className="app-navbar-notifications__icon"
-                          style={{ color: "var(--color-success)" }}
+                          style={{ color: "var(--app-palette-success-main)" }}
                         >
                           <Icon
                             height={iconSize}

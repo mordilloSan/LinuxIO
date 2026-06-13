@@ -9,25 +9,29 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var api = apischema.Bindings(
+	// NFS exports (server-side shares via /etc/exports)
+	apischema.Query[apischema.NoRequest, []apischema.NFSExport]("shares.list_nfs_shares").Handle(handleListNFSShares),
+	apischema.Job[apischema.ShareNFSRequest, apischema.SuccessPathResponse]("shares.create_nfs_share").Handle(handleCreateNFSShare),
+	apischema.Job[apischema.ShareNFSRequest, apischema.SuccessPathResponse]("shares.update_nfs_share").Handle(handleUpdateNFSShare),
+	apischema.Job[apischema.PathRequest, apischema.SuccessResponse]("shares.delete_nfs_share").Handle(handleDeleteNFSShare),
+	// Samba shares (via /etc/samba/smb.conf)
+	apischema.Query[apischema.NoRequest, []apischema.SambaShare]("shares.list_samba_shares").Handle(handleListSambaShares),
+	apischema.Job[apischema.ShareSambaRequest, apischema.SuccessNameResponse]("shares.create_samba_share").Handle(handleCreateSambaShare),
+	apischema.Job[apischema.ShareUpdateSambaRequest, apischema.SuccessNameResponse]("shares.update_samba_share").Handle(handleUpdateSambaShare),
+	apischema.Job[apischema.NameRequest, apischema.SuccessResponse]("shares.delete_samba_share").Handle(handleDeleteSambaShare),
+)
+
+var Routes = api.Routes()
+
 // RegisterHandlers registers all share management handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "shares", []bridgeipc.Command{
-		// NFS exports (server-side shares via /etc/exports)
-		{Name: "list_nfs_shares", Mode: bridgeipc.ModeQuery, Handler: handleListNFSShares},
-		{Name: "create_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleCreateNFSShare},
-		{Name: "update_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleUpdateNFSShare},
-		{Name: "delete_nfs_share", Mode: bridgeipc.ModeJob, Handler: handleDeleteNFSShare},
-		// Samba shares (via /etc/samba/smb.conf)
-		{Name: "list_samba_shares", Mode: bridgeipc.ModeQuery, Handler: handleListSambaShares},
-		{Name: "create_samba_share", Mode: bridgeipc.ModeJob, Handler: handleCreateSambaShare},
-		{Name: "update_samba_share", Mode: bridgeipc.ModeJob, Handler: handleUpdateSambaShare},
-		{Name: "delete_samba_share", Mode: bridgeipc.ModeJob, Handler: handleDeleteSambaShare},
-	})
+	api.Register(router)
 }
 
 // --- NFS handlers ---
 
-func handleListNFSShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListNFSShares(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing NFS shares")
 	shares, err := ListNFSShares(ctx)
 	if err != nil {
@@ -67,7 +71,7 @@ func handleDeleteNFSShare(ctx context.Context, req apischema.PathRequest, emit b
 
 // --- Samba handlers ---
 
-func handleListSambaShares(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListSambaShares(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	slog.Debug("Listing Samba shares")
 	shares, err := ListSambaShares(ctx)
 	if err != nil {

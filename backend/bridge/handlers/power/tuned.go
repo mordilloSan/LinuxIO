@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	godbus "github.com/godbus/dbus/v5"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
@@ -33,6 +33,11 @@ var (
 type tunedProfileRecord struct {
 	Name        string
 	Description string
+}
+
+type tunedBoolStringResult struct {
+	OK      bool
+	Message string
 }
 
 func Available(ctx context.Context) (bool, error) {
@@ -443,25 +448,19 @@ func ensureTunedProfile(session dbusclient.SystemSession) (string, error) {
 }
 
 func boolStringResult(body []any) (bool, string, error) {
-	if len(body) == 2 {
-		ok, _ := body[0].(bool)
-		msg, _ := body[1].(string)
-		return ok, msg, nil
-	}
-	if len(body) == 1 {
-		if values, ok := body[0].([]any); ok && len(values) == 2 {
-			accepted, _ := values[0].(bool)
-			msg, _ := values[1].(string)
-			return accepted, msg, nil
+	switch len(body) {
+	case 2:
+		var result tunedBoolStringResult
+		if err := godbus.Store(body, &result.OK, &result.Message); err != nil {
+			return false, "", err
 		}
-		value := reflect.ValueOf(body[0])
-		if value.Kind() == reflect.Struct && value.NumField() == 2 {
-			okField := value.Field(0)
-			msgField := value.Field(1)
-			if okField.Kind() == reflect.Bool && msgField.Kind() == reflect.String {
-				return okField.Bool(), msgField.String(), nil
-			}
+		return result.OK, result.Message, nil
+	case 1:
+		var result tunedBoolStringResult
+		if err := godbus.Store(body, &result); err != nil {
+			return false, "", err
 		}
+		return result.OK, result.Message, nil
 	}
 	return false, "", fmt.Errorf("unexpected TuneD result signature")
 }

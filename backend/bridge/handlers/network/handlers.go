@@ -10,19 +10,23 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var api = apischema.Bindings(
+	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
+	apischema.Job[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").Handle(handleSetIPv4Manual),
+	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").Handle(handleSetIPv4),
+	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").Handle(handleSetIPv6),
+	apischema.Job[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").Handle(handleSetMTU),
+	apischema.Job[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").Handle(handleEnableConnection),
+	apischema.Job[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").Handle(handleDisableConnection),
+)
+
+var Routes = api.Routes()
+
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "network", []bridgeipc.Command{
-		{Name: "get_network_info", Mode: bridgeipc.ModeQuery, Handler: handleGetNetworkInfo},
-		{Name: "set_ipv4_manual", Mode: bridgeipc.ModeJob, Handler: handleSetIPv4Manual},
-		{Name: "set_ipv4", Mode: bridgeipc.ModeJob, Handler: handleSetIPv4},
-		{Name: "set_ipv6", Mode: bridgeipc.ModeJob, Handler: handleSetIPv6},
-		{Name: "set_mtu", Mode: bridgeipc.ModeJob, Handler: handleSetMTU},
-		{Name: "enable_connection", Mode: bridgeipc.ModeJob, Handler: handleEnableConnection},
-		{Name: "disable_connection", Mode: bridgeipc.ModeJob, Handler: handleDisableConnection},
-	})
+	api.Register(router)
 }
 
-func handleGetNetworkInfo(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := GetNetworkInfo(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

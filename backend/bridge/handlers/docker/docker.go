@@ -20,8 +20,6 @@ var (
 	dockerClientRefs int
 	dockerIdleTimer  *time.Timer
 	ensureNetOnce    sync.Once
-	// watchtowerOnce fires once per bridge session.
-	watchtowerOnce sync.Once
 )
 
 // getClient returns the shared Docker client, creating it if necessary.

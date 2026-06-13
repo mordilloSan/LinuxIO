@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -17,19 +18,37 @@ import (
 )
 
 // InstallCapabilityProgress is reported on the job event stream so the UI
-// can show what stage we're in. Frontend mirrors this shape.
+// can show what stage we're in. Percentage is a single global 0-100 value that
+// only moves forward across stages (it never resets per stage). Frontend
+// mirrors this shape.
 type InstallCapabilityProgress struct {
-	Stage   string `json:"stage"`
-	Message string `json:"message"`
+	Stage      string  `json:"stage"`
+	Message    string  `json:"message"`
+	Percentage *uint32 `json:"percentage,omitempty"`
 }
 
 const (
 	stageResolve        = "resolve"
+	stageInstallAsset   = "install_asset"
 	stageInstallPackage = "install_package"
 	stageEnableService  = "enable_service"
 	stageStartService   = "start_service"
 	stageWaitActive     = "wait_service_active"
 	stageDetect         = "detect"
+)
+
+// Global progress checkpoints (0-100). Each stage occupies a slice of the bar;
+// the package step is the only one with sub-progress, with PackageKit's 0-100
+// transaction percentage rescaled into [pctInstallStart, pctInstallEnd]. The
+// final jump to 100 is owned by the job result handler on the frontend.
+const (
+	pctResolve      uint32 = 3
+	pctInstallStart uint32 = 5
+	pctInstallEnd   uint32 = 85
+	pctEnable       uint32 = 86
+	pctStart        uint32 = 90
+	pctWait         uint32 = 94
+	pctDetect       uint32 = 98
 )
 
 const (
@@ -38,17 +57,21 @@ const (
 	detectRetryInterval  = 300 * time.Millisecond
 )
 
+var capabilityInstallRoutes = capabilityInstallBindings().Routes()
+
+func capabilityInstallBindings() apischema.BindingSet {
+	policy := bridgejobs.SingletonSystem
+	policy.Timeout = 10 * time.Minute
+	return apischema.Bindings(
+		apischema.Runner[apischema.CapabilityRequest, apischema.JobSnapshot]("system.install_capability", apischema.Privileged()).Run(runInstallCapabilityJob, policy),
+	)
+}
+
 // RegisterCapabilityJobRoutes attaches the install_capability runner. It
 // streams per-stage progress events to the UI and is registered alongside
 // the other packages-package job runners from handlers.go.
 func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
-	policy := bridgejobs.SingletonSystem
-	policy.Timeout = 10 * time.Minute
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  "system.install_capability",
-		Runner: runInstallCapabilityJob,
-		Policy: policy,
-	})
+	capabilityInstallBindings().Register(router)
 }
 
 func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, req apischema.CapabilityRequest) (any, error) {
@@ -80,44 +103,116 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (a
 	pkg := pickByFamily(family, spec.Install.PackageDebian, spec.Install.PackageRHEL)
 	service := pickByFamily(family, spec.Install.ServiceDebian, spec.Install.ServiceRHEL)
 
+	if err := checkCapabilityInstallPrerequisites(ctx, job, spec); err != nil {
+		return apischema.InstallCapabilityResult{}, err
+	}
+
+	if spec.Install.OptionalComponent != "" {
+		if err := installOptionalComponent(ctx, job, spec); err != nil {
+			return apischema.InstallCapabilityResult{}, err
+		}
+	}
+
 	if pkg != "" {
-		reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", pkg))
-		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", pkg))
+		reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", pkg), pctResolve)
+		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", pkg), pctInstallStart)
 		slog.Info("Installing capability package.", "capability", name, "package", pkg)
-		if err := InstallByName(ctx, pkg); err != nil {
+		if err := InstallByNameWithProgress(ctx, pkg, capabilityInstallReporter(job, pkg)); err != nil {
 			return apischema.InstallCapabilityResult{}, fmt.Errorf("install %s: %w", pkg, err)
 		}
+		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installed %s", pkg), pctInstallEnd)
 	}
 
 	if service != "" {
 		if spec.Install.EnableService {
-			reportProgress(job, stageEnableService, fmt.Sprintf("Enabling %s", service))
+			reportProgress(job, stageEnableService, fmt.Sprintf("Enabling %s", service), pctEnable)
 			slog.Info("Enabling capability service.", "capability", name, "unit", service)
 			if err := systemd.EnableUnit(ctx, service); err != nil {
 				return apischema.InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
 			}
 		}
-		reportProgress(job, stageStartService, fmt.Sprintf("Starting %s", service))
+		reportProgress(job, stageStartService, fmt.Sprintf("Starting %s", service), pctStart)
 		slog.Info("Starting capability service.", "capability", name, "unit", service)
 		if err := systemd.StartUnit(ctx, service); err != nil {
 			return apischema.InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
 		}
-		reportProgress(job, stageWaitActive, fmt.Sprintf("Waiting for %s to become active", service))
+		reportProgress(job, stageWaitActive, fmt.Sprintf("Waiting for %s to become active", service), pctWait)
 		if err := waitUnitActive(ctx, service, serviceActiveTimeout); err != nil {
 			return apischema.InstallCapabilityResult{}, err
 		}
 	}
 
-	reportProgress(job, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName))
+	reportProgress(job, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := detectWithRetry(ctx, spec, detectRetryTimeout)
 	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
 }
 
-func reportProgress(job *bridgejobs.Job, stage, message string) {
+func checkCapabilityInstallPrerequisites(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
+	if !spec.Install.RequiresDocker {
+		return nil
+	}
+	reportProgress(job, stageResolve, "Checking Docker availability", pctResolve)
+	available, err := docker.CheckDockerAvailability(ctx)
+	if err != nil {
+		return fmt.Errorf("docker is required to install %s: %w", spec.LogName, err)
+	}
+	if !available {
+		return fmt.Errorf("docker is required to install %s", spec.LogName)
+	}
+	return nil
+}
+
+func installOptionalComponent(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
+	switch spec.Install.OptionalComponent {
+	case system.OptionalComponentWatchtower:
+		return installWatchtower(ctx, job)
+	default:
+		return fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
+	}
+}
+
+func reportProgress(job *bridgejobs.Job, stage, message string, pct uint32) {
 	if job == nil {
 		return
 	}
-	job.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message})
+	job.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message, Percentage: &pct})
+}
+
+// scaleInstallPct maps PackageKit's 0-100 transaction percentage into the
+// global bar's package-step band so the overall percentage only moves forward.
+func scaleInstallPct(pkgPct uint32) uint32 {
+	if pkgPct > 100 {
+		pkgPct = 100
+	}
+	return pctInstallStart + pkgPct*(pctInstallEnd-pctInstallStart)/100
+}
+
+// capabilityInstallReporter adapts PackageKit update-signal frames (emitted by
+// the shared awaitPackageUpdateSignals handlers) into the capability job's
+// progress stream, carrying a single global percentage plus the current status.
+func capabilityInstallReporter(job *bridgejobs.Job, pkg string) pkgUpdateReporter {
+	lastGlobal := pctInstallStart
+	lastStatus := ""
+	return func(p *PkgUpdateProgress) error {
+		changed := false
+		if p.Percentage != nil && *p.Percentage <= 100 {
+			lastGlobal = scaleInstallPct(*p.Percentage)
+			changed = true
+		}
+		if p.Status != "" {
+			lastStatus = p.Status
+			changed = true
+		}
+		if !changed {
+			return nil
+		}
+		msg := fmt.Sprintf("Installing %s", pkg)
+		if lastStatus != "" {
+			msg = fmt.Sprintf("Installing %s (%s)", pkg, lastStatus)
+		}
+		reportProgress(job, stageInstallPackage, msg, lastGlobal)
+		return nil
+	}
 }
 
 // waitUnitActive polls systemd until the unit reports "active" or fails. The

@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import React, {
   useCallback,
   useEffect,
@@ -14,6 +15,10 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { useAppTheme } from "@/theme";
+import {
+  TRANSITION_DURATION_SLOW_MS,
+  EASING_STANDARD,
+} from "@/theme/constants";
 import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
@@ -66,6 +71,7 @@ function UnitListTab<T extends UnitListItem>({
   urlParam,
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const expanded = searchParams.get(urlParam);
@@ -141,48 +147,58 @@ function UnitListTab<T extends UnitListItem>({
       )}
       {data !== undefined && (
         <>
-          <div
-            style={{
-              marginBottom: theme.spacing(2),
-              display: "flex",
-              alignItems: "center",
-              gap: theme.spacing(2),
+          {!selectedItem && (
+            <div
+              style={{
+                marginBottom: theme.spacing(2),
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(2),
+              }}
+            >
+              <AppSearchField
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={searchPlaceholder}
+                style={{ width: 320 }}
+                value={search}
+              />
+              <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
+            </div>
+          )}
+
+          <motion.div
+            layout="position"
+            transition={{
+              duration: slowTransitionDurationSeconds,
+              ease: EASING_STANDARD,
             }}
           >
-            <AppSearchField
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={searchPlaceholder}
-              style={{ width: 320 }}
-              value={search}
-            />
-            <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
-          </div>
-
-          {viewMode === "card" ? (
-            renderCardsView({
-              items: filtered,
-              expanded,
-              onExpand: handleCardExpand,
-              renderDetailPanel: (item) =>
-                renderDetailPanel(item, () => handleCardExpand(null)),
-            })
-          ) : (
-            <AppGrid alignItems="flex-start" container spacing={3}>
-              <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
-                {renderTableView({
-                  items: filtered,
-                  selected: expanded,
-                  onSelect: setExpanded,
-                  onDoubleClick: handleOpenCardView,
-                })}
-              </AppGrid>
-              {selectedItem && (
-                <AppGrid size={{ xs: 12, md: 5 }}>
-                  {renderDetailPanel(selectedItem, () => setExpanded(null))}
+            {viewMode === "card" ? (
+              renderCardsView({
+                items: filtered,
+                expanded,
+                onExpand: handleCardExpand,
+                renderDetailPanel: (item) =>
+                  renderDetailPanel(item, () => handleCardExpand(null)),
+              })
+            ) : (
+              <AppGrid alignItems="flex-start" container spacing={3}>
+                <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+                  {renderTableView({
+                    items: filtered,
+                    selected: expanded,
+                    onSelect: setExpanded,
+                    onDoubleClick: handleOpenCardView,
+                  })}
                 </AppGrid>
-              )}
-            </AppGrid>
-          )}
+                {selectedItem && (
+                  <AppGrid size={{ xs: 12, md: 5 }}>
+                    {renderDetailPanel(selectedItem, () => setExpanded(null))}
+                  </AppGrid>
+                )}
+              </AppGrid>
+            )}
+          </motion.div>
         </>
       )}
     </>

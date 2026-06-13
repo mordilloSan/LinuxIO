@@ -30,7 +30,7 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({
         height: `${height}px`,
         border: `2px solid ${theme.palette.primary.main}`,
         backgroundColor:
-          "color-mix(in srgb, var(--mui-palette-primary-main), transparent 90%)",
+          "color-mix(in srgb, var(--app-palette-primary-main), transparent 90%)",
         pointerEvents: "none",
         zIndex: 1000,
         borderRadius: "4px",

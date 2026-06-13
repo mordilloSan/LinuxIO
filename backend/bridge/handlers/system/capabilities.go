@@ -14,6 +14,7 @@ import (
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/watchtower"
 )
 
 // CapabilitySpec describes a single capability: how to detect it, how to
@@ -33,7 +34,14 @@ type InstallSpec struct {
 	ServiceDebian string
 	ServiceRHEL   string
 	EnableService bool
+
+	// OptionalComponent names a LinuxIO-managed install that is not provided by
+	// the distro package manager.
+	OptionalComponent string
+	RequiresDocker    bool
 }
+
+const OptionalComponentWatchtower = "watchtower"
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -41,6 +49,17 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Docker service",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(docker.CheckDockerAvailability(ctx))
+		},
+	},
+	{
+		Name:    "watchtower",
+		LogName: "Watchtower",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(watchtower.CheckInstalled())
+		},
+		Install: &InstallSpec{
+			OptionalComponent: OptionalComponentWatchtower,
+			RequiresDocker:    true,
 		},
 	},
 	{
@@ -194,6 +213,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 	switch name {
 	case "docker":
 		out.DockerAvailable, out.DockerError = ok, errPtr
+	case "watchtower":
+		out.WatchtowerAvailable, out.WatchtowerError = ok, errPtr
 	case "indexer":
 		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "lm_sensors":

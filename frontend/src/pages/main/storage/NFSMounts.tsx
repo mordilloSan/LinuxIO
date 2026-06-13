@@ -105,8 +105,8 @@ const MountEntryActions: React.FC<{
 
   const isMounting = mountingMountpoint === mount.mountpoint;
   const mountActionColor = mount.mounted
-    ? "var(--color-success)"
-    : "var(--color-text-secondary)";
+    ? "var(--app-palette-success-main)"
+    : "var(--app-palette-text-secondary)";
   const mountActionDisabled = !mount.mounted && !nfsClientAvailable;
   const mountActionLabel = mount.mounted ? "Unmount entry" : "Mount entry";
   const mountActionTitle = mountActionDisabled
@@ -866,31 +866,26 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
           getRowKey={(mount) => mount.mountpoint}
           renderExpandedContent={(mount) => (
-            <div>
+            <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
                 {getPersistenceLabel(mount)}
               </AppTypography>
-              <AppTypography gutterBottom variant="subtitle2">
-                <strong>Options:</strong>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                  marginBottom: 8,
-                }}
-              >
-                {mount.options && mount.options.length > 0 ? (
-                  mount.options.map((opt, i) => (
-                    <Chip key={i} label={opt} size="small" variant="soft" />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no options)
-                  </AppTypography>
-                )}
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <strong>Options:</strong>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {mount.options && mount.options.length > 0 ? (
+                    mount.options.map((opt, i) => (
+                      <Chip key={i} label={opt} size="small" variant="soft" />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no options)
+                    </AppTypography>
+                  )}
+                </div>
               </div>
               <AppTypography gutterBottom variant="subtitle2">
                 <strong>Filesystem Type:</strong> {mount.fsType}

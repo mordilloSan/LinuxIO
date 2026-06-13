@@ -12,16 +12,18 @@ import (
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const JobTypePackageUpdate = "packages.update"
+var packageUpdateRoutes = packageUpdateBindings().Routes()
 
-func RegisterJobRoutes(router *bridgejobs.Router) {
+func packageUpdateBindings() apischema.BindingSet {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypePackageUpdate,
-		Runner: runPackageUpdateJob,
-		Policy: policy,
-	})
+	return apischema.Bindings(
+		apischema.Runner[apischema.PackageUpdateRequest, apischema.JobSnapshot]("packages.update").Run(runPackageUpdateJob, policy),
+	)
+}
+
+func RegisterJobRoutes(router *bridgejobs.Router) {
+	packageUpdateBindings().Register(router)
 }
 
 // PkgUpdateProgress represents progress for package update operations.
@@ -336,7 +338,9 @@ func parseTransactionProperties(
 
 func writePercentageProgress(report pkgUpdateReporter, props map[string]dbusclient.Variant, status uint32) {
 	pct, ok := propertyUint32(props, "Percentage")
-	if !ok || !isRealWorkStatus(status) {
+	// PackageKit reports 101 for "unknown"; forwarding it would make the bar
+	// jump to 101% and then drop. Skip it so consumers keep the last value.
+	if !ok || pct > 100 || !isRealWorkStatus(status) {
 		return
 	}
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{

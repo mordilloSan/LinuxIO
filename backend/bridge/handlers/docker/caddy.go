@@ -110,7 +110,7 @@ func ReloadCaddy(ctx context.Context, username string, store *config.UserStore) 
 
 // ConnectToProxy attaches a container to linuxio-docker so Caddy can reach it.
 func ConnectToProxy(ctx context.Context, containerID string) (any, error) {
-	ConnectToProxyNetwork(ctx, containerID)
+	connectToProxyNetwork(ctx, containerID)
 	return map[string]any{"message": "connected"}, nil
 }
 

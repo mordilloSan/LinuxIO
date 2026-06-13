@@ -63,9 +63,9 @@ interface DeleteLVDialogProps {
 type LVMSectionId = "lvs" | "vgs" | "pvs";
 
 const PANEL_ACCENTS: Record<LVMSectionId, string> = {
-  lvs: "var(--mui-palette-primary-main)",
-  vgs: "var(--mui-palette-warning-main)",
-  pvs: "var(--mui-palette-success-main)",
+  lvs: "var(--app-palette-primary-main)",
+  vgs: "var(--app-palette-warning-main)",
+  pvs: "var(--app-palette-success-main)",
 };
 
 const dialogStackStyle: React.CSSProperties = {
@@ -164,7 +164,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
               style={{
                 padding: 10,
                 borderRadius: 12,
-                background: "var(--mui-palette-action-hover)",
+                background: "var(--app-palette-action-hover)",
                 border:
                   "1px solid color-mix(in srgb, currentColor 12%, transparent)",
               }}
@@ -274,7 +274,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
               style={{
                 padding: 10,
                 borderRadius: 12,
-                background: "var(--mui-palette-action-hover)",
+                background: "var(--app-palette-action-hover)",
                 border:
                   "1px solid color-mix(in srgb, currentColor 12%, transparent)",
                 display: "grid",

@@ -22,7 +22,6 @@ const authTheme: AppTheme = {
   },
   typography: {
     ...authThemeBase.typography,
-    fontFamily: '"Space Grotesk", "Sora", sans-serif',
     h4: {
       ...authThemeBase.typography.h4,
       fontWeight: 600,

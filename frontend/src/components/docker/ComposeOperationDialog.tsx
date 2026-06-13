@@ -1,6 +1,13 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  type ComposeMessage,
+  type ComposeTask,
+  mergeTask,
+} from "./composeProgress";
+import DockerComposeProgress from "./DockerComposeProgress";
+
 import { linuxio, openJobAttachStream, type Stream, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
@@ -23,11 +30,6 @@ interface ComposeOperationDialogProps {
   projectName: string;
 }
 
-interface ComposeMessage {
-  message: string;
-  type: "stdout" | "stderr" | "error" | "complete";
-}
-
 const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   open,
   onClose,
@@ -38,6 +40,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const [output, setOutput] = useState<string[]>([]);
+  const [tasks, setTasks] = useState<Map<string, ComposeTask>>(new Map());
+  const [showLog, setShowLog] = useState(false);
   const [isRunning, setIsRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -61,6 +65,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const resetState = useCallback(() => {
     closeJobStream();
     setOutput([]);
+    setTasks(new Map());
+    setShowLog(false);
     setIsRunning(true);
     setError(null);
     setSuccess(false);
@@ -112,6 +118,19 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           },
           onProgress: (msg) => {
             switch (msg.type) {
+              case "progress": {
+                setTasks((prev) => mergeTask(prev, msg.progress));
+                // Keep the raw log meaningful and bounded: record milestones
+                // (status changes / completions), not every download tick.
+                const { text, status } = msg.progress;
+                if (
+                  status === "Done" ||
+                  (text !== "Downloading" && text !== "Extracting")
+                ) {
+                  setOutput((prev) => [...prev, msg.message]);
+                }
+                break;
+              }
               case "stdout":
               case "stderr":
                 setOutput((prev) => [...prev, msg.message]);
@@ -198,6 +217,9 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     onClose();
   };
 
+  const taskList = Array.from(tasks.values());
+  const hasTasks = taskList.length > 0;
+
   return (
     <GeneralDialog
       fullWidth
@@ -260,28 +282,79 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         <div
           ref={outputBoxRef}
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.875rem",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            backgroundColor: theme.codeBlock.background,
-            color: theme.codeBlock.color,
-            padding: theme.spacing(2),
             minHeight: "400px",
             maxHeight: "600px",
             overflowY: "auto",
           }}
         >
-          {output.length === 0 && isRunning && (
-            <AppTypography color="text.secondary">
-              Starting operation...
-            </AppTypography>
+          {hasTasks ? (
+            <DockerComposeProgress tasks={taskList} />
+          ) : (
+            isRunning &&
+            output.length === 0 && (
+              <AppTypography
+                color="text.secondary"
+                style={{ padding: theme.spacing(2) }}
+              >
+                Starting operation...
+              </AppTypography>
+            )
           )}
-          {output.map((line, index) => (
-            <div key={index}>{line}</div>
-          ))}
+
+          {(hasTasks || output.length > 0) && (
+            <>
+              {hasTasks && (
+                <div
+                  onClick={() => setShowLog((prev) => !prev)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: theme.spacing(0.5),
+                    cursor: "pointer",
+                    userSelect: "none",
+                    padding: theme.spacing(1, 2),
+                    borderTop: `1px solid ${theme.palette.divider}`,
+                  }}
+                >
+                  <Icon
+                    height={18}
+                    icon={showLog ? "mdi:chevron-down" : "mdi:chevron-right"}
+                    width={18}
+                  />
+                  <AppTypography
+                    color="text.secondary"
+                    style={{ fontSize: "0.8rem" }}
+                  >
+                    {showLog ? "Hide raw log" : "Show raw log"}
+                  </AppTypography>
+                </div>
+              )}
+
+              {(showLog || !hasTasks) && (
+                <div
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: "0.8125rem",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    backgroundColor: theme.codeBlock.background,
+                    color: theme.codeBlock.color,
+                    padding: theme.spacing(2),
+                  }}
+                >
+                  {output.map((line, index) => (
+                    <div key={index}>{line}</div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           {error && (
-            <AppTypography color="error" style={{ marginTop: 8 }}>
+            <AppTypography
+              color="error"
+              style={{ padding: theme.spacing(2), display: "block" }}
+            >
               Error: {error}
             </AppTypography>
           )}

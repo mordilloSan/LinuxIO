@@ -92,13 +92,32 @@ func checkHandlerDecl(t *testing.T, path string, decl ast.Decl) {
 }
 
 func checkHandlerGenDecl(t *testing.T, path string, decl *ast.GenDecl) {
-	if decl.Tok != token.IMPORT {
-		t.Errorf("%s: handlers.go must not declare %s blocks; move state/helpers to another file", path, strings.ToLower(decl.Tok.String()))
+	if decl.Tok == token.IMPORT {
+		return
 	}
+	if decl.Tok == token.VAR && isAllowedRouteDecl(decl) {
+		return
+	}
+	t.Errorf("%s: handlers.go must not declare %s blocks except route specs; move state/helpers to another file", path, strings.ToLower(decl.Tok.String()))
+}
+
+func isAllowedRouteDecl(decl *ast.GenDecl) bool {
+	for _, spec := range decl.Specs {
+		value, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			return false
+		}
+		for _, name := range value.Names {
+			if name.Name != "api" && name.Name != "routes" && name.Name != "Routes" && !strings.HasPrefix(name.Name, "Route") {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func checkHandlerFuncDecl(t *testing.T, path string, decl *ast.FuncDecl) {
-	if decl.Name.Name != "RegisterHandlers" && !strings.HasPrefix(decl.Name.Name, "handle") {
+	if decl.Name.Name != "RegisterHandlers" && decl.Name.Name != "routeBindings" && !strings.HasPrefix(decl.Name.Name, "handle") {
 		t.Errorf("%s: unexpected function %s in handlers.go; only RegisterHandlers and handle* adapters are allowed", path, decl.Name.Name)
 	}
 }
@@ -150,9 +169,6 @@ func isAllowedBackground(path, funcName string) bool {
 		},
 		"docker/docker.go": {
 			"detachedDockerStartupContext": true,
-		},
-		"docker/watchtower.go": {
-			"detachedWatchtowerContext": true,
 		},
 		"filebrowser/filebrowser.go": {
 			"runDetachedIndexerUpdate": true,

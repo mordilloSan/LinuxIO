@@ -8,6 +8,7 @@ import React, {
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -180,7 +181,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
 
     const baseBg = useMemo(() => {
       if (selected) {
-        return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
+        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
       }
       if (hidden) {
         return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
@@ -271,17 +272,18 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
                   value={renameValue}
                 />
               ) : (
-                <div
+                <AppTypography
+                  component="div"
+                  noWrap
                   style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
                     flex: 1,
                     minWidth: 0,
                   }}
+                  title={name}
+                  variant="body1"
                 >
                   {name}
-                </div>
+                </AppTypography>
               )}
               {showFullPath && (
                 <span
@@ -292,8 +294,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                     backgroundColor: isDirectory
-                      ? `color-mix(in srgb, var(--mui-palette-primary-main), transparent 85%)`
-                      : `color-mix(in srgb, var(--mui-palette-text-secondary), transparent 90%)`,
+                      ? `color-mix(in srgb, var(--app-palette-primary-main), transparent 85%)`
+                      : `color-mix(in srgb, var(--app-palette-text-secondary), transparent 90%)`,
                     padding: "2px 6px",
                     borderRadius: "4px",
                     textTransform: "uppercase",
@@ -306,20 +308,20 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
               )}
             </div>
             {showFullPath && path && (
-              <div
+              <AppTypography
+                component="div"
+                color="text.secondary"
+                fontSize="0.75rem"
+                noWrap
                 style={{
-                  fontSize: "0.75rem",
-                  color: theme.palette.text.secondary,
                   opacity: 0.7,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
                   marginTop: "2px",
                 }}
                 title={path}
+                variant="body2"
               >
                 {path.replace(/\/[^/]*$/, "") || "/"}
-              </div>
+              </AppTypography>
             )}
           </div>
         </div>

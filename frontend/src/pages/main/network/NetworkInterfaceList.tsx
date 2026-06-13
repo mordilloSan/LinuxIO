@@ -10,6 +10,10 @@ import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import {
+  TRANSITION_DURATION_SLOW_MS,
+  EASING_STANDARD,
+} from "@/theme/constants";
 
 export type { NetworkInterface };
 
@@ -81,6 +85,7 @@ const NetworkInterfaceList = () => {
     });
   };
   const theme = useAppTheme();
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const rxCanvasRef = useRef<HTMLCanvasElement>(null);
   const txCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -151,7 +156,10 @@ const NetworkInterfaceList = () => {
                     ? { xs: 12, md: 4, lg: 3 }
                     : { xs: 12, sm: 6, md: 4, lg: 2 }
                 }
-                transition={{ duration: 0.2 }}
+                transition={{
+                  duration: slowTransitionDurationSeconds,
+                  ease: EASING_STANDARD,
+                }}
               >
                 <NetworkInterfaceCard
                   editForm={editForm}
@@ -180,7 +188,11 @@ const NetworkInterfaceList = () => {
               initial={{ opacity: 0, x: 40 }}
               key="traffic-graphs"
               size={{ xs: 12, md: 8, lg: 9 }}
-              transition={{ duration: 0.3, delay: 0.05 }}
+              transition={{
+                duration: slowTransitionDurationSeconds,
+                delay: 0.05,
+                ease: EASING_STANDARD,
+              }}
             >
               <div
                 onMouseLeave={handleGraphMouseLeave}

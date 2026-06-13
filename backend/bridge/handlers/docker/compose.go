@@ -50,10 +50,7 @@ func ListComposeProjects(ctx context.Context, username string, store *config.Use
 			Debug("failed to discover offline stacks from docker folders", "error", err)
 	}
 
-	// Load config once to check auto-update preferences.
-	cfg, _, _ := config.SnapshotForUser(ctx, username, store)
-
-	return finalizeComposeProjects(projects, cfg), nil
+	return finalizeComposeProjects(projects), nil
 }
 
 func discoverComposeProjectsFromContainers(
@@ -69,6 +66,7 @@ func discoverComposeProjectsFromContainers(
 		}
 		project := ensureComposeProject(ctx, cli, projects, projectName, ctr)
 		updateComposeProjectService(project, ctr)
+		updateComposeProjectContainer(project, ctr)
 	}
 	return projects
 }
@@ -92,6 +90,7 @@ func ensureComposeProject(
 	)
 	project := &apischema.ComposeProject{
 		Name:        projectName,
+		Containers:  []apischema.ContainerInfo{},
 		Services:    make(map[string]*apischema.ComposeService),
 		ConfigFiles: configFiles,
 		WorkingDir:  ctr.Labels["com.docker.compose.project.working_dir"],
@@ -165,6 +164,14 @@ func updateComposeProjectService(project *apischema.ComposeProject, ctr containe
 	service.Ports = append(service.Ports, collectComposeServicePorts(ctr)...)
 }
 
+func updateComposeProjectContainer(project *apischema.ComposeProject, ctr container.Summary) {
+	iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
+	project.Containers = append(
+		project.Containers,
+		containerInfoFromSummary(ctr, nil, iconIdentifier, resolvedURL, proxyPort),
+	)
+}
+
 func ensureComposeService(project *apischema.ComposeProject, serviceName string) *apischema.ComposeService {
 	if service, exists := project.Services[serviceName]; exists {
 		return service
@@ -188,19 +195,32 @@ func collectComposeServicePorts(ctr container.Summary) []string {
 	return ports
 }
 
-func finalizeComposeProjects(projects map[string]*apischema.ComposeProject, cfg *config.Settings) []*apischema.ComposeProject {
+func finalizeComposeProjects(projects map[string]*apischema.ComposeProject) []*apischema.ComposeProject {
 	result := make([]*apischema.ComposeProject, 0, len(projects))
 	for _, project := range projects {
-		project.Status = calculateProjectStatus(project)
-		if cfg != nil {
-			project.AutoUpdate = slices.Contains(cfg.Docker.AutoUpdateStacks, project.Name)
+		if project.Containers == nil {
+			project.Containers = []apischema.ContainerInfo{}
 		}
+		project.Status = calculateProjectStatus(project)
+		project.UpdateAvailable = composeProjectUpdateAvailable(project)
 		result = append(result, project)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+func composeProjectUpdateAvailable(project *apischema.ComposeProject) bool {
+	if project == nil {
+		return false
+	}
+	for _, ctr := range project.Containers {
+		if ctr.UpdateAvailable != nil && *ctr.UpdateAvailable {
+			return true
+		}
+	}
+	return false
 }
 
 // GetComposeProject returns detailed information about a specific compose project
@@ -1559,6 +1579,7 @@ func addOfflineComposeProject(projects map[string]*apischema.ComposeProject, com
 		Name:        projectName,
 		Icon:        extractComposeIcon(composePath),
 		Status:      "stopped",
+		Containers:  []apischema.ContainerInfo{},
 		Services:    make(map[string]*apischema.ComposeService),
 		ConfigFiles: []string{composePath},
 		WorkingDir:  filepath.Dir(composePath),

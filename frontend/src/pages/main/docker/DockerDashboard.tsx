@@ -21,6 +21,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
+import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -40,6 +41,9 @@ const StateChip: React.FC<{
     return <Chip color="error" label="Stopped" size="small" variant="soft" />;
   return <Chip label={state} size="small" variant="soft" />;
 };
+
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 // ─── main component ───────────────────────────────────────────────────────────
 
 const DockerDashboard: React.FC = () => {
@@ -210,7 +214,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: "transform 0.2s",
+              transition: `transform ${TRANSITION_SLOW_CSS}`,
               transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -310,7 +314,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: "transform 0.2s",
+              transition: `transform ${TRANSITION_SLOW_CSS}`,
               transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -541,7 +545,7 @@ const DockerDashboard: React.FC = () => {
             height={24}
             icon="mdi:chevron-down"
             style={{
-              transition: "transform 0.2s",
+              transition: `transform ${TRANSITION_SLOW_CSS}`,
               transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
             }}
             width={24}
@@ -586,7 +590,7 @@ const DockerDashboard: React.FC = () => {
                   }
                   style={{
                     fontSize: "0.75rem",
-                    color: "var(--mui-palette-text-secondary)",
+                    color: "var(--app-palette-text-secondary)",
                     lineHeight: 1.4,
                   }}
                   value={containerSort}
@@ -625,14 +629,24 @@ const DockerDashboard: React.FC = () => {
                           identifier={container.icon}
                           size={22}
                         />
-                        <AppTypography fontWeight={500} noWrap variant="body2">
+                        <AppTypography
+                          copyText={name}
+                          fontWeight={500}
+                          noWrap
+                          title={name}
+                          toastMeta={DOCKER_TOAST_META}
+                          variant="body2"
+                        >
                           {name}
                         </AppTypography>
                       </div>
                       <AppTypography
                         className="dd-hidden-xs"
                         color="text.secondary"
+                        copyText={container.Image}
                         noWrap
+                        title={container.Image}
+                        toastMeta={DOCKER_TOAST_META}
                         variant="caption"
                       >
                         {container.Image}
@@ -646,7 +660,10 @@ const DockerDashboard: React.FC = () => {
                       <AppTypography
                         className="dd-hidden-xs"
                         color="text.secondary"
+                        copyText={container.Status}
                         noWrap
+                        title={container.Status}
+                        toastMeta={DOCKER_TOAST_META}
                         variant="caption"
                       >
                         {container.Status.replace(/\s*\(.*?\)\s*$/, "")}
@@ -695,7 +712,7 @@ const DockerDashboard: React.FC = () => {
                   }
                   style={{
                     fontSize: "0.75rem",
-                    color: "var(--mui-palette-text-secondary)",
+                    color: "var(--app-palette-text-secondary)",
                     lineHeight: 1.4,
                   }}
                   value={imageSort}
@@ -726,13 +743,23 @@ const DockerDashboard: React.FC = () => {
                         paddingBlock: 5,
                       }}
                     >
-                      <AppTypography fontWeight={500} noWrap variant="body2">
+                      <AppTypography
+                        copyText={repo}
+                        fontWeight={500}
+                        noWrap
+                        title={repo}
+                        toastMeta={DOCKER_TOAST_META}
+                        variant="body2"
+                      >
                         {repo}
                       </AppTypography>
                       <AppTypography
                         className="dd-hidden-xs"
                         color="text.secondary"
+                        copyText={tag}
                         noWrap
+                        title={tag}
+                        toastMeta={DOCKER_TOAST_META}
                         variant="caption"
                       >
                         {tag}

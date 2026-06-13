@@ -23,7 +23,7 @@ import AppPopover from "@/components/ui/AppPopover";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import DirectoryTree from "@/components/ui/DirectoryTree";
+import PathPickerField from "@/components/ui/PathPickerField";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -175,59 +175,6 @@ const AccessOptionsDropdown: React.FC<{
 };
 
 // ============================================================================
-// Path picker — input that opens a directory tree popover
-// ============================================================================
-
-const PathPicker: React.FC<{
-  value: string;
-  onChange: (path: string) => void;
-  label?: string;
-}> = ({ value, onChange, label = "Directory Path" }) => {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
-
-  const handleOpen = () => {
-    setAnchorEl(anchorRef.current);
-    setOpen(true);
-  };
-
-  return (
-    <>
-      <div ref={anchorRef}>
-        <AppTextField
-          endAdornment={
-            <Icon
-              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              style={{ opacity: 0.5 }}
-              width={18}
-            />
-          }
-          fullWidth
-          label={label}
-          onClick={handleOpen}
-          placeholder="Click to select a folder"
-          shrinkLabel
-          size="small"
-          style={{ cursor: "pointer" }}
-          value={value}
-        />
-      </div>
-      <AppPopover
-        anchorEl={anchorEl}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        matchAnchorWidth
-        onClose={() => setOpen(false)}
-        open={open}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-      >
-        <DirectoryTree onSelect={onChange} selectedPath={value} />
-      </AppPopover>
-    </>
-  );
-};
-
-// ============================================================================
 // Create Samba Share Dialog
 // ============================================================================
 
@@ -314,7 +261,7 @@ export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
             size="small"
             value={name}
           />
-          <PathPicker onChange={setPath} value={path} />
+          <PathPickerField onChange={setPath} value={path} />
           <AppTextField
             fullWidth
             label="Comment"
@@ -441,7 +388,7 @@ export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
             size="small"
             value={share?.name || ""}
           />
-          <PathPicker onChange={setPath} value={path} />
+          <PathPickerField onChange={setPath} value={path} />
           <AppTextField
             fullWidth
             label="Comment"
@@ -645,32 +592,28 @@ const SambaShares: React.FC<SambaSharesProps> = ({
           emptyMessage="No Samba shares found. Click 'Add Share' to create one."
           getRowKey={(share) => share.name}
           renderExpandedContent={(share) => (
-            <div>
+            <div className="expand-panel">
               {share.properties["comment"] && (
                 <AppTypography gutterBottom variant="subtitle2">
                   <strong>Comment:</strong> {share.properties["comment"]}
                 </AppTypography>
               )}
-              <AppTypography gutterBottom variant="subtitle2">
-                <strong>All Properties:</strong>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                }}
-              >
-                {Object.entries(share.properties)
-                  .filter(([key]) => key !== "path")
-                  .map(([key, value]) => (
-                    <Chip
-                      key={key}
-                      label={`${key} = ${value}`}
-                      size="small"
-                      variant="soft"
-                    />
-                  ))}
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <strong>All Properties:</strong>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {Object.entries(share.properties)
+                    .filter(([key]) => key !== "path")
+                    .map(([key, value]) => (
+                      <Chip
+                        key={key}
+                        label={`${key} = ${value}`}
+                        size="small"
+                        variant="soft"
+                      />
+                    ))}
+                </div>
               </div>
             </div>
           )}

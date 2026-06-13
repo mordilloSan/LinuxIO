@@ -9,28 +9,32 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var api = apischema.Bindings(
+	apischema.Query[apischema.NoRequest, []apischema.AccountUser]("accounts.list_users").Handle(handleListUsers),
+	apischema.Query[apischema.UsernameRequest, apischema.AccountUserDetails]("accounts.get_user_details").Handle(handleGetUserDetails),
+	apischema.Query[apischema.UsernameRequest, []apischema.AccountUserLogin]("accounts.list_user_logins").Handle(handleListUserLogins),
+	apischema.Job[apischema.TerminateSessionRequest, apischema.NoResponse]("accounts.terminate_session").Handle(handleTerminateSession),
+	apischema.Job[apischema.CreateUserRequest, apischema.NoResponse]("accounts.create_user").Handle(handleCreateUser),
+	apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("accounts.delete_user").Handle(handleDeleteUser),
+	apischema.Job[apischema.ModifyUserRequest, apischema.NoResponse]("accounts.modify_user").Handle(handleModifyUser),
+	apischema.Job[apischema.ChangePasswordRequest, apischema.NoResponse]("accounts.change_password").Handle(handleChangePassword),
+	apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("accounts.lock_user").Handle(handleLockUser),
+	apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("accounts.unlock_user").Handle(handleUnlockUser),
+	apischema.Query[apischema.NoRequest, []apischema.AccountGroup]("accounts.list_groups").Handle(handleListGroups),
+	apischema.Job[apischema.CreateGroupRequest, apischema.NoResponse]("accounts.create_group").Handle(handleCreateGroup),
+	apischema.Job[apischema.GroupNameRequest, apischema.NoResponse]("accounts.delete_group").Handle(handleDeleteGroup),
+	apischema.Job[apischema.ModifyGroupMembersRequest, apischema.NoResponse]("accounts.modify_group_members").Handle(handleModifyGroupMembers),
+	apischema.Query[apischema.NoRequest, []string]("accounts.list_shells").Handle(handleListShells),
+)
+
+var Routes = api.Routes()
+
 // RegisterHandlers registers accounts handlers with the IPC system
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "accounts", []bridgeipc.Command{
-		{Name: "list_users", Mode: bridgeipc.ModeQuery, Handler: handleListUsers},
-		{Name: "get_user_details", Mode: bridgeipc.ModeQuery, Handler: handleGetUserDetails},
-		{Name: "list_user_logins", Mode: bridgeipc.ModeQuery, Handler: handleListUserLogins},
-		{Name: "terminate_session", Mode: bridgeipc.ModeJob, Handler: handleTerminateSession},
-		{Name: "create_user", Mode: bridgeipc.ModeJob, Handler: handleCreateUser},
-		{Name: "delete_user", Mode: bridgeipc.ModeJob, Handler: handleDeleteUser},
-		{Name: "modify_user", Mode: bridgeipc.ModeJob, Handler: handleModifyUser},
-		{Name: "change_password", Mode: bridgeipc.ModeJob, Handler: handleChangePassword},
-		{Name: "lock_user", Mode: bridgeipc.ModeJob, Handler: handleLockUser},
-		{Name: "unlock_user", Mode: bridgeipc.ModeJob, Handler: handleUnlockUser},
-		{Name: "list_groups", Mode: bridgeipc.ModeQuery, Handler: handleListGroups},
-		{Name: "create_group", Mode: bridgeipc.ModeJob, Handler: handleCreateGroup},
-		{Name: "delete_group", Mode: bridgeipc.ModeJob, Handler: handleDeleteGroup},
-		{Name: "modify_group_members", Mode: bridgeipc.ModeJob, Handler: handleModifyGroupMembers},
-		{Name: "list_shells", Mode: bridgeipc.ModeQuery, Handler: handleListShells},
-	})
+	api.Register(router)
 }
 
-func handleListUsers(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListUsers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListUsers(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -95,7 +99,7 @@ func handleUnlockUser(ctx context.Context, req apischema.UsernameRequest, emit b
 	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleListGroups(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListGroups(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListGroups(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }
@@ -121,7 +125,7 @@ func handleModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMemb
 	return bridgeipc.EmitResult(emit, nil, nil)
 }
 
-func handleListShells(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleListShells(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := ListShells(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
 }

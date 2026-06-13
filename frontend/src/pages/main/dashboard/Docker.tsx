@@ -142,21 +142,18 @@ const DockerInfo: React.FC = () => {
     refetchInterval: 5000,
   });
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
-  const { data: imagesCount = 0 } =
-    linuxio.docker.list_images.useQueryWithSelect({
-      refetchInterval: 30_000,
-      select: getCollectionCount,
-    });
-  const { data: networksCount = 0 } =
-    linuxio.docker.list_networks.useQueryWithSelect({
-      refetchInterval: 30_000,
-      select: getCollectionCount,
-    });
-  const { data: volumesCount = 0 } =
-    linuxio.docker.list_volumes.useQueryWithSelect({
-      refetchInterval: 30_000,
-      select: getCollectionCount,
-    });
+  const { data: imagesCount = 0 } = linuxio.docker.list_images.useQuery({
+    refetchInterval: 30_000,
+    select: getCollectionCount,
+  });
+  const { data: networksCount = 0 } = linuxio.docker.list_networks.useQuery({
+    refetchInterval: 30_000,
+    select: getCollectionCount,
+  });
+  const { data: volumesCount = 0 } = linuxio.docker.list_volumes.useQuery({
+    refetchInterval: 30_000,
+    select: getCollectionCount,
+  });
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,
     [containers],

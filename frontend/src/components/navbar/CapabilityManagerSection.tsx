@@ -38,6 +38,8 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface InstallCapabilityProgress {
   message: string;
+  /** Single global 0-100 percentage that only moves forward across stages. */
+  percentage?: number;
   stage: string;
 }
 
@@ -69,11 +71,14 @@ const CapabilityManagerSection: React.FC = () => {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [installingWire, setInstallingWire] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [installPercent, setInstallPercent] = useState<number | null>(null);
   const mountedRef = useRef(true);
   const { run: runStreamResult } = useStreamResult();
 
   const packageKitAvailable =
     latest?.packagekit_available ?? auth.packageKitAvailable ?? false;
+  const dockerAvailable =
+    latest?.docker_available ?? auth.dockerAvailable ?? false;
 
   const rows = useMemo(
     () =>
@@ -133,9 +138,10 @@ const CapabilityManagerSection: React.FC = () => {
   );
 
   const handleInstall = useCallback(
-    async (wire: string, label: string) => {
+    async (wire: string) => {
       setInstallingWire(wire);
       setInstallStatus("Starting…");
+      setInstallPercent(null);
       try {
         const job = await linuxio.system.install_capability(wire);
         const result = await runStreamResult<
@@ -145,34 +151,32 @@ const CapabilityManagerSection: React.FC = () => {
           open: () => openJobAttachStream(job.id),
           onProgress: (progress) => {
             if (!mountedRef.current) return;
+            if (typeof progress?.percentage === "number") {
+              setInstallPercent(progress.percentage);
+            }
             if (progress?.message) {
               setInstallStatus(progress.message);
             }
           },
         });
         if (!mountedRef.current) return;
+        // Optimistically reflect the result while the panel is open. The
+        // completion toast and app-wide capability refresh are owned by the
+        // global background-job handler (useRecoveredJobs) so they still fire
+        // if this dialog has been closed mid-install.
         setLatest((previous) => ({
           ...(previous ?? ({} as CapabilitiesResponse)),
           [`${wire}_available`]: result.available,
           [`${wire}_error`]: result.error ?? "",
         }));
         setLastChecked(new Date());
-        if (result.available) {
-          toast.success(`${label} installed`);
-        } else {
-          const reason = result.error ? `: ${result.error}` : ".";
-          toast.warning(`${label} installed but is still unavailable${reason}`);
-        }
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : `Failed to install ${label}`;
-        if (mountedRef.current) {
-          toast.error(message);
-        }
+      } catch {
+        // The global background-job handler owns the install error toast.
       } finally {
         if (mountedRef.current) {
           setInstallingWire(null);
           setInstallStatus(null);
+          setInstallPercent(null);
         }
       }
     },
@@ -258,14 +262,20 @@ const CapabilityManagerSection: React.FC = () => {
             showInstall &&
             row.installable?.requiresPackageKit === true &&
             !packageKitAvailable;
+          const blockedByDocker =
+            showInstall &&
+            row.installable?.requiresDocker === true &&
+            !dockerAvailable;
           const installing = installingWire === row.wire;
           const installDisabled =
-            installingWire !== null || blockedByPackageKit;
+            installingWire !== null || blockedByPackageKit || blockedByDocker;
           const installTooltip = blockedByPackageKit
             ? "Install requires PackageKit, which is itself unavailable. Install PackageKit from a shell first."
-            : installing
-              ? "Installing…"
-              : `Install ${row.label}`;
+            : blockedByDocker
+              ? "Install requires Docker to be available first."
+              : installing
+                ? "Installing…"
+                : `Install ${row.label}`;
 
           return (
             <FrostedCard
@@ -297,9 +307,7 @@ const CapabilityManagerSection: React.FC = () => {
                           <AppButton
                             color="primary"
                             disabled={installDisabled}
-                            onClick={() =>
-                              void handleInstall(row.wire, row.label)
-                            }
+                            onClick={() => void handleInstall(row.wire)}
                             size="small"
                             startIcon={
                               <Icon
@@ -317,7 +325,11 @@ const CapabilityManagerSection: React.FC = () => {
                             }
                             variant="outlined"
                           >
-                            {installing ? "Installing…" : "Install"}
+                            {installing
+                              ? installPercent !== null
+                                ? `${installPercent}%`
+                                : "Installing…"
+                              : "Install"}
                           </AppButton>
                         </span>
                       </AppTooltip>
@@ -331,9 +343,16 @@ const CapabilityManagerSection: React.FC = () => {
                   </div>
                 </div>
                 <div className="capability-manager__detail">
-                  <span className="capability-manager__dependency">
+                  <AppTypography
+                    className="capability-manager__dependency"
+                    component="span"
+                    noWrap
+                    style={{ color: "var(--app-palette-text-primary)" }}
+                    title={row.dependency}
+                    variant="body2"
+                  >
                     {row.dependency}
-                  </span>
+                  </AppTypography>
                   <span>
                     {installing && installStatus ? installStatus : row.detail}
                   </span>

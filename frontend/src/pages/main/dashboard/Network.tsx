@@ -47,9 +47,6 @@ const NetworkInterfacesCard: React.FC = () => {
   const selectedExists =
     selected && filteredInterfaces.some((i) => i.name === selected);
   const effectiveSelected = selectedExists ? selected : firstName;
-  if (effectiveSelected !== selected) {
-    setSelected(effectiveSelected);
-  }
 
   const selectedInterface = useMemo(
     () => filteredInterfaces.find((i) => i.name === effectiveSelected),

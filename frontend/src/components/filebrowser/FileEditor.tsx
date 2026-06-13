@@ -166,6 +166,10 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     }, [onSave, content, updateEditorState]);
 
     useEffect(() => {
+      // Notifying the parent of dirty state from one effect is simpler and less
+      // error-prone than firing onDirtyChange at every isDirty mutation site;
+      // lifting editorState (the rule's suggestion) is disproportionate here.
+      // eslint-disable-next-line react-you-might-not-need-an-effect/no-pass-live-state-to-parent
       onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
 

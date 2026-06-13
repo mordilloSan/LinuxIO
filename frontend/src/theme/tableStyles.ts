@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import type { AppTheme } from "@/theme";
 
 export const getTableHeaderStyles = (theme: AppTheme) => ({
@@ -20,35 +22,6 @@ export const getTableRowStyles = (theme: AppTheme, index: number) => {
     backgroundColor: index % 2 === 0 ? "transparent" : stripedColor,
   };
 };
-
-export const getExpandedRowStyles = (theme: AppTheme, index: number) => {
-  const stripedColor =
-    theme.palette.mode === "dark"
-      ? "rgba(255,255,255,0.08)"
-      : "rgba(0,0,0,0.05)";
-  return {
-    "& .MuiTableCell-root": { borderBottom: "none" },
-    backgroundColor: index % 2 === 0 ? "transparent" : stripedColor,
-  };
-};
-
-export const getExpandedContentStyles = (theme: AppTheme) => ({
-  margin: 2,
-  borderRadius: 2,
-  p: 2,
-  bgcolor:
-    theme.palette.mode === "dark"
-      ? "rgba(255,255,255,0.05)"
-      : "rgba(0,0,0,0.03)",
-  maxWidth: "100%",
-  overflowX: "auto",
-  overflowWrap: "break-word" as const,
-  wordBreak: "break-word" as const,
-  "@media (max-width: 600px)": {
-    margin: 1,
-    padding: 1,
-  },
-});
 
 export const tableContainerStyles = {
   overflowX: "auto",
@@ -81,13 +54,14 @@ export const longTextStyles = {
   },
 };
 
-export const wrappableChipStyles = {
+export const wrappableChipStyle: CSSProperties = {
   maxWidth: "100%",
   height: "auto",
-  "& .MuiChip-label": {
-    display: "block",
-    whiteSpace: "normal",
-    wordBreak: "break-word" as const,
-    overflowWrap: "anywhere" as const,
-  },
+};
+
+export const wrappableChipLabelStyle: CSSProperties = {
+  display: "block",
+  whiteSpace: "normal",
+  wordBreak: "break-word",
+  overflowWrap: "anywhere",
 };

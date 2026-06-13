@@ -40,10 +40,8 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
         }}
       >
         <AppTypography
+          noWrap
           style={{
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
             maxWidth: "90%",
           }}
           variant="h6"
@@ -56,10 +54,8 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       <AppTypography
         color="text.secondary"
         gutterBottom
+        noWrap
         style={{
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
           maxWidth: "90%",
         }}
         variant="body2"
@@ -69,10 +65,8 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       <AppTypography
         color="text.secondary"
         gutterBottom
+        noWrap
         style={{
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
           maxWidth: "90%",
         }}
         variant="body2"
@@ -107,7 +101,7 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
       </div>
 
       {/* Changelog */}
-      <AppCollapse in={isExpanded} timeout="auto" unmountOnExit>
+      <AppCollapse in={isExpanded} unmountOnExit>
         <div style={{ whiteSpace: "pre-wrap", fontSize: 14, marginTop: 32 }}>
           {isLoadingChangelog ? (
             <div

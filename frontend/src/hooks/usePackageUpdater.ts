@@ -109,6 +109,15 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
 
+      // Drive the overall bar from the global transaction percentage only,
+      // clamped to [0,100] and kept monotonic so interleaved frames can't pull
+      // it backwards. Per-package item_pct is intentionally NOT used here — it
+      // resets every package and every download/install phase.
+      const bumpProgress = (pct?: number) => {
+        if (pct === undefined || pct > 100) return;
+        setProgress((prev) => Math.max(prev, pct));
+      };
+
       try {
         const job = await linuxio.packages.update(packages);
         jobIdRef.current = job.id;
@@ -122,14 +131,14 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
           onProgress: (data) => {
             switch (data.type) {
               case "item_progress":
+                // item_pct is a per-package / per-phase sub-percentage, not a
+                // global value — use it only to track the current package and
+                // status, never to set the overall bar.
                 if (data.package_id) {
                   setUpdatingPackage(extractPackageName(data.package_id));
                 }
                 if (data.status) {
                   setStatus(data.status);
-                }
-                if (data.item_pct !== undefined) {
-                  setProgress(data.item_pct);
                 }
                 break;
               case "package":
@@ -149,14 +158,10 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
                   setStatus(data.status);
                   appendEvent(data.status);
                 }
-                if (data.percentage !== undefined) {
-                  setProgress(data.percentage);
-                }
+                bumpProgress(data.percentage);
                 break;
               case "percentage":
-                if (data.percentage !== undefined) {
-                  setProgress(data.percentage);
-                }
+                bumpProgress(data.percentage);
                 break;
               case "message":
                 if (data.message) {

@@ -8,19 +8,25 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var Routes = routeBindings(runtime.Runtime{}).Routes()
+
+func routeBindings(rt runtime.Runtime) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Runner[apischema.GeneralLogsFollowRequest, apischema.NoResponse](streamTypeGeneralLogs, apischema.NoEndpoint()).Run(
+			func(ctx context.Context, job *bridgeipc.Job, req apischema.GeneralLogsFollowRequest) (any, error) {
+				return runGeneralLogsJob(ctx, rt, job, req)
+			},
+			bridgeipc.StreamDefault,
+		),
+		apischema.Runner[apischema.ServiceLogsFollowRequest, apischema.NoResponse](streamTypeServiceLogs, apischema.NoEndpoint()).Run(
+			func(ctx context.Context, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
+				return runServiceLogsJob(ctx, rt, job, req)
+			},
+			bridgeipc.StreamDefault,
+		),
+	)
+}
+
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: "logs.general.follow",
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.GeneralLogsFollowRequest) (any, error) {
-			return runGeneralLogsJob(ctx, rt, job, req)
-		},
-		Policy: bridgeipc.StreamDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: "logs.service.follow",
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
-			return runServiceLogsJob(ctx, rt, job, req)
-		},
-		Policy: bridgeipc.StreamDefault,
-	})
+	routeBindings(rt).Register(router)
 }

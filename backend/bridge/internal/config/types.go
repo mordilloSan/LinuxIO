@@ -96,9 +96,8 @@ type DockerProxy struct {
 
 // Docker holds Docker-related settings
 type Docker struct {
-	Folders          []AbsolutePath `json:"folders" yaml:"folders"`
-	AutoUpdateStacks []string       `json:"autoUpdateStacks,omitempty" yaml:"autoUpdateStacks,omitempty"`
-	Proxy            DockerProxy    `json:"proxy" yaml:"proxy,omitempty"`
+	Folders []AbsolutePath `json:"folders" yaml:"folders"`
+	Proxy   DockerProxy    `json:"proxy" yaml:"proxy,omitempty"`
 }
 
 // PersistedJobSettings holds job progress and worker tuning settings.

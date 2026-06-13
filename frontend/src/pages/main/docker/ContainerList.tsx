@@ -13,32 +13,82 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import React, { Suspense, useMemo } from "react";
+import { motion } from "framer-motion";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useSearchParams } from "react-router-dom";
 
+import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import ContainerTable from "./ContainerTable";
+import { useContainerAutoUpdateControls } from "./useContainerAutoUpdateControls";
 import ContainerCard from "../../../components/cards/ContainerCard";
 
-import { linuxio } from "@/api";
+import { linuxio, openDockerLogsStream } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import AppGrid from "@/components/ui/AppGrid";
+import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+import {
+  EASING_EMPHASIZED,
+  TRANSITION_DURATION_SLOW_MS,
+} from "@/theme/constants";
 
 interface ContainerListProps {
+  checkingUpdates?: boolean;
   editMode: boolean;
   viewMode?: "card" | "table";
 }
 
 const ContainerList: React.FC<ContainerListProps> = ({
+  checkingUpdates = false,
   editMode,
   viewMode = "card",
 }) => {
+  const theme = useAppTheme();
+  const detailTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
+  const hasLoadedContainers = rawContainers !== undefined;
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
+  const selectedContainerId = searchParams.get("container");
+  const [search, setSearch] = useState("");
+  const containerAutoUpdate = useContainerAutoUpdateControls();
 
   const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
+
+  const isAutoUpdateSelected = useCallback(
+    (container: (typeof containers)[number]) =>
+      containerAutoUpdate.selectedNames.has(
+        container.Names?.[0]?.replace("/", "") ?? "",
+      ),
+    [containerAutoUpdate.selectedNames],
+  );
+
+  const updateSelectedContainer = useCallback(
+    (containerId: string | null) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (containerId) {
+          next.set("container", containerId);
+        } else {
+          next.delete("container");
+        }
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -75,6 +125,28 @@ const ContainerList: React.FC<ContainerListProps> = ({
     () => orderedContainers.map((c) => c.Id),
     [orderedContainers],
   );
+  const filteredContainers = useMemo(() => {
+    const searchText = search.trim().toLowerCase();
+    if (!searchText) return orderedContainers;
+
+    return orderedContainers.filter((container) => {
+      const name = container.Names?.[0]?.replace("/", "") ?? "";
+      return (
+        name.toLowerCase().includes(searchText) ||
+        container.Image.toLowerCase().includes(searchText) ||
+        container.State.toLowerCase().includes(searchText) ||
+        container.Status.toLowerCase().includes(searchText) ||
+        container.Id.toLowerCase().includes(searchText)
+      );
+    });
+  }, [orderedContainers, search]);
+  const selectedContainer = useMemo(
+    () =>
+      orderedContainers.find(
+        (container) => container.Id === selectedContainerId,
+      ) ?? null,
+    [orderedContainers, selectedContainerId],
+  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -83,6 +155,40 @@ const ContainerList: React.FC<ContainerListProps> = ({
     const oldIndex = containerIds.indexOf(active.id as string);
     const newIndex = containerIds.indexOf(over.id as string);
     setContainerOrder(arrayMove(containerIds, oldIndex, newIndex));
+  };
+
+  useEffect(() => {
+    if (editMode) {
+      updateSelectedContainer(null);
+    }
+  }, [editMode, updateSelectedContainer]);
+
+  useEffect(() => {
+    if (hasLoadedContainers && selectedContainerId && !selectedContainer) {
+      updateSelectedContainer(null);
+    }
+  }, [
+    hasLoadedContainers,
+    selectedContainer,
+    selectedContainerId,
+    updateSelectedContainer,
+  ]);
+
+  useEffect(() => {
+    if (!selectedContainer) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Esc") {
+        updateSelectedContainer(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedContainer, updateSelectedContainer]);
+
+  const handleSelectContainer = (containerId: string) => {
+    updateSelectedContainer(
+      selectedContainerId === containerId ? null : containerId,
+    );
   };
 
   if (viewMode === "table") {
@@ -98,8 +204,14 @@ const ContainerList: React.FC<ContainerListProps> = ({
             strategy={verticalListSortingStrategy}
           >
             <ContainerTable
+              autoUpdateDisabled={containerAutoUpdate.disabled}
+              autoUpdatePendingNames={containerAutoUpdate.pendingNames}
+              autoUpdateReason={containerAutoUpdate.reason}
+              autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
+              checkingUpdates={checkingUpdates}
               containers={orderedContainers}
               editMode={editMode}
+              onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
             />
           </SortableContext>
         </DndContext>
@@ -107,30 +219,227 @@ const ContainerList: React.FC<ContainerListProps> = ({
     );
   }
 
+  if (editMode) {
+    return (
+      <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
+        <div>
+          <DndContext
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            sensors={sensors}
+          >
+            <SortableContext
+              items={containerIds}
+              strategy={rectSortingStrategy}
+            >
+              <AppGrid container spacing={2}>
+                {orderedContainers.map((container) => (
+                  <AppGrid
+                    key={container.Id}
+                    size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+                  >
+                    <SortableCard editMode id={container.Id}>
+                      <ContainerCard
+                        autoUpdateDisabled={containerAutoUpdate.disabled}
+                        autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                          container.Names?.[0]?.replace("/", "") ?? "",
+                        )}
+                        autoUpdateReason={containerAutoUpdate.reason}
+                        autoUpdateSelected={isAutoUpdateSelected(container)}
+                        container={container}
+                        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                      />
+                    </SortableCard>
+                  </AppGrid>
+                ))}
+              </AppGrid>
+            </SortableContext>
+          </DndContext>
+        </div>
+      </Suspense>
+    );
+  }
+
   return (
     <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-      <div>
-        <DndContext
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-          sensors={sensors}
+      {!selectedContainer && (
+        <div
+          style={{
+            marginBottom: theme.spacing(2),
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(2),
+          }}
         >
-          <SortableContext items={containerIds} strategy={rectSortingStrategy}>
-            <AppGrid container spacing={2}>
-              {orderedContainers.map((container) => (
-                <AppGrid
-                  key={container.Id}
-                  size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
-                >
-                  <SortableCard editMode={editMode} id={container.Id}>
-                    <ContainerCard container={container} />
-                  </SortableCard>
-                </AppGrid>
-              ))}
-            </AppGrid>
-          </SortableContext>
-        </DndContext>
-      </div>
+          <AppSearchField
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search containers…"
+            style={{ width: 320 }}
+            value={search}
+          />
+          <AppTypography fontWeight={700}>
+            {filteredContainers.length} shown
+          </AppTypography>
+        </div>
+      )}
+
+      <motion.div
+        layout="position"
+        transition={{
+          duration: detailTransitionDurationSeconds,
+          ease: EASING_EMPHASIZED,
+        }}
+      >
+        {selectedContainer ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: theme.spacing(3),
+            }}
+          >
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 14 }}
+              style={{
+                display: "flex",
+                flexDirection: isCompactLayout ? "column" : "row",
+                alignItems: "stretch",
+                gap: theme.spacing(2.5),
+              }}
+              transition={{
+                duration: detailTransitionDurationSeconds,
+                delay: 0.04,
+                ease: EASING_EMPHASIZED,
+              }}
+            >
+              <motion.div
+                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 12 }}
+                style={{
+                  flex: isCompactLayout ? "0 0 auto" : 1,
+                  width: isCompactLayout ? "100%" : undefined,
+                  minWidth: 0,
+                  display: "flex",
+                }}
+                transition={{
+                  duration: detailTransitionDurationSeconds,
+                  delay: 0.04,
+                  ease: EASING_EMPHASIZED,
+                }}
+              >
+                <ContainerCard
+                  autoUpdateDisabled={containerAutoUpdate.disabled}
+                  autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                    selectedContainer.Names?.[0]?.replace("/", "") ?? "",
+                  )}
+                  autoUpdateReason={containerAutoUpdate.reason}
+                  autoUpdateSelected={isAutoUpdateSelected(selectedContainer)}
+                  container={selectedContainer}
+                  onSelect={() => handleSelectContainer(selectedContainer.Id)}
+                  onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                  selected
+                />
+              </motion.div>
+              <motion.div
+                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 16 }}
+                style={{
+                  flex: isCompactLayout ? "0 0 auto" : 1,
+                  width: isCompactLayout ? "100%" : undefined,
+                  minWidth: 0,
+                  display: "flex",
+                }}
+                transition={{
+                  duration: detailTransitionDurationSeconds,
+                  delay: 0.08,
+                  ease: EASING_EMPHASIZED,
+                }}
+              >
+                <ContainerDetailsPanel
+                  container={selectedContainer}
+                  sections={["ports", "volumes"]}
+                  showStatus={false}
+                  subtitle="ports and volumes"
+                  title="Container"
+                />
+              </motion.div>
+              <motion.div
+                animate={{ opacity: 1, x: 0, y: 0 }}
+                initial={{
+                  opacity: 0,
+                  x: isCompactLayout ? 0 : 40,
+                  y: isCompactLayout ? 20 : 0,
+                }}
+                style={{
+                  flex: isCompactLayout ? "0 0 auto" : 1,
+                  width: isCompactLayout ? "100%" : undefined,
+                  minWidth: 0,
+                  display: "flex",
+                }}
+                transition={{
+                  duration: detailTransitionDurationSeconds,
+                  delay: 0.12,
+                  ease: EASING_EMPHASIZED,
+                }}
+              >
+                <ContainerDetailsPanel
+                  container={selectedContainer}
+                  onClose={() => updateSelectedContainer(null)}
+                />
+              </motion.div>
+            </motion.div>
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20 }}
+              transition={{
+                duration: detailTransitionDurationSeconds,
+                delay: 0.16,
+                ease: EASING_EMPHASIZED,
+              }}
+            >
+              <UnitLogsCard
+                key={selectedContainer.Id}
+                createStream={(tail) =>
+                  openDockerLogsStream(selectedContainer.Id, tail)
+                }
+                title="Container Logs"
+              />
+            </motion.div>
+          </div>
+        ) : (
+          <div>
+            {filteredContainers.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 0" }}>
+                <AppTypography color="text.secondary" variant="body2">
+                  No containers found.
+                </AppTypography>
+              </div>
+            ) : (
+              <AppGrid container spacing={2}>
+                {filteredContainers.map((container) => (
+                  <AppGrid
+                    key={container.Id}
+                    size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+                  >
+                    <ContainerCard
+                      autoUpdateDisabled={containerAutoUpdate.disabled}
+                      autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                        container.Names?.[0]?.replace("/", "") ?? "",
+                      )}
+                      autoUpdateReason={containerAutoUpdate.reason}
+                      autoUpdateSelected={isAutoUpdateSelected(container)}
+                      container={container}
+                      onSelect={() => handleSelectContainer(container.Id)}
+                      onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                    />
+                  </AppGrid>
+                ))}
+              </AppGrid>
+            )}
+          </div>
+        )}
+      </motion.div>
     </Suspense>
   );
 };

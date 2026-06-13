@@ -27,6 +27,7 @@
       "@/hooks/*": ["./src/hooks/*"],
       "@/layouts/*": ["./src/layouts/*"],
       "@/pages/*": ["./src/pages/*"],
+      "@/routing/*": ["./src/routing/*"],
       "@/theme/*": ["./src/theme/*"],
       "@/types/*": ["./src/types/*"],
       "@/utils/*": ["./src/utils/*"],

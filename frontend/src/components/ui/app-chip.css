@@ -46,22 +46,12 @@
 }
 
 .app-chip--disabled {
-  opacity: var(--color-action-disabled-opacity, 0.38);
+  opacity: var(--app-palette-action-disabled-opacity, 0.38);
   pointer-events: none;
 }
 
 .app-chip--interactive {
   cursor: pointer;
-}
-
-.app-chip--interactive:hover {
-  color: var(--app-chip-hover-color, var(--app-chip-color));
-  background-color: var(
-    --app-chip-hover-background,
-    var(--app-chip-background)
-  );
-  border-color: var(--app-chip-hover-border, var(--app-chip-border));
-  opacity: var(--app-chip-hover-opacity, var(--app-chip-opacity, 1));
 }
 
 .app-chip__delete {
@@ -90,26 +80,3 @@
   opacity: 0.45;
 }
 
-@media (max-width: 599px) {
-  .app-chip {
-    display: var(--app-chip-display-xs, var(--app-chip-display, inline-flex));
-  }
-}
-
-@media (min-width: 600px) and (max-width: 899px) {
-  .app-chip {
-    display: var(--app-chip-display-sm, var(--app-chip-display, inline-flex));
-  }
-}
-
-@media (min-width: 900px) and (max-width: 1199px) {
-  .app-chip {
-    display: var(--app-chip-display-md, var(--app-chip-display, inline-flex));
-  }
-}
-
-@media (min-width: 1200px) {
-  .app-chip {
-    display: var(--app-chip-display-lg, var(--app-chip-display, inline-flex));
-  }
-}

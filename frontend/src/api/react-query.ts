@@ -88,12 +88,7 @@ export type RequestShape =
 /**
  * Query options type
  */
-type QueryOptions<TResult> = Omit<
-  UseQueryOptions<TResult, LinuxIOError, TResult>,
-  "queryKey" | "queryFn"
->;
-
-type SelectableQueryOptions<TResult, TData = TResult> = Omit<
+type QueryOptions<TResult, TData = TResult> = Omit<
   UseQueryOptions<TResult, LinuxIOError, TData>,
   "queryKey" | "queryFn"
 >;
@@ -106,17 +101,10 @@ type MutationOptions<TRequest, TResult> = Omit<
 type QueryOptionsArgs<
   TInput extends readonly unknown[],
   TResult,
+  TData = TResult,
 > = TInput extends readonly []
-  ? [options?: QueryOptions<TResult>]
-  : [...input: TInput, options?: QueryOptions<TResult>];
-
-type SelectableQueryOptionsArgs<
-  TInput extends readonly unknown[],
-  TResult,
-  TData,
-> = TInput extends readonly []
-  ? [options?: SelectableQueryOptions<TResult, TData>]
-  : [...input: TInput, options?: SelectableQueryOptions<TResult, TData>];
+  ? [options?: QueryOptions<TResult, TData>]
+  : [...input: TInput, options?: QueryOptions<TResult, TData>];
 
 /**
  * Command endpoint interface
@@ -139,15 +127,8 @@ export interface CommandEndpoint<
    * React Query options for `queryClient.fetchQuery/ensureQueryData`
    * and non-hook integration points.
    */
-  queryOptions: (
-    ...params: QueryOptionsArgs<TInput, TResult>
-  ) => UseQueryOptions<TResult, LinuxIOError>;
-
-  /**
-   * React Query options with support for transformed `select` output data.
-   */
-  queryOptionsWithSelect: <TData = TResult>(
-    ...params: SelectableQueryOptionsArgs<TInput, TResult, TData>
+  queryOptions: <TData = TResult>(
+    ...params: QueryOptionsArgs<TInput, TResult, TData>
   ) => UseQueryOptions<TResult, LinuxIOError, TData>;
 
   /**
@@ -172,15 +153,8 @@ export interface CommandEndpoint<
    * // Single-field generated request with options
    * useQuery(unitName, { staleTime: 60000 })
    */
-  useQuery: (
-    ...params: QueryOptionsArgs<TInput, TResult>
-  ) => ReturnType<typeof useQuery<TResult, LinuxIOError>>;
-
-  /**
-   * React Query hook with support for transformed `select` output data.
-   */
-  useQueryWithSelect: <TData = TResult>(
-    ...params: SelectableQueryOptionsArgs<TInput, TResult, TData>
+  useQuery: <TData = TResult>(
+    ...params: QueryOptionsArgs<TInput, TResult, TData>
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError, TData>>;
 }
 
@@ -220,7 +194,7 @@ function buildQueryOptions<TResult, TData = TResult>(
   command: string,
   requestShape: RequestShape,
   request: unknown,
-  options?: SelectableQueryOptions<TResult, TData>,
+  options?: QueryOptions<TResult, TData>,
 ): UseQueryOptions<TResult, LinuxIOError, TData> {
   const route = routeName(handler, command);
   const mode = getRouteMode(route);
@@ -272,27 +246,11 @@ export function createEndpoint<TResult>(
     );
   };
 
-  const queryOptions = (
-    ...params: unknown[]
-  ): UseQueryOptions<TResult, LinuxIOError> => {
-    const { request, options } = queryRequestAndOptions<QueryOptions<TResult>>(
-      requestShape,
-      params,
-    );
-    return buildQueryOptions<TResult>(
-      handler,
-      command,
-      requestShape,
-      request,
-      options,
-    );
-  };
-
-  const queryOptionsWithSelect = <TData = TResult>(
+  const queryOptions = <TData = TResult>(
     ...params: unknown[]
   ): UseQueryOptions<TResult, LinuxIOError, TData> => {
     const { request, options } = queryRequestAndOptions<
-      SelectableQueryOptions<TResult, TData>
+      QueryOptions<TResult, TData>
     >(requestShape, params);
     return buildQueryOptions<TResult, TData>(
       handler,
@@ -308,32 +266,18 @@ export function createEndpoint<TResult>(
 
   endpoint.queryKey = queryKey;
   endpoint.queryOptions = queryOptions;
-  endpoint.queryOptionsWithSelect = queryOptionsWithSelect;
-  endpoint.useQuery = (
-    ...params: unknown[]
-  ): ReturnType<typeof useQuery<TResult, LinuxIOError>> => {
-    const { isOpen } = useStreamMux();
-    const isUpdating = useIsUpdating();
-
-    const baseOptions = queryOptions(...params);
-    return useQuery<TResult, LinuxIOError>({
-      ...baseOptions,
-      enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
-    });
-  };
-
-  endpoint.useQueryWithSelect = (<TData = TResult>(
+  endpoint.useQuery = (<TData = TResult>(
     ...params: unknown[]
   ): ReturnType<typeof useQuery<TResult, LinuxIOError, TData>> => {
     const { isOpen } = useStreamMux();
     const isUpdating = useIsUpdating();
 
-    const baseOptions = queryOptionsWithSelect<TData>(...params);
+    const baseOptions = queryOptions<TData>(...params);
     return useQuery<TResult, LinuxIOError, TData>({
       ...baseOptions,
       enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
     });
-  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQueryWithSelect"];
+  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQuery"];
 
   endpoint.useMutation = (options?: MutationOptions<unknown, TResult>) => {
     const route = routeName(handler, command);

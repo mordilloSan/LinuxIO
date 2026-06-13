@@ -1,8 +1,10 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
+import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
@@ -19,9 +21,21 @@ import {
 } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { getComposeStatusColor } from "@/constants/statusColors";
+import {
+  getComposeStatusColor,
+  getContainerStatusColor,
+} from "@/constants/statusColors";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { isLinuxIOManagedComposeProject } from "@/utils/dockerManaged";
+import type { ContainerInfo, ContainerPort } from "@/types/container";
+import { getMutationErrorMessage } from "@/utils/mutations";
+
+import "./compose-list.css";
+
+const LogsDialog = React.lazy(() => import("./LogsDialog"));
+const TerminalDialog = React.lazy(() => import("./TerminalDialog"));
+
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
 interface ComposeService {
   container_count: number;
@@ -35,12 +49,13 @@ interface ComposeService {
   url?: string;
 }
 export interface ComposeProject {
-  auto_update?: boolean;
   config_files: string[];
+  containers: ContainerInfo[];
   icon?: string;
   name: string;
   services: Record<string, ComposeService>;
   status: string; // "running", "partial", "stopped"
+  update_available: boolean;
   working_dir: string;
 }
 interface ComposeListProps {
@@ -55,6 +70,44 @@ interface ComposeListProps {
   projects: ComposeProject[];
   viewMode?: "table" | "card";
 }
+
+const getContainerName = (container: ContainerInfo) =>
+  container.Names?.[0]?.replace(/^\//, "") || container.Id.slice(0, 12);
+
+const getContainerServiceName = (container: ContainerInfo) =>
+  container.Labels?.["com.docker.compose.service"] || "-";
+
+const getContainerDisplayState = (container: ContainerInfo) => {
+  const status = container.Status.toLowerCase();
+  if (status.includes("unhealthy")) return "Unhealthy";
+  if (status.includes("healthy")) return "Healthy";
+  if (container.State === "running") return "Running";
+  if (container.State === "exited") return "Stopped";
+  if (container.State === "dead") return "Dead";
+  return container.State || "Unknown";
+};
+
+const getDedupedContainerPorts = (container: ContainerInfo) => {
+  const seen = new Set<string>();
+  return (container.Ports ?? [])
+    .filter((port) => {
+      const key = port.PublicPort
+        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
+        : `${port.PrivatePort}/${port.Type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort(
+      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
+    );
+};
+
+const formatContainerPort = (port: ContainerPort) =>
+  port.PublicPort
+    ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
+    : `${port.PrivatePort}/${port.Type}`;
+
 const ComposeList: React.FC<ComposeListProps> = ({
   projects,
   onStart,
@@ -68,20 +121,137 @@ const ComposeList: React.FC<ComposeListProps> = ({
   viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
+  const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(
+    null,
+  );
+  const [terminalContainer, setTerminalContainer] =
+    useState<ContainerInfo | null>(null);
   const theme = useAppTheme();
+  const queryClient = useQueryClient();
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
+  const containersByProject = useMemo(() => {
+    return new Map(
+      projects.map((project) => [
+        project.name,
+        [...(project.containers ?? [])].sort((a, b) =>
+          getContainerName(a).localeCompare(getContainerName(b)),
+        ),
+      ]),
+    );
+  }, [projects]);
   const getStatusColor = (status: string) => {
     return getComposeStatusColor(status);
   };
   const getTotalContainers = (project: ComposeProject) => {
+    if (project.containers?.length) return project.containers.length;
     return Object.values(project.services).reduce(
       (acc, service) => acc + service.container_count,
       0,
     );
   };
+  const { mutateAsync: startContainer } =
+    linuxio.docker.start_container.useMutation();
+  const { mutateAsync: stopContainer } =
+    linuxio.docker.stop_container.useMutation();
+  const { mutateAsync: restartContainer } =
+    linuxio.docker.restart_container.useMutation();
+  const { mutateAsync: removeContainer } =
+    linuxio.docker.remove_container.useMutation();
+  const { mutateAsync: updateContainer, isPending: isUpdatingContainer } =
+    linuxio.docker.update_container.useMutation();
+
+  const refreshContainerViews = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_containers.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_compose_projects.queryKey(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: linuxio.docker.list_images.queryKey(),
+    });
+  }, [queryClient]);
+
+  const handleStartContainer = useCallback(
+    async (container: ContainerInfo) => {
+      const name = getContainerName(container);
+      try {
+        await startContainer({ containerId: container.Id });
+        toast.success(`Container ${name} started`);
+        refreshContainerViews();
+      } catch (error) {
+        toast.error(getMutationErrorMessage(error, `Failed to start ${name}`));
+      }
+    },
+    [refreshContainerViews, startContainer, toast],
+  );
+
+  const handleStopContainer = useCallback(
+    async (container: ContainerInfo) => {
+      const name = getContainerName(container);
+      try {
+        await stopContainer({ containerId: container.Id });
+        toast.success(`Container ${name} stopped`);
+        refreshContainerViews();
+      } catch (error) {
+        toast.error(getMutationErrorMessage(error, `Failed to stop ${name}`));
+      }
+    },
+    [refreshContainerViews, stopContainer, toast],
+  );
+
+  const handleRestartContainer = useCallback(
+    async (container: ContainerInfo) => {
+      const name = getContainerName(container);
+      try {
+        await restartContainer({ containerId: container.Id });
+        toast.success(`Container ${name} restarted`);
+        refreshContainerViews();
+      } catch (error) {
+        toast.error(
+          getMutationErrorMessage(error, `Failed to restart ${name}`),
+        );
+      }
+    },
+    [refreshContainerViews, restartContainer, toast],
+  );
+
+  const handleRemoveContainer = useCallback(
+    async (container: ContainerInfo) => {
+      const name = getContainerName(container);
+      try {
+        await removeContainer({ containerId: container.Id });
+        toast.success(`Container ${name} removed`);
+        refreshContainerViews();
+      } catch (error) {
+        toast.error(getMutationErrorMessage(error, `Failed to remove ${name}`));
+      }
+    },
+    [refreshContainerViews, removeContainer, toast],
+  );
+
+  const handleUpdateContainer = useCallback(
+    async (container: ContainerInfo) => {
+      const name = getContainerName(container);
+      try {
+        const data = await updateContainer({ containerId: container.Id });
+        const result = jobSnapshotResult<{ updated: boolean }>(data);
+        toast.success(
+          result.updated
+            ? `Container ${name} updated`
+            : `Container ${name} is already up to date`,
+        );
+        refreshContainerViews();
+      } catch (error) {
+        toast.error(getMutationErrorMessage(error, `Failed to update ${name}`));
+      }
+    },
+    [refreshContainerViews, toast, updateContainer],
+  );
 
   // Table columns configuration
   const columns: UnifiedTableColumn[] = [
@@ -145,17 +315,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 color={statusColor}
                 label={project.status}
                 size="small"
-                sx={{
-                  display: {
-                    xs: "none",
-                    sm: "inline-flex",
-                  },
+                className="app-table-hide-below-sm"
+                style={{
                   textTransform: "capitalize",
                   fontSize: "0.68rem",
-                  "& .MuiChip-label": {
-                    px: 3,
-                  },
                 }}
+                labelStyle={{ paddingInline: 12 }}
                 variant="soft"
               />
             </div>
@@ -173,58 +338,76 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 identifier={project.icon}
                 size={28}
               />
-              <AppTypography fontWeight={700} variant="body2">
+              <AppTypography
+                copyText={project.name}
+                fontWeight={700}
+                noWrap
+                title={project.name}
+                toastMeta={DOCKER_TOAST_META}
+                variant="body2"
+              >
                 {project.name}
               </AppTypography>
+              {project.update_available && (
+                <Chip
+                  color="warning"
+                  label="Update"
+                  size="small"
+                  style={{ fontSize: "0.68rem" }}
+                  variant="soft"
+                />
+              )}
             </div>
           </AppTableCell>
           <AppTableCell align="center" className="app-table-hide-below-sm">
             {getTotalContainers(project)}
           </AppTableCell>
           <AppTableCell className="app-table-hide-below-sm">
-            <AppTooltip title={project.config_files.join(", ") || "Unknown"}>
-              <div
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <Icon
+                height={20}
+                icon="mdi:folder-open"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
+                  marginRight: 4,
+                  opacity: 0.7,
                 }}
-              >
-                <Icon
-                  height={20}
-                  icon="mdi:folder-open"
-                  style={{
-                    marginRight: 4,
-                    opacity: 0.7,
-                  }}
-                  width={20}
-                />
-                <AppTypography
-                  noWrap
-                  style={{
-                    maxWidth: 200,
-                  }}
-                  variant="body2"
-                >
-                  {project.config_files[0]?.split("/").pop() ||
-                    "docker-compose.yml"}
-                </AppTypography>
-              </div>
-            </AppTooltip>
-          </AppTableCell>
-          <AppTableCell className="app-table-hide-below-lg">
-            <AppTooltip title={project.working_dir || "Unknown"}>
+                width={20}
+              />
               <AppTypography
+                copyText={project.config_files.join(", ") || "Unknown"}
                 noWrap
                 style={{
-                  maxWidth: 600,
-                  fontSize: "0.85rem",
-                  color: "var(--mui-palette-text-secondary)",
+                  maxWidth: 200,
                 }}
+                title={project.config_files.join(", ") || "Unknown"}
+                toastMeta={DOCKER_TOAST_META}
                 variant="body2"
               >
-                {project.working_dir || "-"}
+                {project.config_files[0]?.split("/").pop() ||
+                  "docker-compose.yml"}
               </AppTypography>
-            </AppTooltip>
+            </div>
+          </AppTableCell>
+          <AppTableCell className="app-table-hide-below-lg">
+            <AppTypography
+              copyText={project.working_dir || "Unknown"}
+              noWrap
+              style={{
+                maxWidth: 600,
+                fontSize: "0.85rem",
+                color: "var(--app-palette-text-secondary)",
+              }}
+              title={project.working_dir || "Unknown"}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
+            >
+              {project.working_dir || "-"}
+            </AppTypography>
           </AppTableCell>
           <AppTableCell align="right">
             <div
@@ -234,222 +417,318 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 gap: isSmallUp ? theme.spacing(0.5) : 0,
               }}
             >
-              {isLinuxIOManagedComposeProject(project.name) ? (
-                <AppTooltip arrow title="View compose file">
-                  <Chip
-                    label="Managed by LinuxIO"
-                    onClick={
-                      onPreview && project.config_files.length > 0
-                        ? () => onPreview(project.name, project.config_files[0])
-                        : undefined
+              {onEdit && project.config_files.length > 0 && (
+                <AppTooltip title="Edit">
+                  <AppIconButton
+                    disabled={isLoading}
+                    onClick={() =>
+                      onEdit(project.name, project.config_files[0])
                     }
                     size="small"
-                    sx={{
-                      fontSize: "0.68rem",
-                      opacity: 0.7,
-                      cursor:
-                        onPreview && project.config_files.length > 0
-                          ? "pointer"
-                          : "default",
-                      "&:hover": {
-                        opacity: 1,
-                      },
-                    }}
-                    variant="soft"
-                  />
+                  >
+                    <Icon height={20} icon="mdi:pencil" width={20} />
+                  </AppIconButton>
                 </AppTooltip>
-              ) : (
-                <>
-                  {onEdit && project.config_files.length > 0 && (
-                    <AppTooltip title="Edit">
-                      <AppIconButton
-                        disabled={isLoading}
-                        onClick={() =>
-                          onEdit(project.name, project.config_files[0])
-                        }
-                        size="small"
-                      >
-                        <Icon height={20} icon="mdi:pencil" width={20} />
-                      </AppIconButton>
-                    </AppTooltip>
-                  )}
-                  {project.status === "running" ||
-                  project.status === "partial" ? (
-                    <>
-                      <AppTooltip title="Restart">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onRestart(project.name)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:restart" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Stop">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onStop(project.name)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:stop-circle" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Delete">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onDelete(project)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:delete" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                    </>
-                  ) : (
-                    <>
-                      <AppTooltip title="Start">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onStart(project.name)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:play" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                      <AppTooltip title="Delete">
-                        <AppIconButton
-                          disabled={isLoading}
-                          onClick={() => onDelete(project)}
-                          size="small"
-                        >
-                          <Icon height={20} icon="mdi:delete" width={20} />
-                        </AppIconButton>
-                      </AppTooltip>
-                    </>
-                  )}
-                </>
               )}
+              {project.status === "running" || project.status === "partial" ? (
+                <>
+                  <AppTooltip title="Restart">
+                    <AppIconButton
+                      disabled={isLoading}
+                      onClick={() => onRestart(project.name)}
+                      size="small"
+                    >
+                      <Icon height={20} icon="mdi:restart" width={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                  <AppTooltip title="Stop">
+                    <AppIconButton
+                      disabled={isLoading}
+                      onClick={() => onStop(project.name)}
+                      size="small"
+                    >
+                      <Icon height={20} icon="mdi:stop-circle" width={20} />
+                    </AppIconButton>
+                  </AppTooltip>
+                </>
+              ) : (
+                <AppTooltip title="Start">
+                  <AppIconButton
+                    disabled={isLoading}
+                    onClick={() => onStart(project.name)}
+                    size="small"
+                  >
+                    <Icon height={20} icon="mdi:play" width={20} />
+                  </AppIconButton>
+                </AppTooltip>
+              )}
+              <AppTooltip title="Delete">
+                <AppIconButton
+                  disabled={isLoading}
+                  onClick={() => onDelete(project)}
+                  size="small"
+                >
+                  <Icon height={20} icon="mdi:delete" width={20} />
+                </AppIconButton>
+              </AppTooltip>
             </div>
           </AppTableCell>
         </>
       );
     },
-    [
-      isLoading,
-      isSmallUp,
-      onDelete,
-      onEdit,
-      onPreview,
-      onRestart,
-      onStart,
-      onStop,
-      theme,
-    ],
+    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop, theme],
   );
 
   // Render expanded content
   const renderExpandedContent = useCallback(
     (project: ComposeProject) => {
+      const containers = containersByProject.get(project.name) ?? [];
       return (
-        <>
-          <AppTable>
-            <AppTableHead>
-              <AppTableRow>
-                <AppTableCell>Service Name</AppTableCell>
-                <AppTableCell className="app-table-hide-below-sm">
-                  Image
-                </AppTableCell>
-                <AppTableCell>State</AppTableCell>
-                <AppTableCell className="app-table-hide-below-md">
-                  Containers
-                </AppTableCell>
-                <AppTableCell className="app-table-hide-below-md">
-                  Ports
-                </AppTableCell>
-              </AppTableRow>
-            </AppTableHead>
-            <AppTableBody>
-              {Object.values(project.services).map((service) => (
-                <AppTableRow key={service.name}>
+        <AppTable className="compose-expanded-table">
+          <AppTableHead>
+            <AppTableRow>
+              <AppTableCell>Container Name</AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                Service
+              </AppTableCell>
+              <AppTableCell className="app-table-hide-below-sm">
+                Image
+              </AppTableCell>
+              <AppTableCell>State</AppTableCell>
+              <AppTableCell className="app-table-hide-below-md">
+                Ports
+              </AppTableCell>
+              <AppTableCell align="right">Actions</AppTableCell>
+            </AppTableRow>
+          </AppTableHead>
+          <AppTableBody>
+            {containers.map((container) => {
+              const name = getContainerName(container);
+              const serviceName = getContainerServiceName(container);
+              const ports = getDedupedContainerPorts(container);
+              const portsText =
+                ports.length > 0
+                  ? ports.map(formatContainerPort).join(", ")
+                  : "-";
+              const displayState = getContainerDisplayState(container);
+              return (
+                <AppTableRow
+                  className="compose-container-row"
+                  key={container.Id}
+                >
                   <AppTableCell>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: theme.spacing(1),
-                      }}
-                    >
+                    <div className="compose-container-name">
                       <DockerIcon
-                        alt={service.name}
-                        identifier={service.icon}
-                        size={20}
+                        alt={name}
+                        identifier={container.icon}
+                        size={24}
                       />
-                      {service.name}
+                      <div className="compose-container-name-text">
+                        <AppTypography
+                          copyText={name}
+                          fontWeight={700}
+                          noWrap
+                          title={name}
+                          toastMeta={DOCKER_TOAST_META}
+                          variant="body2"
+                        >
+                          {name}
+                        </AppTypography>
+                        <AppTypography
+                          className="compose-container-id"
+                          color="text.secondary"
+                          copyText={container.Id}
+                          noWrap
+                          title={container.Id}
+                          toastMeta={DOCKER_TOAST_META}
+                          tooltipOnlyWhenTruncated={false}
+                          variant="caption"
+                        >
+                          {container.Id.slice(0, 12)}
+                        </AppTypography>
+                        {container.updateAvailable && (
+                          <Chip
+                            color="warning"
+                            label="Update"
+                            size="small"
+                            style={{ fontSize: "0.68rem", marginTop: 2 }}
+                            variant="soft"
+                          />
+                        )}
+                      </div>
                     </div>
+                  </AppTableCell>
+                  <AppTableCell className="app-table-hide-below-md">
+                    <AppTypography
+                      copyText={serviceName}
+                      noWrap
+                      title={serviceName}
+                      toastMeta={DOCKER_TOAST_META}
+                      variant="body2"
+                    >
+                      {serviceName}
+                    </AppTypography>
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-sm">
                     <AppTypography
+                      copyText={container.Image}
                       noWrap
                       style={{
-                        maxWidth: 200,
+                        maxWidth: 260,
                       }}
+                      title={container.Image}
+                      toastMeta={DOCKER_TOAST_META}
                       variant="body2"
                     >
-                      {service.image}
+                      {container.Image}
                     </AppTypography>
                   </AppTableCell>
                   <AppTableCell>
                     <Chip
-                      color={
-                        service.state === "running" ? "success" : "default"
-                      }
-                      label={service.state}
+                      color={getContainerStatusColor(displayState)}
+                      label={displayState}
                       size="small"
-                      sx={{
+                      style={{
                         textTransform: "capitalize",
                       }}
                       variant="soft"
                     />
                   </AppTableCell>
                   <AppTableCell className="app-table-hide-below-md">
-                    {service.container_count}
+                    <AppTypography
+                      copyText={ports.length > 0 ? portsText : undefined}
+                      noWrap
+                      title={portsText}
+                      toastMeta={DOCKER_TOAST_META}
+                      variant="body2"
+                    >
+                      {portsText}
+                    </AppTypography>
                   </AppTableCell>
-                  <AppTableCell className="app-table-hide-below-md">
-                    {service.ports.length > 0 ? service.ports.join(", ") : "-"}
+                  <AppTableCell align="right">
+                    <div className="compose-container-actions">
+                      {container.State !== "running" && (
+                        <AppTooltip title="Start container">
+                          <AppIconButton
+                            disabled={isLoading}
+                            onClick={() => void handleStartContainer(container)}
+                            size="small"
+                          >
+                            <Icon height={18} icon="mdi:play" width={18} />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
+                      {container.State === "running" && (
+                        <AppTooltip title="Stop container">
+                          <AppIconButton
+                            disabled={isLoading}
+                            onClick={() => void handleStopContainer(container)}
+                            size="small"
+                          >
+                            <Icon height={18} icon="mdi:stop" width={18} />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
+                      <AppTooltip title="Restart container">
+                        <AppIconButton
+                          disabled={isLoading}
+                          onClick={() => void handleRestartContainer(container)}
+                          size="small"
+                        >
+                          <Icon height={18} icon="mdi:restart" width={18} />
+                        </AppIconButton>
+                      </AppTooltip>
+                      {container.updateAvailable && (
+                        <AppTooltip title="Update container">
+                          <AppIconButton
+                            disabled={isLoading || isUpdatingContainer}
+                            onClick={() =>
+                              void handleUpdateContainer(container)
+                            }
+                            size="small"
+                          >
+                            <Icon height={18} icon="mdi:update" width={18} />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
+                      <AppTooltip title="View logs">
+                        <AppIconButton
+                          disabled={isLoading}
+                          onClick={() => setLogsContainer(container)}
+                          size="small"
+                        >
+                          <Icon
+                            height={18}
+                            icon="mdi:file-document-outline"
+                            width={18}
+                          />
+                        </AppIconButton>
+                      </AppTooltip>
+                      {container.State === "running" && (
+                        <AppTooltip title="Open terminal">
+                          <AppIconButton
+                            disabled={isLoading}
+                            onClick={() => setTerminalContainer(container)}
+                            size="small"
+                          >
+                            <Icon height={18} icon="mdi:console" width={18} />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
+                      {container.url && (
+                        <AppTooltip title="Open app">
+                          <AppIconButton
+                            disabled={isLoading}
+                            onClick={() =>
+                              window.open(container.url, "_blank", "noopener")
+                            }
+                            size="small"
+                          >
+                            <Icon
+                              height={18}
+                              icon="mdi:open-in-new"
+                              width={18}
+                            />
+                          </AppIconButton>
+                        </AppTooltip>
+                      )}
+                      <AppTooltip title="Remove container">
+                        <AppIconButton
+                          disabled={isLoading}
+                          onClick={() => void handleRemoveContainer(container)}
+                          size="small"
+                        >
+                          <Icon height={18} icon="mdi:delete" width={18} />
+                        </AppIconButton>
+                      </AppTooltip>
+                    </div>
                   </AppTableCell>
                 </AppTableRow>
-              ))}
-            </AppTableBody>
-          </AppTable>
-          <div
-            style={{
-              marginTop: theme.spacing(2),
-            }}
-          >
-            <AppTypography
-              color="text.secondary"
-              style={{
-                wordBreak: "break-word",
-                overflowWrap: "break-word",
-              }}
-              variant="body2"
-            >
-              <b>Working Directory:</b> {project.working_dir || "-"}
-            </AppTypography>
-            <AppTypography
-              color="text.secondary"
-              style={{
-                wordBreak: "break-word",
-                overflowWrap: "break-word",
-              }}
-              variant="body2"
-            >
-              <b>Config Files:</b> {project.config_files.join(", ") || "-"}
-            </AppTypography>
-          </div>
-        </>
+              );
+            })}
+            {containers.length === 0 && (
+              <AppTableRow>
+                <AppTableCell colSpan={6}>
+                  <AppTypography color="text.secondary" variant="body2">
+                    No containers found for this stack.
+                  </AppTypography>
+                </AppTableCell>
+              </AppTableRow>
+            )}
+          </AppTableBody>
+        </AppTable>
       );
     },
-    [theme],
+    [
+      containersByProject,
+      handleRemoveContainer,
+      handleRestartContainer,
+      handleStartContainer,
+      handleStopContainer,
+      handleUpdateContainer,
+      isLoading,
+      isUpdatingContainer,
+    ],
   );
   const searchBar = (
     <div
@@ -481,6 +760,26 @@ const ComposeList: React.FC<ComposeListProps> = ({
         {isPending ? "Loading..." : `${filtered.length} shown`}
       </AppTypography>
     </div>
+  );
+  const containerDialogs = (
+    <React.Suspense fallback={null}>
+      {logsContainer && (
+        <LogsDialog
+          containerId={logsContainer.Id}
+          containerName={getContainerName(logsContainer)}
+          onClose={() => setLogsContainer(null)}
+          open={!!logsContainer}
+        />
+      )}
+      {terminalContainer && (
+        <TerminalDialog
+          containerId={terminalContainer.Id}
+          containerName={getContainerName(terminalContainer)}
+          onClose={() => setTerminalContainer(null)}
+          open={!!terminalContainer}
+        />
+      )}
+    </React.Suspense>
   );
   if (viewMode === "card") {
     const skeletonCount = 8;
@@ -530,7 +829,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 }}
               >
                 <ComposeStackCard
-                  isLoading={isLoading}
+                  isLoading={isLoading || isUpdatingContainer}
                   onDelete={onDelete}
                   onEdit={onEdit}
                   onPreview={onPreview}
@@ -543,6 +842,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
             ))}
           </AppGrid>
         )}
+        {containerDialogs}
       </div>
     );
   }
@@ -557,6 +857,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         renderExpandedContent={renderExpandedContent}
         renderMainRow={renderMainRow}
       />
+      {containerDialogs}
     </div>
   );
 };

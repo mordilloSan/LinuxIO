@@ -76,7 +76,7 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
             className="app-btn--dialog-action"
             disabled={isSaving}
             onClick={onKeepEditing}
-            style={{ color: "var(--mui-palette-text-secondary)" }}
+            style={{ color: "var(--app-palette-text-secondary)" }}
           >
             Keep Editing
           </AppButton>

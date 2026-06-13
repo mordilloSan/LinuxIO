@@ -9,23 +9,28 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// RegisterHandlers registers control handlers with the new handler system
-func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "control", []bridgeipc.Command{
-		{Name: "version", Mode: bridgeipc.ModeQuery, Handler: handleVersion},
-	})
+var Routes = routeBindings(runtime.Runtime{}).Routes()
+
+func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	policy := bridgeipc.SingletonSystem
 	policy.Timeout = 30 * time.Minute
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: "control.app_update",
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
-			return runAppUpdateJob(ctx, rt, job, req)
-		},
-		Policy: policy,
-	})
+	return apischema.Bindings(
+		apischema.Query[apischema.NoRequest, apischema.VersionResponse]("control.version").Handle(handleVersion),
+		apischema.Runner[apischema.AppUpdateRequest, apischema.NoResponse](routeAppUpdate, apischema.NoEndpoint()).Run(
+			func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
+				return runAppUpdateJob(ctx, rt, job, req)
+			},
+			policy,
+		),
+	)
 }
 
-func handleVersion(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+// RegisterHandlers registers app update handlers.
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	routeBindings(rt).Register(router)
+}
+
+func handleVersion(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	info, err := getVersionInfo(ctx)
 	return bridgeipc.EmitResult(emit, info, err)
 }

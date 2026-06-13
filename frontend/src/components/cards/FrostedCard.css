@@ -42,7 +42,7 @@
   margin-top: 16px;
 }
 
-.dc-stats-truncate .MuiTypography-root {
+.dc-stats-truncate .app-typo {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -18,9 +18,9 @@
   font-size: 0.8125rem;
   line-height: 1.43;
   letter-spacing: 0.01071em;
-  color: var(--color-text);
+  color: var(--app-palette-text-primary);
 }
 
 .app-form-control-label:has(:disabled) .app-form-control-label__text {
-  color: var(--color-text-disabled);
+  color: var(--app-palette-text-disabled);
 }

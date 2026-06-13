@@ -347,9 +347,8 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         table?: unknown[];
       }
     | undefined;
-  if (!expanded) return null;
   return (
-    <AppCollapse in={expanded} timeout="auto" unmountOnExit>
+    <AppCollapse in={expanded} unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <AppDivider style={{ margin: "16px 0" }} />
 

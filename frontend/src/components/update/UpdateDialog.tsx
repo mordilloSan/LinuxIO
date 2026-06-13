@@ -165,8 +165,8 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                 style={{
                   maxHeight: 300,
                   overflowY: "auto",
-                  backgroundColor: "var(--mui-palette-grey-900)",
-                  color: "var(--mui-palette-grey-100)",
+                  backgroundColor: "var(--app-palette-grey-900)",
+                  color: "var(--app-palette-grey-100)",
                   padding: 8,
                   fontFamily: "monospace",
                   fontSize: "0.875rem",

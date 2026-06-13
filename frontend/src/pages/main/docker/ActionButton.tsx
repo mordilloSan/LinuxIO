@@ -1,20 +1,34 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import { useAppTheme } from "@/theme";
 
 interface ActionButtonProps {
+  color?: string;
+  disabled?: boolean;
   icon: string;
+  loading?: boolean;
   onClick: () => void;
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ icon, onClick }) => {
+const ActionButton: React.FC<ActionButtonProps> = ({
+  color,
+  disabled = false,
+  icon,
+  loading = false,
+  onClick,
+}) => {
   const theme = useAppTheme();
+  const isDisabled = disabled || loading;
 
   return (
     <div
+      aria-disabled={isDisabled}
       className="action-btn"
-      onClick={onClick}
+      onClick={() => {
+        if (!isDisabled) onClick();
+      }}
       style={
         {
           width: 18,
@@ -22,15 +36,22 @@ const ActionButton: React.FC<ActionButtonProps> = ({ icon, onClick }) => {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          cursor: "pointer",
+          cursor: isDisabled ? "default" : "pointer",
           marginInline: 0.4,
+          opacity: disabled && !loading ? 0.45 : 1,
           transition: "color 0.2s",
-          "--ab-color": theme.palette.text.secondary,
-          "--ab-hover-color": theme.palette.text.primary,
+          "--ab-color": color ?? theme.palette.text.secondary,
+          "--ab-hover-color": isDisabled
+            ? (color ?? theme.palette.text.secondary)
+            : theme.palette.text.primary,
         } as React.CSSProperties
       }
     >
-      <Icon height={16} icon={icon} width={16} />
+      {loading ? (
+        <AppCircularProgress color="inherit" size={14} />
+      ) : (
+        <Icon height={16} icon={icon} width={16} />
+      )}
     </div>
   );
 };

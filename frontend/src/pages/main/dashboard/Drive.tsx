@@ -157,7 +157,13 @@ const Drive: React.FC = () => {
           >
             {label}
           </AppTypography>
-          <AppTypography fontWeight={500} noWrap variant="body2">
+          <AppTypography
+            copyText={value}
+            fontWeight={500}
+            noWrap
+            style={{ minWidth: 0 }}
+            variant="body2"
+          >
             {value}
           </AppTypography>
         </div>

@@ -141,7 +141,6 @@ const defaultConfig: AppConfig = {
   },
   docker: {
     folders: ["/var/lib/linuxio/docker"],
-    autoUpdateStacks: [],
     proxy: {
       caddyEnabled: false,
       baseDomain: "",
@@ -233,9 +232,6 @@ const applyDefaults = (
         cloneArray(docker.folders) ??
         cloneArray(defaultConfig.docker.folders) ??
         [],
-      autoUpdateStacks:
-        cloneArray(docker.autoUpdateStacks) ??
-        cloneArray(defaultConfig.docker.autoUpdateStacks),
       proxy: {
         caddyEnabled:
           docker.proxy?.caddyEnabled ?? defaultConfig.docker.proxy.caddyEnabled,
@@ -305,7 +301,14 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
   const queryClient = useQueryClient();
-  const { mutate: setConfigRemote } = linuxio.config.set.useMutation();
+  const { mutate: setConfigRemote } = linuxio.config.set.useMutation({
+    onSuccess: (_result, patch) => {
+      if (patch.docker?.folders === undefined) return;
+      void queryClient.invalidateQueries({
+        queryKey: linuxio.docker.list_compose_projects.queryKey(),
+      });
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -375,6 +378,10 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       }
     };
 
+    // One-shot async config load (stream mux + react-query fetchQuery), not a
+    // synchronous external store — useSyncExternalStore can't express async
+    // loading, so this rule misfires here.
+    // eslint-disable-next-line react-you-might-not-need-an-effect/no-external-store-subscription
     fetchConfig();
 
     return () => {

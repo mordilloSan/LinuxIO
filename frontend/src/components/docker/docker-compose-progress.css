@@ -1,0 +1,12 @@
+@keyframes compose-progress-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.compose-progress__spin {
+  animation: compose-progress-spin 1s linear infinite;
+}

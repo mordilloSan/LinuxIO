@@ -24,7 +24,7 @@ import AppPopover from "@/components/ui/AppPopover";
 import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import DirectoryTree from "@/components/ui/DirectoryTree";
+import PathPickerField from "@/components/ui/PathPickerField";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -239,62 +239,6 @@ const ClientRowEditor: React.FC<{
 );
 
 // ============================================================================
-// Path picker — input that opens a directory tree popover
-// ============================================================================
-
-const PathPicker: React.FC<{
-  value: string;
-  onChange: (path: string) => void;
-}> = ({ value, onChange }) => {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
-
-  const handleOpen = () => {
-    setAnchorEl(anchorRef.current);
-    setOpen(true);
-  };
-
-  const handleSelect = (path: string) => {
-    onChange(path);
-  };
-
-  return (
-    <>
-      <div ref={anchorRef}>
-        <AppTextField
-          endAdornment={
-            <Icon
-              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              style={{ opacity: 0.5 }}
-              width={18}
-            />
-          }
-          fullWidth
-          label="Export Path"
-          onClick={handleOpen}
-          placeholder="Click to select a folder"
-          shrinkLabel
-          size="small"
-          style={{ cursor: "pointer" }}
-          value={value}
-        />
-      </div>
-      <AppPopover
-        anchorEl={anchorEl}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        matchAnchorWidth
-        onClose={() => setOpen(false)}
-        open={open}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-      >
-        <DirectoryTree onSelect={handleSelect} selectedPath={value} />
-      </AppPopover>
-    </>
-  );
-};
-
-// ============================================================================
 // Create NFS Share Dialog
 // ============================================================================
 
@@ -373,7 +317,11 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
             marginTop: 8,
           }}
         >
-          <PathPicker onChange={setPath} value={path} />
+          <PathPickerField
+            label="Export Path"
+            onChange={setPath}
+            value={path}
+          />
           <AppTypography style={{ marginTop: 4 }} variant="subtitle2">
             Client Access Rules
           </AppTypography>
@@ -730,23 +678,16 @@ const NFSShares: React.FC<NFSSharesProps> = ({
           emptyMessage="No NFS exports found. Click 'Add Export' to create one."
           getRowKey={(share) => share.path}
           renderExpandedContent={(share) => (
-            <div>
+            <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <strong>Client Access Rules:</strong>
               </AppTypography>
               {share.clients.map((client: NFSClient, i: number) => (
-                <div key={i} style={{ marginBottom: 4 }}>
+                <div key={i}>
                   <AppTypography variant="body2">
                     <strong>{client.host}</strong>
                   </AppTypography>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 3,
-                      marginTop: 2,
-                    }}
-                  >
+                  <div className="expand-panel__chips">
                     {client.options?.length > 0 ? (
                       client.options.map((opt: string, j: number) => (
                         <Chip key={j} label={opt} size="small" variant="soft" />

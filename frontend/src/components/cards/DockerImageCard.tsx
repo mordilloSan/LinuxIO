@@ -3,6 +3,7 @@ import React from "react";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
@@ -15,6 +16,7 @@ export interface DockerImageRow {
   shortId: string;
   size: string;
   tag: string;
+  updateAvailable?: boolean;
 }
 
 export interface DockerImageCardProps {
@@ -22,6 +24,8 @@ export interface DockerImageCardProps {
   onSelect: (checked: boolean) => void;
   selected: boolean;
 }
+
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
 const DockerImageCard: React.FC<DockerImageCardProps> = ({
   image,
@@ -53,16 +57,31 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
             onChange={(e) => onSelect(e.target.checked)}
             size="small"
           />
-          <AppTypography fontWeight={700} noWrap variant="body2">
+          <AppTypography
+            copyText={image.repo}
+            fontWeight={700}
+            noWrap
+            title={image.repo}
+            toastMeta={DOCKER_TOAST_META}
+            variant="body2"
+          >
             {image.repo}
           </AppTypography>
         </div>
-        <Chip
-          label={image.tag}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
+        <AppTooltip
+          contentWidth
+          copyText={image.tag}
+          onlyWhenTruncated
+          title={image.tag}
+          toastMeta={DOCKER_TOAST_META}
+        >
+          <Chip
+            label={image.tag}
+            size="small"
+            style={{ fontSize: "0.75rem" }}
+            variant="soft"
+          />
+        </AppTooltip>
       </div>
 
       <div
@@ -102,6 +121,14 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
           size="small"
           variant="soft"
         />
+        {image.updateAvailable && (
+          <Chip
+            color="warning"
+            label="Update available"
+            size="small"
+            variant="soft"
+          />
+        )}
       </div>
 
       <AppTypography color="text.secondary" variant="caption">

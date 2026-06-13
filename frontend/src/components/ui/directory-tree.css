@@ -30,12 +30,12 @@
 }
 
 .directory-tree__node--selected {
-  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-  color: var(--color-primary);
+  background: color-mix(in srgb, var(--app-palette-primary-main) 18%, transparent);
+  color: var(--app-palette-primary-main);
 }
 
 .directory-tree__node--selected:hover {
-  background: color-mix(in srgb, var(--color-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--app-palette-primary-main) 24%, transparent);
 }
 
 .directory-tree__chevron {
@@ -50,7 +50,7 @@
 
 .directory-tree__icon {
   flex-shrink: 0;
-  color: var(--color-primary);
+  color: var(--app-palette-primary-main);
 }
 
 .directory-tree__label {

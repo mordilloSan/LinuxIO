@@ -26,7 +26,7 @@ export default defineConfig(async ({ command }) => {
     );
     plugins.push(
       compression({
-        algorithms: ["gzip"],
+        algorithms: ["gzip", "brotliCompress"],
       }),
     );
     if (shouldAnalyze) {

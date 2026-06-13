@@ -5,13 +5,19 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { longTextStyles, wrappableChipStyles } from "@/theme/tableStyles";
+import {
+  longTextStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
+} from "@/theme/tableStyles";
 
 export interface NetworkCardProps {
   network: DockerNetwork;
   onSelect: (checked: boolean) => void;
   selected: boolean;
 }
+
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
 const NetworkCard: React.FC<NetworkCardProps> = ({
   network,
@@ -37,7 +43,14 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
           onChange={(e) => onSelect(e.target.checked)}
           size="small"
         />
-        <AppTypography fontWeight={700} noWrap variant="body2">
+        <AppTypography
+          copyText={network.Name}
+          fontWeight={700}
+          noWrap
+          title={network.Name}
+          toastMeta={DOCKER_TOAST_META}
+          variant="body2"
+        >
           {network.Name}
         </AppTypography>
       </div>
@@ -92,7 +105,8 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
             key={`${network.Id}-ipam-${i}`}
             label={ipam.Subnet}
             size="small"
-            sx={wrappableChipStyles}
+            style={wrappableChipStyle}
+            labelStyle={wrappableChipLabelStyle}
             variant="outlined"
           />
         ))

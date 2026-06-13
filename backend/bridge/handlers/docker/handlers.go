@@ -8,61 +8,68 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var Routes = apischema.CombineRoutes(routeBindings(runtime.Runtime{}, dockerHandlers{}).Routes(), dockerJobRoutes)
+
+func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Query[apischema.NoRequest, []apischema.ContainerInfo]("docker.list_containers").Handle(handlers.handleListContainers),
+		apischema.Job[apischema.ContainerIDRequest, apischema.NoResponse]("docker.start_container").Handle(handlers.handleStartContainer),
+		apischema.Job[apischema.ContainerIDRequest, apischema.NoResponse]("docker.stop_container").Handle(handlers.handleStopContainer),
+		apischema.Job[apischema.ContainerIDRequest, apischema.NoResponse]("docker.remove_container").Handle(handlers.handleRemoveContainer),
+		apischema.Job[apischema.ContainerIDRequest, apischema.NoResponse]("docker.restart_container").Handle(handlers.handleRestartContainer),
+		apischema.Query[apischema.NoRequest, []apischema.DockerImage]("docker.list_images").Handle(handlers.handleListImages),
+		apischema.Job[apischema.ImageIDRequest, apischema.NoResponse]("docker.delete_image").Handle(handlers.handleDeleteImage),
+		apischema.Query[apischema.NoRequest, []apischema.DockerNetwork]("docker.list_networks").Handle(handlers.handleListNetworks),
+		apischema.Job[apischema.NameRequest, apischema.NoResponse]("docker.create_network").Handle(handlers.handleCreateNetwork),
+		apischema.Job[apischema.IDRequest, apischema.NoResponse]("docker.delete_network").Handle(handlers.handleDeleteNetwork),
+		apischema.Query[apischema.NoRequest, []apischema.DockerVolume]("docker.list_volumes").Handle(handlers.handleListVolumes),
+		apischema.Job[apischema.NameRequest, apischema.NoResponse]("docker.create_volume").Handle(handlers.handleCreateVolume),
+		apischema.Job[apischema.NameRequest, apischema.NoResponse]("docker.delete_volume").Handle(handlers.handleDeleteVolume),
+		apischema.Query[apischema.NoRequest, []apischema.ComposeProject]("docker.list_compose_projects").Handle(handlers.handleListComposeProjects),
+		apischema.Query[apischema.ProjectNameRequest, apischema.ComposeProject]("docker.get_compose_project").Handle(handlers.handleGetComposeProject),
+		apischema.Job[apischema.ProjectNameRequest, any]("docker.compose_up").Handle(handlers.handleComposeUp),
+		apischema.Job[apischema.ProjectNameRequest, any]("docker.compose_down").Handle(handlers.handleComposeDown),
+		apischema.Job[apischema.ProjectNameRequest, any]("docker.compose_stop").Handle(handlers.handleComposeStop),
+		apischema.Job[apischema.ProjectNameRequest, any]("docker.compose_restart").Handle(handlers.handleComposeRestart),
+		apischema.Job[apischema.DeleteStackRequest, apischema.DeleteStackResult]("docker.delete_stack").Handle(handlers.handleDeleteStack),
+		apischema.Query[apischema.NoRequest, apischema.DockerFoldersResponse]("docker.get_docker_folders").Handle(handlers.handleGetDockerFolders),
+		apischema.Query[apischema.ContentRequest, apischema.ValidateComposeResponse]("docker.validate_compose").Handle(handlers.handleValidateCompose),
+		apischema.Query[apischema.ContentRequest, apischema.NoResponse]("docker.normalize_compose", apischema.NoEndpoint()).Handle(handlers.handleNormalizeCompose),
+		apischema.Query[apischema.StackNameRequest, apischema.ComposeFilePathResponse]("docker.get_compose_file_path").Handle(handlers.handleGetComposeFilePath),
+		apischema.Query[apischema.DirPathRequest, apischema.DirectoryValidationResult]("docker.validate_stack_directory").Handle(handlers.handleValidateStackDirectory),
+		apischema.Job[apischema.NoRequest, apischema.NoResponse]("docker.reindex_docker_folders", apischema.NoEndpoint()).Handle(handlers.handleReindexDockerFolders),
+		apischema.Job[apischema.ProjectNameRequest, apischema.NoResponse]("docker.delete_compose_stack", apischema.NoEndpoint()).Handle(handlers.handleDeleteComposeStack),
+		apischema.Query[apischema.NoRequest, apischema.DockerSystemInfo]("docker.get_docker_info").Handle(handlers.handleGetDockerInfo),
+		apischema.Query[apischema.IdentifierRequest, apischema.DockerIconURIResponse]("docker.get_icon_uri").Handle(handlers.handleGetIconURI),
+		apischema.Query[apischema.IdentifierRequest, apischema.DockerIconDataResponse]("docker.get_icon").Handle(handlers.handleGetIcon),
+		apischema.Query[apischema.IdentifierRequest, apischema.DockerIconInfoResponse]("docker.get_icon_info").Handle(handlers.handleGetIconInfo),
+		apischema.Job[apischema.NoRequest, apischema.MessageResponse]("docker.clear_icon_cache").Handle(handlers.handleClearIconCache),
+		apischema.Job[apischema.NoRequest, apischema.DockerStartedFailedResponse]("docker.start_all_stopped").Handle(handlers.handleStartAllStopped),
+		apischema.Job[apischema.NoRequest, apischema.DockerStoppedFailedResponse]("docker.stop_all_running").Handle(handlers.handleStopAllRunning),
+		apischema.Job[apischema.NoRequest, apischema.DockerUpdateCheckResult]("docker.check_updates").Handle(handlers.handleCheckUpdates),
+		apischema.Job[apischema.ContainerIDRequest, apischema.DockerUpdateCheckResult]("docker.check_container_update").Handle(handlers.handleCheckContainerUpdate),
+		apischema.Job[apischema.ContainerIDRequest, apischema.DockerContainerUpdateResult]("docker.update_container").Handle(handlers.handleUpdateContainer),
+		apischema.Query[apischema.NoRequest, apischema.DockerContainerAutoUpdateState]("docker.get_container_auto_update").Handle(handlers.handleGetContainerAutoUpdate),
+		apischema.Job[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update").Handle(handlers.handleSetContainerAutoUpdate),
+		apischema.Query[apischema.NoRequest, apischema.CaddyStatusResponse]("docker.get_caddy_status").Handle(handlers.handleGetCaddyStatus),
+		apischema.Job[apischema.NoRequest, apischema.MessageResponse]("docker.enable_caddy").Handle(handlers.handleEnableCaddy),
+		apischema.Job[apischema.NoRequest, apischema.MessageResponse]("docker.disable_caddy").Handle(handlers.handleDisableCaddy),
+		apischema.Job[apischema.NoRequest, apischema.MessageResponse]("docker.reload_caddy").Handle(handlers.handleReloadCaddy),
+		apischema.Job[apischema.ContainerIDRequest, apischema.MessageResponse]("docker.connect_to_proxy").Handle(handlers.handleConnectToProxy),
+		apischema.Job[apischema.DockerSystemPruneRequest, apischema.DockerSystemPruneResponse]("docker.system_prune").Handle(handlers.handleSystemPrune),
+		apischema.Runner[apischema.DockerLogsFollowRequest, apischema.NoResponse](routeDockerLogsFollow, apischema.NoEndpoint()).Run(
+			func(ctx context.Context, job *bridgeipc.Job, req apischema.DockerLogsFollowRequest) (any, error) {
+				return runDockerLogsJob(ctx, rt, job, req)
+			},
+			bridgeipc.StreamDefault,
+		),
+	)
+}
+
 // RegisterHandlers registers all docker handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	handlers := newDockerHandlers(rt)
 	prepareDockerHandlers(router, handlers)
 
-	apischema.RegisterRoutes(router, "docker", []bridgeipc.Command{
-		{Name: "list_containers", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListContainers},
-		{Name: "start_container", Mode: bridgeipc.ModeJob, Handler: handlers.handleStartContainer},
-		{Name: "stop_container", Mode: bridgeipc.ModeJob, Handler: handlers.handleStopContainer},
-		{Name: "remove_container", Mode: bridgeipc.ModeJob, Handler: handlers.handleRemoveContainer},
-		{Name: "restart_container", Mode: bridgeipc.ModeJob, Handler: handlers.handleRestartContainer},
-		{Name: "list_images", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListImages},
-		{Name: "delete_image", Mode: bridgeipc.ModeJob, Handler: handlers.handleDeleteImage},
-		{Name: "list_networks", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListNetworks},
-		{Name: "create_network", Mode: bridgeipc.ModeJob, Handler: handlers.handleCreateNetwork},
-		{Name: "delete_network", Mode: bridgeipc.ModeJob, Handler: handlers.handleDeleteNetwork},
-		{Name: "list_volumes", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListVolumes},
-		{Name: "create_volume", Mode: bridgeipc.ModeJob, Handler: handlers.handleCreateVolume},
-		{Name: "delete_volume", Mode: bridgeipc.ModeJob, Handler: handlers.handleDeleteVolume},
-		{Name: "list_compose_projects", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListComposeProjects},
-		{Name: "get_compose_project", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetComposeProject},
-		{Name: "compose_up", Mode: bridgeipc.ModeJob, Handler: handlers.handleComposeUp},
-		{Name: "compose_down", Mode: bridgeipc.ModeJob, Handler: handlers.handleComposeDown},
-		{Name: "compose_stop", Mode: bridgeipc.ModeJob, Handler: handlers.handleComposeStop},
-		{Name: "compose_restart", Mode: bridgeipc.ModeJob, Handler: handlers.handleComposeRestart},
-		{Name: "delete_stack", Mode: bridgeipc.ModeJob, Handler: handlers.handleDeleteStack},
-		{Name: "get_docker_folders", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetDockerFolders},
-		{Name: "validate_compose", Mode: bridgeipc.ModeQuery, Handler: handlers.handleValidateCompose},
-		{Name: "normalize_compose", Mode: bridgeipc.ModeQuery, Handler: handlers.handleNormalizeCompose},
-		{Name: "get_compose_file_path", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetComposeFilePath},
-		{Name: "validate_stack_directory", Mode: bridgeipc.ModeQuery, Handler: handlers.handleValidateStackDirectory},
-		{Name: "reindex_docker_folders", Mode: bridgeipc.ModeJob, Handler: handlers.handleReindexDockerFolders},
-		{Name: "delete_compose_stack", Mode: bridgeipc.ModeJob, Handler: handlers.handleDeleteComposeStack},
-		{Name: "get_docker_info", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetDockerInfo},
-		{Name: "get_icon_uri", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetIconURI},
-		{Name: "get_icon", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetIcon},
-		{Name: "get_icon_info", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetIconInfo},
-		{Name: "clear_icon_cache", Mode: bridgeipc.ModeJob, Handler: handlers.handleClearIconCache},
-		{Name: "start_all_stopped", Mode: bridgeipc.ModeJob, Handler: handlers.handleStartAllStopped},
-		{Name: "stop_all_running", Mode: bridgeipc.ModeJob, Handler: handlers.handleStopAllRunning},
-		{Name: "list_auto_update_containers", Mode: bridgeipc.ModeQuery, Handler: handlers.handleListAutoUpdateContainers},
-		{Name: "set_auto_update", Mode: bridgeipc.ModeJob, Handler: handlers.handleSetAutoUpdate},
-		{Name: "get_caddy_status", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetCaddyStatus},
-		{Name: "enable_caddy", Mode: bridgeipc.ModeJob, Handler: handlers.handleEnableCaddy},
-		{Name: "disable_caddy", Mode: bridgeipc.ModeJob, Handler: handlers.handleDisableCaddy},
-		{Name: "reload_caddy", Mode: bridgeipc.ModeJob, Handler: handlers.handleReloadCaddy},
-		{Name: "connect_to_proxy", Mode: bridgeipc.ModeJob, Handler: handlers.handleConnectToProxy},
-		{Name: "system_prune", Mode: bridgeipc.ModeJob, Handler: handlers.handleSystemPrune},
-	})
-
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: "docker.logs.follow",
-		Runner: func(ctx context.Context, job *bridgeipc.Job, req apischema.DockerLogsFollowRequest) (any, error) {
-			return runDockerLogsJob(ctx, rt, job, req)
-		},
-		Policy: bridgeipc.StreamDefault,
-	})
+	routeBindings(rt, handlers).Register(router)
 }

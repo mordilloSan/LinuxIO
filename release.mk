@@ -181,6 +181,9 @@ open-pr:
 	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
+	  if [ -n "$(strip $(RELEASE_PRE_PR_TARGETS))" ]; then \
+	    $(MAKE) --no-print-directory $(RELEASE_PRE_PR_TARGETS); \
+	  fi; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  CREATED=0; \
@@ -241,7 +244,15 @@ open-pr:
 	    fi; \
 	  fi; \
 	  echo ""; \
-	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
+	  PR_URL="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json url --jq '.url' 2>/dev/null || true)"; \
+	  if gh pr view $(call _repo_flag) "$$PRNUM" --web >/dev/null 2>&1; then \
+	    echo " Opened PR #$$PRNUM in your browser."; \
+	  elif [ -n "$$PR_URL" ]; then \
+	    echo " Couldn't open a browser. View PR #$$PRNUM here:"; \
+	    echo "   $$PR_URL"; \
+	  else \
+	    echo " Couldn't open a browser. View it with: gh pr view $$PRNUM --web"; \
+	  fi; \
 	}
 
 merge-release:

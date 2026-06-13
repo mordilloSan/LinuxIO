@@ -59,7 +59,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           display: "flex",
           alignItems: "center",
           gap: 4,
-          borderBottom: "1px solid var(--mui-palette-divider)",
+          borderBottom: "1px solid var(--app-palette-divider)",
         }}
       >
         <Icon height={24} icon="mdi:broom" width={24} />
@@ -182,7 +182,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
       <AppDialogActions
         style={{
           padding: 8,
-          borderTop: "1px solid var(--mui-palette-divider)",
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         <AppButton color="inherit" disabled={isLoading} onClick={handleClose}>

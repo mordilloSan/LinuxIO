@@ -2,8 +2,6 @@ package apischema
 
 import (
 	"reflect"
-
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // TypeSpec is a route payload type reflected into generated TypeScript.
@@ -11,16 +9,14 @@ type TypeSpec struct {
 	GoType reflect.Type
 }
 
+// NoRequest marks a route that takes no request payload.
+type NoRequest struct{}
+
+// NoResponse marks a route that returns no result payload.
+type NoResponse struct{}
+
 func TypeOf[T any]() TypeSpec {
 	return TypeSpec{GoType: reflect.TypeFor[T]()}
-}
-
-func NoRequest() TypeSpec {
-	return TypeOf[bridgeipc.NoRequest]()
-}
-
-func NoResponse() TypeSpec {
-	return TypeOf[bridgeipc.NoResponse]()
 }
 
 // Common route contract fragments.
@@ -282,9 +278,20 @@ type WireGuardAddInterfaceRequest struct {
 	NumPeers   *string `json:"numPeers,omitempty"`
 }
 
-type DockerSetAutoUpdateRequest struct {
-	Container string `json:"container"`
-	Enabled   bool   `json:"enabled"`
+type DockerUpdateCheckResult struct {
+	Checked int `json:"checked"`
+	Errors  int `json:"errors"`
+	Updates int `json:"updates"`
+}
+
+type DockerContainerUpdateResult struct {
+	ContainerID     string `json:"containerId"`
+	ContainerName   string `json:"containerName"`
+	Error           string `json:"error,omitempty"`
+	Image           string `json:"image"`
+	NewImageID      string `json:"newImageId,omitempty"`
+	PreviousImageID string `json:"previousImageId,omitempty"`
+	Updated         bool   `json:"updated"`
 }
 
 type DockerLogsFollowRequest struct {
@@ -395,9 +402,8 @@ type ConfigHardwareSections struct {
 }
 
 type ConfigDockerPayload struct {
-	Folders          []string                  `json:"folders,omitempty"`
-	AutoUpdateStacks []string                  `json:"autoUpdateStacks,omitempty"`
-	Proxy            *ConfigDockerProxyPayload `json:"proxy,omitempty"`
+	Folders []string                  `json:"folders,omitempty"`
+	Proxy   *ConfigDockerProxyPayload `json:"proxy,omitempty"`
 }
 
 type ConfigDockerProxyPayload struct {

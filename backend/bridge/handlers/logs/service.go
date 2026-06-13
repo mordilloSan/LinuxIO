@@ -16,7 +16,7 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const StreamTypeServiceLogs = "logs.service.follow"
+const streamTypeServiceLogs = "logs.service.follow"
 
 // runServiceLogsJob streams service logs from journalctl through the bridge job lifecycle.
 func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
@@ -26,7 +26,7 @@ func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	}
 	slog.Debug("starting service log job",
 		"component", "logs",
-		"route", StreamTypeServiceLogs,
+		"route", streamTypeServiceLogs,
 		"job_id", job.ID(),
 		"service", serviceName,
 		"lines", lines)
@@ -39,7 +39,7 @@ func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	if err != nil {
 		slog.Error("failed to create service log job pipe",
 			"component", "logs",
-			"route", StreamTypeServiceLogs,
+			"route", streamTypeServiceLogs,
 			"job_id", job.ID(),
 			"service", serviceName,
 			"error", err)
@@ -49,7 +49,7 @@ func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 	if err := cmd.Start(); err != nil {
 		slog.Error("failed to start service log job",
 			"component", "logs",
-			"route", StreamTypeServiceLogs,
+			"route", streamTypeServiceLogs,
 			"job_id", job.ID(),
 			"service", serviceName,
 			"error", err)
@@ -76,7 +76,7 @@ func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, st
 		err := fmt.Errorf("template unit %s does not have logs until instantiated", serviceName)
 		slog.Debug("service log request rejected for template unit",
 			"component", "logs",
-			"route", StreamTypeServiceLogs,
+			"route", streamTypeServiceLogs,
 			"service", serviceName,
 			"error", err)
 		return "", "", bridgeipc.NewError(
@@ -103,7 +103,7 @@ func streamServiceLogs(ctx context.Context, job *bridgeipc.Job, stdout io.Reader
 			if err != io.EOF && !errors.Is(err, context.Canceled) {
 				slog.Debug("service log stream read error",
 					"component", "logs",
-					"route", StreamTypeServiceLogs,
+					"route", streamTypeServiceLogs,
 					"error", err)
 				return sentData, err
 			}
@@ -126,7 +126,7 @@ func waitForServiceLogsCommand(
 	if err := cmd.Wait(); err != nil {
 		slog.Debug("service log command exited with error",
 			"component", "logs",
-			"route", StreamTypeServiceLogs,
+			"route", streamTypeServiceLogs,
 			"error", err)
 		if ctx.Err() == nil && !sentData {
 			message := strings.TrimSpace(stderr.String())

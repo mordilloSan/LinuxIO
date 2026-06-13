@@ -4,6 +4,7 @@ import React from "react";
 import type { UnitInfo } from "@/api";
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppTypography from "@/components/ui/AppTypography";
 
 export interface UnitInfoRow {
   hidden?: boolean;
@@ -102,17 +103,16 @@ export function UnitInfoPanel({
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: "bold",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
+          <AppTypography
+            component="div"
+            fontSize="0.875rem"
+            fontWeight="bold"
+            noWrap
+            title={title || unitName}
+            variant="body2"
           >
             {title}
-          </div>
+          </AppTypography>
         </div>
 
         <button
@@ -146,15 +146,16 @@ export function UnitInfoPanel({
                 }}
               />
             ) : (
-              <span
-                style={{
-                  fontSize: "0.8rem",
-                  fontWeight: 500,
-                  whiteSpace: "nowrap",
-                }}
+              <AppTypography
+                component="span"
+                fontSize="0.8rem"
+                fontWeight={500}
+                noWrap
+                title={fragmentPath || "—"}
+                variant="body2"
               >
                 {fragmentPath || "—"}
-              </span>
+              </AppTypography>
             )}
           </DetailRow>
 
@@ -166,15 +167,21 @@ export function UnitInfoPanel({
                 label={row.label}
                 noBorder={row.noBorder}
               >
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
+                <AppTypography
+                  component="span"
+                  fontSize="0.75rem"
+                  fontWeight={500}
+                  noWrap
+                  title={
+                    typeof row.value === "string" ||
+                    typeof row.value === "number"
+                      ? String(row.value)
+                      : undefined
+                  }
+                  variant="body2"
                 >
                   {row.value}
-                </span>
+                </AppTypography>
               </DetailRow>
             ))}
 
@@ -184,15 +191,16 @@ export function UnitInfoPanel({
               if (!items.length) return null;
               return (
                 <DetailRow key={label} label={label}>
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                      whiteSpace: "nowrap",
-                    }}
+                  <AppTypography
+                    component="span"
+                    fontSize="0.75rem"
+                    fontWeight={500}
+                    noWrap
+                    title={items.join(", ")}
+                    variant="body2"
                   >
                     {items.join(", ")}
-                  </span>
+                  </AppTypography>
                 </DetailRow>
               );
             })}

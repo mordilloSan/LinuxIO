@@ -1,11 +1,13 @@
 package docker
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/moby/moby/api/types/container"
@@ -64,6 +66,16 @@ func ListContainers(ctx context.Context) (any, error) {
 		enriched = append(enriched, containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL, proxyPort))
 	}
 
+	// Docker's API does not guarantee a stable order across calls. Sort by
+	// creation time (newest first) so the UI doesn't reshuffle on each refetch,
+	// tie-breaking on ID for full determinism.
+	slices.SortFunc(enriched, func(a, b apischema.ContainerInfo) int {
+		if d := cmp.Compare(b.Created, a.Created); d != 0 {
+			return d
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+
 	return enriched, nil
 }
 
@@ -74,7 +86,7 @@ func containerInfoFromSummary(
 	resolvedURL string,
 	proxyPort string,
 ) apischema.ContainerInfo {
-	return apischema.ContainerInfo{
+	info := apischema.ContainerInfo{
 		Created:         ctr.Created,
 		HostConfig:      containerHostConfigFromSummary(ctr),
 		Icon:            utils.OptionalString(iconIdentifier),
@@ -91,6 +103,12 @@ func containerInfoFromSummary(
 		Status:          ctr.Status,
 		URL:             utils.OptionalString(resolvedURL),
 	}
+	if status, ok := imageUpdateStatusForContainer(ctr.ID); ok {
+		info.UpdateAvailable = new(status.UpdateAvailable)
+		info.UpdateCheckedAt = new(status.CheckedAt.UnixMilli())
+		info.UpdateError = utils.OptionalString(status.Err)
+	}
+	return info
 }
 
 func containerHostConfigFromSummary(ctr container.Summary) *apischema.ContainerHostConfig {
@@ -138,6 +156,16 @@ func containerPortsFromSummary(ports []container.PortSummary) []apischema.Contai
 			Type:        port.Type,
 		})
 	}
+
+	// Numeric sort by container-side port, tie-broken by protocol, so the UI
+	// shows ports in a stable order across refetches.
+	slices.SortFunc(result, func(a, b apischema.ContainerPort) int {
+		if d := cmp.Compare(a.PrivatePort, b.PrivatePort); d != 0 {
+			return d
+		}
+		return strings.Compare(a.Type, b.Type)
+	})
+
 	return result
 }
 
@@ -156,6 +184,16 @@ func containerMountsFromSummary(mounts []container.MountPoint) []apischema.Conta
 			Type:        string(mount.Type),
 		})
 	}
+
+	// Alphabetical sort by in-container destination path, tie-broken by source,
+	// so the UI shows volumes in a stable order across refetches.
+	slices.SortFunc(result, func(a, b apischema.ContainerMount) int {
+		if d := strings.Compare(a.Destination, b.Destination); d != 0 {
+			return d
+		}
+		return strings.Compare(a.Source, b.Source)
+	})
+
 	return result
 }
 

@@ -13,7 +13,12 @@ import {
   AppTableRow,
 } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
-import { shadowSm } from "@/constants";
+import {
+  TRANSITION_DURATION_SLOW_MS,
+  EASING_STANDARD,
+  TRANSITION_SLOW_CSS,
+  shadowSm,
+} from "@/constants";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -144,7 +149,7 @@ function UnifiedCollapsibleTable<T>({
                               transform: isExpanded
                                 ? "rotate(180deg)"
                                 : "rotate(0deg)",
-                              transition: "0.2s",
+                              transition: `transform ${TRANSITION_SLOW_CSS}`,
                             }}
                             width={22}
                           />
@@ -158,21 +163,19 @@ function UnifiedCollapsibleTable<T>({
                         colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                         style={{ paddingBottom: 0, paddingTop: 0 }}
                       >
-                        <AppCollapse
-                          in={isExpanded}
-                          timeout="auto"
-                          unmountOnExit
-                        >
+                        <AppCollapse in={isExpanded} unmountOnExit>
                           <motion.div
                             animate={{ opacity: 1, y: 0 }}
                             initial={{ opacity: 0, y: -10 }}
+                            transition={{
+                              duration: TRANSITION_DURATION_SLOW_MS / 1000,
+                              ease: EASING_STANDARD,
+                            }}
                           >
                             <div
                               style={{
-                                margin: 16,
-                                borderRadius: 16,
-                                padding: 16,
                                 overflowX: "auto",
+                                padding: "10px 0",
                               }}
                             >
                               {renderExpandedContent(row, index)}

@@ -1,8 +1,7 @@
 package config
 
-import bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+import "github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 
 type configHandlers struct {
-	username string
-	store    *bridgeconfig.UserStore
+	rt runtime.Runtime
 }

@@ -68,26 +68,26 @@
 /* ── centered variant (align-items: center on parent) ─ */
 .app-alert--centered .app-alert__icon {
   padding-top: 0;
-  color: var(--color-info);
+  color: var(--app-palette-info-main);
 }
 
 /* ── severity colors ──────────────────────────── */
 .app-alert--info {
-  color: var(--color-info);
-  background-color: color-mix(in srgb, var(--color-info) 12%, var(--color-bg));
+  color: var(--app-palette-info-main);
+  background-color: color-mix(in srgb, var(--app-palette-info-main) 12%, var(--app-palette-background-default));
 }
 
 .app-alert--warning {
-  color: var(--color-warning);
-  background-color: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
+  color: var(--app-palette-warning-main);
+  background-color: color-mix(in srgb, var(--app-palette-warning-main) 12%, var(--app-palette-background-default));
 }
 
 .app-alert--error {
-  color: var(--color-error);
-  background-color: color-mix(in srgb, var(--color-error) 12%, var(--color-bg));
+  color: var(--app-palette-error-main);
+  background-color: color-mix(in srgb, var(--app-palette-error-main) 12%, var(--app-palette-background-default));
 }
 
 .app-alert--success {
-  color: var(--color-success);
-  background-color: color-mix(in srgb, var(--color-success) 12%, var(--color-bg));
+  color: var(--app-palette-success-main);
+  background-color: color-mix(in srgb, var(--app-palette-success-main) 12%, var(--app-palette-background-default));
 }

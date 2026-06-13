@@ -321,7 +321,7 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 		}
 	}
 	slog.Debug("listed NFS exports", "server", server, "count", len(exports))
-	return exports, nil
+	return exports, scanner.Err()
 }
 
 // ListNFSMounts returns all NFS mount entries, including active mounts and
@@ -860,7 +860,7 @@ func persistUnmountConfig(mountpoint, source, fstype string, options []string, r
 }
 
 func runNFSOutput(parent context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
-	ctx, cancel := withNFSCommandTimeout(parent, timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	output, err := exec.CommandContext(ctx, name, args...).Output()
@@ -872,7 +872,7 @@ func runNFSOutput(parent context.Context, timeout time.Duration, name string, ar
 }
 
 func runNFSCombinedOutput(parent context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
-	ctx, cancel := withNFSCommandTimeout(parent, timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	output, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
@@ -881,10 +881,6 @@ func runNFSCombinedOutput(parent context.Context, timeout time.Duration, name st
 	}
 
 	return output, nil
-}
-
-func withNFSCommandTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(parent, timeout)
 }
 
 func wrapNFSCommandError(ctx context.Context, timeout time.Duration, name string, err error) error {

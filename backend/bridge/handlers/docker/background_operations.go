@@ -11,20 +11,32 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
-const (
-	JobTypeDockerCompose = "docker.compose"
-	JobTypeDockerIndexer = "docker.indexer"
-)
-
 // ComposeJobMessage represents a message emitted by a Docker compose job.
 type ComposeJobMessage struct {
-	Type    string `json:"type"`    // "stdout", "stderr", "error", "complete"
-	Message string `json:"message"` // The actual message content
-	Code    int    `json:"code,omitempty"`
+	Type     string           `json:"type"`    // "stdout", "stderr", "error", "complete", "progress"
+	Message  string           `json:"message"` // The actual message content (humanized for progress)
+	Code     int              `json:"code,omitempty"`
+	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
+}
+
+// ComposeProgress is a single structured progress event parsed from
+// `docker compose --progress=json`. The JSON tags mirror Docker's own event
+// schema so the same struct is used to both decode Docker's output and to
+// encode the payload sent to the frontend.
+type ComposeProgress struct {
+	ID       string `json:"id"` // layer id (e.g. "fbcfea79c1c4") or group (e.g. "Image alpine:3.17")
+	ParentID string `json:"parent_id,omitempty"`
+	Text     string `json:"text"`              // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
+	Status   string `json:"status"`            // "Working" | "Done" | "Error"
+	Details  string `json:"details,omitempty"` // Docker's humanized current (e.g. "2.097MB")
+	Current  int64  `json:"current,omitempty"`
+	Total    int64  `json:"total,omitempty"`
+	Percent  int    `json:"percent,omitempty"`
 }
 
 type DockerIndexerJobResult struct {
@@ -36,21 +48,27 @@ type DockerIndexerJobResult struct {
 	Folders      []indexer.IndexerResult `json:"folders"`
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router, username string, store *config.UserStore) {
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeDockerCompose,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
-			return runDockerComposeJob(ctx, job, username, store, req)
-		},
-		Policy: bridgejobs.ActionDefault,
-	})
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route: JobTypeDockerIndexer,
-		Runner: func(ctx context.Context, job *bridgejobs.Job, _ bridgejobs.NoRequest) (any, error) {
-			return runDockerIndexerJob(ctx, job, username, store)
-		},
-		Policy: bridgejobs.SingletonSystem,
-	})
+var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
+
+func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Runner[apischema.DockerComposeRequest, apischema.JobSnapshot]("docker.compose").Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
+				return runDockerComposeJob(ctx, job, rt.Username(), rt.Store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner[apischema.NoRequest, apischema.JobSnapshot]("docker.indexer").Run(
+			func(ctx context.Context, job *bridgejobs.Job, _ apischema.NoRequest) (any, error) {
+				return runDockerIndexerJob(ctx, job, rt.Username(), rt.Store)
+			},
+			bridgejobs.SingletonSystem,
+		),
+	)
+}
+
+func RegisterJobRoutes(router *bridgejobs.Router, rt runtime.Runtime) {
+	dockerJobBindings(rt).Register(router)
 }
 
 func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, req apischema.DockerComposeRequest) (any, error) {
@@ -70,13 +88,15 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	}
 
 	var reportMu sync.Mutex
-	report := func(msgType, message string) {
-		if strings.TrimSpace(message) == "" {
+	report := func(msgType, message string, progress *ComposeProgress) {
+		if strings.TrimSpace(message) == "" && progress == nil {
 			return
 		}
 		reportMu.Lock()
-		msg := ComposeJobMessage{Type: msgType, Message: message}
-		if msgType == "stdout" || msgType == "stderr" {
+		msg := ComposeJobMessage{Type: msgType, Message: message, Progress: progress}
+		// stdout/stderr/progress are high-frequency streaming output; emit them
+		// transiently (no replay). Terminal states use durable progress.
+		if msgType == "stdout" || msgType == "stderr" || msgType == "progress" {
 			job.ReportTransientProgress(msg)
 		} else {
 			job.ReportProgress(msg)
@@ -102,7 +122,7 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 			return nil, context.Canceled
 		}
 		msg := "command failed: " + err.Error()
-		report("error", msg)
+		report("error", msg, nil)
 		return nil, bridgejobs.NewError(msg, 500)
 	}
 

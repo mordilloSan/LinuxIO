@@ -36,7 +36,8 @@ import { useAppTheme } from "@/theme";
 import {
   longTextStyles,
   responsiveTextStyles,
-  wrappableChipStyles,
+  wrappableChipStyle,
+  wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 import { alpha } from "@/utils/color";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -239,7 +240,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
           ))}
         </div>
         <AppDialogContentText
-          style={{ marginTop: 8, color: "var(--mui-palette-warning-main)" }}
+          style={{ marginTop: 8, color: "var(--app-palette-warning-main)" }}
         >
           This action cannot be undone. Networks with connected containers
           cannot be deleted.
@@ -438,204 +439,196 @@ const NetworkList: React.FC<NetworkListProps> = ({
           emptyMessage="No networks found."
           getRowKey={(network) => network.Id}
           renderExpandedContent={(network) => (
-            <>
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Full Network ID:</b>
-              </AppTypography>
-              <AppTypography
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                  marginBottom: 8,
-                  ...longTextStyles,
-                }}
-                variant="body2"
-              >
-                {network.Id}
-              </AppTypography>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Subnet(s):</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
-                  network.IPAM.Config.map((ipam, i) => (
-                    <Chip
-                      key={i}
-                      label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
-                      size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no IPAM config)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Options:</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {network.Options && Object.keys(network.Options).length > 0 ? (
-                  Object.entries(network.Options).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no options)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Labels:</b>
-              </AppTypography>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  marginBottom: theme.spacing(2),
-                }}
-              >
-                {network.Labels && Object.keys(network.Labels).length > 0 ? (
-                  Object.entries(network.Labels).map(([key, val]) => (
-                    <Chip
-                      key={key}
-                      label={`${key}: ${val}`}
-                      size="small"
-                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no labels)
-                  </AppTypography>
-                )}
-              </div>
-
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Connected Containers:</b>
-              </AppTypography>
+            <div className="expand-panel">
               <div>
-                {network.Containers &&
-                Object.keys(network.Containers).length > 0 ? (
-                  <AppTable
-                    style={{
-                      backgroundColor: alpha(
-                        theme.palette.text.primary,
-                        theme.palette.mode === "dark" ? 0.2 : 0.08,
-                      ),
-                      overflowX: "auto",
-                      display: "block",
-                    }}
-                  >
-                    <AppTableHead>
-                      <AppTableRow>
-                        <AppTableCell>
-                          <b>Name</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>Container ID</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>IPv4</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>IPv6</b>
-                        </AppTableCell>
-                        <AppTableCell>
-                          <b>MAC</b>
-                        </AppTableCell>
-                      </AppTableRow>
-                    </AppTableHead>
-                    <AppTableBody>
-                      {Object.entries(network.Containers).map(
-                        ([id, info]: [string, any]) => (
-                          <AppTableRow key={id}>
-                            <AppTableCell>
-                              <AppTypography
-                                style={responsiveTextStyles}
-                                variant="body2"
-                              >
-                                {info.Name || "-"}
-                              </AppTypography>
-                            </AppTableCell>
-                            <AppTableCell
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "0.85rem",
-                                ...longTextStyles,
-                              }}
-                            >
-                              {id.slice(0, 12)}
-                            </AppTableCell>
-                            <AppTableCell>
-                              <AppTypography
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                                variant="body2"
-                              >
-                                {info.IPv4Address?.replace(/\/.*/, "") || "-"}
-                              </AppTypography>
-                            </AppTableCell>
-                            <AppTableCell>
-                              <AppTypography
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                                variant="body2"
-                              >
-                                {info.IPv6Address?.replace(/\/.*/, "") || "-"}
-                              </AppTypography>
-                            </AppTableCell>
-                            <AppTableCell
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "0.85rem",
-                                ...longTextStyles,
-                              }}
-                            >
-                              {info.MacAddress || "-"}
-                            </AppTableCell>
-                          </AppTableRow>
-                        ),
-                      )}
-                    </AppTableBody>
-                  </AppTable>
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no containers)
-                  </AppTypography>
-                )}
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Full Network ID:</b>
+                </AppTypography>
+                <AppTypography
+                  className="expand-panel__mono"
+                  style={longTextStyles}
+                  variant="body2"
+                >
+                  {network.Id}
+                </AppTypography>
               </div>
-            </>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Subnet(s):</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
+                    network.IPAM.Config.map((ipam, i) => (
+                      <Chip
+                        key={i}
+                        label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
+                        size="small"
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no IPAM config)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Options:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.Options &&
+                  Object.keys(network.Options).length > 0 ? (
+                    Object.entries(network.Options).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no options)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Labels:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.Labels && Object.keys(network.Labels).length > 0 ? (
+                    Object.entries(network.Labels).map(([key, val]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${val}`}
+                        size="small"
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no labels)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Connected Containers:</b>
+                </AppTypography>
+                <div>
+                  {network.Containers &&
+                  Object.keys(network.Containers).length > 0 ? (
+                    <AppTable
+                      style={{
+                        backgroundColor: alpha(
+                          theme.palette.text.primary,
+                          theme.palette.mode === "dark" ? 0.2 : 0.08,
+                        ),
+                        overflowX: "auto",
+                        display: "block",
+                      }}
+                    >
+                      <AppTableHead>
+                        <AppTableRow>
+                          <AppTableCell>
+                            <b>Name</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>Container ID</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>IPv4</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>IPv6</b>
+                          </AppTableCell>
+                          <AppTableCell>
+                            <b>MAC</b>
+                          </AppTableCell>
+                        </AppTableRow>
+                      </AppTableHead>
+                      <AppTableBody>
+                        {Object.entries(network.Containers).map(
+                          ([id, info]: [string, any]) => (
+                            <AppTableRow key={id}>
+                              <AppTableCell>
+                                <AppTypography
+                                  style={responsiveTextStyles}
+                                  variant="body2"
+                                >
+                                  {info.Name || "-"}
+                                </AppTypography>
+                              </AppTableCell>
+                              <AppTableCell
+                                style={{
+                                  fontFamily: "monospace",
+                                  fontSize: "0.85rem",
+                                  ...longTextStyles,
+                                }}
+                              >
+                                {id.slice(0, 12)}
+                              </AppTableCell>
+                              <AppTableCell>
+                                <AppTypography
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.85rem",
+                                    ...longTextStyles,
+                                  }}
+                                  variant="body2"
+                                >
+                                  {info.IPv4Address?.replace(/\/.*/, "") || "-"}
+                                </AppTypography>
+                              </AppTableCell>
+                              <AppTableCell>
+                                <AppTypography
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.85rem",
+                                    ...longTextStyles,
+                                  }}
+                                  variant="body2"
+                                >
+                                  {info.IPv6Address?.replace(/\/.*/, "") || "-"}
+                                </AppTypography>
+                              </AppTableCell>
+                              <AppTableCell
+                                style={{
+                                  fontFamily: "monospace",
+                                  fontSize: "0.85rem",
+                                  ...longTextStyles,
+                                }}
+                              >
+                                {info.MacAddress || "-"}
+                              </AppTableCell>
+                            </AppTableRow>
+                          ),
+                        )}
+                      </AppTableBody>
+                    </AppTable>
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no containers)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
           renderFirstCell={(network) => (
             <AppCheckbox

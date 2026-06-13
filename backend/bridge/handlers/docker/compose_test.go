@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
@@ -83,5 +84,51 @@ services:
 	}
 	if len(result.Errors) == 0 {
 		t.Fatalf("ValidateComposeFile() errors empty")
+	}
+}
+
+func TestDiscoverComposeProjectsIncludesContainers(t *testing.T) {
+	projects := discoverComposeProjectsFromContainers(
+		context.Background(),
+		nil,
+		[]container.Summary{
+			{
+				ID:    "abc123",
+				Image: "ghcr.io/immich-app/immich-server:release",
+				Labels: map[string]string{
+					"com.docker.compose.project": "immich",
+					"com.docker.compose.service": "server",
+				},
+				Names:  []string{"/immich-server"},
+				Ports:  []container.PortSummary{{PrivatePort: 2283, PublicPort: 2283, Type: "tcp"}},
+				State:  container.StateRunning,
+				Status: "Up 2 minutes",
+			},
+		},
+	)
+
+	project, ok := projects["immich"]
+	if !ok {
+		t.Fatalf("missing compose project in %#v", projects)
+	}
+	if len(project.Containers) != 1 {
+		t.Fatalf("containers len = %d, want 1", len(project.Containers))
+	}
+
+	got := project.Containers[0]
+	if got.ID != "abc123" {
+		t.Fatalf("container ID = %q, want abc123", got.ID)
+	}
+	if got.Names[0] != "/immich-server" {
+		t.Fatalf("container name = %q, want /immich-server", got.Names[0])
+	}
+	if got.Image != "ghcr.io/immich-app/immich-server:release" {
+		t.Fatalf("container image = %q", got.Image)
+	}
+	if got.State != "running" {
+		t.Fatalf("container state = %q, want running", got.State)
+	}
+	if len(got.Ports) != 1 || got.Ports[0].PrivatePort != 2283 {
+		t.Fatalf("container ports = %#v", got.Ports)
 	}
 }

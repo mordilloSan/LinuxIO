@@ -716,14 +716,15 @@ const GeneralLogsPage: React.FC = () => {
               <AppTooltip title={`Open ${target!.unit} in services`}>
                 <AppTypography
                   className="log-identifier-link"
+                  noWrap
                   onClick={(e) => handleIdentifierClick(log, e)}
                   role="link"
                   style={{
                     fontSize: "0.85rem",
-                    whiteSpace: "nowrap",
                     display: "inline-block",
                   }}
                   tabIndex={0}
+                  title={log.identifier}
                   variant="body2"
                 >
                   {log.identifier}
@@ -731,7 +732,9 @@ const GeneralLogsPage: React.FC = () => {
               </AppTooltip>
             ) : (
               <AppTypography
-                style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+                noWrap
+                style={{ fontSize: "0.85rem" }}
+                title={log.identifier}
                 variant="body2"
               >
                 {log.identifier}
@@ -740,7 +743,9 @@ const GeneralLogsPage: React.FC = () => {
           </AppTableCell>
           <AppTableCell style={{ width: "1%" }}>
             <AppTypography
-              style={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
+              noWrap
+              style={{ fontSize: "0.83rem" }}
+              title={log.timestamp}
               variant="body2"
             >
               {log.timestamp}
@@ -770,18 +775,9 @@ const GeneralLogsPage: React.FC = () => {
         fieldFilters,
       );
       return (
-        <>
+        <div className="expand-panel">
           {filterableEntries.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: theme.spacing(0.75),
-                marginTop: theme.spacing(-1),
-                marginBottom: theme.spacing(3.5),
-              }}
-            >
+            <div className="expand-panel__chips">
               {filterableEntries.map(({ key, value }) => {
                 const filter = `${key}=${value}`;
                 return (
@@ -799,27 +795,28 @@ const GeneralLogsPage: React.FC = () => {
               })}
             </div>
           )}
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Full Message:</b>
-          </AppTypography>
-          <AppPaper
-            style={{
-              padding: 8,
-              marginBottom: 8,
-              backgroundColor: theme.codeBlock.background,
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxWidth: "100%",
-              overflowX: "auto",
-            }}
-          >
-            {log.message}
-          </AppPaper>
+          <div>
+            <AppTypography gutterBottom variant="subtitle2">
+              <b>Full Message:</b>
+            </AppTypography>
+            <AppPaper
+              style={{
+                padding: 8,
+                backgroundColor: theme.codeBlock.background,
+                fontFamily: "monospace",
+                fontSize: "0.85rem",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                maxWidth: "100%",
+                overflowX: "auto",
+              }}
+            >
+              {log.message}
+            </AppPaper>
+          </div>
 
           {log.rawJson && (
-            <>
+            <div>
               <AppTypography gutterBottom variant="subtitle2">
                 <b>Raw Journal Entry:</b>
               </AppTypography>
@@ -847,9 +844,9 @@ const GeneralLogsPage: React.FC = () => {
                   {JSON.stringify(log.rawJson, null, 2)}
                 </pre>
               </AppPaper>
-            </>
+            </div>
           )}
-        </>
+        </div>
       );
     },
     [theme, fieldFilters, addFieldFilter],

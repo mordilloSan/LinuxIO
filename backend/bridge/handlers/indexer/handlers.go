@@ -9,22 +9,26 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
+var api = apischema.Bindings(
+	apischema.Query[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.Privileged()).Handle(handleGetConfig),
+	apischema.Query[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).Handle(handleGetStatus),
+	apischema.Job[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Job[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
+)
+
+var Routes = api.Routes()
+
 // RegisterHandlers registers indexer admin handlers with the bridge.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	apischema.RegisterRoutes(router, "indexer", []bridgeipc.Command{
-		{Name: "get_config", Mode: bridgeipc.ModeQuery, Handler: handleGetConfig, Privileged: true},
-		{Name: "get_status", Mode: bridgeipc.ModeQuery, Handler: handleGetStatus, Privileged: true},
-		{Name: "set_config", Mode: bridgeipc.ModeJob, Handler: handleSetConfig, Privileged: true},
-		{Name: "set_timer_interval", Mode: bridgeipc.ModeJob, Handler: handleSetTimerInterval, Privileged: true},
-	})
+	api.Register(router)
 }
 
-func handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetConfig(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	cfg, err := FetchConfig(ctx)
 	return bridgeipc.EmitResult(emit, cfg, err)
 }
 
-func handleGetStatus(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
+func handleGetStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	status, err := FetchStatus(ctx)
 	return bridgeipc.EmitResult(emit, status, err)
 }

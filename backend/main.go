@@ -30,10 +30,6 @@ const (
 
 var versionExecCommand = exec.Command
 
-func cliOperationContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(parent, timeout)
-}
-
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -137,7 +133,7 @@ func showVersion(args []string) {
 }
 
 func runStatus(parent context.Context) {
-	ctx, cancel := cliOperationContext(parent, 5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	units, err := systemd.ListUnitsWithPrefix(ctx, "linuxio")
 	if err != nil {
@@ -336,6 +332,9 @@ func streamFormattedJournal(stdout io.Reader) {
 		if formatted != "" {
 			fmt.Println(formatted)
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Scanner error: %v\n", err)
 	}
 }
 
@@ -538,7 +537,7 @@ func runSystemctlTargets(parent context.Context, action string, targets []string
 		os.Exit(1)
 	}
 
-	ctx, cancel := cliOperationContext(parent, 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	for _, target := range targets {
 		var err error
@@ -669,7 +668,7 @@ func enableVerbose(parent context.Context) {
 	fmt.Println("✓ Verbose mode enabled")
 
 	fmt.Println("Reloading systemd daemon...")
-	ctx, cancel := cliOperationContext(parent, 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	if err := systemd.DaemonReload(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
@@ -703,7 +702,7 @@ func disableVerbose(parent context.Context) {
 	fmt.Println("✓ Verbose mode disabled")
 
 	fmt.Println("Reloading systemd daemon...")
-	ctx, cancel := cliOperationContext(parent, 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	if err := systemd.DaemonReload(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)

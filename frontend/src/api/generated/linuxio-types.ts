@@ -224,6 +224,7 @@ export interface CaddyStatusResponse {
 
 export interface CapabilitiesResponse {
   docker_available: boolean;
+  watchtower_available: boolean;
   indexer_available: boolean;
   lm_sensors_available: boolean;
   smartmontools_available: boolean;
@@ -234,6 +235,7 @@ export interface CapabilitiesResponse {
   avahi_available: boolean;
   wireguard_available: boolean;
   docker_error?: string;
+  watchtower_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
   smartmontools_error?: string;
@@ -261,12 +263,13 @@ export interface ComposeFilePathResponse {
 }
 
 export interface ComposeProject {
-  auto_update: boolean;
   config_files: string[];
+  containers: ContainerInfo[];
   icon?: string;
   name: string;
   services: Record<string, ComposeService>;
   status: string;
+  update_available: boolean;
   working_dir: string;
 }
 
@@ -310,7 +313,6 @@ export interface ConfigDockerDashboardSections {
 
 export interface ConfigDockerPayload {
   folders?: string[];
-  autoUpdateStacks?: string[];
   proxy?: ConfigDockerProxyPayload;
 }
 
@@ -407,6 +409,9 @@ export interface ContainerInfo {
   proxyPort?: string;
   State: string;
   Status: string;
+  updateAvailable?: boolean;
+  updateCheckedAt?: number;
+  updateError?: string;
   url?: string;
 }
 
@@ -529,6 +534,44 @@ export interface DockerComposeRequest {
   composePath?: string;
 }
 
+export type DockerContainerAutoUpdateMode = "update" | "check_only";
+
+export interface DockerContainerAutoUpdateOptions {
+  cleanup: boolean;
+  container_names: string[];
+  enabled: boolean;
+  mode: DockerContainerAutoUpdateMode;
+  time: string;
+}
+
+export interface DockerContainerAutoUpdateState {
+  available: boolean;
+  containers: DockerContainerAutoUpdateTarget[];
+  error?: string;
+  missing_container_names: string[];
+  options: DockerContainerAutoUpdateOptions;
+  timer_active: boolean;
+  timer_enabled: boolean;
+}
+
+export interface DockerContainerAutoUpdateTarget {
+  id: string;
+  image: string;
+  name: string;
+  selected: boolean;
+  state: string;
+}
+
+export interface DockerContainerUpdateResult {
+  containerId: string;
+  containerName: string;
+  error?: string;
+  image: string;
+  newImageId?: string;
+  previousImageId?: string;
+  updated: boolean;
+}
+
 export interface DockerFoldersResponse {
   folders: string[];
 }
@@ -555,6 +598,7 @@ export interface DockerImage {
   RepoDigests?: string[];
   RepoTags: string[];
   Size: number;
+  updateAvailable?: boolean;
 }
 
 export interface DockerNetwork {
@@ -593,13 +637,7 @@ export interface DockerProxySettings {
   tlsEmail?: string;
 }
 
-export interface DockerSetAutoUpdateRequest {
-  container: string;
-  enabled: boolean;
-}
-
 export interface DockerSettings {
-  autoUpdateStacks?: string[];
   folders: string[];
   proxy: DockerProxySettings;
 }
@@ -664,6 +702,12 @@ export interface DockerSystemPruneResponse {
   networksDeleted?: string[];
   volumesDeleted?: string[];
   spaceReclaimed: number;
+}
+
+export interface DockerUpdateCheckResult {
+  checked: number;
+  errors: number;
+  updates: number;
 }
 
 export interface DockerVolume {
@@ -1608,7 +1652,8 @@ export type ValidationIssueType = "error" | "warning";
 export interface VersionResponse {
   checked_at: string;
   current_version: string;
-  latest_version: string;
+  error?: string;
+  latest_version?: string;
   update_available: boolean;
 }
 
@@ -1761,6 +1806,16 @@ export interface LinuxIOSchema {
   };
 
   docker: {
+    check_container_update: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: DockerUpdateCheckResult;
+    };
+    check_updates: {
+      input: [];
+      request: void;
+      result: DockerUpdateCheckResult;
+    };
     clear_icon_cache: { input: []; request: void; result: MessageResponse };
     compose: {
       input: [request: DockerComposeRequest];
@@ -1831,6 +1886,11 @@ export interface LinuxIOSchema {
       request: ProjectNameRequest;
       result: ComposeProject;
     };
+    get_container_auto_update: {
+      input: [];
+      request: void;
+      result: DockerContainerAutoUpdateState;
+    };
     get_docker_folders: {
       input: [];
       request: void;
@@ -1853,7 +1913,6 @@ export interface LinuxIOSchema {
       result: DockerIconURIResponse;
     };
     indexer: { input: []; request: void; result: JobSnapshot };
-    list_auto_update_containers: { input: []; request: void; result: string[] };
     list_compose_projects: {
       input: [];
       request: void;
@@ -1874,10 +1933,10 @@ export interface LinuxIOSchema {
       request: ContainerIDRequest;
       result: void;
     };
-    set_auto_update: {
-      input: [request: DockerSetAutoUpdateRequest];
-      request: DockerSetAutoUpdateRequest;
-      result: MessageResponse;
+    set_container_auto_update: {
+      input: [request: DockerContainerAutoUpdateOptions];
+      request: DockerContainerAutoUpdateOptions;
+      result: DockerContainerAutoUpdateState;
     };
     start_all_stopped: {
       input: [];
@@ -1903,6 +1962,11 @@ export interface LinuxIOSchema {
       input: [request: DockerSystemPruneRequest];
       request: DockerSystemPruneRequest;
       result: DockerSystemPruneResponse;
+    };
+    update_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: DockerContainerUpdateResult;
     };
     validate_compose: {
       input: [content: string];

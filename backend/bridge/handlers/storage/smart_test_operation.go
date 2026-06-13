@@ -10,8 +10,6 @@ import (
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const JobTypeStorageSmartTest = "storage.run_smart_test"
-
 type SmartTestProgress struct {
 	Type       string `json:"type"`
 	Device     string `json:"device,omitempty"`
@@ -21,12 +19,16 @@ type SmartTestProgress struct {
 	Percentage *int   `json:"percentage,omitempty"`
 }
 
+var smartTestRoutes = smartTestBindings().Routes()
+
+func smartTestBindings() apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.Runner[apischema.DeviceTestTypeRequest, apischema.JobSnapshot]("storage.run_smart_test").Run(runSmartTestJob, bridgejobs.ActionDefault),
+	)
+}
+
 func RegisterJobRoutes(router *bridgejobs.Router) {
-	apischema.AttachRunner(router, apischema.RunnerBinding{
-		Route:  JobTypeStorageSmartTest,
-		Runner: runSmartTestJob,
-		Policy: bridgejobs.ActionDefault,
-	})
+	smartTestBindings().Register(router)
 }
 
 // pollInterval picks how often to poll smartctl based on test type. Short tests

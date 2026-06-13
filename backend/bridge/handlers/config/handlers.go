@@ -9,25 +9,28 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// RegisterHandlers registers config handlers with the new handler system
-func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	handlers := configHandlers{
-		username: rt.Username(),
-		store:    rt.Store,
-	}
-	apischema.RegisterRoutes(router, "config", []bridgeipc.Command{
-		{Name: "get", Mode: bridgeipc.ModeQuery, Handler: handlers.handleGetConfig},
-		{Name: "set", Mode: bridgeipc.ModeJob, Handler: handlers.handleSetConfig},
-	})
+var Routes = routeBindings(runtime.Runtime{}).Routes()
+
+func routeBindings(rt runtime.Runtime) apischema.BindingSet {
+	handlers := configHandlers{rt: rt}
+	return apischema.Bindings(
+		apischema.Query[apischema.NoRequest, apischema.AppConfig]("config.get").Handle(handlers.handleGetConfig),
+		apischema.Job[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
+	)
 }
 
-func (h configHandlers) handleGetConfig(ctx context.Context, _ bridgeipc.NoRequest, emit bridgeipc.Events) error {
-	slog.Debug("config.get requested", "component", "config", "user", h.username)
-	result, err := GetConfigForUser(ctx, h.username, h.store)
+// RegisterHandlers registers config handlers with the new handler system
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
+	routeBindings(rt).Register(router)
+}
+
+func (h configHandlers) handleGetConfig(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+	slog.Debug("config.get requested", "component", "config", "user", h.rt.Session.User.Username)
+	result, err := GetConfigForUser(ctx, h.rt.Session.User.Username, h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
 func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload, emit bridgeipc.Events) error {
-	result, err := SetConfigForUser(ctx, req, h.username, h.store)
+	result, err := SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store)
 	return bridgeipc.EmitResult(emit, result, err)
 }
