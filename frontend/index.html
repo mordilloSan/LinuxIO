@@ -20,11 +20,13 @@
             scheme: "dark",
             bg: "#1B2635",
             text: "rgba(255, 255, 255, 0.95)",
+            primary: "#407AD6",
           };
           var LIGHT = {
             scheme: "light",
             bg: "#F7F9FC",
             text: "rgba(0, 0, 0, 0.87)",
+            primary: "#376FD0",
           };
           function isValid(v) {
             return (
@@ -61,6 +63,14 @@
           s.setProperty("--app-color-scheme", t.scheme);
           s.setProperty("--app-palette-background-default", t.bg);
           s.setProperty("--app-palette-text-primary", t.text);
+          s.setProperty(
+            "--app-palette-primary-main",
+            typeof t.primary === "string" && t.primary.length > 0
+              ? t.primary
+              : t.scheme === "light"
+                ? LIGHT.primary
+                : DARK.primary
+          );
         } catch (e) {}
       })();
     </script>

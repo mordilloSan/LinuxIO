@@ -32,7 +32,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--app-palette-primary-main, #3b82f6);
+  background: var(--app-palette-primary-main, #407ad6);
   animation: pl-pulse 1.2s ease-in-out infinite;
 }
 

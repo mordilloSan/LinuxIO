@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useInsertionEffect,
   useMemo,
   useSyncExternalStore,
 } from "react";
@@ -670,7 +671,7 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     [resolvedTheme],
   );
 
-  useEffect(() => {
+  useInsertionEffect(() => {
     if (!resolvedTheme) return;
 
     const root = document.documentElement;
@@ -680,7 +681,10 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     for (const [key, value] of Object.entries(cssVariables)) {
       root.style.setProperty(key, value);
     }
+  }, [cssVariables, resolvedTheme]);
 
+  useEffect(() => {
+    if (!resolvedTheme) return;
     try {
       localStorage.setItem(
         "linuxio_theme_bootstrap",
@@ -688,12 +692,13 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
           scheme: resolvedTheme.colorScheme,
           bg: resolvedTheme.palette.background.default,
           text: resolvedTheme.palette.text.primary,
+          primary: resolvedTheme.palette.primary.main,
         }),
       );
     } catch {
       // Best-effort cache only.
     }
-  }, [cssVariables, resolvedTheme]);
+  }, [resolvedTheme]);
 
   if (!resolvedTheme) {
     return null;
