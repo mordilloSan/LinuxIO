@@ -111,6 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
                 icon={page.icon}
                 key={page.title}
                 preload={page.preload}
+                preloadDelayMs={page.preloadDelayMs}
                 title={page.title}
               />
             ))}

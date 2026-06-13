@@ -10,7 +10,7 @@ import UpdateBanner from "@/components/update/UpdateBanner";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
-import { useSidebarItems } from "@/routes";
+import { useSidebarItems } from "@/routing/useSidebarItems";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 const Dashboard: React.FC = () => {

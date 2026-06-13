@@ -2,31 +2,33 @@ import { Icon } from "@iconify/react";
 import React from "react";
 import { NavLink } from "react-router-dom";
 
+import { useIntentPreload } from "@/hooks/useIntentPreload";
+
 interface SidebarNavListItemProps {
   collapsed?: boolean;
   disabled?: boolean;
   href: string;
   icon?: React.ElementType | string;
   preload?: () => Promise<unknown>;
+  preloadDelayMs?: number;
   title: string;
 }
 
 const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
-  ({ href, title, icon, preload, collapsed = false, disabled = false }) => {
-    const preloadRequestedRef = React.useRef(false);
-
-    React.useEffect(() => {
-      preloadRequestedRef.current = false;
-    }, [preload]);
-
-    const handlePreloadIntent = React.useCallback(() => {
-      if (disabled || !preload || preloadRequestedRef.current) return;
-
-      preloadRequestedRef.current = true;
-      void preload().catch(() => {
-        preloadRequestedRef.current = false;
-      });
-    }, [disabled, preload]);
+  ({
+    href,
+    title,
+    icon,
+    preload,
+    preloadDelayMs = 150,
+    collapsed = false,
+    disabled = false,
+  }) => {
+    const intentPreload = useIntentPreload({
+      delayMs: preloadDelayMs,
+      disabled,
+      preload,
+    });
 
     const renderIcon = () => {
       if (!icon) return null;
@@ -75,10 +77,12 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
               .filter(Boolean)
               .join(" ")
           }
-          onFocus={handlePreloadIntent}
-          onMouseDown={handlePreloadIntent}
-          onPointerEnter={handlePreloadIntent}
-          onTouchStart={handlePreloadIntent}
+          onFocus={intentPreload.schedule}
+          onBlur={intentPreload.cancel}
+          onMouseDown={intentPreload.run}
+          onPointerEnter={intentPreload.schedule}
+          onPointerLeave={intentPreload.cancel}
+          onTouchStart={intentPreload.run}
           title={collapsed ? title : undefined}
           to={href}
         >

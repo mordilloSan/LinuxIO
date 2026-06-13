@@ -20,6 +20,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 10 - implement virtual on logs and filebrowser....
 
+11 - Vitest and playwright
+
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it
 Initial bundle: split the Iconify registry so auth/shell/sidebar icons are separate from route-specific icons.DONE

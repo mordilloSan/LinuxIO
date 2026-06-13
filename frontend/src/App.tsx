@@ -3,7 +3,7 @@ import { useRoutes } from "react-router-dom";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import ReactQueryProvider from "./contexts/ReactQueryContext";
-import { useAppRoutes } from "./routes";
+import { useAppRoutes } from "./routing/useAppRoutes";
 
 // Inner component that uses React Query hooks
 function AppRoutes() {
