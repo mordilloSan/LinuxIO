@@ -29,6 +29,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 11 - implement virtual on logs and filebrowser....
 
+12 - Migrate to tanstackrouter?
+
 Initial bundle: split the Iconify registry so auth/shell/sidebar icons are separate from route-specific icons.DONE
 Authenticated runtime: split `AuthGuard` into a lightweight gate plus lazy authenticated providers. DONE
 Dashboard network card: remove render-time state updates and derive or effect-sync selected interface state. DONE

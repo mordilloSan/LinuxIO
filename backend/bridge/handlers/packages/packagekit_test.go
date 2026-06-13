@@ -278,6 +278,29 @@ func TestGetUpdatesBasicCollectsPackageSignals(t *testing.T) {
 	}
 }
 
+func TestGetUpdatesBasicSanitizesOutOfRangePackageInfo(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setUpdates([]fakePackage{
+		{info: 30, id: "valid;1.0;x86_64;repo", summary: "Known package info"},
+		{info: 31, id: "last;1.0;x86_64;repo", summary: "Sentinel package info"},
+		{info: 999, id: "future;1.0;x86_64;repo", summary: "Future package info"},
+	})
+
+	got, err := GetUpdatesBasic(context.Background())
+	if err != nil {
+		t.Fatalf("GetUpdatesBasic: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("updates = %d, want 3", len(got))
+	}
+	if got[0].InfoEnum != 30 {
+		t.Fatalf("valid info enum = %d, want 30", got[0].InfoEnum)
+	}
+	if got[1].InfoEnum != 0 || got[2].InfoEnum != 0 {
+		t.Fatalf("out-of-range info enums = %d, %d; want 0, 0", got[1].InfoEnum, got[2].InfoEnum)
+	}
+}
+
 func TestGetSingleUpdateDetailIgnoresNonMatchingDetail(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 	const packageID = "demo;1.2.3;x86_64;repo"

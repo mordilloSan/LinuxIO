@@ -44,6 +44,13 @@ type packageUpdateMeta struct {
 	InfoEnum uint32
 }
 
+const (
+	pkInfoEnumUnknown = uint32(0)
+	// PK_INFO_ENUM_LAST is a sentinel, not a real package info value.
+	// Current PackageKit values occupy 0..30.
+	pkInfoEnumLast = uint32(31)
+)
+
 func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
 	if ctx == nil {
 		return AutoUpdateState{}, fmt.Errorf("nil context")
@@ -157,12 +164,11 @@ func toStringSlice(iface any) []string {
 	return strs
 }
 
-func sanitizeInfoEnum(pkgID string, infoEnum uint32) uint32 {
-	if infoEnum <= 30 {
+func sanitizeInfoEnum(infoEnum uint32) uint32 {
+	if infoEnum < pkInfoEnumLast {
 		return infoEnum
 	}
-	slog.Debug("package has invalid PackageKit InfoEnum", "component", "dbus", "subsystem", "updates", "package", pkgID, "code", infoEnum)
-	return 0
+	return pkInfoEnumUnknown
 }
 
 func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
@@ -196,7 +202,7 @@ func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool)
 
 	return pkgID, packageUpdateMeta{
 		Summary:  summary,
-		InfoEnum: sanitizeInfoEnum(pkgID, infoEnum),
+		InfoEnum: sanitizeInfoEnum(infoEnum),
 	}, true
 }
 
