@@ -333,7 +333,7 @@ const DockerPage: React.FC = () => {
                     {containerView === "card" ? (
                       <Icon height={20} icon="mdi:table" width={20} />
                     ) : (
-                      <Icon height={20} icon="mdi:view-grid" width={20} />
+                      <Icon height={20} icon="mdi:card-multiple" width={20} />
                     )}
                   </AppIconButton>
                 </AppTooltip>
@@ -380,7 +380,7 @@ const DockerPage: React.FC = () => {
                     size="small"
                   >
                     {stacksView === "table" ? (
-                      <Icon height={20} icon="mdi:view-grid" width={20} />
+                      <Icon height={20} icon="mdi:card-multiple" width={20} />
                     ) : (
                       <Icon height={20} icon="mdi:table" width={20} />
                     )}
@@ -428,7 +428,7 @@ const DockerPage: React.FC = () => {
                     size="small"
                   >
                     {networksView === "table" ? (
-                      <Icon height={20} icon="mdi:view-grid" width={20} />
+                      <Icon height={20} icon="mdi:card-multiple" width={20} />
                     ) : (
                       <Icon height={20} icon="mdi:table" width={20} />
                     )}
@@ -474,7 +474,7 @@ const DockerPage: React.FC = () => {
                     size="small"
                   >
                     {volumesView === "table" ? (
-                      <Icon height={20} icon="mdi:view-grid" width={20} />
+                      <Icon height={20} icon="mdi:card-multiple" width={20} />
                     ) : (
                       <Icon height={20} icon="mdi:table" width={20} />
                     )}
@@ -522,7 +522,7 @@ const DockerPage: React.FC = () => {
                     size="small"
                   >
                     {imagesView === "table" ? (
-                      <Icon height={20} icon="mdi:view-grid" width={20} />
+                      <Icon height={20} icon="mdi:card-multiple" width={20} />
                     ) : (
                       <Icon height={20} icon="mdi:table" width={20} />
                     )}

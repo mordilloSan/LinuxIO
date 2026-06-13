@@ -76,7 +76,7 @@ import {
   stripNumericSuffix,
 } from "@/utils/fileUpload";
 const viewIconMap: Record<ViewMode, ReactNode> = {
-  card: <Icon height={20} icon="mdi:view-grid" width={20} />,
+  card: <Icon height={20} icon="mdi:card-multiple" width={20} />,
   list: <Icon height={20} icon="mdi:view-list" width={20} />,
 };
 const FileEditor = React.lazy(
