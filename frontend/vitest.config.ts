@@ -15,6 +15,9 @@ export default defineConfig({
   },
   test: {
     clearMocks: true,
+    // Silence intercepted console output from passing tests; failing tests
+    // still print their logs for debugging. Keeps `make test` output readable.
+    silent: "passed-only",
     environment: "jsdom",
     environmentOptions: {
       jsdom: {

@@ -338,23 +338,31 @@ tsc: ensure-node setup
 golint: ensure-golint
 	@$(MAKE) --no-print-directory golint-only
 
-# Optimized test target: runs setup ONCE, then parallelizes the actual checks
 test: ensure-node ensure-go ensure-golint setup dev-prep
-	@echo "🚀 Running checks (parallel)..."
-	@{ \
-	  $(MAKE) --no-print-directory lint-only & \
-	  $(MAKE) --no-print-directory tsc-only & \
-	  $(MAKE) --no-print-directory test-frontend-only & \
-	  $(MAKE) --no-print-directory golint-only & \
-	  wait; \
-	} && $(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1
+	@set -uo pipefail; \
+	ST=0; \
+	$(MAKE) --no-print-directory lint-only   & PID_LINT=$$!; \
+	$(MAKE) --no-print-directory tsc-only     & PID_TSC=$$!; \
+	$(MAKE) --no-print-directory golint-only  & PID_GOLINT=$$!; \
+	wait $$PID_LINT   || ST=1; \
+	wait $$PID_TSC    || ST=1; \
+	wait $$PID_GOLINT || ST=1; \
+	$(PRINTC) ""; \
+	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	$(PRINTC) ""; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	if [ $$ST -ne 0 ]; then \
+	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET)"; \
+	  exit 1; \
+	fi; \
+	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET)"
 
 test-frontend: ensure-node setup
 	@$(MAKE) --no-print-directory test-frontend-only
 
 test-frontend-only:
 	@echo "🧪 Running frontend unit tests..."
-	@bash -c 'cd frontend && npm run test && echo "✅ Frontend unit tests passed!"'
+	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run | sed "/^$$/d" && echo "✅ Frontend unit tests passed!"'
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
