@@ -6,8 +6,6 @@
   --app-easing-sharp: cubic-bezier(0.4, 0, 0.6, 1);
   --app-easing-linear-progress-primary: cubic-bezier(0.65, 0.815, 0.735, 0.395);
   --app-easing-linear-progress-secondary: cubic-bezier(0.165, 0.84, 0.44, 1);
-  --app-transition-duration-quickest: 50ms;
-  --app-transition-duration-short: 100ms;
   --app-transition-duration-fast: 150ms;
   --app-transition-duration-medium: 200ms;
   --app-transition-duration-standard: 250ms;

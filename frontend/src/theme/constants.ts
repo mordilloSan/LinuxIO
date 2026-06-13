@@ -13,14 +13,10 @@ export const EASING_DECELERATE = [0, 0, 0.2, 1] as const;
 export const EASING_DECELERATE_CSS = `cubic-bezier(${EASING_DECELERATE.join(", ")})`;
 export const EASING_SHARP = [0.4, 0, 0.6, 1] as const;
 export const EASING_SHARP_CSS = `cubic-bezier(${EASING_SHARP.join(", ")})`;
-export const EASING_LINEAR_PROGRESS_PRIMARY = [
-  0.65, 0.815, 0.735, 0.395,
-] as const;
+export const EASING_LINEAR_PROGRESS_PRIMARY = [0.65, 0.815, 0.74, 0.4] as const;
 export const EASING_LINEAR_PROGRESS_PRIMARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_PRIMARY.join(", ")})`;
 export const EASING_LINEAR_PROGRESS_SECONDARY = [0.165, 0.84, 0.44, 1] as const;
 export const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_SECONDARY.join(", ")})`;
-export const TRANSITION_DURATION_QUICKEST_MS = 50;
-export const TRANSITION_DURATION_SHORT_MS = 100;
 export const TRANSITION_DURATION_FAST_MS = 150;
 export const TRANSITION_DURATION_MEDIUM_MS = 200;
 export const TRANSITION_DURATION_STANDARD_MS = 250;

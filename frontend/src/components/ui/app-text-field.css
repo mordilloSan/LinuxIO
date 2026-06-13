@@ -54,7 +54,7 @@
   overflow: hidden;
   padding: 0;
   line-height: 11px;
-  transition: max-width var(--app-transition-duration-quickest)
+  transition: max-width var(--app-transition-duration-fast)
     var(--app-easing-decelerate);
 }
 
@@ -76,8 +76,8 @@
 
 .app-text-field__outline--notched .app-text-field__legend {
   max-width: 100%;
-  transition: max-width var(--app-transition-duration-short)
-    var(--app-easing-decelerate) var(--app-transition-duration-quickest);
+  transition: max-width var(--app-transition-duration-fast)
+    var(--app-easing-decelerate) var(--app-transition-duration-fast);
 }
 
 .app-text-field--outlined .app-text-field__outline {

@@ -29,8 +29,6 @@ import {
   TRANSITION_DURATION_FAST_MS,
   TRANSITION_DURATION_LEAVING_SCREEN_MS,
   TRANSITION_DURATION_MEDIUM_MS,
-  TRANSITION_DURATION_QUICKEST_MS,
-  TRANSITION_DURATION_SHORT_MS,
   TRANSITION_DURATION_SLOW_MS,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
@@ -567,8 +565,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-easing-linear-progress-primary": EASING_LINEAR_PROGRESS_PRIMARY_CSS,
     "--app-easing-linear-progress-secondary":
       EASING_LINEAR_PROGRESS_SECONDARY_CSS,
-    "--app-transition-duration-quickest": `${TRANSITION_DURATION_QUICKEST_MS}ms`,
-    "--app-transition-duration-short": `${TRANSITION_DURATION_SHORT_MS}ms`,
     "--app-transition-duration-fast": `${TRANSITION_DURATION_FAST_MS}ms`,
     "--app-transition-duration-medium": `${TRANSITION_DURATION_MEDIUM_MS}ms`,
     "--app-transition-duration-standard": `${TRANSITION_DURATION_STANDARD_MS}ms`,
