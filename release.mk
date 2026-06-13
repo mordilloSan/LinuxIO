@@ -244,7 +244,15 @@ open-pr:
 	    fi; \
 	  fi; \
 	  echo ""; \
-	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
+	  PR_URL="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json url --jq '.url' 2>/dev/null || true)"; \
+	  if gh pr view $(call _repo_flag) "$$PRNUM" --web >/dev/null 2>&1; then \
+	    echo " Opened PR #$$PRNUM in your browser."; \
+	  elif [ -n "$$PR_URL" ]; then \
+	    echo " Couldn't open a browser. View PR #$$PRNUM here:"; \
+	    echo "   $$PR_URL"; \
+	  else \
+	    echo " Couldn't open a browser. View it with: gh pr view $$PRNUM --web"; \
+	  fi; \
 	}
 
 merge-release:
