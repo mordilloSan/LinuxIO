@@ -5,7 +5,7 @@ import PageLoader from "@/components/loaders/PageLoader";
 import useAuth from "@/hooks/useAuth";
 
 const AuthenticatedRuntimeProvider = lazy(
-  () => import("@/contexts/AuthenticatedRuntimeProvider"),
+  () => import("@/contexts/AuthRuntimeProvider"),
 );
 
 export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
