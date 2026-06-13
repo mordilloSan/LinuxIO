@@ -322,10 +322,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   },
                   textTransform: "capitalize",
                   fontSize: "0.68rem",
-                  "& .MuiChip-label": {
-                    px: 3,
-                  },
                 }}
+                labelStyle={{ paddingInline: 12 }}
                 variant="soft"
               />
             </div>

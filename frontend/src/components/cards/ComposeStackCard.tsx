@@ -123,8 +123,8 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
           sx={{
             textTransform: "capitalize",
             fontSize: "0.65rem",
-            "& .MuiChip-label": { px: 1.5 },
           }}
+          labelStyle={{ paddingInline: 6 }}
           variant="soft"
         />
       </div>

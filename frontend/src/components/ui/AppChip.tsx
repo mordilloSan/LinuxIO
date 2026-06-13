@@ -32,6 +32,7 @@ export interface AppChipProps extends NativeChipProps {
   color?: AppChipColor;
   disabled?: boolean;
   label: React.ReactNode;
+  labelStyle?: React.CSSProperties;
   onDelete?: (
     event:
       | React.MouseEvent<HTMLButtonElement>
@@ -172,67 +173,16 @@ const applyDisplay = (
   return nextStyle;
 };
 
-const applyStyleObject = (
-  target: React.CSSProperties,
-  source: Record<string, unknown>,
-  theme: AppTheme,
-) => {
-  for (const [key, value] of Object.entries(source)) {
-    if (value == null) continue;
-
-    if (
-      key === "m" ||
-      key === "mt" ||
-      key === "mr" ||
-      key === "mb" ||
-      key === "ml" ||
-      key === "mx" ||
-      key === "my" ||
-      key === "p" ||
-      key === "pt" ||
-      key === "pr" ||
-      key === "pb" ||
-      key === "pl" ||
-      key === "px" ||
-      key === "py"
-    ) {
-      applySpacing(target, theme, key, value);
-      continue;
-    }
-
-    if (key === "bgcolor") {
-      target.backgroundColor = value as React.CSSProperties["backgroundColor"];
-      continue;
-    }
-
-    if (key === "display") {
-      const resolved = applyDisplay(target, value);
-      Object.assign(target, resolved);
-      continue;
-    }
-
-    if (!isRecord(value)) {
-      (target as Record<string, unknown>)[key] = value;
-    }
-  }
-};
-
 const getChipSxStyles = (sx: AppChipSx | undefined, theme: AppTheme) => {
   const rootStyle: React.CSSProperties = {};
-  const labelStyle: React.CSSProperties = {};
   const cssVars: React.CSSProperties = {};
 
   if (!sx) {
-    return { rootStyle, labelStyle, cssVars };
+    return { rootStyle, cssVars };
   }
 
   for (const [key, value] of Object.entries(sx)) {
     if (value == null) continue;
-
-    if (key === "& .MuiChip-label" && isRecord(value)) {
-      applyStyleObject(labelStyle, value, theme);
-      continue;
-    }
 
     if (key === "&:hover" && isRecord(value)) {
       if (value.opacity != null) {
@@ -295,13 +245,14 @@ const getChipSxStyles = (sx: AppChipSx | undefined, theme: AppTheme) => {
     }
   }
 
-  return { rootStyle, labelStyle, cssVars };
+  return { rootStyle, cssVars };
 };
 
 const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
   (
     {
       label,
+      labelStyle,
       color = "default",
       size = "medium",
       variant = "filled",
@@ -335,7 +286,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
     ]
       .filter(Boolean)
       .join(" ");
-    const { rootStyle, labelStyle, cssVars } = getChipSxStyles(sx, theme);
+    const { rootStyle, cssVars } = getChipSxStyles(sx, theme);
 
     const handleDeleteClick = (event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
