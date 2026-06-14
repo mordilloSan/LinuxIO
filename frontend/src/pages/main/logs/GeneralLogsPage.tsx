@@ -17,8 +17,8 @@ import {
   useStreamMux,
 } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
-import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
-import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import Chip from "@/components/ui/AppChip";
@@ -28,7 +28,6 @@ import AppPaper from "@/components/ui/AppPaper";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
@@ -219,18 +218,6 @@ const GeneralLogsPage: React.FC = () => {
   const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
-
-  // Table columns configuration - icon goes in the first empty cell, not in columns array
-  const columns: UnifiedTableColumn[] = [
-    {
-      field: "priority",
-      headerName: "Priority",
-      className: "app-table-hide-below-sm",
-    },
-    { field: "identifier", headerName: "Identifier" },
-    { field: "timestamp", headerName: "Timestamp" },
-    { field: "message", headerName: "Message" },
-  ];
 
   // Extract priority from message content
   const extractPriorityFromMessage = useCallback(
@@ -692,80 +679,100 @@ const GeneralLogsPage: React.FC = () => {
     [navigate],
   );
 
-  // Render main row content (without icon - icon goes in first cell)
-  const renderMainRow = useCallback(
-    (log: LogEntry) => {
-      const target = resolveUnitTarget(log);
-      const isLinkable = target !== null;
-      return (
-        <>
-          <AppTableCell
-            className="app-table-hide-below-sm"
-            style={{ width: "1%" }}
-          >
-            <Chip
-              color={getPriorityColor(log.priority) as any}
-              label={getPriorityLabel(log.priority)}
-              size="small"
-              style={{ fontSize: "0.7rem" }}
-              variant="soft"
-            />
-          </AppTableCell>
-          <AppTableCell style={{ width: "1%" }}>
-            {isLinkable ? (
-              <AppTooltip title={`Open ${target!.unit} in services`}>
-                <AppTypography
-                  className="log-identifier-link"
-                  noWrap
-                  onClick={(e) => handleIdentifierClick(log, e)}
-                  role="link"
-                  style={{
-                    fontSize: "0.85rem",
-                    display: "inline-block",
-                  }}
-                  tabIndex={0}
-                  title={log.identifier}
-                  variant="body2"
-                >
-                  {log.identifier}
-                </AppTypography>
-              </AppTooltip>
-            ) : (
-              <AppTypography
-                noWrap
-                style={{ fontSize: "0.85rem" }}
-                title={log.identifier}
-                variant="body2"
-              >
-                {log.identifier}
-              </AppTypography>
-            )}
-          </AppTableCell>
-          <AppTableCell style={{ width: "1%" }}>
-            <AppTypography
-              noWrap
-              style={{ fontSize: "0.83rem" }}
-              title={log.timestamp}
-              variant="body2"
-            >
-              {log.timestamp}
-            </AppTypography>
-          </AppTableCell>
-          <AppTableCell style={{ maxWidth: 0 }}>
-            <AppTypography
-              color="text.secondary"
-              noWrap
-              style={{ fontSize: "0.75rem" }}
-              variant="body2"
-            >
-              {log.message}
-            </AppTypography>
-          </AppTableCell>
-        </>
-      );
+  const columns: AppVirtualDataTableColumnDef<LogEntry>[] = [
+    {
+      id: "severityIcon",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => renderIcon(row.original),
+      meta: { width: "40px" },
     },
-    [handleIdentifierClick],
-  );
+    {
+      accessorKey: "priority",
+      header: "Priority",
+      cell: ({ row }) => (
+        <Chip
+          color={getPriorityColor(row.original.priority) as any}
+          label={getPriorityLabel(row.original.priority)}
+          size="small"
+          style={{ fontSize: "0.7rem" }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        hideBelow: "sm",
+        width: "120px",
+      },
+    },
+    {
+      accessorKey: "identifier",
+      header: "Identifier",
+      cell: ({ row }) => {
+        const log = row.original;
+        const target = resolveUnitTarget(log);
+        const isLinkable = target !== null;
+        return isLinkable ? (
+          <AppTooltip title={`Open ${target.unit} in services`}>
+            <AppTypography
+              className="log-identifier-link"
+              noWrap
+              onClick={(event) => handleIdentifierClick(log, event)}
+              role="link"
+              style={{
+                fontSize: "0.85rem",
+                display: "inline-block",
+              }}
+              tabIndex={0}
+              title={log.identifier}
+              variant="body2"
+            >
+              {log.identifier}
+            </AppTypography>
+          </AppTooltip>
+        ) : (
+          <AppTypography
+            noWrap
+            style={{ fontSize: "0.85rem" }}
+            title={log.identifier}
+            variant="body2"
+          >
+            {log.identifier}
+          </AppTypography>
+        );
+      },
+      meta: { width: "minmax(120px, 180px)" },
+    },
+    {
+      accessorKey: "timestamp",
+      header: "Timestamp",
+      cell: ({ row }) => (
+        <AppTypography
+          noWrap
+          style={{ fontSize: "0.83rem" }}
+          title={row.original.timestamp}
+          variant="body2"
+        >
+          {row.original.timestamp}
+        </AppTypography>
+      ),
+      meta: { width: "120px" },
+    },
+    {
+      accessorKey: "message",
+      header: "Message",
+      cell: ({ row }) => (
+        <AppTypography
+          color="text.secondary"
+          noWrap
+          style={{ fontSize: "0.75rem" }}
+          variant="body2"
+        >
+          {row.original.message}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
+    },
+  ];
 
   // Render expanded content
   const renderExpandedContent = useCallback(
@@ -853,7 +860,14 @@ const GeneralLogsPage: React.FC = () => {
   );
 
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {/* Filters */}
       <div
         style={{
@@ -1036,19 +1050,20 @@ const GeneralLogsPage: React.FC = () => {
       {error && <AppAlert severity="error">{error}</AppAlert>}
 
       {!isLoading && !error && (
-        <div ref={logsBoxRef}>
-          <UnifiedCollapsibleTable
-            columns={columns}
-            data={displayedLogs}
-            emptyMessage={
-              logs.length === 0 ? "No logs available." : "No matching logs."
-            }
-            getRowKey={(_, index) => index}
-            renderExpandedContent={renderExpandedContent}
-            renderFirstCell={renderIcon}
-            renderMainRow={renderMainRow}
-          />
-        </div>
+        <AppVirtualDataTable
+          ariaLabel="General logs"
+          columns={columns}
+          data={displayedLogs}
+          emptyMessage={
+            logs.length === 0 ? "No logs available." : "No matching logs."
+          }
+          fillAvailable
+          getRowId={(_, index) => String(index)}
+          renderExpandedContent={({ original: log }) =>
+            renderExpandedContent(log)
+          }
+          scrollElementRef={logsBoxRef}
+        />
       )}
     </div>
   );

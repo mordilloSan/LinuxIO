@@ -6,9 +6,8 @@ import { linuxio, type NFSClient, type NFSExport } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -21,7 +20,6 @@ import {
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
@@ -633,20 +631,94 @@ const NFSShares: React.FC<NFSSharesProps> = ({
 
   const sharesList = Array.isArray(shares) ? shares : [];
 
-  const columns: UnifiedTableColumn[] = [
-    { field: "path", headerName: "Export Path", align: "left" },
-    { field: "clients", headerName: "Clients", align: "left" },
+  const columns: AppVirtualDataTableColumnDef<(typeof sharesList)[number]>[] = [
     {
-      field: "status",
-      headerName: "Status",
-      align: "center",
-      width: "100px",
+      accessorKey: "path",
+      header: "Export Path",
+      cell: ({ row }) => (
+        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+          {row.original.path}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
     },
-    { field: "actions", headerName: "", align: "right", width: "160px" },
+    {
+      id: "clients",
+      header: "Clients",
+      accessorFn: (share) =>
+        share.clients.map((client) => client.host).join(" "),
+      cell: ({ row }) => (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+          {row.original.clients.map((client, index) => (
+            <Chip key={index} label={client.host} size="small" variant="soft" />
+          ))}
+        </div>
+      ),
+      meta: { align: "left" },
+    },
+    {
+      accessorKey: "active",
+      header: "Status",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.active ? "success" : "default"}
+          label={row.original.active ? "Active" : "Inactive"}
+          size="small"
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "center",
+        width: "100px",
+      },
+    },
+    {
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const share = row.original;
+        return (
+          <div style={{ display: "flex", gap: 4 }}>
+            <AppButton
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit(share);
+              }}
+              size="small"
+              variant="outlined"
+            >
+              Edit
+            </AppButton>
+            <AppButton
+              color="error"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(share);
+              }}
+              size="small"
+            >
+              Remove
+            </AppButton>
+          </div>
+        );
+      },
+      meta: {
+        align: "right",
+        width: "160px",
+      },
+    },
   ];
 
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {nfsUnavailable ? (
         <AppAlert severity="warning">{nfsReason}</AppAlert>
       ) : null}
@@ -672,12 +744,14 @@ const NFSShares: React.FC<NFSSharesProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppVirtualDataTable
+          ariaLabel="NFS shares"
           columns={columns}
           data={sharesList}
           emptyMessage="No NFS exports found. Click 'Add Export' to create one."
-          getRowKey={(share) => share.path}
-          renderExpandedContent={(share) => (
+          fillAvailable
+          getRowId={(share) => share.path}
+          renderExpandedContent={({ original: share }) => (
             <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <strong>Client Access Rules:</strong>
@@ -701,57 +775,6 @@ const NFSShares: React.FC<NFSSharesProps> = ({
                 </div>
               ))}
             </div>
-          )}
-          renderMainRow={(share) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  style={{ fontFamily: "monospace" }}
-                  variant="body2"
-                >
-                  {share.path}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                  {share.clients.map((c, i) => (
-                    <Chip key={i} label={c.host} size="small" variant="soft" />
-                  ))}
-                </div>
-              </AppTableCell>
-              <AppTableCell style={{ textAlign: "center" }}>
-                <Chip
-                  color={share.active ? "success" : "default"}
-                  label={share.active ? "Active" : "Inactive"}
-                  size="small"
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <AppButton
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit(share);
-                    }}
-                    size="small"
-                    variant="outlined"
-                  >
-                    Edit
-                  </AppButton>
-                  <AppButton
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(share);
-                    }}
-                    size="small"
-                  >
-                    Remove
-                  </AppButton>
-                </div>
-              </AppTableCell>
-            </>
           )}
         />
       )}

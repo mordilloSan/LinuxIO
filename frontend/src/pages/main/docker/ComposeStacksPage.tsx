@@ -458,7 +458,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   return (
     <Suspense fallback={<PageLoader />}>
-      <div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
         {isPending && viewMode !== "card" ? (
           <PageLoader />
         ) : (

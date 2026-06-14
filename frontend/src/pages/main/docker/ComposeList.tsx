@@ -6,8 +6,8 @@ import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
 import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
-import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
-import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -253,231 +253,249 @@ const ComposeList: React.FC<ComposeListProps> = ({
     [refreshContainerViews, toast, updateContainer],
   );
 
-  // Table columns configuration
-  const columns: UnifiedTableColumn[] = [
+  const columns: AppVirtualDataTableColumnDef<ComposeProject>[] = [
     {
-      field: "status",
-      headerName: "",
-      width: "40px",
-    },
-    {
-      field: "name",
-      headerName: "Stack",
-    },
-    {
-      field: "containers",
-      headerName: "Containers",
-      width: "100px",
-      align: "center",
-      className: "app-table-hide-below-sm",
-    },
-    {
-      field: "config",
-      headerName: "Config Files",
-      className: "app-table-hide-below-sm",
-    },
-    {
-      field: "location",
-      headerName: "Location",
-      className: "app-table-hide-below-lg",
-    },
-    {
-      field: "actions",
-      headerName: "Actions",
-      align: "center",
-      width: "200px",
-    },
-  ];
-
-  // Render main row content
-  const renderMainRow = useCallback(
-    (project: ComposeProject) => {
-      const statusColor = getStatusColor(project.status);
-      return (
-        <>
-          <AppTableCell>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
+      id: "status",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const project = row.original;
+        const statusColor = getStatusColor(project.status);
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: isSmallUp ? "flex-start" : "center",
+            }}
+          >
+            {isSmallUp ? (
+              <Chip
+                color={statusColor}
+                label={project.status}
+                labelStyle={{ paddingInline: 12 }}
+                size="small"
+                style={{
+                  textTransform: "capitalize",
+                  fontSize: "0.68rem",
+                }}
+                variant="soft"
+              />
+            ) : (
               <span
                 style={{
-                  display: isSmallUp ? "none" : "inline-block",
+                  display: "inline-block",
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
                   backgroundColor: statusColor,
                 }}
               />
-              <Chip
-                color={statusColor}
-                label={project.status}
-                size="small"
-                className="app-table-hide-below-sm"
-                style={{
-                  textTransform: "capitalize",
-                  fontSize: "0.68rem",
-                }}
-                labelStyle={{ paddingInline: 12 }}
-                variant="soft"
-              />
-            </div>
-          </AppTableCell>
-          <AppTableCell>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: theme.spacing(1.5),
-              }}
-            >
-              <DockerIcon
-                alt={project.name}
-                identifier={project.icon}
-                size={28}
-              />
-              <AppTypography
-                copyText={project.name}
-                fontWeight={700}
-                noWrap
-                title={project.name}
-                toastMeta={DOCKER_TOAST_META}
-                variant="body2"
-              >
-                {project.name}
-              </AppTypography>
-              {project.update_available && (
-                <Chip
-                  color="warning"
-                  label="Update"
-                  size="small"
-                  style={{ fontSize: "0.68rem" }}
-                  variant="soft"
-                />
-              )}
-            </div>
-          </AppTableCell>
-          <AppTableCell align="center" className="app-table-hide-below-sm">
-            {getTotalContainers(project)}
-          </AppTableCell>
-          <AppTableCell className="app-table-hide-below-sm">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <Icon
-                height={20}
-                icon="mdi:folder-open"
-                style={{
-                  marginRight: 4,
-                  opacity: 0.7,
-                }}
-                width={20}
-              />
-              <AppTypography
-                copyText={project.config_files.join(", ") || "Unknown"}
-                noWrap
-                style={{
-                  maxWidth: 200,
-                }}
-                title={project.config_files.join(", ") || "Unknown"}
-                toastMeta={DOCKER_TOAST_META}
-                variant="body2"
-              >
-                {project.config_files[0]?.split("/").pop() ||
-                  "docker-compose.yml"}
-              </AppTypography>
-            </div>
-          </AppTableCell>
-          <AppTableCell className="app-table-hide-below-lg">
+            )}
+          </div>
+        );
+      },
+      meta: { width: isSmallUp ? "106px" : "40px" },
+    },
+    {
+      accessorKey: "name",
+      header: "Stack",
+      cell: ({ row }) => {
+        const project = row.original;
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1.5),
+            }}
+          >
+            <DockerIcon
+              alt={project.name}
+              identifier={project.icon}
+              size={28}
+            />
             <AppTypography
-              copyText={project.working_dir || "Unknown"}
+              copyText={project.name}
+              fontWeight={700}
               noWrap
-              style={{
-                maxWidth: 600,
-                fontSize: "0.85rem",
-                color: "var(--app-palette-text-secondary)",
-              }}
-              title={project.working_dir || "Unknown"}
+              title={project.name}
               toastMeta={DOCKER_TOAST_META}
               variant="body2"
             >
-              {project.working_dir || "-"}
+              {project.name}
             </AppTypography>
-          </AppTableCell>
-          <AppTableCell align="right">
-            <div
+            {project.update_available && (
+              <Chip
+                color="warning"
+                label="Update"
+                size="small"
+                style={{ fontSize: "0.68rem" }}
+                variant="soft"
+              />
+            )}
+          </div>
+        );
+      },
+      meta: { align: "left" },
+    },
+    {
+      id: "containers",
+      header: "Containers",
+      accessorFn: (project) => getTotalContainers(project),
+      cell: ({ row }) => getTotalContainers(row.original),
+      meta: {
+        align: "center",
+        hideBelow: "sm",
+        width: "100px",
+      },
+    },
+    {
+      id: "config",
+      header: "Config Files",
+      accessorFn: (project) => project.config_files.join(", "),
+      cell: ({ row }) => {
+        const project = row.original;
+        const configText = project.config_files.join(", ") || "Unknown";
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Icon
+              height={20}
+              icon="mdi:folder-open"
               style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: isSmallUp ? theme.spacing(0.5) : 0,
+                marginRight: 4,
+                opacity: 0.7,
               }}
+              width={20}
+            />
+            <AppTypography
+              copyText={configText}
+              noWrap
+              style={{
+                maxWidth: 200,
+              }}
+              title={configText}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
             >
-              {onEdit && project.config_files.length > 0 && (
-                <AppTooltip title="Edit">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() =>
-                      onEdit(project.name, project.config_files[0])
-                    }
-                    size="small"
-                  >
-                    <Icon height={20} icon="mdi:pencil" width={20} />
-                  </AppIconButton>
-                </AppTooltip>
-              )}
-              {project.status === "running" || project.status === "partial" ? (
-                <>
-                  <AppTooltip title="Restart">
-                    <AppIconButton
-                      disabled={isLoading}
-                      onClick={() => onRestart(project.name)}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:restart" width={20} />
-                    </AppIconButton>
-                  </AppTooltip>
-                  <AppTooltip title="Stop">
-                    <AppIconButton
-                      disabled={isLoading}
-                      onClick={() => onStop(project.name)}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:stop-circle" width={20} />
-                    </AppIconButton>
-                  </AppTooltip>
-                </>
-              ) : (
-                <AppTooltip title="Start">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() => onStart(project.name)}
-                    size="small"
-                  >
-                    <Icon height={20} icon="mdi:play" width={20} />
-                  </AppIconButton>
-                </AppTooltip>
-              )}
-              <AppTooltip title="Delete">
+              {project.config_files[0]?.split("/").pop() ||
+                "docker-compose.yml"}
+            </AppTypography>
+          </div>
+        );
+      },
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+      },
+    },
+    {
+      accessorKey: "working_dir",
+      header: "Location",
+      cell: ({ row }) => {
+        const location = row.original.working_dir || "Unknown";
+        return (
+          <AppTypography
+            copyText={location}
+            noWrap
+            style={{
+              maxWidth: 600,
+              fontSize: "0.85rem",
+              color: "var(--app-palette-text-secondary)",
+            }}
+            title={location}
+            toastMeta={DOCKER_TOAST_META}
+            variant="body2"
+          >
+            {row.original.working_dir || "-"}
+          </AppTypography>
+        );
+      },
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const project = row.original;
+        return (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: isSmallUp ? theme.spacing(0.5) : 0,
+            }}
+          >
+            {onEdit && project.config_files.length > 0 && (
+              <AppTooltip title="Edit">
                 <AppIconButton
                   disabled={isLoading}
-                  onClick={() => onDelete(project)}
+                  onClick={() => onEdit(project.name, project.config_files[0])}
                   size="small"
                 >
-                  <Icon height={20} icon="mdi:delete" width={20} />
+                  <Icon height={20} icon="mdi:pencil" width={20} />
                 </AppIconButton>
               </AppTooltip>
-            </div>
-          </AppTableCell>
-        </>
-      );
+            )}
+            {project.status === "running" || project.status === "partial" ? (
+              <>
+                <AppTooltip title="Restart">
+                  <AppIconButton
+                    disabled={isLoading}
+                    onClick={() => onRestart(project.name)}
+                    size="small"
+                  >
+                    <Icon height={20} icon="mdi:restart" width={20} />
+                  </AppIconButton>
+                </AppTooltip>
+                <AppTooltip title="Stop">
+                  <AppIconButton
+                    disabled={isLoading}
+                    onClick={() => onStop(project.name)}
+                    size="small"
+                  >
+                    <Icon height={20} icon="mdi:stop-circle" width={20} />
+                  </AppIconButton>
+                </AppTooltip>
+              </>
+            ) : (
+              <AppTooltip title="Start">
+                <AppIconButton
+                  disabled={isLoading}
+                  onClick={() => onStart(project.name)}
+                  size="small"
+                >
+                  <Icon height={20} icon="mdi:play" width={20} />
+                </AppIconButton>
+              </AppTooltip>
+            )}
+            <AppTooltip title="Delete">
+              <AppIconButton
+                disabled={isLoading}
+                onClick={() => onDelete(project)}
+                size="small"
+              >
+                <Icon height={20} icon="mdi:delete" width={20} />
+              </AppIconButton>
+            </AppTooltip>
+          </div>
+        );
+      },
+      meta: {
+        align: "right",
+        width: "200px",
+      },
     },
-    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop, theme],
-  );
+  ];
 
   // Render expanded content
   const renderExpandedContent = useCallback(
@@ -847,15 +865,25 @@ const ComposeList: React.FC<ComposeListProps> = ({
     );
   }
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {searchBar}
-      <UnifiedCollapsibleTable
+      <AppVirtualDataTable
+        ariaLabel="Docker compose stacks"
         columns={columns}
         data={filtered}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
-        getRowKey={(project) => project.name}
-        renderExpandedContent={renderExpandedContent}
-        renderMainRow={renderMainRow}
+        fillAvailable
+        getRowId={(project) => project.name}
+        renderExpandedContent={({ original: project }) =>
+          renderExpandedContent(project)
+        }
       />
       {containerDialogs}
     </div>

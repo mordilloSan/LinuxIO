@@ -5,9 +5,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -19,7 +18,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
@@ -204,38 +202,110 @@ const VolumeList: React.FC<VolumeListProps> = ({
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-  const columns: UnifiedTableColumn[] = [
+  const columns: AppVirtualDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
-      field: "name",
-      headerName: "Volume Name",
-      align: "left",
+      id: "select",
+      header: () => (
+        <AppCheckbox
+          checked={allSelected}
+          indeterminate={someSelected}
+          onChange={(e) => handleSelectAll(e.target.checked)}
+          size="small"
+        />
+      ),
+      enableSorting: false,
+      cell: ({ row }) => (
+        <AppCheckbox
+          checked={effectiveSelected.has(row.original.Name)}
+          onChange={(e) => handleSelectOne(row.original.Name, e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          size="small"
+        />
+      ),
+      meta: {
+        align: "center",
+        width: "40px",
+      },
     },
     {
-      field: "driver",
-      headerName: "Driver",
-      align: "left",
-      width: "120px",
-      className: "app-table-hide-below-sm",
+      accessorKey: "Name",
+      header: "Volume Name",
+      cell: ({ row }) => (
+        <AppTypography
+          fontWeight={500}
+          style={responsiveTextStyles}
+          variant="body2"
+        >
+          {row.original.Name}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
     },
     {
-      field: "mountpoint",
-      headerName: "Mountpoint",
-      align: "left",
-      className: "app-table-hide-below-md",
+      accessorKey: "Driver",
+      header: "Driver",
+      cell: ({ row }) => (
+        <Chip
+          label={row.original.Driver}
+          size="small"
+          style={{ fontSize: "0.75rem" }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+        width: "120px",
+      },
     },
     {
-      field: "scope",
-      headerName: "Scope",
-      align: "left",
-      width: "100px",
-      className: "app-table-hide-below-sm",
+      accessorKey: "Mountpoint",
+      header: "Mountpoint",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.Mountpoint || "-"}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "md",
+      },
+    },
+    {
+      accessorKey: "Scope",
+      header: "Scope",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.Scope || "local"}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+        width: "100px",
+      },
     },
   ];
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <div
         style={{
           display: "flex",
+          flexShrink: 0,
           alignItems: "center",
           gap: theme.spacing(2),
           flexWrap: "wrap",
@@ -296,12 +366,14 @@ const VolumeList: React.FC<VolumeListProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppVirtualDataTable
+          ariaLabel="Docker volumes"
           columns={columns}
           data={filtered}
           emptyMessage="No volumes found."
-          getRowKey={(volume) => volume.Name}
-          renderExpandedContent={(volume) => (
+          fillAvailable
+          getRowId={(volume) => volume.Name}
+          renderExpandedContent={({ original: volume }) => (
             <div className="expand-panel">
               <div>
                 <AppTypography gutterBottom variant="subtitle2">
@@ -375,62 +447,6 @@ const VolumeList: React.FC<VolumeListProps> = ({
                 </div>
               </div>
             </div>
-          )}
-          renderFirstCell={(volume) => (
-            <AppCheckbox
-              checked={effectiveSelected.has(volume.Name)}
-              onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              size="small"
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-              size="small"
-            />
-          )}
-          renderMainRow={(volume) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  fontWeight={500}
-                  style={responsiveTextStyles}
-                  variant="body2"
-                >
-                  {volume.Name}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <Chip
-                  label={volume.Driver}
-                  size="small"
-                  style={{
-                    fontSize: "0.75rem",
-                  }}
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "0.85rem",
-                    ...longTextStyles,
-                  }}
-                  variant="body2"
-                >
-                  {volume.Mountpoint || "-"}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography style={responsiveTextStyles} variant="body2">
-                  {volume.Scope || "local"}
-                </AppTypography>
-              </AppTableCell>
-            </>
           )}
         />
       )}

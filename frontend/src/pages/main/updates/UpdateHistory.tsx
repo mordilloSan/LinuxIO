@@ -2,9 +2,8 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { linuxio } from "@/api";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppChip from "@/components/ui/AppChip";
 import {
   AppTable,
@@ -24,30 +23,75 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 const UpdateHistory: React.FC = () => {
   const theme = useAppTheme();
   const { data: rows = [] } = linuxio.updates.get_update_history.useQuery();
-  const columns: UnifiedTableColumn[] = [
+  const columns: AppVirtualDataTableColumnDef<(typeof rows)[number]>[] = [
     {
-      field: "date",
-      headerName: "Date",
-      align: "left",
+      id: "history",
+      header: "",
+      enableSorting: false,
+      cell: () => (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            color: theme.palette.primary.main,
+          }}
+        >
+          <Icon height={20} icon="mdi:history" width={20} />
+        </div>
+      ),
+      meta: { width: "40px" },
     },
     {
-      field: "packages",
-      headerName: "Packages Updated",
-      align: "center",
-      style: {
+      accessorKey: "date",
+      header: "Date",
+      cell: ({ row }) => (
+        <AppTypography
+          fontWeight={500}
+          style={{
+            wordBreak: "break-word",
+            overflowWrap: "break-word",
+          }}
+          variant="body2"
+        >
+          {row.original.date}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
+    },
+    {
+      accessorFn: (row) => row.upgrades.length,
+      id: "packages",
+      header: "Packages Updated",
+      cell: ({ row }) => (
+        <AppChip
+          color="success"
+          label={row.original.upgrades.length}
+          size="small"
+          style={{
+            minWidth: 40,
+          }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "center",
+        style: {
+          minWidth: 112,
+          whiteSpace: "nowrap",
+        },
         width: 148,
-        minWidth: 112,
-        whiteSpace: "nowrap",
       },
     },
   ];
   return (
-    <UnifiedCollapsibleTable
+    <AppVirtualDataTable
+      ariaLabel="Update history"
       columns={columns}
       data={rows}
       emptyMessage="No update history available."
-      getRowKey={(row, index) => index}
-      renderExpandedContent={(row) => (
+      fillAvailable
+      getRowId={(_, index) => String(index)}
+      renderExpandedContent={({ original: row }) => (
         <>
           <AppTypography gutterBottom variant="subtitle2">
             <b>Packages Installed:</b>
@@ -89,50 +133,6 @@ const UpdateHistory: React.FC = () => {
               ))}
             </AppTableBody>
           </AppTable>
-        </>
-      )}
-      renderFirstCell={() => (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            color: theme.palette.primary.main,
-          }}
-        >
-          <Icon height={20} icon="mdi:history" width={20} />
-        </div>
-      )}
-      renderMainRow={(row) => (
-        <>
-          <AppTableCell>
-            <AppTypography
-              fontWeight={500}
-              style={{
-                wordBreak: "break-word",
-                overflowWrap: "break-word",
-              }}
-              variant="body2"
-            >
-              {row.date}
-            </AppTypography>
-          </AppTableCell>
-          <AppTableCell
-            align="center"
-            style={{
-              width: 148,
-              minWidth: 112,
-            }}
-          >
-            <AppChip
-              color="success"
-              label={row.upgrades.length}
-              size="small"
-              style={{
-                minWidth: 40,
-              }}
-              variant="soft"
-            />
-          </AppTableCell>
         </>
       )}
     />

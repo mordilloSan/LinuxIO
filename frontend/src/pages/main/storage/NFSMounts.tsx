@@ -12,9 +12,8 @@ import { CACHE_TTL_MS, jobSnapshotResult, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -31,7 +30,6 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSwitch from "@/components/ui/AppSwitch";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -777,39 +775,139 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       m.mountpoint.toLowerCase().includes(search.toLowerCase()) ||
       getMountStatusLabel(m).toLowerCase().includes(search.toLowerCase()),
   );
-  const columns: UnifiedTableColumn[] = [
+  const columns: AppVirtualDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
-      field: "source",
-      headerName: "NFS Share",
-      align: "left",
+      accessorKey: "source",
+      header: "NFS Share",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+          }}
+          variant="body2"
+        >
+          {row.original.source}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
     },
     {
-      field: "mountpoint",
-      headerName: "Mount Point",
-      align: "left",
+      accessorKey: "mountpoint",
+      header: "Mount Point",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+          }}
+          variant="body2"
+        >
+          {row.original.mountpoint}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
     },
     {
-      field: "status",
-      headerName: "Status",
-      align: "left",
-      width: "160px",
+      id: "status",
+      header: "Status",
+      accessorFn: (mount) =>
+        `${getMountStatusLabel(mount)} ${getPersistenceLabel(mount)}`,
+      cell: ({ row }) => {
+        const mount = row.original;
+        return (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <Chip
+              label={getMountStatusLabel(mount)}
+              size="small"
+              variant="soft"
+            />
+            <Chip
+              label={getPersistenceLabel(mount)}
+              size="small"
+              variant="soft"
+            />
+          </div>
+        );
+      },
+      meta: {
+        align: "left",
+        width: "160px",
+      },
     },
     {
-      field: "usage",
-      headerName: "Usage",
-      align: "left",
-      width: "200px",
-      className: "app-table-hide-below-sm",
+      accessorKey: "usedPct",
+      header: "Usage",
+      cell: ({ row }) => {
+        const mount = row.original;
+        return mount.mounted ? (
+          <div
+            style={{
+              width: "100%",
+            }}
+          >
+            <AppLinearProgress
+              color={
+                mount.usedPct > 90
+                  ? "error"
+                  : mount.usedPct > 70
+                    ? "warning"
+                    : "primary"
+              }
+              style={{
+                height: 6,
+                borderRadius: 3,
+                marginBottom: 2,
+              }}
+              value={mount.usedPct}
+              variant="determinate"
+            />
+            <AppTypography color="text.secondary" variant="caption">
+              {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+            </AppTypography>
+          </div>
+        ) : (
+          <AppTypography color="text.secondary" variant="caption">
+            Not mounted
+          </AppTypography>
+        );
+      },
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+        width: "200px",
+      },
     },
     {
-      field: "actions",
-      headerName: "",
-      align: "right",
-      width: "160px",
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <MountEntryActions
+          mount={row.original}
+          mountingMountpoint={mountingMountpoint}
+          nfsClientAvailable={!nfsUnavailable}
+          nfsReason={nfsReason}
+          onEdit={handleEdit}
+          onMount={handleMountExisting}
+          onRemove={handleRemove}
+          onUnmount={handleUnmount}
+          stopPropagation
+        />
+      ),
+      meta: {
+        align: "right",
+        width: "160px",
+      },
     },
   ];
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {nfsUnavailable ? (
         <AppAlert severity="warning">{nfsReason}</AppAlert>
       ) : null}
@@ -860,12 +958,14 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppVirtualDataTable
+          ariaLabel="NFS mounts"
           columns={columns}
           data={filtered}
           emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
-          getRowKey={(mount) => mount.mountpoint}
-          renderExpandedContent={(mount) => (
+          fillAvailable
+          getRowId={(mount) => mount.mountpoint}
+          renderExpandedContent={({ original: mount }) => (
             <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
@@ -902,91 +1002,6 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 </AppTypography>
               )}
             </div>
-          )}
-          renderMainRow={(mount) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  style={{
-                    fontFamily: "monospace",
-                  }}
-                  variant="body2"
-                >
-                  {mount.source}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography
-                  style={{
-                    fontFamily: "monospace",
-                  }}
-                  variant="body2"
-                >
-                  {mount.mountpoint}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  <Chip
-                    label={getMountStatusLabel(mount)}
-                    size="small"
-                    variant="soft"
-                  />
-                  <Chip
-                    label={getPersistenceLabel(mount)}
-                    size="small"
-                    variant="soft"
-                  />
-                </div>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                {mount.mounted ? (
-                  <div
-                    style={{
-                      width: "100%",
-                    }}
-                  >
-                    <AppLinearProgress
-                      color={
-                        mount.usedPct > 90
-                          ? "error"
-                          : mount.usedPct > 70
-                            ? "warning"
-                            : "primary"
-                      }
-                      style={{
-                        height: 6,
-                        borderRadius: 3,
-                        marginBottom: 2,
-                      }}
-                      value={mount.usedPct}
-                      variant="determinate"
-                    />
-                    <AppTypography color="text.secondary" variant="caption">
-                      {formatFileSize(mount.used)} /{" "}
-                      {formatFileSize(mount.size)}
-                    </AppTypography>
-                  </div>
-                ) : (
-                  <AppTypography color="text.secondary" variant="caption">
-                    Not mounted
-                  </AppTypography>
-                )}
-              </AppTableCell>
-              <AppTableCell>
-                <MountEntryActions
-                  mount={mount}
-                  mountingMountpoint={mountingMountpoint}
-                  nfsClientAvailable={!nfsUnavailable}
-                  nfsReason={nfsReason}
-                  onEdit={handleEdit}
-                  onMount={handleMountExisting}
-                  onRemove={handleRemove}
-                  onUnmount={handleUnmount}
-                  stopPropagation
-                />
-              </AppTableCell>
-            </>
           )}
         />
       )}

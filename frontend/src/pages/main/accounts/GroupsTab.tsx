@@ -7,14 +7,12 @@ import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
@@ -67,37 +65,151 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
     setDeleteDialogOpen(true);
   };
 
-  const columns: UnifiedTableColumn[] = [
-    { field: "name", headerName: "Group Name", align: "left" },
+  const columns: AppVirtualDataTableColumnDef<AccountGroup>[] = [
     {
-      field: "gid",
-      headerName: "GID",
-      align: "left",
-      width: "80px",
-      className: "app-table-hide-below-sm",
+      accessorKey: "name",
+      header: "Group Name",
+      cell: ({ row }) => {
+        const group = row.original;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <AppTypography
+              fontWeight={500}
+              style={responsiveTextStyles}
+              variant="body2"
+            >
+              {group.name}
+            </AppTypography>
+            {group.isSystem && (
+              <Chip
+                label="system"
+                size="small"
+                style={{ fontSize: "0.65rem", height: 20 }}
+                variant="soft"
+              />
+            )}
+          </div>
+        );
+      },
+      meta: { align: "left" },
     },
     {
-      field: "members",
-      headerName: "Members",
-      align: "left",
+      accessorKey: "gid",
+      header: "GID",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.gid}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+        width: "80px",
+      },
     },
     {
-      field: "actions",
-      headerName: "Actions",
-      align: "right",
-      width: "100px",
+      accessorFn: (group) => group.members.length,
+      id: "members",
+      header: "Members",
+      cell: ({ row }) => {
+        const group = row.original;
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+            {group.members.length > 0 ? (
+              group.members
+                .slice(0, 3)
+                .map((member) => (
+                  <Chip
+                    key={member}
+                    label={member}
+                    size="small"
+                    style={{ fontSize: "0.7rem" }}
+                    variant="soft"
+                  />
+                ))
+            ) : (
+              <AppTypography color="text.secondary" variant="body2">
+                (no members)
+              </AppTypography>
+            )}
+            {group.members.length > 3 && (
+              <Chip
+                label={`+${group.members.length - 3}`}
+                size="small"
+                style={{ fontSize: "0.7rem" }}
+                variant="soft"
+              />
+            )}
+          </div>
+        );
+      },
+      meta: { align: "left" },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const group = row.original;
+        return (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 2,
+            }}
+          >
+            <AppTooltip title="Edit Members">
+              <AppIconButton
+                disabled={group.name === "root"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditMembers(group);
+                }}
+                size="small"
+              >
+                <Icon height={20} icon="mdi:pencil" width={20} />
+              </AppIconButton>
+            </AppTooltip>
+            <AppTooltip title="Delete Group">
+              <AppIconButton
+                disabled={group.name === "root" || group.isSystem}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(group);
+                }}
+                size="small"
+              >
+                <Icon height={20} icon="mdi:delete" width={20} />
+              </AppIconButton>
+            </AppTooltip>
+          </div>
+        );
+      },
+      meta: {
+        align: "right",
+        width: "100px",
+      },
     },
   ];
 
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <div
         style={{
-          marginBottom: 8,
           display: "flex",
+          flexShrink: 0,
+          flexWrap: "wrap",
           alignItems: "center",
           gap: 8,
-          flexWrap: "wrap",
+          marginBottom: 8,
         }}
       >
         <AppSearchField
@@ -129,12 +241,14 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppVirtualDataTable
+          ariaLabel="Groups"
           columns={columns}
           data={filtered}
           emptyMessage="No groups found."
-          getRowKey={(group) => group.name}
-          renderExpandedContent={(group) => (
+          fillAvailable
+          getRowId={(group) => group.name}
+          renderExpandedContent={({ original: group }) => (
             <div className="expand-panel">
               <AppTypography gutterBottom variant="subtitle2">
                 <b>All Members ({group.members.length}):</b>
@@ -156,97 +270,6 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                 )}
               </div>
             </div>
-          )}
-          renderMainRow={(group) => (
-            <>
-              <AppTableCell>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <AppTypography
-                    fontWeight={500}
-                    style={responsiveTextStyles}
-                    variant="body2"
-                  >
-                    {group.name}
-                  </AppTypography>
-                  {group.isSystem && (
-                    <Chip
-                      label="system"
-                      size="small"
-                      style={{ fontSize: "0.65rem", height: 20 }}
-                      variant="soft"
-                    />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography style={responsiveTextStyles} variant="body2">
-                  {group.gid}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-                  {group.members.length > 0 ? (
-                    group.members
-                      .slice(0, 3)
-                      .map((member) => (
-                        <Chip
-                          key={member}
-                          label={member}
-                          size="small"
-                          style={{ fontSize: "0.7rem" }}
-                          variant="soft"
-                        />
-                      ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no members)
-                    </AppTypography>
-                  )}
-                  {group.members.length > 3 && (
-                    <Chip
-                      label={`+${group.members.length - 3}`}
-                      size="small"
-                      style={{ fontSize: "0.7rem" }}
-                      variant="soft"
-                    />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell align="right">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 2,
-                  }}
-                >
-                  <AppTooltip title="Edit Members">
-                    <AppIconButton
-                      disabled={group.name === "root"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditMembers(group);
-                      }}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:pencil" width={20} />
-                    </AppIconButton>
-                  </AppTooltip>
-                  <AppTooltip title="Delete Group">
-                    <AppIconButton
-                      disabled={group.name === "root" || group.isSystem}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(group);
-                      }}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:delete" width={20} />
-                    </AppIconButton>
-                  </AppTooltip>
-                </div>
-              </AppTableCell>
-            </>
           )}
         />
       )}
