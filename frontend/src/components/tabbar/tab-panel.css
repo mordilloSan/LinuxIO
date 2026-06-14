@@ -1,8 +1,10 @@
 .tab-panel {
-  position: absolute;
-  top: 0;
-  left: 0;
+  display: flex;
+  flex-direction: column;
+  grid-area: 1 / 1;
   width: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 @keyframes app-tab-panel-fade-in {

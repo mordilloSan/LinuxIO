@@ -1,0 +1,23 @@
+.tab-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.tab-selector.tab-container__selector {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-bottom: 0;
+  padding-bottom: 8px;
+  background: var(--app-palette-background-default);
+}
+
+.tab-container__panels {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
