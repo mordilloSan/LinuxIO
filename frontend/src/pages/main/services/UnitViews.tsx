@@ -16,9 +16,9 @@ import type {
 } from "@/components/tables/AppVirtualDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
+import AppVirtualGrid from "@/components/virtual/AppVirtualGrid";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
@@ -32,6 +32,10 @@ export type { UnitListItem } from "@/components/cards/UnitCard";
 export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 export type { UnitInfoRow } from "@/components/cards/UnitInfoPanelCard";
 export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
+
+const UNIT_CARD_GRID_GAP = 12;
+const UNIT_CARD_MIN_WIDTH = 360;
+const UNIT_CARD_ESTIMATE_HEIGHT = 150;
 
 interface UnitTableViewProps<T> {
   data: T[];
@@ -560,35 +564,27 @@ export function UnitCardsView<T extends UnitListItem>({
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
-  if (items.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "32px 0" }}>
-        <span
-          style={{
-            fontSize: "0.875rem",
-            color: "var(--app-palette-text-secondary)",
-          }}
-        >
-          {emptyMessage}
-        </span>
-      </div>
-    );
-  }
-
   if (!expandedItem) {
     return (
-      <AppGrid container spacing={3}>
-        {items.map((item) => (
-          <AppGrid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-            <UnitCard
-              isSelected={false}
-              item={item}
-              onExpand={onExpand}
-              renderSummaryRows={renderSummaryRows}
-            />
-          </AppGrid>
-        ))}
-      </AppGrid>
+      <AppVirtualGrid
+        ariaLabel="Units"
+        emptyMessage={emptyMessage}
+        estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
+        fillAvailable
+        gap={UNIT_CARD_GRID_GAP}
+        getItemKey={(item) => item.name}
+        items={items}
+        minItemWidth={UNIT_CARD_MIN_WIDTH}
+        padding={0}
+        renderItem={(item) => (
+          <UnitCard
+            isSelected={false}
+            item={item}
+            onExpand={onExpand}
+            renderSummaryRows={renderSummaryRows}
+          />
+        )}
+      />
     );
   }
 
