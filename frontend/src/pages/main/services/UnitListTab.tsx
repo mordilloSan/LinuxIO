@@ -137,6 +137,68 @@ function UnitListTab<T extends UnitListItem>({
     ? (filtered.find((item) => item.name === expanded) ?? null)
     : null;
 
+  const searchControls = (
+    <div
+      style={{
+        marginBottom: theme.spacing(2),
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(2),
+      }}
+    >
+      <AppSearchField
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder={searchPlaceholder}
+        style={{ width: 320 }}
+        value={search}
+      />
+      <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
+    </div>
+  );
+
+  if (viewMode === "card") {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
+        {isPending && <PageLoader />}
+        {isError && (
+          <AppAlert severity="error">
+            {error instanceof Error ? error.message : errorMessage}
+          </AppAlert>
+        )}
+        {data !== undefined && (
+          <>
+            {!selectedItem && searchControls}
+            <div
+              style={{
+                display: "flex",
+                flex: "1 1 0",
+                flexDirection: "column",
+                minHeight: 0,
+                minWidth: 0,
+              }}
+            >
+              {renderCardsView({
+                items: filtered,
+                expanded,
+                onExpand: handleCardExpand,
+                renderDetailPanel: (item) =>
+                  renderDetailPanel(item, () => handleCardExpand(null)),
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
       {isPending && <PageLoader />}
@@ -147,24 +209,7 @@ function UnitListTab<T extends UnitListItem>({
       )}
       {data !== undefined && (
         <>
-          {!selectedItem && (
-            <div
-              style={{
-                marginBottom: theme.spacing(2),
-                display: "flex",
-                alignItems: "center",
-                gap: theme.spacing(2),
-              }}
-            >
-              <AppSearchField
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={searchPlaceholder}
-                style={{ width: 320 }}
-                value={search}
-              />
-              <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
-            </div>
-          )}
+          {!selectedItem && searchControls}
 
           <motion.div
             layout="position"
@@ -173,31 +218,21 @@ function UnitListTab<T extends UnitListItem>({
               ease: EASING_STANDARD,
             }}
           >
-            {viewMode === "card" ? (
-              renderCardsView({
-                items: filtered,
-                expanded,
-                onExpand: handleCardExpand,
-                renderDetailPanel: (item) =>
-                  renderDetailPanel(item, () => handleCardExpand(null)),
-              })
-            ) : (
-              <AppGrid alignItems="flex-start" container spacing={3}>
-                <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
-                  {renderTableView({
-                    items: filtered,
-                    selected: expanded,
-                    onSelect: setExpanded,
-                    onDoubleClick: handleOpenCardView,
-                  })}
-                </AppGrid>
-                {selectedItem && (
-                  <AppGrid size={{ xs: 12, md: 5 }}>
-                    {renderDetailPanel(selectedItem, () => setExpanded(null))}
-                  </AppGrid>
-                )}
+            <AppGrid alignItems="flex-start" container spacing={3}>
+              <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+                {renderTableView({
+                  items: filtered,
+                  selected: expanded,
+                  onSelect: setExpanded,
+                  onDoubleClick: handleOpenCardView,
+                })}
               </AppGrid>
-            )}
+              {selectedItem && (
+                <AppGrid size={{ xs: 12, md: 5 }}>
+                  {renderDetailPanel(selectedItem, () => setExpanded(null))}
+                </AppGrid>
+              )}
+            </AppGrid>
           </motion.div>
         </>
       )}
