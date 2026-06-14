@@ -29,341 +29,294 @@ interface CompressFormatDialogState {
   paths: string[];
 }
 
-interface FileBrowserDialogsProps {
-  canCompressSelection: boolean;
-  canExtractSelection: boolean;
-  canShowDetails: boolean;
-  clipboardAvailable: boolean;
+export interface FileBrowserEditorDialogsProps {
   closeEditorDialog: boolean;
-  compressFormatDialog: CompressFormatDialogState | null;
-  contextMenuPosition: { top: number; left: number } | null;
-  createFileDialog: boolean;
-  createFolderDialog: boolean;
-  deleteDialog: boolean;
-  detailError: unknown;
-  detailResource?: FileResource;
-  detailTarget: string[] | null;
   editingFileResource?: FileResource;
   editingPath: string | null;
   editorRef: React.RefObject<FileEditorHandle | null>;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  folderInputRef: React.RefObject<HTMLInputElement | null>;
-  hasMultipleDetailTargets: boolean;
-  hasSingleDetailTarget: boolean;
-  isEditorDirty: boolean;
+  isDirty: boolean;
   isEditingFileLoading: boolean;
-  isSavingFile: boolean;
-  isStatPending: boolean;
-  isUploadProcessing: boolean;
-  multiItemsStats: MultiItemsStats;
-  normalizedPath: string;
+  isSaving: boolean;
+  onClose: () => void;
+  onDirtyChange: (isDirty: boolean) => void;
+  onDiscardAndExit: () => void;
+  onKeepEditing: () => void;
+  onSave: () => Promise<void>;
+  onSaveAndExit: () => Promise<void> | void;
+  onSearchChange: (value: string) => void;
+  onSwitchView: () => void;
+  onToggleHiddenFiles: () => void;
+  searchQuery: string;
+  showHiddenFiles: boolean;
+  showQuickSave: boolean;
+  viewIcon: ReactNode;
+  viewMode: ViewMode;
+}
+
+export interface FileBrowserContextMenuProps {
+  anchorPosition: { top: number; left: number } | null;
+  canCompress: boolean;
+  canExtract: boolean;
+  canOpenContainingFolder: boolean;
+  canRename: boolean;
+  canShowDetails: boolean;
+  hasClipboard: boolean;
+  hasSelection: boolean;
   onChangePermissions: () => void;
-  onChangeUploadInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onClearUploadSelection: () => void;
-  onCloseCompressFormatDialog: () => void;
-  onCloseContextMenu: () => void;
-  onCloseCreateFileDialog: () => void;
-  onCloseCreateFolderDialog: () => void;
-  onCloseDeleteDialog: () => void;
-  onCloseDetailDialog: () => void;
-  onCloseEditor: () => void;
-  onClosePermissionsDialog: () => void;
-  onCloseUnsupportedEditDialog: () => void;
-  onCloseUploadDialog: () => void;
-  onCompressSelection: () => void;
-  onConfirmCompressFormat: (format: "zip" | "tar.gz") => Promise<void> | void;
-  onConfirmCreateFile: (fileName: string) => void;
-  onConfirmCreateFolder: (folderName: string) => void;
-  onConfirmDelete: () => void;
-  onConfirmOverwrite: () => Promise<void> | void;
-  onConfirmPermissions: (
-    mode: string,
-    recursive: boolean,
-    owner?: string,
-    group?: string,
-  ) => Promise<void> | void;
-  onConfirmUnsupportedEdit: () => void;
+  onClose: () => void;
+  onCompress: () => void;
   onCopy: () => void;
   onCreateFile: () => void;
   onCreateFolder: () => void;
   onCut: () => void;
   onDelete: () => void;
-  onDiscardAndExit: () => void;
-  onDownloadDetail: (path: string) => void;
-  onDownloadSelected: () => void;
-  onDirtyChange: (isDirty: boolean) => void;
-  onEditFile: (path: string) => void;
-  onExtractSelection: () => Promise<void> | void;
-  onKeepEditing: () => void;
+  onDownload: () => void;
+  onExtract: () => Promise<void> | void;
   onOpenContainingFolder: () => void;
   onPaste: () => void;
+  onRename: () => void;
+  onShowDetails: () => void;
+  onUpload: () => void;
+}
+
+export interface FileBrowserDetailsDialogsProps {
+  detailError: unknown;
+  detailResource?: FileResource;
+  detailTarget: string[] | null;
+  hasMultipleTargets: boolean;
+  hasSingleTarget: boolean;
+  isStatPending: boolean;
+  multiItemsStats: MultiItemsStats;
+  onClose: () => void;
+  onDownload: (path: string) => void;
+  onEdit: (path: string) => void;
+  shouldShowLoader: boolean;
+  statData?: ResourceStatData | null;
+}
+
+export interface FileBrowserCreateDialogsProps {
+  fileOpen: boolean;
+  folderOpen: boolean;
+  onCloseFile: () => void;
+  onCloseFolder: () => void;
+  onConfirmFile: (fileName: string) => void;
+  onConfirmFolder: (folderName: string) => void;
+}
+
+export interface FileBrowserDeleteDialogProps {
+  onClose: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  pendingDeletePaths: string[];
+}
+
+export interface FileBrowserPermissionsDialogProps {
+  dialog: PermissionsDialogState | null;
+  onClose: () => void;
+  onConfirm: (
+    mode: string,
+    recursive: boolean,
+    owner?: string,
+    group?: string,
+  ) => Promise<void> | void;
+}
+
+export interface FileBrowserUploadDialogProps {
+  entries: DroppedEntry[];
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  isProcessing: boolean;
+  normalizedPath: string;
+  onChangeInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onClearSelection: () => void;
+  onClose: () => void;
   onPickFiles: () => void;
   onPickFolder: () => void;
-  onRename: () => void;
-  onSaveAndExit: () => Promise<void> | void;
-  onSaveFile: () => Promise<void>;
-  onSearchChange: (value: string) => void;
-  onShowDetails: () => void;
-  onStartUpload: () => Promise<void> | void;
-  onSwitchView: () => void;
-  onToggleHiddenFiles: () => void;
-  onUpload: () => void;
+  onStart: () => Promise<void> | void;
+  open: boolean;
+  summary: UploadSummary;
+}
+
+export interface FileBrowserArchiveDialogsProps {
+  compressFormatDialog: CompressFormatDialogState | null;
+  onCloseCompressFormatDialog: () => void;
+  onCloseUnsupportedEditDialog: () => void;
+  onConfirmCompressFormat: (format: "zip" | "tar.gz") => Promise<void> | void;
+  onConfirmOverwrite: () => Promise<void> | void;
+  onConfirmUnsupportedEdit: () => void;
   onOverwriteCancel: () => void;
   overwriteTargets: DroppedEntry[] | null;
-  pendingDeletePaths: string[];
-  permissionsDialog: PermissionsDialogState | null;
-  searchQuery: string;
-  selectedPathsCount: number;
-  shouldShowDetailLoader: boolean;
-  showHiddenFiles: boolean;
-  showQuickSave: boolean;
-  statData?: ResourceStatData | null;
   unsupportedEditPath: string | null;
-  uploadDialogOpen: boolean;
-  uploadEntries: DroppedEntry[];
-  uploadSummary: UploadSummary;
-  viewIcon: ReactNode;
-  viewMode: ViewMode;
+}
+
+export interface FileBrowserDialogsProps {
+  archive: FileBrowserArchiveDialogsProps;
+  contextMenu: FileBrowserContextMenuProps;
+  create: FileBrowserCreateDialogsProps;
+  deleteDialog: FileBrowserDeleteDialogProps;
+  details: FileBrowserDetailsDialogsProps;
+  editor: FileBrowserEditorDialogsProps;
+  permissions: FileBrowserPermissionsDialogProps;
+  upload: FileBrowserUploadDialogProps;
 }
 
 const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
-  canCompressSelection,
-  canExtractSelection,
-  canShowDetails,
-  clipboardAvailable,
-  closeEditorDialog,
-  compressFormatDialog,
-  contextMenuPosition,
-  createFileDialog,
-  createFolderDialog,
+  archive,
+  contextMenu,
+  create,
   deleteDialog,
-  detailError,
-  detailResource,
-  detailTarget,
-  editingFileResource,
-  editingPath,
-  editorRef,
-  fileInputRef,
-  folderInputRef,
-  hasMultipleDetailTargets,
-  hasSingleDetailTarget,
-  isEditorDirty,
-  isEditingFileLoading,
-  isSavingFile,
-  isStatPending,
-  isUploadProcessing,
-  multiItemsStats,
-  normalizedPath,
-  onChangePermissions,
-  onChangeUploadInput,
-  onClearUploadSelection,
-  onCloseCompressFormatDialog,
-  onCloseContextMenu,
-  onCloseCreateFileDialog,
-  onCloseCreateFolderDialog,
-  onCloseDeleteDialog,
-  onCloseDetailDialog,
-  onCloseEditor,
-  onClosePermissionsDialog,
-  onCloseUnsupportedEditDialog,
-  onCloseUploadDialog,
-  onCompressSelection,
-  onConfirmCompressFormat,
-  onConfirmCreateFile,
-  onConfirmCreateFolder,
-  onConfirmDelete,
-  onConfirmOverwrite,
-  onConfirmPermissions,
-  onConfirmUnsupportedEdit,
-  onCopy,
-  onCreateFile,
-  onCreateFolder,
-  onCut,
-  onDelete,
-  onDiscardAndExit,
-  onDownloadDetail,
-  onDownloadSelected,
-  onDirtyChange,
-  onEditFile,
-  onExtractSelection,
-  onKeepEditing,
-  onOpenContainingFolder,
-  onOverwriteCancel,
-  onPaste,
-  onPickFiles,
-  onPickFolder,
-  onRename,
-  onSaveAndExit,
-  onSaveFile,
-  onSearchChange,
-  onShowDetails,
-  onStartUpload,
-  onSwitchView,
-  onToggleHiddenFiles,
-  onUpload,
-  overwriteTargets,
-  pendingDeletePaths,
-  permissionsDialog,
-  searchQuery,
-  selectedPathsCount,
-  shouldShowDetailLoader,
-  showHiddenFiles,
-  showQuickSave,
-  statData,
-  unsupportedEditPath,
-  uploadDialogOpen,
-  uploadEntries,
-  uploadSummary,
-  viewIcon,
-  viewMode,
+  details,
+  editor,
+  permissions,
+  upload,
 }) => (
   <>
     <FileBrowserEditorDialog
-      editingFileResource={editingFileResource}
-      editingPath={editingPath}
-      editorRef={editorRef}
-      isDirty={isEditorDirty}
-      isEditingFileLoading={isEditingFileLoading}
-      isSaving={isSavingFile}
-      onCloseEditor={onCloseEditor}
-      onDirtyChange={onDirtyChange}
-      onSaveFile={onSaveFile}
-      onSearchChange={onSearchChange}
-      onSwitchView={onSwitchView}
-      onToggleHiddenFiles={onToggleHiddenFiles}
-      searchQuery={searchQuery}
-      showHiddenFiles={showHiddenFiles}
-      showQuickSave={showQuickSave}
-      viewIcon={viewIcon}
-      viewMode={viewMode}
+      editingFileResource={editor.editingFileResource}
+      editingPath={editor.editingPath}
+      editorRef={editor.editorRef}
+      isDirty={editor.isDirty}
+      isEditingFileLoading={editor.isEditingFileLoading}
+      isSaving={editor.isSaving}
+      onCloseEditor={editor.onClose}
+      onDirtyChange={editor.onDirtyChange}
+      onSaveFile={editor.onSave}
+      onSearchChange={editor.onSearchChange}
+      onSwitchView={editor.onSwitchView}
+      onToggleHiddenFiles={editor.onToggleHiddenFiles}
+      searchQuery={editor.searchQuery}
+      showHiddenFiles={editor.showHiddenFiles}
+      showQuickSave={editor.showQuickSave}
+      viewIcon={editor.viewIcon}
+      viewMode={editor.viewMode}
     />
 
     <ContextMenu
-      anchorPosition={contextMenuPosition}
-      canCompress={canCompressSelection}
-      canExtract={canExtractSelection}
-      canOpenContainingFolder={Boolean(searchQuery) && selectedPathsCount === 1}
-      canRename={selectedPathsCount === 1}
-      canShowDetails={canShowDetails}
-      hasClipboard={clipboardAvailable}
-      hasSelection={selectedPathsCount > 0}
-      onChangePermissions={onChangePermissions}
-      onClose={onCloseContextMenu}
-      onCompress={onCompressSelection}
-      onCopy={onCopy}
-      onCreateFile={onCreateFile}
-      onCreateFolder={onCreateFolder}
-      onCut={onCut}
-      onDelete={onDelete}
-      onDownload={onDownloadSelected}
-      onExtract={onExtractSelection}
-      onOpenContainingFolder={onOpenContainingFolder}
-      onPaste={onPaste}
-      onRename={onRename}
-      onShowDetails={onShowDetails}
-      onUpload={onUpload}
+      anchorPosition={contextMenu.anchorPosition}
+      canCompress={contextMenu.canCompress}
+      canExtract={contextMenu.canExtract}
+      canOpenContainingFolder={contextMenu.canOpenContainingFolder}
+      canRename={contextMenu.canRename}
+      canShowDetails={contextMenu.canShowDetails}
+      hasClipboard={contextMenu.hasClipboard}
+      hasSelection={contextMenu.hasSelection}
+      onChangePermissions={contextMenu.onChangePermissions}
+      onClose={contextMenu.onClose}
+      onCompress={contextMenu.onCompress}
+      onCopy={contextMenu.onCopy}
+      onCreateFile={contextMenu.onCreateFile}
+      onCreateFolder={contextMenu.onCreateFolder}
+      onCut={contextMenu.onCut}
+      onDelete={contextMenu.onDelete}
+      onDownload={contextMenu.onDownload}
+      onExtract={contextMenu.onExtract}
+      onOpenContainingFolder={contextMenu.onOpenContainingFolder}
+      onPaste={contextMenu.onPaste}
+      onRename={contextMenu.onRename}
+      onShowDetails={contextMenu.onShowDetails}
+      onUpload={contextMenu.onUpload}
     />
 
     <CompressFormatDialog
-      onClose={onCloseCompressFormatDialog}
-      onConfirm={onConfirmCompressFormat}
-      open={Boolean(compressFormatDialog)}
+      onClose={archive.onCloseCompressFormatDialog}
+      onConfirm={archive.onConfirmCompressFormat}
+      open={Boolean(archive.compressFormatDialog)}
     />
 
     <FileBrowserDetailsDialog
-      detailError={detailError}
-      detailResource={detailResource}
-      detailTarget={detailTarget}
-      hasMultipleDetailTargets={hasMultipleDetailTargets}
-      hasSingleDetailTarget={hasSingleDetailTarget}
-      isStatPending={isStatPending}
-      multiItemsStats={multiItemsStats}
-      onClose={onCloseDetailDialog}
-      onDownload={onDownloadDetail}
-      onEdit={onEditFile}
-      shouldShowDetailLoader={shouldShowDetailLoader}
-      statData={statData}
+      detailError={details.detailError}
+      detailResource={details.detailResource}
+      detailTarget={details.detailTarget}
+      hasMultipleDetailTargets={details.hasMultipleTargets}
+      hasSingleDetailTarget={details.hasSingleTarget}
+      isStatPending={details.isStatPending}
+      multiItemsStats={details.multiItemsStats}
+      onClose={details.onClose}
+      onDownload={details.onDownload}
+      onEdit={details.onEdit}
+      shouldShowDetailLoader={details.shouldShowLoader}
+      statData={details.statData}
     />
 
     <InputDialog
       label="File Name"
-      onClose={onCloseCreateFileDialog}
-      onConfirm={onConfirmCreateFile}
-      open={createFileDialog}
+      onClose={create.onCloseFile}
+      onConfirm={create.onConfirmFile}
+      open={create.fileOpen}
       title="Create File"
     />
 
     <InputDialog
       label="Folder Name"
-      onClose={onCloseCreateFolderDialog}
-      onConfirm={onConfirmCreateFolder}
-      open={createFolderDialog}
+      onClose={create.onCloseFolder}
+      onConfirm={create.onConfirmFolder}
+      open={create.folderOpen}
       title="Create Folder"
     />
 
     <ConfirmDialog
       confirmText="Delete"
-      message={`Are you sure you want to delete ${pendingDeletePaths.length} item${pendingDeletePaths.length !== 1 ? "s" : ""}?`}
-      onClose={onCloseDeleteDialog}
-      onConfirm={onConfirmDelete}
-      open={deleteDialog}
+      message={`Are you sure you want to delete ${deleteDialog.pendingDeletePaths.length} item${deleteDialog.pendingDeletePaths.length !== 1 ? "s" : ""}?`}
+      onClose={deleteDialog.onClose}
+      onConfirm={deleteDialog.onConfirm}
+      open={deleteDialog.open}
       title="Delete Items"
     />
 
     <ConfirmDialog
       confirmText="Edit Anyway"
-      message={`"${unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
-      onClose={onCloseUnsupportedEditDialog}
-      onConfirm={onConfirmUnsupportedEdit}
-      open={Boolean(unsupportedEditPath)}
+      message={`"${archive.unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
+      onClose={archive.onCloseUnsupportedEditDialog}
+      onConfirm={archive.onConfirmUnsupportedEdit}
+      open={Boolean(archive.unsupportedEditPath)}
       title="Edit Unsupported File?"
     />
 
-    {permissionsDialog && (
+    {permissions.dialog && (
       <PermissionsDialog
-        currentMode={permissionsDialog.mode}
-        group={permissionsDialog.group}
-        isDirectory={permissionsDialog.isDirectory}
-        onClose={onClosePermissionsDialog}
-        onConfirm={onConfirmPermissions}
+        currentMode={permissions.dialog.mode}
+        group={permissions.dialog.group}
+        isDirectory={permissions.dialog.isDirectory}
+        onClose={permissions.onClose}
+        onConfirm={permissions.onConfirm}
         open
-        owner={permissionsDialog.owner}
-        pathLabel={permissionsDialog.pathLabel}
-        selectionCount={permissionsDialog.selectionCount}
+        owner={permissions.dialog.owner}
+        pathLabel={permissions.dialog.pathLabel}
+        selectionCount={permissions.dialog.selectionCount}
       />
     )}
 
     <FileBrowserUploadDialog
-      fileInputRef={fileInputRef}
-      folderInputRef={folderInputRef}
-      isUploadProcessing={isUploadProcessing}
-      normalizedPath={normalizedPath}
-      onChangeUploadInput={onChangeUploadInput}
-      onClearUploadSelection={onClearUploadSelection}
-      onClose={onCloseUploadDialog}
-      onPickFiles={onPickFiles}
-      onPickFolder={onPickFolder}
-      onStartUpload={onStartUpload}
-      open={uploadDialogOpen}
-      uploadEntries={uploadEntries}
-      uploadSummary={uploadSummary}
+      fileInputRef={upload.fileInputRef}
+      folderInputRef={upload.folderInputRef}
+      isUploadProcessing={upload.isProcessing}
+      normalizedPath={upload.normalizedPath}
+      onChangeUploadInput={upload.onChangeInput}
+      onClearUploadSelection={upload.onClearSelection}
+      onClose={upload.onClose}
+      onPickFiles={upload.onPickFiles}
+      onPickFolder={upload.onPickFolder}
+      onStartUpload={upload.onStart}
+      open={upload.open}
+      uploadEntries={upload.entries}
+      uploadSummary={upload.summary}
     />
 
     <FileBrowserOverwriteDialog
-      normalizedPath={normalizedPath}
-      onCancel={onOverwriteCancel}
-      onConfirm={onConfirmOverwrite}
-      overwriteTargets={overwriteTargets}
+      normalizedPath={upload.normalizedPath}
+      onCancel={archive.onOverwriteCancel}
+      onConfirm={archive.onConfirmOverwrite}
+      overwriteTargets={archive.overwriteTargets}
     />
 
     <UnsavedChangesDialog
-      isSaving={isSavingFile}
-      onDiscardAndExit={onDiscardAndExit}
-      onKeepEditing={onKeepEditing}
-      onSaveAndExit={onSaveAndExit}
-      open={closeEditorDialog}
+      isSaving={editor.isSaving}
+      onDiscardAndExit={editor.onDiscardAndExit}
+      onKeepEditing={editor.onKeepEditing}
+      onSaveAndExit={editor.onSaveAndExit}
+      open={editor.closeEditorDialog}
     />
   </>
 );
 
-export default FileBrowserDialogs;
+export default React.memo(FileBrowserDialogs);

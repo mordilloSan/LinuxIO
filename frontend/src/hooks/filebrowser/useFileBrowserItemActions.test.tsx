@@ -98,10 +98,14 @@ describe("useFileBrowserItemActions", () => {
       const { result, params } = setup();
 
       act(() => result.current.handleDoubleClickFile(fileItem("notes.txt")));
-      expect(params.setEditingPath).toHaveBeenCalledWith("/srv/projects/notes.txt");
+      expect(params.setEditingPath).toHaveBeenCalledWith(
+        "/srv/projects/notes.txt",
+      );
 
       act(() => result.current.handleDoubleClickFile(fileItem("photo.png")));
-      expect(result.current.unsupportedEditPath).toBe("/srv/projects/photo.png");
+      expect(result.current.unsupportedEditPath).toBe(
+        "/srv/projects/photo.png",
+      );
     });
 
     it("edits a file from the detail view and clears the detail target", () => {
@@ -328,7 +332,10 @@ describe("useFileBrowserItemActions", () => {
       const { result, params } = setup();
 
       await act(async () => {
-        await result.current.handleConfirmInlineRename("/srv/projects/a", "   ");
+        await result.current.handleConfirmInlineRename(
+          "/srv/projects/a",
+          "   ",
+        );
       });
 
       expect(params.renameItem).not.toHaveBeenCalled();
@@ -418,7 +425,12 @@ describe("useFileBrowserItemActions", () => {
       });
 
       await act(async () => {
-        await result.current.handleConfirmPermissions("0600", true, "me", "grp");
+        await result.current.handleConfirmPermissions(
+          "0600",
+          true,
+          "me",
+          "grp",
+        );
       });
 
       expect(params.changePermissions).toHaveBeenCalledTimes(2);

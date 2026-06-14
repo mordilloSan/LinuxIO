@@ -142,7 +142,10 @@ describe("useFileBrowserEditorActions", () => {
         defaultOptions: { queries: { retry: false } },
       });
       const invalidateSpy = vi.spyOn(client, "invalidateQueries");
-      const { result, params } = setup({ editorRef: editorRef("hello") }, client);
+      const { result, params } = setup(
+        { editorRef: editorRef("hello") },
+        client,
+      );
 
       await act(async () => {
         await result.current.handleSaveFile();
