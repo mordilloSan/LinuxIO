@@ -9,7 +9,6 @@ import {
 import type {
   Column,
   ColumnDef,
-  ColumnMeta,
   ExpandedState,
   OnChangeFn,
   Row,
@@ -55,16 +54,20 @@ export interface AppVirtualDataTableColumnMeta {
   width?: string | number;
 }
 
+/* eslint-disable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars */
 declare module "@tanstack/react-table" {
-  interface ColumnMeta<TData extends RowData, TValue>
-    extends AppVirtualDataTableColumnMeta {}
+  interface ColumnMeta<
+    TData extends RowData,
+    TValue,
+  > extends AppVirtualDataTableColumnMeta {}
 }
+/* eslint-enable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars */
 
 export type AppVirtualDataTableColumnDef<TData, TValue = unknown> = ColumnDef<
   TData,
   TValue
 > & {
-  meta?: ColumnMeta<TData, TValue>;
+  meta?: AppVirtualDataTableColumnMeta;
 };
 
 export interface AppVirtualDataTableProps<TData extends RowData> {
@@ -171,6 +174,8 @@ function AppVirtualDataTable<TData extends RowData>({
   selectedRowId,
   style,
 }: AppVirtualDataTableProps<TData>) {
+  "use no memo";
+
   const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
   const belowSm = useAppMediaQuery(theme.breakpoints.down("sm"));
@@ -197,7 +202,7 @@ function AppVirtualDataTable<TData extends RowData>({
   );
 
   const columnVisibility = useMemo<VisibilityState>(() => {
-    const below = {
+    const below: Record<AppVirtualDataTableBreakpoint, boolean> = {
       sm: belowSm,
       md: belowMd,
       lg: belowLg,
@@ -223,6 +228,8 @@ function AppVirtualDataTable<TData extends RowData>({
     onExpandedChange?.(updater);
   };
 
+  // TanStack Table exposes dynamic helper functions that React Compiler cannot memoize safely.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     columns,
     data,
@@ -251,7 +258,7 @@ function AppVirtualDataTable<TData extends RowData>({
       }
     }
     return next;
-  }, [rows, resolvedExpanded]);
+  }, [rows]);
   expandedRowIdsRef.current = expandedRowIds;
 
   const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
@@ -279,7 +286,7 @@ function AppVirtualDataTable<TData extends RowData>({
     });
 
     return entries;
-  }, [mountedDetailRowIds, renderExpandedContent, resolvedExpanded, rows]);
+  }, [mountedDetailRowIds, renderExpandedContent, rows]);
 
   const virtualizer = useVirtualizer({
     count: virtualEntries.length,
@@ -358,10 +365,7 @@ function AppVirtualDataTable<TData extends RowData>({
 
       const step = (now: number) => {
         const elapsed = now - startedAt;
-        const progress = Math.min(
-          1,
-          elapsed / TRANSITION_DURATION_STANDARD_MS,
-        );
+        const progress = Math.min(1, elapsed / TRANSITION_DURATION_STANDARD_MS);
         const easedProgress = easeStandard(progress);
         const nextSize =
           startSize + (normalizedTargetSize - startSize) * easedProgress;
@@ -420,6 +424,15 @@ function AppVirtualDataTable<TData extends RowData>({
 
       if (!node) return;
 
+      if (expandedRowIdsRef.current.has(rowId)) {
+        setMountedDetailRowIds((current) => {
+          if (current.has(rowId)) return current;
+          const next = new Set(current);
+          next.add(rowId);
+          return next;
+        });
+      }
+
       measureDetailContent(rowId, node);
       if (typeof ResizeObserver === "undefined") return;
 
@@ -435,31 +448,6 @@ function AppVirtualDataTable<TData extends RowData>({
   useEffect(() => {
     scheduleMeasure();
   }, [resolvedExpanded, scheduleMeasure]);
-
-  useEffect(() => {
-    if (!renderExpandedContent) return;
-    const rowIds = new Set(rows.map((row) => row.id));
-
-    setMountedDetailRowIds((current) => {
-      let next: Set<string> | null = null;
-
-      for (const rowId of expandedRowIds) {
-        if (!current.has(rowId)) {
-          next ??= new Set(current);
-          next.add(rowId);
-        }
-      }
-
-      for (const rowId of current) {
-        if (!rowIds.has(rowId)) {
-          next ??= new Set(current);
-          next.delete(rowId);
-        }
-      }
-
-      return next ?? current;
-    });
-  }, [expandedRowIds, renderExpandedContent, rows]);
 
   useEffect(() => {
     if (!renderExpandedContent) return;
@@ -511,10 +499,7 @@ function AppVirtualDataTable<TData extends RowData>({
 
   return (
     <div
-      className={[
-        "app-vdt",
-        fillAvailable && "app-vdt--fill",
-      ]
+      className={["app-vdt", fillAvailable && "app-vdt--fill"]
         .filter(Boolean)
         .join(" ")}
       role="table"
