@@ -20,6 +20,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -445,11 +446,11 @@ function AppVirtualDataTable<TData extends RowData>({
     [measureDetailContent],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     scheduleMeasure();
   }, [resolvedExpanded, scheduleMeasure]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!renderExpandedContent) return;
 
     for (const rowId of mountedDetailRowIds) {
