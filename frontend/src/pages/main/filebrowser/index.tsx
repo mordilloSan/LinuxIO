@@ -2,7 +2,7 @@ import React from "react";
 
 import FileBrowserContent from "./FileBrowserContent";
 import FileBrowserDialogs from "./FileBrowserDialogs";
-import { useFileBrowserController } from "./useFileBrowserController";
+import { useFileBrowserController } from "../../../hooks/filebrowser/useFileBrowserController";
 
 const FileBrowser: React.FC = () => {
   const { contentProps, dialogsProps } = useFileBrowserController();
