@@ -9,14 +9,9 @@ import AppTypography from "@/components/ui/AppTypography";
 
 export interface DockerResourceListCardProps {
   children: React.ReactNode;
-  columnHeaders: { label: string; hiddenXs?: boolean }[];
-  emptyText: string;
   footerText: string;
-  gridClassName: string;
   icon: React.ReactNode;
-  isEmpty: boolean;
   onViewAll: () => void;
-  scrollHeight: number;
   subtitle: React.ReactNode;
   title: string;
 }
@@ -26,13 +21,8 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
   title,
   subtitle,
   onViewAll,
-  columnHeaders,
-  gridClassName,
   children,
-  isEmpty,
-  emptyText,
   footerText,
-  scrollHeight,
 }) => (
   <FrostedCard>
     <CardIconHeader
@@ -52,40 +42,7 @@ const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
       title={title}
     />
 
-    <div
-      className={gridClassName}
-      style={{ paddingInline: 8, paddingBlock: 3 }}
-    >
-      {columnHeaders.map(({ label, hiddenXs }) => (
-        <AppTypography
-          className={hiddenXs ? "dd-hidden-xs" : undefined}
-          color="text.secondary"
-          key={label}
-          style={{ fontSize: "0.65rem" }}
-          variant="overline"
-        >
-          {label}
-        </AppTypography>
-      ))}
-    </div>
-    <AppDivider />
-
-    <div
-      className="custom-scrollbar"
-      style={{ maxHeight: scrollHeight, overflowY: "auto" }}
-    >
-      {isEmpty ? (
-        <div
-          style={{ paddingInline: 8, paddingBlock: 12, textAlign: "center" }}
-        >
-          <AppTypography color="text.secondary" variant="body2">
-            {emptyText}
-          </AppTypography>
-        </div>
-      ) : (
-        children
-      )}
-    </div>
+    {children}
 
     <AppDivider />
     <div style={{ paddingInline: 8, paddingBlock: 4 }}>

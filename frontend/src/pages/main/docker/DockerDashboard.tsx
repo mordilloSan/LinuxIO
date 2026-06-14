@@ -4,16 +4,16 @@ import { useSearchParams } from "react-router-dom";
 
 import "@/theme/section.css";
 
-import "./docker-dashboard.css";
 import { linuxio } from "@/api";
 import DockerResourceListCard from "@/components/cards/DockerResourceListCard";
 import DockerSectionCard from "@/components/cards/DockerSectionCard";
 import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
-import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
@@ -43,6 +43,23 @@ const StateChip: React.FC<{
 };
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const RESOURCE_TABLE_MAX_HEIGHT = 201;
+const RESOURCE_TABLE_ROW_HEIGHT = 36;
+
+const getContainerDisplayName = (names?: string[]) =>
+  names?.[0]?.replace(/^\//, "") || "Unnamed";
+
+const getImageTagParts = (repoTags?: string[]) => {
+  const fullTag = repoTags?.[0] ?? "<none>:<none>";
+  const colonIdx = fullTag.lastIndexOf(":");
+  return {
+    repo: colonIdx >= 0 ? fullTag.slice(0, colonIdx) : fullTag,
+    tag: colonIdx >= 0 ? fullTag.slice(colonIdx + 1) : "",
+  };
+};
+
+const stripStatusDetail = (status: string) =>
+  status.replace(/\s*\(.*?\)\s*$/, "");
 
 // ─── main component ───────────────────────────────────────────────────────────
 
@@ -182,7 +199,166 @@ const DockerDashboard: React.FC = () => {
       return list.sort((a, b) => (b.Containers ?? 0) - (a.Containers ?? 0));
     return list;
   }, [images, imageSort]);
-  const SCROLL_HEIGHT = 165;
+  const containerColumns: AppVirtualDataTableColumnDef<
+    (typeof previewContainers)[number]
+  >[] = [
+    {
+      id: "name",
+      header: "NAME",
+      cell: ({ row }) => {
+        const container = row.original;
+        const name = getContainerDisplayName(container.Names);
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              minWidth: 0,
+            }}
+          >
+            <DockerIcon alt={name} identifier={container.icon} size={22} />
+            <AppTypography
+              copyText={name}
+              fontWeight={500}
+              noWrap
+              title={name}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
+            >
+              {name}
+            </AppTypography>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "Image",
+      header: "IMAGE",
+      cell: ({ row }) => (
+        <AppTypography
+          color="text.secondary"
+          copyText={row.original.Image}
+          noWrap
+          title={row.original.Image}
+          toastMeta={DOCKER_TOAST_META}
+          variant="caption"
+        >
+          {row.original.Image}
+        </AppTypography>
+      ),
+      meta: {
+        hideBelow: "md",
+        width: "220px",
+      },
+    },
+    {
+      id: "state",
+      header: "STATE",
+      cell: ({ row }) => (
+        <StateChip state={row.original.State} status={row.original.Status} />
+      ),
+      meta: {
+        width: "96px",
+      },
+    },
+    {
+      id: "status",
+      header: "STATUS",
+      cell: ({ row }) => {
+        const status = stripStatusDetail(row.original.Status);
+        return (
+          <AppTypography
+            color="text.secondary"
+            copyText={row.original.Status}
+            noWrap
+            title={row.original.Status}
+            toastMeta={DOCKER_TOAST_META}
+            variant="caption"
+          >
+            {status}
+          </AppTypography>
+        );
+      },
+      meta: {
+        hideBelow: "md",
+        width: "100px",
+      },
+    },
+  ];
+  const imageColumns: AppVirtualDataTableColumnDef<
+    (typeof previewImages)[number]
+  >[] = [
+    {
+      id: "repository",
+      header: "REPOSITORY",
+      accessorFn: (image) => getImageTagParts(image.RepoTags).repo,
+      cell: ({ row }) => {
+        const { repo } = getImageTagParts(row.original.RepoTags);
+        return (
+          <AppTypography
+            copyText={repo}
+            fontWeight={500}
+            noWrap
+            title={repo}
+            toastMeta={DOCKER_TOAST_META}
+            variant="body2"
+          >
+            {repo}
+          </AppTypography>
+        );
+      },
+    },
+    {
+      id: "tag",
+      header: "TAG",
+      accessorFn: (image) => getImageTagParts(image.RepoTags).tag,
+      cell: ({ row }) => {
+        const { tag } = getImageTagParts(row.original.RepoTags);
+        return (
+          <AppTypography
+            color="text.secondary"
+            copyText={tag}
+            noWrap
+            title={tag}
+            toastMeta={DOCKER_TOAST_META}
+            variant="caption"
+          >
+            {tag}
+          </AppTypography>
+        );
+      },
+      meta: {
+        hideBelow: "md",
+        width: "90px",
+      },
+    },
+    {
+      id: "status",
+      header: "STATUS",
+      cell: ({ row }) =>
+        (row.original.Containers ?? 0) > 0 ? (
+          <Chip color="success" label="In Use" size="small" variant="soft" />
+        ) : null,
+      meta: {
+        width: "96px",
+      },
+    },
+    {
+      id: "size",
+      header: "SIZE",
+      accessorFn: (image) => image.Size,
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" noWrap variant="caption">
+          {formatFileSize(row.original.Size)}
+        </AppTypography>
+      ),
+      meta: {
+        hideBelow: "md",
+        width: "90px",
+      },
+    },
+  ];
   return (
     <div>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
@@ -562,15 +738,7 @@ const DockerDashboard: React.FC = () => {
             }}
           >
             <DockerResourceListCard
-              columnHeaders={[
-                { label: "Name" },
-                { label: "Image", hiddenXs: true },
-                { label: "State" },
-                { label: "Status", hiddenXs: true },
-              ]}
-              emptyText="No containers found"
               footerText={`${containers.length} containers`}
-              gridClassName="dd-containers-grid"
               icon={
                 <Icon
                   color={theme.palette.primary.main}
@@ -579,9 +747,7 @@ const DockerDashboard: React.FC = () => {
                   width={28}
                 />
               }
-              isEmpty={previewContainers.length === 0}
               onViewAll={() => navigateToTab("containers")}
-              scrollHeight={SCROLL_HEIGHT}
               subtitle={
                 <AppSelect
                   disableUnderline
@@ -603,76 +769,17 @@ const DockerDashboard: React.FC = () => {
               }
               title="Containers"
             >
-              {previewContainers.map((container, i) => {
-                const name =
-                  container.Names?.[0]?.replace("/", "") || "Unnamed";
-                return (
-                  <React.Fragment key={container.Id}>
-                    <div
-                      className="dd-containers-grid"
-                      style={{
-                        alignItems: "center",
-                        paddingInline: 8,
-                        paddingBlock: 5,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          minWidth: 0,
-                        }}
-                      >
-                        <DockerIcon
-                          alt={name}
-                          identifier={container.icon}
-                          size={22}
-                        />
-                        <AppTypography
-                          copyText={name}
-                          fontWeight={500}
-                          noWrap
-                          title={name}
-                          toastMeta={DOCKER_TOAST_META}
-                          variant="body2"
-                        >
-                          {name}
-                        </AppTypography>
-                      </div>
-                      <AppTypography
-                        className="dd-hidden-xs"
-                        color="text.secondary"
-                        copyText={container.Image}
-                        noWrap
-                        title={container.Image}
-                        toastMeta={DOCKER_TOAST_META}
-                        variant="caption"
-                      >
-                        {container.Image}
-                      </AppTypography>
-                      <div>
-                        <StateChip
-                          state={container.State}
-                          status={container.Status}
-                        />
-                      </div>
-                      <AppTypography
-                        className="dd-hidden-xs"
-                        color="text.secondary"
-                        copyText={container.Status}
-                        noWrap
-                        title={container.Status}
-                        toastMeta={DOCKER_TOAST_META}
-                        variant="caption"
-                      >
-                        {container.Status.replace(/\s*\(.*?\)\s*$/, "")}
-                      </AppTypography>
-                    </div>
-                    {i < previewContainers.length - 1 && <AppDivider />}
-                  </React.Fragment>
-                );
-              })}
+              <AppVirtualDataTable
+                ariaLabel="Docker dashboard containers"
+                columns={containerColumns}
+                data={previewContainers}
+                emptyMessage="No containers found"
+                estimateRowHeight={RESOURCE_TABLE_ROW_HEIGHT}
+                fillAvailable={false}
+                getRowId={(container) => container.Id}
+                maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
+                style={{ boxShadow: "none" }}
+              />
             </DockerResourceListCard>
           </AppGrid>
 
@@ -684,15 +791,7 @@ const DockerDashboard: React.FC = () => {
             }}
           >
             <DockerResourceListCard
-              columnHeaders={[
-                { label: "Repository" },
-                { label: "Tag", hiddenXs: true },
-                { label: "Status" },
-                { label: "Size", hiddenXs: true },
-              ]}
-              emptyText="No images found"
               footerText={`${images.length} images`}
-              gridClassName="dd-images-grid"
               icon={
                 <Icon
                   color={theme.palette.primary.main}
@@ -701,9 +800,7 @@ const DockerDashboard: React.FC = () => {
                   width={28}
                 />
               }
-              isEmpty={previewImages.length === 0}
               onViewAll={() => navigateToTab("images")}
-              scrollHeight={SCROLL_HEIGHT}
               subtitle={
                 <AppSelect
                   disableUnderline
@@ -726,67 +823,17 @@ const DockerDashboard: React.FC = () => {
               }
               title="Images"
             >
-              {previewImages.map((image, i) => {
-                const fullTag = image.RepoTags?.[0] ?? "<none>:<none>";
-                const colonIdx = fullTag.lastIndexOf(":");
-                const repo =
-                  colonIdx >= 0 ? fullTag.slice(0, colonIdx) : fullTag;
-                const tag = colonIdx >= 0 ? fullTag.slice(colonIdx + 1) : "";
-                const inUse = (image.Containers ?? 0) > 0;
-                return (
-                  <React.Fragment key={image.Id}>
-                    <div
-                      className="dd-images-grid"
-                      style={{
-                        alignItems: "center",
-                        paddingInline: 8,
-                        paddingBlock: 5,
-                      }}
-                    >
-                      <AppTypography
-                        copyText={repo}
-                        fontWeight={500}
-                        noWrap
-                        title={repo}
-                        toastMeta={DOCKER_TOAST_META}
-                        variant="body2"
-                      >
-                        {repo}
-                      </AppTypography>
-                      <AppTypography
-                        className="dd-hidden-xs"
-                        color="text.secondary"
-                        copyText={tag}
-                        noWrap
-                        title={tag}
-                        toastMeta={DOCKER_TOAST_META}
-                        variant="caption"
-                      >
-                        {tag}
-                      </AppTypography>
-                      <div>
-                        {inUse && (
-                          <Chip
-                            color="success"
-                            label="In Use"
-                            size="small"
-                            variant="soft"
-                          />
-                        )}
-                      </div>
-                      <AppTypography
-                        className="dd-hidden-xs"
-                        color="text.secondary"
-                        noWrap
-                        variant="caption"
-                      >
-                        {formatFileSize(image.Size)}
-                      </AppTypography>
-                    </div>
-                    {i < previewImages.length - 1 && <AppDivider />}
-                  </React.Fragment>
-                );
-              })}
+              <AppVirtualDataTable
+                ariaLabel="Docker dashboard images"
+                columns={imageColumns}
+                data={previewImages}
+                emptyMessage="No images found"
+                estimateRowHeight={RESOURCE_TABLE_ROW_HEIGHT}
+                fillAvailable={false}
+                getRowId={(image) => image.Id}
+                maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
+                style={{ boxShadow: "none" }}
+              />
             </DockerResourceListCard>
           </AppGrid>
         </AppGrid>
