@@ -329,7 +329,7 @@ Remaining runtime cleanup:
 1. Keep `apischema/schema.go` free of runtime reflection.
 2. If `TypeSpec` starts feeling too runtime-shaped, move the type metadata into a codegen-only package or generated manifest and keep runtime route registration data-only.
 
-### 2. Decide JSON Codecs Versus Protobuf-Style Codegen
+### 2. Generated Request Decoder Plan
 
 JSON envelopes are the current transport contract:
 
@@ -337,30 +337,154 @@ JSON envelopes are the current transport contract:
 {"route":"handler.command","request":{}}
 ```
 
-The remaining question is how far to push generated transport code.
+The current request decode path uses `encoding/json`. That keeps the runtime small and the payloads readable, but Go's JSON package interprets struct tags through runtime reflection. If we decide that request decoding should also be codegen-owned, the next step is generated JSON request decoders, not protobuf.
 
-Option A: keep `encoding/json`.
+The developer workflow should not change:
 
-- Lowest churn.
-- Human-readable payloads.
-- Still uses reflection internally inside Go's JSON package.
-- Good enough unless request volume or payload size becomes a real problem.
+1. Write or reuse the Go request struct.
+2. Add the route binding.
+3. Run `make generate`.
 
-Option B: generate Go JSON codecs.
+The generator then emits both frontend TypeScript and backend request decode code. Developers should not hand-write per-route decoders.
 
-- Keeps JSON on the wire.
-- Removes most JSON reflection from hot paths.
-- More generator work and more generated Go to review.
-- Useful if we want strict generated decoders without adopting protobuf.
+Example source contract:
 
-Option C: protobuf or protobuf-like schemas.
+```go
+type ContainerIDRequest struct {
+    ContainerID string `json:"containerId"`
+}
 
-- Strongest generated transport boundary.
-- Less readable wire payloads.
-- Bigger migration because the frontend and Go bridge need generated codec packages.
-- Best reserved for a deliberate transport project, not mixed into handler cleanup.
+var api = apischema.Bindings(
+    apischema.Job[apischema.ContainerIDRequest, apischema.NoResponse](
+        "docker.start_container",
+    ).Handle(handleStartContainer),
+)
+```
 
-Recommendation for now: keep JSON envelopes, keep `encoding/json`, and only revisit generated codecs if profiling or schema drift justifies it.
+Generated backend code would be conceptually:
+
+```go
+func decodeContainerIDRequest(raw []byte) (apischema.ContainerIDRequest, error) {
+    // Generated from the Go struct:
+    // - raw must be a JSON object
+    // - "containerId" is allowed once
+    // - unknown fields are rejected
+    // - duplicate fields are rejected
+    // - "containerId" must be a JSON string
+    // - required fields are enforced by generated presence checks
+}
+```
+
+Runtime flow:
+
+```text
+JSON envelope
+    |
+    v
+generated route-specific request decoder
+    |
+    v
+typed Go request struct
+    |
+    v
+typed handler / runner / duplex function
+```
+
+This keeps JSON on the wire and keeps Go structs as the source of truth. It does not introduce `.proto` files or make frontend TypeScript the contract source.
+
+Generated request decoders would give us:
+
+- no request decode reflection in LinuxIO's API path
+- duplicate field rejection
+- unknown field rejection
+- required field enforcement based on struct field presence and tags
+- route/field-specific errors
+- one generated decoder registry wired into route registration
+
+Non-goals for this phase:
+
+- Do not generate response encoders. Responses are produced by trusted Go code and can keep using `encoding/json`.
+- Do not replace the relay frame format. Only the JSON request decoder changes.
+- Do not add hand-written validators for every route.
+- Do not move the source of truth from Go structs to `.proto` files.
+
+#### Implementation Slices
+
+1. Add a generated decoder registry target.
+   - Extend `backend/common/tools/linuxio-api-gen` to emit `backend/bridge/apischema/generated_decoders.go`.
+   - The generated file maps route names to `bridgeipc.RequestDecoder` functions.
+   - `apischema.RouteSpec` registration uses the generated decoder when present.
+
+2. Start with a narrow supported type set.
+   - structs
+   - strings, booleans, numbers
+   - pointers for optional fields
+   - slices and maps of supported values
+   - nested structs
+   - `json:"name"` and `json:"name,omitempty"` tags
+   - `json:"-"` fields ignored
+
+3. Fail loudly for unsupported request shapes.
+   - The generator should return a clear error naming the route, request type, and unsupported field.
+   - Avoid silent fallback for routes that claim to be generated.
+
+4. Add golden tests.
+   - valid object
+   - unknown field
+   - duplicate field
+   - missing required field
+   - wrong scalar type
+   - optional field omitted
+   - nested object
+   - array
+   - map
+   - no-request route
+
+5. Roll out behind a temporary fallback.
+   - During migration, generated decoders can cover supported routes.
+   - Unsupported routes keep the strict stdlib decoder until the generator supports them.
+   - Remove the fallback once all request types are covered.
+
+6. Keep the route authoring model stable.
+   - Normal route additions still happen in one `apischema.Bindings(...)` table.
+   - New request structs still live in Go.
+   - `make generate` updates frontend types/client and backend decoders together.
+
+#### Decision Boundary
+
+Stay with `encoding/json` if we only need:
+
+- JSON envelopes
+- typed Go request structs
+- readable payloads
+- low generator complexity
+- acceptable runtime reflection inside Go's JSON package
+
+Move to generated JSON request decoders if we require:
+
+- no runtime reflection on request decode
+- duplicate-key rejection
+- required-field enforcement
+- precise route/field errors
+- contract validation generated from Go structs
+
+Consider protobuf-style codegen only if we are willing to:
+
+- make schema files the protocol source of truth
+- give up plain JSON payloads for the request body
+- maintain generated codec packages on both Go and TypeScript sides
+
+#### Why Not Response Encoders First
+
+Requests are the untrusted input boundary. They are small, route-specific, and security-sensitive. Generated request decoders improve validation exactly where external input enters the bridge.
+
+Responses are different: LinuxIO's own Go code creates them. They are often larger and more varied, and generated response encoders would add substantially more generated code for less safety gain. Keep response encoding on `encoding/json` unless profiling proves it matters.
+
+#### Immediate Low-Churn Strictness
+
+Before generated decoders, the small standard-library improvement is to switch request decoding from `json.Unmarshal` to `json.Decoder` with `DisallowUnknownFields()` and a trailing-token check. That catches unknown top-level fields and malformed trailing JSON without changing the transport or adding generated backend code.
+
+This is not a substitute for generated decoders because it does not reject duplicate keys and does not enforce required fields. It is only the low-churn guardrail if we want stricter behavior before a generator pass.
 
 ### 3. Keep Route Declarations Local
 
