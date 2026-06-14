@@ -60,7 +60,9 @@ const TabPanel: React.FC<TabPanelProps> = ({
         pointerEvents: isActive ? "auto" : "none",
       }}
     >
-      <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>
+      <ErrorBoundary fallback={errorFallback}>
+        <div className="tab-panel__content">{children}</div>
+      </ErrorBoundary>
     </div>
   );
 };
