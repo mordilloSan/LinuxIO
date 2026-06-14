@@ -76,6 +76,10 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
   enableSorting?: boolean;
   estimateRowHeight?: number;
   expanded?: ExpandedState;
+  /**
+   * Fill the parent height and make the body the scroll viewport.
+   * Defaults to true for app-page data tables; set false for compact embedded tables.
+   */
   fillAvailable?: boolean;
   getRowCanExpand?: (row: Row<TData>) => boolean;
   getRowId: (row: TData, index: number, parent?: Row<TData>) => string;
@@ -153,7 +157,7 @@ function AppVirtualDataTable<TData extends RowData>({
   enableSorting = false,
   estimateRowHeight = 48,
   expanded,
-  fillAvailable = false,
+  fillAvailable = true,
   getRowCanExpand,
   getRowId,
   height,
