@@ -86,16 +86,23 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
    */
   fillAvailable?: boolean;
   getRowCanExpand?: (row: Row<TData>) => boolean;
+  getRowAttributes?: (row: Row<TData>) => React.HTMLAttributes<HTMLDivElement>;
   getRowId: (row: TData, index: number, parent?: Row<TData>) => string;
   height?: React.CSSProperties["height"];
+  manualSorting?: boolean;
   maxHeight?: React.CSSProperties["maxHeight"];
   onExpandedChange?: OnChangeFn<ExpandedState>;
-  onRowClick?: (row: Row<TData>) => void;
-  onRowDoubleClick?: (row: Row<TData>) => void;
+  onRowClick?: (row: Row<TData>, event: React.MouseEvent) => void;
+  onRowContextMenu?: (row: Row<TData>, event: React.MouseEvent) => void;
+  onRowDoubleClick?: (row: Row<TData>, event: React.MouseEvent) => void;
+  onSortingChange?: OnChangeFn<SortingState>;
   overscan?: number;
   renderExpandedContent?: (row: Row<TData>) => React.ReactNode;
   scrollElementRef?: React.RefObject<HTMLDivElement | null>;
+  scrollToIndex?: number | null;
   selectedRowId?: string | null;
+  showHeader?: boolean;
+  sorting?: SortingState;
   style?: React.CSSProperties;
 }
 
@@ -163,16 +170,23 @@ function AppVirtualDataTable<TData extends RowData>({
   expanded,
   fillAvailable = true,
   getRowCanExpand,
+  getRowAttributes,
   getRowId,
   height,
+  manualSorting = false,
   maxHeight,
   onExpandedChange,
   onRowClick,
+  onRowContextMenu,
   onRowDoubleClick,
+  onSortingChange,
   overscan = 12,
   renderExpandedContent,
   scrollElementRef,
+  scrollToIndex,
   selectedRowId,
+  showHeader = true,
+  sorting,
   style,
 }: AppVirtualDataTableProps<TData>) {
   "use no memo";
@@ -185,7 +199,7 @@ function AppVirtualDataTable<TData extends RowData>({
   const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
 
   const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollElementRef ?? internalScrollRef;
   const expandedRowIdsRef = useRef<Set<string>>(new Set());
@@ -221,6 +235,7 @@ function AppVirtualDataTable<TData extends RowData>({
   }, [belowLg, belowMd, belowSm, belowXl, columns]);
 
   const resolvedExpanded = expanded ?? internalExpanded;
+  const resolvedSorting = sorting ?? internalSorting;
 
   const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
     if (expanded === undefined) {
@@ -229,24 +244,33 @@ function AppVirtualDataTable<TData extends RowData>({
     onExpandedChange?.(updater);
   };
 
+  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
+    if (sorting === undefined) {
+      setInternalSorting(updater);
+    }
+    onSortingChange?.(updater);
+  };
+
   // TanStack Table exposes dynamic helper functions that React Compiler cannot memoize safely.
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     columns,
     data,
     enableSorting,
+    enableSortingRemoval: false,
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getRowCanExpand: (row) =>
       Boolean(renderExpandedContent && (getRowCanExpand?.(row) ?? true)),
     getRowId,
     getSortedRowModel: getSortedRowModel(),
+    manualSorting,
     onExpandedChange: handleExpandedChange,
-    onSortingChange: setSorting,
+    onSortingChange: handleSortingChange,
     state: {
       columnVisibility,
       expanded: resolvedExpanded,
-      sorting,
+      sorting: resolvedSorting,
     },
   });
 
@@ -498,6 +522,12 @@ function AppVirtualDataTable<TData extends RowData>({
   ].join(" ");
   const virtualItems = virtualizer.getVirtualItems();
 
+  useEffect(() => {
+    if (scrollToIndex === null || scrollToIndex === undefined) return;
+    if (scrollToIndex < 0 || scrollToIndex >= rows.length) return;
+    virtualizer.scrollToIndex(scrollToIndex, { align: "auto" });
+  }, [rows.length, scrollToIndex, virtualizer]);
+
   return (
     <div
       className={["app-vdt", fillAvailable && "app-vdt--fill"]
@@ -520,74 +550,76 @@ function AppVirtualDataTable<TData extends RowData>({
         } as React.CSSProperties
       }
     >
-      <div className="app-vdt__head" role="rowgroup">
-        {table.getHeaderGroups().map((headerGroup) => (
-          <div
-            className="app-vdt__row app-vdt__row--head"
-            key={headerGroup.id}
-            role="row"
-          >
-            {headerGroup.headers.map((header) => {
-              const meta = header.column.columnDef.meta;
-              const sortState = header.column.getIsSorted();
-              const canSort = header.column.getCanSort();
+      {showHeader && (
+        <div className="app-vdt__head" role="rowgroup">
+          {table.getHeaderGroups().map((headerGroup) => (
+            <div
+              className="app-vdt__row app-vdt__row--head"
+              key={headerGroup.id}
+              role="row"
+            >
+              {headerGroup.headers.map((header) => {
+                const meta = header.column.columnDef.meta;
+                const sortState = header.column.getIsSorted();
+                const canSort = header.column.getCanSort();
 
-              return (
+                return (
+                  <div
+                    className={[
+                      "app-vdt__cell",
+                      "app-vdt__cell--head",
+                      meta?.className,
+                      meta?.headerClassName,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={header.id}
+                    role="columnheader"
+                    style={{
+                      justifyContent: alignToJustify(meta?.align),
+                      textAlign: meta?.align,
+                      ...meta?.style,
+                      ...meta?.headerStyle,
+                    }}
+                  >
+                    {header.isPlaceholder ? null : canSort ? (
+                      <button
+                        className="app-vdt__sort-button"
+                        onClick={header.column.getToggleSortingHandler()}
+                        type="button"
+                      >
+                        <span className="app-vdt__sort-label">
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                        </span>
+                        <Icon
+                          height={16}
+                          icon={getSortIcon(sortState)}
+                          width={16}
+                        />
+                      </button>
+                    ) : (
+                      flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )
+                    )}
+                  </div>
+                );
+              })}
+              {hasExpandColumn && (
                 <div
-                  className={[
-                    "app-vdt__cell",
-                    "app-vdt__cell--head",
-                    meta?.className,
-                    meta?.headerClassName,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  key={header.id}
+                  aria-hidden="true"
+                  className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
                   role="columnheader"
-                  style={{
-                    justifyContent: alignToJustify(meta?.align),
-                    textAlign: meta?.align,
-                    ...meta?.style,
-                    ...meta?.headerStyle,
-                  }}
-                >
-                  {header.isPlaceholder ? null : canSort ? (
-                    <button
-                      className="app-vdt__sort-button"
-                      onClick={header.column.getToggleSortingHandler()}
-                      type="button"
-                    >
-                      <span className="app-vdt__sort-label">
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                      </span>
-                      <Icon
-                        height={16}
-                        icon={getSortIcon(sortState)}
-                        width={16}
-                      />
-                    </button>
-                  ) : (
-                    flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )
-                  )}
-                </div>
-              );
-            })}
-            {hasExpandColumn && (
-              <div
-                aria-hidden="true"
-                className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
-                role="columnheader"
-              />
-            )}
-          </div>
-        ))}
-      </div>
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div
         className="app-vdt__scroll custom-scrollbar"
@@ -644,6 +676,10 @@ function AppVirtualDataTable<TData extends RowData>({
 
             const isSelected = row.id === selectedRowId;
             const canExpand = row.getCanExpand();
+            const rowAttributes = getRowAttributes?.(row);
+            const rowAttributeOnClick = rowAttributes?.onClick;
+            const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
+            const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
 
             return (
               <div
@@ -654,18 +690,35 @@ function AppVirtualDataTable<TData extends RowData>({
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
                 <div
+                  {...rowAttributes}
                   className={[
                     "app-vdt__row",
                     "app-vdt__row--body",
                     isInteractive && "app-vdt__row--interactive",
                     isSelected && "app-vdt__row--selected",
                     entry.rowIndex % 2 === 1 && "app-vdt__row--alt",
+                    rowAttributes?.className,
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  onClick={() => onRowClick?.(row)}
-                  onDoubleClick={() => onRowDoubleClick?.(row)}
+                  onClick={(event) => {
+                    rowAttributeOnClick?.(event);
+                    if (!event.defaultPrevented) onRowClick?.(row, event);
+                  }}
+                  onContextMenu={(event) => {
+                    rowAttributeOnContextMenu?.(event);
+                    if (!event.defaultPrevented) {
+                      onRowContextMenu?.(row, event);
+                    }
+                  }}
+                  onDoubleClick={(event) => {
+                    rowAttributeOnDoubleClick?.(event);
+                    if (!event.defaultPrevented) {
+                      onRowDoubleClick?.(row, event);
+                    }
+                  }}
                   role="row"
+                  style={rowAttributes?.style}
                 >
                   {row.getVisibleCells().map((cell) => {
                     const meta = cell.column.columnDef.meta;
