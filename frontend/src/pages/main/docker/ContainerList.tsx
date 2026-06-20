@@ -148,14 +148,17 @@ const ContainerList: React.FC<ContainerListProps> = ({
     [orderedContainers, selectedContainerId],
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
 
-    const oldIndex = containerIds.indexOf(active.id as string);
-    const newIndex = containerIds.indexOf(over.id as string);
-    setContainerOrder(arrayMove(containerIds, oldIndex, newIndex));
-  };
+      const oldIndex = containerIds.indexOf(active.id as string);
+      const newIndex = containerIds.indexOf(over.id as string);
+      setContainerOrder(arrayMove(containerIds, oldIndex, newIndex));
+    },
+    [containerIds, setContainerOrder],
+  );
 
   useEffect(() => {
     if (editMode) {
@@ -192,29 +195,37 @@ const ContainerList: React.FC<ContainerListProps> = ({
   };
 
   if (viewMode === "table") {
+    const table = (
+      <ContainerTable
+        autoUpdateDisabled={containerAutoUpdate.disabled}
+        autoUpdatePendingNames={containerAutoUpdate.pendingNames}
+        autoUpdateReason={containerAutoUpdate.reason}
+        autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
+        checkingUpdates={checkingUpdates}
+        containers={orderedContainers}
+        editMode={editMode}
+        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+      />
+    );
+
     return (
       <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-        <DndContext
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-          sensors={sensors}
-        >
-          <SortableContext
-            items={containerIds}
-            strategy={verticalListSortingStrategy}
+        {editMode ? (
+          <DndContext
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            sensors={sensors}
           >
-            <ContainerTable
-              autoUpdateDisabled={containerAutoUpdate.disabled}
-              autoUpdatePendingNames={containerAutoUpdate.pendingNames}
-              autoUpdateReason={containerAutoUpdate.reason}
-              autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
-              checkingUpdates={checkingUpdates}
-              containers={orderedContainers}
-              editMode={editMode}
-              onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-            />
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={containerIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {table}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          table
+        )}
       </Suspense>
     );
   }
@@ -444,4 +455,4 @@ const ContainerList: React.FC<ContainerListProps> = ({
   );
 };
 
-export default ContainerList;
+export default React.memo(ContainerList);

@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
@@ -27,6 +28,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DockerPage: React.FC = () => {
   const theme = useAppTheme();
+  const [searchParams] = useSearchParams();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
@@ -34,8 +36,11 @@ const DockerPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
+  const activeDockerTab = searchParams.get("dockerTab") || "dashboard";
+  const isDashboardTab = activeDockerTab === "dashboard";
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
-    refetchInterval: 5000,
+    enabled: isDashboardTab,
+    refetchInterval: isDashboardTab ? 5000 : false,
   });
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const stoppedContainers = useMemo(

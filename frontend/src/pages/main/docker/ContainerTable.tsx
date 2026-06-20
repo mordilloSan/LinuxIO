@@ -7,7 +7,10 @@ import ActionButton from "./ActionButton";
 import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type {
+  AppDataTableColumnDef,
+  AppDataTableDndOptions,
+} from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -55,27 +58,37 @@ const getImageVersion = (image: string) => {
   return parts[parts.length - 1] || "-";
 };
 
-const getUpdateStatus = (container: ContainerInfo) => {
-  if (container.updateError) {
+interface ContainerUpdateStatusInput {
+  updateAvailable?: boolean;
+  updateCheckedAt?: number | string;
+  updateError?: string;
+}
+
+const getUpdateStatus = ({
+  updateAvailable,
+  updateCheckedAt,
+  updateError,
+}: ContainerUpdateStatusInput) => {
+  if (updateError) {
     return {
       color: "error",
       label: "Error",
-      title: container.updateError,
+      title: updateError,
     };
   }
-  if (container.updateAvailable === true) {
+  if (updateAvailable === true) {
     return {
       color: "warning",
       label: "Update",
       title: "Update available",
     };
   }
-  if (container.updateAvailable === false || container.updateCheckedAt) {
+  if (updateAvailable === false || updateCheckedAt) {
     return {
       color: "success",
       label: "Current",
-      title: container.updateCheckedAt
-        ? `Checked ${new Date(container.updateCheckedAt).toLocaleString()}`
+      title: updateCheckedAt
+        ? `Checked ${new Date(updateCheckedAt).toLocaleString()}`
         : "No update available",
     };
   }
@@ -118,6 +131,73 @@ const getMounts = (container: ContainerInfo) =>
   (container.Mounts ?? []).filter(
     (mount) => mount.Type === "bind" || mount.Type === "volume",
   );
+
+const getContainerTableSignature = (container: ContainerInfo) => {
+  const networks = Object.entries(container.NetworkSettings?.Networks ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([networkName, endpoint]) =>
+        `${networkName}:${endpoint.IPAddress || "-"}`,
+    )
+    .join("|");
+  const ports = getDedupedPorts(container)
+    .map((port) => `${port.PrivatePort}:${port.PublicPort ?? "-"}:${port.Type}`)
+    .join("|");
+  const mounts = getMounts(container)
+    .map((mount) => `${mount.Type}:${mount.Destination}:${mount.Source}`)
+    .join("|");
+
+  return [
+    container.Id,
+    container.Names?.join("|") ?? "",
+    container.Image,
+    container.State,
+    container.Status,
+    container.Created,
+    container.icon ?? "",
+    container.url ?? "",
+    container.updateAvailable === undefined
+      ? ""
+      : String(container.updateAvailable),
+    container.updateCheckedAt ?? "",
+    container.updateError ?? "",
+    container.metrics?.cpu_percent?.toFixed(1) ?? "",
+    container.metrics?.mem_usage === undefined
+      ? ""
+      : formatFileSize(container.metrics.mem_usage),
+    networks,
+    ports,
+    mounts,
+  ].join("\u001f");
+};
+
+const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
+  if (left === right) return true;
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
+};
+
+const areContainerArraysEquivalent = (
+  left: ContainerInfo[],
+  right: ContainerInfo[],
+) => {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (
+      getContainerTableSignature(left[index]) !==
+      getContainerTableSignature(right[index])
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const asContainer = (row: unknown) => row as ContainerInfo;
 
 function ContainerNameCell({ container }: { container: ContainerInfo }) {
   const name = getContainerName(container);
@@ -168,14 +248,28 @@ function VersionCell({ image }: { image: string }) {
 
 interface UpdateCellProps {
   checkingUpdates: boolean;
-  container: ContainerInfo;
+  containerId: string;
+  name: string;
+  updateAvailable?: boolean;
+  updateCheckedAt?: number | string;
+  updateError?: string;
 }
 
-function UpdateCell({ checkingUpdates, container }: UpdateCellProps) {
-  const name = getContainerName(container);
+const UpdateCell = React.memo(function UpdateCell({
+  checkingUpdates,
+  containerId,
+  name,
+  updateAvailable,
+  updateCheckedAt,
+  updateError,
+}: UpdateCellProps) {
   const queryClient = useQueryClient();
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const updateStatus = getUpdateStatus(container);
+  const updateStatus = getUpdateStatus({
+    updateAvailable,
+    updateCheckedAt,
+    updateError,
+  });
   const refreshContainerViews = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: linuxio.docker.list_containers.queryKey(),
@@ -252,12 +346,10 @@ function UpdateCell({ checkingUpdates, container }: UpdateCellProps) {
           )
         }
         onClick={
-          container.updateAvailable
-            ? () => updateContainer({ containerId: container.Id })
-            : undefined
+          updateAvailable ? () => updateContainer({ containerId }) : undefined
         }
         size="small"
-        title={container.updateAvailable ? "Apply update" : updateStatus.title}
+        title={updateAvailable ? "Apply update" : updateStatus.title}
         variant="soft"
       />
       <AppTooltip title="Check for updates">
@@ -265,34 +357,33 @@ function UpdateCell({ checkingUpdates, container }: UpdateCellProps) {
           <ActionButton
             icon="mdi:magnify"
             loading={isCheckingUpdate || checkingUpdates}
-            onClick={() => checkContainerUpdate({ containerId: container.Id })}
+            onClick={() => checkContainerUpdate({ containerId })}
           />
         </span>
       </AppTooltip>
     </div>
   );
-}
+});
 
 interface AutoUpdateCellProps {
   autoUpdateDisabled: boolean;
   autoUpdatePending: boolean;
   autoUpdateReason?: string;
   autoUpdateSelected: boolean;
-  container: ContainerInfo;
+  name: string;
   onToggleAutoUpdate: (name: string) => void;
 }
 
-function AutoUpdateCell({
+const AutoUpdateCell = React.memo(function AutoUpdateCell({
   autoUpdateDisabled,
   autoUpdatePending,
   autoUpdateReason,
   autoUpdateSelected,
-  container,
+  name,
   onToggleAutoUpdate,
 }: AutoUpdateCellProps) {
   const theme = useAppTheme();
   const [autoTooltipKey, setAutoTooltipKey] = useState(0);
-  const name = getContainerName(container);
   const tooltip = autoUpdateDisabled
     ? autoUpdateReason
     : autoUpdatePending
@@ -317,7 +408,7 @@ function AutoUpdateCell({
       </span>
     </AppTooltip>
   );
-}
+});
 
 function UptimeCell({ created }: { created: number }) {
   return (
@@ -662,25 +753,30 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
 }
 
 interface ActionsCellProps {
-  container: ContainerInfo;
+  containerId: string;
   expanded: boolean;
   hasExpandableDetails: boolean;
-  onToggleExpanded: () => void;
+  name: string;
+  onOpenLogs: (containerId: string, containerName: string) => void;
+  onOpenTerminal: (containerId: string, containerName: string) => void;
+  onToggleExpanded: (containerId: string) => void;
+  state: string;
+  url?: string;
 }
 
-function ActionsCell({
-  container,
+const ActionsCell = React.memo(function ActionsCell({
+  containerId,
   expanded,
   hasExpandableDetails,
+  name,
+  onOpenLogs,
+  onOpenTerminal,
   onToggleExpanded,
+  state,
+  url,
 }: ActionsCellProps) {
-  const name = getContainerName(container);
   const queryClient = useQueryClient();
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const [logDialogOpen, setLogDialogOpen] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
-  const [hasLoadedLogs, setHasLoadedLogs] = useState(false);
-  const [hasLoadedTerminal, setHasLoadedTerminal] = useState(false);
   const refreshContainers = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: linuxio.docker.list_containers.queryKey(),
@@ -733,22 +829,22 @@ function ActionsCell({
           gap: 2,
         }}
       >
-        {container.State !== "running" && (
+        {state !== "running" && (
           <AppTooltip title="Start">
             <span>
               <ActionButton
                 icon="mdi:play"
-                onClick={() => startContainer({ containerId: container.Id })}
+                onClick={() => startContainer({ containerId })}
               />
             </span>
           </AppTooltip>
         )}
-        {container.State === "running" && (
+        {state === "running" && (
           <AppTooltip title="Stop">
             <span>
               <ActionButton
                 icon="mdi:stop"
-                onClick={() => stopContainer({ containerId: container.Id })}
+                onClick={() => stopContainer({ containerId })}
               />
             </span>
           </AppTooltip>
@@ -757,7 +853,7 @@ function ActionsCell({
           <span>
             <ActionButton
               icon="mdi:restart"
-              onClick={() => restartContainer({ containerId: container.Id })}
+              onClick={() => restartContainer({ containerId })}
             />
           </span>
         </AppTooltip>
@@ -765,7 +861,7 @@ function ActionsCell({
           <span>
             <ActionButton
               icon="mdi:delete"
-              onClick={() => removeContainer({ containerId: container.Id })}
+              onClick={() => removeContainer({ containerId })}
             />
           </span>
         </AppTooltip>
@@ -773,10 +869,7 @@ function ActionsCell({
           <span>
             <ActionButton
               icon="mdi:file-document-outline"
-              onClick={() => {
-                setHasLoadedLogs(true);
-                setLogDialogOpen(true);
-              }}
+              onClick={() => onOpenLogs(containerId, name)}
             />
           </span>
         </AppTooltip>
@@ -784,26 +877,23 @@ function ActionsCell({
           <span>
             <ActionButton
               icon="mdi:console"
-              onClick={() => {
-                setHasLoadedTerminal(true);
-                setTerminalOpen(true);
-              }}
+              onClick={() => onOpenTerminal(containerId, name)}
             />
           </span>
         </AppTooltip>
-        {container.url && (
+        {url && (
           <AppTooltip title="Open App">
             <span>
               <ActionButton
                 icon="mdi:open-in-new"
-                onClick={() => window.open(container.url, "_blank", "noopener")}
+                onClick={() => window.open(url, "_blank", "noopener")}
               />
             </span>
           </AppTooltip>
         )}
         <AppIconButton
           className="container-expand-toggle"
-          onClick={onToggleExpanded}
+          onClick={() => onToggleExpanded(containerId)}
           size="small"
           style={{
             marginLeft: 2,
@@ -821,28 +911,9 @@ function ActionsCell({
           />
         </AppIconButton>
       </div>
-
-      <Suspense fallback={null}>
-        {hasLoadedLogs && (
-          <LogsDialog
-            containerId={container.Id}
-            containerName={name}
-            onClose={() => setLogDialogOpen(false)}
-            open={logDialogOpen}
-          />
-        )}
-        {hasLoadedTerminal && (
-          <TerminalDialog
-            containerId={container.Id}
-            containerName={name}
-            onClose={() => setTerminalOpen(false)}
-            open={terminalOpen}
-          />
-        )}
-      </Suspense>
     </>
   );
-}
+});
 
 interface ContainerTableProps {
   autoUpdateDisabled: boolean;
@@ -853,6 +924,11 @@ interface ContainerTableProps {
   containers: ContainerInfo[];
   editMode?: boolean;
   onToggleAutoUpdate: (name: string) => void;
+}
+
+interface ContainerDialogTarget {
+  id: string;
+  name: string;
 }
 
 const ContainerTable: React.FC<ContainerTableProps> = ({
@@ -868,6 +944,11 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [logsTarget, setLogsTarget] = useState<ContainerDialogTarget | null>(
+    null,
+  );
+  const [terminalTarget, setTerminalTarget] =
+    useState<ContainerDialogTarget | null>(null);
   const toggleExpanded = useCallback((containerId: string) => {
     setExpandedContainerIds((previous) => {
       const next = new Set(previous);
@@ -879,6 +960,15 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       return next;
     });
   }, []);
+  const openLogs = useCallback((containerId: string, containerName: string) => {
+    setLogsTarget({ id: containerId, name: containerName });
+  }, []);
+  const openTerminal = useCallback(
+    (containerId: string, containerName: string) => {
+      setTerminalTarget({ id: containerId, name: containerName });
+    },
+    [],
+  );
   const columns = useMemo<AppDataTableColumnDef<ContainerInfo>[]>(
     () => [
       {
@@ -899,13 +989,31 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       {
         id: "update",
         header: "Update",
-        cell: ({ row }) => (
-          <UpdateCell
-            checkingUpdates={checkingUpdates}
-            container={row.original}
-          />
-        ),
+        cell: ({ row }) => {
+          const container = row.original;
+          return (
+            <UpdateCell
+              checkingUpdates={checkingUpdates}
+              containerId={container.Id}
+              name={getContainerName(container)}
+              updateAvailable={container.updateAvailable}
+              updateCheckedAt={container.updateCheckedAt}
+              updateError={container.updateError}
+            />
+          );
+        },
         meta: {
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              getContainerName(container),
+              container.updateAvailable,
+              container.updateCheckedAt,
+              container.updateError,
+              checkingUpdates,
+            ];
+          },
           hideBelow: "md",
           width: "140px",
         },
@@ -921,13 +1029,23 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               autoUpdatePending={autoUpdatePendingNames.has(name)}
               autoUpdateReason={autoUpdateReason}
               autoUpdateSelected={autoUpdateSelectedNames.has(name)}
-              container={row.original}
+              name={name}
               onToggleAutoUpdate={onToggleAutoUpdate}
             />
           );
         },
         meta: {
           align: "center",
+          getCellRenderKey: (row) => {
+            const name = getContainerName(asContainer(row));
+            return [
+              name,
+              autoUpdateDisabled,
+              autoUpdatePendingNames.has(name),
+              autoUpdateReason,
+              autoUpdateSelectedNames.has(name),
+            ];
+          },
           width: "60px",
         },
       },
@@ -1004,20 +1122,40 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
         header: "Actions",
         enableSorting: false,
         cell: ({ row }) => {
+          const container = row.original;
           const ports = getDedupedPorts(row.original);
           const mounts = getMounts(row.original);
           const expanded = expandedContainerIds.has(row.original.Id);
           return (
             <ActionsCell
-              container={row.original}
+              containerId={container.Id}
               expanded={expanded}
               hasExpandableDetails={ports.length > 2 || mounts.length > 2}
-              onToggleExpanded={() => toggleExpanded(row.original.Id)}
+              name={getContainerName(container)}
+              onOpenLogs={openLogs}
+              onOpenTerminal={openTerminal}
+              onToggleExpanded={toggleExpanded}
+              state={container.State}
+              url={container.url}
             />
           );
         },
         meta: {
           align: "right",
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            const expanded = expandedContainerIds.has(container.Id);
+            const ports = getDedupedPorts(container);
+            const mounts = getMounts(container);
+            return [
+              container.Id,
+              getContainerName(container),
+              container.State,
+              container.url,
+              expanded,
+              ports.length > 2 || mounts.length > 2,
+            ];
+          },
           width: "180px",
         },
       },
@@ -1029,30 +1167,74 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       autoUpdateSelectedNames,
       checkingUpdates,
       expandedContainerIds,
+      openLogs,
+      openTerminal,
       onToggleAutoUpdate,
       toggleExpanded,
     ],
   );
+  const dnd = useMemo<AppDataTableDndOptions<ContainerInfo> | undefined>(
+    () =>
+      editMode
+        ? {
+            getItemId: (row) => row.original.Id,
+            handleAriaLabel: "Reorder container",
+            handleColumnWidth: 28,
+          }
+        : undefined,
+    [editMode],
+  );
 
   return (
-    <AppDataTable
-      ariaLabel="Docker containers"
-      columns={columns}
-      data={containers}
-      dnd={
-        editMode
-          ? {
-              getItemId: (row) => row.original.Id,
-              handleAriaLabel: "Reorder container",
-              handleColumnWidth: 28,
-            }
-          : undefined
-      }
-      emptyMessage="No containers found."
-      enableSorting={false}
-      getRowId={(container) => container.Id}
-    />
+    <>
+      <AppDataTable
+        ariaLabel="Docker containers"
+        columns={columns}
+        data={containers}
+        dnd={dnd}
+        emptyMessage="No containers found."
+        enableSorting={false}
+        getRowId={(container) => container.Id}
+      />
+      <Suspense fallback={null}>
+        {logsTarget && (
+          <LogsDialog
+            containerId={logsTarget.id}
+            containerName={logsTarget.name}
+            onClose={() => setLogsTarget(null)}
+            open
+          />
+        )}
+        {terminalTarget && (
+          <TerminalDialog
+            containerId={terminalTarget.id}
+            containerName={terminalTarget.name}
+            onClose={() => setTerminalTarget(null)}
+            open
+          />
+        )}
+      </Suspense>
+    </>
   );
 };
 
-export default ContainerTable;
+const areContainerTablePropsEqual = (
+  previous: ContainerTableProps,
+  next: ContainerTableProps,
+) =>
+  previous.autoUpdateDisabled === next.autoUpdateDisabled &&
+  previous.autoUpdateReason === next.autoUpdateReason &&
+  previous.checkingUpdates === next.checkingUpdates &&
+  previous.editMode === next.editMode &&
+  previous.onToggleAutoUpdate === next.onToggleAutoUpdate &&
+  areStringSetsEqual(
+    previous.autoUpdatePendingNames,
+    next.autoUpdatePendingNames,
+  ) &&
+  areStringSetsEqual(
+    previous.autoUpdateSelectedNames,
+    next.autoUpdateSelectedNames,
+  ) &&
+  areContainerArraysEquivalent(previous.containers, next.containers);
+
+export default React.memo(ContainerTable, areContainerTablePropsEqual);

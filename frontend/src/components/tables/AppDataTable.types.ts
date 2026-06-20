@@ -3,11 +3,17 @@ import type React from "react";
 
 export type AppDataTableBreakpoint = "sm" | "md" | "lg" | "xl";
 
+export type AppDataTableCellRenderKey = unknown | readonly unknown[];
+
 export interface AppDataTableColumnMeta {
   align?: "left" | "center" | "right";
   cellClassName?: string;
   cellStyle?: React.CSSProperties;
   className?: string;
+  getCellRenderKey?: (
+    row: unknown,
+    rowIndex: number,
+  ) => AppDataTableCellRenderKey;
   headerClassName?: string;
   headerStyle?: React.CSSProperties;
   hideBelow?: AppDataTableBreakpoint;

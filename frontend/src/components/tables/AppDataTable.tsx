@@ -10,6 +10,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import type {
+  Cell,
   Column,
   ExpandedState,
   OnChangeFn,
@@ -22,6 +23,7 @@ import React, { useMemo, useState } from "react";
 
 import type {
   AppDataTableBreakpoint,
+  AppDataTableCellRenderKey,
   AppDataTableColumnDef,
 } from "@/components/tables/AppDataTable.types";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -143,6 +145,63 @@ function mergeRefs<T>(
     });
   };
 }
+
+function areCellRenderKeysEqual(
+  previous: AppDataTableCellRenderKey,
+  next: AppDataTableCellRenderKey,
+) {
+  if (Object.is(previous, next)) return true;
+  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
+  if (previous.length !== next.length) return false;
+  return previous.every((value, index) => Object.is(value, next[index]));
+}
+
+function getCellRenderKey<TData extends RowData>(
+  cell: Cell<TData, unknown>,
+  rowIndex: number,
+) {
+  return (
+    cell.column.columnDef.meta?.getCellRenderKey?.(
+      cell.row.original,
+      rowIndex,
+    ) ?? cell.row.original
+  );
+}
+
+interface AppDataTableCellProps<TData extends RowData> {
+  cell: Cell<TData, unknown>;
+  renderKey: AppDataTableCellRenderKey;
+}
+
+function AppDataTableCell<TData extends RowData>({
+  cell,
+}: AppDataTableCellProps<TData>) {
+  const meta = cell.column.columnDef.meta;
+
+  return (
+    <div
+      className={["app-vdt__cell", meta?.className, meta?.cellClassName]
+        .filter(Boolean)
+        .join(" ")}
+      role="cell"
+      style={{
+        justifyContent: alignToJustify(meta?.align),
+        textAlign: meta?.align,
+        ...meta?.style,
+        ...meta?.cellStyle,
+      }}
+    >
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    </div>
+  );
+}
+
+const MemoizedAppDataTableCell = React.memo(
+  AppDataTableCell,
+  (previous, next) =>
+    previous.cell.id === next.cell.id &&
+    areCellRenderKeysEqual(previous.renderKey, next.renderKey),
+) as typeof AppDataTableCell;
 
 interface AppDataTableBodyRowProps<TData extends RowData> {
   cells: React.ReactNode;
@@ -490,33 +549,13 @@ function AppDataTable<TData extends RowData>({
                     {dragHandle}
                   </div>
                 )}
-                {row.getVisibleCells().map((cell) => {
-                  const meta = cell.column.columnDef.meta;
-                  return (
-                    <div
-                      className={[
-                        "app-vdt__cell",
-                        meta?.className,
-                        meta?.cellClassName,
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      key={cell.id}
-                      role="cell"
-                      style={{
-                        justifyContent: alignToJustify(meta?.align),
-                        textAlign: meta?.align,
-                        ...meta?.style,
-                        ...meta?.cellStyle,
-                      }}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </div>
-                  );
-                })}
+                {row.getVisibleCells().map((cell) => (
+                  <MemoizedAppDataTableCell
+                    cell={cell}
+                    key={cell.id}
+                    renderKey={getCellRenderKey(cell, rowIndex)}
+                  />
+                ))}
                 {hasExpandColumn && (
                   <div
                     className="app-vdt__cell app-vdt__cell--expand"
