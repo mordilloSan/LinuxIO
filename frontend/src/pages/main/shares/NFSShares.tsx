@@ -6,8 +6,8 @@ import { linuxio, type NFSClient, type NFSExport } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -631,7 +631,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
 
   const sharesList = Array.isArray(shares) ? shares : [];
 
-  const columns: AppVirtualDataTableColumnDef<(typeof sharesList)[number]>[] = [
+  const columns: AppDataTableColumnDef<(typeof sharesList)[number]>[] = [
     {
       accessorKey: "path",
       header: "Export Path",
@@ -744,7 +744,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="NFS shares"
           columns={columns}
           data={sharesList}

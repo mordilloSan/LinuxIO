@@ -6,8 +6,8 @@ import { linuxio, type SambaShare } from "@/api";
 import SambaShareCard from "@/components/cards/SambaShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -549,7 +549,7 @@ const SambaShares: React.FC<SambaSharesProps> = ({
 
   const sharesList = Array.isArray(shares) ? shares : [];
 
-  const columns: AppVirtualDataTableColumnDef<(typeof sharesList)[number]>[] = [
+  const columns: AppDataTableColumnDef<(typeof sharesList)[number]>[] = [
     {
       accessorKey: "name",
       header: "Share Name",
@@ -666,7 +666,7 @@ const SambaShares: React.FC<SambaSharesProps> = ({
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Samba shares"
           columns={columns}
           data={sharesList}

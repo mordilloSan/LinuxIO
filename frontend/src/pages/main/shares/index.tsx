@@ -15,8 +15,8 @@ import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -89,7 +89,7 @@ const nfsOptionLabels: { key: keyof ClientOptions; label: string }[] = [
   { key: "crossmnt", label: "Crossmnt" },
 ];
 
-const tableColumns: AppVirtualDataTableColumnDef<ShareGroup>[] = [
+const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -1221,7 +1221,7 @@ const SharesPage: React.FC = () => {
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Folder shares"
           columns={tableColumns}
           data={shareGroups}

@@ -5,8 +5,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -21,13 +21,6 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableHead,
-  AppTableRow,
-} from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -45,6 +38,96 @@ interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
+
+interface ConnectedContainerRow {
+  id: string;
+  ipv4: string;
+  ipv6: string;
+  mac: string;
+  name: string;
+}
+
+interface DockerNetworkContainerDetails {
+  IPv4Address?: string;
+  IPv6Address?: string;
+  MacAddress?: string;
+  Name?: string;
+}
+
+const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] =
+  [
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.name}
+        </AppTypography>
+      ),
+    },
+    {
+      accessorKey: "id",
+      header: "Container ID",
+      cell: ({ row }) => (
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+        >
+          {row.original.id.slice(0, 12)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "ipv4",
+      header: "IPv4",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.ipv4}
+        </AppTypography>
+      ),
+    },
+    {
+      accessorKey: "ipv6",
+      header: "IPv6",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.ipv6}
+        </AppTypography>
+      ),
+    },
+    {
+      accessorKey: "mac",
+      header: "MAC",
+      cell: ({ row }) => (
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+        >
+          {row.original.mac}
+        </span>
+      ),
+    },
+  ];
 
 interface CreateNetworkDialogProps {
   existingNames: string[];
@@ -335,7 +418,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
 
-  const columns: AppVirtualDataTableColumnDef<(typeof filtered)[number]>[] = [
+  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
       id: "select",
       header: () => (
@@ -543,7 +626,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Docker networks"
           columns={columns}
           data={filtered}
@@ -645,94 +728,32 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 <div>
                   {network.Containers &&
                   Object.keys(network.Containers).length > 0 ? (
-                    <AppTable
+                    <AppDataTable
+                      ariaLabel="Connected containers"
+                      columns={connectedContainerColumns}
+                      data={Object.entries(
+                        network.Containers as Record<
+                          string,
+                          DockerNetworkContainerDetails
+                        >,
+                      ).map(([id, info]) => ({
+                        id,
+                        ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
+                        ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
+                        mac: info.MacAddress || "-",
+                        name: info.Name || "-",
+                      }))}
+                      density="compact"
+                      getRowId={(container) => container.id}
+                      maxHeight={240}
                       style={{
                         backgroundColor: alpha(
                           theme.palette.text.primary,
                           theme.palette.mode === "dark" ? 0.2 : 0.08,
                         ),
-                        overflowX: "auto",
-                        display: "block",
                       }}
-                    >
-                      <AppTableHead>
-                        <AppTableRow>
-                          <AppTableCell>
-                            <b>Name</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>Container ID</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>IPv4</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>IPv6</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>MAC</b>
-                          </AppTableCell>
-                        </AppTableRow>
-                      </AppTableHead>
-                      <AppTableBody>
-                        {Object.entries(network.Containers).map(
-                          ([id, info]: [string, any]) => (
-                            <AppTableRow key={id}>
-                              <AppTableCell>
-                                <AppTypography
-                                  style={responsiveTextStyles}
-                                  variant="body2"
-                                >
-                                  {info.Name || "-"}
-                                </AppTypography>
-                              </AppTableCell>
-                              <AppTableCell
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                              >
-                                {id.slice(0, 12)}
-                              </AppTableCell>
-                              <AppTableCell>
-                                <AppTypography
-                                  style={{
-                                    fontFamily: "monospace",
-                                    fontSize: "0.85rem",
-                                    ...longTextStyles,
-                                  }}
-                                  variant="body2"
-                                >
-                                  {info.IPv4Address?.replace(/\/.*/, "") || "-"}
-                                </AppTypography>
-                              </AppTableCell>
-                              <AppTableCell>
-                                <AppTypography
-                                  style={{
-                                    fontFamily: "monospace",
-                                    fontSize: "0.85rem",
-                                    ...longTextStyles,
-                                  }}
-                                  variant="body2"
-                                >
-                                  {info.IPv6Address?.replace(/\/.*/, "") || "-"}
-                                </AppTypography>
-                              </AppTableCell>
-                              <AppTableCell
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                              >
-                                {info.MacAddress || "-"}
-                              </AppTableCell>
-                            </AppTableRow>
-                          ),
-                        )}
-                      </AppTableBody>
-                    </AppTable>
+                      variant="embedded"
+                    />
                   ) : (
                     <AppTypography color="text.secondary" variant="body2">
                       (no containers)

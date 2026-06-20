@@ -5,8 +5,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -202,7 +202,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-  const columns: AppVirtualDataTableColumnDef<(typeof filtered)[number]>[] = [
+  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
       id: "select",
       header: () => (
@@ -366,7 +366,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Docker volumes"
           columns={columns}
           data={filtered}

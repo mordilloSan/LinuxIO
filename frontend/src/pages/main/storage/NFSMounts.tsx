@@ -12,8 +12,8 @@ import { CACHE_TTL_MS, jobSnapshotResult, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -29,6 +29,7 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -58,6 +59,11 @@ interface EditNFSDialogProps {
   onSuccess: () => void;
   open: boolean;
 }
+interface EditNFSFormProps {
+  mount: NFSMount;
+  onClose: () => void;
+  onSuccess: () => void;
+}
 
 function getMountStatusLabel(mount: NFSMount): string {
   return mount.mounted ? "Mounted" : "Configured";
@@ -69,6 +75,182 @@ function getPersistenceLabel(mount: NFSMount): string {
 
 function buildMountOptionsFromEntry(mount: NFSMount): string {
   return (mount.options ?? []).join(",");
+}
+
+// NFS version choices surfaced as a dropdown (emitted as `vers=<n>`). An empty
+// value lets the client/server negotiate the version (mount default).
+const NFS_VERSION_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Default (auto)" },
+  { value: "3", label: "NFSv3" },
+  { value: "4", label: "NFSv4" },
+  { value: "4.0", label: "NFSv4.0" },
+  { value: "4.1", label: "NFSv4.1" },
+  { value: "4.2", label: "NFSv4.2" },
+];
+
+// Transport protocol (emitted as `proto=<netid>`). Empty = mount default.
+const NFS_PROTO_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Default (auto)" },
+  { value: "tcp", label: "TCP" },
+  { value: "udp", label: "UDP" },
+];
+
+// Local locking mechanism (emitted as `local_lock=<mechanism>`). Empty maps to
+// the mount default (`none`); required as `all` when re-exporting via Samba.
+const NFS_LOCALLOCK_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Default (none)" },
+  { value: "all", label: "all" },
+  { value: "flock", label: "flock" },
+  { value: "posix", label: "posix" },
+];
+
+// Boolean mount options surfaced as toggle chips. Descriptions are condensed
+// from nfs(5)/mount(8) and shown as tooltips. Each value is a single token that
+// is either present or absent in the options list.
+const NFS_TOGGLE_OPTIONS: {
+  value: string;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "hard",
+    label: "hard",
+    description:
+      "Retry NFS requests indefinitely until the server responds (default). Safer for data integrity but can hang if the server is unreachable.",
+  },
+  {
+    value: "soft",
+    label: "soft",
+    description:
+      "Return an error after retrans retries instead of hanging when the server is unreachable. Faster failure but risks data corruption on writes.",
+  },
+  {
+    value: "bg",
+    label: "bg",
+    description:
+      "If the first mount attempt fails, keep retrying in the background instead of blocking (useful at boot for unavailable servers).",
+  },
+  {
+    value: "nolock",
+    label: "nolock",
+    description:
+      "Disable NLM file locking. Use for servers that don't support locks or for purely local access.",
+  },
+  {
+    value: "noatime",
+    label: "noatime",
+    description:
+      "Don't update file access times, reducing writes to the server.",
+  },
+  {
+    value: "nodiratime",
+    label: "nodiratime",
+    description: "Don't update directory access times.",
+  },
+  {
+    value: "noac",
+    label: "noac",
+    description:
+      "Disable attribute caching for stronger cache coherence between clients, at a significant performance cost.",
+  },
+  {
+    value: "nosuid",
+    label: "nosuid",
+    description:
+      "Ignore set-user-ID and set-group-ID bits on files from this mount.",
+  },
+  {
+    value: "nodev",
+    label: "nodev",
+    description:
+      "Don't interpret character or block special devices on this mount.",
+  },
+  {
+    value: "noexec",
+    label: "noexec",
+    description: "Don't allow direct execution of binaries on this mount.",
+  },
+];
+
+const NFS_TOGGLE_VALUES = NFS_TOGGLE_OPTIONS.map((o) => o.value);
+
+// Toggles that cannot be active simultaneously; selecting one clears its peers.
+const NFS_MUTUALLY_EXCLUSIVE_TOGGLES: string[][] = [["hard", "soft"]];
+
+// Tokens already represented by a dedicated control, plus pure system defaults
+// we don't want to echo back into the free-text "custom" field.
+const NFS_MANAGED_OPTIONS = new Set<string>([
+  "ro",
+  "rw", // read-only switch
+  "_netdev", // mount-at-boot switch
+  ...NFS_TOGGLE_VALUES, // toggle chips
+  // System defaults hidden to keep the custom field clean.
+  "defaults",
+  "nofail",
+  "auto",
+  "noauto",
+  "fg",
+  "ac",
+  "atime",
+  "diratime",
+  "relatime",
+  "strictatime",
+  "lazytime",
+  "sync",
+  "async",
+  "exec",
+  "suid",
+  "dev",
+  "intr",
+  "nointr",
+]);
+
+function isManagedNFSOption(token: string): boolean {
+  if (NFS_MANAGED_OPTIONS.has(token)) return true;
+  const key = token.split("=")[0];
+  return (
+    key === "vers" ||
+    key === "nfsvers" ||
+    key === "proto" ||
+    key === "local_lock"
+  );
+}
+
+// Kernel-generated / reported-only options the client adds automatically. They
+// must never be surfaced for editing or re-submitted on remount (e.g. a stale
+// addr/clientaddr can break an NFSv4 remount after a network change).
+const NFS_INTERNAL_OPTION_KEYS = new Set<string>([
+  "addr",
+  "clientaddr",
+  "mountaddr",
+  "mountvers",
+  "mountproto",
+  "mounthost",
+  "mountport",
+  "namlen",
+]);
+
+function isInternalNFSOption(token: string): boolean {
+  return NFS_INTERNAL_OPTION_KEYS.has(token.split("=")[0]);
+}
+
+// Options not covered by a dedicated control, surfaced for free-text editing.
+// Kernel-internal options are dropped so they neither clutter the field nor get
+// re-submitted to mount(8).
+function getCustomOptionsFromEntry(mount: NFSMount): string {
+  return (mount.options ?? [])
+    .filter((o) => !isManagedNFSOption(o) && !isInternalNFSOption(o))
+    .join(",");
+}
+
+// Reads the value of a `key=value` option (first match wins).
+function getNFSOptionValue(options: string[], keys: string[]): string {
+  for (const opt of options) {
+    const idx = opt.indexOf("=");
+    if (idx === -1) continue;
+    if (keys.includes(opt.slice(0, idx))) return opt.slice(idx + 1);
+  }
+  return "";
 }
 
 const MountEntryActions: React.FC<{
@@ -469,64 +651,77 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
     </GeneralDialog>
   );
 };
+// Thin wrapper that owns the dialog shell. The form body lives in a child that
+// is keyed by mountpoint and only mounted while the dialog is open, so its lazy
+// state initializers re-run with the current mount on every open (no effect-based
+// prop syncing needed).
 const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   open,
   onClose,
   mount,
   onSuccess,
 }) => {
+  return (
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+      <AppDialogTitle>Edit NFS Mount Options</AppDialogTitle>
+      {mount && (
+        <EditNFSForm
+          key={mount.mountpoint}
+          mount={mount}
+          onClose={onClose}
+          onSuccess={onSuccess}
+        />
+      )}
+    </GeneralDialog>
+  );
+};
+const EditNFSForm: React.FC<EditNFSFormProps> = ({
+  mount,
+  onClose,
+  onSuccess,
+}) => {
   const queryClient = useQueryClient();
   const toast = useScopedToast({ href: "/storage", label: "Open storage" });
-  // Use server and exportPath directly from mount data
-  const server = mount?.server || "";
-  const exportPath = mount?.exportPath || "";
+  // Server, export path, and mountpoint are the mount's fixed identity.
+  const server = mount.server || "";
+  const exportPath = mount.exportPath || "";
+  const options = mount.options ?? [];
 
-  // Initialize state from mount prop
-  const [readOnly, setReadOnly] = useState(() => {
-    const opts = mount?.options || [];
-    return opts.includes("ro");
+  // Local form state, initialized from the mount. This component remounts on
+  // every open (and per mount), so these initializers always reflect the current
+  // mount.
+  const [readOnly, setReadOnly] = useState(() => options.includes("ro"));
+  const [mountAtBoot, setMountAtBoot] = useState(() => mount.inFstab ?? false);
+  const [nfsVersion, setNfsVersion] = useState(() =>
+    getNFSOptionValue(options, ["vers", "nfsvers"]),
+  );
+  const [protocol, setProtocol] = useState(() =>
+    getNFSOptionValue(options, ["proto"]),
+  );
+  // The kernel always reports local_lock; treat the "none" default as unset.
+  const [localLock, setLocalLock] = useState(() => {
+    const lock = getNFSOptionValue(options, ["local_lock"]);
+    return lock === "none" ? "" : lock;
   });
-  const [mountAtBoot, setMountAtBoot] = useState(() => mount?.inFstab ?? false);
-  const [customOptions, setCustomOptions] = useState(() => {
-    if (mount) {
-      const opts = mount.options || [];
-      // Filter out known/default options to get user-defined custom ones
-      const knownOptions = [
-        // Read/write
-        "ro",
-        "rw",
-        // Boot/network
-        "_netdev",
-        "defaults",
-        "nofail",
-        "auto",
-        "noauto",
-        // Access time (system defaults)
-        "relatime",
-        "noatime",
-        "atime",
-        "strictatime",
-        "lazytime",
-        // Common defaults
-        "sync",
-        "async",
-        "exec",
-        "noexec",
-        "suid",
-        "nosuid",
-        "dev",
-        "nodev",
-        // NFS common
-        "hard",
-        "soft",
-        "intr",
-        "nointr",
-      ];
-      const custom = opts.filter((o) => !knownOptions.includes(o));
-      return custom.join(",");
-    }
-    return "";
-  });
+  const [selectedToggles, setSelectedToggles] = useState<string[]>(() =>
+    NFS_TOGGLE_VALUES.filter((v) => options.includes(v)),
+  );
+  const [customOptions, setCustomOptions] = useState(() =>
+    getCustomOptionsFromEntry(mount),
+  );
+
+  const toggleOption = (value: string) => {
+    setSelectedToggles((prev) => {
+      if (prev.includes(value)) {
+        return prev.filter((v) => v !== value);
+      }
+      const group = NFS_MUTUALLY_EXCLUSIVE_TOGGLES.find((g) =>
+        g.includes(value),
+      );
+      const base = group ? prev.filter((v) => !group.includes(v)) : prev;
+      return [...base, value];
+    });
+  };
   const { mutate: remountNFS, isPending: isRemounting } =
     linuxio.storage.remount_nfs.useMutation({
       onSuccess: (result) => {
@@ -540,7 +735,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
-        handleClose();
+        onClose();
       },
       onError: (error: Error) => {
         toast.error(
@@ -554,6 +749,21 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     if (mountAtBoot) {
       opts.push("_netdev");
     }
+    if (nfsVersion) {
+      opts.push(`vers=${nfsVersion}`);
+    }
+    if (protocol) {
+      opts.push(`proto=${protocol}`);
+    }
+    if (localLock) {
+      opts.push(`local_lock=${localLock}`);
+    }
+    // Emit toggles in catalog order for a stable, predictable options string.
+    for (const o of NFS_TOGGLE_OPTIONS) {
+      if (selectedToggles.includes(o.value)) {
+        opts.push(o.value);
+      }
+    }
     if (customOptions.trim()) {
       opts.push(
         ...customOptions
@@ -562,31 +772,18 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           .filter(Boolean),
       );
     }
-    return opts.join(",");
+    // De-duplicate while preserving order (custom field may repeat a managed token).
+    return Array.from(new Set(opts)).join(",");
   };
   const handleSave = () => {
-    if (!mount) return;
     remountNFS({
       mountpoint: mount.mountpoint,
       options: buildOptionsString(),
       updateFstab: mountAtBoot ? "true" : "false",
     });
   };
-  const handleClose = () => {
-    setReadOnly(false);
-    setMountAtBoot(false);
-    setCustomOptions("");
-    onClose();
-  };
   return (
-    <GeneralDialog
-      fullWidth
-      key={mount?.mountpoint}
-      maxWidth="sm"
-      onClose={handleClose}
-      open={open}
-    >
-      <AppDialogTitle>Edit NFS Mount Options</AppDialogTitle>
+    <>
       <AppDialogContent>
         <div
           style={{
@@ -610,15 +807,17 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             size="small"
             value={exportPath}
           />
-          {mount && (
-            <AppTextField
-              disabled
-              fullWidth
-              label="Local Mountpoint"
-              size="small"
-              value={mount.mountpoint}
-            />
-          )}
+          <AppTextField
+            disabled
+            fullWidth
+            label="Local Mountpoint"
+            size="small"
+            value={mount.mountpoint}
+          />
+          <AppTypography color="text.secondary" variant="caption">
+            Server, path, and mountpoint are fixed for an existing mount. To
+            change them, remove this entry and add it again.
+          </AppTypography>
           <AppTypography
             style={{
               marginTop: 4,
@@ -645,19 +844,85 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             }
             label="Mount read-only"
           />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+              <AppSelect
+                fullWidth
+                label="NFS version"
+                onChange={(e) => setNfsVersion(e.target.value)}
+                size="small"
+                value={nfsVersion}
+              >
+                {NFS_VERSION_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </AppSelect>
+            </div>
+            <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+              <AppSelect
+                fullWidth
+                label="Protocol"
+                onChange={(e) => setProtocol(e.target.value)}
+                size="small"
+                value={protocol}
+              >
+                {NFS_PROTO_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </AppSelect>
+            </div>
+            <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+              <AppSelect
+                fullWidth
+                label="Local lock"
+                onChange={(e) => setLocalLock(e.target.value)}
+                size="small"
+                value={localLock}
+              >
+                {NFS_LOCALLOCK_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </AppSelect>
+            </div>
+          </div>
+          <AppTypography color="text.secondary" variant="caption">
+            Common options
+          </AppTypography>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {NFS_TOGGLE_OPTIONS.map((o) => {
+              const isSelected = selectedToggles.includes(o.value);
+              return (
+                <AppTooltip key={o.value} title={o.description}>
+                  <Chip
+                    color={isSelected ? "primary" : "default"}
+                    label={o.label}
+                    onClick={() => toggleOption(o.value)}
+                    size="small"
+                    variant={isSelected ? "soft" : "outlined"}
+                  />
+                </AppTooltip>
+              );
+            })}
+          </div>
           <AppTextField
             fullWidth
-            helperText="Additional comma-separated mount options"
+            helperText="Additional comma-separated mount options (e.g. rsize=, wsize=, timeo=, retrans=, sec=, port=)"
             label="Custom Mount Options"
             onChange={(e) => setCustomOptions(e.target.value)}
-            placeholder="e.g., soft,timeo=100,retrans=2"
+            placeholder="e.g., timeo=100,retrans=2,rsize=1048576"
             size="small"
             value={customOptions}
           />
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton disabled={isRemounting} onClick={handleClose}>
+        <AppButton disabled={isRemounting} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
@@ -668,7 +933,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           {isRemounting ? "Saving..." : "Save"}
         </AppButton>
       </AppDialogActions>
-    </GeneralDialog>
+    </>
   );
 };
 const NFSMounts: React.FC<NFSMountsProps> = ({
@@ -775,7 +1040,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
       m.mountpoint.toLowerCase().includes(search.toLowerCase()) ||
       getMountStatusLabel(m).toLowerCase().includes(search.toLowerCase()),
   );
-  const columns: AppVirtualDataTableColumnDef<(typeof filtered)[number]>[] = [
+  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
       accessorKey: "source",
       header: "NFS Share",
@@ -958,7 +1223,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="NFS mounts"
           columns={columns}
           data={filtered}

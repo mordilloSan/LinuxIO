@@ -4,6 +4,9 @@ import AppCheckbox from "../ui/AppCheckbox";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -11,14 +14,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableHead,
-  AppTableRow,
-} from "@/components/ui/AppTable";
-import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
@@ -55,6 +50,22 @@ interface PermissionBits {
     execute: boolean;
   };
 }
+
+type PermissionCategory = keyof PermissionBits;
+type PermissionFlag = "execute" | "read" | "write";
+
+interface PermissionMatrixRow {
+  id: PermissionCategory;
+  label: string;
+}
+
+const permissionRows: PermissionMatrixRow[] = [
+  { id: "owner", label: "Owner" },
+  { id: "group", label: "Group" },
+  { id: "others", label: "Others" },
+];
+const permissionFlags: PermissionFlag[] = ["read", "write", "execute"];
+
 const parseSymbolicMode = (mode: string): PermissionBits => {
   const charAt = (index: number) => mode[index] || "";
   const hasExec = (value: string) => ["x", "s", "t"].includes(value);
@@ -173,6 +184,31 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const permissionColumns: AppDataTableColumnDef<PermissionMatrixRow>[] = [
+    {
+      accessorKey: "label",
+      header: "",
+      cell: ({ row }) => (
+        <AppTypography fontWeight={500} variant="body2">
+          {row.original.label}
+        </AppTypography>
+      ),
+    },
+    ...permissionFlags.map<AppDataTableColumnDef<PermissionMatrixRow>>(
+      (flag) => ({
+        id: flag,
+        header: flag[0].toUpperCase() + flag.slice(1),
+        cell: ({ row }) => (
+          <AppCheckbox
+            checked={permissions[row.original.id][flag]}
+            onChange={() => handlePermissionChange(row.original.id, flag)}
+          />
+        ),
+        meta: { align: "center" },
+      }),
+    ),
+  ];
+
   return (
     <FileBrowserDialog
       fullWidth
@@ -217,128 +253,43 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             marginTop: theme.spacing(1),
           }}
         >
-          <AppTextField
+          <AppAutocomplete
+            freeSolo
+            fullWidth
             label="Owner"
-            list="permissions-users-list"
-            onChange={(e) => setOwnerInput(e.target.value)}
+            maxListHeight={150}
+            onChange={setOwnerInput}
+            onInputChange={setOwnerInput}
+            options={availableUsers}
             shrinkLabel
             size="small"
             value={ownerInput}
           />
-          <datalist id="permissions-users-list">
-            {availableUsers.map((u) => (
-              <option key={u} value={u} />
-            ))}
-          </datalist>
 
-          <AppTextField
+          <AppAutocomplete
+            freeSolo
+            fullWidth
             label="Group"
-            list="permissions-groups-list"
-            onChange={(e) => setGroupInput(e.target.value)}
+            maxListHeight={150}
+            onChange={setGroupInput}
+            onInputChange={setGroupInput}
+            options={availableGroups}
             shrinkLabel
             size="small"
             value={groupInput}
           />
-          <datalist id="permissions-groups-list">
-            {availableGroups.map((g) => (
-              <option key={g} value={g} />
-            ))}
-          </datalist>
         </div>
 
-        <AppTable>
-          <AppTableHead>
-            <AppTableRow
-              style={{ borderBottom: "1px solid var(--app-palette-divider)" }}
-            >
-              <AppTableCell></AppTableCell>
-              <AppTableCell align="center">Read</AppTableCell>
-              <AppTableCell align="center">Write</AppTableCell>
-              <AppTableCell align="center">Execute</AppTableCell>
-            </AppTableRow>
-          </AppTableHead>
-          <AppTableBody>
-            <AppTableRow
-              style={{ borderBottom: "1px solid var(--app-palette-divider)" }}
-            >
-              <AppTableCell>
-                <AppTypography fontWeight={500} variant="body2">
-                  Owner
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.owner.read}
-                  onChange={() => handlePermissionChange("owner", "read")}
-                />
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.owner.write}
-                  onChange={() => handlePermissionChange("owner", "write")}
-                />
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.owner.execute}
-                  onChange={() => handlePermissionChange("owner", "execute")}
-                />
-              </AppTableCell>
-            </AppTableRow>
-            <AppTableRow
-              style={{ borderBottom: "1px solid var(--app-palette-divider)" }}
-            >
-              <AppTableCell>
-                <AppTypography fontWeight={500} variant="body2">
-                  Group
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.group.read}
-                  onChange={() => handlePermissionChange("group", "read")}
-                />
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.group.write}
-                  onChange={() => handlePermissionChange("group", "write")}
-                />
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.group.execute}
-                  onChange={() => handlePermissionChange("group", "execute")}
-                />
-              </AppTableCell>
-            </AppTableRow>
-            <AppTableRow>
-              <AppTableCell>
-                <AppTypography fontWeight={500} variant="body2">
-                  Others
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.others.read}
-                  onChange={() => handlePermissionChange("others", "read")}
-                />
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.others.write}
-                  onChange={() => handlePermissionChange("others", "write")}
-                />
-              </AppTableCell>
-              <AppTableCell align="center">
-                <AppCheckbox
-                  checked={permissions.others.execute}
-                  onChange={() => handlePermissionChange("others", "execute")}
-                />
-              </AppTableCell>
-            </AppTableRow>
-          </AppTableBody>
-        </AppTable>
+        <AppDataTable
+          ariaLabel="File permissions matrix"
+          columns={permissionColumns}
+          data={permissionRows}
+          density="compact"
+          enableSorting={false}
+          getRowId={(row) => row.id}
+          maxHeight={170}
+          variant="embedded"
+        />
 
         {isDirectory && (
           <div

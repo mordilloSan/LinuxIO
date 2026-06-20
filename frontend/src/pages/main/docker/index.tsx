@@ -144,6 +144,18 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
+  const handleMountCreateStackHandler = useCallback((handler: () => void) => {
+    setCreateStackHandler(() => handler);
+  }, []);
+  const handleMountCreateNetworkHandler = useCallback((handler: () => void) => {
+    setCreateNetworkHandler(() => handler);
+  }, []);
+  const handleMountCreateVolumeHandler = useCallback((handler: () => void) => {
+    setCreateVolumeHandler(() => handler);
+  }, []);
+  const handleMountCreateImageHandler = useCallback((handler: () => void) => {
+    setCreateImageHandler(() => handler);
+  }, []);
   const renderCheckUpdatesButton = () => {
     const button = (
       <AppButton
@@ -356,9 +368,7 @@ const DockerPage: React.FC = () => {
             label: "Stacks",
             component: (
               <ComposeStacksPage
-                onMountCreateHandler={(handler) =>
-                  setCreateStackHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateStackHandler}
                 viewMode={stacksView}
               />
             ),
@@ -404,9 +414,7 @@ const DockerPage: React.FC = () => {
             label: "Networks",
             component: (
               <DockerNetworksTable
-                onMountCreateHandler={(handler) =>
-                  setCreateNetworkHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateNetworkHandler}
                 viewMode={networksView}
               />
             ),
@@ -452,9 +460,7 @@ const DockerPage: React.FC = () => {
             label: "Volumes",
             component: (
               <VolumeList
-                onMountCreateHandler={(handler) =>
-                  setCreateVolumeHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateVolumeHandler}
                 viewMode={volumesView}
               />
             ),
@@ -498,9 +504,7 @@ const DockerPage: React.FC = () => {
             label: "Images",
             component: (
               <ImageList
-                onMountCreateHandler={(handler) =>
-                  setCreateImageHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateImageHandler}
                 viewMode={imagesView}
               />
             ),

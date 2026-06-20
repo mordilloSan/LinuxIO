@@ -9,8 +9,8 @@ import EditUserDialog from "./components/EditUserDialog";
 import UserCardsView from "./components/UserCardsView";
 
 import { type AccountUser, linuxio } from "@/api";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
@@ -157,7 +157,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
     }
     return allGroups;
   };
-  const columns: AppVirtualDataTableColumnDef<AccountUser>[] = [
+  const columns: AppDataTableColumnDef<AccountUser>[] = [
     {
       accessorKey: "username",
       header: "Username",
@@ -425,7 +425,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           users={filtered}
         />
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Users"
           columns={columns}
           data={filtered}

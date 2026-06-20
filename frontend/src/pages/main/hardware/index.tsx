@@ -8,8 +8,8 @@ import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
@@ -145,9 +145,7 @@ const HardwarePage: React.FC = () => {
   }, [visibleSensorGroups]);
   const memoryRows = memoryModules ?? [];
   const pciRows = pciDevices ?? [];
-  const memoryColumns: AppVirtualDataTableColumnDef<
-    (typeof memoryRows)[number]
-  >[] = [
+  const memoryColumns: AppDataTableColumnDef<(typeof memoryRows)[number]>[] = [
     {
       accessorKey: "id",
       header: "ID",
@@ -192,7 +190,7 @@ const HardwarePage: React.FC = () => {
       cell: ({ row }) => row.original.speed,
     },
   ];
-  const pciColumns: AppVirtualDataTableColumnDef<(typeof pciRows)[number]>[] = [
+  const pciColumns: AppDataTableColumnDef<(typeof pciRows)[number]>[] = [
     {
       accessorKey: "class",
       header: "Class",
@@ -328,7 +326,7 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.memoryModules}>
         <HardwareTableCard>
-          <AppVirtualDataTable
+          <AppDataTable
             ariaLabel="Memory modules"
             columns={memoryColumns}
             data={memoryRows}
@@ -349,7 +347,7 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.pciDevices}>
         <HardwareTableCard>
-          <AppVirtualDataTable
+          <AppDataTable
             ariaLabel="PCI devices"
             columns={pciColumns}
             data={pciRows}

@@ -3,14 +3,8 @@ import React from "react";
 import type { DriveInfo } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";
 
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableContainer,
-  AppTableHead,
-  AppTableRow,
-} from "@/components/ui/AppTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 
 interface DriveInfoTabProps {
   deviceInfo?: Record<string, unknown>;
@@ -20,6 +14,27 @@ interface DriveInfoTabProps {
   smartHealth?: { passed?: boolean };
 }
 
+interface DriveInfoRow {
+  property: string;
+  value: React.ReactNode;
+  valueStyle?: React.CSSProperties;
+}
+
+const driveInfoColumns: AppDataTableColumnDef<DriveInfoRow>[] = [
+  {
+    accessorKey: "property",
+    header: "Property",
+  },
+  {
+    accessorKey: "value",
+    header: "Value",
+    cell: ({ row }) => (
+      <span style={row.original.valueStyle}>{row.original.value}</span>
+    ),
+    meta: { align: "right" },
+  },
+];
+
 export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
   drive,
   rawDriveSize,
@@ -28,107 +43,77 @@ export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
   smartHealth,
 }) => {
   const isNvme = drive.transport === "nvme";
+  const rows: DriveInfoRow[] = [
+    { property: "Model", value: drive.model || "N/A" },
+    { property: "Serial Number", value: drive.serial || "N/A" },
+    { property: "Vendor", value: drive.vendor || "N/A" },
+    {
+      property: "Firmware Version",
+      value: getSmartString(smartData?.firmware_version) || "N/A",
+    },
+    { property: "Capacity", value: rawDriveSize || "N/A" },
+    {
+      property: "Transport",
+      value: drive.transport?.toUpperCase() || "N/A",
+    },
+    { property: "Read Only", value: drive.ro ? "Yes" : "No" },
+  ];
+
+  if (isNvme) {
+    rows.push(
+      {
+        property: "NVMe Version",
+        value: getSmartString(smartData?.nvme_version) || "N/A",
+      },
+      {
+        property: "Number of Namespaces",
+        value:
+          getSmartNumber(smartData?.nvme_number_of_namespaces)?.toString() ||
+          "N/A",
+      },
+    );
+  }
+
+  if (deviceInfo) {
+    rows.push(
+      {
+        property: "Device Type",
+        value: getSmartString(deviceInfo.type) || "N/A",
+      },
+      {
+        property: "Protocol",
+        value: getSmartString(deviceInfo.protocol) || "N/A",
+      },
+    );
+  }
+
+  rows.push({
+    property: "SMART Health",
+    value:
+      smartHealth?.passed === true
+        ? "Passed"
+        : smartHealth?.passed === false
+          ? "Failed"
+          : "Unknown",
+    valueStyle: {
+      color:
+        smartHealth?.passed === true
+          ? "var(--app-palette-success-main)"
+          : smartHealth?.passed === false
+            ? "var(--app-palette-error-main)"
+            : "inherit",
+    },
+  });
 
   return (
-    <AppTableContainer className="custom-scrollbar" style={{ maxHeight: 400 }}>
-      <AppTable className="app-table--sticky">
-        <AppTableHead>
-          <AppTableRow>
-            <AppTableCell style={{ fontWeight: 600 }}>Property</AppTableCell>
-            <AppTableCell align="right" style={{ fontWeight: 600 }}>
-              Value
-            </AppTableCell>
-          </AppTableRow>
-        </AppTableHead>
-        <AppTableBody>
-          <AppTableRow>
-            <AppTableCell>Model</AppTableCell>
-            <AppTableCell align="right">{drive.model || "N/A"}</AppTableCell>
-          </AppTableRow>
-          <AppTableRow>
-            <AppTableCell>Serial Number</AppTableCell>
-            <AppTableCell align="right">{drive.serial || "N/A"}</AppTableCell>
-          </AppTableRow>
-          <AppTableRow>
-            <AppTableCell>Vendor</AppTableCell>
-            <AppTableCell align="right">{drive.vendor || "N/A"}</AppTableCell>
-          </AppTableRow>
-          <AppTableRow>
-            <AppTableCell>Firmware Version</AppTableCell>
-            <AppTableCell align="right">
-              {getSmartString(smartData?.firmware_version) || "N/A"}
-            </AppTableCell>
-          </AppTableRow>
-          <AppTableRow>
-            <AppTableCell>Capacity</AppTableCell>
-            <AppTableCell align="right">{rawDriveSize || "N/A"}</AppTableCell>
-          </AppTableRow>
-          <AppTableRow>
-            <AppTableCell>Transport</AppTableCell>
-            <AppTableCell align="right">
-              {drive.transport?.toUpperCase() || "N/A"}
-            </AppTableCell>
-          </AppTableRow>
-          <AppTableRow>
-            <AppTableCell>Read Only</AppTableCell>
-            <AppTableCell align="right">{drive.ro ? "Yes" : "No"}</AppTableCell>
-          </AppTableRow>
-          {isNvme && (
-            <>
-              <AppTableRow>
-                <AppTableCell>NVMe Version</AppTableCell>
-                <AppTableCell align="right">
-                  {getSmartString(smartData?.nvme_version) || "N/A"}
-                </AppTableCell>
-              </AppTableRow>
-              <AppTableRow>
-                <AppTableCell>Number of Namespaces</AppTableCell>
-                <AppTableCell align="right">
-                  {getSmartNumber(
-                    smartData?.nvme_number_of_namespaces,
-                  )?.toString() || "N/A"}
-                </AppTableCell>
-              </AppTableRow>
-            </>
-          )}
-          {deviceInfo && (
-            <>
-              <AppTableRow>
-                <AppTableCell>Device Type</AppTableCell>
-                <AppTableCell align="right">
-                  {getSmartString(deviceInfo.type) || "N/A"}
-                </AppTableCell>
-              </AppTableRow>
-              <AppTableRow>
-                <AppTableCell>Protocol</AppTableCell>
-                <AppTableCell align="right">
-                  {getSmartString(deviceInfo.protocol) || "N/A"}
-                </AppTableCell>
-              </AppTableRow>
-            </>
-          )}
-          <AppTableRow>
-            <AppTableCell>SMART Health</AppTableCell>
-            <AppTableCell
-              align="right"
-              style={{
-                color:
-                  smartHealth?.passed === true
-                    ? "var(--app-palette-success-main)"
-                    : smartHealth?.passed === false
-                      ? "var(--app-palette-error-main)"
-                      : "inherit",
-              }}
-            >
-              {smartHealth?.passed === true
-                ? "Passed"
-                : smartHealth?.passed === false
-                  ? "Failed"
-                  : "Unknown"}
-            </AppTableCell>
-          </AppTableRow>
-        </AppTableBody>
-      </AppTable>
-    </AppTableContainer>
+    <AppDataTable
+      ariaLabel="Drive information"
+      columns={driveInfoColumns}
+      data={rows}
+      density="compact"
+      getRowId={(row) => row.property}
+      maxHeight={400}
+      variant="embedded"
+    />
   );
 };

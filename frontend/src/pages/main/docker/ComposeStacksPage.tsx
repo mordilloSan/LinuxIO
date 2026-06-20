@@ -561,4 +561,4 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   );
 };
 
-export default ComposeStacksPage;
+export default React.memo(ComposeStacksPage);

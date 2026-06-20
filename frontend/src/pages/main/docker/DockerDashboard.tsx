@@ -10,8 +10,8 @@ import DockerSectionCard from "@/components/cards/DockerSectionCard";
 import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
@@ -44,7 +44,6 @@ const StateChip: React.FC<{
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 const RESOURCE_TABLE_MAX_HEIGHT = 201;
-const RESOURCE_TABLE_ROW_HEIGHT = 36;
 
 const getContainerDisplayName = (names?: string[]) =>
   names?.[0]?.replace(/^\//, "") || "Unnamed";
@@ -199,7 +198,7 @@ const DockerDashboard: React.FC = () => {
       return list.sort((a, b) => (b.Containers ?? 0) - (a.Containers ?? 0));
     return list;
   }, [images, imageSort]);
-  const containerColumns: AppVirtualDataTableColumnDef<
+  const containerColumns: AppDataTableColumnDef<
     (typeof previewContainers)[number]
   >[] = [
     {
@@ -286,79 +285,78 @@ const DockerDashboard: React.FC = () => {
       },
     },
   ];
-  const imageColumns: AppVirtualDataTableColumnDef<
-    (typeof previewImages)[number]
-  >[] = [
-    {
-      id: "repository",
-      header: "REPOSITORY",
-      accessorFn: (image) => getImageTagParts(image.RepoTags).repo,
-      cell: ({ row }) => {
-        const { repo } = getImageTagParts(row.original.RepoTags);
-        return (
-          <AppTypography
-            copyText={repo}
-            fontWeight={500}
-            noWrap
-            title={repo}
-            toastMeta={DOCKER_TOAST_META}
-            variant="body2"
-          >
-            {repo}
+  const imageColumns: AppDataTableColumnDef<(typeof previewImages)[number]>[] =
+    [
+      {
+        id: "repository",
+        header: "REPOSITORY",
+        accessorFn: (image) => getImageTagParts(image.RepoTags).repo,
+        cell: ({ row }) => {
+          const { repo } = getImageTagParts(row.original.RepoTags);
+          return (
+            <AppTypography
+              copyText={repo}
+              fontWeight={500}
+              noWrap
+              title={repo}
+              toastMeta={DOCKER_TOAST_META}
+              variant="body2"
+            >
+              {repo}
+            </AppTypography>
+          );
+        },
+      },
+      {
+        id: "tag",
+        header: "TAG",
+        accessorFn: (image) => getImageTagParts(image.RepoTags).tag,
+        cell: ({ row }) => {
+          const { tag } = getImageTagParts(row.original.RepoTags);
+          return (
+            <AppTypography
+              color="text.secondary"
+              copyText={tag}
+              noWrap
+              title={tag}
+              toastMeta={DOCKER_TOAST_META}
+              variant="caption"
+            >
+              {tag}
+            </AppTypography>
+          );
+        },
+        meta: {
+          hideBelow: "md",
+          width: "90px",
+        },
+      },
+      {
+        id: "status",
+        header: "STATUS",
+        cell: ({ row }) =>
+          (row.original.Containers ?? 0) > 0 ? (
+            <Chip color="success" label="In Use" size="small" variant="soft" />
+          ) : null,
+        meta: {
+          width: "96px",
+        },
+      },
+      {
+        id: "size",
+        header: "SIZE",
+        accessorFn: (image) => image.Size,
+        cell: ({ row }) => (
+          <AppTypography color="text.secondary" noWrap variant="caption">
+            {formatFileSize(row.original.Size)}
           </AppTypography>
-        );
+        ),
+        meta: {
+          hideBelow: "md",
+          width: "90px",
+        },
       },
-    },
-    {
-      id: "tag",
-      header: "TAG",
-      accessorFn: (image) => getImageTagParts(image.RepoTags).tag,
-      cell: ({ row }) => {
-        const { tag } = getImageTagParts(row.original.RepoTags);
-        return (
-          <AppTypography
-            color="text.secondary"
-            copyText={tag}
-            noWrap
-            title={tag}
-            toastMeta={DOCKER_TOAST_META}
-            variant="caption"
-          >
-            {tag}
-          </AppTypography>
-        );
-      },
-      meta: {
-        hideBelow: "md",
-        width: "90px",
-      },
-    },
-    {
-      id: "status",
-      header: "STATUS",
-      cell: ({ row }) =>
-        (row.original.Containers ?? 0) > 0 ? (
-          <Chip color="success" label="In Use" size="small" variant="soft" />
-        ) : null,
-      meta: {
-        width: "96px",
-      },
-    },
-    {
-      id: "size",
-      header: "SIZE",
-      accessorFn: (image) => image.Size,
-      cell: ({ row }) => (
-        <AppTypography color="text.secondary" noWrap variant="caption">
-          {formatFileSize(row.original.Size)}
-        </AppTypography>
-      ),
-      meta: {
-        hideBelow: "md",
-        width: "90px",
-      },
-    },
-  ];
+    ];
   return (
     <div>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
@@ -769,12 +767,11 @@ const DockerDashboard: React.FC = () => {
               }
               title="Containers"
             >
-              <AppVirtualDataTable
+              <AppDataTable
                 ariaLabel="Docker dashboard containers"
                 columns={containerColumns}
                 data={previewContainers}
                 emptyMessage="No containers found"
-                estimateRowHeight={RESOURCE_TABLE_ROW_HEIGHT}
                 fillAvailable={false}
                 getRowId={(container) => container.Id}
                 maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
@@ -823,12 +820,11 @@ const DockerDashboard: React.FC = () => {
               }
               title="Images"
             >
-              <AppVirtualDataTable
+              <AppDataTable
                 ariaLabel="Docker dashboard images"
                 columns={imageColumns}
                 data={previewImages}
                 emptyMessage="No images found"
-                estimateRowHeight={RESOURCE_TABLE_ROW_HEIGHT}
                 fillAvailable={false}
                 getRowId={(image) => image.Id}
                 maxHeight={RESOURCE_TABLE_MAX_HEIGHT}

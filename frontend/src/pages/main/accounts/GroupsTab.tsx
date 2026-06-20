@@ -7,8 +7,8 @@ import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -65,7 +65,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
     setDeleteDialogOpen(true);
   };
 
-  const columns: AppVirtualDataTableColumnDef<AccountGroup>[] = [
+  const columns: AppDataTableColumnDef<AccountGroup>[] = [
     {
       accessorKey: "name",
       header: "Group Name",
@@ -241,7 +241,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Groups"
           columns={columns}
           data={filtered}

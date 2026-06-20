@@ -8,7 +8,6 @@ import {
 } from "@tanstack/react-table";
 import type {
   Column,
-  ColumnDef,
   ExpandedState,
   OnChangeFn,
   Row,
@@ -26,6 +25,11 @@ import React, {
   useState,
 } from "react";
 
+import type {
+  AppDataTableBreakpoint,
+  AppDataTableColumnDef,
+  AppDataTableColumnMeta,
+} from "@/components/tables/AppDataTable.types";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -41,40 +45,19 @@ import "./app-virtual-data-table.css";
 
 const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 
-export type AppVirtualDataTableBreakpoint = "sm" | "md" | "lg" | "xl";
-
-export interface AppVirtualDataTableColumnMeta {
-  align?: "left" | "center" | "right";
-  cellClassName?: string;
-  cellStyle?: React.CSSProperties;
-  className?: string;
-  headerClassName?: string;
-  headerStyle?: React.CSSProperties;
-  hideBelow?: AppVirtualDataTableBreakpoint;
-  style?: React.CSSProperties;
-  width?: string | number;
-}
-
-/* eslint-disable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars */
-declare module "@tanstack/react-table" {
-  interface ColumnMeta<
-    TData extends RowData,
-    TValue,
-  > extends AppVirtualDataTableColumnMeta {}
-}
-/* eslint-enable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars */
-
-export type AppVirtualDataTableColumnDef<TData, TValue = unknown> = ColumnDef<
+export type AppVirtualDataTableBreakpoint = AppDataTableBreakpoint;
+export type AppVirtualDataTableColumnMeta = AppDataTableColumnMeta;
+export type AppVirtualDataTableColumnDef<
   TData,
-  TValue
-> & {
-  meta?: AppVirtualDataTableColumnMeta;
-};
+  TValue = unknown,
+> = AppDataTableColumnDef<TData, TValue>;
 
 export interface AppVirtualDataTableProps<TData extends RowData> {
   ariaLabel?: string;
+  className?: string;
   columns: AppVirtualDataTableColumnDef<TData, unknown>[];
   data: TData[];
+  density?: "comfortable" | "compact";
   emptyMessage?: string;
   estimateExpandedRowHeight?: number;
   enableSorting?: boolean;
@@ -104,6 +87,7 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
   showHeader?: boolean;
   sorting?: SortingState;
   style?: React.CSSProperties;
+  variant?: "default" | "embedded";
 }
 
 type VirtualTableEntry<TData extends RowData> =
@@ -161,8 +145,10 @@ function easeStandard(progress: number) {
 
 function AppVirtualDataTable<TData extends RowData>({
   ariaLabel = "Data table",
+  className,
   columns,
   data,
+  density = "comfortable",
   emptyMessage = "No data available.",
   estimateExpandedRowHeight = 0,
   enableSorting = false,
@@ -188,6 +174,7 @@ function AppVirtualDataTable<TData extends RowData>({
   showHeader = true,
   sorting,
   style,
+  variant = "default",
 }: AppVirtualDataTableProps<TData>) {
   "use no memo";
 
@@ -509,9 +496,14 @@ function AppVirtualDataTable<TData extends RowData>({
     [],
   );
 
-  const headRowBg = alpha(theme.palette.text.primary, 0.08);
+  const isEmbedded = variant === "embedded";
+  const headRowBg = isEmbedded
+    ? "transparent"
+    : alpha(theme.palette.text.primary, 0.08);
   const selectedBg = alpha(theme.palette.primary.main, isDark ? 0.15 : 0.1);
-  const altBg = alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
+  const altBg = isEmbedded
+    ? "transparent"
+    : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
   const hoverBg = alpha(theme.palette.primary.main, 0.08);
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
@@ -530,7 +522,13 @@ function AppVirtualDataTable<TData extends RowData>({
 
   return (
     <div
-      className={["app-vdt", fillAvailable && "app-vdt--fill"]
+      className={[
+        "app-vdt",
+        fillAvailable && "app-vdt--fill",
+        isEmbedded && "app-vdt--embedded",
+        density === "compact" && "app-vdt--compact",
+        className,
+      ]
         .filter(Boolean)
         .join(" ")}
       role="table"
@@ -542,7 +540,7 @@ function AppVirtualDataTable<TData extends RowData>({
           "--app-vdt-head-bg": headRowBg,
           "--app-vdt-hover-bg": hoverBg,
           "--app-vdt-selected-bg": selectedBg,
-          boxShadow: shadowSm,
+          boxShadow: isEmbedded ? "none" : shadowSm,
           height: height ?? (fillAvailable ? "100%" : undefined),
           maxHeight,
           minHeight: fillAvailable ? 0 : undefined,

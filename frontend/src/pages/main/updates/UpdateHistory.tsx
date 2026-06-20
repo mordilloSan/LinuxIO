@@ -2,17 +2,17 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { linuxio } from "@/api";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppChip from "@/components/ui/AppChip";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableRow,
-} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+interface PackageChunkRow {
+  id: string;
+  upgrades: Array<{ package: string }>;
+}
+
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {
@@ -23,7 +23,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 const UpdateHistory: React.FC = () => {
   const theme = useAppTheme();
   const { data: rows = [] } = linuxio.updates.get_update_history.useQuery();
-  const columns: AppVirtualDataTableColumnDef<(typeof rows)[number]>[] = [
+  const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
     {
       id: "history",
       header: "",
@@ -83,8 +83,35 @@ const UpdateHistory: React.FC = () => {
       },
     },
   ];
+  const packageColumns: AppDataTableColumnDef<PackageChunkRow>[] = Array.from(
+    { length: 5 },
+    (_, index) => ({
+      id: `package-${index}`,
+      header: "",
+      cell: ({ row }) => {
+        const pkg = row.original.upgrades[index];
+        if (!pkg) return null;
+
+        return (
+          <span
+            style={{
+              color: "var(--app-palette-text-secondary)",
+              fontFamily: theme.typography.fontFamily,
+              fontSize: "0.85rem",
+              overflowWrap: "break-word",
+              wordBreak: "break-word",
+            }}
+          >
+            {pkg.package}
+          </span>
+        );
+      },
+      meta: { width: "20%" },
+    }),
+  );
+
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="Update history"
       columns={columns}
       data={rows}
@@ -96,43 +123,20 @@ const UpdateHistory: React.FC = () => {
           <AppTypography gutterBottom variant="subtitle2">
             <b>Packages Installed:</b>
           </AppTypography>
-          <AppTable
-            style={{
-              borderCollapse: "collapse",
-              overflowX: "auto",
-              display: "block",
-            }}
-          >
-            <AppTableBody>
-              {chunkArray(row.upgrades, 5).map((group, i) => (
-                <AppTableRow key={i}>
-                  {group.map((pkg, j) => (
-                    <AppTableCell
-                      key={j}
-                      style={{
-                        width: "20%",
-                        padding: "8px 12px",
-                        color: "var(--app-palette-text-secondary)",
-                        fontFamily: theme.typography.fontFamily,
-                        fontSize: "0.85rem",
-                        wordBreak: "break-word",
-                        overflowWrap: "break-word",
-                      }}
-                    >
-                      {pkg.package}
-                    </AppTableCell>
-                  ))}
-                  {group.length < 5 &&
-                    [...Array(5 - group.length)].map((_, j) => (
-                      <AppTableCell
-                        key={`empty-${j}`}
-                        style={{ width: "20%" }}
-                      />
-                    ))}
-                </AppTableRow>
-              ))}
-            </AppTableBody>
-          </AppTable>
+          <AppDataTable
+            ariaLabel={`Packages installed on ${row.date}`}
+            columns={packageColumns}
+            data={chunkArray(row.upgrades, 5).map((upgrades, index) => ({
+              id: String(index),
+              upgrades,
+            }))}
+            density="compact"
+            emptyMessage="No packages recorded."
+            getRowId={(packageRow) => packageRow.id}
+            maxHeight={260}
+            showHeader={false}
+            variant="embedded"
+          />
         </>
       )}
     />
