@@ -113,14 +113,8 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (a
 		}
 	}
 
-	if pkg != "" {
-		reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", pkg), pctResolve)
-		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", pkg), pctInstallStart)
-		slog.Info("Installing capability package.", "capability", name, "package", pkg)
-		if err := InstallByNameWithProgress(ctx, pkg, capabilityInstallReporter(job, pkg)); err != nil {
-			return apischema.InstallCapabilityResult{}, fmt.Errorf("install %s: %w", pkg, err)
-		}
-		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installed %s", pkg), pctInstallEnd)
+	if err := installCapabilityPackages(ctx, job, name, pkg); err != nil {
+		return apischema.InstallCapabilityResult{}, err
 	}
 
 	if service != "" {
@@ -145,6 +139,24 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (a
 	reportProgress(job, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := detectWithRetry(ctx, spec, detectRetryTimeout)
 	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
+}
+
+func installCapabilityPackages(ctx context.Context, job *bridgejobs.Job, capabilityName string, packageList string) error {
+	packages := strings.Fields(packageList)
+	if len(packages) == 0 {
+		return nil
+	}
+	reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", packageList), pctResolve)
+	for idx, packageName := range packages {
+		installStart, installEnd := packageInstallProgressRange(idx, len(packages))
+		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", packageName), installStart)
+		slog.Info("Installing capability package.", "capability", capabilityName, "package", packageName)
+		if err := InstallByNameWithProgress(ctx, packageName, capabilityInstallReporter(job, packageName, installStart, installEnd)); err != nil {
+			return fmt.Errorf("install %s: %w", packageName, err)
+		}
+		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installed %s", packageName), installEnd)
+	}
+	return nil
 }
 
 func checkCapabilityInstallPrerequisites(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
@@ -178,25 +190,35 @@ func reportProgress(job *bridgejobs.Job, stage, message string, pct uint32) {
 	job.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message, Percentage: &pct})
 }
 
-// scaleInstallPct maps PackageKit's 0-100 transaction percentage into the
-// global bar's package-step band so the overall percentage only moves forward.
-func scaleInstallPct(pkgPct uint32) uint32 {
+func packageInstallProgressRange(index int, total int) (uint32, uint32) {
+	if total <= 1 {
+		return pctInstallStart, pctInstallEnd
+	}
+	span := pctInstallEnd - pctInstallStart
+	start := pctInstallStart + uint32(index)*span/uint32(total)
+	end := pctInstallStart + uint32(index+1)*span/uint32(total)
+	return start, end
+}
+
+// scaleInstallPct maps PackageKit's 0-100 transaction percentage into one
+// package's slice of the global package-step band.
+func scaleInstallPct(pkgPct, start, end uint32) uint32 {
 	if pkgPct > 100 {
 		pkgPct = 100
 	}
-	return pctInstallStart + pkgPct*(pctInstallEnd-pctInstallStart)/100
+	return start + pkgPct*(end-start)/100
 }
 
 // capabilityInstallReporter adapts PackageKit update-signal frames (emitted by
 // the shared awaitPackageUpdateSignals handlers) into the capability job's
 // progress stream, carrying a single global percentage plus the current status.
-func capabilityInstallReporter(job *bridgejobs.Job, pkg string) pkgUpdateReporter {
-	lastGlobal := pctInstallStart
+func capabilityInstallReporter(job *bridgejobs.Job, pkg string, installStart uint32, installEnd uint32) pkgUpdateReporter {
+	lastGlobal := installStart
 	lastStatus := ""
 	return func(p *PkgUpdateProgress) error {
 		changed := false
 		if p.Percentage != nil && *p.Percentage <= 100 {
-			lastGlobal = scaleInstallPct(*p.Percentage)
+			lastGlobal = scaleInstallPct(*p.Percentage, installStart, installEnd)
 			changed = true
 		}
 		if p.Status != "" {

@@ -13,6 +13,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/watchtower"
 )
@@ -153,6 +154,17 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 		Install: &InstallSpec{PackageDebian: "wireguard-tools", PackageRHEL: "wireguard-tools"},
 	},
+	{
+		Name:    "libvirt",
+		LogName: "libvirt",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(virt.CheckLibvirtAvailability(ctx))
+		},
+		Install: &InstallSpec{
+			PackageDebian: "libvirt-daemon-system qemu-system-x86 qemu-utils ovmf xz-utils",
+			PackageRHEL:   "libvirt qemu-kvm qemu-img edk2-ovmf xz",
+		},
+	},
 }
 
 func CapabilitySpecByName(name string) (CapabilitySpec, bool) {
@@ -233,6 +245,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.AvahiAvailable, out.AvahiError = ok, errPtr
 	case "wireguard":
 		out.WireGuardAvailable, out.WireGuardError = ok, errPtr
+	case "libvirt":
+		out.LibvirtAvailable, out.LibvirtError = ok, errPtr
 	default:
 		panic("system: unknown capability wire name " + name)
 	}
