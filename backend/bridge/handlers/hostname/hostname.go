@@ -14,16 +14,6 @@ func SetHostname(ctx context.Context, hostname string) error {
 	})
 }
 
-func GetHostname(ctx context.Context) (string, error) {
-	var result string
-	err := withHostnameSession(ctx, func(session dbusclient.SystemSession) error {
-		var err error
-		result, err = dbusclient.GetProperty[string](session.Context(), session.Object(), dbusclient.HostnameIface, "Hostname")
-		return err
-	})
-	return result, err
-}
-
 func withHostnameSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
 	return dbusclient.Hostname.UseSession(ctx, fn)
 }

@@ -58,13 +58,3 @@ func IsValidCSSColor(val string) bool {
 	_, ok := cssNamedColors[lc]
 	return ok
 }
-
-var colorTokens = map[string]string{
-	"blue": "#1d99f3", "red": "#da4453", "green": "#2ecc71",
-	"yellow": "#fdbc4b", "orange": "#f47750", "violet": "#9b59b6",
-}
-
-// ResolveColorToken returns the hex for a known token, or "" if unknown.
-func ResolveColorToken(s string) string {
-	return colorTokens[strings.ToLower(strings.TrimSpace(s))]
-}

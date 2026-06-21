@@ -123,23 +123,6 @@ func SetIPv6DHCP(ctx context.Context, iface string) error {
 	return backend.SetIPv6DHCP(ctx)
 }
 
-func SetIPv6Static(ctx context.Context, iface, addressCIDR string) error {
-	if strings.TrimSpace(iface) == "" {
-		return fmt.Errorf("interface name is required")
-	}
-	if strings.TrimSpace(addressCIDR) == "" {
-		return fmt.Errorf("IPv6 CIDR is required")
-	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
-
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
-	if err != nil {
-		return err
-	}
-	return backend.SetIPv6Static(ctx, addressCIDR)
-}
-
 func DisableConnection(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")

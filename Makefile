@@ -148,6 +148,9 @@ GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_TOOLS_DIR)/bin/golangci-lint
 MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
 MODERNIZE_VERSION     ?= latest
+DEADCODE_MODULE       := golang.org/x/tools/cmd/deadcode
+DEADCODE_VERSION      ?= latest
+DEADCODE              := $(GO_TOOLS_DIR)/bin/deadcode
 GO_BUILD_PREREQ := ensure-go
 ifeq ($(SKIP_ENSURE_GO),1)
 GO_BUILD_PREREQ :=
@@ -322,11 +325,45 @@ ensure-golint: ensure-go
 	   echo "✅ golangci-lint v2 ready."; \
 	}
 
+ensure-deadcode: ensure-go
+	@{ set -euo pipefail; \
+	   bin="$(DEADCODE)"; \
+	   if [ ! -x "$$bin" ]; then \
+	     echo "📥 Installing deadcode $(DEADCODE_VERSION) with local Go ($(GO_BIN))..."; \
+	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
+	       "$(GO_BIN)" install "$(DEADCODE_MODULE)@$(DEADCODE_VERSION)"; \
+	   fi; \
+	   "$$bin" -h >/dev/null 2>&1 || { echo "❌ deadcode is installed but not runnable"; exit 1; }; \
+	   echo "✅ deadcode ready."; \
+	}
+
 setup:
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
+
+update-deps: ensure-node
+	@echo ""
+	@echo "📦 Frontend dependency update (npm → latest)"
+	@bash -c '\
+	  set -euo pipefail; \
+	  cd frontend; \
+	  echo ""; \
+	  echo "🔎 Current outdated packages:"; \
+	  npm outdated || true; \
+	  echo ""; \
+	  echo "⬆️  Bumping package.json to latest with npm-check-updates..."; \
+	  npx --yes npm-check-updates -u; \
+	  echo ""; \
+	  echo "🔄 Refreshing lockfile + node_modules (npm install)..."; \
+	  npm install; \
+	  echo ""; \
+	  echo "🔎 Remaining outdated after update:"; \
+	  npm outdated || true; \
+	  echo ""; \
+	  echo "✅ Frontend dependencies updated to latest!"; \
+	'
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 lint: ensure-node setup
@@ -338,7 +375,7 @@ tsc: ensure-node setup
 golint: ensure-golint
 	@$(MAKE) --no-print-directory golint-only
 
-test: ensure-node ensure-go ensure-golint setup dev-prep
+test: ensure-node ensure-go ensure-golint ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
 	$(MAKE) --no-print-directory lint-only   & PID_LINT=$$!; \
@@ -351,11 +388,42 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
 	$(PRINTC) ""; \
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	$(PRINTC) ""; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET)"
+
+check-frontend: ensure-node setup
+	@set -uo pipefail; \
+	ST=0; \
+	$(MAKE) --no-print-directory lint-only & PID_LINT=$$!; \
+	$(MAKE) --no-print-directory tsc-only  & PID_TSC=$$!; \
+	wait $$PID_LINT || ST=1; \
+	wait $$PID_TSC  || ST=1; \
+	$(PRINTC) ""; \
+	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	if [ $$ST -ne 0 ]; then \
+	  $(PRINTC) "\n$(COLOR_RED)❌ Frontend checks failed.$(COLOR_RESET)"; \
+	  exit 1; \
+	fi; \
+	$(PRINTC) "\n$(COLOR_GREEN)✅ Frontend checks passed!$(COLOR_RESET)"
+
+check-backend: ensure-go ensure-golint ensure-deadcode
+	@set -uo pipefail; \
+	ST=0; \
+	$(MAKE) --no-print-directory golint-only || ST=1; \
+	$(PRINTC) ""; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	$(PRINTC) ""; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	if [ $$ST -ne 0 ]; then \
+	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
+	  exit 1; \
+	fi; \
+	$(PRINTC) "\n$(COLOR_GREEN)✅ Backend checks passed!$(COLOR_RESET)"
 
 test-frontend: ensure-node setup
 	@$(MAKE) --no-print-directory test-frontend-only
@@ -412,6 +480,27 @@ test-backend: $(GO_BUILD_PREREQ)
 		status=$$?; \
 		echo "$$out" | grep -v '\[no test files\]' || true; \
 		exit $$status
+
+deadcode: ensure-deadcode
+	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
+
+# Informational only: reports functions unreachable from any main or test entry
+# point. Never fails the build (see `make test`); triage/remove at your pace.
+# `-test` is required so legitimate test-only helpers are not reported as dead.
+deadcode-only: $(GO_BUILD_PREREQ)
+	@echo "🔎 Scanning backend for dead code (informational)..."
+	@cd "$(BACKEND_DIR)" && \
+		out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
+		status=$$?; \
+		if [ $$status -ne 0 ]; then \
+			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode scan could not complete (informational, not failing):$(COLOR_RESET)"; \
+			printf '%s\n' "$$out"; \
+		elif [ -n "$$out" ]; then \
+			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found unreachable functions (informational, not failing):$(COLOR_RESET)"; \
+			printf '%s\n' "$$out"; \
+		else \
+			$(PRINTC) "$(COLOR_GREEN)✅ No dead code found!$(COLOR_RESET)"; \
+		fi
 
 analyze-auth:
 	@echo ""
@@ -752,13 +841,18 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node      $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go $(GO_VERSION))"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-deadcode  $(COLOR_RESET) Install deadcode (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
+	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Bump frontend package.json to latest + npm install"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests (optimized)"
+	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
+	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make check-backend    $(COLOR_RESET) Run backend lint + unit tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
@@ -822,7 +916,7 @@ cloc-breakdown:
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
-  dev dev-prep setup test test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only \
-  ensure-node ensure-go ensure-golint \
+  dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  ensure-node ensure-go ensure-golint ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   cloc cloc-clean cloc-breakdown

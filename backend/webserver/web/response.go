@@ -14,8 +14,3 @@ func WriteJSON(w http.ResponseWriter, status int, data any) {
 		slog.Warn("failed to encode JSON response", "error", err)
 	}
 }
-
-// WriteError writes a JSON error response with the given status code.
-func WriteError(w http.ResponseWriter, status int, message string) {
-	WriteJSON(w, status, map[string]string{"error": message})
-}

@@ -15,7 +15,6 @@ type RouteSpec struct {
 	Route      string
 	Mode       bridgeipc.Mode
 	Kind       Kind
-	Policy     bridgeipc.JobPolicy
 	Privileged bool
 	NoEndpoint bool
 
@@ -36,12 +35,6 @@ func Privileged() RouteSpecOption {
 func NoEndpoint() RouteSpecOption {
 	return func(spec *RouteSpec) {
 		spec.NoEndpoint = true
-	}
-}
-
-func WithPolicy(policy bridgeipc.JobPolicy) RouteSpecOption {
-	return func(spec *RouteSpec) {
-		spec.Policy = policy
 	}
 }
 
@@ -258,20 +251,10 @@ func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
 	case bridgeipc.ModeQuery:
 		router.Query(spec.Route, binding.Handle, opts...)
 	case bridgeipc.ModeJob:
-		router.Job(spec.Route, binding.Handle, jobPolicy(spec, binding.Policy), opts...)
+		router.Job(spec.Route, binding.Handle, jobPolicy(binding.Policy), opts...)
 	default:
 		panic(fmt.Sprintf("apischema: route %s is %s, not query/job", spec.Route, spec.Mode))
 	}
-}
-
-func AttachHandlers(router *bridgeipc.Router, bindings ...HandlerBinding) {
-	for _, binding := range bindings {
-		AttachHandler(router, binding)
-	}
-}
-
-func RegisterRoutes(router *bridgeipc.Router, bindings ...HandlerBinding) {
-	AttachHandlers(router, bindings...)
 }
 
 func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {
@@ -284,7 +267,7 @@ func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {
 	}
 	opts := routeOptions(spec, binding.Options)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
-	router.JobRunner(spec.Route, binding.Runner, jobPolicy(spec, binding.Policy), opts...)
+	router.JobRunner(spec.Route, binding.Runner, jobPolicy(binding.Policy), opts...)
 }
 
 func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
@@ -378,12 +361,9 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	return opts
 }
 
-func jobPolicy(spec RouteSpec, explicit bridgeipc.JobPolicy) bridgeipc.JobPolicy {
+func jobPolicy(explicit bridgeipc.JobPolicy) bridgeipc.JobPolicy {
 	if explicit.Name != "" {
 		return explicit
-	}
-	if spec.Policy.Name != "" {
-		return spec.Policy
 	}
 	return bridgeipc.ActionDefault
 }

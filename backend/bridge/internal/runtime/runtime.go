@@ -26,7 +26,3 @@ func New(sess *session.Session, store *config.UserStore) Runtime {
 func (r Runtime) Username() string {
 	return r.Session.User.Username
 }
-
-func (r Runtime) Privileged() bool {
-	return r.Session.Privileged
-}

@@ -314,50 +314,6 @@ func (o *OperationCallbacks) ReportComplete(path string) {
 	}
 }
 
-// AbortMonitor monitors a stream for abort signals (OpStreamAbort).
-// Returns a cancel function that returns true when abort is received.
-// The cleanup function waits for the monitor goroutine to exit (with timeout).
-func AbortMonitor(r io.Reader) (cancelFn CancelFunc, cleanup func()) {
-	aborted := make(chan struct{})
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-		for {
-			frame, err := ReadRelayFrame(r)
-			if err != nil {
-				return
-			}
-			if frame.Opcode == OpStreamAbort {
-				close(aborted)
-				return
-			}
-		}
-	}()
-
-	cancelFn = func() bool {
-		select {
-		case <-aborted:
-			return true
-		default:
-			return false
-		}
-	}
-
-	// cleanup waits for the goroutine to finish with a reasonable timeout.
-	// The goroutine will exit when the reader returns an error (e.g., stream closed).
-	cleanup = func() {
-		select {
-		case <-done:
-			// Goroutine finished cleanly
-		case <-time.After(100 * time.Millisecond):
-			// Timeout - goroutine will exit when stream closes
-		}
-	}
-
-	return cancelFn, cleanup
-}
-
 // AbortContext creates a context derived from parent that is cancelled when an
 // abort signal (OpStreamAbort) is received on the stream. Uses channel-based
 // notification — no polling.

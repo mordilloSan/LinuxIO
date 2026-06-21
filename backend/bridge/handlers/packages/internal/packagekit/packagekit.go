@@ -115,13 +115,6 @@ func (s ClientSession) TriggerOffline(action string) error {
 	return nil
 }
 
-func (t *Transaction) Path() dbusclient.ObjectPath {
-	if t == nil {
-		return ""
-	}
-	return t.path
-}
-
 func (t *Transaction) Signals() <-chan *dbusclient.Signal {
 	if t == nil || t.sub == nil {
 		return nil
