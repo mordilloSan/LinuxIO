@@ -1,4 +1,3 @@
-// vite.config.ts
 import { defineConfig, type PluginOption } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
@@ -12,8 +11,6 @@ export default defineConfig(async ({ command }) => {
   const isBuild = command === "build";
   const shouldAnalyze = isBuild && process.env.BUNDLE_ANALYZE === "true";
 
-  // PROXY_TARGET is for vite's proxy (not exposed to frontend)
-  // VITE_DEV_PORT is for the dev server port
   const proxyTarget = process.env.PROXY_TARGET || "https://localhost:8090";
   const devPort = Number(process.env.VITE_DEV_PORT || 3000);
 
