@@ -16,20 +16,11 @@ export type FileItem = ItemMetadata & {
   path: string;
 };
 
-export type ApiItem = ItemMetadata;
-
-interface DirectoryListing {
-  files?: ApiItem[];
-  folders?: ApiItem[];
-  parentDirItems?: ApiItem[];
-}
-
-export type ApiResource = FileItem &
-  DirectoryListing & {
-    content?: string;
-  };
-
-export type FileResource = Omit<ApiResource, "files" | "folders"> & {
+// Client-normalized view of a directory resource: the wire `folders` + `files`
+// (generated ExtendedFileInfo) are flattened into a single `items` list with
+// computed paths. See normalizeResource.
+export type FileResource = FileItem & {
+  content?: string;
   items?: FileItem[];
 };
 

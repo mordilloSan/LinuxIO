@@ -1,6 +1,8 @@
-import { ApiResource, FileItem, FileResource } from "../../types/filebrowser";
+import { ExtendedFileInfo } from "@/api";
 
-export const normalizeResource = (data: ApiResource): FileResource => {
+import { FileItem, FileResource } from "../../types/filebrowser";
+
+export const normalizeResource = (data: ExtendedFileInfo): FileResource => {
   if (data.type !== "directory") {
     return data;
   }
@@ -14,18 +16,17 @@ export const normalizeResource = (data: ApiResource): FileResource => {
       item.type === "directory"
         ? `${basePath}${item.name}/`
         : `${basePath}${item.name}`;
-    const modTime = item.modTime ?? item.modified;
 
     return {
       ...item,
       path: nextPath.replace(/\/{2,}/g, "/"),
-      modTime,
+      modTime: item.modified,
     };
   });
 
   return {
     ...data,
-    modTime: data.modTime ?? data.modified,
+    modTime: data.modified,
     items,
   };
 };

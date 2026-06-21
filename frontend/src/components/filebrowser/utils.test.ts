@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { ExtendedFileInfo } from "@/api";
+
 import {
   ensureTarGzExtension,
   ensureZipExtension,
@@ -29,7 +31,7 @@ describe("filebrowser utils", () => {
       name: "docker",
       path: "/srv/docker/",
       type: "directory",
-    });
+    } as ExtendedFileInfo);
 
     expect(resource.modTime).toBe("2026-01-02T00:00:00Z");
     expect(resource.items).toEqual([
@@ -52,7 +54,7 @@ describe("filebrowser utils", () => {
       name: "/",
       path: "/",
       type: "directory",
-    });
+    } as ExtendedFileInfo);
 
     expect(resource.items?.map((item) => item.path)).toEqual([
       "/etc/",
@@ -66,7 +68,7 @@ describe("filebrowser utils", () => {
       name: "readme.md",
       path: "/readme.md",
       type: "file",
-    };
+    } as ExtendedFileInfo;
 
     expect(normalizeResource(file)).toBe(file);
   });
