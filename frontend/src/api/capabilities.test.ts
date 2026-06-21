@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CAPABILITIES,
   CAPABILITY_KEYS,
   capabilityStateFromWire,
   emptyCapabilityState,
@@ -17,7 +18,21 @@ describe("capabilities helpers", () => {
 
     expect(state.dockerAvailable).toBe(true);
     expect(state.packageKitAvailable).toBe(false);
+    expect(state.libvirtAvailable).toBeNull();
     expect(state.wireguardAvailable).toBeNull();
+  });
+
+  it("defines libvirt as an installable routed capability", () => {
+    const libvirt = CAPABILITIES.find(
+      (capability) => capability.wire === "libvirt",
+    );
+
+    expect(libvirt).toMatchObject({
+      dependency: "libvirt",
+      installable: { requiresPackageKit: true },
+      route: { href: "/vm", label: "Open VMs" },
+      state: "libvirtAvailable",
+    });
   });
 
   it("parses untrusted capability JSON safely", () => {

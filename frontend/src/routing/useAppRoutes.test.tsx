@@ -68,6 +68,7 @@ describe("useAppRoutes", () => {
         createAuthContextValue({
           ...emptyCapabilityState,
           dockerAvailable: true,
+          libvirtAvailable: true,
           lmSensorsAvailable: true,
           privileged: true,
           wireguardAvailable: true,
@@ -78,6 +79,7 @@ describe("useAppRoutes", () => {
     const childPaths = protectedChildPaths(result.current);
     expect(childPaths).toContain("docker");
     expect(childPaths).toContain("hardware");
+    expect(childPaths).toContain("vm");
     expect(childPaths).toContain("wireguard");
   });
 });
