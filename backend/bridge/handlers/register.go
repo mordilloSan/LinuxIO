@@ -23,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -50,6 +51,7 @@ var Families = []Family{
 	{Name: "network", Routes: network.Routes, Register: network.RegisterHandlers},
 	{Name: "packages", Routes: packages.Routes, Register: packages.RegisterHandlers},
 	{Name: "terminal", Routes: terminal.Routes, Register: terminal.RegisterHandlers},
+	{Name: "virt", Routes: virt.Routes, Register: virt.RegisterHandlers},
 	{Name: "wireguard", Routes: wireguard.Routes, Register: wireguard.RegisterHandlers},
 	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},
 	{Name: "shares", Routes: shares.Routes, Register: shares.RegisterHandlers},

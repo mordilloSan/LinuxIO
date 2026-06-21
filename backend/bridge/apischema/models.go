@@ -25,6 +25,8 @@ var StringEnums = map[string][]string{
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
 	"ValidationIssueType":           {"error", "warning"},
+	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
+	"VMSourceType":                  {"iso", "imagePreset"},
 }
 
 const (
@@ -35,6 +37,7 @@ const (
 var ExtraTypes = []TypeSpec{
 	TypeOf[InstallCapabilityResult](),
 	TypeOf[JobEvent](),
+	TypeOf[VMCreateProgress](),
 }
 
 type CPUInfoResponse struct {
@@ -1103,6 +1106,74 @@ type StorageWarningResult struct {
 type OfflineUpdatesResponse struct {
 	Status *string `json:"status,omitempty"`
 	Error  *string `json:"error,omitempty"`
+}
+
+type VMDisk struct {
+	Device     string `json:"device"`
+	Target     string `json:"target"`
+	Path       string `json:"path"`
+	VolumeName string `json:"volumeName,omitempty"`
+	SizeGB     int    `json:"sizeGB,omitempty"`
+	Owned      bool   `json:"owned"`
+}
+
+type VMNIC struct {
+	MAC         string   `json:"mac,omitempty"`
+	Model       string   `json:"model,omitempty"`
+	Network     string   `json:"network,omitempty"`
+	IPAddresses []string `json:"ipAddresses,omitempty"`
+}
+
+type VirtualMachine struct {
+	Name        string   `json:"name"`
+	UUID        string   `json:"uuid,omitempty"`
+	State       string   `json:"state"`
+	VCPUs       int      `json:"vcpus"`
+	MemoryMB    int      `json:"memoryMB"`
+	DiskGB      int      `json:"diskGB"`
+	Autostart   bool     `json:"autostart"`
+	HasGraphics bool     `json:"hasGraphics"`
+	OwnedDisks  []string `json:"ownedDisks"`
+	Disks       []VMDisk `json:"disks,omitempty"`
+	NICs        []VMNIC  `json:"nics,omitempty"`
+}
+
+type VMPreflightFirmware struct {
+	UEFIAvailable bool `json:"uefiAvailable"`
+	BIOSAvailable bool `json:"biosAvailable"`
+}
+
+type VMManagedPaths struct {
+	Root        string `json:"root"`
+	ISOs        string `json:"isos"`
+	CloudImages string `json:"cloudImages"`
+}
+
+type VMPreflight struct {
+	KvmPresent           bool                `json:"kvmPresent"`
+	QemuPresent          bool                `json:"qemuPresent"`
+	LibvirtReachable     bool                `json:"libvirtReachable"`
+	DefaultPoolExists    bool                `json:"defaultPoolExists"`
+	DefaultPoolActive    bool                `json:"defaultPoolActive"`
+	DefaultNetworkExists bool                `json:"defaultNetworkExists"`
+	DefaultNetworkActive bool                `json:"defaultNetworkActive"`
+	ISOReadable          bool                `json:"isoReadable"`
+	Firmware             VMPreflightFirmware `json:"firmware"`
+	ManagedPaths         VMManagedPaths      `json:"managedPaths"`
+	Warnings             []string            `json:"warnings,omitempty"`
+	Errors               []string            `json:"errors,omitempty"`
+}
+
+type VMCreateProgress struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+	Path    string `json:"path,omitempty"`
+	Percent *int   `json:"percent,omitempty"`
+}
+
+type VMDeleteResult struct {
+	Removed   []string `json:"removed"`
+	Preserved []string `json:"preserved"`
 }
 
 type CapabilitiesResponse struct {
