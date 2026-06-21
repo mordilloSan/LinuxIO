@@ -29,6 +29,10 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+.directory-tree__node--toggle-only {
+  cursor: default;
+}
+
 .directory-tree__node--selected {
   background: color-mix(in srgb, var(--app-palette-primary-main) 18%, transparent);
   color: var(--app-palette-primary-main);
@@ -38,7 +42,8 @@
   background: color-mix(in srgb, var(--app-palette-primary-main) 24%, transparent);
 }
 
-.directory-tree__chevron {
+.directory-tree__chevron,
+.directory-tree__toggle {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,6 +51,29 @@
   height: 16px;
   flex-shrink: 0;
   opacity: 0.6;
+}
+
+.directory-tree__toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.directory-tree__toggle:disabled {
+  cursor: default;
+}
+
+.directory-tree__toggle:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+
+.directory-tree__chevron-spacer {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .directory-tree__icon {

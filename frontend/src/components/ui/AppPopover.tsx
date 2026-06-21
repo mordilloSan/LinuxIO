@@ -240,16 +240,20 @@ const AppPopover: React.FC<AppPopoverProps> = ({
       return undefined;
     }
 
-    document.addEventListener("mousedown", handleDismissPointer);
-    document.addEventListener("touchstart", handleDismissPointer);
-    document.addEventListener("contextmenu", handleDismissContextMenu);
-    document.addEventListener("keydown", handleDismissKeyDown);
+    document.addEventListener("mousedown", handleDismissPointer, true);
+    document.addEventListener("touchstart", handleDismissPointer, true);
+    document.addEventListener("contextmenu", handleDismissContextMenu, true);
+    document.addEventListener("keydown", handleDismissKeyDown, true);
 
     return () => {
-      document.removeEventListener("mousedown", handleDismissPointer);
-      document.removeEventListener("touchstart", handleDismissPointer);
-      document.removeEventListener("contextmenu", handleDismissContextMenu);
-      document.removeEventListener("keydown", handleDismissKeyDown);
+      document.removeEventListener("mousedown", handleDismissPointer, true);
+      document.removeEventListener("touchstart", handleDismissPointer, true);
+      document.removeEventListener(
+        "contextmenu",
+        handleDismissContextMenu,
+        true,
+      );
+      document.removeEventListener("keydown", handleDismissKeyDown, true);
     };
   }, [open]);
 
