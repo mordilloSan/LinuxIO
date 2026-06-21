@@ -3,22 +3,22 @@ backend/webserver/web/frontend/
 frontend/node_modules/
 frontend/.vite-dev.pid
 frontend/vite.config.module-build.tmp.js
-frontend/tsconfig.tsbuildinfo
+tsconfig.tsbuildinfo
 
 # Go Binaries
 /linuxio
-linuxio-webserver
-linuxio-auth
-linuxio-bridge
-.cache
-.go-cache
-.gocache
+/linuxio-webserver
+/linuxio-auth
+/linuxio-bridge
 
 # Logs and misc
 *.log
-.DS_Store
-.vscode/
-.claude/
 *.swp
+.cache
+.go-cache
+.gocache
+.DS_Store
+.vscode
+.claude
 .script-server.pid
 frontend/.eslintcache*
