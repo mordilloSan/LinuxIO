@@ -5,8 +5,8 @@ import AppCardContent from "@/components/ui/AppCardContent";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { cardBorderRadius } from "@/constants";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { cardBorderRadius } from "@/theme/constants";
 import { CollapsibleTableProps } from "@/types/collapsible";
 import { alpha } from "@/utils/color";
 

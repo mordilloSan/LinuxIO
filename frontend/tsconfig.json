@@ -38,7 +38,6 @@
       "@/icons/*": ["./src/icons/*"],
       // Files
       "@/api": ["./src/api/index"],
-      "@/constants": ["./src/theme/constants"],
       "@/config": ["./src/config"],
       "@/theme": ["./src/theme/index"],
       "@/routes": ["./src/routes"]

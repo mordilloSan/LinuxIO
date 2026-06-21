@@ -7,10 +7,10 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { iconSize, shadowSm } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { COLOR_TOKENS } from "@/theme/colors";
+import { iconSize, shadowSm } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 function NavbarColorCustomizer() {

@@ -4,8 +4,8 @@ import React from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { iconSize } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
+import { iconSize } from "@/theme/constants";
 
 function NavbarThemeToggle() {
   const [theme, setTheme] = useConfigValue("theme");

@@ -6,13 +6,13 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useBackgroundJobState } from "@/hooks/backgroundJobs/useBackgroundJobState";
 import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { useAppTheme } from "@/theme";
+import { iconSize as iconSizes } from "@/theme/constants";
 
 const MAX_RECENT_TOASTS = 5;
 const PEEK_DURATION_MS = 3000;

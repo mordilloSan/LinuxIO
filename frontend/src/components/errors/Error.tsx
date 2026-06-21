@@ -2,8 +2,8 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
-import { iconSize } from "@/constants";
 import { useAppTheme } from "@/theme";
+import { iconSize } from "@/theme/constants";
 
 const ErrorMessage: React.FC = () => {
   const theme = useAppTheme();

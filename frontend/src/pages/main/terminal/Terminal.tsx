@@ -11,10 +11,10 @@ import {
 import TerminalContextMenu from "@/components/terminal/TerminalContextMenu";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { shadowSm } from "@/constants";
 import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
 import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
+import { shadowSm } from "@/theme/constants";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;

@@ -7,10 +7,10 @@ import LogoDisplay from "../logo/LogoDisplay";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import "./sidebar.css";
-import { collapsedDrawerWidth, drawerWidth } from "@/constants";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
 import { useAppTheme } from "@/theme";
+import { collapsedDrawerWidth, drawerWidth } from "@/theme/constants";
 import { SidebarItemsType } from "@/types/sidebar";
 
 export interface SidebarProps {
