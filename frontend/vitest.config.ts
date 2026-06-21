@@ -14,6 +14,7 @@ export default defineConfig({
     },
   },
   test: {
+    pool: "threads",
     clearMocks: true,
     // Silence intercepted console output from passing tests; failing tests
     // still print their logs for debugging. Keeps `make test` output readable.
