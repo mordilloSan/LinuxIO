@@ -30,12 +30,12 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   EASING_STANDARD_CSS,
   TRANSITION_DURATION_STANDARD_MS,
   shadowSm,
-} from "@/constants";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+} from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 import "./app-virtual-data-table.css";
