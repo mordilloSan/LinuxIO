@@ -2,8 +2,6 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
-import ActionButton from "./ActionButton";
-
 import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -11,6 +9,7 @@ import type {
   AppDataTableColumnDef,
   AppDataTableDndOptions,
 } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -354,10 +353,15 @@ const UpdateCell = React.memo(function UpdateCell({
       />
       <AppTooltip title="Check for updates">
         <span>
-          <ActionButton
+          <AppActionIconButton
+            buttonHeight={22}
+            buttonWidth={18}
             icon="mdi:magnify"
+            iconSize={16}
+            label="Check for updates"
             loading={isCheckingUpdate || checkingUpdates}
             onClick={() => checkContainerUpdate({ containerId })}
+            tooltip={false}
           />
         </span>
       </AppTooltip>
@@ -385,7 +389,7 @@ const AutoUpdateCell = React.memo(function AutoUpdateCell({
   const theme = useAppTheme();
   const [autoTooltipKey, setAutoTooltipKey] = useState(0);
   const tooltip = autoUpdateDisabled
-    ? autoUpdateReason
+    ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
     : autoUpdatePending
       ? "Saving auto-update setting"
       : autoUpdateSelected
@@ -395,15 +399,20 @@ const AutoUpdateCell = React.memo(function AutoUpdateCell({
   return (
     <AppTooltip key={autoTooltipKey} title={tooltip}>
       <span>
-        <ActionButton
+        <AppActionIconButton
+          buttonHeight={22}
+          buttonWidth={18}
           color={autoUpdateSelected ? theme.palette.primary.main : undefined}
           disabled={autoUpdateDisabled || autoUpdatePending}
           icon="mdi:timer-cog-outline"
+          iconSize={16}
+          label={tooltip}
           loading={autoUpdatePending}
           onClick={() => {
             setAutoTooltipKey((key) => key + 1);
             onToggleAutoUpdate(name);
           }}
+          tooltip={false}
         />
       </span>
     </AppTooltip>
@@ -832,9 +841,14 @@ const ActionsCell = React.memo(function ActionsCell({
         {state !== "running" && (
           <AppTooltip title="Start">
             <span>
-              <ActionButton
+              <AppActionIconButton
+                buttonHeight={22}
+                buttonWidth={18}
                 icon="mdi:play"
+                iconSize={16}
+                label="Start"
                 onClick={() => startContainer({ containerId })}
+                tooltip={false}
               />
             </span>
           </AppTooltip>
@@ -842,51 +856,81 @@ const ActionsCell = React.memo(function ActionsCell({
         {state === "running" && (
           <AppTooltip title="Stop">
             <span>
-              <ActionButton
+              <AppActionIconButton
+                buttonHeight={22}
+                buttonWidth={18}
                 icon="mdi:stop"
+                iconSize={16}
+                label="Stop"
                 onClick={() => stopContainer({ containerId })}
+                tooltip={false}
               />
             </span>
           </AppTooltip>
         )}
         <AppTooltip title="Restart">
           <span>
-            <ActionButton
+            <AppActionIconButton
+              buttonHeight={22}
+              buttonWidth={18}
               icon="mdi:restart"
+              iconSize={16}
+              label="Restart"
               onClick={() => restartContainer({ containerId })}
+              tooltip={false}
             />
           </span>
         </AppTooltip>
         <AppTooltip title="Remove">
           <span>
-            <ActionButton
+            <AppActionIconButton
+              buttonHeight={22}
+              buttonWidth={18}
               icon="mdi:delete"
+              iconSize={16}
+              label="Remove"
               onClick={() => removeContainer({ containerId })}
+              tooltip={false}
             />
           </span>
         </AppTooltip>
         <AppTooltip title="Logs">
           <span>
-            <ActionButton
+            <AppActionIconButton
+              buttonHeight={22}
+              buttonWidth={18}
               icon="mdi:file-document-outline"
+              iconSize={16}
+              label="Logs"
               onClick={() => onOpenLogs(containerId, name)}
+              tooltip={false}
             />
           </span>
         </AppTooltip>
         <AppTooltip title="Terminal">
           <span>
-            <ActionButton
+            <AppActionIconButton
+              buttonHeight={22}
+              buttonWidth={18}
               icon="mdi:console"
+              iconSize={16}
+              label="Terminal"
               onClick={() => onOpenTerminal(containerId, name)}
+              tooltip={false}
             />
           </span>
         </AppTooltip>
         {url && (
           <AppTooltip title="Open App">
             <span>
-              <ActionButton
+              <AppActionIconButton
+                buttonHeight={22}
+                buttonWidth={18}
                 icon="mdi:open-in-new"
+                iconSize={16}
+                label="Open App"
                 onClick={() => window.open(url, "_blank", "noopener")}
+                tooltip={false}
               />
             </span>
           </AppTooltip>

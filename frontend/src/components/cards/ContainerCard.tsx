@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
-import ActionButton from "../../pages/main/docker/ActionButton";
 import ContainerInfoSections from "../../pages/main/docker/ContainerInfoSections";
 import AppCircularProgress from "../ui/AppCircularProgress";
 
@@ -10,6 +9,7 @@ import { jobSnapshotResult, linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -245,7 +245,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
 
   const statusColor = resolveColor(theme.palette, getStatusColor(container));
   const autoUpdateTooltip = autoUpdateDisabled
-    ? autoUpdateReason
+    ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
     : autoUpdatePending
       ? "Saving auto-update setting"
       : autoUpdateSelected
@@ -305,14 +305,19 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
           title={autoUpdateTooltip}
         >
           <span>
-            <ActionButton
+            <AppActionIconButton
+              buttonHeight={22}
+              buttonWidth={18}
               color={
                 autoUpdateSelected ? theme.palette.primary.main : undefined
               }
               disabled={autoUpdateDisabled || autoUpdatePending}
               icon="mdi:timer-cog-outline"
+              iconSize={16}
+              label={autoUpdateTooltip}
               loading={autoUpdatePending}
               onClick={handleAutoUpdateClick}
+              tooltip={false}
             />
           </span>
         </AppTooltip>
@@ -569,9 +574,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 {container.State !== "running" && (
                   <AppTooltip arrow title="Start Container">
                     <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
+                      <AppActionIconButton
+                        buttonHeight={22}
+                        buttonWidth={18}
                         icon="mdi:play"
+                        iconSize={16}
+                        label="Start Container"
                         onClick={() => handleAction("start")}
+                        tooltip={false}
                       />
                     </span>
                   </AppTooltip>
@@ -579,18 +589,28 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 {container.State === "running" && (
                   <AppTooltip arrow title="Stop Container">
                     <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
+                      <AppActionIconButton
+                        buttonHeight={22}
+                        buttonWidth={18}
                         icon="mdi:stop"
+                        iconSize={16}
+                        label="Stop Container"
                         onClick={() => handleAction("stop")}
+                        tooltip={false}
                       />
                     </span>
                   </AppTooltip>
                 )}
                 <AppTooltip arrow title="Restart Container">
                   <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
+                    <AppActionIconButton
+                      buttonHeight={22}
+                      buttonWidth={18}
                       icon="mdi:restart"
+                      iconSize={16}
+                      label="Restart Container"
                       onClick={() => handleAction("restart")}
+                      tooltip={false}
                     />
                   </span>
                 </AppTooltip>
@@ -601,7 +621,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                     title={autoUpdateTooltip}
                   >
                     <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
+                      <AppActionIconButton
+                        buttonHeight={22}
+                        buttonWidth={18}
                         color={
                           autoUpdateSelected
                             ? theme.palette.primary.main
@@ -609,8 +631,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                         }
                         disabled={autoUpdateDisabled || autoUpdatePending}
                         icon="mdi:timer-cog-outline"
+                        iconSize={16}
+                        label={autoUpdateTooltip}
                         loading={autoUpdatePending}
                         onClick={handleAutoUpdateClick}
+                        tooltip={false}
                       />
                     </span>
                   </AppTooltip>
@@ -618,45 +643,70 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 {container.updateAvailable && (
                   <AppTooltip arrow title="Update Container">
                     <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
+                      <AppActionIconButton
+                        buttonHeight={22}
+                        buttonWidth={18}
                         icon="mdi:update"
+                        iconSize={16}
+                        label="Update Container"
                         onClick={handleUpdateClick}
+                        tooltip={false}
                       />
                     </span>
                   </AppTooltip>
                 )}
                 <AppTooltip arrow title="Remove Container">
                   <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
+                    <AppActionIconButton
+                      buttonHeight={22}
+                      buttonWidth={18}
                       icon="mdi:delete"
+                      iconSize={16}
+                      label="Remove Container"
                       onClick={() => handleAction("remove")}
+                      tooltip={false}
                     />
                   </span>
                 </AppTooltip>
                 <AppTooltip arrow title="View Logs">
                   <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
+                    <AppActionIconButton
+                      buttonHeight={22}
+                      buttonWidth={18}
                       icon="mdi:file-document-outline"
+                      iconSize={16}
+                      label="View Logs"
                       onClick={handleLogsClick}
+                      tooltip={false}
                     />
                   </span>
                 </AppTooltip>
                 <AppTooltip arrow title="Open Terminal">
                   <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
+                    <AppActionIconButton
+                      buttonHeight={22}
+                      buttonWidth={18}
                       icon="mdi:console"
+                      iconSize={16}
+                      label="Open Terminal"
                       onClick={handleTerminalClick}
+                      tooltip={false}
                     />
                   </span>
                 </AppTooltip>
                 {container.url && (
                   <AppTooltip arrow title="Open App">
                     <span onClick={(e) => e.stopPropagation()}>
-                      <ActionButton
+                      <AppActionIconButton
+                        buttonHeight={22}
+                        buttonWidth={18}
                         icon="mdi:open-in-new"
+                        iconSize={16}
+                        label="Open App"
                         onClick={() =>
                           window.open(container.url, "_blank", "noopener")
                         }
+                        tooltip={false}
                       />
                     </span>
                   </AppTooltip>
