@@ -18,7 +18,6 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
-import SkeletonText from "@/components/ui/SkeletonText";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
@@ -428,7 +427,7 @@ const SystemHealth = () => {
       }}
     >
       <AppSkeleton height={18} variant="circular" width={18} />
-      <SkeletonText variant="body2" width={width} />
+      <AppSkeleton textVariant="body2" width={width} />
     </div>
   );
 
