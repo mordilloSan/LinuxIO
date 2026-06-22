@@ -3,14 +3,13 @@ import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import InterfaceDetails from "./InterfaceClients";
 
-import { linuxio } from "@/api";
+import { linuxio, type WireGuardInterface } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { WireGuardInterface } from "@/types/wireguard";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const WireGuardDashboard: React.FC = () => {

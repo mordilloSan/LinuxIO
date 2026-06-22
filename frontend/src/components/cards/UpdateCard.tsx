@@ -1,12 +1,12 @@
 import React from "react";
 
+import type { Update } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
-import { Update } from "@/types/update";
 
 export interface UpdateCardProps {
   changelog: string | undefined;

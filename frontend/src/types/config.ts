@@ -1,95 +1,31 @@
-export type TableCardViewMode = "card" | "table";
+import type {
+  AppConfig as ApiAppConfig,
+  AppSettings as ApiAppSettings,
+  ConfigDockerDashboardSections,
+  ConfigHardwareSections,
+  ConfigThemeColorsByModePayload,
+  ConfigThemeColorsPayload,
+  Dismissals as ApiDismissals,
+  DockerProxySettings as ApiDockerProxySettings,
+  DockerSettings as ApiDockerSettings,
+  JobSettings as ApiJobSettings,
+  TableCardViewMode,
+  Theme,
+} from "@/api";
+
+export type { TableCardViewMode, Theme };
+
 export type AppViewModes = Record<string, TableCardViewMode>;
-export type Theme = "LIGHT" | "DARK";
-
-export interface ThemeColors {
-  backgroundDefault?: string;
-  backgroundPaper?: string;
-  cardBackground?: string;
-  chartNeutral?: string;
-  chartRx?: string;
-  chartTx?: string;
-  codeBackground?: string;
-  codeText?: string;
-  dialogBackdrop?: string;
-  dialogBorder?: string;
-  dialogGlow?: string;
-  fileBrowserBreadcrumbBackground?: string;
-  fileBrowserBreadcrumbText?: string;
-  fileBrowserChrome?: string;
-  fileBrowserSurface?: string;
-  footerBackground?: string;
-  headerBackground?: string;
-  sidebarBackground?: string;
-}
-
-export interface ThemeColorsByMode {
-  dark?: ThemeColors;
-  light?: ThemeColors;
-}
-
-export interface DockerDashboardSections {
-  daemon: boolean;
-  overview: boolean;
-  resources: boolean;
-}
-
-export interface HardwareSections {
-  gpu: boolean;
-  hardware: boolean;
-  memoryModules: boolean;
-  overview: boolean;
-  pciDevices: boolean;
-  sensors: boolean;
-  systemInfo: boolean;
-}
-
-export interface AppSettings {
-  chunkSizeMB?: number;
-  containerOrder?: string[];
-  dashboardOrder?: string[];
-  dockerDashboardSections?: DockerDashboardSections;
-  hardwareSections?: HardwareSections;
-  hiddenCards?: string[];
-  primaryColor: string;
-  showHiddenFiles: boolean;
-  sidebarCollapsed: boolean;
-  theme: Theme;
-  themeColors?: ThemeColorsByMode;
-  viewModes?: AppViewModes;
-}
-
-export interface DockerProxySettings {
-  baseDomain?: string;
-  caddyEnabled: boolean;
-  tlsEmail?: string;
-}
-
-export interface DockerSettings {
-  folders: string[];
-  proxy: DockerProxySettings;
-}
-
-export interface JobSettings {
-  archiveCompressionWorkers: number;
-  archiveExtractWorkers: number;
-  heavyArchiveConcurrency: number;
-  notificationMinIntervalMs: number;
-  progressMinBytesMB: number;
-  progressMinIntervalMs: number;
-}
-
-export interface Dismissals {
-  failedLoginAlertId?: string;
-  uncleanShutdownBootId?: string;
-}
-
-export interface AppConfig {
-  appSettings: AppSettings;
-  dismissals?: Dismissals;
-  docker: DockerSettings;
-  jobs: JobSettings;
-}
+export type ThemeColors = ConfigThemeColorsPayload;
+export type ThemeColorsByMode = ConfigThemeColorsByModePayload;
+export type DockerDashboardSections = ConfigDockerDashboardSections;
+export type HardwareSections = ConfigHardwareSections;
+export type AppSettings = ApiAppSettings;
+export type DockerProxySettings = ApiDockerProxySettings;
+export type DockerSettings = ApiDockerSettings;
+export type JobSettings = ApiJobSettings;
+export type Dismissals = ApiDismissals;
+export type AppConfig = ApiAppConfig;
 
 export interface ConfigPatch {
   appSettings?: Partial<AppSettings>;

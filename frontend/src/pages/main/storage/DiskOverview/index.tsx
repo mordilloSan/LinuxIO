@@ -20,6 +20,7 @@ import { parseSizeToBytes } from "./utils";
 
 import {
   type ApiDisk,
+  type FilesystemInfo,
   jobSnapshotResult,
   linuxio,
   openJobAttachStream,
@@ -37,7 +38,6 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
-import { FilesystemInfo } from "@/types/fs";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DriveDetailsProps {

@@ -3,7 +3,7 @@ import React from "react";
 import UpdateActions from "./UpdateActions";
 import UpdateList from "./UpdateList";
 
-import { Update } from "@/types/update";
+import type { Update } from "@/api";
 
 interface UpdateStatusProps {
   error?: string | null;

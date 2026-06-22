@@ -1,11 +1,10 @@
 import React from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type FilesystemInfo } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useAppTheme } from "@/theme";
-import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard: React.FC = () => {

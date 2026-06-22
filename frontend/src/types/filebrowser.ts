@@ -1,3 +1,5 @@
+import type { ResourceStatData as ApiResourceStatData } from "@/api";
+
 export type ViewMode = "card" | "list";
 
 interface ItemMetadata {
@@ -27,18 +29,7 @@ export type FileResource = FileItem & {
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
-export interface ResourceStatData {
-  group: string;
-  mode: string;
-  modified: string;
-  name: string;
-  owner: string;
-  path: string;
-  permissions: string;
-  raw: string;
-  realPath: string;
-  size: number;
-}
+export type ResourceStatData = ApiResourceStatData;
 
 export type MultiStatsItem = Pick<
   FileItem,
