@@ -58,7 +58,7 @@ export default defineConfig(async ({ command }) => {
       },
     },
     build: {
-      target: "es2017",
+      target: "es2022",
       chunkSizeWarningLimit: 2000,
       manifest: true,
       outDir: "../backend/webserver/web/frontend",
