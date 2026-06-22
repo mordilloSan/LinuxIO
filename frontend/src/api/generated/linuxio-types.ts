@@ -127,20 +127,6 @@ export interface ApiDisk {
   vendor?: string;
 }
 
-export interface ApiResource {
-  content?: string;
-  extension: string;
-  isDir: boolean;
-  isSymlink: boolean;
-  items?: ApiResource[];
-  mode: string;
-  modified: string;
-  name: string;
-  path: string;
-  size: number;
-  type: string;
-}
-
 export interface AppConfig {
   appSettings: AppSettings;
   dismissals?: Dismissals;
@@ -236,6 +222,7 @@ export interface CapabilitiesResponse {
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
+  libvirt_available: boolean;
   docker_error?: string;
   watchtower_error?: string;
   indexer_error?: string;
@@ -247,6 +234,7 @@ export interface CapabilitiesResponse {
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
+  libvirt_error?: string;
 }
 
 export interface CapabilityRequest {
@@ -743,6 +731,20 @@ export interface EnabledRequest {
   enabled: string;
 }
 
+export interface ExtendedFileInfo {
+  name: string;
+  size: number;
+  modified: string;
+  type: string;
+  hidden: boolean;
+  hasPreview: boolean;
+  symlink: boolean;
+  files: FileResourceItem[];
+  folders: FileResourceItem[];
+  path: string;
+  content?: string;
+}
+
 export interface FailedLoginEventsRequest {
   limit?: string;
 }
@@ -775,6 +777,16 @@ export interface FileResourceGetRequest {
   path: string;
   unused?: string;
   getContent?: string;
+}
+
+export interface FileResourceItem {
+  name: string;
+  size: number;
+  modified: string;
+  type: string;
+  hidden: boolean;
+  hasPreview: boolean;
+  symlink: boolean;
 }
 
 export interface FileResourcePostRequest {
@@ -1734,6 +1746,95 @@ export interface UsersGroupsResponse {
   users: string[];
 }
 
+export interface VMCreateProgress {
+  phase: string;
+  message: string;
+  path?: string;
+  percent?: number;
+}
+
+export interface VMCreateRequest {
+  name: string;
+  vcpus: number;
+  memoryMB: number;
+  diskGB: number;
+  isoPath?: string;
+  sourceType?: VMSourceType;
+  imagePresetId?: VMImagePresetID;
+  cloudInitUsername?: string;
+  cloudInitPassword?: string;
+  cloudInitSshKey?: string;
+  cloudInitHostname?: string;
+  network?: string;
+  start: boolean;
+}
+
+export interface VMDeleteRequest {
+  name: string;
+  deleteDisks: boolean;
+}
+
+export interface VMDeleteResult {
+  removed: string[];
+  preserved: string[];
+}
+
+export interface VMDisk {
+  device: string;
+  target: string;
+  path: string;
+  volumeName?: string;
+  sizeGB?: number;
+  owned: boolean;
+}
+
+export type VMImagePresetID =
+  | "home-assistant-os"
+  | "debian-server"
+  | "ubuntu-server"
+  | "fedora-cloud";
+
+export interface VMManagedPaths {
+  root: string;
+  isos: string;
+  cloudImages: string;
+}
+
+export interface VMNIC {
+  mac?: string;
+  model?: string;
+  network?: string;
+  ipAddresses?: string[];
+}
+
+export interface VMPreflight {
+  kvmPresent: boolean;
+  qemuPresent: boolean;
+  libvirtReachable: boolean;
+  defaultPoolExists: boolean;
+  defaultPoolActive: boolean;
+  defaultNetworkExists: boolean;
+  defaultNetworkActive: boolean;
+  isoReadable: boolean;
+  firmware: VMPreflightFirmware;
+  managedPaths: VMManagedPaths;
+  warnings?: string[];
+  errors?: string[];
+}
+
+export interface VMPreflightFirmware {
+  uefiAvailable: boolean;
+  biosAvailable: boolean;
+}
+
+export interface VMPreflightRequest {
+  isoPath?: string;
+  sourceType?: VMSourceType;
+  imagePresetId?: VMImagePresetID;
+}
+
+export type VMSourceType = "iso" | "imagePreset";
+
 export interface ValidateComposeError {
   line?: number;
   column?: number;
@@ -1756,6 +1857,20 @@ export interface VersionResponse {
   error?: string;
   latest_version?: string;
   update_available: boolean;
+}
+
+export interface VirtualMachine {
+  name: string;
+  uuid?: string;
+  state: string;
+  vcpus: number;
+  memoryMB: number;
+  diskGB: number;
+  autostart: boolean;
+  hasGraphics: boolean;
+  ownedDisks: string[];
+  disks?: VMDisk[];
+  nics?: VMNIC[];
 }
 
 export interface VolumeGroup {
@@ -2136,7 +2251,7 @@ export interface LinuxIOSchema {
     resource_get: {
       input: [request: FileResourceGetRequest];
       request: FileResourceGetRequest;
-      result: ApiResource;
+      result: ExtendedFileInfo;
     };
     resource_patch: {
       input: [request: ActionSourceDestinationRequest];
@@ -2500,6 +2615,36 @@ export interface LinuxIOSchema {
       request: UpdatesSetAutoUpdatesRequest;
       result: AutoUpdateState;
     };
+  };
+
+  virt: {
+    create: {
+      input: [request: VMCreateRequest];
+      request: VMCreateRequest;
+      result: VirtualMachine;
+    };
+    delete: {
+      input: [request: VMDeleteRequest];
+      request: VMDeleteRequest;
+      result: VMDeleteResult;
+    };
+    force_off: { input: [name: string]; request: NameRequest; result: void };
+    get: {
+      input: [name: string];
+      request: NameRequest;
+      result: VirtualMachine;
+    };
+    list: { input: []; request: void; result: VirtualMachine[] };
+    preflight: {
+      input: [request: VMPreflightRequest];
+      request: VMPreflightRequest;
+      result: VMPreflight;
+    };
+    reboot: { input: [name: string]; request: NameRequest; result: void };
+    resume: { input: [name: string]; request: NameRequest; result: void };
+    shutdown: { input: [name: string]; request: NameRequest; result: void };
+    start: { input: [name: string]; request: NameRequest; result: void };
+    suspend: { input: [name: string]; request: NameRequest; result: void };
   };
 
   wireguard: {

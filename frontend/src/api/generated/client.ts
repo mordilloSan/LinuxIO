@@ -526,6 +526,28 @@ const linuxio = {
       kind: "object",
     }),
   },
+  virt: {
+    create: createEndpoint("virt", "create", { kind: "object" }),
+    delete: createEndpoint("virt", "delete", { kind: "object" }),
+    force_off: createEndpoint("virt", "force_off", {
+      kind: "field",
+      field: "name",
+    }),
+    get: createEndpoint("virt", "get", { kind: "field", field: "name" }),
+    list: createEndpoint("virt", "list", { kind: "none" }),
+    preflight: createEndpoint("virt", "preflight", { kind: "object" }),
+    reboot: createEndpoint("virt", "reboot", { kind: "field", field: "name" }),
+    resume: createEndpoint("virt", "resume", { kind: "field", field: "name" }),
+    shutdown: createEndpoint("virt", "shutdown", {
+      kind: "field",
+      field: "name",
+    }),
+    start: createEndpoint("virt", "start", { kind: "field", field: "name" }),
+    suspend: createEndpoint("virt", "suspend", {
+      kind: "field",
+      field: "name",
+    }),
+  },
   wireguard: {
     add_interface: createEndpoint("wireguard", "add_interface", {
       kind: "object",
