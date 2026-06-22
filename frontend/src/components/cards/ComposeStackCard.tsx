@@ -49,7 +49,8 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
       )
     : 0;
   const runningServices = project
-    ? Object.values(project.services).filter((s) => s.state === "running").length
+    ? Object.values(project.services).filter((s) => s.state === "running")
+        .length
     : 0;
   const totalServices = project ? Object.keys(project.services).length : 0;
   const isRunning =
