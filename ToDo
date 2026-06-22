@@ -18,12 +18,11 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 9 - Revisit React Compiler backend once the Rust port (facebook/react #36173) ships a native OXC integration: when Rolldown/Vite adopts `react_compiler_oxc::transform()`, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts` and run the compiler in the OXC pass (faster build, no Babel). Not ready yet — `babel-plugin-react-compiler-rust` unpublished, PR unmerged as of 2026-06.
 
-10 - implement virtual on logs and filebrowser....
+10 - Vitest and playwright
 
-11 - Vitest and playwright
+11 filebrowser copy function ignores symlinks? use rsync?
 
-12 filebrowser copy function ignores symlinks? use rsync?
-
+Implement virtual on logs and filebrowser.... DONE
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it
 Initial bundle: split the Iconify registry so auth/shell/sidebar icons are separate from route-specific icons.DONE
