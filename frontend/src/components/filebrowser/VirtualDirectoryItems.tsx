@@ -7,6 +7,7 @@ import SelectionBox from "@/components/filebrowser/SelectionBox";
 import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { FileItem, ViewMode } from "@/types/filebrowser";
+import { stripTrailingSlash } from "@/utils/path";
 
 const CARD_MIN_WIDTH = 260;
 const CARD_GAP = 12;
@@ -205,9 +206,7 @@ const DirectoryItem: React.FC<DirectoryItemProps> = React.memo(
     }
 
     const isSearchResult = item.showFullPath === true;
-    const normalizedPath = item.path.endsWith("/")
-      ? item.path.slice(0, -1)
-      : item.path;
+    const normalizedPath = stripTrailingSlash(item.path);
     const subfolderData = item.symlink
       ? null
       : subfoldersMap.get(normalizedPath);

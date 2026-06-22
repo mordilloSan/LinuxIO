@@ -11,6 +11,7 @@ import { linuxio } from "@/api";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
+import { joinPath as joinPathUtil } from "@/utils/path";
 
 import "./directory-tree.css";
 
@@ -139,7 +140,7 @@ const TreeNode: React.FC<{
               ? expanded
                 ? "mdi:folder-open"
                 : "mdi:folder"
-              : "mdi:file-disc-outline"
+              : "mdi:file-outline"
           }
           width={18}
         />
@@ -178,13 +179,11 @@ const TreeNode: React.FC<{
 // ============================================================================
 
 function joinPath(parent: string, name: string): string {
-  const base = parent.endsWith("/") ? parent : parent + "/";
-  return (base + name + "/").replace(/\/{2,}/g, "/");
+  return `${joinPathUtil(parent, name)}/`.replace(/\/{2,}/g, "/");
 }
 
 function joinFilePath(parent: string, name: string): string {
-  const base = parent.endsWith("/") ? parent : parent + "/";
-  return (base + name).replace(/\/{2,}/g, "/");
+  return joinPathUtil(parent, name).replace(/\/{2,}/g, "/");
 }
 
 const DirectoryTree: React.FC<DirectoryTreeProps> = ({

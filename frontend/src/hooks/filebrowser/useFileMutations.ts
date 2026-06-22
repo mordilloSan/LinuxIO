@@ -9,6 +9,7 @@ import { linuxio, openJobAttachStream } from "@/api";
 import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
+import { joinPath } from "@/utils/path";
 
 import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
 import { useStreamResult } from "../useStreamResult";
@@ -80,7 +81,7 @@ export const useFileMutations = ({
 
   const createFile = useCallback(
     (fileName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
+      const path = joinPath(normalizedPath, fileName);
       createFileMutation.mutate({ path });
     },
     [createFileMutation, normalizedPath],
@@ -98,7 +99,7 @@ export const useFileMutations = ({
 
   const createFolder = useCallback(
     (folderName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
+      const path = `${joinPath(normalizedPath, folderName)}/`;
       createFolderMutation.mutate({ path });
     },
     [createFolderMutation, normalizedPath],
@@ -245,7 +246,7 @@ export const useFileMutations = ({
           if (!fileName) {
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
-          const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
+          const destination = joinPath(destinationDir, fileName);
           // Use startCopy for progress tracking
           return startCopy({
             source: sourcePath,
@@ -274,7 +275,7 @@ export const useFileMutations = ({
           if (!fileName) {
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
-          const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
+          const destination = joinPath(destinationDir, fileName);
           // Use startMove for progress tracking
           return startMove({
             source: sourcePath,

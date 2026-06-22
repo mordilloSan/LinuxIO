@@ -16,6 +16,7 @@ import {
   createProgressSpeedCalculator,
   jobIdentityKey,
 } from "@/utils/backgroundJobs";
+import { joinPath } from "@/utils/path";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
@@ -69,9 +70,7 @@ export function useArchiveJobs(runtime: BackgroundJobRuntime) {
       const format = archiveName.toLowerCase().endsWith(".tar.gz")
         ? "tar.gz"
         : "zip";
-      const fullDestination = destination.endsWith("/")
-        ? `${destination}${archiveName}`
-        : `${destination}/${archiveName}`;
+      const fullDestination = joinPath(destination, archiveName);
       const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COMPRESS, {
         format,
         targetPath: fullDestination,

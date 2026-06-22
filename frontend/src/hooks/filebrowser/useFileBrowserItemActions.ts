@@ -10,6 +10,7 @@ import { CACHE_TTL_MS, linuxio } from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 import type { FileItem, FileResource } from "@/types/filebrowser";
+import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
 import type { PermissionsDialogState } from "./useFileDialogs";
 import { useFilePathUtilities } from "./useFilePathUtilities";
@@ -228,11 +229,11 @@ export const useFileBrowserItemActions = ({
         return;
       }
       const target = resource?.items?.find((item) => item.path === path);
-      const isDirectory = target?.type === "directory" || path.endsWith("/");
+      const isDirectory = target?.type === "directory" || isDirectoryPath(path);
       const parent = getParentPath(path);
       let destination = joinPath(parent, trimmed);
-      if (isDirectory && !destination.endsWith("/")) {
-        destination += "/";
+      if (isDirectory) {
+        destination = ensureTrailingSlash(destination);
       }
       try {
         await renameItem({

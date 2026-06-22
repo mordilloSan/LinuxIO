@@ -13,6 +13,7 @@ import {
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
+import { ensureTrailingSlash, joinPath } from "@/utils/path";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
@@ -311,10 +312,8 @@ export function useUploadJobs(
       let uploadedBytesTotal = 0;
       const failures: { path: string; message: string }[] = [];
 
-      const buildTargetPath = (base: string, relative: string) => {
-        const normalized = base.endsWith("/") ? base : `${base}/`;
-        return `${normalized}${relative}`;
-      };
+      const buildTargetPath = (base: string, relative: string) =>
+        joinPath(base, relative);
 
       try {
         // Create directories first
@@ -322,9 +321,7 @@ export function useUploadJobs(
           if (abortController.signal.aborted) break;
 
           const targetBase = buildTargetPath(targetPath, relativePath);
-          const dirPath = targetBase.endsWith("/")
-            ? targetBase
-            : `${targetBase}/`;
+          const dirPath = ensureTrailingSlash(targetBase);
 
           updateUpload(uploadId, {
             currentFile: relativePath,

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { useFileSearch } from "@/hooks/filebrowser/useFileSearch";
 import type { FileResource } from "@/types/filebrowser";
+import { isDirectoryPath } from "@/utils/path";
 
 interface UseFileBrowserFilteredResourceParams {
   resource?: FileResource;
@@ -47,7 +48,7 @@ export const useFileBrowserFilteredResource = ({
           normalizedType === "dir" ||
           normalizedType === "folder" ||
           Boolean(result.isDir) ||
-          result.path.endsWith("/");
+          isDirectoryPath(result.path);
 
         return {
           name: result.name,
