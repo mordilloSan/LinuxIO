@@ -633,18 +633,28 @@ type PowerStatus struct {
 	TunedUnitFileState        string         `json:"tuned_unit_file_state"`
 }
 
-type ApiResource struct {
-	Content   *string       `json:"content,omitempty"`
-	Extension string        `json:"extension"`
-	IsDir     bool          `json:"isDir"`
-	IsSymlink bool          `json:"isSymlink"`
-	Items     []ApiResource `json:"items,omitempty"`
-	Mode      string        `json:"mode"`
-	Modified  string        `json:"modified"`
-	Name      string        `json:"name"`
-	Path      string        `json:"path"`
-	Size      int64         `json:"size"`
-	Type      string        `json:"type"`
+type FileResourceItem struct {
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	Modified   string `json:"modified"`
+	Type       string `json:"type"`
+	Hidden     bool   `json:"hidden"`
+	HasPreview bool   `json:"hasPreview"`
+	Symlink    bool   `json:"symlink"`
+}
+
+type ExtendedFileInfo struct {
+	Name       string             `json:"name"`
+	Size       int64              `json:"size"`
+	Modified   string             `json:"modified"`
+	Type       string             `json:"type"`
+	Hidden     bool               `json:"hidden"`
+	HasPreview bool               `json:"hasPreview"`
+	Symlink    bool               `json:"symlink"`
+	Files      []FileResourceItem `json:"files"`
+	Folders    []FileResourceItem `json:"folders"`
+	Path       string             `json:"path"`
+	Content    string             `json:"content,omitempty"`
 }
 
 type DirectorySizeData struct {

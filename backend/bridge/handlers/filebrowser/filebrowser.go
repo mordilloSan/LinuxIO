@@ -69,12 +69,12 @@ func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
 }
 
 // resourceGet retrieves information about a resource.
-func resourceGet(ctx context.Context, req apischema.FileResourceGetRequest) (any, error) {
+func resourceGet(ctx context.Context, req apischema.FileResourceGetRequest) (apischema.ExtendedFileInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.ExtendedFileInfo{}, err
 	}
 	if req.Path == "" {
-		return nil, fmt.Errorf("bad_request:missing path")
+		return apischema.ExtendedFileInfo{}, fmt.Errorf("bad_request:missing path")
 	}
 
 	getContent := req.GetContent != nil && *req.GetContent == "true"
@@ -86,10 +86,55 @@ func resourceGet(ctx context.Context, req apischema.FileResourceGetRequest) (any
 	})
 	if err != nil {
 		slog.Debug("error getting file info", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("bad_request:%v", err)
+		return apischema.ExtendedFileInfo{}, fmt.Errorf("bad_request:%v", err)
 	}
 
-	return fileInfo, nil
+	return extendedFileInfoResponse(fileInfo), nil
+}
+
+func extendedFileInfoResponse(info *iteminfo.ExtendedFileInfo) apischema.ExtendedFileInfo {
+	if info == nil {
+		return apischema.ExtendedFileInfo{
+			Files:   []apischema.FileResourceItem{},
+			Folders: []apischema.FileResourceItem{},
+		}
+	}
+	return apischema.ExtendedFileInfo{
+		Name:       info.Name,
+		Size:       info.Size,
+		Modified:   formatResourceModTime(info.ModTime),
+		Type:       info.Type,
+		Hidden:     info.Hidden,
+		HasPreview: info.HasPreview,
+		Symlink:    info.Symlink,
+		Files:      fileResourceItems(info.Files),
+		Folders:    fileResourceItems(info.Folders),
+		Path:       info.Path,
+		Content:    info.Content,
+	}
+}
+
+func fileResourceItems(items []iteminfo.ItemInfo) []apischema.FileResourceItem {
+	out := make([]apischema.FileResourceItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, apischema.FileResourceItem{
+			Name:       item.Name,
+			Size:       item.Size,
+			Modified:   formatResourceModTime(item.ModTime),
+			Type:       item.Type,
+			Hidden:     item.Hidden,
+			HasPreview: item.HasPreview,
+			Symlink:    item.Symlink,
+		})
+	}
+	return out
+}
+
+func formatResourceModTime(modTime time.Time) string {
+	if modTime.IsZero() {
+		return ""
+	}
+	return modTime.Format(time.RFC3339Nano)
 }
 
 // resourceStat returns extended metadata.

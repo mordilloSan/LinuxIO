@@ -9,7 +9,7 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.FileResourceGetRequest, apischema.ApiResource]("filebrowser.resource_get").Handle(handleResourceGet),
+	apischema.Query[apischema.FileResourceGetRequest, apischema.ExtendedFileInfo]("filebrowser.resource_get").Handle(handleResourceGet),
 	apischema.Query[apischema.PathRequest, apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
 	apischema.Job[apischema.PathRequest, apischema.JobSnapshot]("filebrowser.resource_delete").Handle(handleResourceDelete),
 	apischema.Job[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").Handle(handleResourcePost),
