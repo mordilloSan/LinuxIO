@@ -1,4 +1,3 @@
-import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
@@ -14,6 +13,7 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
@@ -305,49 +304,31 @@ const MountEntryActions: React.FC<{
         flexShrink: 0,
       }}
     >
-      <AppTooltip title="Edit entry">
-        <AppIconButton
-          aria-label="Edit entry"
-          color="primary"
-          onClick={wrapClick(onEdit)}
-          size="small"
-        >
-          <Icon icon="mdi:pencil-outline" width={18} />
-        </AppIconButton>
-      </AppTooltip>
-      <AppTooltip title={mountActionTitle}>
-        <span
-          style={{
-            display: "inline-flex",
-          }}
-        >
-          <AppIconButton
-            aria-label={mountActionLabel}
-            color="inherit"
-            disabled={isMounting || mountActionDisabled}
-            onClick={wrapClick(mount.mounted ? onUnmount : onMount)}
-            size="small"
-            style={{
-              color: mountActionColor,
-            }}
-          >
-            <Icon
-              icon={mount.mounted ? "mdi:link-variant" : "mdi:link-variant-off"}
-              width={18}
-            />
-          </AppIconButton>
-        </span>
-      </AppTooltip>
-      <AppTooltip title="Remove entry">
-        <AppIconButton
-          aria-label="Remove entry"
-          color="error"
-          onClick={wrapClick(onRemove)}
-          size="small"
-        >
-          <Icon icon="mdi:trash-can-outline" width={18} />
-        </AppIconButton>
-      </AppTooltip>
+      <AppActionIconButton
+        ariaLabel="Edit entry"
+        color="var(--app-palette-primary-main)"
+        icon="mdi:pencil-outline"
+        iconSize={18}
+        label="Edit entry"
+        onClick={wrapClick(onEdit)}
+      />
+      <AppActionIconButton
+        ariaLabel={mountActionLabel}
+        color={mountActionColor}
+        disabled={isMounting || mountActionDisabled}
+        icon={mount.mounted ? "mdi:link-variant" : "mdi:link-variant-off"}
+        iconSize={18}
+        label={mountActionTitle}
+        onClick={wrapClick(mount.mounted ? onUnmount : onMount)}
+      />
+      <AppActionIconButton
+        ariaLabel="Remove entry"
+        color="var(--app-palette-error-main)"
+        icon="mdi:trash-can-outline"
+        iconSize={18}
+        label="Remove entry"
+        onClick={wrapClick(onRemove)}
+      />
     </div>
   );
 };

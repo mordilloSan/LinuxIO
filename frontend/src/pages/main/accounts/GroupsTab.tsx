@@ -1,4 +1,3 @@
-import { Icon } from "@iconify/react";
 import React, { useCallback, useEffect, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -9,11 +8,10 @@ import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
@@ -159,30 +157,26 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
               gap: 2,
             }}
           >
-            <AppTooltip title="Edit Members">
-              <AppIconButton
-                disabled={group.name === "root"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditMembers(group);
-                }}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:pencil" width={20} />
-              </AppIconButton>
-            </AppTooltip>
-            <AppTooltip title="Delete Group">
-              <AppIconButton
-                disabled={group.name === "root" || group.isSystem}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(group);
-                }}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:delete" width={20} />
-              </AppIconButton>
-            </AppTooltip>
+            <AppActionIconButton
+              disabled={group.name === "root"}
+              icon="mdi:pencil"
+              iconSize={20}
+              label="Edit Members"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditMembers(group);
+              }}
+            />
+            <AppActionIconButton
+              disabled={group.name === "root" || group.isSystem}
+              icon="mdi:delete"
+              iconSize={20}
+              label="Delete Group"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(group);
+              }}
+            />
           </div>
         );
       },

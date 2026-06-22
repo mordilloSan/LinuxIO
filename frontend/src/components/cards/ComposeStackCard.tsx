@@ -1,15 +1,13 @@
-import { Icon } from "@iconify/react";
 import React from "react";
 
 import type { ComposeProject } from "../../pages/main/docker/ComposeList";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSkeleton from "@/components/ui/AppSkeleton";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import SkeletonText from "@/components/ui/SkeletonText";
 import { getComposeStatusColor } from "@/constants/statusColors";
@@ -187,57 +185,47 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
       >
         <div style={{ display: "flex", gap: 2 }}>
           {onEdit && project.config_files.length > 0 && (
-            <AppTooltip title="Edit">
-              <AppIconButton
-                disabled={isLoading}
-                onClick={() => onEdit(project.name, project.config_files[0])}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:pencil" width={20} />
-              </AppIconButton>
-            </AppTooltip>
+            <AppActionIconButton
+              disabled={isLoading}
+              icon="mdi:pencil"
+              iconSize={20}
+              label="Edit"
+              onClick={() => onEdit(project.name, project.config_files[0])}
+            />
           )}
           {isRunning ? (
             <>
-              <AppTooltip title="Restart">
-                <AppIconButton
-                  disabled={isLoading}
-                  onClick={() => onRestart(project.name)}
-                  size="small"
-                >
-                  <Icon height={20} icon="mdi:restart" width={20} />
-                </AppIconButton>
-              </AppTooltip>
-              <AppTooltip title="Stop">
-                <AppIconButton
-                  disabled={isLoading}
-                  onClick={() => onStop(project.name)}
-                  size="small"
-                >
-                  <Icon height={20} icon="mdi:stop-circle" width={20} />
-                </AppIconButton>
-              </AppTooltip>
+              <AppActionIconButton
+                disabled={isLoading}
+                icon="mdi:restart"
+                iconSize={20}
+                label="Restart"
+                onClick={() => onRestart(project.name)}
+              />
+              <AppActionIconButton
+                disabled={isLoading}
+                icon="mdi:stop-circle"
+                iconSize={20}
+                label="Stop"
+                onClick={() => onStop(project.name)}
+              />
             </>
           ) : (
-            <AppTooltip title="Start">
-              <AppIconButton
-                disabled={isLoading}
-                onClick={() => onStart(project.name)}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:play" width={20} />
-              </AppIconButton>
-            </AppTooltip>
-          )}
-          <AppTooltip title="Delete">
-            <AppIconButton
+            <AppActionIconButton
               disabled={isLoading}
-              onClick={() => onDelete(project)}
-              size="small"
-            >
-              <Icon height={20} icon="mdi:delete" width={20} />
-            </AppIconButton>
-          </AppTooltip>
+              icon="mdi:play"
+              iconSize={20}
+              label="Start"
+              onClick={() => onStart(project.name)}
+            />
+          )}
+          <AppActionIconButton
+            disabled={isLoading}
+            icon="mdi:delete"
+            iconSize={20}
+            label="Delete"
+            onClick={() => onDelete(project)}
+          />
         </div>
       </div>
     </FrostedCard>

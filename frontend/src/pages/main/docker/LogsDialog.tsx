@@ -3,10 +3,9 @@ import React, { useMemo, useState } from "react";
 
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
-import AppIconButton from "@/components/ui/AppIconButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
 const LOG_LINE_OPTIONS = [
@@ -83,16 +82,18 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       error={error}
       extraActions={
         <>
-          <AppTooltip title="Copy logs">
-            <AppIconButton onClick={handleCopy} size="small">
-              <Icon height={20} icon="mdi:content-copy" width={20} />
-            </AppIconButton>
-          </AppTooltip>
-          <AppTooltip title="Download logs">
-            <AppIconButton onClick={handleDownload} size="small">
-              <Icon height={20} icon="mdi:download" width={20} />
-            </AppIconButton>
-          </AppTooltip>
+          <AppActionIconButton
+            icon="mdi:content-copy"
+            iconSize={20}
+            label="Copy logs"
+            onClick={handleCopy}
+          />
+          <AppActionIconButton
+            icon="mdi:download"
+            iconSize={20}
+            label="Download logs"
+            onClick={handleDownload}
+          />
         </>
       }
       isLoading={isLoading}

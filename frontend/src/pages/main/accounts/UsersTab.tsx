@@ -1,4 +1,3 @@
-import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -11,10 +10,9 @@ import UserCardsView from "./components/UserCardsView";
 import { type AccountUser, linuxio } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -324,50 +322,40 @@ const UsersTab: React.FC<UsersTabProps> = ({
               gap: 2,
             }}
           >
-            <AppTooltip title="Edit">
-              <AppIconButton
-                disabled={user.username === "root"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditUser(user);
-                }}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:pencil" width={20} />
-              </AppIconButton>
-            </AppTooltip>
-            <AppTooltip title="Change Password">
-              <AppIconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleChangePassword(user);
-                }}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:form-textbox-password" width={20} />
-              </AppIconButton>
-            </AppTooltip>
-            <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-              <AppIconButton
-                disabled={
-                  user.username === "root" ||
-                  user.username === currentUser?.name ||
-                  isLocking ||
-                  isUnlocking
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleLock(user);
-                }}
-                size="small"
-              >
-                {user.isLocked ? (
-                  <Icon height={20} icon="mdi:lock-open" width={20} />
-                ) : (
-                  <Icon height={20} icon="mdi:lock" width={20} />
-                )}
-              </AppIconButton>
-            </AppTooltip>
+            <AppActionIconButton
+              disabled={user.username === "root"}
+              icon="mdi:pencil"
+              iconSize={20}
+              label="Edit"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditUser(user);
+              }}
+            />
+            <AppActionIconButton
+              icon="mdi:form-textbox-password"
+              iconSize={20}
+              label="Change Password"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleChangePassword(user);
+              }}
+            />
+            <AppActionIconButton
+              disabled={
+                user.username === "root" ||
+                user.username === currentUser?.name ||
+                isLocking ||
+                isUnlocking
+              }
+              icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
+              iconSize={20}
+              label={user.isLocked ? "Unlock" : "Lock"}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleLock(user);
+              }}
+            />
           </div>
         );
       },

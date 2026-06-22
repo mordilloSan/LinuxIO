@@ -19,11 +19,11 @@ import {
 import PageLoader from "@/components/loaders/PageLoader";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import Chip from "@/components/ui/AppChip";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppPaper from "@/components/ui/AppPaper";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
@@ -966,28 +966,20 @@ const GeneralLogsPage: React.FC = () => {
           style={{ minWidth: 220, flex: "1 1 260px" }}
           value={search}
         />
-        <AppTooltip title="Copy logs">
-          <span>
-            <AppIconButton
-              disabled={filteredLogs.length === 0}
-              onClick={handleCopy}
-              size="small"
-            >
-              <Icon height={20} icon="mdi:content-copy" width={20} />
-            </AppIconButton>
-          </span>
-        </AppTooltip>
-        <AppTooltip title="Download logs">
-          <span>
-            <AppIconButton
-              disabled={filteredLogs.length === 0}
-              onClick={handleDownload}
-              size="small"
-            >
-              <Icon height={20} icon="mdi:download" width={20} />
-            </AppIconButton>
-          </span>
-        </AppTooltip>
+        <AppActionIconButton
+          disabled={filteredLogs.length === 0}
+          icon="mdi:content-copy"
+          iconSize={20}
+          label="Copy logs"
+          onClick={handleCopy}
+        />
+        <AppActionIconButton
+          disabled={filteredLogs.length === 0}
+          icon="mdi:download"
+          iconSize={20}
+          label="Download logs"
+          onClick={handleDownload}
+        />
         <AppTooltip
           title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
         >
@@ -1037,11 +1029,12 @@ const GeneralLogsPage: React.FC = () => {
               variant="soft"
             />
           ))}
-          <AppTooltip title="Clear all field filters">
-            <AppIconButton onClick={clearFieldFilters} size="small">
-              <Icon height={18} icon="mdi:filter-remove" width={18} />
-            </AppIconButton>
-          </AppTooltip>
+          <AppActionIconButton
+            icon="mdi:filter-remove"
+            iconSize={18}
+            label="Clear all field filters"
+            onClick={clearFieldFilters}
+          />
         </div>
       )}
 

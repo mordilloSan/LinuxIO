@@ -17,6 +17,7 @@ import PageLoader from "@/components/loaders/PageLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -951,24 +952,20 @@ const FolderShareCardActions: React.FC<{
 
   return (
     <div style={{ display: "flex", gap: 2 }}>
-      <AppTooltip title="Edit Share">
-        <AppIconButton
-          color="primary"
-          onClick={() => onEditShare(group)}
-          size="small"
-        >
-          <Icon icon="mdi:pencil-outline" width={18} />
-        </AppIconButton>
-      </AppTooltip>
-      <AppTooltip title="Remove Share">
-        <AppIconButton
-          color="error"
-          onClick={(event) => setRemoveAnchor(event.currentTarget)}
-          size="small"
-        >
-          <Icon icon="mdi:trash-can-outline" width={18} />
-        </AppIconButton>
-      </AppTooltip>
+      <AppActionIconButton
+        color="var(--app-palette-primary-main)"
+        icon="mdi:pencil-outline"
+        iconSize={18}
+        label="Edit Share"
+        onClick={() => onEditShare(group)}
+      />
+      <AppActionIconButton
+        color="var(--app-palette-error-main)"
+        icon="mdi:trash-can-outline"
+        iconSize={18}
+        label="Remove Share"
+        onClick={(event) => setRemoveAnchor(event.currentTarget)}
+      />
 
       <AppMenu
         anchorEl={removeAnchor}

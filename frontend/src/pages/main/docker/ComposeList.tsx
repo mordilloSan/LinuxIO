@@ -8,11 +8,10 @@ import { jobSnapshotResult, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   getComposeStatusColor,
@@ -433,59 +432,47 @@ const ComposeList: React.FC<ComposeListProps> = ({
               }}
             >
               {onEdit && project.config_files.length > 0 && (
-                <AppTooltip title="Edit">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() =>
-                      onEdit(project.name, project.config_files[0])
-                    }
-                    size="small"
-                  >
-                    <Icon height={20} icon="mdi:pencil" width={20} />
-                  </AppIconButton>
-                </AppTooltip>
+                <AppActionIconButton
+                  disabled={isLoading}
+                  icon="mdi:pencil"
+                  iconSize={20}
+                  label="Edit"
+                  onClick={() => onEdit(project.name, project.config_files[0])}
+                />
               )}
               {project.status === "running" || project.status === "partial" ? (
                 <>
-                  <AppTooltip title="Restart">
-                    <AppIconButton
-                      disabled={isLoading}
-                      onClick={() => onRestart(project.name)}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:restart" width={20} />
-                    </AppIconButton>
-                  </AppTooltip>
-                  <AppTooltip title="Stop">
-                    <AppIconButton
-                      disabled={isLoading}
-                      onClick={() => onStop(project.name)}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:stop-circle" width={20} />
-                    </AppIconButton>
-                  </AppTooltip>
+                  <AppActionIconButton
+                    disabled={isLoading}
+                    icon="mdi:restart"
+                    iconSize={20}
+                    label="Restart"
+                    onClick={() => onRestart(project.name)}
+                  />
+                  <AppActionIconButton
+                    disabled={isLoading}
+                    icon="mdi:stop-circle"
+                    iconSize={20}
+                    label="Stop"
+                    onClick={() => onStop(project.name)}
+                  />
                 </>
               ) : (
-                <AppTooltip title="Start">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() => onStart(project.name)}
-                    size="small"
-                  >
-                    <Icon height={20} icon="mdi:play" width={20} />
-                  </AppIconButton>
-                </AppTooltip>
-              )}
-              <AppTooltip title="Delete">
-                <AppIconButton
+                <AppActionIconButton
                   disabled={isLoading}
-                  onClick={() => onDelete(project)}
-                  size="small"
-                >
-                  <Icon height={20} icon="mdi:delete" width={20} />
-                </AppIconButton>
-              </AppTooltip>
+                  icon="mdi:play"
+                  iconSize={20}
+                  label="Start"
+                  onClick={() => onStart(project.name)}
+                />
+              )}
+              <AppActionIconButton
+                disabled={isLoading}
+                icon="mdi:delete"
+                iconSize={20}
+                label="Delete"
+                onClick={() => onDelete(project)}
+              />
             </div>
           );
         },
@@ -639,93 +626,73 @@ const ComposeList: React.FC<ComposeListProps> = ({
           return (
             <div className="compose-container-actions">
               {container.State !== "running" && (
-                <AppTooltip title="Start container">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() => void handleStartContainer(container)}
-                    size="small"
-                  >
-                    <Icon height={18} icon="mdi:play" width={18} />
-                  </AppIconButton>
-                </AppTooltip>
+                <AppActionIconButton
+                  disabled={isLoading}
+                  icon="mdi:play"
+                  iconSize={18}
+                  label="Start container"
+                  onClick={() => void handleStartContainer(container)}
+                />
               )}
               {container.State === "running" && (
-                <AppTooltip title="Stop container">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() => void handleStopContainer(container)}
-                    size="small"
-                  >
-                    <Icon height={18} icon="mdi:stop" width={18} />
-                  </AppIconButton>
-                </AppTooltip>
-              )}
-              <AppTooltip title="Restart container">
-                <AppIconButton
+                <AppActionIconButton
                   disabled={isLoading}
-                  onClick={() => void handleRestartContainer(container)}
-                  size="small"
-                >
-                  <Icon height={18} icon="mdi:restart" width={18} />
-                </AppIconButton>
-              </AppTooltip>
+                  icon="mdi:stop"
+                  iconSize={18}
+                  label="Stop container"
+                  onClick={() => void handleStopContainer(container)}
+                />
+              )}
+              <AppActionIconButton
+                disabled={isLoading}
+                icon="mdi:restart"
+                iconSize={18}
+                label="Restart container"
+                onClick={() => void handleRestartContainer(container)}
+              />
               {container.updateAvailable && (
-                <AppTooltip title="Update container">
-                  <AppIconButton
-                    disabled={isLoading || isUpdatingContainer}
-                    onClick={() => void handleUpdateContainer(container)}
-                    size="small"
-                  >
-                    <Icon height={18} icon="mdi:update" width={18} />
-                  </AppIconButton>
-                </AppTooltip>
+                <AppActionIconButton
+                  disabled={isLoading || isUpdatingContainer}
+                  icon="mdi:update"
+                  iconSize={18}
+                  label="Update container"
+                  onClick={() => void handleUpdateContainer(container)}
+                />
               )}
-              <AppTooltip title="View logs">
-                <AppIconButton
-                  disabled={isLoading}
-                  onClick={() => setLogsContainer(container)}
-                  size="small"
-                >
-                  <Icon
-                    height={18}
-                    icon="mdi:file-document-outline"
-                    width={18}
-                  />
-                </AppIconButton>
-              </AppTooltip>
+              <AppActionIconButton
+                disabled={isLoading}
+                icon="mdi:file-document-outline"
+                iconSize={18}
+                label="View logs"
+                onClick={() => setLogsContainer(container)}
+              />
               {container.State === "running" && (
-                <AppTooltip title="Open terminal">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() => setTerminalContainer(container)}
-                    size="small"
-                  >
-                    <Icon height={18} icon="mdi:console" width={18} />
-                  </AppIconButton>
-                </AppTooltip>
+                <AppActionIconButton
+                  disabled={isLoading}
+                  icon="mdi:console"
+                  iconSize={18}
+                  label="Open terminal"
+                  onClick={() => setTerminalContainer(container)}
+                />
               )}
               {container.url && (
-                <AppTooltip title="Open app">
-                  <AppIconButton
-                    disabled={isLoading}
-                    onClick={() =>
-                      window.open(container.url, "_blank", "noopener")
-                    }
-                    size="small"
-                  >
-                    <Icon height={18} icon="mdi:open-in-new" width={18} />
-                  </AppIconButton>
-                </AppTooltip>
-              )}
-              <AppTooltip title="Remove container">
-                <AppIconButton
+                <AppActionIconButton
                   disabled={isLoading}
-                  onClick={() => void handleRemoveContainer(container)}
-                  size="small"
-                >
-                  <Icon height={18} icon="mdi:delete" width={18} />
-                </AppIconButton>
-              </AppTooltip>
+                  icon="mdi:open-in-new"
+                  iconSize={18}
+                  label="Open app"
+                  onClick={() =>
+                    window.open(container.url, "_blank", "noopener")
+                  }
+                />
+              )}
+              <AppActionIconButton
+                disabled={isLoading}
+                icon="mdi:delete"
+                iconSize={18}
+                label="Remove container"
+                onClick={() => void handleRemoveContainer(container)}
+              />
             </div>
           );
         },

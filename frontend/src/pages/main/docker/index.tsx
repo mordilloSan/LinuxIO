@@ -14,6 +14,7 @@ import VolumeList from "./VolumeList";
 import { jobSnapshotResult, linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -188,29 +189,18 @@ const DockerPage: React.FC = () => {
       </AppTooltip>
     );
   };
-  const renderAutoUpdateSettingsButton = () => {
-    const button = (
-      <AppIconButton
-        aria-label="Container auto-update settings"
-        disabled={!watchtowerEnabled}
-        onClick={() => setAutoUpdateDialogOpen(true)}
-        size="small"
-      >
-        <Icon height={20} icon="mdi:timer-cog-outline" width={20} />
-      </AppIconButton>
-    );
-    return (
-      <AppTooltip
-        title={
-          watchtowerEnabled
-            ? "Container auto-update settings"
-            : watchtowerReason
-        }
-      >
-        <span>{button}</span>
-      </AppTooltip>
-    );
-  };
+  const renderAutoUpdateSettingsButton = () => (
+    <AppActionIconButton
+      ariaLabel="Container auto-update settings"
+      disabled={!watchtowerEnabled}
+      icon="mdi:timer-cog-outline"
+      iconSize={20}
+      label={
+        watchtowerEnabled ? "Container auto-update settings" : watchtowerReason
+      }
+      onClick={() => setAutoUpdateDialogOpen(true)}
+    />
+  );
   if (dockerStatus === "unknown") {
     return (
       <div
