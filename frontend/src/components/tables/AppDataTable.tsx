@@ -37,6 +37,7 @@ import {
   shadowSm,
 } from "@/theme/constants";
 import { alpha } from "@/utils/color";
+import { mergeRefs } from "@/utils/mergeRefs";
 
 import "./app-virtual-data-table.css";
 
@@ -129,21 +130,6 @@ function getSortIcon(sortState: false | "asc" | "desc") {
   if (sortState === "asc") return "mdi:chevron-up";
   if (sortState === "desc") return "mdi:chevron-down";
   return "mdi:unfold-more-horizontal";
-}
-
-function mergeRefs<T>(
-  ...refs: Array<React.Ref<T> | undefined>
-): React.RefCallback<T> {
-  return (node) => {
-    refs.forEach((ref) => {
-      if (!ref) return;
-      if (typeof ref === "function") {
-        ref(node);
-        return;
-      }
-      ref.current = node;
-    });
-  };
 }
 
 function areCellRenderKeysEqual(

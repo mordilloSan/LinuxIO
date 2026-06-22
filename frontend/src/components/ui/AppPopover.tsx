@@ -3,10 +3,13 @@ import React, {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+
+import { mergeRefs } from "@/utils/mergeRefs";
 
 import "./app-popover.css";
 
@@ -64,20 +67,6 @@ const getVerticalOffset = (origin: VerticalOrigin, height: number) => {
   }
 };
 
-const mergeRefs = <T,>(
-  refs: Array<React.Ref<T> | undefined>,
-  value: T | null,
-) => {
-  refs.forEach((ref) => {
-    if (!ref) return;
-    if (typeof ref === "function") {
-      ref(value);
-      return;
-    }
-    ref.current = value;
-  });
-};
-
 const AppPopover: React.FC<AppPopoverProps> = ({
   open,
   onClose,
@@ -97,10 +86,8 @@ const AppPopover: React.FC<AppPopoverProps> = ({
   const internalPaperRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: -9999, left: -9999 });
 
-  const setPaperRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      mergeRefs([internalPaperRef, paperRef], node);
-    },
+  const setPaperRef = useMemo(
+    () => mergeRefs(internalPaperRef, paperRef),
     [paperRef],
   );
 
