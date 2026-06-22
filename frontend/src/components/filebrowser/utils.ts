@@ -1,6 +1,6 @@
-import { ExtendedFileInfo } from "@/api";
+import type { ExtendedFileInfo } from "@/api";
 
-import { FileItem, FileResource } from "../../types/filebrowser";
+import type { FileItem, FileResource } from "../../types/filebrowser";
 
 export const normalizeResource = (data: ExtendedFileInfo): FileResource => {
   if (data.type !== "directory") {
