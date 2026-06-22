@@ -121,7 +121,7 @@ export interface ApiDisk {
   ro: boolean;
   serial?: string;
   size: string;
-  smart?: Record<string, unknown>;
+  smart?: SmartData;
   smartError?: string;
   type?: string;
   vendor?: string;
@@ -1370,7 +1370,7 @@ export interface SensorReading {
   kind: SensorReadingKind;
   label: string;
   unit: string;
-  value: unknown;
+  value: number;
 }
 
 export type SensorReadingKind = "number" | "boolean";
@@ -1420,6 +1420,88 @@ export interface ShareUpdateSambaRequest {
   oldName: string;
   newName: string;
   properties: Record<string, string>;
+}
+
+export interface SmartAttribute {
+  id: number;
+  name: string;
+  raw: {
+    string?: string;
+    value: number;
+  };
+  thresh: number;
+  value: number;
+  worst: number;
+}
+
+export interface SmartData {
+  ata_smart_attributes?: {
+    table?: SmartAttribute[];
+  };
+  ata_smart_self_test_log?: {
+    standard?: {
+      table?: {
+        lifetime_hours?: number;
+        num?: number;
+        status?: {
+          passed?: boolean;
+          string?: string;
+        };
+        type?: {
+          string?: string;
+          value?: number;
+        };
+      }[];
+    };
+  };
+  device?: {
+    protocol?: string;
+    type?: string;
+  };
+  firmware_version?: string;
+  model_name?: string;
+  nvme_number_of_namespaces?: number;
+  nvme_self_test_log?: {
+    table?: {
+      power_on_hours?: number;
+      self_test_code?: {
+        string?: string;
+        value?: number;
+      };
+      self_test_result?: {
+        string?: string;
+        value?: number;
+      };
+    }[];
+  };
+  nvme_smart_health_information_log?: {
+    available_spare?: number;
+    available_spare_threshold?: number;
+    controller_busy_time?: number;
+    critical_warning?: number;
+    data_units_read?: number;
+    data_units_written?: number;
+    host_reads?: number;
+    host_writes?: number;
+    media_errors?: number;
+    num_err_log_entries?: number;
+    percentage_used?: number;
+    power_cycles?: number;
+    power_on_hours?: number;
+    temperature?: number;
+    unsafe_shutdowns?: number;
+  };
+  nvme_version?: string;
+  power_cycle_count?: number;
+  power_on_time?: {
+    hours?: number;
+  };
+  smart_status?: {
+    passed?: boolean;
+  };
+  temperature?: {
+    current?: number;
+  };
 }
 
 export interface Socket {

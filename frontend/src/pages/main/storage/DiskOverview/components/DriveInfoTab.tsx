@@ -1,17 +1,18 @@
 import React from "react";
 
-import type { DriveInfo } from "../types";
+import type { DriveInfo, SmartDeviceInfo, SmartStatus } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";
 
+import type { SmartData } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 
 interface DriveInfoTabProps {
-  deviceInfo?: Record<string, unknown>;
+  deviceInfo?: SmartDeviceInfo;
   drive: DriveInfo;
   rawDriveSize?: string;
-  smartData?: Record<string, unknown>;
-  smartHealth?: { passed?: boolean };
+  smartData?: SmartData;
+  smartHealth?: SmartStatus;
 }
 
 interface DriveInfoRow {

@@ -78,8 +78,8 @@ func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 	} else {
 		drive.Smart = smart
 		if drive.Vendor == nil {
-			if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
-				if parts := strings.Fields(modelName); len(parts) > 0 {
+			if smart.ModelName != "" {
+				if parts := strings.Fields(smart.ModelName); len(parts) > 0 {
 					drive.Vendor = optionalString(parts[0])
 				}
 			}
@@ -112,7 +112,7 @@ func isNVMeDevice(dev BlockDevice) bool {
 	return dev.Tran == "nvme"
 }
 
-func FetchSmartInfo(ctx context.Context, device string) (map[string]any, error) {
+func FetchSmartInfo(ctx context.Context, device string) (*apischema.SmartData, error) {
 	if !validDeviceNameRe.MatchString(device) {
 		return nil, errors.New("invalid device name")
 	}
@@ -130,12 +130,12 @@ func FetchSmartInfo(ctx context.Context, device string) (map[string]any, error) 
 		return nil, fmt.Errorf("smartctl failed for %s: %w", device, err)
 	}
 
-	var parsed map[string]any
+	var parsed apischema.SmartData
 	if err := json.Unmarshal(out, &parsed); err != nil {
 		return nil, fmt.Errorf("failed to parse smartctl output: %w", err)
 	}
 
-	return parsed, nil
+	return &parsed, nil
 }
 
 func GetNVMePowerState(ctx context.Context, device string) (*apischema.DiskPowerData, error) {

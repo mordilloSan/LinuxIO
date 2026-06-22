@@ -131,7 +131,7 @@ type SensorReading struct {
 	Kind  SensorReadingKind `json:"kind"`
 	Label string            `json:"label"`
 	Unit  string            `json:"unit"`
-	Value any               `json:"value"`
+	Value float64           `json:"value"`
 }
 
 type SensorGroup struct {
@@ -151,6 +151,88 @@ type DiskPowerData struct {
 	States       []DiskPowerState `json:"states"`
 }
 
+type SmartAttribute struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	Raw  struct {
+		String string  `json:"string,omitempty"`
+		Value  float64 `json:"value"`
+	} `json:"raw"`
+	Thresh int `json:"thresh"`
+	Value  int `json:"value"`
+	Worst  int `json:"worst"`
+}
+
+type SmartData struct {
+	ATASmartAttributes *struct {
+		Table []SmartAttribute `json:"table,omitempty"`
+	} `json:"ata_smart_attributes,omitempty"`
+	ATASmartSelfTestLog *struct {
+		Standard *struct {
+			Table []struct {
+				LifetimeHours *float64 `json:"lifetime_hours,omitempty"`
+				Num           *float64 `json:"num,omitempty"`
+				Status        *struct {
+					Passed *bool  `json:"passed,omitempty"`
+					String string `json:"string,omitempty"`
+				} `json:"status,omitempty"`
+				Type *struct {
+					String string   `json:"string,omitempty"`
+					Value  *float64 `json:"value,omitempty"`
+				} `json:"type,omitempty"`
+			} `json:"table,omitempty"`
+		} `json:"standard,omitempty"`
+	} `json:"ata_smart_self_test_log,omitempty"`
+	Device *struct {
+		Protocol string `json:"protocol,omitempty"`
+		Type     string `json:"type,omitempty"`
+	} `json:"device,omitempty"`
+	FirmwareVersion        string   `json:"firmware_version,omitempty"`
+	ModelName              string   `json:"model_name,omitempty"`
+	NVMeNumberOfNamespaces *float64 `json:"nvme_number_of_namespaces,omitempty"`
+	NVMeSelfTestLog        *struct {
+		Table []struct {
+			PowerOnHours *float64 `json:"power_on_hours,omitempty"`
+			SelfTestCode *struct {
+				String string   `json:"string,omitempty"`
+				Value  *float64 `json:"value,omitempty"`
+			} `json:"self_test_code,omitempty"`
+			SelfTestResult *struct {
+				String string   `json:"string,omitempty"`
+				Value  *float64 `json:"value,omitempty"`
+			} `json:"self_test_result,omitempty"`
+		} `json:"table,omitempty"`
+	} `json:"nvme_self_test_log,omitempty"`
+	NVMeSmartHealthInformationLog *struct {
+		AvailableSpare          *float64 `json:"available_spare,omitempty"`
+		AvailableSpareThreshold *float64 `json:"available_spare_threshold,omitempty"`
+		ControllerBusyTime      *float64 `json:"controller_busy_time,omitempty"`
+		CriticalWarning         *float64 `json:"critical_warning,omitempty"`
+		DataUnitsRead           *float64 `json:"data_units_read,omitempty"`
+		DataUnitsWritten        *float64 `json:"data_units_written,omitempty"`
+		HostReads               *float64 `json:"host_reads,omitempty"`
+		HostWrites              *float64 `json:"host_writes,omitempty"`
+		MediaErrors             *float64 `json:"media_errors,omitempty"`
+		NumErrLogEntries        *float64 `json:"num_err_log_entries,omitempty"`
+		PercentageUsed          *float64 `json:"percentage_used,omitempty"`
+		PowerCycles             *float64 `json:"power_cycles,omitempty"`
+		PowerOnHours            *float64 `json:"power_on_hours,omitempty"`
+		Temperature             *float64 `json:"temperature,omitempty"`
+		UnsafeShutdowns         *float64 `json:"unsafe_shutdowns,omitempty"`
+	} `json:"nvme_smart_health_information_log,omitempty"`
+	NVMeVersion     string   `json:"nvme_version,omitempty"`
+	PowerCycleCount *float64 `json:"power_cycle_count,omitempty"`
+	PowerOnTime     *struct {
+		Hours *float64 `json:"hours,omitempty"`
+	} `json:"power_on_time,omitempty"`
+	SmartStatus *struct {
+		Passed *bool `json:"passed,omitempty"`
+	} `json:"smart_status,omitempty"`
+	Temperature *struct {
+		Current *float64 `json:"current,omitempty"`
+	} `json:"temperature,omitempty"`
+}
+
 type ApiDisk struct {
 	Model      string         `json:"model"`
 	Name       string         `json:"name"`
@@ -159,7 +241,7 @@ type ApiDisk struct {
 	RO         bool           `json:"ro"`
 	Serial     *string        `json:"serial,omitempty"`
 	Size       string         `json:"size"`
-	Smart      map[string]any `json:"smart,omitempty"`
+	Smart      *SmartData     `json:"smart,omitempty"`
 	SmartError string         `json:"smartError,omitempty"`
 	Type       *string        `json:"type,omitempty"`
 	Vendor     *string        `json:"vendor,omitempty"`

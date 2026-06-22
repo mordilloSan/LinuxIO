@@ -325,28 +325,12 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const power = drive.power;
   const isNvme = drive.transport === "nvme";
   const ataAttrs = smart?.ata_smart_attributes?.table;
-  const smartData = rawDrive?.smart as Record<string, unknown> | undefined;
-  const deviceInfo = smartData?.device as Record<string, unknown> | undefined;
-  const smartHealth = smartData?.smart_status as
-    | {
-        passed?: boolean;
-      }
-    | undefined;
-  const nvmeHealthRaw = smartData?.nvme_smart_health_information_log as
-    | Record<string, unknown>
-    | undefined;
-  const selfTestLog = smartData?.ata_smart_self_test_log as
-    | {
-        standard?: {
-          table?: unknown[];
-        };
-      }
-    | undefined;
-  const nvmeSelfTestLog = smartData?.nvme_self_test_log as
-    | {
-        table?: unknown[];
-      }
-    | undefined;
+  const smartData = rawDrive?.smart;
+  const deviceInfo = smartData?.device;
+  const smartHealth = smartData?.smart_status;
+  const nvmeHealthRaw = smartData?.nvme_smart_health_information_log;
+  const selfTestLog = smartData?.ata_smart_self_test_log;
+  const nvmeSelfTestLog = smartData?.nvme_self_test_log;
   return (
     <AppCollapse in={expanded} unmountOnExit>
       <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
@@ -545,8 +529,8 @@ const DiskOverview: React.FC = () => {
         vendor: d.vendor,
         serial: d.serial,
         ro: d.ro,
-        smart: d.smart as DriveInfo["smart"],
-        power: d.power as DriveInfo["power"],
+        smart: d.smart,
+        power: d.power,
       })),
     [rawDrives],
   );

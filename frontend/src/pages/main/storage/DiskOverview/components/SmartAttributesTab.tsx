@@ -1,8 +1,9 @@
 import React from "react";
 
-import type { SmartAttribute } from "../types";
+import type { SmartNVMeHealthInformationLog } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 
+import type { SmartAttribute } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppTypography from "@/components/ui/AppTypography";
@@ -10,7 +11,7 @@ import AppTypography from "@/components/ui/AppTypography";
 interface SmartAttributesTabProps {
   ataAttrs?: SmartAttribute[];
   isNvme: boolean;
-  nvmeHealthRaw?: Record<string, unknown>;
+  nvmeHealthRaw?: SmartNVMeHealthInformationLog;
 }
 
 interface SmartSummaryRow {

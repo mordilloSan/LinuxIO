@@ -1,6 +1,7 @@
 import { formatFileSize } from "@/utils/formaters";
+import type { SmartData } from "@/api";
 
-import type { DriveInfo, SmartData } from "./types";
+import type { DriveInfo } from "./types";
 
 export function parseSizeToBytes(input: string | undefined | null): number {
   if (!input) return 0;

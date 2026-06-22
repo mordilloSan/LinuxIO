@@ -78,7 +78,7 @@ func parseSensorChip(chipName string, chip map[string]any) apischema.SensorGroup
 
 type sensorLeaf struct {
 	path  []string
-	value any
+	value float64
 	kind  apischema.SensorReadingKind
 	unit  string
 	field string
@@ -109,13 +109,20 @@ func collectSensorLeaves(value any, path []string) []sensorLeaf {
 		field := sensorLeafField(path)
 		return []sensorLeaf{{
 			path:  cloneSensorPath(path),
-			value: typed,
+			value: sensorBooleanValue(typed),
 			kind:  apischema.SensorReadingKindBoolean,
 			field: field,
 		}}
 	default:
 		return nil
 	}
+}
+
+func sensorBooleanValue(value bool) float64 {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func appendSensorPath(path []string, key string) []string {
@@ -260,8 +267,7 @@ func sensorNumberValue(reading apischema.SensorReading) (float64, bool) {
 		return 0, false
 	}
 
-	value, ok := reading.Value.(float64)
-	return value, ok
+	return reading.Value, true
 }
 
 func sensorReadingIsInput(reading apischema.SensorReading) bool {

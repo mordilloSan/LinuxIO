@@ -1,44 +1,27 @@
-export interface SmartAttribute {
-  id: number;
-  name: string;
-  raw: { value: number; string?: string };
-  thresh: number;
-  value: number;
-  worst: number;
-}
+import type { DiskPowerData, SmartData } from "@/api";
 
-export interface SmartData {
-  ata_smart_attributes?: { table?: SmartAttribute[] };
-  nvme_smart_health_information_log?: {
-    temperature?: number;
-    power_on_hours?: number;
-    power_cycles?: number;
-    percentage_used?: number;
-    data_units_read?: number;
-    data_units_written?: number;
-  };
-  power_cycle_count?: number;
-  power_on_time?: { hours?: number };
-  smart_status?: { passed?: boolean };
-  temperature?: { current?: number };
-}
+export type { SmartAttribute, SmartData } from "@/api";
 
-export interface PowerState {
-  description: string;
-  maxPowerW: number;
-  state: number;
-}
-
-export interface PowerData {
-  currentState: number;
-  estimatedW: number;
-  states: PowerState[];
-}
+export type SmartDeviceInfo = NonNullable<SmartData["device"]>;
+export type SmartStatus = NonNullable<SmartData["smart_status"]>;
+export type SmartNVMeHealthInformationLog = NonNullable<
+  SmartData["nvme_smart_health_information_log"]
+>;
+export type SmartATASelfTestLog = NonNullable<
+  SmartData["ata_smart_self_test_log"]
+>;
+export type SmartNVMeSelfTestLog = NonNullable<SmartData["nvme_self_test_log"]>;
+export type SmartStandardSelfTestRow = NonNullable<
+  NonNullable<SmartATASelfTestLog["standard"]>["table"]
+>[number];
+export type SmartNVMeSelfTestRow = NonNullable<
+  SmartNVMeSelfTestLog["table"]
+>[number];
 
 export interface DriveInfo {
   model: string;
   name: string;
-  power?: PowerData;
+  power?: DiskPowerData;
   ro?: boolean;
   serial?: string;
   sizeBytes: number;

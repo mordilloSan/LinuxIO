@@ -61,11 +61,11 @@ func TestFetchSensorsInfoParsesJSONReadings(t *testing.T) {
 		{Label: "Core 0 (input)", Value: 48.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_input"},
 		{Label: "Core 0 (max)", Value: 95.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_max"},
 		{Label: "Core 0 (crit)", Value: 100.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_crit"},
-		{Label: "Core 0 (alarm)", Value: false, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp2_alarm"},
+		{Label: "Core 0 (alarm)", Value: 0, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp2_alarm"},
 		{Label: "Package id 0 (input)", Value: 55.5, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_input"},
 		{Label: "Package id 0 (max)", Value: 95.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_max"},
 		{Label: "Package id 0 (crit)", Value: 100.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_crit"},
-		{Label: "Package id 0 (alarm)", Value: true, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp1_alarm"},
+		{Label: "Package id 0 (alarm)", Value: 1, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp1_alarm"},
 	}, groups[0].Readings)
 
 	require.Equal(t, "nct6798-isa-0290", groups[1].Adapter)
@@ -74,10 +74,10 @@ func TestFetchSensorsInfoParsesJSONReadings(t *testing.T) {
 		{Label: "3VCC (min)", Value: 3.14, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_min"},
 		{Label: "3VCC (max)", Value: 3.47, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_max"},
 		{Label: "fan1 (input)", Value: 1520.0, Kind: apischema.SensorReadingKindNumber, Unit: "RPM", Field: "fan1_input"},
-		{Label: "fan1 (alarm)", Value: false, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "fan1_alarm"},
-		{Label: "intrusion0", Value: true, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "alarm"},
+		{Label: "fan1 (alarm)", Value: 0, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "fan1_alarm"},
+		{Label: "intrusion0", Value: 1, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "alarm"},
 		{Label: "nested (subsystem / input)", Value: 65.2, Kind: apischema.SensorReadingKindNumber, Unit: "W", Field: "power1_input"},
-		{Label: "nested (subsystem / alarm)", Value: false, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "power1_alarm"},
+		{Label: "nested (subsystem / alarm)", Value: 0, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "power1_alarm"},
 	}, groups[1].Readings)
 }
 

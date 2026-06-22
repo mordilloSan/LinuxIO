@@ -10,16 +10,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
-type NumericSensorReading = SensorReading & {
-  kind: "number";
-  value: number;
-};
-
-type BooleanSensorReading = SensorReading & {
-  kind: "boolean";
-  value: boolean;
-};
-
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const getTempColor = (
@@ -31,32 +21,22 @@ const getTempColor = (
   return palette.error;
 };
 
-const isNumericSensorReading = (
-  reading: SensorReading,
-): reading is NumericSensorReading =>
-  reading.kind === "number" && typeof reading.value === "number";
+const isNumericSensorReading = (reading: SensorReading): boolean =>
+  reading.kind === "number";
 
-const isBooleanSensorReading = (
-  reading: SensorReading,
-): reading is BooleanSensorReading =>
-  reading.kind === "boolean" && typeof reading.value === "boolean";
+const isBooleanSensorReading = (reading: SensorReading): boolean =>
+  reading.kind === "boolean";
 
-export const isTemperatureReading = (
-  reading: SensorReading,
-): reading is NumericSensorReading => {
+export const isTemperatureReading = (reading: SensorReading): boolean => {
   if (!isNumericSensorReading(reading)) return false;
   const unit = reading.unit.toLowerCase();
   return unit === "c" || unit === "°c";
 };
 
-const isFanReading = (
-  reading: SensorReading,
-): reading is NumericSensorReading =>
+const isFanReading = (reading: SensorReading): boolean =>
   isNumericSensorReading(reading) && reading.unit.toLowerCase() === "rpm";
 
-const isVoltageReading = (
-  reading: SensorReading,
-): reading is NumericSensorReading =>
+const isVoltageReading = (reading: SensorReading): boolean =>
   isNumericSensorReading(reading) && reading.unit.toLowerCase() === "v";
 
 export const formatNumericSensorValue = (
@@ -77,7 +57,8 @@ export const formatNumericSensorValue = (
 };
 
 const formatSensorValue = (reading: SensorReading): string => {
-  if (isBooleanSensorReading(reading)) return reading.value ? "True" : "False";
+  if (isBooleanSensorReading(reading))
+    return reading.value !== 0 ? "True" : "False";
   if (isNumericSensorReading(reading))
     return formatNumericSensorValue(reading.value, reading.unit);
   return String(reading.value);
@@ -126,8 +107,8 @@ const sensorChipColor = (
 ): "success" | "warning" | "info" | "default" | "error" => {
   if (isBooleanSensorReading(reading)) {
     if (reading.label.toLowerCase().includes("alarm"))
-      return reading.value ? "error" : "success";
-    return reading.value ? "warning" : "default";
+      return reading.value !== 0 ? "error" : "success";
+    return reading.value !== 0 ? "warning" : "default";
   }
   return unitChipColor(reading.unit);
 };

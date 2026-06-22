@@ -1,18 +1,13 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import type { SmartData } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-
-interface DriveSmartData {
-  nvme_smart_health_information_log?: { temperature?: number };
-  smart_status?: { passed?: boolean };
-  temperature?: { current?: number };
-}
 
 export interface DriveCardProps {
   children?: React.ReactNode;
@@ -21,11 +16,11 @@ export interface DriveCardProps {
   name: string;
   onClick: () => void;
   sizeBytes: number;
-  smart?: DriveSmartData;
+  smart?: SmartData;
   transport: string;
 }
 
-const getTemperature = (smart?: DriveSmartData): number | null => {
+const getTemperature = (smart?: SmartData): number | null => {
   if (!smart) return null;
   return (
     smart.nvme_smart_health_information_log?.temperature ??
@@ -42,7 +37,7 @@ const getTemperatureColor = (temp: number | null): string => {
 };
 
 const getHealthColor = (
-  smart?: DriveSmartData,
+  smart?: SmartData,
 ): "success" | "error" | "warning" | "default" => {
   if (!smart?.smart_status) return "default";
   const passed = smart.smart_status.passed;

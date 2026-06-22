@@ -1,7 +1,6 @@
 import React from "react";
 
-import type { PowerData } from "../types";
-
+import type { DiskPowerData } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
@@ -9,10 +8,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 interface PowerStatesTabProps {
-  power: PowerData;
+  power: DiskPowerData;
 }
 
-type PowerStateRow = PowerData["states"][number];
+type PowerStateRow = DiskPowerData["states"][number];
 
 const powerStateColumns: AppDataTableColumnDef<PowerStateRow>[] = [
   {
