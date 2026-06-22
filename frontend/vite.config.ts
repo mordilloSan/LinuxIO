@@ -19,6 +19,10 @@ export default defineConfig(async ({ command }) => {
     plugins.push(
       (await babel({
         presets: [reactCompilerPreset()],
+        // The production build emits no sourcemaps (build.sourcemap defaults to
+        // false), so Babel generating them is wasted work. React Compiler still
+        // runs over every component and .ts/.tsx hook.
+        sourceMap: false,
       })) as unknown as PluginOption,
     );
     plugins.push(
@@ -59,6 +63,12 @@ export default defineConfig(async ({ command }) => {
     },
     build: {
       target: "es2022",
+      // No sourcemaps in the production bundle: it ships embedded in the Go
+      // webserver, there is no error-tracking service to consume maps, and we
+      // avoid publishing original source. Debug with sourcemaps via `dev`
+      // instead. If you flip this on, also remove `sourceMap: false` from the
+      // babel() plugin above so compiled files keep complete maps.
+      sourcemap: false,
       chunkSizeWarningLimit: 2000,
       manifest: true,
       outDir: "../backend/webserver/web/frontend",
