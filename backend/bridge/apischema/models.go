@@ -139,16 +139,30 @@ type SensorGroup struct {
 	Readings []SensorReading `json:"readings"`
 }
 
+type DiskPowerState struct {
+	Description string  `json:"description"`
+	MaxPowerW   float64 `json:"maxPowerW"`
+	State       int     `json:"state"`
+}
+
+type DiskPowerData struct {
+	CurrentState int              `json:"currentState"`
+	EstimatedW   float64          `json:"estimatedW"`
+	States       []DiskPowerState `json:"states"`
+}
+
 type ApiDisk struct {
-	Model  string  `json:"model"`
-	Name   string  `json:"name"`
-	Power  any     `json:"power,omitempty"`
-	RO     bool    `json:"ro"`
-	Serial *string `json:"serial,omitempty"`
-	Size   string  `json:"size"`
-	Smart  any     `json:"smart,omitempty"`
-	Type   *string `json:"type,omitempty"`
-	Vendor *string `json:"vendor,omitempty"`
+	Model      string         `json:"model"`
+	Name       string         `json:"name"`
+	Power      *DiskPowerData `json:"power,omitempty"`
+	PowerError string         `json:"powerError,omitempty"`
+	RO         bool           `json:"ro"`
+	Serial     *string        `json:"serial,omitempty"`
+	Size       string         `json:"size"`
+	Smart      map[string]any `json:"smart,omitempty"`
+	SmartError string         `json:"smartError,omitempty"`
+	Type       *string        `json:"type,omitempty"`
+	Vendor     *string        `json:"vendor,omitempty"`
 }
 
 type MotherboardInfo struct {
@@ -513,6 +527,11 @@ type ComposeProject struct {
 	Status          string                     `json:"status"`
 	UpdateAvailable bool                       `json:"update_available"`
 	WorkingDir      string                     `json:"working_dir"`
+}
+
+type ComposeActionResult struct {
+	Message string `json:"message"`
+	Output  string `json:"output"`
 }
 
 type AutoUpdateOptions struct {

@@ -116,11 +116,13 @@ export interface AlertIDRequest {
 export interface ApiDisk {
   model: string;
   name: string;
-  power?: unknown;
+  power?: DiskPowerData;
+  powerError?: string;
   ro: boolean;
   serial?: string;
   size: string;
-  smart?: unknown;
+  smart?: Record<string, unknown>;
+  smartError?: string;
   type?: string;
   vendor?: string;
 }
@@ -254,6 +256,11 @@ export interface CapabilityRequest {
 export interface ChangePasswordRequest {
   username: string;
   password: string;
+}
+
+export interface ComposeActionResult {
+  message: string;
+  output: string;
 }
 
 export interface ComposeFilePathResponse {
@@ -504,6 +511,18 @@ export interface DirectoryValidationResult {
   exists: boolean;
   isDirectory: boolean;
   valid: boolean;
+}
+
+export interface DiskPowerData {
+  currentState: number;
+  estimatedW: number;
+  states: DiskPowerState[];
+}
+
+export interface DiskPowerState {
+  description: string;
+  maxPowerW: number;
+  state: number;
 }
 
 export interface DiskThroughputDevice {
@@ -1825,22 +1844,22 @@ export interface LinuxIOSchema {
     compose_down: {
       input: [projectName: string];
       request: ProjectNameRequest;
-      result: unknown;
+      result: ComposeActionResult;
     };
     compose_restart: {
       input: [projectName: string];
       request: ProjectNameRequest;
-      result: unknown;
+      result: ComposeActionResult;
     };
     compose_stop: {
       input: [projectName: string];
       request: ProjectNameRequest;
-      result: unknown;
+      result: ComposeActionResult;
     };
     compose_up: {
       input: [projectName: string];
       request: ProjectNameRequest;
-      result: unknown;
+      result: ComposeActionResult;
     };
     connect_to_proxy: {
       input: [containerId: string];

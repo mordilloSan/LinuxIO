@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 type LSBLKOutput struct {
@@ -26,18 +28,6 @@ type BlockDevice struct {
 	Vendor     string        `json:"vendor"`
 	Mountpoint string        `json:"mountpoint"`
 	Children   []BlockDevice `json:"children,omitempty"`
-}
-
-type PowerStateInfo struct {
-	State       int     `json:"state"`
-	MaxPowerW   float64 `json:"maxPowerW"`
-	Description string  `json:"description"`
-}
-
-type InferredPowerData struct {
-	CurrentState int              `json:"currentState"`
-	EstimatedW   float64          `json:"estimatedW"`
-	States       []PowerStateInfo `json:"states"`
 }
 
 // precompiled regexes
@@ -76,10 +66,10 @@ func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 	drive := DriveInfo{
 		Name:   dev.Name,
 		Model:  strings.TrimSpace(dev.Model),
-		Serial: strings.TrimSpace(dev.Serial),
+		Serial: optionalString(strings.TrimSpace(dev.Serial)),
 		Size:   dev.Size,
-		Type:   dev.Tran,
-		Vendor: strings.TrimSpace(dev.Vendor),
+		Type:   optionalString(dev.Tran),
+		Vendor: optionalString(strings.TrimSpace(dev.Vendor)),
 		RO:     dev.RO,
 	}
 
@@ -87,10 +77,10 @@ func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 		drive.SmartError = err.Error()
 	} else {
 		drive.Smart = smart
-		if drive.Vendor == "" {
+		if drive.Vendor == nil {
 			if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
 				if parts := strings.Fields(modelName); len(parts) > 0 {
-					drive.Vendor = parts[0]
+					drive.Vendor = optionalString(parts[0])
 				}
 			}
 		}
@@ -105,6 +95,13 @@ func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 	}
 
 	return drive
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func isNVMeDevice(dev BlockDevice) bool {
@@ -141,7 +138,7 @@ func FetchSmartInfo(ctx context.Context, device string) (map[string]any, error) 
 	return parsed, nil
 }
 
-func GetNVMePowerState(ctx context.Context, device string) (*InferredPowerData, error) {
+func GetNVMePowerState(ctx context.Context, device string) (*apischema.DiskPowerData, error) {
 	// Step 1: Get supported power states
 	cmd := exec.CommandContext(ctx, "nvme", "id-ctrl", "/dev/"+device)
 	out, err := cmd.Output()
@@ -149,7 +146,7 @@ func GetNVMePowerState(ctx context.Context, device string) (*InferredPowerData, 
 		return nil, fmt.Errorf("failed to run nvme id-ctrl for %s: %w", device, err)
 	}
 
-	var states []PowerStateInfo
+	var states []apischema.DiskPowerState
 	for line := range strings.SplitSeq(string(out), "\n") {
 		match := nvmePsRe.FindStringSubmatch(line)
 		if len(match) != 3 {
@@ -165,7 +162,7 @@ func GetNVMePowerState(ctx context.Context, device string) (*InferredPowerData, 
 			continue
 		}
 
-		states = append(states, PowerStateInfo{
+		states = append(states, apischema.DiskPowerState{
 			State:       stateNum,
 			MaxPowerW:   maxPower,
 			Description: strings.TrimSpace(line),
@@ -178,14 +175,14 @@ func GetNVMePowerState(ctx context.Context, device string) (*InferredPowerData, 
 
 	currentState, estimated := resolveCurrentNVMePowerState(ctx, device, states)
 
-	return &InferredPowerData{
+	return &apischema.DiskPowerData{
 		CurrentState: currentState,
 		EstimatedW:   estimated,
 		States:       states,
 	}, nil
 }
 
-func resolveCurrentNVMePowerState(ctx context.Context, device string, states []PowerStateInfo) (int, float64) {
+func resolveCurrentNVMePowerState(ctx context.Context, device string, states []apischema.DiskPowerState) (int, float64) {
 	cmd := exec.CommandContext(ctx, "nvme", "smart-log", "/dev/"+device)
 	out, err := cmd.Output()
 	if err != nil {
