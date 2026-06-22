@@ -2,11 +2,11 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
-import ContainerInfoSections from "../../pages/main/docker/ContainerInfoSections";
 import AppCircularProgress from "../ui/AppCircularProgress";
 
-import { jobSnapshotResult, linuxio } from "@/api";
+import { jobSnapshotResult, linuxio, type ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -17,13 +17,12 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
-  () => import("@/pages/main/docker/TerminalDialog"),
+  () => import("@/components/docker/TerminalDialog"),
 );
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };

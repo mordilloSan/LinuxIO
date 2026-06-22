@@ -2,10 +2,9 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { ReactNode, useCallback, useMemo } from "react";
 
-import type { FileBrowserContentProps } from "../../pages/main/filebrowser/FileBrowserContent";
-import type { FileBrowserDialogsProps } from "../../pages/main/filebrowser/FileBrowserDialogs";
-
 import { linuxio } from "@/api";
+import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
+import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useFileBrowserArchiveActions } from "@/hooks/filebrowser/useFileBrowserArchiveActions";
 import { useFileBrowserClipboardShortcuts } from "@/hooks/filebrowser/useFileBrowserClipboardShortcuts";

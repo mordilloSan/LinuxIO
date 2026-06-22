@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 
+import type { ContainerInfo, ContainerPort } from "@/api";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
@@ -7,7 +8,6 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useAppTheme } from "@/theme";
-import { ContainerInfo, ContainerPort } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 
 export type ContainerInfoSection =

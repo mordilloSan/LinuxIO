@@ -1,17 +1,16 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import type { ContainerInfo } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections, {
   ContainerInfoSection,
-} from "./ContainerInfoSections";
-
-import FrostedCard from "@/components/cards/FrostedCard";
+} from "@/components/docker/ContainerInfoSections";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
-import { ContainerInfo } from "@/types/container";
 
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || container.Id.slice(0, 12);

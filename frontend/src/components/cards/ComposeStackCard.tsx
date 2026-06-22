@@ -1,7 +1,6 @@
 import React from "react";
 
-import type { ComposeProject } from "../../pages/main/docker/ComposeList";
-
+import type { ComposeProject } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";

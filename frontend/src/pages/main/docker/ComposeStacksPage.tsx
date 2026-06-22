@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 
-import ComposeList, { type ComposeProject } from "./ComposeList";
+import ComposeList from "./ComposeList";
 
 import {
   CACHE_TTL_MS,
@@ -15,6 +15,7 @@ import {
   linuxio,
   openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
+  type ComposeProject,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";

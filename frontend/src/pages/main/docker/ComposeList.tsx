@@ -4,7 +4,13 @@ import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
-import { jobSnapshotResult, linuxio } from "@/api";
+import {
+  jobSnapshotResult,
+  linuxio,
+  type ComposeProject,
+  type ContainerInfo,
+  type ContainerPort,
+} from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -19,37 +25,16 @@ import {
 } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import type { ContainerInfo, ContainerPort } from "@/types/container";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import "./compose-list.css";
 
-const LogsDialog = React.lazy(() => import("./LogsDialog"));
-const TerminalDialog = React.lazy(() => import("./TerminalDialog"));
+const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
+const TerminalDialog = React.lazy(
+  () => import("@/components/docker/TerminalDialog"),
+);
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
-
-interface ComposeService {
-  container_count: number;
-  container_ids: string[];
-  icon?: string;
-  image: string;
-  name: string;
-  ports: string[];
-  state: string;
-  status: string;
-  url?: string;
-}
-export interface ComposeProject {
-  config_files: string[];
-  containers: ContainerInfo[];
-  icon?: string;
-  name: string;
-  services: Record<string, ComposeService>;
-  status: string; // "running", "partial", "stopped"
-  update_available: boolean;
-  working_dir: string;
-}
 interface ComposeListProps {
   isLoading?: boolean;
   isPending?: boolean;

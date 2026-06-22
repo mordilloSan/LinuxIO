@@ -14,9 +14,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
-  () => import("@/pages/main/docker/TerminalDialog"),
+  () => import("@/components/docker/TerminalDialog"),
 );
 const cleanName = (name: string) => name.replace(/^\//, "");
 const getStatusLabel = (status: string, state: string): string => {

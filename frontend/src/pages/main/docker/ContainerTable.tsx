@@ -2,7 +2,14 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
-import { jobSnapshotResult, linuxio } from "@/api";
+import {
+  jobSnapshotResult,
+  linuxio,
+  type ContainerEndpoint,
+  type ContainerInfo,
+  type ContainerMount,
+  type ContainerPort,
+} from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type {
@@ -21,18 +28,12 @@ import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { TRANSITION_SLOW_CSS } from "@/theme/constants";
-import type {
-  ContainerEndpoint,
-  ContainerInfo,
-  ContainerMount,
-  ContainerPort,
-} from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
-  () => import("@/pages/main/docker/TerminalDialog"),
+  () => import("@/components/docker/TerminalDialog"),
 );
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
