@@ -6,7 +6,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import { CACHE_TTL_MS, linuxio } from "@/api";
+import { CACHE_TTL_MS, type FileChmodRequest, linuxio } from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 import type { FileItem, FileResource } from "@/types/filebrowser";
@@ -16,13 +16,11 @@ import type { PermissionsDialogState } from "./useFileDialogs";
 import { useFilePathUtilities } from "./useFilePathUtilities";
 import { useScopedToast } from "../useScopedToast";
 
-interface ChangePermissionsPayload {
-  group?: string;
-  mode: string;
-  owner?: string;
-  path: string;
-  recursive?: boolean;
-}
+type ChangePermissionsPayload = Pick<
+  FileChmodRequest,
+  "mode" | "path" | "recursive"
+> &
+  Partial<Pick<FileChmodRequest, "group" | "owner">>;
 
 interface RenamePayload {
   destination: string;

@@ -5,7 +5,7 @@ import {
   readConfigCache,
   writeConfigCache,
 } from "@/utils/configCache";
-import type { AppConfig } from "@/types/config";
+import type { AppConfig } from "@/api";
 
 const config = {
   appSettings: {

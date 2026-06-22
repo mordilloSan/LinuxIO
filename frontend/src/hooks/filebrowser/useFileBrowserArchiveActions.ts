@@ -6,6 +6,7 @@ import {
   isArchiveFile,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
+import type { FileExtractRequest } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { splitName, stripNumericSuffix } from "@/utils/fileUpload";
@@ -18,10 +19,7 @@ interface CompressPayload {
   paths: string[];
 }
 
-interface ExtractPayload {
-  archivePath: string;
-  destination?: string;
-}
+type ExtractPayload = FileExtractRequest;
 
 interface CompressFormatDialogState {
   baseName: string;

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TableCardViewMode } from "@/types/config";
+import type { TableCardViewMode } from "@/api";
 
 const configMocks = vi.hoisted(() => ({
   setViewModes: vi.fn(),

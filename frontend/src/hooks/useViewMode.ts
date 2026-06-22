@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
+import type { TableCardViewMode } from "@/api";
 import { useConfigValue } from "@/hooks/useConfig";
-import { TableCardViewMode } from "@/types/config";
 
 export function useViewMode(
   key: string,

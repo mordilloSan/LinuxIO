@@ -1,31 +1,11 @@
 import type {
-  AppConfig as ApiAppConfig,
-  AppSettings as ApiAppSettings,
-  ConfigDockerDashboardSections,
-  ConfigHardwareSections,
-  ConfigThemeColorsByModePayload,
-  ConfigThemeColorsPayload,
-  Dismissals as ApiDismissals,
-  DockerProxySettings as ApiDockerProxySettings,
-  DockerSettings as ApiDockerSettings,
-  JobSettings as ApiJobSettings,
-  TableCardViewMode,
-  Theme,
+  AppConfig,
+  AppSettings,
+  Dismissals,
+  DockerProxySettings,
+  DockerSettings,
+  JobSettings,
 } from "@/api";
-
-export type { TableCardViewMode, Theme };
-
-export type AppViewModes = Record<string, TableCardViewMode>;
-export type ThemeColors = ConfigThemeColorsPayload;
-export type ThemeColorsByMode = ConfigThemeColorsByModePayload;
-export type DockerDashboardSections = ConfigDockerDashboardSections;
-export type HardwareSections = ConfigHardwareSections;
-export type AppSettings = ApiAppSettings;
-export type DockerProxySettings = ApiDockerProxySettings;
-export type DockerSettings = ApiDockerSettings;
-export type JobSettings = ApiJobSettings;
-export type Dismissals = ApiDismissals;
-export type AppConfig = ApiAppConfig;
 
 export interface ConfigPatch {
   appSettings?: Partial<AppSettings>;

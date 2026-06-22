@@ -58,11 +58,10 @@ const getImageVersion = (image: string) => {
   return parts[parts.length - 1] || "-";
 };
 
-interface ContainerUpdateStatusInput {
-  updateAvailable?: boolean;
-  updateCheckedAt?: number | string;
-  updateError?: string;
-}
+type ContainerUpdateStatusInput = Pick<
+  ContainerInfo,
+  "updateAvailable" | "updateCheckedAt" | "updateError"
+>;
 
 const getUpdateStatus = ({
   updateAvailable,
@@ -251,7 +250,7 @@ interface UpdateCellProps {
   containerId: string;
   name: string;
   updateAvailable?: boolean;
-  updateCheckedAt?: number | string;
+  updateCheckedAt?: ContainerInfo["updateCheckedAt"];
   updateError?: string;
 }
 

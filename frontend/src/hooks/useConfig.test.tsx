@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { AppConfig } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useConfig, useConfigReady, useConfigValue } from "@/hooks/useConfig";
 import { act, renderHook } from "@/test/render";
-import type { AppConfig, ConfigContextType } from "@/types/config";
+import type { ConfigContextType } from "@/types/config";
 
 const config: AppConfig = {
   appSettings: {

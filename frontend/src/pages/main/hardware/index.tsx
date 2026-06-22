@@ -1,9 +1,8 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useMemo } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
-import type { SensorGroup } from "@/components/cards/SensorGroupCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";

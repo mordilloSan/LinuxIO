@@ -1,4 +1,4 @@
-import type { AppConfig } from "@/types/config";
+import type { AppConfig } from "@/api";
 
 const CONFIG_CACHE_PREFIX = "linuxio_config:";
 const CONFIG_CACHE_VERSION = 1;

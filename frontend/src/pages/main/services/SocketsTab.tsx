@@ -6,9 +6,8 @@ import UnitListTab from "./UnitListTab";
 import { UnitInfoPanel } from "./UnitViews";
 
 import { linuxio } from "@/api";
-import type { Socket, UnitInfo } from "@/api";
+import type { Socket, TableCardViewMode, UnitInfo } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
-import type { TableCardViewMode } from "@/types/config";
 
 function compareSocketsByName(a: Socket, b: Socket): number {
   return a.name.localeCompare(b.name, undefined, {

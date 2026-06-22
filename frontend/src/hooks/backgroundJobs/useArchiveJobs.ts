@@ -1,7 +1,11 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Compression, Extraction } from "@/types/backgroundJobs";
+import type {
+  Compression,
+  Extraction,
+  ExtractionStartOptions,
+} from "@/types/backgroundJobs";
 
 import {
   isConnected,
@@ -220,11 +224,7 @@ export function useArchiveJobs(runtime: BackgroundJobRuntime) {
       archivePath,
       destination,
       onComplete,
-    }: {
-      archivePath: string;
-      destination?: string;
-      onComplete?: () => void;
-    }) => {
+    }: ExtractionStartOptions) => {
       if (!archivePath) {
         throw new Error("No archive specified for extraction");
       }

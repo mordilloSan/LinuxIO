@@ -5,7 +5,13 @@ import {
 } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { linuxio, openJobAttachStream } from "@/api";
+import {
+  type ActionSourceDestinationRequest,
+  type FileChmodRequest,
+  type FileExtractRequest,
+  linuxio,
+  openJobAttachStream,
+} from "@/api";
 import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -26,18 +32,10 @@ interface CompressPayload {
   paths: string[];
 }
 
-interface ExtractPayload {
-  archivePath: string;
-  destination?: string;
-}
+type ExtractPayload = FileExtractRequest;
 
-interface ChmodPayload {
-  group?: string;
-  mode: string;
-  owner?: string;
-  path: string;
-  recursive?: boolean;
-}
+type ChmodPayload = Pick<FileChmodRequest, "mode" | "path" | "recursive"> &
+  Partial<Pick<FileChmodRequest, "group" | "owner">>;
 
 interface CopyMovePayload {
   destinationDir: string;
@@ -178,13 +176,14 @@ export const useFileMutations = ({
       if (!mode) {
         throw new Error("No mode provided");
       }
-      const job = await linuxio.filebrowser.chmod({
+      const request: FileChmodRequest = {
         path,
         mode,
         owner: owner || "",
         group: group || "",
         recursive: recursive || undefined,
-      });
+      };
+      const job = await linuxio.filebrowser.chmod(request);
       await runStreamResult({
         open: () => openJobAttachStream(job.id),
         closeMessage: "Permissions job stream closed before completion",
@@ -223,11 +222,12 @@ export const useFileMutations = ({
       if (!from || !destination) {
         throw new Error("Invalid rename parameters");
       }
-      await renameMutation.mutateAsync({
+      const request: ActionSourceDestinationRequest = {
         action: "rename",
         src: from,
         dst: destination,
-      });
+      };
+      await renameMutation.mutateAsync(request);
     },
     [renameMutation],
   );

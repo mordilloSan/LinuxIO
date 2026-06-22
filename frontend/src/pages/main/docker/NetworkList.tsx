@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type DockerNetworkContainer } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -45,13 +45,6 @@ interface ConnectedContainerRow {
   ipv6: string;
   mac: string;
   name: string;
-}
-
-interface DockerNetworkContainerDetails {
-  IPv4Address?: string;
-  IPv6Address?: string;
-  MacAddress?: string;
-  Name?: string;
 }
 
 const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] =
@@ -734,7 +727,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       data={Object.entries(
                         network.Containers as Record<
                           string,
-                          DockerNetworkContainerDetails
+                          DockerNetworkContainer
                         >,
                       ).map(([id, info]) => ({
                         id,

@@ -6,9 +6,8 @@ import UnitListTab from "./UnitListTab";
 import { UnitInfoPanel } from "./UnitViews";
 
 import { linuxio } from "@/api";
-import type { Service } from "@/api";
+import type { Service, TableCardViewMode } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
-import type { TableCardViewMode } from "@/types/config";
 
 function compareServicesByName(a: Service, b: Service): number {
   return a.name.localeCompare(b.name, undefined, {

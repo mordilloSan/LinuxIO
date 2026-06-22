@@ -2,8 +2,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { AppConfig } from "@/api";
 import { AuthContext } from "@/contexts/AuthContext";
-import type { AppConfig } from "@/types/config";
 import { writeConfigCache } from "@/utils/configCache";
 
 const apiMocks = vi.hoisted(() => ({

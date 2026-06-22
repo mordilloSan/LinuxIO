@@ -1,13 +1,9 @@
 // src/hooks/useConfig.ts
 import { useCallback, useContext } from "react";
 
+import type { AppConfig, AppSettings } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import {
-  AppConfig,
-  AppSettings,
-  ConfigValueKey,
-  ConfigValueMap,
-} from "@/types/config";
+import { ConfigValueKey, ConfigValueMap } from "@/types/config";
 
 export const useConfig = () => {
   const ctx = useContext(ConfigContext);

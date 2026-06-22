@@ -9,24 +9,30 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { CACHE_TTL_MS, linuxio, LinuxIOError, waitForStreamMux } from "@/api";
+import {
+  type AppConfig,
+  type AppSettings,
+  CACHE_TTL_MS,
+  type ConfigDockerDashboardSections as DockerDashboardSections,
+  type ConfigHardwareSections as HardwareSections,
+  type ConfigThemeColorsByModePayload as ThemeColorsByMode,
+  type ConfigThemeColorsPayload as ThemeColors,
+  linuxio,
+  LinuxIOError,
+  type TableCardViewMode,
+  waitForStreamMux,
+} from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
-  AppConfig,
-  AppSettings,
-  AppViewModes,
   ConfigContextType,
   ConfigPatch,
   ConfigProviderProps,
   ConfigValueKey,
   ConfigValueMap,
-  DockerDashboardSections,
-  HardwareSections,
-  TableCardViewMode,
-  ThemeColors,
-  ThemeColorsByMode,
 } from "@/types/config";
 import { readConfigCache, writeConfigCache } from "@/utils/configCache";
+
+type AppViewModes = Record<string, TableCardViewMode>;
 
 const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
   mode === "card" || mode === "table";

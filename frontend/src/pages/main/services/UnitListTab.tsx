@@ -10,6 +10,7 @@ import { useSearchParams } from "react-router-dom";
 
 import type { UnitListItem } from "./UnitViews";
 
+import type { TableCardViewMode } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
@@ -19,7 +20,6 @@ import {
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
-import type { TableCardViewMode } from "@/types/config";
 
 interface UnitTableViewRenderProps<T> {
   items: T[];

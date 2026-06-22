@@ -8,7 +8,10 @@ import React, {
   useSyncExternalStore,
 } from "react";
 
-import type { AppSettings, ThemeColorsByMode } from "@/types/config";
+import type {
+  AppSettings,
+  ConfigThemeColorsByModePayload as ThemeColorsByMode,
+} from "@/api";
 
 import { useConfig } from "@/hooks/useConfig";
 import breakpoints from "@/theme/breakpoints";

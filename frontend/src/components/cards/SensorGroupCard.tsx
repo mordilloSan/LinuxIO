@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import type { SensorGroup, SensorReading } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -8,20 +9,6 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
-
-// ─── types ───────────────────────────────────────────────────────────────────
-
-export interface SensorReading {
-  kind: "number" | "boolean";
-  label: string;
-  unit: string;
-  value: number | boolean;
-}
-
-export interface SensorGroup {
-  adapter: string;
-  readings: SensorReading[];
-}
 
 type NumericSensorReading = SensorReading & {
   kind: "number";
