@@ -1182,7 +1182,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               ports.length > 2 || mounts.length > 2,
             ];
           },
-          width: "180px",
+          width: "200px",
         },
       },
     ],
