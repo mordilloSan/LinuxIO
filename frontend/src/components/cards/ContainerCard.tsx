@@ -305,8 +305,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
         >
           <span>
             <AppActionIconButton
-              buttonHeight={22}
-              buttonWidth={18}
               color={
                 autoUpdateSelected ? theme.palette.primary.main : undefined
               }
@@ -574,8 +572,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   <AppTooltip arrow title="Start Container">
                     <span onClick={(e) => e.stopPropagation()}>
                       <AppActionIconButton
-                        buttonHeight={22}
-                        buttonWidth={18}
                         icon="mdi:play"
                         iconSize={16}
                         label="Start Container"
@@ -589,8 +585,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   <AppTooltip arrow title="Stop Container">
                     <span onClick={(e) => e.stopPropagation()}>
                       <AppActionIconButton
-                        buttonHeight={22}
-                        buttonWidth={18}
                         icon="mdi:stop"
                         iconSize={16}
                         label="Stop Container"
@@ -603,8 +597,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 <AppTooltip arrow title="Restart Container">
                   <span onClick={(e) => e.stopPropagation()}>
                     <AppActionIconButton
-                      buttonHeight={22}
-                      buttonWidth={18}
                       icon="mdi:restart"
                       iconSize={16}
                       label="Restart Container"
@@ -621,8 +613,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   >
                     <span onClick={(e) => e.stopPropagation()}>
                       <AppActionIconButton
-                        buttonHeight={22}
-                        buttonWidth={18}
                         color={
                           autoUpdateSelected
                             ? theme.palette.primary.main
@@ -643,8 +633,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   <AppTooltip arrow title="Update Container">
                     <span onClick={(e) => e.stopPropagation()}>
                       <AppActionIconButton
-                        buttonHeight={22}
-                        buttonWidth={18}
                         icon="mdi:update"
                         iconSize={16}
                         label="Update Container"
@@ -657,8 +645,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 <AppTooltip arrow title="Remove Container">
                   <span onClick={(e) => e.stopPropagation()}>
                     <AppActionIconButton
-                      buttonHeight={22}
-                      buttonWidth={18}
                       icon="mdi:delete"
                       iconSize={16}
                       label="Remove Container"
@@ -670,8 +656,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 <AppTooltip arrow title="View Logs">
                   <span onClick={(e) => e.stopPropagation()}>
                     <AppActionIconButton
-                      buttonHeight={22}
-                      buttonWidth={18}
                       icon="mdi:file-document-outline"
                       iconSize={16}
                       label="View Logs"
@@ -683,8 +667,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 <AppTooltip arrow title="Open Terminal">
                   <span onClick={(e) => e.stopPropagation()}>
                     <AppActionIconButton
-                      buttonHeight={22}
-                      buttonWidth={18}
                       icon="mdi:console"
                       iconSize={16}
                       label="Open Terminal"
@@ -697,8 +679,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   <AppTooltip arrow title="Open App">
                     <span onClick={(e) => e.stopPropagation()}>
                       <AppActionIconButton
-                        buttonHeight={22}
-                        buttonWidth={18}
                         icon="mdi:open-in-new"
                         iconSize={16}
                         label="Open App"

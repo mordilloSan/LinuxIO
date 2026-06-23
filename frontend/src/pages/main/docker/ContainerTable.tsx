@@ -354,8 +354,6 @@ const UpdateCell = React.memo(function UpdateCell({
       <AppTooltip title="Check for updates">
         <span>
           <AppActionIconButton
-            buttonHeight={22}
-            buttonWidth={18}
             icon="mdi:magnify"
             iconSize={16}
             label="Check for updates"
@@ -400,8 +398,6 @@ const AutoUpdateCell = React.memo(function AutoUpdateCell({
     <AppTooltip key={autoTooltipKey} title={tooltip}>
       <span>
         <AppActionIconButton
-          buttonHeight={22}
-          buttonWidth={18}
           color={autoUpdateSelected ? theme.palette.primary.main : undefined}
           disabled={autoUpdateDisabled || autoUpdatePending}
           icon="mdi:timer-cog-outline"
@@ -842,8 +838,6 @@ const ActionsCell = React.memo(function ActionsCell({
           <AppTooltip title="Start">
             <span>
               <AppActionIconButton
-                buttonHeight={22}
-                buttonWidth={18}
                 icon="mdi:play"
                 iconSize={16}
                 label="Start"
@@ -857,8 +851,6 @@ const ActionsCell = React.memo(function ActionsCell({
           <AppTooltip title="Stop">
             <span>
               <AppActionIconButton
-                buttonHeight={22}
-                buttonWidth={18}
                 icon="mdi:stop"
                 iconSize={16}
                 label="Stop"
@@ -871,8 +863,6 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Restart">
           <span>
             <AppActionIconButton
-              buttonHeight={22}
-              buttonWidth={18}
               icon="mdi:restart"
               iconSize={16}
               label="Restart"
@@ -884,8 +874,6 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Remove">
           <span>
             <AppActionIconButton
-              buttonHeight={22}
-              buttonWidth={18}
               icon="mdi:delete"
               iconSize={16}
               label="Remove"
@@ -897,8 +885,6 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Logs">
           <span>
             <AppActionIconButton
-              buttonHeight={22}
-              buttonWidth={18}
               icon="mdi:file-document-outline"
               iconSize={16}
               label="Logs"
@@ -910,8 +896,6 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Terminal">
           <span>
             <AppActionIconButton
-              buttonHeight={22}
-              buttonWidth={18}
               icon="mdi:console"
               iconSize={16}
               label="Terminal"
@@ -924,8 +908,6 @@ const ActionsCell = React.memo(function ActionsCell({
           <AppTooltip title="Open App">
             <span>
               <AppActionIconButton
-                buttonHeight={22}
-                buttonWidth={18}
                 icon="mdi:open-in-new"
                 iconSize={16}
                 label="Open App"
