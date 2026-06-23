@@ -36,14 +36,14 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!isDesktop) setMobileOpen((prev) => !prev);
   }, [isDesktop]);
 
-  // Sync mobile state with breakpoint - when isDesktop changes, close mobile menu
-  const prevIsDesktop = React.useRef(isDesktop);
-  React.useEffect(() => {
-    if (prevIsDesktop.current !== isDesktop) {
-      setMobileOpen(false);
-      prevIsDesktop.current = isDesktop;
-    }
-  }, [isDesktop]);
+  // Sync mobile state with breakpoint: when crossing to desktop, close the mobile
+  // menu. Adjusting state during render (instead of in an effect) closes it before
+  // paint, avoiding a frame where the drawer lingers after the breakpoint flips.
+  const [prevIsDesktop, setPrevIsDesktop] = useState(isDesktop);
+  if (prevIsDesktop !== isDesktop) {
+    setPrevIsDesktop(isDesktop);
+    setMobileOpen(false);
+  }
 
   const sidebarWidth = useMemo(
     () =>

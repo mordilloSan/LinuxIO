@@ -18,6 +18,7 @@ import React, {
   Suspense,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useState,
 } from "react";
@@ -160,22 +161,21 @@ const ContainerList: React.FC<ContainerListProps> = ({
     [containerIds, setContainerOrder],
   );
 
+  const clearSelectedContainer = useEffectEvent(() => {
+    updateSelectedContainer(null);
+  });
+
   useEffect(() => {
     if (editMode) {
-      updateSelectedContainer(null);
+      clearSelectedContainer();
     }
-  }, [editMode, updateSelectedContainer]);
+  }, [editMode]);
 
   useEffect(() => {
     if (hasLoadedContainers && selectedContainerId && !selectedContainer) {
-      updateSelectedContainer(null);
+      clearSelectedContainer();
     }
-  }, [
-    hasLoadedContainers,
-    selectedContainer,
-    selectedContainerId,
-    updateSelectedContainer,
-  ]);
+  }, [hasLoadedContainers, selectedContainer, selectedContainerId]);
 
   useEffect(() => {
     if (!selectedContainer) return;

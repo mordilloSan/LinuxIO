@@ -10,7 +10,6 @@ import {
   shouldEnableDirectorySizeQuery,
   shouldSkipSizeCalculation,
   useIndexerAvailability,
-  useIndexerErrorHandler,
 } from "./useFileDirectorySizeBase";
 
 export type { SubfolderData };
@@ -52,9 +51,6 @@ export const useFileSubfolders = (
       ...getDirectorySizeQueryOptions(),
     },
   );
-
-  // Handle indexer unavailability errors
-  useIndexerErrorHandler(error);
 
   // Create a stable array reference (avoid new empty array on each render)
   const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);

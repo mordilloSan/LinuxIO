@@ -1,11 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 
 import ComposeList from "./ComposeList";
 
@@ -35,6 +29,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
@@ -226,12 +221,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     [],
   );
 
-  // Mount handlers to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateStack);
-    }
-  }, [onMountCreateHandler, handleCreateStack]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateStack);
 
   // Edit stack handler
   const handleEditStack = useCallback(

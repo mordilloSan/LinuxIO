@@ -34,6 +34,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -977,11 +978,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
     }
     setMountDialogOpen(true);
   }, [nfsUnavailable, nfsReason, toast]);
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleMountNFS);
-    }
-  }, [onMountCreateHandler, handleMountNFS]);
+  useRegisterCreateHandler(onMountCreateHandler, handleMountNFS);
   const handleUnmount = (mount: NFSMount) => {
     unmountEntry({ mountpoint: mount.mountpoint, removeFstab: "false" });
   };

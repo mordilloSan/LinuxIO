@@ -511,15 +511,14 @@ const useUpdateNavigationGuard = (isUpdating: boolean) => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = `${location.pathname}${location.search}${location.hash}`;
-  const lastSafePathRef = useRef(
-    `${location.pathname}${location.search}${location.hash}`,
-  );
+  const lastSafePathRef = useRef(currentPath);
 
-  useEffect(() => {
-    if (!isUpdating) {
-      lastSafePathRef.current = currentPath;
-    }
-  }, [isUpdating, currentPath]);
+  // Mirror the latest path to a ref while not updating. Doing this during render
+  // (rather than in an effect) keeps the ref in sync without a post-paint window,
+  // so the guard below always snaps back to the true last-safe path.
+  if (!isUpdating) {
+    lastSafePathRef.current = currentPath;
+  }
 
   useEffect(() => {
     if (!isUpdating) return;

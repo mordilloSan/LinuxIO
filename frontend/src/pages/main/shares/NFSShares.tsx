@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import { linuxio, type NFSClient, type NFSExport } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";
@@ -24,6 +24,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -609,11 +610,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
     setCreateOpen(true);
   }, [nfsUnavailable, nfsReason, toast]);
 
-  useEffect(() => {
-    if (onCreateHandler) {
-      onCreateHandler(handleCreate);
-    }
-  }, [onCreateHandler, handleCreate]);
+  useRegisterCreateHandler(onCreateHandler, handleCreate);
 
   const handleEdit = (share: NFSExport) => {
     setSelected(share);

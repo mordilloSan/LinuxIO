@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
@@ -19,6 +19,7 @@ import {
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -173,12 +174,7 @@ const ImageList: React.FC<ImageListProps> = ({
     console.log("Add image clicked");
   }, []);
 
-  // Mount handler to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateImage);
-    }
-  }, [onMountCreateHandler, handleCreateImage]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateImage);
 
   // Flatten images with multiple tags
   const imageRows = images.flatMap((img) => {

@@ -2,6 +2,8 @@ import { Icon } from "@iconify/react";
 import React, {
   useCallback,
   useEffect,
+  useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -331,8 +333,8 @@ const GeneralLogsPage: React.FC = () => {
     return wanted;
   }, [services, unitStatusFilter]);
 
-  // Scroll to top when new logs arrive
-  useEffect(() => {
+  // Scroll to top when new logs arrive (before paint to avoid a visible jump)
+  useLayoutEffect(() => {
     if (liveMode && logsBoxRef.current) {
       logsBoxRef.current.scrollTop = 0;
     }
@@ -517,6 +519,10 @@ const GeneralLogsPage: React.FC = () => {
     [identifierFilter, identifierIsExact, uniqueIdentifiers, resetBuffer],
   );
 
+  const runIdentifierFilter = useEffectEvent((value: string) => {
+    applyIdentifierFilter(value);
+  });
+
   // Debounce: when the autocomplete input settles, apply it.
   useEffect(() => {
     const trimmed = identifierInput.trim();
@@ -525,10 +531,10 @@ const GeneralLogsPage: React.FC = () => {
       return;
     }
     const handle = setTimeout(() => {
-      applyIdentifierFilter(identifierInput);
+      runIdentifierFilter(identifierInput);
     }, 150);
     return () => clearTimeout(handle);
-  }, [identifierInput, identifierFilter, applyIdentifierFilter]);
+  }, [identifierInput, identifierFilter]);
 
   const addFieldFilter = useCallback(
     (filter: string) => {

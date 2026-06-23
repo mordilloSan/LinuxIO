@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
 import DeleteGroupDialog from "./components/DeleteGroupDialog";
@@ -13,6 +13,7 @@ import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 interface GroupsTabProps {
@@ -41,11 +42,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
     setCreateDialogOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateGroup);
-    }
-  }, [onMountCreateHandler, handleCreateGroup]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateGroup);
 
   const filtered = groupsList.filter(
     (group) =>

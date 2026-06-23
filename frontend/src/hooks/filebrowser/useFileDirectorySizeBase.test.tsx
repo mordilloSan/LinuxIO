@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { LinuxIOError } from "@/api";
 import { AuthContext } from "@/contexts/AuthContext";
 import {
   DIRECTORY_SIZE_CONFIG,
@@ -102,18 +101,5 @@ describe("useIndexerAvailability", () => {
 
     expect(enabled.result.current).toBe(false);
     expect(disabled.result.current).toBe(true);
-  });
-
-  it("ignores indexer unavailable errors in the legacy side-effect hook", async () => {
-    const { useIndexerErrorHandler } =
-      await import("@/hooks/filebrowser/useFileDirectorySizeBase");
-
-    expect(() =>
-      renderHook(() =>
-        useIndexerErrorHandler(
-          new LinuxIOError("indexer unavailable", "unavailable"),
-        ),
-      ),
-    ).not.toThrow();
   });
 });

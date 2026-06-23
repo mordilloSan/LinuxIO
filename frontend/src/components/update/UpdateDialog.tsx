@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -39,8 +39,8 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   const theme = useAppTheme();
   const outputEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new output arrives
-  useEffect(() => {
+  // Auto-scroll to bottom when new output arrives (before paint to avoid a jump)
+  useLayoutEffect(() => {
     outputEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });

@@ -1,6 +1,3 @@
-import { useEffect } from "react";
-
-import { LinuxIOError } from "@/api";
 import { useCapability } from "@/hooks/useCapabilities";
 
 /**
@@ -37,23 +34,6 @@ export const getDirectorySizeQueryOptions = () => ({
     failureCount < DIRECTORY_SIZE_CONFIG.MAX_RETRIES,
   retryDelay: () => DIRECTORY_SIZE_CONFIG.FAILED_RETRY_DELAY,
 });
-
-/**
- * Hook to handle indexer unavailability errors
- * Note: Indexer availability is now managed by AuthContext from login response
- */
-export const useIndexerErrorHandler = (error: Error | null) => {
-  useEffect(() => {
-    if (!error) return;
-    if (
-      error instanceof LinuxIOError &&
-      error.message?.includes("indexer unavailable")
-    ) {
-      // Indexer availability is now managed by AuthContext from login response
-      // No client-side flag setting needed
-    }
-  }, [error]);
-};
 
 /**
  * Get derived error for directory size queries

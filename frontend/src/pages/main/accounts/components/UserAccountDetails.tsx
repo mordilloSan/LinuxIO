@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import {
@@ -610,7 +610,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
     return focusedLogin ? loginEventKey(focusedLogin) : "";
   }, [focusLoginEventId, logins]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!focusedLoginKey) {
       return;
     }

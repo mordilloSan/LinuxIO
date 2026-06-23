@@ -7,7 +7,6 @@ import {
   shouldEnableDirectorySizeQuery,
   shouldSkipSizeCalculation,
   useIndexerAvailability,
-  useIndexerErrorHandler,
 } from "./useFileDirectorySizeBase";
 
 interface UseDirectorySizeResult {
@@ -46,9 +45,6 @@ export const useFileDirectorySize = (
       ...getDirectorySizeQueryOptions(),
     },
   );
-
-  // Handle indexer unavailability errors
-  useIndexerErrorHandler(error);
 
   const derivedError = getDirectorySizeError(
     error,

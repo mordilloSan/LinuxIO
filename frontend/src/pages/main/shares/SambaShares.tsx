@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import { linuxio, type SambaShare } from "@/api";
 import SambaShareCard from "@/components/cards/SambaShareCard";
@@ -22,6 +22,7 @@ import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -527,11 +528,7 @@ const SambaShares: React.FC<SambaSharesProps> = ({
     setCreateOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (onCreateHandler) {
-      onCreateHandler(handleCreate);
-    }
-  }, [onCreateHandler, handleCreate]);
+  useRegisterCreateHandler(onCreateHandler, handleCreate);
 
   const handleEdit = (share: SambaShare) => {
     setSelected(share);

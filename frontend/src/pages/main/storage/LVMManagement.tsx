@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import {
   linuxio,
@@ -27,6 +27,7 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
@@ -638,11 +639,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
   const handleCreateLV = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateLV);
-    }
-  }, [onMountCreateHandler, handleCreateLV]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateLV);
   const handleSectionToggle = (panel: LVMSectionId) => {
     setExpanded((current) => (current === panel ? false : panel));
   };

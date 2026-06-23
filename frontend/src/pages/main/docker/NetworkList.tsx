@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type DockerNetworkContainer } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
@@ -23,6 +23,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -374,12 +375,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
     setCreateDialogOpen(true);
   }, []);
 
-  // Mount handler to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateNetwork);
-    }
-  }, [onMountCreateHandler, handleCreateNetwork]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

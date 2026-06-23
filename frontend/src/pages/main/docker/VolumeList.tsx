@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
@@ -19,6 +19,7 @@ import {
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -152,12 +153,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
     console.log("Create volume clicked");
   }, []);
 
-  // Mount handler to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateVolume);
-    }
-  }, [onMountCreateHandler, handleCreateVolume]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateVolume);
   const filtered = volumesList.filter(
     (vol) =>
       vol.Name.toLowerCase().includes(search.toLowerCase()) ||

@@ -15,6 +15,7 @@ import Chip from "@/components/ui/AppChip";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -77,11 +78,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateUser);
-    }
-  }, [onMountCreateHandler, handleCreateUser]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateUser);
   const filtered = usersList.filter(
     (user) =>
       user.username.toLowerCase().includes(search.toLowerCase()) ||
