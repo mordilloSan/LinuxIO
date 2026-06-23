@@ -1,6 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   jobSnapshotResult,
@@ -37,6 +43,16 @@ const TerminalDialog = React.lazy(
 );
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
+// Expanded-row state is shared with the cells via context rather than baked into
+// the column definitions. flexRender renders a cell function as a component, so
+// rebuilding the columns on every toggle would change each cell's component
+// identity and remount its subtree — which restarts AppCollapse already-open and
+// skips the expand animation. Context lets the columns stay stable while cells
+// still re-render in place when the expanded set changes.
+const ExpandedContainersContext = React.createContext<ReadonlySet<string>>(
+  new Set(),
+);
 
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
@@ -514,12 +530,13 @@ function NetworkAddressCell({
 }
 
 interface PortsCellProps {
-  expanded: boolean;
+  containerId: string;
   ports: ContainerPort[];
 }
 
-function PortsCell({ expanded, ports }: PortsCellProps) {
+function PortsCell({ containerId, ports }: PortsCellProps) {
   const theme = useAppTheme();
+  const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (ports.length === 0) {
     return (
@@ -622,12 +639,13 @@ function PortsCell({ expanded, ports }: PortsCellProps) {
 }
 
 interface VolumesCellProps {
-  expanded: boolean;
+  containerId: string;
   mounts: ContainerMount[];
 }
 
-function VolumesCell({ expanded, mounts }: VolumesCellProps) {
+function VolumesCell({ containerId, mounts }: VolumesCellProps) {
   const theme = useAppTheme();
+  const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (mounts.length === 0) {
     return (
@@ -733,6 +751,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
     <div style={{ display: "flex", flexDirection: "column" }}>
       <AppTypography
         color="text.secondary"
+        noWrap
         style={{
           fontFamily: "monospace",
           fontSize: "0.78rem",
@@ -744,6 +763,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
       </AppTypography>
       <AppTypography
         color="text.secondary"
+        noWrap
         style={{
           fontFamily: "monospace",
           fontSize: "0.78rem",
@@ -759,7 +779,6 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
 
 interface ActionsCellProps {
   containerId: string;
-  expanded: boolean;
   hasExpandableDetails: boolean;
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
@@ -771,7 +790,6 @@ interface ActionsCellProps {
 
 const ActionsCell = React.memo(function ActionsCell({
   containerId,
-  expanded,
   hasExpandableDetails,
   name,
   onOpenLogs,
@@ -780,6 +798,7 @@ const ActionsCell = React.memo(function ActionsCell({
   state,
   url,
 }: ActionsCellProps) {
+  const expanded = useContext(ExpandedContainersContext).has(containerId);
   const queryClient = useQueryClient();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const refreshContainers = useCallback(() => {
@@ -1079,7 +1098,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
         id: "uptime",
         header: "Uptime",
         cell: ({ row }) => <UptimeCell created={row.original.Created} />,
-        meta: { hideBelow: "md" },
+        meta: { hideBelow: "md", width: "90px" },
       },
       {
         id: "network",
@@ -1110,13 +1129,26 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
         header: "Ports (Container->Host)",
         cell: ({ row }) => (
           <PortsCell
-            expanded={expandedContainerIds.has(row.original.Id)}
+            containerId={row.original.Id}
             ports={getDedupedPorts(row.original)}
           />
         ),
         meta: {
           hideBelow: "xl",
           width: "160px",
+          cellStyle: { alignItems: "flex-start" },
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              getDedupedPorts(container)
+                .map(
+                  (port) =>
+                    `${port.PrivatePort}:${port.PublicPort ?? "-"}:${port.Type}`,
+                )
+                .join("|"),
+            ];
+          },
         },
       },
       {
@@ -1124,13 +1156,25 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
         header: "Volumes (App->Host)",
         cell: ({ row }) => (
           <VolumesCell
-            expanded={expandedContainerIds.has(row.original.Id)}
+            containerId={row.original.Id}
             mounts={getMounts(row.original)}
           />
         ),
         meta: {
           hideBelow: "xl",
-          cellStyle: { maxWidth: 280 },
+          cellStyle: { maxWidth: 280, alignItems: "flex-start" },
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              getMounts(container)
+                .map(
+                  (mount) =>
+                    `${mount.Type}:${mount.Destination}:${mount.Source}`,
+                )
+                .join("|"),
+            ];
+          },
         },
       },
       {
@@ -1140,7 +1184,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
         meta: {
           align: "center",
           hideBelow: "xl",
-          width: "80px",
+          width: "110px",
         },
       },
       {
@@ -1151,11 +1195,9 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
           const container = row.original;
           const ports = getDedupedPorts(row.original);
           const mounts = getMounts(row.original);
-          const expanded = expandedContainerIds.has(row.original.Id);
           return (
             <ActionsCell
               containerId={container.Id}
-              expanded={expanded}
               hasExpandableDetails={ports.length > 2 || mounts.length > 2}
               name={getContainerName(container)}
               onOpenLogs={openLogs}
@@ -1170,7 +1212,6 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
           align: "right",
           getCellRenderKey: (row) => {
             const container = asContainer(row);
-            const expanded = expandedContainerIds.has(container.Id);
             const ports = getDedupedPorts(container);
             const mounts = getMounts(container);
             return [
@@ -1178,7 +1219,6 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               getContainerName(container),
               container.State,
               container.url,
-              expanded,
               ports.length > 2 || mounts.length > 2,
             ];
           },
@@ -1192,7 +1232,6 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       autoUpdateReason,
       autoUpdateSelectedNames,
       checkingUpdates,
-      expandedContainerIds,
       openLogs,
       openTerminal,
       onToggleAutoUpdate,
@@ -1213,15 +1252,17 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
 
   return (
     <>
-      <AppDataTable
-        ariaLabel="Docker containers"
-        columns={columns}
-        data={containers}
-        dnd={dnd}
-        emptyMessage="No containers found."
-        enableSorting={false}
-        getRowId={(container) => container.Id}
-      />
+      <ExpandedContainersContext.Provider value={expandedContainerIds}>
+        <AppDataTable
+          ariaLabel="Docker containers"
+          columns={columns}
+          data={containers}
+          dnd={dnd}
+          emptyMessage="No containers found."
+          enableSorting={false}
+          getRowId={(container) => container.Id}
+        />
+      </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
         {logsTarget && (
           <LogsDialog
