@@ -13,6 +13,7 @@ import {
 } from "./components";
 import type {
   DriveInfo,
+  SmartData,
   SmartTestProgressEvent,
   SmartTestResult,
 } from "./types";
@@ -321,11 +322,15 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
   };
-  const smart = drive.smart;
+  const smart = (rawDrive?.smart ?? drive.smart) as SmartData | undefined;
   const power = drive.power;
-  const isNvme = drive.transport === "nvme";
-  const ataAttrs = smart?.ata_smart_attributes?.table;
-  const smartData = rawDrive?.smart;
+  const isNvme =
+    drive.transport === "nvme" ||
+    drive.name.startsWith("nvme") ||
+    rawDrive?.name.startsWith("nvme") === true;
+  const smartData = smart;
+  const ataAttrs = smartData?.ata_smart_attributes?.table;
+  const smartError = rawDrive?.smartError;
   const deviceInfo = smartData?.device;
   const smartHealth = smartData?.smart_status;
   const nvmeHealthRaw = smartData?.nvme_smart_health_information_log;
@@ -368,6 +373,8 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
           <SmartAttributesTab
             ataAttrs={ataAttrs}
             isNvme={isNvme}
+            smartData={smartData}
+            smartError={smartError}
             nvmeHealthRaw={nvmeHealthRaw}
           />
         </TabPanel>
@@ -525,11 +532,11 @@ const DiskOverview: React.FC = () => {
         name: d.name,
         model: d.model,
         sizeBytes: parseSizeToBytes(d.size),
-        transport: d.type ?? "unknown",
+        transport: d.type ?? (d.name.startsWith("nvme") ? "nvme" : "unknown"),
         vendor: d.vendor,
         serial: d.serial,
         ro: d.ro,
-        smart: d.smart,
+        smart: d.smart as SmartData | undefined,
         power: d.power,
       })),
     [rawDrives],

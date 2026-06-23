@@ -1,9 +1,8 @@
 import React from "react";
 
-import type { SmartNVMeHealthInformationLog } from "../types";
+import type { SmartAttribute, SmartData } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 
-import type { SmartAttribute } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppTypography from "@/components/ui/AppTypography";
@@ -11,7 +10,9 @@ import AppTypography from "@/components/ui/AppTypography";
 interface SmartAttributesTabProps {
   ataAttrs?: SmartAttribute[];
   isNvme: boolean;
-  nvmeHealthRaw?: SmartNVMeHealthInformationLog;
+  smartData?: SmartData;
+  smartError?: string;
+  nvmeHealthRaw?: Record<string, unknown>;
 }
 
 interface SmartSummaryRow {
@@ -68,13 +69,13 @@ const ataAttributeColumns: AppDataTableColumnDef<SmartAttribute>[] = [
         style={{
           color:
             [5, 196, 197, 198].includes(row.original.id) &&
-            row.original.raw?.value &&
-            row.original.raw.value > 0
+            (getSmartNumber(row.original.raw?.value) ?? 0) > 0
               ? "var(--app-palette-warning-main)"
               : "inherit",
         }}
       >
-        {row.original.raw?.string || row.original.raw?.value?.toLocaleString()}
+        {row.original.raw?.string ||
+          getSmartNumber(row.original.raw?.value)?.toLocaleString()}
       </span>
     ),
     meta: { align: "right" },
@@ -83,10 +84,12 @@ const ataAttributeColumns: AppDataTableColumnDef<SmartAttribute>[] = [
 
 export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
   isNvme,
+  smartData,
+  smartError,
   nvmeHealthRaw,
   ataAttrs,
 }) => {
-  if (isNvme && nvmeHealthRaw) {
+  if (isNvme && (nvmeHealthRaw || smartData)) {
     const rows: SmartSummaryRow[] = [];
     const addNumberRow = (
       id: string,
@@ -95,6 +98,7 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
       format: (value: number) => React.ReactNode,
       valueStyle?: React.CSSProperties,
     ) => {
+      if (rows.some((row) => row.id === id)) return;
       const value = getSmartNumber(input);
       if (value === null) return;
       rows.push({
@@ -105,20 +109,22 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
       });
     };
 
-    const temperature = getSmartNumber(nvmeHealthRaw.temperature);
-    const percentageUsed = getSmartNumber(nvmeHealthRaw.percentage_used);
-    const mediaErrors = getSmartNumber(nvmeHealthRaw.media_errors);
+    const temperature = getSmartNumber(
+      nvmeHealthRaw?.temperature ?? smartData?.temperature?.current,
+    );
+    const percentageUsed = getSmartNumber(nvmeHealthRaw?.percentage_used);
+    const mediaErrors = getSmartNumber(nvmeHealthRaw?.media_errors);
 
     addNumberRow(
       "critical_warning",
       "Critical Warning",
-      nvmeHealthRaw.critical_warning,
+      nvmeHealthRaw?.critical_warning,
       (value) => `0x${value.toString(16).padStart(2, "0").toUpperCase()}`,
     );
     addNumberRow(
       "temperature",
       "Temperature",
-      temperature,
+      nvmeHealthRaw?.temperature ?? smartData?.temperature?.current,
       (value) => `${value} Celsius`,
       {
         color:
@@ -132,19 +138,19 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
     addNumberRow(
       "available_spare",
       "Available Spare",
-      nvmeHealthRaw.available_spare,
+      nvmeHealthRaw?.available_spare,
       (value) => `${value}%`,
     );
     addNumberRow(
       "available_spare_threshold",
       "Available Spare Threshold",
-      nvmeHealthRaw.available_spare_threshold,
+      nvmeHealthRaw?.available_spare_threshold,
       (value) => `${value}%`,
     );
     addNumberRow(
       "percentage_used",
       "Percentage Used",
-      percentageUsed,
+      nvmeHealthRaw?.percentage_used,
       (value) => `${value}%`,
       {
         color:
@@ -158,55 +164,55 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
     addNumberRow(
       "data_units_read",
       "Data Units Read",
-      nvmeHealthRaw.data_units_read,
+      nvmeHealthRaw?.data_units_read,
       (value) => formatDataUnits(value),
     );
     addNumberRow(
       "data_units_written",
       "Data Units Written",
-      nvmeHealthRaw.data_units_written,
+      nvmeHealthRaw?.data_units_written,
       (value) => formatDataUnits(value),
     );
     addNumberRow(
       "host_reads",
       "Host Read Commands",
-      nvmeHealthRaw.host_reads,
+      nvmeHealthRaw?.host_reads,
       (value) => value.toLocaleString(),
     );
     addNumberRow(
       "host_writes",
       "Host Write Commands",
-      nvmeHealthRaw.host_writes,
+      nvmeHealthRaw?.host_writes,
       (value) => value.toLocaleString(),
     );
     addNumberRow(
       "controller_busy_time",
       "Controller Busy Time",
-      nvmeHealthRaw.controller_busy_time,
+      nvmeHealthRaw?.controller_busy_time,
       (value) => value.toLocaleString(),
     );
     addNumberRow(
       "power_cycles",
       "Power Cycles",
-      nvmeHealthRaw.power_cycles,
+      nvmeHealthRaw?.power_cycles ?? smartData?.power_cycle_count,
       (value) => value.toLocaleString(),
     );
     addNumberRow(
       "power_on_hours",
       "Power On Hours",
-      nvmeHealthRaw.power_on_hours,
+      nvmeHealthRaw?.power_on_hours ?? smartData?.power_on_time?.hours,
       (value) => formatPowerOnTime(value),
     );
     addNumberRow(
       "unsafe_shutdowns",
       "Unsafe Shutdowns",
-      nvmeHealthRaw.unsafe_shutdowns,
+      nvmeHealthRaw?.unsafe_shutdowns,
       (value) => value.toLocaleString(),
     );
     addNumberRow(
       "media_errors",
       "Media and Data Integrity Errors",
-      mediaErrors,
+      nvmeHealthRaw?.media_errors,
       (value) => value.toLocaleString(),
       {
         color:
@@ -216,22 +222,24 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
     addNumberRow(
       "num_err_log_entries",
       "Error Information Log Entries",
-      nvmeHealthRaw.num_err_log_entries,
+      nvmeHealthRaw?.num_err_log_entries,
       (value) => value.toLocaleString(),
     );
 
-    return (
-      <AppDataTable
-        ariaLabel="NVMe SMART attributes"
-        columns={smartSummaryColumns}
-        data={rows}
-        density="compact"
-        emptyMessage="No SMART attributes available for this drive."
-        getRowId={(row) => row.id}
-        maxHeight={400}
-        variant="embedded"
-      />
-    );
+    if (rows.length > 0) {
+      return (
+        <AppDataTable
+          ariaLabel="NVMe SMART attributes"
+          columns={smartSummaryColumns}
+          data={rows}
+          density="compact"
+          emptyMessage="No SMART attributes available for this drive."
+          getRowId={(row) => row.id}
+          maxHeight={400}
+          variant="embedded"
+        />
+      );
+    }
   }
 
   if (ataAttrs && ataAttrs.length > 0) {
@@ -246,6 +254,14 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
         maxHeight={400}
         variant="embedded"
       />
+    );
+  }
+
+  if (smartError) {
+    return (
+      <AppTypography color="error">
+        SMART data unavailable: {smartError}
+      </AppTypography>
     );
   }
 

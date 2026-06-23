@@ -1,22 +1,29 @@
-import type { DiskPowerData, SmartData } from "@/api";
+import type { DiskPowerData } from "@/api";
 
-export type { SmartAttribute, SmartData } from "@/api";
+export interface SmartAttribute {
+  id: number;
+  name: string;
+  raw?: { string?: string; value?: unknown };
+  thresh: number;
+  value: number;
+  worst: number;
+}
 
-export type SmartDeviceInfo = NonNullable<SmartData["device"]>;
-export type SmartStatus = NonNullable<SmartData["smart_status"]>;
-export type SmartNVMeHealthInformationLog = NonNullable<
-  SmartData["nvme_smart_health_information_log"]
->;
-export type SmartATASelfTestLog = NonNullable<
-  SmartData["ata_smart_self_test_log"]
->;
-export type SmartNVMeSelfTestLog = NonNullable<SmartData["nvme_self_test_log"]>;
-export type SmartStandardSelfTestRow = NonNullable<
-  NonNullable<SmartATASelfTestLog["standard"]>["table"]
->[number];
-export type SmartNVMeSelfTestRow = NonNullable<
-  SmartNVMeSelfTestLog["table"]
->[number];
+export interface SmartData extends Record<string, unknown> {
+  ata_smart_attributes?: { table?: SmartAttribute[] };
+  ata_smart_self_test_log?: { standard?: { table?: unknown[] } };
+  device?: Record<string, unknown>;
+  firmware_version?: unknown;
+  model_name?: unknown;
+  nvme_number_of_namespaces?: unknown;
+  nvme_self_test_log?: { table?: unknown[] };
+  nvme_smart_health_information_log?: Record<string, unknown>;
+  nvme_version?: unknown;
+  power_cycle_count?: unknown;
+  power_on_time?: { hours?: unknown };
+  smart_status?: { passed?: boolean };
+  temperature?: { current?: unknown };
+}
 
 export interface DriveInfo {
   model: string;

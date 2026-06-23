@@ -78,8 +78,8 @@ func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 	} else {
 		drive.Smart = smart
 		if drive.Vendor == nil {
-			if smart.ModelName != "" {
-				if parts := strings.Fields(smart.ModelName); len(parts) > 0 {
+			if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
+				if parts := strings.Fields(modelName); len(parts) > 0 {
 					drive.Vendor = optionalString(parts[0])
 				}
 			}
@@ -112,7 +112,7 @@ func isNVMeDevice(dev BlockDevice) bool {
 	return dev.Tran == "nvme"
 }
 
-func FetchSmartInfo(ctx context.Context, device string) (*apischema.SmartData, error) {
+func FetchSmartInfo(ctx context.Context, device string) (map[string]any, error) {
 	if !validDeviceNameRe.MatchString(device) {
 		return nil, errors.New("invalid device name")
 	}
@@ -123,19 +123,23 @@ func FetchSmartInfo(ctx context.Context, device string) (*apischema.SmartData, e
 	}
 
 	cmd := exec.CommandContext(ctx, smartctlPath, "--json", "-x", "/dev/"+device)
-	out, err := cmd.Output()
-	if err != nil {
-		// smartctl returns non-zero if drive doesn't support SMART, etc.
-		// We still try to use whatever JSON it produced, but wrap the error.
-		return nil, fmt.Errorf("smartctl failed for %s: %w", device, err)
+	out, runErr := cmd.Output()
+	smart, parseErr := parseSmartInfoJSON(out)
+	if parseErr == nil {
+		return smart, nil
 	}
+	if runErr != nil {
+		return nil, fmt.Errorf("smartctl failed for %s: %w", device, runErr)
+	}
+	return nil, fmt.Errorf("failed to parse smartctl output for %s: %w", device, parseErr)
+}
 
-	var parsed apischema.SmartData
+func parseSmartInfoJSON(out []byte) (map[string]any, error) {
+	var parsed map[string]any
 	if err := json.Unmarshal(out, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse smartctl output: %w", err)
+		return nil, err
 	}
-
-	return &parsed, nil
+	return parsed, nil
 }
 
 func GetNVMePowerState(ctx context.Context, device string) (*apischema.DiskPowerData, error) {

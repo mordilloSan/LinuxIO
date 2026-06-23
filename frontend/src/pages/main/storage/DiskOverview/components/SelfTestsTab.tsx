@@ -1,11 +1,6 @@
 import React from "react";
 
-import type {
-  SmartATASelfTestLog,
-  SmartNVMeSelfTestLog,
-  SmartNVMeSelfTestRow,
-  SmartStandardSelfTestRow,
-} from "../types";
+import { getSmartNumber, getSmartString } from "../utils";
 
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -16,55 +11,87 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 interface SelfTestsTabProps {
-  nvmeSelfTestLog?: SmartNVMeSelfTestLog;
+  nvmeSelfTestLog?: {
+    table?: unknown[];
+  };
   onRunTest: (testType: "short" | "long") => void;
   percentage?: number;
-  selfTestLog?: SmartATASelfTestLog;
+  selfTestLog?: {
+    standard?: {
+      table?: unknown[];
+    };
+  };
   smartmontoolsAvailable: boolean;
   smartmontoolsReason?: string;
   startPending: "short" | "long" | null;
 }
 
-const standardSelfTestColumns: AppDataTableColumnDef<SmartStandardSelfTestRow>[] =
-  [
-    {
-      id: "number",
-      header: "#",
-      cell: ({ row }) => row.original.num ?? row.index + 1,
-    },
-    {
-      id: "type",
-      header: "Type",
-      cell: ({ row }) => row.original.type?.string || "Unknown",
-    },
-    {
-      id: "status",
-      header: "Status",
-      cell: ({ row }) => (
-        <span
-          style={{
-            color: row.original.status?.passed
-              ? "var(--app-palette-success-main)"
-              : "var(--app-palette-error-main)",
-          }}
-        >
-          {row.original.status?.string || "Unknown"}
-        </span>
-      ),
-    },
-    {
-      accessorKey: "lifetime_hours",
-      header: "Lifetime Hours",
-      cell: ({ row }) => row.original.lifetime_hours?.toLocaleString() || "N/A",
-      meta: { align: "right" },
-    },
-  ];
+interface StandardSelfTestRow {
+  lifetime_hours?: unknown;
+  num?: unknown;
+  status?: {
+    passed?: boolean;
+    string?: unknown;
+    value?: unknown;
+  };
+  type?: {
+    string?: unknown;
+    value?: unknown;
+  };
+}
 
-const nvmeSelfTestColumns: AppDataTableColumnDef<SmartNVMeSelfTestRow>[] = [
+interface NvmeSelfTestRow {
+  power_on_hours?: unknown;
+  self_test_code?: {
+    string?: unknown;
+    value?: unknown;
+  };
+  self_test_result?: {
+    string?: unknown;
+    value?: unknown;
+  };
+}
+
+const standardSelfTestColumns: AppDataTableColumnDef<StandardSelfTestRow>[] = [
+  {
+    id: "number",
+    header: "#",
+    cell: ({ row }) => getSmartNumber(row.original.num) ?? row.index + 1,
+  },
   {
     id: "type",
     header: "Type",
-    cell: ({ row }) => row.original.self_test_code?.string || "Unknown",
+    cell: ({ row }) => getSmartString(row.original.type) || "Unknown",
+  },
+  {
+    id: "status",
+    header: "Status",
+    cell: ({ row }) => (
+      <span
+        style={{
+          color: row.original.status?.passed
+            ? "var(--app-palette-success-main)"
+            : "var(--app-palette-error-main)",
+        }}
+      >
+        {getSmartString(row.original.status) || "Unknown"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "lifetime_hours",
+    header: "Lifetime Hours",
+    cell: ({ row }) =>
+      getSmartNumber(row.original.lifetime_hours)?.toLocaleString() || "N/A",
+    meta: { align: "right" },
+  },
+];
+
+const nvmeSelfTestColumns: AppDataTableColumnDef<NvmeSelfTestRow>[] = [
+  {
+    id: "type",
+    header: "Type",
+    cell: ({ row }) => getSmartString(row.original.self_test_code) || "Unknown",
   },
   {
     id: "result",
@@ -73,19 +100,20 @@ const nvmeSelfTestColumns: AppDataTableColumnDef<SmartNVMeSelfTestRow>[] = [
       <span
         style={{
           color:
-            row.original.self_test_result?.value === 0
+            getSmartNumber(row.original.self_test_result) === 0
               ? "var(--app-palette-success-main)"
               : "var(--app-palette-error-main)",
         }}
       >
-        {row.original.self_test_result?.string || "Unknown"}
+        {getSmartString(row.original.self_test_result) || "Unknown"}
       </span>
     ),
   },
   {
     accessorKey: "power_on_hours",
     header: "Power On Hours",
-    cell: ({ row }) => row.original.power_on_hours?.toLocaleString() || "N/A",
+    cell: ({ row }) =>
+      getSmartNumber(row.original.power_on_hours)?.toLocaleString() || "N/A",
     meta: { align: "right" },
   },
 ];
@@ -103,8 +131,10 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
   const displayPercent =
     percentage !== undefined ? Math.max(0, Math.min(100, percentage)) : 0;
-  const standardRows = selfTestLog?.standard?.table ?? [];
-  const nvmeRows = nvmeSelfTestLog?.table ?? [];
+  const standardRows =
+    (selfTestLog?.standard?.table as StandardSelfTestRow[] | undefined) ?? [];
+  const nvmeRows =
+    (nvmeSelfTestLog?.table as NvmeSelfTestRow[] | undefined) ?? [];
 
   return (
     <>
@@ -200,7 +230,9 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           data={standardRows}
           density="compact"
           emptyMessage="No self-test history available."
-          getRowId={(entry, index) => String(entry.num ?? index)}
+          getRowId={(entry, index) =>
+            String(getSmartNumber(entry.num) ?? index)
+          }
           maxHeight={400}
           variant="embedded"
         />
