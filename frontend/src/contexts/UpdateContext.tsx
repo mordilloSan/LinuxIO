@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -513,12 +514,11 @@ const useUpdateNavigationGuard = (isUpdating: boolean) => {
   const currentPath = `${location.pathname}${location.search}${location.hash}`;
   const lastSafePathRef = useRef(currentPath);
 
-  // Mirror the latest path to a ref while not updating. Doing this during render
-  // (rather than in an effect) keeps the ref in sync without a post-paint window,
-  // so the guard below always snaps back to the true last-safe path.
-  if (!isUpdating) {
-    lastSafePathRef.current = currentPath;
-  }
+  useLayoutEffect(() => {
+    if (!isUpdating) {
+      lastSafePathRef.current = currentPath;
+    }
+  }, [isUpdating, currentPath]);
 
   useEffect(() => {
     if (!isUpdating) return;
