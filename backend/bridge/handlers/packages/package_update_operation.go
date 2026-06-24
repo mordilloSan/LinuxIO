@@ -96,17 +96,37 @@ var pkStatusNames = map[uint32]string{
 }
 
 // PackageKit package info enum values for Package(...) signal.
-// We only map update-relevant phases and fall back to "Package event <code>".
 var pkInfoNames = map[uint32]string{
+	1:  "Installed",
+	2:  "Available",
+	3:  "Low priority",
+	4:  "Enhancement",
+	5:  "Normal priority",
+	6:  "Bug fix",
+	7:  "Important",
+	8:  "Security",
+	9:  "Blocked",
 	10: "Downloading",
 	11: "Updating",
 	12: "Installing",
 	13: "Removing",
 	14: "Cleanup",
 	15: "Obsoleting",
+	16: "Collection installed",
+	17: "Collection available",
+	18: "Finished",
 	19: "Reinstalling",
 	20: "Downgrading",
 	21: "Preparing",
+	22: "Decompressing",
+	23: "Untrusted",
+	24: "Trusted",
+	25: "Unavailable",
+	26: "Critical",
+	27: "Install",
+	28: "Remove",
+	29: "Obsolete",
+	30: "Downgrade",
 }
 
 func packageInfoName(info uint32) string {
