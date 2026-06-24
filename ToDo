@@ -22,6 +22,14 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 11 filebrowser copy function ignores symlinks? use rsync?
 
+12 - Generated JSON request decoders from Go API contracts:
+- Keep JSON envelopes and Go structs as the source of truth.
+- Extend `linuxio-api-gen` to emit backend request decoders plus frontend TS.
+- Reject unknown fields, duplicate fields, missing required fields, and wrong scalar types.
+- Do not hand-write per-route decoders; `make generate` should update them.
+- Keep response encoding on `encoding/json` unless profiling proves it matters.
+- See `docs/api-contract.md` Generated Request Decoder Plan.
+
 Implement virtual on logs and filebrowser.... DONE
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it
