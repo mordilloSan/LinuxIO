@@ -82,44 +82,6 @@ func FetchLastSuccessfulLogin(parent context.Context, username string) (*apische
 	}, nil
 }
 
-func FetchFailedLoginAttempts(parent context.Context, username string, sessionStartedAt time.Time) (int, error) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return 0, nil
-	}
-
-	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
-	defer cancel()
-
-	return loginhistory.FetchFailedAttempts(ctx, username, sessionStartedAt)
-}
-
-func FetchFailedLoginAlert(parent context.Context, username string, sessionStartedAt time.Time) (*apischema.SystemFailedLoginAlert, error) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return nil, nil
-	}
-
-	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
-	defer cancel()
-
-	batch, err := loginhistory.FetchFailedAttemptBatch(ctx, username, sessionStartedAt)
-	if err != nil || batch == nil {
-		return nil, err
-	}
-
-	latestEvent := systemLoginEventFromLogin(batch.Latest)
-	alert := &apischema.SystemFailedLoginAlert{
-		ID:            failedLoginAlertID("user", username, batch.Latest.ID),
-		Scope:         utils.OptionalString("user"),
-		Username:      username,
-		Count:         batch.Count,
-		LatestEventID: batch.Latest.ID,
-		LatestEvent:   latestEvent,
-	}
-	return alert, nil
-}
-
 func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string, sessionStartedAt time.Time) (*apischema.SystemFailedLoginAlert, error) {
 	boundaryUsername = strings.TrimSpace(boundaryUsername)
 	if boundaryUsername == "" {

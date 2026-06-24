@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useRef, useState } from "react";
+import React, { useId, useRef, useState } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
@@ -7,14 +7,25 @@ import AppTextField from "@/components/ui/AppTextField";
 import DirectoryTree from "@/components/ui/DirectoryTree";
 
 interface PathPickerFieldProps {
+  browseLabel?: string;
+  className?: string;
   disabled?: boolean;
   /** Allow typing a path directly; the tree opens from the folder button instead of the field itself. */
   editable?: boolean;
   error?: boolean;
+  fileFilter?: (path: string) => boolean;
   helperText?: React.ReactNode;
+  id?: string;
+  includeFiles?: boolean;
   label?: string;
+  onBlur?: () => void;
+  onBrowsePathChange?: (path: string) => void;
+  browsePath?: string;
+  onPickerClose?: () => void;
   onChange: (path: string) => void;
   placeholder?: string;
+  required?: boolean;
+  selectableTypes?: Array<"directory" | "file">;
   style?: React.CSSProperties;
   value: string;
 }
@@ -24,12 +35,25 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
   onChange,
   label = "Directory Path",
   placeholder,
+  browseLabel = "Browse folders",
+  className,
   editable = false,
   disabled = false,
   error = false,
+  fileFilter,
   helperText,
+  id,
+  includeFiles = false,
+  required = false,
+  selectableTypes,
+  onBlur,
+  onBrowsePathChange,
+  browsePath,
+  onPickerClose,
   style,
 }) => {
+  const generatedId = useId();
+  const fieldId = id ?? generatedId;
   const anchorRef = useRef<HTMLDivElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -40,15 +64,25 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
     setOpen(true);
   };
 
+  const handleClose = () => {
+    setOpen(false);
+    onPickerClose?.();
+  };
+
+  const handleTreeSelect = (path: string) => {
+    onChange(path);
+    handleClose();
+  };
+
   return (
     <>
-      <div ref={anchorRef} style={style}>
+      <div className={className} ref={anchorRef} style={style}>
         <AppTextField
           disabled={disabled}
           endAdornment={
             editable ? (
               <AppIconButton
-                aria-label="Browse folders"
+                aria-label={browseLabel}
                 disabled={disabled}
                 onClick={handleOpen}
                 size="small"
@@ -66,7 +100,9 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
           error={error}
           fullWidth
           helperText={helperText}
+          id={fieldId}
           label={label}
+          onBlur={onBlur}
           onChange={
             editable ? (event) => onChange(event.target.value) : undefined
           }
@@ -74,6 +110,8 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
           placeholder={
             placeholder ?? (editable ? undefined : "Click to select a folder")
           }
+          readOnly={!editable}
+          required={required}
           shrinkLabel={!editable}
           size="small"
           style={editable ? undefined : { cursor: "pointer" }}
@@ -84,11 +122,19 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
         matchAnchorWidth
-        onClose={() => setOpen(false)}
+        onClose={handleClose}
         open={open}
         transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
-        <DirectoryTree onSelect={onChange} selectedPath={value} />
+        <DirectoryTree
+          fileFilter={fileFilter ? (node) => fileFilter(node.path) : undefined}
+          includeFiles={includeFiles}
+          onBrowsePathChange={onBrowsePathChange}
+          onSelect={handleTreeSelect}
+          rootPath={browsePath || "/"}
+          selectableTypes={selectableTypes}
+          selectedPath={value || browsePath || ""}
+        />
       </AppPopover>
     </>
   );

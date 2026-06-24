@@ -1,14 +1,13 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import { linuxio, type SambaShare } from "@/api";
 import SambaShareCard from "@/components/cards/SambaShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -20,10 +19,10 @@ import {
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppPopover from "@/components/ui/AppPopover";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -529,11 +528,7 @@ const SambaShares: React.FC<SambaSharesProps> = ({
     setCreateOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (onCreateHandler) {
-      onCreateHandler(handleCreate);
-    }
-  }, [onCreateHandler, handleCreate]);
+  useRegisterCreateHandler(onCreateHandler, handleCreate);
 
   const handleEdit = (share: SambaShare) => {
     setSelected(share);
@@ -551,20 +546,102 @@ const SambaShares: React.FC<SambaSharesProps> = ({
 
   const sharesList = Array.isArray(shares) ? shares : [];
 
-  const columns: UnifiedTableColumn[] = [
-    { field: "name", headerName: "Share Name", align: "left" },
-    { field: "path", headerName: "Path", align: "left" },
+  const columns: AppDataTableColumnDef<(typeof sharesList)[number]>[] = [
     {
-      field: "access",
-      headerName: "Access",
-      align: "left",
-      className: "app-table-hide-below-sm",
+      accessorKey: "name",
+      header: "Share Name",
+      cell: ({ row }) => (
+        <AppTypography fontWeight={700} variant="body2">
+          {row.original.name}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
     },
-    { field: "actions", headerName: "", align: "right", width: "160px" },
+    {
+      id: "path",
+      header: "Path",
+      accessorFn: (share) => share.properties["path"],
+      cell: ({ row }) => (
+        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+          {row.original.properties["path"]}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
+    },
+    {
+      id: "access",
+      header: "Access",
+      accessorFn: (share) =>
+        [
+          share.properties["read only"] === "yes" ? "read only" : "writable",
+          share.properties["guest ok"] === "yes" ? "guest" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      cell: ({ row }) => (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+          {row.original.properties["read only"] === "yes" ? (
+            <Chip label="read only" size="small" variant="soft" />
+          ) : (
+            <Chip label="writable" size="small" variant="soft" />
+          )}
+          {row.original.properties["guest ok"] === "yes" && (
+            <Chip label="guest" size="small" variant="soft" />
+          )}
+        </div>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+      },
+    },
+    {
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const share = row.original;
+        return (
+          <div style={{ display: "flex", gap: 4 }}>
+            <AppButton
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit(share);
+              }}
+              size="small"
+              variant="outlined"
+            >
+              Edit
+            </AppButton>
+            <AppButton
+              color="error"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(share);
+              }}
+              size="small"
+            >
+              Remove
+            </AppButton>
+          </div>
+        );
+      },
+      meta: {
+        align: "right",
+        width: "160px",
+      },
+    },
   ];
 
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {viewMode === "card" ? (
         sharesList.length > 0 ? (
           <AppGrid container spacing={2}>
@@ -586,12 +663,14 @@ const SambaShares: React.FC<SambaSharesProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppDataTable
+          ariaLabel="Samba shares"
           columns={columns}
           data={sharesList}
           emptyMessage="No Samba shares found. Click 'Add Share' to create one."
-          getRowKey={(share) => share.name}
-          renderExpandedContent={(share) => (
+          fillAvailable
+          getRowId={(share) => share.name}
+          renderExpandedContent={({ original: share }) => (
             <div className="expand-panel">
               {share.properties["comment"] && (
                 <AppTypography gutterBottom variant="subtitle2">
@@ -616,59 +695,6 @@ const SambaShares: React.FC<SambaSharesProps> = ({
                 </div>
               </div>
             </div>
-          )}
-          renderMainRow={(share) => (
-            <>
-              <AppTableCell>
-                <AppTypography fontWeight={700} variant="body2">
-                  {share.name}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography
-                  style={{ fontFamily: "monospace" }}
-                  variant="body2"
-                >
-                  {share.properties["path"]}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                  {share.properties["read only"] === "yes" ? (
-                    <Chip label="read only" size="small" variant="soft" />
-                  ) : (
-                    <Chip label="writable" size="small" variant="soft" />
-                  )}
-                  {share.properties["guest ok"] === "yes" && (
-                    <Chip label="guest" size="small" variant="soft" />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <AppButton
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit(share);
-                    }}
-                    size="small"
-                    variant="outlined"
-                  >
-                    Edit
-                  </AppButton>
-                  <AppButton
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(share);
-                    }}
-                    size="small"
-                  >
-                    Remove
-                  </AppButton>
-                </div>
-              </AppTableCell>
-            </>
           )}
         />
       )}

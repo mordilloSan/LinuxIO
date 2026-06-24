@@ -7,9 +7,9 @@ import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
 
 import AppIconButton from "@/components/ui/AppIconButton";
-import { shadowSm } from "@/constants";
-import { iconSize } from "@/constants";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { shadowSm } from "@/theme/constants";
+import { iconSize } from "@/theme/constants";
 
 import "./navbar.css";
 

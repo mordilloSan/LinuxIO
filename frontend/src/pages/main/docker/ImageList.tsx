@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -19,8 +18,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -175,12 +174,7 @@ const ImageList: React.FC<ImageListProps> = ({
     console.log("Add image clicked");
   }, []);
 
-  // Mount handler to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateImage);
-    }
-  }, [onMountCreateHandler, handleCreateImage]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateImage);
 
   // Flatten images with multiple tags
   const imageRows = images.flatMap((img) => {
@@ -246,49 +240,156 @@ const ImageList: React.FC<ImageListProps> = ({
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-  const columns: UnifiedTableColumn[] = [
+  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
-      field: "repo",
-      headerName: "Repository",
-      align: "left",
+      id: "select",
+      header: () => (
+        <AppCheckbox
+          checked={allSelected}
+          indeterminate={someSelected}
+          onChange={(e) => handleSelectAll(e.target.checked)}
+          size="small"
+        />
+      ),
+      enableSorting: false,
+      cell: ({ row }) => (
+        <AppCheckbox
+          checked={effectiveSelected.has(row.original.id)}
+          onChange={(e) => handleSelectOne(row.original.id, e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          size="small"
+        />
+      ),
+      meta: {
+        align: "center",
+        width: "40px",
+      },
     },
     {
-      field: "tag",
-      headerName: "Tag",
-      align: "left",
-      width: "120px",
+      accessorKey: "repo",
+      header: "Repository",
+      cell: ({ row }) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <AppTypography
+            fontWeight={500}
+            style={responsiveTextStyles}
+            variant="body2"
+          >
+            {row.original.repo}
+          </AppTypography>
+          {row.original.updateAvailable && (
+            <Chip
+              color="warning"
+              label="Update"
+              size="small"
+              style={{ fontSize: "0.68rem" }}
+              variant="soft"
+            />
+          )}
+        </div>
+      ),
+      meta: { align: "left" },
     },
     {
-      field: "id",
-      headerName: "Image ID",
-      align: "left",
-      width: "140px",
-      className: "app-table-hide-below-md",
+      accessorKey: "tag",
+      header: "Tag",
+      cell: ({ row }) => (
+        <Chip
+          label={row.original.tag}
+          size="small"
+          style={{ fontSize: "0.75rem" }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "left",
+        width: "120px",
+      },
     },
     {
-      field: "size",
-      headerName: "Size",
-      align: "right",
-      width: "100px",
+      accessorKey: "shortId",
+      header: "Image ID",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...responsiveTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.shortId}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "md",
+        width: "140px",
+      },
     },
     {
-      field: "created",
-      headerName: "Created",
-      align: "left",
-      className: "app-table-hide-below-sm",
+      accessorKey: "size",
+      header: "Size",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.size} MB
+        </AppTypography>
+      ),
+      meta: {
+        align: "right",
+        width: "100px",
+      },
     },
     {
-      field: "usedBy",
-      headerName: "Used By",
-      align: "center",
-      width: "100px",
+      accessorKey: "created",
+      header: "Created",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontSize: "0.85rem",
+            ...responsiveTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.created}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "sm",
+      },
+    },
+    {
+      accessorKey: "containers",
+      header: "Used By",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.containers > 0 ? "success" : "default"}
+          label={row.original.containers}
+          size="small"
+          style={{ minWidth: 40 }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "center",
+        width: "100px",
+      },
     },
   ];
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <div
         style={{
           display: "flex",
+          flexShrink: 0,
           alignItems: "center",
           gap: theme.spacing(2),
           flexWrap: "wrap",
@@ -349,12 +450,14 @@ const ImageList: React.FC<ImageListProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppDataTable
+          ariaLabel="Docker images"
           columns={columns}
           data={filtered}
           emptyMessage="No images found."
-          getRowKey={(image) => `${image.id}-${image.tag}`}
-          renderExpandedContent={(image) => (
+          fillAvailable
+          getRowId={(image) => `${image.id}-${image.tag}`}
+          renderExpandedContent={({ original: image }) => (
             <div className="expand-panel">
               <div>
                 <AppTypography gutterBottom variant="subtitle2">
@@ -418,95 +521,6 @@ const ImageList: React.FC<ImageListProps> = ({
                 </div>
               </div>
             </div>
-          )}
-          renderFirstCell={(image) => (
-            <AppCheckbox
-              checked={effectiveSelected.has(image.id)}
-              onChange={(e) => handleSelectOne(image.id, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              size="small"
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-              size="small"
-            />
-          )}
-          renderMainRow={(image) => (
-            <>
-              <AppTableCell>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <AppTypography
-                    fontWeight={500}
-                    style={responsiveTextStyles}
-                    variant="body2"
-                  >
-                    {image.repo}
-                  </AppTypography>
-                  {image.updateAvailable && (
-                    <Chip
-                      color="warning"
-                      label="Update"
-                      size="small"
-                      style={{ fontSize: "0.68rem" }}
-                      variant="soft"
-                    />
-                  )}
-                </div>
-              </AppTableCell>
-              <AppTableCell>
-                <Chip
-                  label={image.tag}
-                  size="small"
-                  style={{
-                    fontSize: "0.75rem",
-                  }}
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "0.85rem",
-                    ...responsiveTextStyles,
-                  }}
-                  variant="body2"
-                >
-                  {image.shortId}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="right">
-                <AppTypography style={responsiveTextStyles} variant="body2">
-                  {image.size} MB
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-sm">
-                <AppTypography
-                  style={{
-                    fontSize: "0.85rem",
-                    ...responsiveTextStyles,
-                  }}
-                  variant="body2"
-                >
-                  {image.created}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell align="center">
-                <Chip
-                  color={image.containers > 0 ? "success" : "default"}
-                  label={image.containers}
-                  size="small"
-                  style={{
-                    minWidth: 40,
-                  }}
-                  variant="soft"
-                />
-              </AppTableCell>
-            </>
           )}
         />
       )}

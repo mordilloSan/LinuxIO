@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 
 import { HomeFilledIcon } from "@/icons/svg";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { isDirectoryPath } from "@/utils/path";
 
 export interface BreadcrumbItem {
   isLast: boolean;
@@ -219,7 +220,7 @@ const buildBreadcrumbs = (
     // Pass unencoded filesystem paths - encoding is handled by onNavigate
     breadcrumbs.push({
       label: segment,
-      path: `/${accumulated.join("/")}${isLast && normalizedPath.endsWith("/") ? "/" : ""}`,
+      path: `/${accumulated.join("/")}${isLast && isDirectoryPath(normalizedPath) ? "/" : ""}`,
       isLast,
     });
   });

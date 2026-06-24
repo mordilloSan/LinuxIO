@@ -17,14 +17,6 @@
   background-color: var(--sc-hover-bg);
 }
 
-/* ActionButton: hover color change */
-.action-btn {
-  color: var(--ab-color);
-}
-.action-btn:hover {
-  color: var(--ab-hover-color);
-}
-
 /* ContainerTable: drag handle active state */
 .drag-handle:active {
   cursor: grabbing;

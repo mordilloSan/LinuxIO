@@ -36,12 +36,27 @@ const MetricBar: React.FC<MetricBarProps> = ({
             paddingInline: 2,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
             {icon}
-            <AppTypography variant="caption">{label}</AppTypography>
+            <AppTypography noWrap style={{ minWidth: 0 }} variant="caption">
+              {label}
+            </AppTypography>
           </div>
           <AppTypography
-            style={{ fontVariantNumeric: "tabular-nums" }}
+            noWrap
+            style={{
+              fontVariantNumeric: "tabular-nums",
+              flexShrink: 0,
+              marginLeft: 6,
+            }}
             variant="caption"
           >
             {rightLabel}

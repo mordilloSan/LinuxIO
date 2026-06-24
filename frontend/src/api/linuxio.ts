@@ -415,6 +415,11 @@ export function openJobDataStream(
   );
 }
 
+export function openVMConsoleStream(name: string): Stream | null {
+  const route = "virt.console_open";
+  return openMuxStream(route, streamOpenPayload(route, { name }));
+}
+
 export function openJobEventsStream(): Stream | null {
   return openMuxStream("jobs.events", streamOpenPayload("jobs.events"));
 }

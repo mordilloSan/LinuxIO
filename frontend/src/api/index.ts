@@ -45,6 +45,7 @@ export {
   openServiceLogsStream,
   openGeneralLogsStream,
   openAppUpdateStream,
+  openVMConsoleStream,
   openJobAttachStream,
   openJobDataStream,
   openJobEventsStream,
@@ -73,6 +74,11 @@ export {
   streamWriteChunks,
 } from "./stream-helpers";
 export type * from "./stream-helpers";
+export {
+  createStreamMessageChannel,
+  StreamMessageChannel,
+} from "./stream-channel";
+export type * from "./stream-channel";
 
 // === Stream Types ===
 export type * from "./StreamMultiplexer";

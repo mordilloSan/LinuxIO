@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type DockerNetworkContainer } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -22,15 +21,9 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableHead,
-  AppTableRow,
-} from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -46,6 +39,89 @@ interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
+
+interface ConnectedContainerRow {
+  id: string;
+  ipv4: string;
+  ipv6: string;
+  mac: string;
+  name: string;
+}
+
+const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] =
+  [
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.name}
+        </AppTypography>
+      ),
+    },
+    {
+      accessorKey: "id",
+      header: "Container ID",
+      cell: ({ row }) => (
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+        >
+          {row.original.id.slice(0, 12)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "ipv4",
+      header: "IPv4",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.ipv4}
+        </AppTypography>
+      ),
+    },
+    {
+      accessorKey: "ipv6",
+      header: "IPv6",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.ipv6}
+        </AppTypography>
+      ),
+    },
+    {
+      accessorKey: "mac",
+      header: "MAC",
+      cell: ({ row }) => (
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+        >
+          {row.original.mac}
+        </span>
+      ),
+    },
+  ];
 
 interface CreateNetworkDialogProps {
   existingNames: string[];
@@ -299,12 +375,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
     setCreateDialogOpen(true);
   }, []);
 
-  // Mount handler to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateNetwork);
-    }
-  }, [onMountCreateHandler, handleCreateNetwork]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -336,51 +407,162 @@ const NetworkList: React.FC<NetworkListProps> = ({
   const someSelected =
     effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
 
-  const columns: UnifiedTableColumn[] = [
-    { field: "name", headerName: "Network Name", align: "left" },
-    { field: "driver", headerName: "Driver", align: "left", width: "120px" },
+  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
-      field: "scope",
-      headerName: "Scope",
-      align: "left",
-      width: "100px",
-      className: "app-table-hide-below-md",
+      id: "select",
+      header: () => (
+        <AppCheckbox
+          checked={allSelected}
+          indeterminate={someSelected}
+          onChange={(e) => handleSelectAll(e.target.checked)}
+          size="small"
+        />
+      ),
+      enableSorting: false,
+      cell: ({ row }) => (
+        <AppCheckbox
+          checked={effectiveSelected.has(row.original.Id)}
+          onChange={(e) => handleSelectOne(row.original.Id, e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          size="small"
+        />
+      ),
+      meta: {
+        align: "center",
+        width: "40px",
+      },
     },
     {
-      field: "internal",
-      headerName: "Internal",
-      align: "left",
-      width: "100px",
-      className: "app-table-hide-below-md",
+      accessorKey: "Name",
+      header: "Network Name",
+      cell: ({ row }) => (
+        <AppTypography
+          fontWeight={500}
+          style={responsiveTextStyles}
+          variant="body2"
+        >
+          {row.original.Name}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
     },
     {
-      field: "ipv4",
-      headerName: "IPv4",
-      align: "left",
-      width: "100px",
-      className: "app-table-hide-below-lg",
+      accessorKey: "Driver",
+      header: "Driver",
+      cell: ({ row }) => (
+        <Chip
+          label={row.original.Driver}
+          size="small"
+          style={{ fontSize: "0.75rem" }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "left",
+        width: "120px",
+      },
     },
     {
-      field: "ipv6",
-      headerName: "IPv6",
-      align: "left",
-      width: "100px",
-      className: "app-table-hide-below-lg",
+      accessorKey: "Scope",
+      header: "Scope",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.Scope}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "md",
+        width: "100px",
+      },
     },
     {
-      field: "id",
-      headerName: "Network ID",
-      align: "left",
-      width: "140px",
-      className: "app-table-hide-below-md",
+      accessorKey: "Internal",
+      header: "Internal",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.Internal ? "warning" : "default"}
+          label={row.original.Internal ? "Yes" : "No"}
+          size="small"
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "md",
+        width: "100px",
+      },
+    },
+    {
+      accessorKey: "EnableIPv4",
+      header: "IPv4",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.EnableIPv4 !== false ? "success" : "default"}
+          label={row.original.EnableIPv4 !== false ? "Yes" : "No"}
+          size="small"
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+        width: "100px",
+      },
+    },
+    {
+      accessorKey: "EnableIPv6",
+      header: "IPv6",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.EnableIPv6 ? "success" : "default"}
+          label={row.original.EnableIPv6 ? "Yes" : "No"}
+          size="small"
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+        width: "100px",
+      },
+    },
+    {
+      accessorKey: "Id",
+      header: "Network ID",
+      cell: ({ row }) => (
+        <AppTypography
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...responsiveTextStyles,
+          }}
+          variant="body2"
+        >
+          {row.original.Id?.slice(0, 12)}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "md",
+        width: "140px",
+      },
     },
   ];
 
   return (
-    <div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <div
         style={{
           display: "flex",
+          flexShrink: 0,
           alignItems: "center",
           gap: theme.spacing(2),
           flexWrap: "wrap",
@@ -433,12 +615,14 @@ const NetworkList: React.FC<NetworkListProps> = ({
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppDataTable
+          ariaLabel="Docker networks"
           columns={columns}
           data={filtered}
           emptyMessage="No networks found."
-          getRowKey={(network) => network.Id}
-          renderExpandedContent={(network) => (
+          fillAvailable
+          getRowId={(network) => network.Id}
+          renderExpandedContent={({ original: network }) => (
             <div className="expand-panel">
               <div>
                 <AppTypography gutterBottom variant="subtitle2">
@@ -533,94 +717,32 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 <div>
                   {network.Containers &&
                   Object.keys(network.Containers).length > 0 ? (
-                    <AppTable
+                    <AppDataTable
+                      ariaLabel="Connected containers"
+                      columns={connectedContainerColumns}
+                      data={Object.entries(
+                        network.Containers as Record<
+                          string,
+                          DockerNetworkContainer
+                        >,
+                      ).map(([id, info]) => ({
+                        id,
+                        ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
+                        ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
+                        mac: info.MacAddress || "-",
+                        name: info.Name || "-",
+                      }))}
+                      density="compact"
+                      getRowId={(container) => container.id}
+                      maxHeight={240}
                       style={{
                         backgroundColor: alpha(
                           theme.palette.text.primary,
                           theme.palette.mode === "dark" ? 0.2 : 0.08,
                         ),
-                        overflowX: "auto",
-                        display: "block",
                       }}
-                    >
-                      <AppTableHead>
-                        <AppTableRow>
-                          <AppTableCell>
-                            <b>Name</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>Container ID</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>IPv4</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>IPv6</b>
-                          </AppTableCell>
-                          <AppTableCell>
-                            <b>MAC</b>
-                          </AppTableCell>
-                        </AppTableRow>
-                      </AppTableHead>
-                      <AppTableBody>
-                        {Object.entries(network.Containers).map(
-                          ([id, info]: [string, any]) => (
-                            <AppTableRow key={id}>
-                              <AppTableCell>
-                                <AppTypography
-                                  style={responsiveTextStyles}
-                                  variant="body2"
-                                >
-                                  {info.Name || "-"}
-                                </AppTypography>
-                              </AppTableCell>
-                              <AppTableCell
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                              >
-                                {id.slice(0, 12)}
-                              </AppTableCell>
-                              <AppTableCell>
-                                <AppTypography
-                                  style={{
-                                    fontFamily: "monospace",
-                                    fontSize: "0.85rem",
-                                    ...longTextStyles,
-                                  }}
-                                  variant="body2"
-                                >
-                                  {info.IPv4Address?.replace(/\/.*/, "") || "-"}
-                                </AppTypography>
-                              </AppTableCell>
-                              <AppTableCell>
-                                <AppTypography
-                                  style={{
-                                    fontFamily: "monospace",
-                                    fontSize: "0.85rem",
-                                    ...longTextStyles,
-                                  }}
-                                  variant="body2"
-                                >
-                                  {info.IPv6Address?.replace(/\/.*/, "") || "-"}
-                                </AppTypography>
-                              </AppTableCell>
-                              <AppTableCell
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
-                                  ...longTextStyles,
-                                }}
-                              >
-                                {info.MacAddress || "-"}
-                              </AppTableCell>
-                            </AppTableRow>
-                          ),
-                        )}
-                      </AppTableBody>
-                    </AppTable>
+                      variant="embedded"
+                    />
                   ) : (
                     <AppTypography color="text.secondary" variant="body2">
                       (no containers)
@@ -629,84 +751,6 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 </div>
               </div>
             </div>
-          )}
-          renderFirstCell={(network) => (
-            <AppCheckbox
-              checked={effectiveSelected.has(network.Id)}
-              onChange={(e) => handleSelectOne(network.Id, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              size="small"
-            />
-          )}
-          renderHeaderFirstCell={() => (
-            <AppCheckbox
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={(e) => handleSelectAll(e.target.checked)}
-              size="small"
-            />
-          )}
-          renderMainRow={(network) => (
-            <>
-              <AppTableCell>
-                <AppTypography
-                  fontWeight={500}
-                  style={responsiveTextStyles}
-                  variant="body2"
-                >
-                  {network.Name}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <Chip
-                  label={network.Driver}
-                  size="small"
-                  style={{ fontSize: "0.75rem" }}
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography style={responsiveTextStyles} variant="body2">
-                  {network.Scope}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <Chip
-                  color={network.Internal ? "warning" : "default"}
-                  label={network.Internal ? "Yes" : "No"}
-                  size="small"
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-lg">
-                <Chip
-                  color={network.EnableIPv4 !== false ? "success" : "default"}
-                  label={network.EnableIPv4 !== false ? "Yes" : "No"}
-                  size="small"
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-lg">
-                <Chip
-                  color={network.EnableIPv6 ? "success" : "default"}
-                  label={network.EnableIPv6 ? "Yes" : "No"}
-                  size="small"
-                  variant="soft"
-                />
-              </AppTableCell>
-              <AppTableCell className="app-table-hide-below-md">
-                <AppTypography
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "0.85rem",
-                    ...responsiveTextStyles,
-                  }}
-                  variant="body2"
-                >
-                  {network.Id?.slice(0, 12)}
-                </AppTypography>
-              </AppTableCell>
-            </>
           )}
         />
       )}

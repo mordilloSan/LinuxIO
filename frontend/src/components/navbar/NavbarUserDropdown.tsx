@@ -14,10 +14,10 @@ import {
 import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { iconSize } from "@/constants";
 import useAuth from "@/hooks/useAuth";
 import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import usePowerAction from "@/hooks/usePowerAction";
+import { iconSize } from "@/theme/constants";
 
 function NavbarUserDropdown() {
   const ref = useRef<HTMLButtonElement>(null);

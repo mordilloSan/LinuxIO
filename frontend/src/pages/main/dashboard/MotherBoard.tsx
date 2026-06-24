@@ -18,7 +18,12 @@ const MotherBoardInfo: React.FC = () => {
 
   const visibleDetails = motherboardInfo ? (
     <div
-      style={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        minWidth: 0,
+      }}
     >
       {[
         {
@@ -36,6 +41,7 @@ const MotherBoardInfo: React.FC = () => {
             display: "flex",
             alignItems: "baseline",
             justifyContent: "flex-start",
+            minWidth: 0,
             paddingTop: theme.spacing(0.5),
             paddingBottom: theme.spacing(0.5),
             borderBottom:
@@ -57,7 +63,13 @@ const MotherBoardInfo: React.FC = () => {
           >
             {label}
           </AppTypography>
-          <AppTypography fontWeight={500} noWrap variant="body2">
+          <AppTypography
+            fontWeight={500}
+            noWrap
+            style={{ minWidth: 0, flex: 1 }}
+            title={value}
+            variant="body2"
+          >
             {value}
           </AppTypography>
         </div>

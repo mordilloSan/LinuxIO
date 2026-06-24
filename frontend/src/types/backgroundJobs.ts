@@ -1,4 +1,16 @@
-import type { Stream } from "@/api";
+import type {
+  FileExtractRequest,
+  SourceDestinationRequest,
+  Stream,
+} from "@/api";
+
+export type CopyMoveStartOptions = SourceDestinationRequest & {
+  onComplete?: () => void;
+};
+
+export type ExtractionStartOptions = FileExtractRequest & {
+  onComplete?: () => void;
+};
 
 export interface Download {
   abortController: AbortController;
@@ -161,26 +173,14 @@ export interface BackgroundJobsContextValue {
     destination: string;
     onComplete?: () => void;
   }) => Promise<void>;
-  startCopy: (options: {
-    source: string;
-    destination: string;
-    onComplete?: () => void;
-  }) => Promise<void>;
+  startCopy: (options: CopyMoveStartOptions) => Promise<void>;
   startDownload: (paths: string[]) => Promise<void>;
-  startExtraction: (options: {
-    archivePath: string;
-    destination?: string;
-    onComplete?: () => void;
-  }) => Promise<void>;
+  startExtraction: (options: ExtractionStartOptions) => Promise<void>;
   startIndexer: (options: {
     path?: string;
     onComplete?: (result: Indexer) => void;
   }) => Promise<void>;
-  startMove: (options: {
-    source: string;
-    destination: string;
-    onComplete?: () => void;
-  }) => Promise<void>;
+  startMove: (options: CopyMoveStartOptions) => Promise<void>;
   startUpload: (
     entries: { file?: File; relativePath: string; isDirectory: boolean }[],
     targetPath: string,

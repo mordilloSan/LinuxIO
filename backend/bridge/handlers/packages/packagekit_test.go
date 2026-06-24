@@ -349,6 +349,18 @@ func TestUpdatePackagesWithProgressReportsSignals(t *testing.T) {
 	}
 }
 
+func TestPackageInfoNameMapsPackageKitInfoCodes(t *testing.T) {
+	tests := map[uint32]string{
+		18: "Finished",
+		22: "Decompressing",
+	}
+	for code, want := range tests {
+		if got := packageInfoName(code); got != want {
+			t.Fatalf("packageInfoName(%d) = %q, want %q", code, got, want)
+		}
+	}
+}
+
 func TestApplyOfflineUpdatesTriggersPreparedUpdate(t *testing.T) {
 	service := setupFakePackageKit(t, true)
 

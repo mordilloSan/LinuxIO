@@ -20,6 +20,7 @@ interface BaseAutocompleteProps {
   helperText?: React.ReactNode;
   label?: string;
   loading?: boolean;
+  maxListHeight?: React.CSSProperties["maxHeight"];
   noOptionsText?: React.ReactNode;
   onInputChange?: (value: string) => void;
   options: string[];
@@ -76,6 +77,7 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
     className,
     freeSolo = false,
     loading = false,
+    maxListHeight,
     noOptionsText = "No matches",
     shrinkLabel,
     autoFocus,
@@ -342,6 +344,7 @@ const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
           id={listboxId}
           ref={listboxRef}
           role="listbox"
+          style={{ maxHeight: maxListHeight }}
         >
           {loading ? (
             <div className="app-autocomplete__status">Loading…</div>

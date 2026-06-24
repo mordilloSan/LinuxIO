@@ -1,22 +1,7 @@
-import { CACHE_TTL_MS, linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio, type SearchResult } from "@/api";
 import { useCapability } from "@/hooks/useCapabilities";
 
-export interface SearchResult {
-  isDir?: boolean;
-  mod_time?: string;
-  modified?: string;
-  modTime?: string;
-  name: string;
-  path: string;
-  size: number;
-  type?: string;
-}
-
-export interface SearchResponse {
-  count: number;
-  query: string;
-  results: SearchResult[];
-}
+export type { SearchResult };
 
 interface UseFileSearchOptions {
   basePath?: string;

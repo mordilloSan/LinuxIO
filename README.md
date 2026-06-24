@@ -183,6 +183,7 @@ make dev-prep          # Create placeholder assets for dev server
 ```bash
 make lint              # Run ESLint on frontend
 make tsc               # TypeScript type checking
+make test-frontend     # Run frontend unit tests
 make golint            # Run gofmt + golangci-lint on backend
 make test              # Run all linters (lint + tsc + golint)
 make test-backend      # Run Go unit tests in backend

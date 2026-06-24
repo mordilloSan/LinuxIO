@@ -946,13 +946,6 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 	return nil
 }
 
-// ChangeOwnership updates the owner and/or group for a file or directory.
-// If recursive is true and the path is a directory, changes ownership recursively.
-// Passing uid or gid as -1 will leave that field unchanged (POSIX semantics).
-func ChangeOwnership(path string, uid, gid int, recursive bool) error {
-	return fmt.Errorf("ChangeOwnership requires a caller context; use ChangeOwnershipCtx")
-}
-
 // ChangeOwnershipCtx changes ownership and reports processed entries when requested.
 func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, cb func(processed, total int64)) error {
 	path = utils.CleanAbsPath(path)

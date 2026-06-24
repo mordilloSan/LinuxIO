@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Copy, Move } from "@/types/backgroundJobs";
+import type { Copy, CopyMoveStartOptions, Move } from "@/types/backgroundJobs";
 
 import {
   isConnected,
@@ -56,15 +56,7 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
   );
 
   const startCopy = useCallback(
-    async ({
-      source,
-      destination,
-      onComplete,
-    }: {
-      source: string;
-      destination: string;
-      onComplete?: () => void;
-    }) => {
+    async ({ source, destination, onComplete }: CopyMoveStartOptions) => {
       if (!source || !destination) {
         throw new Error("Invalid copy parameters");
       }
@@ -201,15 +193,7 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
   );
 
   const startMove = useCallback(
-    async ({
-      source,
-      destination,
-      onComplete,
-    }: {
-      source: string;
-      destination: string;
-      onComplete?: () => void;
-    }) => {
+    async ({ source, destination, onComplete }: CopyMoveStartOptions) => {
       if (!source || !destination) {
         throw new Error("Invalid move parameters");
       }

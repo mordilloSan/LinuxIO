@@ -1,5 +1,11 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   type ComposeMessage,
@@ -74,7 +80,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     closedByUserRef.current = false;
   }, [closeJobStream]);
 
-  useEffect(() => {
+  // Pin output to the bottom before paint to avoid a visible scroll jump.
+  useLayoutEffect(() => {
     if (open && outputBoxRef.current) {
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }

@@ -5,10 +5,17 @@ import {
 } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { linuxio, openJobAttachStream } from "@/api";
+import {
+  type ActionSourceDestinationRequest,
+  type FileChmodRequest,
+  type FileExtractRequest,
+  linuxio,
+  openJobAttachStream,
+} from "@/api";
 import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
+import { joinPath } from "@/utils/path";
 
 import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
 import { useStreamResult } from "../useStreamResult";
@@ -25,18 +32,10 @@ interface CompressPayload {
   paths: string[];
 }
 
-interface ExtractPayload {
-  archivePath: string;
-  destination?: string;
-}
+type ExtractPayload = FileExtractRequest;
 
-interface ChmodPayload {
-  group?: string;
-  mode: string;
-  owner?: string;
-  path: string;
-  recursive?: boolean;
-}
+type ChmodPayload = Pick<FileChmodRequest, "mode" | "path" | "recursive"> &
+  Partial<Pick<FileChmodRequest, "group" | "owner">>;
 
 interface CopyMovePayload {
   destinationDir: string;
@@ -80,7 +79,7 @@ export const useFileMutations = ({
 
   const createFile = useCallback(
     (fileName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
+      const path = joinPath(normalizedPath, fileName);
       createFileMutation.mutate({ path });
     },
     [createFileMutation, normalizedPath],
@@ -98,7 +97,7 @@ export const useFileMutations = ({
 
   const createFolder = useCallback(
     (folderName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
+      const path = `${joinPath(normalizedPath, folderName)}/`;
       createFolderMutation.mutate({ path });
     },
     [createFolderMutation, normalizedPath],
@@ -177,13 +176,14 @@ export const useFileMutations = ({
       if (!mode) {
         throw new Error("No mode provided");
       }
-      const job = await linuxio.filebrowser.chmod({
+      const request: FileChmodRequest = {
         path,
         mode,
         owner: owner || "",
         group: group || "",
         recursive: recursive || undefined,
-      });
+      };
+      const job = await linuxio.filebrowser.chmod(request);
       await runStreamResult({
         open: () => openJobAttachStream(job.id),
         closeMessage: "Permissions job stream closed before completion",
@@ -222,11 +222,12 @@ export const useFileMutations = ({
       if (!from || !destination) {
         throw new Error("Invalid rename parameters");
       }
-      await renameMutation.mutateAsync({
+      const request: ActionSourceDestinationRequest = {
         action: "rename",
         src: from,
         dst: destination,
-      });
+      };
+      await renameMutation.mutateAsync(request);
     },
     [renameMutation],
   );
@@ -245,7 +246,7 @@ export const useFileMutations = ({
           if (!fileName) {
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
-          const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
+          const destination = joinPath(destinationDir, fileName);
           // Use startCopy for progress tracking
           return startCopy({
             source: sourcePath,
@@ -274,7 +275,7 @@ export const useFileMutations = ({
           if (!fileName) {
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
-          const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
+          const destination = joinPath(destinationDir, fileName);
           // Use startMove for progress tracking
           return startMove({
             source: sourcePath,

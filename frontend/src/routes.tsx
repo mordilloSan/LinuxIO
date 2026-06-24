@@ -12,6 +12,7 @@ import {
   ShareIcon,
   TerminalIcon,
   UsersIcon,
+  VirtualMachineIcon,
   WireguardIcon,
 } from "@/icons/svg";
 import { lazyWithPreload, withRouteIcons } from "@/routing/lazyWithPreload";
@@ -31,6 +32,9 @@ const Updates = lazyWithPreload(
 );
 const Docker = lazyWithPreload(
   withRouteIcons(() => import("@/pages/main/docker")),
+);
+const VirtualMachines = lazyWithPreload(
+  withRouteIcons(() => import("@/pages/main/vm")),
 );
 const Services = lazyWithPreload(
   withRouteIcons(() => import("@/pages/main/services")),
@@ -153,6 +157,20 @@ export const coreRoutes: RouteWithSidebar[] = [
       title: "Docker",
       icon: DockerIcon,
       position: 50,
+    },
+  },
+  {
+    path: "vm",
+    element: <VirtualMachines />,
+    intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
+    prefetchQueries: [routeQuery(linuxio.virt.list)],
+    preload: VirtualMachines.preload,
+    requiresPrivileged: true,
+    requiredCapabilities: ["libvirtAvailable"],
+    sidebar: {
+      title: "VMs",
+      icon: VirtualMachineIcon,
+      position: 55,
     },
   },
   {

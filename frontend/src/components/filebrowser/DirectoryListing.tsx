@@ -8,9 +8,7 @@ import React, {
 } from "react";
 
 import EmptyState from "./EmptyState";
-import FilesList from "./FilesList";
-import FoldersList from "./FoldersList";
-import SelectionBox from "./SelectionBox";
+import VirtualDirectoryItems from "./VirtualDirectoryItems";
 import {
   FileItem,
   FileResource,
@@ -22,7 +20,6 @@ import {
 import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
 import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
-import { useAppTheme } from "@/theme";
 
 interface DirectoryListingProps {
   cutPaths: Set<string>;
@@ -61,7 +58,6 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onConfirmRename,
   onCancelRename,
 }) => {
-  const theme = useAppTheme();
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;
@@ -283,60 +279,30 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   }
 
   return (
-    <div
-      className="custom-scrollbar"
-      onMouseDown={handleMouseDown}
-      onMouseDownCapture={handleContainerMouseDown}
-      ref={containerRef}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: theme.spacing(2),
-        overflowY: "auto",
-        overflowX: "hidden",
-        height: "100%",
-        position: "relative",
-      }}
-    >
-      <FoldersList
-        cutPaths={cutPaths}
-        folders={folders}
-        isLoadingSubfolders={isLoadingSubfolders}
-        isMarqueeSelecting={isSelecting}
-        onCancelRename={onCancelRename}
-        onConfirmRename={onConfirmRename}
-        onFolderClick={handleFolderClick}
-        onFolderContextMenu={handleItemContextMenu}
-        onOpenDirectory={onOpenDirectory}
-        renamingPath={renamingPath}
-        selectedPaths={selectedPaths}
-        subfoldersMap={subfoldersMap}
-        viewMode={viewMode}
-      />
-
-      <FilesList
-        cutPaths={cutPaths}
-        files={files}
-        isMarqueeSelecting={isSelecting}
-        onCancelRename={onCancelRename}
-        onConfirmRename={onConfirmRename}
-        onDownloadFile={onDownloadFile}
-        onFileClick={handleFileClick}
-        onFileContextMenu={handleItemContextMenu}
-        renamingPath={renamingPath}
-        selectedPaths={selectedPaths}
-        viewMode={viewMode}
-      />
-
-      {isSelecting && selectionBox && (
-        <SelectionBox
-          height={selectionBox.height}
-          left={selectionBox.left}
-          top={selectionBox.top}
-          width={selectionBox.width}
-        />
-      )}
-    </div>
+    <VirtualDirectoryItems
+      containerRef={containerRef}
+      cutPaths={cutPaths}
+      files={files}
+      focusedIndex={focusedIndex}
+      folders={folders}
+      isLoadingSubfolders={isLoadingSubfolders}
+      isMarqueeSelecting={isSelecting}
+      onCancelRename={onCancelRename}
+      onConfirmRename={onConfirmRename}
+      onContainerMouseDown={handleContainerMouseDown}
+      onDownloadFile={onDownloadFile}
+      onFileClick={handleFileClick}
+      onFileContextMenu={handleItemContextMenu}
+      onFolderClick={handleFolderClick}
+      onFolderContextMenu={handleItemContextMenu}
+      onMarqueeMouseDown={handleMouseDown}
+      onOpenDirectory={onOpenDirectory}
+      renamingPath={renamingPath}
+      selectedPaths={selectedPaths}
+      selectionBox={selectionBox}
+      subfoldersMap={subfoldersMap}
+      viewMode={viewMode}
+    />
   );
 };
 

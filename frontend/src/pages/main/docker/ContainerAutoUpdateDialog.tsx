@@ -9,6 +9,7 @@ import {
   type DockerContainerAutoUpdateOptions,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -18,11 +19,9 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
@@ -176,16 +175,14 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
             Container Auto-Update
           </AppTypography>
         </span>
-        <AppTooltip title="Close">
-          <AppIconButton
-            aria-label="Close container auto-update settings"
-            disabled={saving}
-            onClick={onClose}
-            size="small"
-          >
-            <Icon height={20} icon="mdi:close" width={20} />
-          </AppIconButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel="Close container auto-update settings"
+          disabled={saving}
+          icon="mdi:close"
+          iconSize={20}
+          label="Close"
+          onClick={onClose}
+        />
       </AppDialogTitle>
 
       <AppDialogContent

@@ -6,9 +6,8 @@ import UnitListTab from "./UnitListTab";
 import { formatUsec, UnitInfoPanel } from "./UnitViews";
 
 import { linuxio } from "@/api";
-import type { Timer, UnitInfo } from "@/api";
+import type { TableCardViewMode, Timer, UnitInfo } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
-import type { TableCardViewMode } from "@/types/config";
 
 function compareTimersByName(a: Timer, b: Timer): number {
   return a.name.localeCompare(b.name, undefined, {

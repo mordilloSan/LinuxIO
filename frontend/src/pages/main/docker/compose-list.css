@@ -1,19 +1,23 @@
-.compose-expanded-table .app-table-cell {
+.compose-expanded-table .app-table-cell,
+.compose-expanded-table .app-vdt__cell {
   padding-block: 2px;
 }
 
-.compose-expanded-table .app-table-head .app-table-cell {
+.compose-expanded-table .app-table-head .app-table-cell,
+.compose-expanded-table .app-vdt__cell--head {
   color: var(--app-palette-text-disabled);
   font-weight: 700;
   padding-bottom: 2px;
 }
 
-.compose-container-row .app-table-cell {
+.compose-container-row .app-table-cell,
+.compose-container-row .app-vdt__cell {
   border-bottom: 1px solid
     color-mix(in srgb, var(--app-palette-divider), transparent 42%);
 }
 
-.compose-container-row:last-child .app-table-cell {
+.compose-container-row:last-child .app-table-cell,
+.compose-container-row:last-child .app-vdt__cell {
   border-bottom: none;
 }
 

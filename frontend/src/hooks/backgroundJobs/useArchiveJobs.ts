@@ -1,7 +1,11 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Compression, Extraction } from "@/types/backgroundJobs";
+import type {
+  Compression,
+  Extraction,
+  ExtractionStartOptions,
+} from "@/types/backgroundJobs";
 
 import {
   isConnected,
@@ -16,6 +20,7 @@ import {
   createProgressSpeedCalculator,
   jobIdentityKey,
 } from "@/utils/backgroundJobs";
+import { joinPath } from "@/utils/path";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
@@ -69,9 +74,7 @@ export function useArchiveJobs(runtime: BackgroundJobRuntime) {
       const format = archiveName.toLowerCase().endsWith(".tar.gz")
         ? "tar.gz"
         : "zip";
-      const fullDestination = destination.endsWith("/")
-        ? `${destination}${archiveName}`
-        : `${destination}/${archiveName}`;
+      const fullDestination = joinPath(destination, archiveName);
       const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COMPRESS, {
         format,
         targetPath: fullDestination,
@@ -221,11 +224,7 @@ export function useArchiveJobs(runtime: BackgroundJobRuntime) {
       archivePath,
       destination,
       onComplete,
-    }: {
-      archivePath: string;
-      destination?: string;
-      onComplete?: () => void;
-    }) => {
+    }: ExtractionStartOptions) => {
       if (!archivePath) {
         throw new Error("No archive specified for extraction");
       }

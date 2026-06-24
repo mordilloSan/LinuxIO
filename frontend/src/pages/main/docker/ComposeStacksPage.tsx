@@ -1,13 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import React, {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 
-import ComposeList, { type ComposeProject } from "./ComposeList";
+import ComposeList from "./ComposeList";
 
 import {
   CACHE_TTL_MS,
@@ -15,6 +9,7 @@ import {
   linuxio,
   openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
+  type ComposeProject,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
@@ -34,6 +29,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useConfig } from "@/hooks/useConfig";
+import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
@@ -225,12 +221,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     [],
   );
 
-  // Mount handlers to parent
-  useEffect(() => {
-    if (onMountCreateHandler) {
-      onMountCreateHandler(handleCreateStack);
-    }
-  }, [onMountCreateHandler, handleCreateStack]);
+  useRegisterCreateHandler(onMountCreateHandler, handleCreateStack);
 
   // Edit stack handler
   const handleEditStack = useCallback(
@@ -458,7 +449,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   return (
     <Suspense fallback={<PageLoader />}>
-      <div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
         {isPending && viewMode !== "card" ? (
           <PageLoader />
         ) : (
@@ -554,4 +552,4 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   );
 };
 
-export default ComposeStacksPage;
+export default React.memo(ComposeStacksPage);

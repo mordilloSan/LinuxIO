@@ -3,6 +3,8 @@ import React, { useMemo } from "react";
 import TabPanel from "./TabPanel";
 import TabSelector from "./TabSelector";
 
+import "./tab-container.css";
+
 import { useTabUrlState } from "@/hooks/useTabUrlState";
 import { TabContainerProps } from "@/types/tabcontainer";
 
@@ -67,17 +69,18 @@ const TabContainer: React.FC<TabContainerProps> = ({
   );
 
   return (
-    <div style={containerStyle}>
+    <div className="tab-container" style={containerStyle}>
       {/* Tab selector with optional rightContent from active tab */}
       <TabSelector
+        className="tab-container__selector"
         onChange={setActiveTab}
         options={tabOptions}
         rightContent={activeTabConfig?.rightContent}
         value={validTab}
       />
 
-      {/* Container for tab panels with relative positioning for absolute children */}
-      <div style={{ position: "relative", minHeight: 400 }}>
+      {/* Container for tab panels. Grid keeps fade panels aligned without absolute layout. */}
+      <div className="tab-container__panels">
         {tabs.map((tab) => (
           <TabPanel
             activeTab={validTab}

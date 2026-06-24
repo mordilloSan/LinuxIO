@@ -1,7 +1,7 @@
 import React from "react";
 
 import type { DriveInfo } from "../types";
-import { formatDataUnits, formatPowerOnTime } from "../utils";
+import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -17,15 +17,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
   const nvmeHealth = smart?.nvme_smart_health_information_log;
   const ataAttrs = smart?.ata_smart_attributes?.table;
 
-  const temperature =
-    nvmeHealth?.temperature ?? smart?.temperature?.current ?? null;
-  const powerOnHours =
-    nvmeHealth?.power_on_hours ?? smart?.power_on_time?.hours ?? null;
-  const powerCycles =
-    nvmeHealth?.power_cycles ?? smart?.power_cycle_count ?? null;
-  const percentageUsed = nvmeHealth?.percentage_used;
-  const dataRead = nvmeHealth?.data_units_read;
-  const dataWritten = nvmeHealth?.data_units_written;
+  const temperature = getSmartNumber(
+    nvmeHealth?.temperature ?? smart?.temperature?.current,
+  );
+  const powerOnHours = getSmartNumber(
+    nvmeHealth?.power_on_hours ?? smart?.power_on_time?.hours,
+  );
+  const powerCycles = getSmartNumber(
+    nvmeHealth?.power_cycles ?? smart?.power_cycle_count,
+  );
+  const percentageUsed = getSmartNumber(nvmeHealth?.percentage_used);
+  const dataRead = getSmartNumber(nvmeHealth?.data_units_read);
+  const dataWritten = getSmartNumber(nvmeHealth?.data_units_written);
 
   const findAtaAttr = (id: number) => ataAttrs?.find((a) => a.id === id);
   const reallocatedSectors = findAtaAttr(5);
@@ -135,7 +138,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 </AppTypography>
               </div>
             )}
-            {isNvme && percentageUsed !== undefined && (
+            {isNvme && percentageUsed !== null && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Life Used
@@ -155,7 +158,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 </AppTypography>
               </div>
             )}
-            {isNvme && dataRead !== undefined && (
+            {isNvme && dataRead !== null && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Data Read
@@ -165,7 +168,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 </AppTypography>
               </div>
             )}
-            {isNvme && dataWritten !== undefined && (
+            {isNvme && dataWritten !== null && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Data Written
@@ -182,14 +185,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 </AppTypography>
                 <AppTypography
                   color={
-                    reallocatedSectors.raw.value > 0
+                    (getSmartNumber(reallocatedSectors.raw?.value) ?? 0) > 0
                       ? "warning"
                       : "text.primary"
                   }
                   fontWeight={500}
                   variant="body2"
                 >
-                  {reallocatedSectors.raw.value}
+                  {getSmartNumber(reallocatedSectors.raw?.value) ?? "N/A"}
                 </AppTypography>
               </div>
             )}
@@ -200,12 +203,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 </AppTypography>
                 <AppTypography
                   color={
-                    pendingSectors.raw.value > 0 ? "warning" : "text.primary"
+                    (getSmartNumber(pendingSectors.raw?.value) ?? 0) > 0
+                      ? "warning"
+                      : "text.primary"
                   }
                   fontWeight={500}
                   variant="body2"
                 >
-                  {pendingSectors.raw.value}
+                  {getSmartNumber(pendingSectors.raw?.value) ?? "N/A"}
                 </AppTypography>
               </div>
             )}

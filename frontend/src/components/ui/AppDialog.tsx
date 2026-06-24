@@ -79,15 +79,22 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   }, [open]);
 
   // fire transition callbacks
-  useEffect(() => {
-    if (open && !prevOpen.current) {
+  const fireTransition = useEffectEvent((didOpen: boolean) => {
+    if (didOpen) {
       slotProps?.transition?.onEntered?.();
-    }
-    if (!open && prevOpen.current) {
+    } else {
       slotProps?.transition?.onExited?.();
     }
+  });
+
+  useEffect(() => {
+    if (open && !prevOpen.current) {
+      fireTransition(true);
+    } else if (!open && prevOpen.current) {
+      fireTransition(false);
+    }
     prevOpen.current = open;
-  }, [open, slotProps]);
+  }, [open]);
 
   // ESC key
   const handleDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {

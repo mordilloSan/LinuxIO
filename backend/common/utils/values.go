@@ -16,11 +16,6 @@ func StringValue(value *string) string {
 	return *value
 }
 
-//go:fix inline
-func BoolPtr(value bool) *bool {
-	return new(value)
-}
-
 func OptionalInt(value int) *int {
 	if value == 0 {
 		return nil

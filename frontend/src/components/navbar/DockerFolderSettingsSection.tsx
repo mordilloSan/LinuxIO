@@ -17,6 +17,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
+import { ensureTrailingSlash } from "@/utils/path";
 
 const normalizePathInput = (value: string): string => {
   const trimmed = value.trim();
@@ -24,9 +25,6 @@ const normalizePathInput = (value: string): string => {
   if (/^\/+$/.test(trimmed)) return "/";
   return trimmed.replace(/\/+$/, "");
 };
-
-const ensureTrailingSlash = (path: string): string =>
-  path.endsWith("/") ? path : `${path}/`;
 
 const normalizeFolderList = (values: readonly string[]): string[] =>
   values.map(normalizePathInput).filter(Boolean);

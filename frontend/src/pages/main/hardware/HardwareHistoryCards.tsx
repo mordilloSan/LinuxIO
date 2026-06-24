@@ -8,8 +8,8 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import HardwareCard from "@/components/cards/HardwareCard";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
-import { cardHeight } from "@/constants";
 import { useAppTheme } from "@/theme";
+import { cardHeight } from "@/theme/constants";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
 // ─── GPU helpers ──────────────────────────────────────────────────────────────

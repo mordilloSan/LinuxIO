@@ -29,6 +29,7 @@
       "@/pages/*": ["./src/pages/*"],
       "@/routing/*": ["./src/routing/*"],
       "@/theme/*": ["./src/theme/*"],
+      "@/test/*": ["./src/test/*"],
       "@/types/*": ["./src/types/*"],
       "@/utils/*": ["./src/utils/*"],
       "@/constants/*": ["./src/constants/*"],
@@ -37,11 +38,10 @@
       "@/icons/*": ["./src/icons/*"],
       // Files
       "@/api": ["./src/api/index"],
-      "@/constants": ["./src/theme/constants"],
       "@/config": ["./src/config"],
       "@/theme": ["./src/theme/index"],
       "@/routes": ["./src/routes"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts"]
 }

@@ -8,8 +8,8 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { cardHeight } from "@/constants";
 import { useAppTheme } from "@/theme";
+import { cardHeight } from "@/theme/constants";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,

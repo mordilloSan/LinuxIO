@@ -165,13 +165,13 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       }
     }, [onSave, content, updateEditorState]);
 
+    const notifyDirtyChange = useEffectEvent((dirty: boolean) => {
+      onDirtyChange?.(dirty);
+    });
+
     useEffect(() => {
-      // Notifying the parent of dirty state from one effect is simpler and less
-      // error-prone than firing onDirtyChange at every isDirty mutation site;
-      // lifting editorState (the rule's suggestion) is disproportionate here.
-      // eslint-disable-next-line react-you-might-not-need-an-effect/no-pass-live-state-to-parent
-      onDirtyChange?.(isDirty);
-    }, [isDirty, onDirtyChange]);
+      notifyDirtyChange(isDirty);
+    }, [isDirty]);
 
     // Add Ctrl+S keyboard shortcut
     const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {

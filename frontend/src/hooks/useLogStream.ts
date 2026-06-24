@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -105,8 +106,8 @@ export function useLogStream({
     }
   });
 
-  // Scroll to bottom whenever new logs arrive.
-  useEffect(() => {
+  // Scroll to bottom whenever new logs arrive (before paint to avoid a flash).
+  useLayoutEffect(() => {
     if (open && logsBoxRef.current) {
       logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
     }

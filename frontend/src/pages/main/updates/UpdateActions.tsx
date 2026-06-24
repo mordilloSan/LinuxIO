@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
 import React from "react";
 
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
@@ -100,15 +100,12 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                 {Math.round(progress)}%
               </AppTypography>
               {onCancel && (
-                <AppTooltip title="Cancel update">
-                  <AppIconButton
-                    onClick={onCancel}
-                    size="small"
-                    style={{ marginLeft: 2 }}
-                  >
-                    <Icon height={20} icon="mdi:cancel" width={20} />
-                  </AppIconButton>
-                </AppTooltip>
+                <AppActionIconButton
+                  icon="mdi:cancel"
+                  iconSize={20}
+                  label="Cancel update"
+                  onClick={onCancel}
+                />
               )}
             </div>
           </div>

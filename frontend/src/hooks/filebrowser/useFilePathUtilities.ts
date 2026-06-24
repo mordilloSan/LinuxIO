@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 
+import { joinPath as joinPathUtil, stripTrailingSlash } from "@/utils/path";
+
 /**
  * Custom hook for common path manipulation utilities
  * Provides memoized callbacks for path operations
@@ -10,12 +12,10 @@ export const useFilePathUtilities = () => {
    * @example joinPath("/home/user", "file.txt") => "/home/user/file.txt"
    * @example joinPath("/home/user/", "file.txt") => "/home/user/file.txt"
    */
-  const joinPath = useCallback((base: string, name: string) => {
-    if (base.endsWith("/")) {
-      return `${base}${name}`;
-    }
-    return `${base}/${name}`;
-  }, []);
+  const joinPath = useCallback(
+    (base: string, name: string) => joinPathUtil(base, name),
+    [],
+  );
 
   /**
    * Get the parent directory path
@@ -24,10 +24,7 @@ export const useFilePathUtilities = () => {
    * @example getParentPath("/") => "/"
    */
   const getParentPath = useCallback((fullPath: string) => {
-    const trimmed =
-      fullPath.endsWith("/") && fullPath.length > 1
-        ? fullPath.replace(/\/+$/, "")
-        : fullPath;
+    const trimmed = stripTrailingSlash(fullPath);
     const lastSlash = trimmed.lastIndexOf("/");
     if (lastSlash <= 0) return "/";
     return trimmed.slice(0, lastSlash) || "/";
@@ -40,10 +37,7 @@ export const useFilePathUtilities = () => {
    * @example getBaseName("/") => ""
    */
   const getBaseName = useCallback((fullPath: string) => {
-    const trimmed =
-      fullPath.endsWith("/") && fullPath.length > 1
-        ? fullPath.replace(/\/+$/, "")
-        : fullPath;
+    const trimmed = stripTrailingSlash(fullPath);
     const parts = trimmed.split("/").filter(Boolean);
     return parts.length ? parts[parts.length - 1] : "";
   }, []);

@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
+import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -13,7 +14,6 @@ import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
 } from "@/theme/surfaces";
-import { WireGuardInterface } from "@/types/wireguard";
 
 // Props type
 interface InterfaceCardProps {

@@ -17,6 +17,7 @@ import {
   createProgressSpeedCalculator,
   jobIdentityKey,
 } from "@/utils/backgroundJobs";
+import { isDirectoryPath } from "@/utils/path";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
@@ -79,7 +80,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         options?: { percent?: number; name?: string },
       ) => string,
     ) => {
-      const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
+      const isSingleFile = paths.length === 1 && !isDirectoryPath(paths[0]);
       const chunks: Uint8Array[] = [];
       const getSpeed = createProgressSpeedCalculator();
       await runStreamResult({
@@ -136,7 +137,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
     async (paths: string[]) => {
       if (!paths.length) return;
 
-      const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
+      const isSingleFile = paths.length === 1 && !isDirectoryPath(paths[0]);
       let reqId: string = crypto.randomUUID();
       const abortController = new AbortController();
 

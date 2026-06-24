@@ -2,18 +2,17 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import { linuxio } from "@/api";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppChip from "@/components/ui/AppChip";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableRow,
-} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+interface PackageChunkRow {
+  id: string;
+  upgrades: Array<{ package: string }>;
+}
+
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {
@@ -24,74 +23,12 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 const UpdateHistory: React.FC = () => {
   const theme = useAppTheme();
   const { data: rows = [] } = linuxio.updates.get_update_history.useQuery();
-  const columns: UnifiedTableColumn[] = [
+  const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
     {
-      field: "date",
-      headerName: "Date",
-      align: "left",
-    },
-    {
-      field: "packages",
-      headerName: "Packages Updated",
-      align: "center",
-      style: {
-        width: 148,
-        minWidth: 112,
-        whiteSpace: "nowrap",
-      },
-    },
-  ];
-  return (
-    <UnifiedCollapsibleTable
-      columns={columns}
-      data={rows}
-      emptyMessage="No update history available."
-      getRowKey={(row, index) => index}
-      renderExpandedContent={(row) => (
-        <>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Packages Installed:</b>
-          </AppTypography>
-          <AppTable
-            style={{
-              borderCollapse: "collapse",
-              overflowX: "auto",
-              display: "block",
-            }}
-          >
-            <AppTableBody>
-              {chunkArray(row.upgrades, 5).map((group, i) => (
-                <AppTableRow key={i}>
-                  {group.map((pkg, j) => (
-                    <AppTableCell
-                      key={j}
-                      style={{
-                        width: "20%",
-                        padding: "8px 12px",
-                        color: "var(--app-palette-text-secondary)",
-                        fontFamily: theme.typography.fontFamily,
-                        fontSize: "0.85rem",
-                        wordBreak: "break-word",
-                        overflowWrap: "break-word",
-                      }}
-                    >
-                      {pkg.package}
-                    </AppTableCell>
-                  ))}
-                  {group.length < 5 &&
-                    [...Array(5 - group.length)].map((_, j) => (
-                      <AppTableCell
-                        key={`empty-${j}`}
-                        style={{ width: "20%" }}
-                      />
-                    ))}
-                </AppTableRow>
-              ))}
-            </AppTableBody>
-          </AppTable>
-        </>
-      )}
-      renderFirstCell={() => (
+      id: "history",
+      header: "",
+      enableSorting: false,
+      cell: () => (
         <div
           style={{
             display: "flex",
@@ -101,38 +38,105 @@ const UpdateHistory: React.FC = () => {
         >
           <Icon height={20} icon="mdi:history" width={20} />
         </div>
-      )}
-      renderMainRow={(row) => (
-        <>
-          <AppTableCell>
-            <AppTypography
-              fontWeight={500}
-              style={{
-                wordBreak: "break-word",
-                overflowWrap: "break-word",
-              }}
-              variant="body2"
-            >
-              {row.date}
-            </AppTypography>
-          </AppTableCell>
-          <AppTableCell
-            align="center"
+      ),
+      meta: { width: "40px" },
+    },
+    {
+      accessorKey: "date",
+      header: "Date",
+      cell: ({ row }) => (
+        <AppTypography
+          fontWeight={500}
+          style={{
+            wordBreak: "break-word",
+            overflowWrap: "break-word",
+          }}
+          variant="body2"
+        >
+          {row.original.date}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
+    },
+    {
+      accessorFn: (row) => row.upgrades.length,
+      id: "packages",
+      header: "Packages Updated",
+      cell: ({ row }) => (
+        <AppChip
+          color="success"
+          label={row.original.upgrades.length}
+          size="small"
+          style={{
+            minWidth: 40,
+          }}
+          variant="soft"
+        />
+      ),
+      meta: {
+        align: "center",
+        style: {
+          minWidth: 112,
+          whiteSpace: "nowrap",
+        },
+        width: 148,
+      },
+    },
+  ];
+  const packageColumns: AppDataTableColumnDef<PackageChunkRow>[] = Array.from(
+    { length: 5 },
+    (_, index) => ({
+      id: `package-${index}`,
+      header: "",
+      cell: ({ row }) => {
+        const pkg = row.original.upgrades[index];
+        if (!pkg) return null;
+
+        return (
+          <span
             style={{
-              width: 148,
-              minWidth: 112,
+              color: "var(--app-palette-text-secondary)",
+              fontFamily: theme.typography.fontFamily,
+              fontSize: "0.85rem",
+              overflowWrap: "break-word",
+              wordBreak: "break-word",
             }}
           >
-            <AppChip
-              color="success"
-              label={row.upgrades.length}
-              size="small"
-              style={{
-                minWidth: 40,
-              }}
-              variant="soft"
-            />
-          </AppTableCell>
+            {pkg.package}
+          </span>
+        );
+      },
+      meta: { width: "20%" },
+    }),
+  );
+
+  return (
+    <AppDataTable
+      ariaLabel="Update history"
+      columns={columns}
+      data={rows}
+      emptyMessage="No update history available."
+      fillAvailable
+      getRowId={(_, index) => String(index)}
+      renderExpandedContent={({ original: row }) => (
+        <>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Packages Installed:</b>
+          </AppTypography>
+          <AppDataTable
+            ariaLabel={`Packages installed on ${row.date}`}
+            columns={packageColumns}
+            data={chunkArray(row.upgrades, 5).map((upgrades, index) => ({
+              id: String(index),
+              upgrades,
+            }))}
+            density="compact"
+            emptyMessage="No packages recorded."
+            getRowId={(packageRow) => packageRow.id}
+            maxHeight={260}
+            showHeader={false}
+            variant="embedded"
+          />
         </>
       )}
     />

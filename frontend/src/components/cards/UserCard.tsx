@@ -7,9 +7,8 @@ import {
   type SummaryRow,
   SummaryRowsList,
 } from "@/components/cards/HardwareCard";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
@@ -363,52 +362,35 @@ const UserCard: React.FC<UserCardProps> = ({
             flexShrink: 0,
           }}
         >
-          <AppTooltip title="Edit">
-            <span>
-              <AppIconButton
-                disabled={user.username === "root"}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onEdit();
-                }}
-                size="small"
-                style={{ padding: 4 }}
-              >
-                <Icon height={14} icon="mdi:pencil" width={14} />
-              </AppIconButton>
-            </span>
-          </AppTooltip>
-          <AppTooltip title="Change Password">
-            <AppIconButton
-              onClick={(event) => {
-                event.stopPropagation();
-                onChangePassword();
-              }}
-              size="small"
-              style={{ padding: 4 }}
-            >
-              <Icon height={14} icon="mdi:form-textbox-password" width={14} />
-            </AppIconButton>
-          </AppTooltip>
-          <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
-            <span>
-              <AppIconButton
-                disabled={isProtected || isLocking || isUnlocking}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleLock();
-                }}
-                size="small"
-                style={{ padding: 4 }}
-              >
-                {user.isLocked ? (
-                  <Icon height={14} icon="mdi:lock-open" width={14} />
-                ) : (
-                  <Icon height={14} icon="mdi:lock" width={14} />
-                )}
-              </AppIconButton>
-            </span>
-          </AppTooltip>
+          <AppActionIconButton
+            disabled={user.username === "root"}
+            icon="mdi:pencil"
+            iconSize={14}
+            label="Edit"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+          />
+          <AppActionIconButton
+            icon="mdi:form-textbox-password"
+            iconSize={14}
+            label="Change Password"
+            onClick={(event) => {
+              event.stopPropagation();
+              onChangePassword();
+            }}
+          />
+          <AppActionIconButton
+            disabled={isProtected || isLocking || isUnlocking}
+            icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
+            iconSize={14}
+            label={user.isLocked ? "Unlock" : "Lock"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleLock();
+            }}
+          />
           <StatusDot
             color={statusColor}
             size={8}

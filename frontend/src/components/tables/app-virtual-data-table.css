@@ -1,0 +1,186 @@
+.app-vdt {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  background-color: transparent;
+}
+
+.app-vdt--fill {
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.app-vdt__head {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 100%;
+}
+
+.app-vdt__scroll {
+  flex: 1 1 auto;
+  min-width: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.app-vdt__body {
+  position: relative;
+  min-width: 100%;
+}
+
+.app-vdt__row {
+  display: grid;
+  grid-template-columns: var(--app-vdt-grid);
+  min-width: 100%;
+  color: inherit;
+}
+
+.app-vdt__row--head {
+  background-color: var(--app-vdt-head-bg);
+}
+
+.app-vdt__row--body {
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+}
+
+.app-vdt__row--alt {
+  background-color: var(--app-vdt-alt-bg);
+}
+
+.app-vdt__row--selected {
+  background-color: var(--app-vdt-selected-bg);
+}
+
+.app-vdt__row--interactive {
+  cursor: pointer;
+}
+
+.app-vdt__row--interactive:hover {
+  background-color: var(--app-vdt-hover-bg);
+}
+
+.app-vdt__virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  min-width: 100%;
+}
+
+.app-vdt__cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 16px;
+  font-size: 0.8125rem;
+  line-height: 1.43;
+  color: inherit;
+}
+
+.app-vdt--compact .app-vdt__cell {
+  padding: 4px 16px;
+}
+
+.app-vdt__cell > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-vdt__cell--head {
+  font-weight: 500;
+  line-height: 1.5rem;
+}
+
+.app-vdt__cell--expand {
+  justify-content: center;
+  padding-inline: 4px;
+}
+
+.app-vdt__cell--drag {
+  justify-content: center;
+  padding-inline: 4px;
+}
+
+.app-vdt__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-palette-text-disabled);
+  cursor: grab;
+  touch-action: none;
+}
+
+.app-vdt__drag-handle:active {
+  cursor: grabbing;
+}
+
+.app-vdt__sort-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: inherit;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.app-vdt__sort-button svg {
+  color: var(--app-palette-text-secondary);
+  opacity: 0.72;
+}
+
+.app-vdt__sort-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-vdt__detail {
+  overflow: hidden;
+}
+
+.app-vdt__detail-cell {
+  padding: 10px 16px;
+  overflow-x: auto;
+}
+
+.app-vdt--compact .app-vdt__detail-cell {
+  padding: 6px 16px;
+}
+
+.app-vdt__empty {
+  padding-block: 32px;
+  text-align: center;
+}
+
+.app-vdt--compact .app-vdt__empty {
+  padding-block: 16px;
+}
+
+@media (max-width: 600px) {
+  .app-vdt__cell {
+    padding: 8px 4px;
+    font-size: 0.75rem;
+  }
+
+  .app-vdt--compact .app-vdt__cell {
+    padding: 6px 4px;
+  }
+
+  .app-vdt__cell--expand {
+    padding-inline: 2px;
+  }
+}

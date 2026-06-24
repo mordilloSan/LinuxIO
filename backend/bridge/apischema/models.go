@@ -25,6 +25,8 @@ var StringEnums = map[string][]string{
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
 	"ValidationIssueType":           {"error", "warning"},
+	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
+	"VMSourceType":                  {"iso", "imagePreset"},
 }
 
 const (
@@ -35,6 +37,7 @@ const (
 var ExtraTypes = []TypeSpec{
 	TypeOf[InstallCapabilityResult](),
 	TypeOf[JobEvent](),
+	TypeOf[VMCreateProgress](),
 }
 
 type CPUInfoResponse struct {
@@ -128,7 +131,7 @@ type SensorReading struct {
 	Kind  SensorReadingKind `json:"kind"`
 	Label string            `json:"label"`
 	Unit  string            `json:"unit"`
-	Value any               `json:"value"`
+	Value float64           `json:"value"`
 }
 
 type SensorGroup struct {
@@ -136,16 +139,30 @@ type SensorGroup struct {
 	Readings []SensorReading `json:"readings"`
 }
 
+type DiskPowerState struct {
+	Description string  `json:"description"`
+	MaxPowerW   float64 `json:"maxPowerW"`
+	State       int     `json:"state"`
+}
+
+type DiskPowerData struct {
+	CurrentState int              `json:"currentState"`
+	EstimatedW   float64          `json:"estimatedW"`
+	States       []DiskPowerState `json:"states"`
+}
+
 type ApiDisk struct {
-	Model  string  `json:"model"`
-	Name   string  `json:"name"`
-	Power  any     `json:"power,omitempty"`
-	RO     bool    `json:"ro"`
-	Serial *string `json:"serial,omitempty"`
-	Size   string  `json:"size"`
-	Smart  any     `json:"smart,omitempty"`
-	Type   *string `json:"type,omitempty"`
-	Vendor *string `json:"vendor,omitempty"`
+	Model      string         `json:"model"`
+	Name       string         `json:"name"`
+	Power      *DiskPowerData `json:"power,omitempty"`
+	PowerError string         `json:"powerError,omitempty"`
+	RO         bool           `json:"ro"`
+	Serial     *string        `json:"serial,omitempty"`
+	Size       string         `json:"size"`
+	Smart      map[string]any `json:"smart,omitempty"`
+	SmartError string         `json:"smartError,omitempty"`
+	Type       *string        `json:"type,omitempty"`
+	Vendor     *string        `json:"vendor,omitempty"`
 }
 
 type MotherboardInfo struct {
@@ -512,6 +529,11 @@ type ComposeProject struct {
 	WorkingDir      string                     `json:"working_dir"`
 }
 
+type ComposeActionResult struct {
+	Message string `json:"message"`
+	Output  string `json:"output"`
+}
+
 type AutoUpdateOptions struct {
 	DownloadOnly    bool                   `json:"download_only"`
 	Enabled         bool                   `json:"enabled"`
@@ -630,18 +652,28 @@ type PowerStatus struct {
 	TunedUnitFileState        string         `json:"tuned_unit_file_state"`
 }
 
-type ApiResource struct {
-	Content   *string       `json:"content,omitempty"`
-	Extension string        `json:"extension"`
-	IsDir     bool          `json:"isDir"`
-	IsSymlink bool          `json:"isSymlink"`
-	Items     []ApiResource `json:"items,omitempty"`
-	Mode      string        `json:"mode"`
-	Modified  string        `json:"modified"`
-	Name      string        `json:"name"`
-	Path      string        `json:"path"`
-	Size      int64         `json:"size"`
-	Type      string        `json:"type"`
+type FileResourceItem struct {
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	Modified   string `json:"modified"`
+	Type       string `json:"type"`
+	Hidden     bool   `json:"hidden"`
+	HasPreview bool   `json:"hasPreview"`
+	Symlink    bool   `json:"symlink"`
+}
+
+type ExtendedFileInfo struct {
+	Name       string             `json:"name"`
+	Size       int64              `json:"size"`
+	Modified   string             `json:"modified"`
+	Type       string             `json:"type"`
+	Hidden     bool               `json:"hidden"`
+	HasPreview bool               `json:"hasPreview"`
+	Symlink    bool               `json:"symlink"`
+	Files      []FileResourceItem `json:"files"`
+	Folders    []FileResourceItem `json:"folders"`
+	Path       string             `json:"path"`
+	Content    string             `json:"content,omitempty"`
 }
 
 type DirectorySizeData struct {
@@ -1103,6 +1135,74 @@ type StorageWarningResult struct {
 type OfflineUpdatesResponse struct {
 	Status *string `json:"status,omitempty"`
 	Error  *string `json:"error,omitempty"`
+}
+
+type VMDisk struct {
+	Device     string `json:"device"`
+	Target     string `json:"target"`
+	Path       string `json:"path"`
+	VolumeName string `json:"volumeName,omitempty"`
+	SizeGB     int    `json:"sizeGB,omitempty"`
+	Owned      bool   `json:"owned"`
+}
+
+type VMNIC struct {
+	MAC         string   `json:"mac,omitempty"`
+	Model       string   `json:"model,omitempty"`
+	Network     string   `json:"network,omitempty"`
+	IPAddresses []string `json:"ipAddresses,omitempty"`
+}
+
+type VirtualMachine struct {
+	Name        string   `json:"name"`
+	UUID        string   `json:"uuid,omitempty"`
+	State       string   `json:"state"`
+	VCPUs       int      `json:"vcpus"`
+	MemoryMB    int      `json:"memoryMB"`
+	DiskGB      int      `json:"diskGB"`
+	Autostart   bool     `json:"autostart"`
+	HasGraphics bool     `json:"hasGraphics"`
+	OwnedDisks  []string `json:"ownedDisks"`
+	Disks       []VMDisk `json:"disks,omitempty"`
+	NICs        []VMNIC  `json:"nics,omitempty"`
+}
+
+type VMPreflightFirmware struct {
+	UEFIAvailable bool `json:"uefiAvailable"`
+	BIOSAvailable bool `json:"biosAvailable"`
+}
+
+type VMManagedPaths struct {
+	Root        string `json:"root"`
+	ISOs        string `json:"isos"`
+	CloudImages string `json:"cloudImages"`
+}
+
+type VMPreflight struct {
+	KvmPresent           bool                `json:"kvmPresent"`
+	QemuPresent          bool                `json:"qemuPresent"`
+	LibvirtReachable     bool                `json:"libvirtReachable"`
+	DefaultPoolExists    bool                `json:"defaultPoolExists"`
+	DefaultPoolActive    bool                `json:"defaultPoolActive"`
+	DefaultNetworkExists bool                `json:"defaultNetworkExists"`
+	DefaultNetworkActive bool                `json:"defaultNetworkActive"`
+	ISOReadable          bool                `json:"isoReadable"`
+	Firmware             VMPreflightFirmware `json:"firmware"`
+	ManagedPaths         VMManagedPaths      `json:"managedPaths"`
+	Warnings             []string            `json:"warnings,omitempty"`
+	Errors               []string            `json:"errors,omitempty"`
+}
+
+type VMCreateProgress struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+	Path    string `json:"path,omitempty"`
+	Percent *int   `json:"percent,omitempty"`
+}
+
+type VMDeleteResult struct {
+	Removed   []string `json:"removed"`
+	Preserved []string `json:"preserved"`
 }
 
 type CapabilitiesResponse struct {

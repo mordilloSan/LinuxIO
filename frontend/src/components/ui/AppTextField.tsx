@@ -27,6 +27,7 @@ export interface AppTextFieldProps {
   onFocus?: (e: React.FocusEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   placeholder?: string;
+  readOnly?: boolean;
   required?: boolean;
   role?: string;
   rows?: number;
@@ -48,6 +49,7 @@ const AppTextField = React.forwardRef<
     value,
     onChange,
     placeholder,
+    readOnly = false,
     type,
     size = "medium",
     variant = "outlined",
@@ -131,6 +133,7 @@ const AppTextField = React.forwardRef<
     value,
     onChange,
     placeholder,
+    readOnly,
     type,
     required,
     autoFocus,

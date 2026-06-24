@@ -5,7 +5,7 @@ import SettingsDialog from "./SettingsDialog";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { iconSize } from "@/constants";
+import { iconSize } from "@/theme/constants";
 
 const NavbarSettingsDialogTrigger: React.FC = () => {
   const [open, setOpen] = useState(false);

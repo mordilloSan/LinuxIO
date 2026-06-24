@@ -6,6 +6,62 @@ import (
 	"testing"
 )
 
+func TestParseSmartInfoJSONKeepsSmartctlShapeFlexible(t *testing.T) {
+	got, err := parseSmartInfoJSON([]byte(`{
+		"model_name": "Patriot M.2 P300 1024GB",
+		"firmware_version": { "string": "W0824A0" },
+		"nvme_version": { "string": "1.4", "value": 65536 },
+		"nvme_number_of_namespaces": { "value": 1 },
+		"device": { "protocol": { "string": "NVMe" }, "type": "nvme" },
+		"nvme_smart_health_information_log": {
+			"critical_warning": { "value": 0 },
+			"temperature": "44",
+			"available_spare": "100%",
+			"data_units_read": { "value": "12,345" },
+			"media_errors": 0
+		},
+		"nvme_self_test_log": {
+			"table": [
+				{
+					"power_on_hours": { "value": 42 },
+					"self_test_code": { "value": { "value": 1 }, "string": "Short self-test" },
+					"self_test_result": { "value": "0", "string": "Completed without error" }
+				}
+			]
+		},
+		"ata_smart_attributes": {
+			"table": [
+				{
+					"id": 5,
+					"name": "Reallocated_Sector_Ct",
+					"raw": { "value": { "value": 0 } },
+					"thresh": 10,
+					"value": 100,
+					"worst": 100
+				}
+			]
+		},
+		"power_on_time": { "hours": "123" },
+		"temperature": { "current": { "value": 44 } }
+	}`))
+	if err != nil {
+		t.Fatalf("parseSmartInfoJSON: %v", err)
+	}
+	if got["model_name"] != "Patriot M.2 P300 1024GB" {
+		t.Fatalf("model_name = %#v", got["model_name"])
+	}
+	if _, ok := got["nvme_version"].(map[string]any); !ok {
+		t.Fatalf("nvme_version = %#v, want object preserved", got["nvme_version"])
+	}
+	nvme, ok := got["nvme_smart_health_information_log"].(map[string]any)
+	if !ok {
+		t.Fatal("nvme_smart_health_information_log missing")
+	}
+	if _, ok := nvme["critical_warning"].(map[string]any); !ok {
+		t.Fatalf("critical_warning = %#v, want object preserved", nvme["critical_warning"])
+	}
+}
+
 func TestParseSmartTestJSON(t *testing.T) {
 	tests := []struct {
 		name        string

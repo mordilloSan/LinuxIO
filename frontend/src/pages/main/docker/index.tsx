@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
@@ -13,6 +14,7 @@ import VolumeList from "./VolumeList";
 import { jobSnapshotResult, linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -27,6 +29,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DockerPage: React.FC = () => {
   const theme = useAppTheme();
+  const [searchParams] = useSearchParams();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
@@ -34,8 +37,11 @@ const DockerPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
+  const activeDockerTab = searchParams.get("dockerTab") || "dashboard";
+  const isDashboardTab = activeDockerTab === "dashboard";
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
-    refetchInterval: 5000,
+    enabled: isDashboardTab,
+    refetchInterval: isDashboardTab ? 5000 : false,
   });
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const stoppedContainers = useMemo(
@@ -144,6 +150,18 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
+  const handleMountCreateStackHandler = useCallback((handler: () => void) => {
+    setCreateStackHandler(() => handler);
+  }, []);
+  const handleMountCreateNetworkHandler = useCallback((handler: () => void) => {
+    setCreateNetworkHandler(() => handler);
+  }, []);
+  const handleMountCreateVolumeHandler = useCallback((handler: () => void) => {
+    setCreateVolumeHandler(() => handler);
+  }, []);
+  const handleMountCreateImageHandler = useCallback((handler: () => void) => {
+    setCreateImageHandler(() => handler);
+  }, []);
   const renderCheckUpdatesButton = () => {
     const button = (
       <AppButton
@@ -171,29 +189,18 @@ const DockerPage: React.FC = () => {
       </AppTooltip>
     );
   };
-  const renderAutoUpdateSettingsButton = () => {
-    const button = (
-      <AppIconButton
-        aria-label="Container auto-update settings"
-        disabled={!watchtowerEnabled}
-        onClick={() => setAutoUpdateDialogOpen(true)}
-        size="small"
-      >
-        <Icon height={20} icon="mdi:timer-cog-outline" width={20} />
-      </AppIconButton>
-    );
-    return (
-      <AppTooltip
-        title={
-          watchtowerEnabled
-            ? "Container auto-update settings"
-            : watchtowerReason
-        }
-      >
-        <span>{button}</span>
-      </AppTooltip>
-    );
-  };
+  const renderAutoUpdateSettingsButton = () => (
+    <AppActionIconButton
+      ariaLabel="Container auto-update settings"
+      disabled={!watchtowerEnabled}
+      icon="mdi:timer-cog-outline"
+      iconSize={20}
+      label={
+        watchtowerEnabled ? "Container auto-update settings" : watchtowerReason
+      }
+      onClick={() => setAutoUpdateDialogOpen(true)}
+    />
+  );
   if (dockerStatus === "unknown") {
     return (
       <div
@@ -356,9 +363,7 @@ const DockerPage: React.FC = () => {
             label: "Stacks",
             component: (
               <ComposeStacksPage
-                onMountCreateHandler={(handler) =>
-                  setCreateStackHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateStackHandler}
                 viewMode={stacksView}
               />
             ),
@@ -404,9 +409,7 @@ const DockerPage: React.FC = () => {
             label: "Networks",
             component: (
               <DockerNetworksTable
-                onMountCreateHandler={(handler) =>
-                  setCreateNetworkHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateNetworkHandler}
                 viewMode={networksView}
               />
             ),
@@ -452,9 +455,7 @@ const DockerPage: React.FC = () => {
             label: "Volumes",
             component: (
               <VolumeList
-                onMountCreateHandler={(handler) =>
-                  setCreateVolumeHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateVolumeHandler}
                 viewMode={volumesView}
               />
             ),
@@ -498,9 +499,7 @@ const DockerPage: React.FC = () => {
             label: "Images",
             component: (
               <ImageList
-                onMountCreateHandler={(handler) =>
-                  setCreateImageHandler(() => handler)
-                }
+                onMountCreateHandler={handleMountCreateImageHandler}
                 viewMode={imagesView}
               />
             ),

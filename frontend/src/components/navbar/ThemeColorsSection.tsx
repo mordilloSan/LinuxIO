@@ -1,13 +1,16 @@
 import { Icon } from "@iconify/react";
 import { useMemo, useRef, useState } from "react";
 
+import type {
+  ConfigThemeColorsByModePayload as ThemeColorsByMode,
+  ConfigThemeColorsPayload as ThemeColors,
+} from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfig, useConfigValue } from "@/hooks/useConfig";
 import { buildAppTheme, useAppTheme } from "@/theme";
-import { ThemeColors, ThemeColorsByMode } from "@/types/config";
 import { alpha } from "@/utils/color";
 
 function toInputColor(color: string): string {

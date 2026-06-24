@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect } from "react";
 
 import { FileItem } from "@/types/filebrowser";
 
@@ -132,8 +132,8 @@ export const useFileListKeyboardNavigation = ({
     }
   }, [global, containerRef]);
 
-  // Scroll focused item into view
-  useEffect(() => {
+  // Scroll focused item into view (before paint to avoid a visible jump)
+  useLayoutEffect(() => {
     if (focusedIndex >= 0 && focusedIndex < allItems.length) {
       const container = containerRef.current;
       if (!container) return;

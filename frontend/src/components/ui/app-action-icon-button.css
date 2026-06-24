@@ -1,0 +1,9 @@
+.app-action-icon-button {
+  color: var(--ab-color);
+  margin-inline: 0.4px;
+  transition: color 0.2s;
+}
+
+.app-action-icon-button:hover {
+  color: var(--ab-hover-color);
+}

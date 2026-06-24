@@ -9,9 +9,9 @@ import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 interface DriveSmartData {
-  nvme_smart_health_information_log?: { temperature?: number };
+  nvme_smart_health_information_log?: { temperature?: unknown };
   smart_status?: { passed?: boolean };
-  temperature?: { current?: number };
+  temperature?: { current?: unknown };
 }
 
 export interface DriveCardProps {
@@ -25,12 +25,24 @@ export interface DriveCardProps {
   transport: string;
 }
 
+const getSmartNumber = (value: unknown): number | null => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = parseFloat(value.replace(/,/g, ""));
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (value && typeof value === "object") {
+    return getSmartNumber((value as { value?: unknown }).value);
+  }
+  return null;
+};
+
 const getTemperature = (smart?: DriveSmartData): number | null => {
   if (!smart) return null;
-  return (
+  return getSmartNumber(
     smart.nvme_smart_health_information_log?.temperature ??
-    smart.temperature?.current ??
-    null
+      smart.temperature?.current ??
+      null,
   );
 };
 

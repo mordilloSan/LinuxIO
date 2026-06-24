@@ -1,20 +1,9 @@
 package storage
 
-// DriveInfo represents a disk returned from lsblk plus best-effort SMART/NVMe
-// enrichment while preserving the existing JSON payload shape.
-type DriveInfo struct {
-	Name       string             `json:"name"`
-	Model      string             `json:"model"`
-	Serial     string             `json:"serial"`
-	Size       string             `json:"size"`
-	Type       string             `json:"type"`
-	Vendor     string             `json:"vendor"`
-	RO         bool               `json:"ro"`
-	Smart      map[string]any     `json:"smart,omitempty"`
-	SmartError string             `json:"smartError,omitempty"`
-	Power      *InferredPowerData `json:"power,omitempty"`
-	PowerError string             `json:"powerError,omitempty"`
-}
+import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+
+// DriveInfo represents a disk returned from lsblk plus best-effort SMART/NVMe enrichment.
+type DriveInfo = apischema.ApiDisk
 
 // LVM command JSON output structures (for parsing pvs/vgs/lvs --reportformat json)
 

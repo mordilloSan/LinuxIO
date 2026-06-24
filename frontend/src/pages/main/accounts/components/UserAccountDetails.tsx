@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import {
@@ -17,6 +17,7 @@ import {
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -27,7 +28,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -425,15 +425,12 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
         icon="mdi:shield-account"
         iconColor={securityIconColor}
         right={
-          <AppTooltip title="Close details">
-            <AppIconButton
-              onClick={onClose}
-              size="small"
-              style={{ flexShrink: 0 }}
-            >
-              <Icon height={20} icon="mdi:close" width={20} />
-            </AppIconButton>
-          </AppTooltip>
+          <AppActionIconButton
+            icon="mdi:close"
+            iconSize={20}
+            label="Close details"
+            onClick={onClose}
+          />
         }
         subtitle="Admin privileges, password status, and elevated groups"
         title="Access & security"
@@ -613,7 +610,7 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
     return focusedLogin ? loginEventKey(focusedLogin) : "";
   }, [focusLoginEventId, logins]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!focusedLoginKey) {
       return;
     }
@@ -713,23 +710,17 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
                     ) : null}
                   </div>
                   {session.pid || session.sessionId ? (
-                    <AppTooltip title="Terminate session">
-                      <AppIconButton
-                        aria-label={`Terminate session ${session.terminal}`}
-                        className="account-session-kill"
-                        onClick={() => {
-                          setKillError("");
-                          setPendingKillSession(session);
-                        }}
-                        size="small"
-                      >
-                        <Icon
-                          height={16}
-                          icon="mdi:trash-can-outline"
-                          width={16}
-                        />
-                      </AppIconButton>
-                    </AppTooltip>
+                    <AppActionIconButton
+                      ariaLabel={`Terminate session ${session.terminal}`}
+                      className="account-session-kill"
+                      icon="mdi:trash-can-outline"
+                      iconSize={16}
+                      label="Terminate session"
+                      onClick={() => {
+                        setKillError("");
+                        setPendingKillSession(session);
+                      }}
+                    />
                   ) : null}
                 </div>
                 <AppTypography

@@ -344,17 +344,6 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 	return updates, nil
 }
 
-// InstallByName resolves a package by name via PackageKit and installs it.
-// Returns nil (no-op) if the package is already installed. Returns an error
-// if the package cannot be found in any enabled repository.
-func InstallByName(ctx context.Context, name string) error {
-	id, err := resolveInstallablePackageID(ctx, name)
-	if err != nil || id == "" {
-		return err
-	}
-	return InstallPackage(ctx, id)
-}
-
 // InstallByNameWithProgress is InstallByName but streams PackageKit progress
 // signals (percentage/status) to the supplied reporter while the package
 // installs, so callers (e.g. capability install) can show a real progress bar.

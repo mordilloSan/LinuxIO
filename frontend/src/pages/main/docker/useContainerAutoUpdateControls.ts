@@ -224,8 +224,7 @@ export const useContainerAutoUpdateControls = () => {
   const toggleContainer = useCallback(
     (name: string) => {
       const state =
-        queryClient.getQueryData<DockerContainerAutoUpdateState>(queryKey) ??
-        query.data;
+        queryClient.getQueryData<DockerContainerAutoUpdateState>(queryKey);
       if (!state) return;
       const options = state.options ?? DEFAULT_OPTIONS;
 
@@ -246,7 +245,7 @@ export const useContainerAutoUpdateControls = () => {
       queryClient.setQueryData(queryKey, stateWithOptions(state, nextOptions));
       scheduleSave(nextOptions);
     },
-    [query.data, queryClient, queryKey, scheduleSave],
+    [queryClient, queryKey, scheduleSave],
   );
 
   return {

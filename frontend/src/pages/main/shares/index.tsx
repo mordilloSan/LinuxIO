@@ -15,9 +15,9 @@ import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -32,7 +32,6 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -91,12 +90,65 @@ const nfsOptionLabels: { key: keyof ClientOptions; label: string }[] = [
   { key: "crossmnt", label: "Crossmnt" },
 ];
 
-const tableColumns: UnifiedTableColumn[] = [
-  { field: "name", headerName: "Name", align: "left" },
-  { field: "comment", headerName: "Comment", align: "left" },
-  { field: "smb", headerName: "SMB", align: "left", width: "110px" },
-  { field: "nfs", headerName: "NFS", align: "left", width: "110px" },
-  { field: "path", headerName: "Path", align: "left" },
+const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => (
+      <AppTypography fontWeight={700} variant="body2">
+        {row.original.name}
+      </AppTypography>
+    ),
+    meta: { align: "left" },
+  },
+  {
+    accessorKey: "comment",
+    header: "Comment",
+    cell: ({ row }) => (
+      <AppTypography color="text.secondary" variant="body2">
+        {row.original.comment || "-"}
+      </AppTypography>
+    ),
+    meta: { align: "left" },
+  },
+  {
+    id: "smb",
+    header: "SMB",
+    accessorFn: (group) => getSambaAccessLabel(group.samba),
+    cell: ({ row }) => (
+      <AppTypography variant="body2">
+        {getSambaAccessLabel(row.original.samba)}
+      </AppTypography>
+    ),
+    meta: {
+      align: "left",
+      width: "110px",
+    },
+  },
+  {
+    id: "nfs",
+    header: "NFS",
+    accessorFn: (group) => getNFSAccessLabel(group.nfs),
+    cell: ({ row }) => (
+      <AppTypography variant="body2">
+        {getNFSAccessLabel(row.original.nfs)}
+      </AppTypography>
+    ),
+    meta: {
+      align: "left",
+      width: "110px",
+    },
+  },
+  {
+    accessorKey: "path",
+    header: "Path",
+    cell: ({ row }) => (
+      <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+        {row.original.path}
+      </AppTypography>
+    ),
+    meta: { align: "left" },
+  },
 ];
 
 function normalizeSharePath(path: string): string {
@@ -900,24 +952,20 @@ const FolderShareCardActions: React.FC<{
 
   return (
     <div style={{ display: "flex", gap: 2 }}>
-      <AppTooltip title="Edit Share">
-        <AppIconButton
-          color="primary"
-          onClick={() => onEditShare(group)}
-          size="small"
-        >
-          <Icon icon="mdi:pencil-outline" width={18} />
-        </AppIconButton>
-      </AppTooltip>
-      <AppTooltip title="Remove Share">
-        <AppIconButton
-          color="error"
-          onClick={(event) => setRemoveAnchor(event.currentTarget)}
-          size="small"
-        >
-          <Icon icon="mdi:trash-can-outline" width={18} />
-        </AppIconButton>
-      </AppTooltip>
+      <AppActionIconButton
+        color="var(--app-palette-primary-main)"
+        icon="mdi:pencil-outline"
+        iconSize={18}
+        label="Edit Share"
+        onClick={() => onEditShare(group)}
+      />
+      <AppActionIconButton
+        color="var(--app-palette-error-main)"
+        icon="mdi:trash-can-outline"
+        iconSize={18}
+        label="Remove Share"
+        onClick={(event) => setRemoveAnchor(event.currentTarget)}
+      />
 
       <AppMenu
         anchorEl={removeAnchor}
@@ -1131,7 +1179,15 @@ const SharesPage: React.FC = () => {
   );
 
   const sharesContent = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
           <AppGrid container spacing={2}>
@@ -1162,12 +1218,14 @@ const SharesPage: React.FC = () => {
           </div>
         )
       ) : (
-        <UnifiedCollapsibleTable
+        <AppDataTable
+          ariaLabel="Folder shares"
           columns={tableColumns}
           data={shareGroups}
           emptyMessage="No shares configured. Add a folder share to get started."
-          getRowKey={(group) => group.id}
-          renderExpandedContent={(group) =>
+          fillAvailable
+          getRowId={(group) => group.id}
+          renderExpandedContent={({ original: group }) =>
             renderExpandedContent(
               group,
               setEditingShare,
@@ -1175,38 +1233,6 @@ const SharesPage: React.FC = () => {
               setDeletingNFS,
             )
           }
-          renderMainRow={(group) => (
-            <>
-              <AppTableCell>
-                <AppTypography fontWeight={700} variant="body2">
-                  {group.name}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography color="text.secondary" variant="body2">
-                  {group.comment || "-"}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography variant="body2">
-                  {getSambaAccessLabel(group.samba)}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography variant="body2">
-                  {getNFSAccessLabel(group.nfs)}
-                </AppTypography>
-              </AppTableCell>
-              <AppTableCell>
-                <AppTypography
-                  style={{ fontFamily: "monospace" }}
-                  variant="body2"
-                >
-                  {group.path}
-                </AppTypography>
-              </AppTableCell>
-            </>
-          )}
         />
       )}
     </div>
@@ -1220,7 +1246,15 @@ const SharesPage: React.FC = () => {
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <TabContainer
         defaultTab="shares"
         tabs={[

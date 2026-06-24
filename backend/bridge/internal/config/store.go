@@ -62,25 +62,11 @@ func newUserStore(username, cfgPath string, cfg *Settings) *UserStore {
 	return store
 }
 
-func (s *UserStore) Username() string {
-	if s == nil {
-		return ""
-	}
-	return s.username
-}
-
 func (s *UserStore) Path() string {
 	if s == nil {
 		return ""
 	}
 	return s.path
-}
-
-func (s *UserStore) LockPath() string {
-	if s == nil {
-		return ""
-	}
-	return s.lockPath
 }
 
 // SnapshotForUser returns config from the per-user bridge store.

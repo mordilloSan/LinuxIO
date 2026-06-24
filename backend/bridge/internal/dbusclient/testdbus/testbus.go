@@ -79,18 +79,9 @@ func Start(t *testing.T) *Bus {
 	return bus
 }
 
-func (b *Bus) Address() string {
-	return b.address
-}
-
 func (b *Bus) SetSystemBus(t *testing.T) {
 	t.Helper()
 	t.Setenv("DBUS_SYSTEM_BUS_ADDRESS", b.address)
-}
-
-func (b *Bus) SetSessionBus(t *testing.T) {
-	t.Helper()
-	t.Setenv("DBUS_SESSION_BUS_ADDRESS", b.address)
 }
 
 func (b *Bus) Connect(t *testing.T) *godbus.Conn {

@@ -2,8 +2,8 @@ import React from "react";
 
 import "./FrostedCard.css";
 
-import { cardBorderRadius } from "@/constants";
 import { useAppTheme } from "@/theme";
+import { cardBorderRadius } from "@/theme/constants";
 import {
   getFrostedCardLiftShadow,
   getFrostedCardStyles,

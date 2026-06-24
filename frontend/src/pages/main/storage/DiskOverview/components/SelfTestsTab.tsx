@@ -1,18 +1,15 @@
 import React from "react";
 
+import { getSmartNumber, getSmartString } from "../utils";
+
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
-import {
-  AppTable,
-  AppTableBody,
-  AppTableCell,
-  AppTableContainer,
-  AppTableHead,
-  AppTableRow,
-} from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
 interface SelfTestsTabProps {
   nvmeSelfTestLog?: {
     table?: unknown[];
@@ -28,6 +25,99 @@ interface SelfTestsTabProps {
   smartmontoolsReason?: string;
   startPending: "short" | "long" | null;
 }
+
+interface StandardSelfTestRow {
+  lifetime_hours?: unknown;
+  num?: unknown;
+  status?: {
+    passed?: boolean;
+    string?: unknown;
+    value?: unknown;
+  };
+  type?: {
+    string?: unknown;
+    value?: unknown;
+  };
+}
+
+interface NvmeSelfTestRow {
+  power_on_hours?: unknown;
+  self_test_code?: {
+    string?: unknown;
+    value?: unknown;
+  };
+  self_test_result?: {
+    string?: unknown;
+    value?: unknown;
+  };
+}
+
+const standardSelfTestColumns: AppDataTableColumnDef<StandardSelfTestRow>[] = [
+  {
+    id: "number",
+    header: "#",
+    cell: ({ row }) => getSmartNumber(row.original.num) ?? row.index + 1,
+  },
+  {
+    id: "type",
+    header: "Type",
+    cell: ({ row }) => getSmartString(row.original.type) || "Unknown",
+  },
+  {
+    id: "status",
+    header: "Status",
+    cell: ({ row }) => (
+      <span
+        style={{
+          color: row.original.status?.passed
+            ? "var(--app-palette-success-main)"
+            : "var(--app-palette-error-main)",
+        }}
+      >
+        {getSmartString(row.original.status) || "Unknown"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "lifetime_hours",
+    header: "Lifetime Hours",
+    cell: ({ row }) =>
+      getSmartNumber(row.original.lifetime_hours)?.toLocaleString() || "N/A",
+    meta: { align: "right" },
+  },
+];
+
+const nvmeSelfTestColumns: AppDataTableColumnDef<NvmeSelfTestRow>[] = [
+  {
+    id: "type",
+    header: "Type",
+    cell: ({ row }) => getSmartString(row.original.self_test_code) || "Unknown",
+  },
+  {
+    id: "result",
+    header: "Result",
+    cell: ({ row }) => (
+      <span
+        style={{
+          color:
+            getSmartNumber(row.original.self_test_result) === 0
+              ? "var(--app-palette-success-main)"
+              : "var(--app-palette-error-main)",
+        }}
+      >
+        {getSmartString(row.original.self_test_result) || "Unknown"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "power_on_hours",
+    header: "Power On Hours",
+    cell: ({ row }) =>
+      getSmartNumber(row.original.power_on_hours)?.toLocaleString() || "N/A",
+    meta: { align: "right" },
+  },
+];
+
 export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   startPending,
   percentage,
@@ -41,6 +131,11 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
   const displayPercent =
     percentage !== undefined ? Math.max(0, Math.min(100, percentage)) : 0;
+  const standardRows =
+    (selfTestLog?.standard?.table as StandardSelfTestRow[] | undefined) ?? [];
+  const nvmeRows =
+    (nvmeSelfTestLog?.table as NvmeSelfTestRow[] | undefined) ?? [];
+
   return (
     <>
       <div
@@ -128,108 +223,30 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
       <AppTypography gutterBottom variant="subtitle2">
         Self-Test History
       </AppTypography>
-      {selfTestLog?.standard?.table &&
-      (selfTestLog.standard.table as unknown[]).length > 0 ? (
-        <AppTableContainer
-          className="custom-scrollbar"
-          style={{ maxHeight: 400 }}
-        >
-          <AppTable className="app-table--sticky">
-            <AppTableHead>
-              <AppTableRow>
-                <AppTableCell style={{ fontWeight: 600 }}>#</AppTableCell>
-                <AppTableCell style={{ fontWeight: 600 }}>Type</AppTableCell>
-                <AppTableCell style={{ fontWeight: 600 }}>Status</AppTableCell>
-                <AppTableCell align="right" style={{ fontWeight: 600 }}>
-                  Lifetime Hours
-                </AppTableCell>
-              </AppTableRow>
-            </AppTableHead>
-            <AppTableBody>
-              {(
-                selfTestLog.standard.table as {
-                  num?: number;
-                  type?: {
-                    string?: string;
-                  };
-                  status?: {
-                    string?: string;
-                    passed?: boolean;
-                  };
-                  lifetime_hours?: number;
-                }[]
-              ).map((entry, idx) => (
-                <AppTableRow key={idx}>
-                  <AppTableCell>{entry.num ?? idx + 1}</AppTableCell>
-                  <AppTableCell>{entry.type?.string || "Unknown"}</AppTableCell>
-                  <AppTableCell
-                    style={{
-                      color: entry.status?.passed
-                        ? "var(--app-palette-success-main)"
-                        : "var(--app-palette-error-main)",
-                    }}
-                  >
-                    {entry.status?.string || "Unknown"}
-                  </AppTableCell>
-                  <AppTableCell align="right">
-                    {entry.lifetime_hours?.toLocaleString() || "N/A"}
-                  </AppTableCell>
-                </AppTableRow>
-              ))}
-            </AppTableBody>
-          </AppTable>
-        </AppTableContainer>
-      ) : nvmeSelfTestLog?.table &&
-        (nvmeSelfTestLog.table as unknown[]).length > 0 ? (
-        <AppTableContainer
-          className="custom-scrollbar"
-          style={{ maxHeight: 400 }}
-        >
-          <AppTable className="app-table--sticky">
-            <AppTableHead>
-              <AppTableRow>
-                <AppTableCell style={{ fontWeight: 600 }}>Type</AppTableCell>
-                <AppTableCell style={{ fontWeight: 600 }}>Result</AppTableCell>
-                <AppTableCell align="right" style={{ fontWeight: 600 }}>
-                  Power On Hours
-                </AppTableCell>
-              </AppTableRow>
-            </AppTableHead>
-            <AppTableBody>
-              {(
-                nvmeSelfTestLog.table as {
-                  self_test_code?: {
-                    string?: string;
-                  };
-                  self_test_result?: {
-                    string?: string;
-                    value?: number;
-                  };
-                  power_on_hours?: number;
-                }[]
-              ).map((entry, idx) => (
-                <AppTableRow key={idx}>
-                  <AppTableCell>
-                    {entry.self_test_code?.string || "Unknown"}
-                  </AppTableCell>
-                  <AppTableCell
-                    style={{
-                      color:
-                        entry.self_test_result?.value === 0
-                          ? "var(--app-palette-success-main)"
-                          : "var(--app-palette-error-main)",
-                    }}
-                  >
-                    {entry.self_test_result?.string || "Unknown"}
-                  </AppTableCell>
-                  <AppTableCell align="right">
-                    {entry.power_on_hours?.toLocaleString() || "N/A"}
-                  </AppTableCell>
-                </AppTableRow>
-              ))}
-            </AppTableBody>
-          </AppTable>
-        </AppTableContainer>
+      {standardRows.length > 0 ? (
+        <AppDataTable
+          ariaLabel="SMART self-test history"
+          columns={standardSelfTestColumns}
+          data={standardRows}
+          density="compact"
+          emptyMessage="No self-test history available."
+          getRowId={(entry, index) =>
+            String(getSmartNumber(entry.num) ?? index)
+          }
+          maxHeight={400}
+          variant="embedded"
+        />
+      ) : nvmeRows.length > 0 ? (
+        <AppDataTable
+          ariaLabel="NVMe self-test history"
+          columns={nvmeSelfTestColumns}
+          data={nvmeRows}
+          density="compact"
+          emptyMessage="No self-test history available."
+          getRowId={(_, index) => String(index)}
+          maxHeight={400}
+          variant="embedded"
+        />
       ) : (
         <AppTypography color="text.secondary">
           No self-test history available.

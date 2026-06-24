@@ -1,6 +1,6 @@
 import React from "react";
 
-import { type NFSMount } from "@/api";
+import { type FilesystemInfo, type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -9,7 +9,6 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
 
 const SYSTEM_MOUNTPOINTS = new Set(["/", "/boot", "/boot/efi"]);

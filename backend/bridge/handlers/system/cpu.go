@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -66,23 +65,6 @@ func safeTemperatureMap(ctx context.Context) map[string]float64 {
 		}
 	}
 	return cpuTemps
-}
-
-func FetchPreferredCPUTemperature(ctx context.Context) (float64, bool) {
-	temps := safeTemperatureMap(ctx)
-	if len(temps) == 0 {
-		return 0, false
-	}
-	if packageTemp, ok := temps["package"]; ok {
-		return packageTemp, true
-	}
-
-	keys := make([]string, 0, len(temps))
-	for key := range temps {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return temps[keys[0]], true
 }
 
 // ---------- Fetchers ----------

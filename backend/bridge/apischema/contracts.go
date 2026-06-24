@@ -88,6 +88,36 @@ type NameRequest struct {
 	Name string `json:"name"`
 }
 
+type VMSourceType string
+type VMImagePresetID string
+
+type VMCreateRequest struct {
+	Name              string          `json:"name"`
+	VCPUs             int             `json:"vcpus"`
+	MemoryMB          int             `json:"memoryMB"`
+	DiskGB            int             `json:"diskGB"`
+	ISOPath           string          `json:"isoPath,omitempty"`
+	SourceType        VMSourceType    `json:"sourceType,omitempty"`
+	ImagePresetID     VMImagePresetID `json:"imagePresetId,omitempty"`
+	CloudInitUsername string          `json:"cloudInitUsername,omitempty"`
+	CloudInitPassword string          `json:"cloudInitPassword,omitempty"`
+	CloudInitSSHKey   string          `json:"cloudInitSshKey,omitempty"`
+	CloudInitHostname string          `json:"cloudInitHostname,omitempty"`
+	Network           string          `json:"network,omitempty"`
+	Start             bool            `json:"start"`
+}
+
+type VMDeleteRequest struct {
+	Name        string `json:"name"`
+	DeleteDisks bool   `json:"deleteDisks"`
+}
+
+type VMPreflightRequest struct {
+	ISOPath       *string         `json:"isoPath,omitempty"`
+	SourceType    VMSourceType    `json:"sourceType,omitempty"`
+	ImagePresetID VMImagePresetID `json:"imagePresetId,omitempty"`
+}
+
 type ImageIDRequest struct {
 	ImageID string `json:"imageId"`
 }

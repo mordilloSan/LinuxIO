@@ -5,6 +5,7 @@ import { FileItem, ViewMode } from "../../types/filebrowser";
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
 import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
+import { stripTrailingSlash } from "@/utils/path";
 
 interface FoldersListProps {
   cutPaths: Set<string>;
@@ -59,9 +60,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
     // Get size from subfoldersMap instead of making individual API calls
     // Normalize path by removing trailing slash for lookup (API returns paths without trailing slashes)
     const isSearchResult = folder.showFullPath === true;
-    const normalizedPath = folder.path.endsWith("/")
-      ? folder.path.slice(0, -1)
-      : folder.path;
+    const normalizedPath = stripTrailingSlash(folder.path);
     const subfolderData = folder.symlink
       ? null
       : subfoldersMap.get(normalizedPath);

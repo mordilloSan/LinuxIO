@@ -3,8 +3,8 @@ import React from "react";
 
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
 import AppTypography from "@/components/ui/AppTypography";
-import { shadowSm } from "@/constants";
 import { useAppTheme } from "@/theme";
+import { shadowSm } from "@/theme/constants";
 
 const DevToolsButton: React.FC = () => {
   const theme = useAppTheme();

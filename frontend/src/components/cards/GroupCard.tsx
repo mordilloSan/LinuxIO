@@ -7,9 +7,8 @@ import {
   type SummaryRow,
   SummaryRowsList,
 } from "@/components/cards/HardwareCard";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { GAP_SM } from "@/theme/constants";
@@ -138,31 +137,21 @@ const GroupCard: React.FC<GroupCardProps> = ({
         </div>
 
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-          <AppTooltip title="Edit Members">
-            <span>
-              <AppIconButton
-                disabled={isRoot}
-                onClick={onEditMembers}
-                size="small"
-              >
-                <Icon height={18} icon="mdi:pencil" width={18} />
-              </AppIconButton>
-            </span>
-          </AppTooltip>
-          <AppTooltip title={isProtected ? "Cannot delete" : "Delete Group"}>
-            <span>
-              <AppIconButton
-                disabled={isProtected}
-                onClick={onDelete}
-                size="small"
-                style={{
-                  color: isProtected ? undefined : theme.palette.error.main,
-                }}
-              >
-                <Icon height={18} icon="mdi:delete" width={18} />
-              </AppIconButton>
-            </span>
-          </AppTooltip>
+          <AppActionIconButton
+            disabled={isRoot}
+            icon="mdi:pencil"
+            iconSize={18}
+            label="Edit Members"
+            onClick={onEditMembers}
+          />
+          <AppActionIconButton
+            color={isProtected ? undefined : theme.palette.error.main}
+            disabled={isProtected}
+            icon="mdi:delete"
+            iconSize={18}
+            label={isProtected ? "Cannot delete" : "Delete Group"}
+            onClick={onDelete}
+          />
         </div>
       </div>
 

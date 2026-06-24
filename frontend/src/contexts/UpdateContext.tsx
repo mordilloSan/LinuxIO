@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -511,11 +512,9 @@ const useUpdateNavigationGuard = (isUpdating: boolean) => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = `${location.pathname}${location.search}${location.hash}`;
-  const lastSafePathRef = useRef(
-    `${location.pathname}${location.search}${location.hash}`,
-  );
+  const lastSafePathRef = useRef(currentPath);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isUpdating) {
       lastSafePathRef.current = currentPath;
     }

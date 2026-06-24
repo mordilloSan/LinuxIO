@@ -1,21 +1,18 @@
 import { Icon } from "@iconify/react";
 import React, { useCallback, useMemo } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
-import type { SensorGroup } from "@/components/cards/SensorGroupCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
-import { AppTableCell } from "@/components/ui/AppTable";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import {
@@ -42,23 +39,6 @@ const defaultHwSections = {
   pciDevices: true,
   memoryModules: true,
 };
-
-const memoryColumns: UnifiedTableColumn[] = [
-  { field: "id", headerName: "ID" },
-  { field: "technology", headerName: "Technology" },
-  { field: "type", headerName: "Type" },
-  { field: "size", headerName: "Size" },
-  { field: "state", headerName: "State" },
-  { field: "rank", headerName: "Rank" },
-  { field: "speed", headerName: "Speed" },
-];
-
-const pciColumns: UnifiedTableColumn[] = [
-  { field: "class", headerName: "Class" },
-  { field: "model", headerName: "Model" },
-  { field: "vendor", headerName: "Vendor" },
-  { field: "slot", headerName: "Slot" },
-];
 
 // ─── section header ──────────────────────────────────────────────────────────
 
@@ -162,6 +142,81 @@ const HardwarePage: React.FC = () => {
     );
     return { adapters: visibleSensorGroups.length, readings };
   }, [visibleSensorGroups]);
+  const memoryRows = memoryModules ?? [];
+  const pciRows = pciDevices ?? [];
+  const memoryColumns: AppDataTableColumnDef<(typeof memoryRows)[number]>[] = [
+    {
+      accessorKey: "id",
+      header: "ID",
+      cell: ({ row }) => row.original.id || "—",
+    },
+    {
+      accessorKey: "technology",
+      header: "Technology",
+      cell: ({ row }) => row.original.technology,
+    },
+    {
+      accessorKey: "type",
+      header: "Type",
+      cell: ({ row }) => row.original.type,
+    },
+    {
+      accessorKey: "size",
+      header: "Size",
+      cell: ({ row }) => row.original.size,
+    },
+    {
+      accessorKey: "state",
+      header: "State",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.state === "Present" ? "success" : "default"}
+          label={row.original.state}
+          size="small"
+          style={{ height: 22, fontSize: "0.75rem" }}
+          variant="soft"
+        />
+      ),
+    },
+    {
+      accessorKey: "rank",
+      header: "Rank",
+      cell: ({ row }) => row.original.rank,
+    },
+    {
+      accessorKey: "speed",
+      header: "Speed",
+      cell: ({ row }) => row.original.speed,
+    },
+  ];
+  const pciColumns: AppDataTableColumnDef<(typeof pciRows)[number]>[] = [
+    {
+      accessorKey: "class",
+      header: "Class",
+      cell: ({ row }) => row.original.class || "—",
+    },
+    {
+      accessorKey: "model",
+      header: "Model",
+      cell: ({ row }) => row.original.model || "—",
+    },
+    {
+      accessorKey: "vendor",
+      header: "Vendor",
+      cell: ({ row }) => row.original.vendor || "—",
+    },
+    {
+      accessorKey: "slot",
+      header: "Slot",
+      cell: ({ row }) => row.original.slot || "—",
+      meta: {
+        cellStyle: {
+          fontFamily: "monospace",
+          fontSize: "0.8rem",
+        },
+      },
+    },
+  ];
 
   return (
     <div>
@@ -270,30 +325,15 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.memoryModules}>
         <HardwareTableCard>
-          <UnifiedCollapsibleTable
+          <AppDataTable
+            ariaLabel="Memory modules"
             columns={memoryColumns}
-            data={memoryModules ?? []}
+            data={memoryRows}
             emptyMessage="No memory module data available. Ensure dmidecode is installed."
-            getRowKey={(mod, idx) => `${mod.id}-${idx}`}
-            renderMainRow={(mod) => (
-              <>
-                <AppTableCell>{mod.id || "—"}</AppTableCell>
-                <AppTableCell>{mod.technology}</AppTableCell>
-                <AppTableCell>{mod.type}</AppTableCell>
-                <AppTableCell>{mod.size}</AppTableCell>
-                <AppTableCell>
-                  <Chip
-                    color={mod.state === "Present" ? "success" : "default"}
-                    label={mod.state}
-                    size="small"
-                    style={{ height: 22, fontSize: "0.75rem" }}
-                    variant="soft"
-                  />
-                </AppTableCell>
-                <AppTableCell>{mod.rank}</AppTableCell>
-                <AppTableCell>{mod.speed}</AppTableCell>
-              </>
-            )}
+            fillAvailable={false}
+            getRowId={(mod, idx) => `${mod.id}-${idx}`}
+            maxHeight={280}
+            style={{ boxShadow: "none" }}
           />
         </HardwareTableCard>
       </AppCollapse>
@@ -306,23 +346,15 @@ const HardwarePage: React.FC = () => {
       />
       <AppCollapse in={sections.pciDevices}>
         <HardwareTableCard>
-          <UnifiedCollapsibleTable
+          <AppDataTable
+            ariaLabel="PCI devices"
             columns={pciColumns}
-            data={pciDevices ?? []}
+            data={pciRows}
             emptyMessage="No PCI devices found"
-            getRowKey={(dev, idx) => `${dev.slot}-${idx}`}
-            renderMainRow={(dev) => (
-              <>
-                <AppTableCell>{dev.class || "—"}</AppTableCell>
-                <AppTableCell>{dev.model || "—"}</AppTableCell>
-                <AppTableCell>{dev.vendor || "—"}</AppTableCell>
-                <AppTableCell
-                  style={{ fontFamily: "monospace", fontSize: "0.8rem" }}
-                >
-                  {dev.slot || "—"}
-                </AppTableCell>
-              </>
-            )}
+            fillAvailable={false}
+            getRowId={(dev, idx) => `${dev.slot}-${idx}`}
+            maxHeight={420}
+            style={{ boxShadow: "none" }}
           />
         </HardwareTableCard>
       </AppCollapse>

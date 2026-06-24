@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { RowData } from "@tanstack/react-table";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -8,14 +9,16 @@ import { linuxio } from "@/api";
 import type { UnitListItem } from "@/components/cards/UnitCard";
 import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type {
+  AppVirtualDataTableBreakpoint,
+  AppVirtualDataTableColumnDef,
+} from "@/components/tables/AppVirtualDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
+import AppVirtualGrid from "@/components/virtual/AppVirtualGrid";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
@@ -30,17 +33,30 @@ export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 export type { UnitInfoRow } from "@/components/cards/UnitInfoPanelCard";
 export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 
+const UNIT_CARD_GRID_GAP = 12;
+const UNIT_CARD_MIN_WIDTH = 360;
+const UNIT_CARD_ESTIMATE_HEIGHT = 150;
+
 interface UnitTableViewProps<T> {
   data: T[];
-  desktopColumns: UnifiedTableColumn[];
+  desktopColumns: UnitTableColumn[];
   emptyMessage: string;
   getRowKey: (row: T, index: number) => string | number;
-  mobileColumns: UnifiedTableColumn[];
+  mobileColumns: UnitTableColumn[];
   onDoubleClick?: (key: string | number) => void;
   onSelect?: (key: string | number | null) => void;
   renderMainRow: (row: T, isMobile: boolean, index: number) => React.ReactNode;
   renderMobileExpandedContent?: (row: T, index: number) => React.ReactNode;
   selected?: string | number | null;
+}
+
+interface UnitTableColumn {
+  align?: "left" | "center" | "right";
+  className?: string;
+  field: string;
+  headerName: string;
+  style?: React.CSSProperties;
+  width?: string | number;
 }
 
 interface UnitCardsViewProps<T extends UnitListItem> {
@@ -418,7 +434,47 @@ export const UnitCardActions: React.FC<{
   );
 };
 
-export function UnitTableView<T>({
+type RenderedTableCellProps = {
+  children?: React.ReactNode;
+};
+
+function getHideBelow(
+  className?: string,
+): AppVirtualDataTableBreakpoint | undefined {
+  if (!className) return undefined;
+  if (className.includes("app-table-hide-below-xl")) return "xl";
+  if (className.includes("app-table-hide-below-lg")) return "lg";
+  if (className.includes("app-table-hide-below-md")) return "md";
+  if (className.includes("app-table-hide-below-sm")) return "sm";
+  return undefined;
+}
+
+function flattenRenderedCells(node: React.ReactNode): React.ReactNode[] {
+  const cells: React.ReactNode[] = [];
+
+  React.Children.forEach(node, (child) => {
+    if (
+      React.isValidElement<RenderedTableCellProps>(child) &&
+      child.type === React.Fragment
+    ) {
+      cells.push(...flattenRenderedCells(child.props.children));
+      return;
+    }
+
+    cells.push(child);
+  });
+
+  return cells;
+}
+
+function getRenderedCellContent(cell: React.ReactNode) {
+  if (React.isValidElement<RenderedTableCellProps>(cell)) {
+    return cell.props.children;
+  }
+  return cell;
+}
+
+export function UnitTableView<T extends RowData>({
   data,
   desktopColumns,
   mobileColumns,
@@ -432,29 +488,62 @@ export function UnitTableView<T>({
 }: UnitTableViewProps<T>) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const activeColumns = isMobile ? mobileColumns : desktopColumns;
+  const renderedCellCache = new Map<string, React.ReactNode[]>();
+  const columns: AppVirtualDataTableColumnDef<T>[] = activeColumns.map(
+    (column, columnIndex) => ({
+      id: column.field,
+      header: column.headerName,
+      cell: ({ row }) => {
+        const rowKey = String(getRowKey(row.original, row.index));
+        let cells = renderedCellCache.get(rowKey);
+        if (!cells) {
+          cells = flattenRenderedCells(
+            renderMainRow(row.original, isMobile, row.index),
+          );
+          renderedCellCache.set(rowKey, cells);
+        }
+        return getRenderedCellContent(cells[columnIndex]);
+      },
+      meta: {
+        align: column.align,
+        cellStyle: column.style,
+        className: column.className,
+        headerStyle: column.style,
+        hideBelow: getHideBelow(column.className),
+        width: column.width,
+      },
+    }),
+  );
 
   return (
-    <UnifiedCollapsibleTable
-      columns={isMobile ? mobileColumns : desktopColumns}
+    <AppVirtualDataTable
+      ariaLabel="Units"
+      columns={columns}
       data={data}
       emptyMessage={emptyMessage}
-      getRowKey={getRowKey}
+      fillAvailable
+      getRowId={(row, index) => String(getRowKey(row, index))}
       onRowClick={
         isMobile
           ? undefined
-          : (row, index) => {
-              const rowKey = getRowKey(row, index);
+          : ({ original, index }) => {
+              const rowKey = getRowKey(original, index);
               onSelect?.(selected === rowKey ? null : rowKey);
             }
       }
-      onRowDoubleClick={(row, index) => onDoubleClick?.(getRowKey(row, index))}
+      onRowDoubleClick={({ original, index }) =>
+        onDoubleClick?.(getRowKey(original, index))
+      }
       renderExpandedContent={
         isMobile && renderMobileExpandedContent
-          ? (row, index) => renderMobileExpandedContent(row, index)
+          ? ({ original, index }) =>
+              renderMobileExpandedContent(original, index)
           : undefined
       }
-      renderMainRow={(row, index) => renderMainRow(row, isMobile, index)}
-      selectedKey={selected}
+      selectedRowId={
+        selected === undefined || selected === null ? null : String(selected)
+      }
     />
   );
 }
@@ -475,35 +564,27 @@ export function UnitCardsView<T extends UnitListItem>({
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
-  if (items.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "32px 0" }}>
-        <span
-          style={{
-            fontSize: "0.875rem",
-            color: "var(--app-palette-text-secondary)",
-          }}
-        >
-          {emptyMessage}
-        </span>
-      </div>
-    );
-  }
-
   if (!expandedItem) {
     return (
-      <AppGrid container spacing={3}>
-        {items.map((item) => (
-          <AppGrid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-            <UnitCard
-              isSelected={false}
-              item={item}
-              onExpand={onExpand}
-              renderSummaryRows={renderSummaryRows}
-            />
-          </AppGrid>
-        ))}
-      </AppGrid>
+      <AppVirtualGrid
+        ariaLabel="Units"
+        emptyMessage={emptyMessage}
+        estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
+        fillAvailable
+        gap={UNIT_CARD_GRID_GAP}
+        getItemKey={(item) => item.name}
+        items={items}
+        minItemWidth={UNIT_CARD_MIN_WIDTH}
+        padding={0}
+        renderItem={(item) => (
+          <UnitCard
+            isSelected={false}
+            item={item}
+            onExpand={onExpand}
+            renderSummaryRows={renderSummaryRows}
+          />
+        )}
+      />
     );
   }
 

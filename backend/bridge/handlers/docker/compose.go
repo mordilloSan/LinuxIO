@@ -245,7 +245,7 @@ func GetComposeProject(ctx context.Context, username string, store *config.UserS
 }
 
 // ComposeUp starts a compose project
-func ComposeUp(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (any, error) {
+func ComposeUp(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (apischema.ComposeActionResult, error) {
 	var configFile string
 	var workingDir string
 
@@ -260,11 +260,11 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 			// Project exists with containers
 			composeProject, ok := project.(*apischema.ComposeProject)
 			if !ok {
-				return nil, fmt.Errorf("invalid project format")
+				return apischema.ComposeActionResult{}, fmt.Errorf("invalid project format")
 			}
 
 			if len(composeProject.ConfigFiles) == 0 {
-				return nil, fmt.Errorf("no config files found for project '%s'", projectName)
+				return apischema.ComposeActionResult{}, fmt.Errorf("no config files found for project '%s'", projectName)
 			}
 
 			configFile = composeProject.ConfigFiles[0]
@@ -277,7 +277,7 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 			// Try to find the compose file in standard locations
 			configFile, workingDir, err = findComposeFile(ctx, username, store, projectName)
 			if err != nil {
-				return nil, fmt.Errorf("project '%s' not found and no compose file found: %w", projectName, err)
+				return apischema.ComposeActionResult{}, fmt.Errorf("project '%s' not found and no compose file found: %w", projectName, err)
 			}
 		}
 	}
@@ -285,11 +285,11 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 	collector := &composeMessageCollector{}
 	err := composeUp(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
+		return apischema.ComposeActionResult{}, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
 	slog.Info("compose up complete", "project", projectName, "config", configFile)
 
-	return map[string]string{"message": "Project started successfully", "output": collector.String()}, nil
+	return apischema.ComposeActionResult{Message: "Project started successfully", Output: collector.String()}, nil
 }
 
 // findComposeFile attempts to locate a compose file for a project
@@ -335,19 +335,19 @@ func findComposeFileInBases(ctx context.Context, basePaths []string, stackName s
 }
 
 // ComposeDown stops and removes a compose project
-func ComposeDown(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+func ComposeDown(ctx context.Context, username string, store *config.UserStore, projectName string) (apischema.ComposeActionResult, error) {
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
-		return nil, err
+		return apischema.ComposeActionResult{}, err
 	}
 
 	composeProject, ok := project.(*apischema.ComposeProject)
 	if !ok {
-		return nil, fmt.Errorf("invalid project format")
+		return apischema.ComposeActionResult{}, fmt.Errorf("invalid project format")
 	}
 
 	if len(composeProject.ConfigFiles) == 0 {
-		return nil, fmt.Errorf("no config files found for project '%s'", projectName)
+		return apischema.ComposeActionResult{}, fmt.Errorf("no config files found for project '%s'", projectName)
 	}
 
 	configFile := composeProject.ConfigFiles[0]
@@ -359,11 +359,11 @@ func ComposeDown(ctx context.Context, username string, store *config.UserStore, 
 	collector := &composeMessageCollector{}
 	err = composeDown(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
+		return apischema.ComposeActionResult{}, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
 	slog.Info("compose down complete", "project", projectName, "config", configFile)
 
-	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
+	return apischema.ComposeActionResult{Message: "Project stopped successfully", Output: collector.String()}, nil
 }
 
 // DeleteStackOptions defines what to delete when removing a stack
@@ -488,21 +488,21 @@ func deleteComposeFile(ctx context.Context, result map[string]any, projectName, 
 }
 
 // ComposeRestart restarts a compose project
-func ComposeRestart(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+func ComposeRestart(ctx context.Context, username string, store *config.UserStore, projectName string) (apischema.ComposeActionResult, error) {
 	configFile, workingDir, err := resolveComposeRestartTarget(ctx, username, store, projectName)
 	if err != nil {
-		return nil, err
+		return apischema.ComposeActionResult{}, err
 	}
 
 	// Use up+remove-orphans semantics for restart so compose file changes are applied.
 	collector := &composeMessageCollector{}
 	err = composeUp(ctx, projectName, configFile, workingDir, true, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
+		return apischema.ComposeActionResult{}, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
 	slog.Info("compose restart complete", "project", projectName, "config", configFile)
 
-	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
+	return apischema.ComposeActionResult{Message: "Project restarted successfully", Output: collector.String()}, nil
 }
 
 func resolveComposeRestartTarget(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
@@ -612,19 +612,19 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 }
 
 // ComposeStop stops a compose project without removing containers
-func ComposeStop(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+func ComposeStop(ctx context.Context, username string, store *config.UserStore, projectName string) (apischema.ComposeActionResult, error) {
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
-		return nil, err
+		return apischema.ComposeActionResult{}, err
 	}
 
 	composeProject, ok := project.(*apischema.ComposeProject)
 	if !ok {
-		return nil, fmt.Errorf("invalid project format")
+		return apischema.ComposeActionResult{}, fmt.Errorf("invalid project format")
 	}
 
 	if len(composeProject.ConfigFiles) == 0 {
-		return nil, fmt.Errorf("no config files found for project '%s'", projectName)
+		return apischema.ComposeActionResult{}, fmt.Errorf("no config files found for project '%s'", projectName)
 	}
 
 	configFile := composeProject.ConfigFiles[0]
@@ -636,11 +636,11 @@ func ComposeStop(ctx context.Context, username string, store *config.UserStore, 
 	collector := &composeMessageCollector{}
 	err = composeStop(ctx, projectName, configFile, workingDir, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
+		return apischema.ComposeActionResult{}, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
 	slog.Info("compose stop complete", "project", projectName, "config", configFile)
 
-	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
+	return apischema.ComposeActionResult{Message: "Project stopped successfully", Output: collector.String()}, nil
 }
 
 // Helper functions
