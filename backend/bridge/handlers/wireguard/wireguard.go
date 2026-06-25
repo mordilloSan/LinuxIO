@@ -188,16 +188,24 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardCo
 }
 
 func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string) error {
-	if _, err := UpInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
-		return err
+	out, err := runWGQuick(ctx, "up", name)
+	if err != nil {
+		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", out)
+		return fmt.Errorf("bring up interface: %w", err)
 	}
 
 	backendName, err := SetupNAT(ctx, name, egressNic, subnet)
 	if err != nil {
-		if _, downErr := DownInterface(ctx, apischema.NameRequest{Name: name}); downErr != nil {
+		if cleanupErr := CleanupNAT(ctx, name, egressNic, subnet, ""); cleanupErr != nil {
+			slog.Warn("failed to clean up NAT after setup failure",
+				"interface", name,
+				"error", cleanupErr)
+		}
+		if downOut, downErr := runWGQuick(ctx, "down", name); downErr != nil {
 			slog.Warn("failed to bring down interface after NAT failure",
 				"interface", name,
-				"error", downErr)
+				"error", downErr,
+				"output", downOut)
 		}
 		return fmt.Errorf("setup NAT: %w", err)
 	}
@@ -207,6 +215,63 @@ func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string
 	}
 
 	return nil
+}
+
+func applySavedNAT(ctx context.Context, name string) (string, bool, error) {
+	natCfg, err := LoadNATConfig(name)
+	if err != nil {
+		return "", false, fmt.Errorf("load NAT config: %w", err)
+	}
+	if natCfg == nil {
+		return "", false, nil
+	}
+
+	backendName, err := SetupNAT(ctx, name, natCfg.EgressNic, natCfg.Subnet)
+	if err != nil {
+		return "", true, err
+	}
+
+	if backendName != natCfg.Backend {
+		if err := SaveNATConfig(name, natCfg.EgressNic, natCfg.Subnet, backendName); err != nil {
+			slog.Warn("failed to refresh NAT config backend",
+				"interface", name,
+				"backend", backendName,
+				"error", err)
+		}
+	}
+
+	return backendName, true, nil
+}
+
+func cleanupSavedNAT(ctx context.Context, name string) error {
+	natCfg, err := LoadNATConfig(name)
+	if err != nil {
+		return fmt.Errorf("load NAT config: %w", err)
+	}
+	if natCfg == nil {
+		return nil
+	}
+	return CleanupNAT(ctx, name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend)
+}
+
+func runWGQuick(ctx context.Context, action, name string) (string, error) {
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return "", fmt.Errorf("wg-quick not found: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, wgQuickPath, action, name)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), utils.CommandOutputError("wg-quick", []string{action, name}, out, err)
+	}
+	return string(out), nil
 }
 
 func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
@@ -568,6 +633,9 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		slog.Error("failed to save WireGuard interface DNS", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("save interface DNS: %w", err)
 	}
+	if err := RemoveNATConfig(req.name); err != nil {
+		slog.Warn("failed to remove stale WireGuard NAT metadata", "interface", req.name, "error", err)
+	}
 
 	subnet := req.addresses[0]
 	if err := bringUpInterfaceWithNAT(ctx, req.name, req.egressNic, subnet); err != nil {
@@ -597,26 +665,17 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	}
 	slog.Info("removing WireGuard interface", "interface", name)
 
-	// Cleanup NAT rules before bringing down the interface
-	if natCfg, err := LoadNATConfig(name); err != nil {
-		slog.Warn("failed to load NAT config", "interface", name, "error", err)
-	} else if natCfg != nil {
-		if err := CleanupNAT(ctx, name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
-			slog.Warn("failed to clean up NAT", "interface", name, "error", err)
-		}
-		if err := RemoveNATConfig(name); err != nil {
-			slog.Warn("failed to remove NAT config", "interface", name, "error", err)
-		}
-	}
-	if err := RemoveInterfaceDNS(name); err != nil {
-		slog.Warn("failed to remove interface DNS metadata", "interface", name, "error", err)
-	}
-
 	// Best-effort: bring it down, but don't abort on failure.
 	if _, err := DownInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
 		slog.Warn("failed to bring down interface before removal", "interface", name, "error", err)
 	} else {
 		slog.Info("interface brought down before removal", "interface", name)
+	}
+	if err := RemoveNATConfig(name); err != nil {
+		slog.Warn("failed to remove NAT config", "interface", name, "error", err)
+	}
+	if err := RemoveInterfaceDNS(name); err != nil {
+		slog.Warn("failed to remove interface DNS metadata", "interface", name, "error", err)
 	}
 
 	// Remove config file
@@ -798,31 +857,33 @@ func UpInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	wgQuickPath, err := exec.LookPath("wg-quick")
+	out, err := runWGQuick(ctx, "up", name)
 	if err != nil {
-		return nil, fmt.Errorf("wg-quick not found: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, wgQuickPath, "up", name)
-
-	// Ensure real/effective/saved IDs are 0 in the child
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", out)
+		return nil, fmt.Errorf("bring up interface: %w", err)
 	}
 
-	// predictable env
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-	cmd.Dir = "/"
-
-	out, err := cmd.CombinedOutput()
+	natBackend, hasNAT, err := applySavedNAT(ctx, name)
 	if err != nil {
-		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", string(out))
-		return nil, fmt.Errorf("bring up interface: %w", utils.CommandOutputError("wg-quick", []string{"up", name}, out, err))
+		if downOut, downErr := runWGQuick(ctx, "down", name); downErr != nil {
+			slog.Warn("failed to bring down interface after NAT failure",
+				"interface", name,
+				"error", downErr,
+				"output", downOut)
+		}
+		slog.Error("failed to apply WireGuard NAT", "interface", name, "error", err)
+		return nil, fmt.Errorf("setup NAT: %w", err)
 	}
+
 	slog.Info("WireGuard interface brought up", "interface", name)
-	return map[string]any{
+	result := map[string]any{
 		"status": "on",
-		"output": string(out),
-	}, nil
+		"output": out,
+	}
+	if hasNAT {
+		result["nat"] = natBackend
+	}
+	return result, nil
 }
 
 func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
@@ -836,30 +897,20 @@ func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) 
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	wgQuickPath, err := exec.LookPath("wg-quick")
+	out, err := runWGQuick(ctx, "down", name)
+	natErr := cleanupSavedNAT(ctx, name)
 	if err != nil {
-		return nil, fmt.Errorf("wg-quick not found: %w", err)
+		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", out)
+		return nil, fmt.Errorf("bring down interface: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, wgQuickPath, "down", name)
-
-	// Ensure real/effective/saved IDs are 0 in the child
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
-	}
-
-	// predictable env
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-	cmd.Dir = "/"
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", string(out))
-		return nil, fmt.Errorf("bring down interface: %w", utils.CommandOutputError("wg-quick", []string{"down", name}, out, err))
+	if natErr != nil {
+		slog.Error("failed to clean up WireGuard NAT", "interface", name, "error", natErr)
+		return nil, fmt.Errorf("cleanup NAT: %w", natErr)
 	}
 	slog.Info("WireGuard interface brought down", "interface", name)
 	return map[string]any{
 		"status": "off",
-		"output": string(out),
+		"output": out,
 	}, nil
 }
 
@@ -925,7 +976,10 @@ func PeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerName
 		return nil, fmt.Errorf("read peer config: %w", err)
 	}
 	slog.Info("served peer config download", "path", peerPath, "size", len(data))
-	return map[string]string{"config": string(data)}, nil
+	return apischema.PeerConfigDownload{
+		Content:  string(data),
+		Filename: req.PeerName + configExt,
+	}, nil
 }
 
 func EnableInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
