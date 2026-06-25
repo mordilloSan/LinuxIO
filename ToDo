@@ -30,6 +30,13 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Keep response encoding on `encoding/json` unless profiling proves it matters.
 - See `docs/api-contract.md` Generated Request Decoder Plan.
 
+13 - Docker update status persistence:
+- Bridge-side reader/store is only half of the feature; the missing piece is the scheduled producer.
+- Timer already starts `linuxio-watchtower.service`, but that service runs Watchtower directly and does not currently publish per-container JSON status.
+- Preferred direction: ask upstream/fork Watchtower for stable JSON update-check report output (for example `--porcelain json` or `/v1/status`), then systemd can write/publish `/var/lib/linuxio/docker-update-status.json`.
+- Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
+- Bridge should mostly read the JSON artifact and display update status.
+
 Implement virtual on logs and filebrowser.... DONE
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it

@@ -41,7 +41,9 @@ func RefreshDockerImageUpdates(ctx context.Context) (apischema.DockerUpdateCheck
 	}
 
 	statuses, result := updateCheckStatuses(results, summaries, time.Now())
-	replaceImageUpdateCache(statuses)
+	if err := writeUpdateStatuses(ctx, statuses); err != nil {
+		return apischema.DockerUpdateCheckResult{}, err
+	}
 	return result, nil
 }
 
@@ -86,7 +88,9 @@ func RefreshContainerImageUpdate(ctx context.Context, containerID string) (apisc
 		},
 		time.Now(),
 	)
-	updateImageUpdateCache(statuses)
+	if err := mergeUpdateStatuses(ctx, statuses); err != nil {
+		return apischema.DockerUpdateCheckResult{}, err
+	}
 	return result, nil
 }
 
@@ -178,7 +182,7 @@ func updateContainer(ctx context.Context, containerID string) (apischema.DockerC
 	after, inspectErr := cli.ContainerInspect(ctx, name, client.ContainerInspectOptions{})
 	if inspectErr == nil {
 		result.NewImageID = after.Container.Image
-		markContainerCurrent(inspect.ID, after.Container)
+		markContainerCurrent(ctx, inspect.ID, after.Container)
 	}
 	return result, nil
 }
