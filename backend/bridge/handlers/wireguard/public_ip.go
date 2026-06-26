@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,9 @@ func getPublicIP() (string, error) {
 			slog.Warn("failed to close response body", "component", "wireguard", "error", cerr)
 		}
 	}()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("public IP lookup returned %s", resp.Status)
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
