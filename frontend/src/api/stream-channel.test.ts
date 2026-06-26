@@ -128,6 +128,37 @@ describe("StreamMessageChannel", () => {
     });
   });
 
+  it("does not clear unrelated stream result handlers", () => {
+    const stream = fakeStream();
+    const existingResult = vi.fn();
+    stream.onResult = existingResult;
+
+    createStreamMessageChannel(stream);
+    stream.onResult?.({ status: "ok", data: "still owned elsewhere" });
+
+    expect(existingResult).toHaveBeenCalledWith({
+      status: "ok",
+      data: "still owned elsewhere",
+    });
+
+    const channelResult = vi.fn();
+    const replacementResult = vi.fn();
+    const channel = createStreamMessageChannel(stream, {
+      onResult: channelResult,
+    });
+    stream.onResult = replacementResult;
+
+    channel.close();
+    stream.onResult?.({ status: "ok", data: "replacement" });
+
+    expect(stream.close).toHaveBeenCalledTimes(1);
+    expect(channelResult).not.toHaveBeenCalled();
+    expect(replacementResult).toHaveBeenCalledWith({
+      status: "ok",
+      data: "replacement",
+    });
+  });
+
   it("reports errors instead of writing after close", () => {
     const stream = fakeStream();
     const channel = createStreamMessageChannel(stream);

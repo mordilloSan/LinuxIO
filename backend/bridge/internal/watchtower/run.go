@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 const (
@@ -131,35 +131,19 @@ func QuoteName(name string) string {
 // acquireLock takes an exclusive flock on path, polling until lockWait
 // elapses. The returned release function unlocks and closes the file.
 func acquireLock(ctx context.Context, path string) (func(), error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	release, err := filelock.AcquireExclusive(
+		ctx,
+		path,
+		filelock.WithTimeout(lockWait),
+		filelock.WithRetryDelay(lockPollStep),
+	)
+	if errors.Is(err, filelock.ErrTimeout) {
+		return nil, errors.New("another Watchtower run is already in progress")
+	}
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		return nil, err
 	}
-
-	deadline := time.Now().Add(lockWait)
-	for {
-		err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-		if err == nil {
-			return func() {
-				_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
-				_ = f.Close()
-			}, nil
-		}
-		if !errors.Is(err, unix.EWOULDBLOCK) {
-			_ = f.Close()
-			return nil, fmt.Errorf("lock %s: %w", path, err)
-		}
-		if time.Now().After(deadline) {
-			_ = f.Close()
-			return nil, errors.New("another Watchtower run is already in progress")
-		}
-		select {
-		case <-ctx.Done():
-			_ = f.Close()
-			return nil, ctx.Err()
-		case <-time.After(lockPollStep):
-		}
-	}
+	return func() { _ = release() }, nil
 }
 
 func lastLine(s string) string {

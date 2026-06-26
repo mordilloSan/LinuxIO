@@ -162,6 +162,19 @@ type SourceDestinationRequest struct {
 	Overwrite   *bool  `json:"overwrite,omitempty"`
 }
 
+// BatchTransferRequest copies or moves many sources into a single destination
+// directory within one job. Each source's final name is its basename.
+type BatchTransferRequest struct {
+	Sources     []string `json:"sources"`
+	Destination string   `json:"destination"`
+	Overwrite   *bool    `json:"overwrite,omitempty"`
+}
+
+// BatchPathRequest deletes many paths within one job.
+type BatchPathRequest struct {
+	Paths []string `json:"paths"`
+}
+
 type ActionSourceDestinationRequest struct {
 	Action string `json:"action"`
 	Source string `json:"src"`

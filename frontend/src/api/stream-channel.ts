@@ -30,6 +30,7 @@ export class StreamMessageChannel {
   private _onmessage: ChannelMessageHandler | null = null;
   private readonly pendingMessages: StreamMessageChannelMessageEvent[] = [];
   private flushScheduled = false;
+  private readonly resultHandler: ((result: ResultFrame) => void) | null;
 
   private readonly listeners = new Map<
     ChannelEventName,
@@ -41,9 +42,12 @@ export class StreamMessageChannel {
     options: StreamMessageChannelOptions = {},
   ) {
     this.readyState = stream.status === "closed" ? "closed" : "open";
+    this.resultHandler = options.onResult ?? null;
     stream.onData = (data) => this.handleData(data);
     stream.onClose = () => this.markClosed();
-    stream.onResult = options.onResult ?? null;
+    if (this.resultHandler) {
+      stream.onResult = this.resultHandler;
+    }
   }
 
   get onmessage(): ChannelMessageHandler | null {
@@ -98,7 +102,7 @@ export class StreamMessageChannel {
       return;
     }
     this.readyState = "closing";
-    this.stream.onResult = null;
+    this.releaseResultHandler();
     this.stream.close();
   }
 
@@ -156,9 +160,16 @@ export class StreamMessageChannel {
     if (this.readyState === "closed") {
       return;
     }
+    this.releaseResultHandler();
     this.flushPending();
     this.readyState = "closed";
     this.dispatchSimple("close");
+  }
+
+  private releaseResultHandler(): void {
+    if (this.resultHandler && this.stream.onResult === this.resultHandler) {
+      this.stream.onResult = null;
+    }
   }
 
   private dispatchSimple(type: Exclude<ChannelEventName, "message">): void {

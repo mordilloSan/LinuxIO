@@ -1,11 +1,11 @@
 package wireguard
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +50,7 @@ func ListInterfaces(ctx context.Context) (any, error) {
 		}
 
 		status := "Inactive"
-		if isInterfaceUp(name) {
+		if isInterfaceUpFunc(name) {
 			status = "Active"
 		}
 
@@ -86,6 +86,15 @@ type peerRuntimeStats struct {
 	RxBps             float64
 	TxBps             float64
 }
+
+var (
+	getDefaultGatewayIPv4Func      = getDefaultGatewayIPv4
+	getGatewayForInterfaceIPv4Func = getGatewayForInterfaceIPv4
+	getPublicIPFunc                = getPublicIP
+	runWGQuickCommand              = runWGQuick
+	syncWireGuardConfigFunc        = syncWireGuardConfig
+	isInterfaceUpFunc              = isInterfaceUp
+)
 
 func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addInterfaceRequest, error) {
 	if req.Name == "" || req.Addresses == "" || req.ListenPort == "" || req.EgressNic == "" {
@@ -132,7 +141,7 @@ func resolveInterfacePeers(req addInterfaceRequest) ([]PeerConfig, error) {
 }
 
 func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []PeerConfig) WireGuardConfig {
-	return WireGuardConfig{
+	cfg := WireGuardConfig{
 		PrivateKey: privateKey,
 		Address:    req.addresses,
 		ListenPort: req.listenPort,
@@ -140,15 +149,17 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 		MTU:        req.mtu,
 		Peers:      peers,
 	}
+	addNATHooks(&cfg, req.egressNic, req.addresses[0])
+	return cfg
 }
 
 func readInterfaceEndpointInfo(logPrefix, egressNic string) (string, string) {
-	publicIP, _ := getPublicIP()
+	publicIP, _ := getPublicIPFunc()
 	if publicIP == "" {
 		slog.Warn("public IP lookup returned empty string", "operation", logPrefix)
 	}
 
-	gatewayDNS, _ := getGatewayForInterfaceIPv4(egressNic)
+	gatewayDNS, _ := getGatewayForInterfaceIPv4Func(egressNic)
 	if gatewayDNS == "" {
 		slog.Debug("no gateway DNS found for interface", "operation", logPrefix, "interface", egressNic)
 	}
@@ -187,26 +198,83 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardCo
 	return nil
 }
 
-func bringUpInterfaceWithNAT(ctx context.Context, name, egressNic, subnet string) error {
-	if _, err := UpInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
+func bringUpInterface(ctx context.Context, name string) error {
+	out, err := runWGQuickCommand(ctx, "up", name)
+	if err != nil {
+		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", out)
+		return fmt.Errorf("bring up interface: %w", err)
+	}
+	return nil
+}
+
+func syncRunningInterface(ctx context.Context, name string) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if !isInterfaceUpFunc(name) {
+		return nil
+	}
 
-	backendName, err := SetupNAT(ctx, name, egressNic, subnet)
+	out, err := syncWireGuardConfigFunc(ctx, name)
 	if err != nil {
-		if _, downErr := DownInterface(ctx, apischema.NameRequest{Name: name}); downErr != nil {
-			slog.Warn("failed to bring down interface after NAT failure",
-				"interface", name,
-				"error", downErr)
-		}
-		return fmt.Errorf("setup NAT: %w", err)
+		slog.Error("failed to sync WireGuard interface config", "interface", name, "error", err, "output", out)
+		return fmt.Errorf("sync config: %w", err)
 	}
-
-	if err := SaveNATConfig(name, egressNic, subnet, backendName); err != nil {
-		slog.Warn("failed to save NAT config", "interface", name, "error", err)
-	}
-
+	slog.Info("synced WireGuard interface from config", "interface", name)
 	return nil
+}
+
+func runWGQuick(ctx context.Context, action, name string) (string, error) {
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return "", fmt.Errorf("wg-quick not found: %w", err)
+	}
+
+	cmd := rootCommand(ctx, wgQuickPath, action, name)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), utils.CommandOutputError("wg-quick", []string{action, name}, out, err)
+	}
+	return string(out), nil
+}
+
+func syncWireGuardConfig(ctx context.Context, name string) (string, error) {
+	wgQuickPath, err := exec.LookPath("wg-quick")
+	if err != nil {
+		return "", fmt.Errorf("wg-quick not found: %w", err)
+	}
+
+	stripCmd := rootCommand(ctx, wgQuickPath, "strip", name)
+	var stripErr bytes.Buffer
+	stripCmd.Stderr = &stripErr
+	stripped, err := stripCmd.Output()
+	if err != nil {
+		out := append(stripped, stripErr.Bytes()...)
+		return string(out), utils.CommandOutputError("wg-quick", []string{"strip", name}, out, err)
+	}
+
+	wgPath, err := exec.LookPath("wg")
+	if err != nil {
+		return "", fmt.Errorf("wg not found: %w", err)
+	}
+
+	cmd := rootCommand(ctx, wgPath, "syncconf", name, "/dev/stdin")
+	cmd.Stdin = bytes.NewReader(stripped)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), utils.CommandOutputError("wg", []string{"syncconf", name, "/dev/stdin"}, out, err)
+	}
+	return string(out), nil
+}
+
+func rootCommand(ctx context.Context, path string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+	return cmd
 }
 
 func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
@@ -239,19 +307,19 @@ func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
 }
 
 func exportAddedPeer(interfaceName string, peer PeerConfig, cfg WireGuardConfig) error {
-	publicIP, _ := getPublicIP()
+	publicIP, _ := getPublicIPFunc()
 	if publicIP == "" {
 		slog.Warn("AddPeer: public IP lookup returned empty string")
 	}
 
-	gatewayDNS, _ := getDefaultGatewayIPv4()
+	gatewayDNS, _ := getDefaultGatewayIPv4Func()
 	if gatewayDNS == "" {
 		slog.Debug("AddPeer: no default gateway DNS found (optional - will use interface DNS if configured)")
 	}
 
 	cfgWithPeer := cfg
 	cfgWithPeer.Peers = append(cfgWithPeer.Peers, peer)
-	peerNumber := parseOptionalIntString(peer.Name[4:], 0)
+	peerNumber := parseOptionalIntString(strings.TrimPrefix(peer.Name, "Peer"), 0)
 	_, err := ExportPeerConfig(interfaceName, peer, cfgWithPeer, publicIP, peerNumber, gatewayDNS)
 	if err != nil {
 		return fmt.Errorf("export peer config: %w", err)
@@ -273,54 +341,6 @@ func writePeerConfig(interfaceName string, cfg WireGuardConfig, peer PeerConfig)
 	return nil
 }
 
-func applyPeerToRunningInterface(ctx context.Context, interfaceName string, peer PeerConfig) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if !isInterfaceUp(interfaceName) {
-		return nil
-	}
-
-	pubKey, err := wgtypes.ParseKey(peer.PublicKey)
-	if err != nil {
-		return fmt.Errorf("parse public key: %w", err)
-	}
-
-	allowedIPs := make([]net.IPNet, 0, len(peer.AllowedIPs))
-	for _, ipStr := range peer.AllowedIPs {
-		_, ipNet, parseErr := net.ParseCIDR(ipStr)
-		if parseErr != nil {
-			slog.Warn("failed to parse peer allowed IP", "interface", interfaceName, "path", ipStr, "error", parseErr)
-			continue
-		}
-		allowedIPs = append(allowedIPs, *ipNet)
-	}
-
-	client, err := wgctrl.New()
-	if err != nil {
-		return fmt.Errorf("create wgctrl client: %w", err)
-	}
-	defer client.Close()
-
-	keepalive := time.Duration(peer.PersistentKeepalive) * time.Second
-	peerCfg := wgtypes.PeerConfig{
-		PublicKey:                   pubKey,
-		AllowedIPs:                  allowedIPs,
-		ReplaceAllowedIPs:           true,
-		PersistentKeepaliveInterval: &keepalive,
-	}
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{peerCfg},
-	}); err != nil {
-		return fmt.Errorf("configure device: %w", err)
-	}
-	return nil
-}
-
 func readPeerAllowedIP(interfaceName, peerName string) (string, string, error) {
 	peerPath := peerConfigPath(interfaceName, peerName)
 	iniFile, err := ini.Load(peerPath)
@@ -336,59 +356,20 @@ func readPeerAllowedIP(interfaceName, peerName string) (string, string, error) {
 	return peerPath, allowedIP, nil
 }
 
-func removePeerFromConfig(cfg WireGuardConfig, allowedIP string) (WireGuardConfig, string, bool) {
+func removePeerFromConfig(cfg WireGuardConfig, allowedIP string) (WireGuardConfig, bool) {
 	newPeers := make([]PeerConfig, 0, len(cfg.Peers))
-	var removedPeerPubKey string
 	found := false
 
 	for _, peer := range cfg.Peers {
 		if slices.Contains(peer.AllowedIPs, allowedIP) {
 			found = true
-			removedPeerPubKey = peer.PublicKey
 			continue
 		}
 		newPeers = append(newPeers, peer)
 	}
 
 	cfg.Peers = newPeers
-	return cfg, removedPeerPubKey, found
-}
-
-func removePeerFromRunningInterface(ctx context.Context, interfaceName, removedPeerPubKey string) {
-	if err := ctx.Err(); err != nil {
-		return
-	}
-	if !isInterfaceUp(interfaceName) || removedPeerPubKey == "" {
-		return
-	}
-
-	pubKey, err := wgtypes.ParseKey(removedPeerPubKey)
-	if err != nil {
-		slog.Warn("failed to parse removed peer public key", "interface", interfaceName, "error", err)
-		return
-	}
-
-	client, err := wgctrl.New()
-	if err != nil {
-		slog.Warn("failed to create wgctrl client for peer removal", "interface", interfaceName, "error", err)
-		return
-	}
-	defer client.Close()
-
-	peerCfg := wgtypes.PeerConfig{
-		PublicKey: pubKey,
-		Remove:    true,
-	}
-	if err := ctx.Err(); err != nil {
-		return
-	}
-	if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{peerCfg},
-	}); err != nil {
-		slog.Warn("failed to remove peer from running interface", "interface", interfaceName, "error", err)
-		return
-	}
-	slog.Info("removed peer from running interface", "interface", interfaceName)
+	return cfg, found
 }
 
 func loadExportedPeers(ctx context.Context, interfaceName string) ([]PeerInfo, error) {
@@ -488,23 +469,18 @@ func loadPeerRuntimeStats(interfaceName string) (map[string]peerRuntimeStats, er
 	for _, peer := range dev.Peers {
 		pub := peer.PublicKey.String()
 		rxBps, txBps := computeRates(interfaceName, pub, peer.ReceiveBytes, peer.TransmitBytes, now)
+		lastHandshakeUnix := peer.LastHandshakeTime.Unix()
+		if peer.LastHandshakeTime.IsZero() {
+			lastHandshakeUnix = 0
+		}
+
 		stats[pub] = peerRuntimeStats{
 			LastHandshake:     formatPeerHandshake(peer.LastHandshakeTime),
-			LastHandshakeUnix: peer.LastHandshakeTime.Unix(),
+			LastHandshakeUnix: lastHandshakeUnix,
 			RxBytes:           peer.ReceiveBytes,
 			TxBytes:           peer.TransmitBytes,
 			RxBps:             rxBps,
 			TxBps:             txBps,
-		}
-		if peer.LastHandshakeTime.IsZero() {
-			stats[pub] = peerRuntimeStats{
-				LastHandshake:     "never",
-				LastHandshakeUnix: 0,
-				RxBytes:           peer.ReceiveBytes,
-				TxBytes:           peer.TransmitBytes,
-				RxBps:             rxBps,
-				TxBps:             txBps,
-			}
 		}
 	}
 
@@ -559,7 +535,7 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		return nil, err
 	}
 
-	// Write main config (without PostUp/PostDown - we manage NAT programmatically)
+	// Write main config, including wg-quick NAT hooks for boot persistence.
 	if err := WriteWireGuardConfig(configPath(req.name), cfg); err != nil {
 		slog.Error("failed to write WireGuard interface config", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("write config: %w", err)
@@ -569,8 +545,7 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		return nil, fmt.Errorf("save interface DNS: %w", err)
 	}
 
-	subnet := req.addresses[0]
-	if err := bringUpInterfaceWithNAT(ctx, req.name, req.egressNic, subnet); err != nil {
+	if err := bringUpInterface(ctx, req.name); err != nil {
 		slog.Error("failed to set up WireGuard interface", "interface", req.name, "error", err)
 		return nil, err
 	}
@@ -597,26 +572,14 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	}
 	slog.Info("removing WireGuard interface", "interface", name)
 
-	// Cleanup NAT rules before bringing down the interface
-	if natCfg, err := LoadNATConfig(name); err != nil {
-		slog.Warn("failed to load NAT config", "interface", name, "error", err)
-	} else if natCfg != nil {
-		if err := CleanupNAT(ctx, name, natCfg.EgressNic, natCfg.Subnet, natCfg.Backend); err != nil {
-			slog.Warn("failed to clean up NAT", "interface", name, "error", err)
-		}
-		if err := RemoveNATConfig(name); err != nil {
-			slog.Warn("failed to remove NAT config", "interface", name, "error", err)
-		}
-	}
-	if err := RemoveInterfaceDNS(name); err != nil {
-		slog.Warn("failed to remove interface DNS metadata", "interface", name, "error", err)
-	}
-
 	// Best-effort: bring it down, but don't abort on failure.
 	if _, err := DownInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
 		slog.Warn("failed to bring down interface before removal", "interface", name, "error", err)
 	} else {
 		slog.Info("interface brought down before removal", "interface", name)
+	}
+	if err := RemoveInterfaceDNS(name); err != nil {
+		slog.Warn("failed to remove interface DNS metadata", "interface", name, "error", err)
 	}
 
 	// Remove config file
@@ -684,13 +647,13 @@ func AddPeer(ctx context.Context, req apischema.InterfaceNameRequest) (any, erro
 		return nil, err
 	}
 
-	if err := applyPeerToRunningInterface(ctx, interfaceName, peer); err != nil {
-		slog.Error("failed to apply peer to running interface", "interface", interfaceName, "peer", peer.Name, "error", err)
+	if err := syncRunningInterface(ctx, interfaceName); err != nil {
+		slog.Error("failed to sync running interface after adding peer", "interface", interfaceName, "peer", peer.Name, "error", err)
 		return nil, err
 	}
 
-	if isInterfaceUp(interfaceName) {
-		slog.Info("peer dynamically added to running interface", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
+	if isInterfaceUpFunc(interfaceName) {
+		slog.Info("peer added and synced to running interface", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
 	} else {
 		slog.Info("peer added to interface config", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
 	}
@@ -732,7 +695,7 @@ func RemovePeerByName(ctx context.Context, req apischema.InterfaceNamePeerNameRe
 		return nil, fmt.Errorf("read main config: %w", err)
 	}
 
-	cfg, removedPeerPubKey, found := removePeerFromConfig(cfg, allowedIP)
+	cfg, found := removePeerFromConfig(cfg, allowedIP)
 	if !found {
 		slog.Error("peer allowed IP not found in interface config", "interface", interfaceName, "path", allowedIP)
 		return nil, fmt.Errorf("peer not found with IP %s", allowedIP)
@@ -744,14 +707,18 @@ func RemovePeerByName(ctx context.Context, req apischema.InterfaceNamePeerNameRe
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 
-	removePeerFromRunningInterface(ctx, interfaceName, removedPeerPubKey)
-
 	// Remove peer config file
 	if err := os.Remove(peerPath); err != nil && !os.IsNotExist(err) {
 		slog.Warn("failed to remove peer config file", "interface", interfaceName, "peer", peerName, "path", peerPath, "error", err)
 	} else {
 		slog.Info("removed peer config file", "interface", interfaceName, "peer", peerName, "path", peerPath)
 	}
+
+	if err := syncRunningInterface(ctx, interfaceName); err != nil {
+		slog.Error("failed to sync running interface after removing peer", "interface", interfaceName, "peer", peerName, "error", err)
+		return nil, err
+	}
+
 	slog.Info("WireGuard peer removed", "interface", interfaceName, "peer", peerName)
 	return "removed", nil
 }
@@ -798,30 +765,16 @@ func UpInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	wgQuickPath, err := exec.LookPath("wg-quick")
+	out, err := runWGQuickCommand(ctx, "up", name)
 	if err != nil {
-		return nil, fmt.Errorf("wg-quick not found: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, wgQuickPath, "up", name)
-
-	// Ensure real/effective/saved IDs are 0 in the child
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", out)
+		return nil, fmt.Errorf("bring up interface: %w", err)
 	}
 
-	// predictable env
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-	cmd.Dir = "/"
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", string(out))
-		return nil, fmt.Errorf("bring up interface: %w", utils.CommandOutputError("wg-quick", []string{"up", name}, out, err))
-	}
 	slog.Info("WireGuard interface brought up", "interface", name)
 	return map[string]any{
 		"status": "on",
-		"output": string(out),
+		"output": out,
 	}, nil
 }
 
@@ -836,30 +789,15 @@ func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) 
 		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	wgQuickPath, err := exec.LookPath("wg-quick")
+	out, err := runWGQuickCommand(ctx, "down", name)
 	if err != nil {
-		return nil, fmt.Errorf("wg-quick not found: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, wgQuickPath, "down", name)
-
-	// Ensure real/effective/saved IDs are 0 in the child
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
-	}
-
-	// predictable env
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-	cmd.Dir = "/"
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", string(out))
-		return nil, fmt.Errorf("bring down interface: %w", utils.CommandOutputError("wg-quick", []string{"down", name}, out, err))
+		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", out)
+		return nil, fmt.Errorf("bring down interface: %w", err)
 	}
 	slog.Info("WireGuard interface brought down", "interface", name)
 	return map[string]any{
 		"status": "off",
-		"output": string(out),
+		"output": out,
 	}, nil
 }
 
@@ -925,7 +863,10 @@ func PeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerName
 		return nil, fmt.Errorf("read peer config: %w", err)
 	}
 	slog.Info("served peer config download", "path", peerPath, "size", len(data))
-	return map[string]string{"config": string(data)}, nil
+	return apischema.PeerConfigDownload{
+		Content:  string(data),
+		Filename: req.PeerName + configExt,
+	}, nil
 }
 
 func EnableInterface(ctx context.Context, req apischema.NameRequest) (any, error) {

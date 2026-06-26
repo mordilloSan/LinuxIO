@@ -1,12 +1,13 @@
-import type {
-  FileExtractRequest,
-  SourceDestinationRequest,
-  Stream,
-} from "@/api";
+import type { FileExtractRequest, Stream } from "@/api";
 
-export type CopyMoveStartOptions = SourceDestinationRequest & {
+// A copy/move operates on a whole selection in one batch job. `destination` is
+// the target directory; each source keeps its basename.
+export interface CopyMoveStartOptions {
+  sources: string[];
+  destination: string;
+  overwrite?: boolean;
   onComplete?: () => void;
-};
+}
 
 export type ExtractionStartOptions = FileExtractRequest & {
   onComplete?: () => void;

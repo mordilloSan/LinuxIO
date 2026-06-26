@@ -32,9 +32,14 @@ func ListImages(ctx context.Context) (any, error) {
 		return imageItems[i].Created > imageItems[j].Created
 	})
 
+	updateStatus := readUpdateStatusSnapshot()
 	result := make([]apischema.DockerImage, 0, len(imageItems))
 	for _, item := range imageItems {
-		result = append(result, dockerImageFromSummary(item))
+		img := dockerImageFromSummary(item)
+		if status, ok := updateStatus.forImage(item); ok {
+			img.UpdateAvailable = new(status.UpdateAvailable)
+		}
+		result = append(result, img)
 	}
 	return result, nil
 }
@@ -51,9 +56,6 @@ func dockerImageFromSummary(item image.Summary) apischema.DockerImage {
 	if item.Containers >= 0 {
 		containers := int(item.Containers)
 		result.Containers = &containers
-	}
-	if status, ok := imageUpdateStatusForImage(item); ok {
-		result.UpdateAvailable = new(status.UpdateAvailable)
 	}
 	return result
 }

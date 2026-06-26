@@ -133,6 +133,15 @@ export function useUploadJobs(
           unbind();
           streamRefsRef.current.delete(uploadId);
           activeFileTransferJobIdsRef.current.delete(job.id);
+          // Free the bridge job slot when abandoning an incomplete upload. On a
+          // stream error/early close the bridge parks the job in
+          // `waiting_for_client` (to allow resume) rather than failing it, so
+          // without an explicit cancel the job lingers and holds one of the
+          // limited per-user upload slots. (User-cancelled uploads are already
+          // cancelled by cancelUpload.)
+          if (!result.success && !result.cancelled) {
+            cancelBridgeJob(job.id);
+          }
           setUploads((prev) =>
             prev.map((u) =>
               u.id === uploadId ? { ...u, stream: null, jobId: undefined } : u,

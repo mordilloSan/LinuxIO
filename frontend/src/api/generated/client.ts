@@ -230,6 +230,11 @@ const linuxio = {
     chmod: createEndpoint("filebrowser", "chmod", { kind: "object" }),
     compress: createEndpoint("filebrowser", "compress", { kind: "object" }),
     copy: createEndpoint("filebrowser", "copy", { kind: "object" }),
+    copy_batch: createEndpoint("filebrowser", "copy_batch", { kind: "object" }),
+    delete_batch: createEndpoint("filebrowser", "delete_batch", {
+      kind: "field",
+      field: "paths",
+    }),
     dir_size: createEndpoint("filebrowser", "dir_size", {
       kind: "field",
       field: "path",
@@ -244,6 +249,7 @@ const linuxio = {
       kind: "none",
     }),
     move: createEndpoint("filebrowser", "move", { kind: "object" }),
+    move_batch: createEndpoint("filebrowser", "move_batch", { kind: "object" }),
     resource_delete: createEndpoint("filebrowser", "resource_delete", {
       kind: "field",
       field: "path",

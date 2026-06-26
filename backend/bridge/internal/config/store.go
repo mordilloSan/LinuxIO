@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 const lockFilePerm = 0o600
@@ -174,52 +174,13 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 }
 
 func withExclusiveConfigLock(ctx context.Context, lockPath string, fn func() error) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	lockFile, err := openConfigLockFile(lockPath)
-	if err != nil {
-		return err
-	}
-
-	if ctx.Err() != nil {
-		closeErr := lockFile.Close()
-		return errors.Join(ctx.Err(), closeErr)
-	}
-	// syscall.Flock is not cancellable once entered.
-	if err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		closeErr := lockFile.Close()
-		return errors.Join(fmt.Errorf("lock config: %w", err), closeErr)
-	}
-
-	if ctx.Err() != nil {
-		unlockErr := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-		closeErr := lockFile.Close()
-		return errors.Join(ctx.Err(), unlockErr, closeErr)
-	}
-	fnErr := fn()
-	unlockErr := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-	closeErr := lockFile.Close()
-	return errors.Join(fnErr, unlockErr, closeErr)
-}
-
-func openConfigLockFile(lockPath string) (*os.File, error) {
-	if strings.TrimSpace(lockPath) == "" {
-		return nil, errors.New("config lock path is empty")
-	}
-	if err := os.MkdirAll(filepath.Dir(lockPath), dirPerm); err != nil {
-		return nil, err
-	}
-
-	fd, err := syscall.Open(
+	return filelock.WithExclusive(
+		ctx,
 		lockPath,
-		syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW,
-		lockFilePerm,
+		fn,
+		filelock.WithPermissions(lockFilePerm),
+		filelock.WithDirPermissions(dirPerm),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("open config lock: %w", err)
-	}
-	return os.NewFile(uintptr(fd), lockPath), nil
 }
 
 // load returns the parsed Settings for `username` and the absolute config path.

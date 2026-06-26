@@ -196,10 +196,14 @@ func collectComposeServicePorts(ctr container.Summary) []string {
 }
 
 func finalizeComposeProjects(projects map[string]*apischema.ComposeProject) []*apischema.ComposeProject {
+	updateStatus := readUpdateStatusSnapshot()
 	result := make([]*apischema.ComposeProject, 0, len(projects))
 	for _, project := range projects {
 		if project.Containers == nil {
 			project.Containers = []apischema.ContainerInfo{}
+		}
+		for i := range project.Containers {
+			applyContainerUpdateStatus(&project.Containers[i], updateStatus)
 		}
 		project.Status = calculateProjectStatus(project)
 		project.UpdateAvailable = composeProjectUpdateAvailable(project)

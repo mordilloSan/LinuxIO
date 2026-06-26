@@ -6,11 +6,12 @@ import (
 
 // --- Constants ---
 const (
-	wgConfigDir      = "/etc/wireguard"
 	configExt        = ".conf"
 	defaultKeepalive = 25
 	minHostOffset    = 2 // Peers start at host offset 2 (offset 1 is reserved for server)
 )
+
+var wgConfigDir = "/etc/wireguard"
 
 // --- Types ---
 
@@ -30,6 +31,8 @@ type WireGuardConfig struct {
 	ListenPort int          `json:"listen_port"`
 	DNS        []string     `json:"dns"`
 	MTU        int          `json:"mtu"`
+	PostUp     []string     `json:"post_up"`
+	PostDown   []string     `json:"post_down"`
 	Peers      []PeerConfig `json:"peers"`
 }
 
@@ -58,11 +61,4 @@ type ipManager struct {
 	serverHost int
 	maskBits   int // subnet mask size (e.g., 24 for /24)
 	maxHost    int // maximum host number based on mask
-}
-
-// NATConfig stores NAT configuration for cleanup purposes
-type NATConfig struct {
-	EgressNic string `json:"egress_nic"`
-	Subnet    string `json:"subnet"`
-	Backend   string `json:"backend,omitempty"`
 }

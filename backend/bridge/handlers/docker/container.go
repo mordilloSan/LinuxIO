@@ -54,6 +54,7 @@ func ListContainers(ctx context.Context) (any, error) {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
+	updateStatus := readUpdateStatusSnapshot()
 	enriched := make([]apischema.ContainerInfo, 0, len(containers.Items))
 
 	for _, ctr := range containers.Items {
@@ -63,7 +64,9 @@ func ListContainers(ctx context.Context) (any, error) {
 		metrics := collectContainerMetrics(ctx, cli, ctr.ID)
 		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
 
-		enriched = append(enriched, containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL, proxyPort))
+		info := containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL, proxyPort)
+		applyContainerUpdateStatus(&info, updateStatus)
+		enriched = append(enriched, info)
 	}
 
 	// Docker's API does not guarantee a stable order across calls. Sort by
@@ -102,11 +105,6 @@ func containerInfoFromSummary(
 		State:           string(ctr.State),
 		Status:          ctr.Status,
 		URL:             utils.OptionalString(resolvedURL),
-	}
-	if status, ok := imageUpdateStatusForContainer(ctr.ID); ok {
-		info.UpdateAvailable = new(status.UpdateAvailable)
-		info.UpdateCheckedAt = new(status.CheckedAt.UnixMilli())
-		info.UpdateError = utils.OptionalString(status.Err)
 	}
 	return info
 }

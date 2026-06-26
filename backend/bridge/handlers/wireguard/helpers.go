@@ -363,31 +363,16 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 	}
 
 	peers := make([]PeerConfig, 0, count)
-	used := ipMgr.buildUsedIPMap(nil)
-
-	for i := range count {
-		// Find next available IP using ipManager's computed maxHost
-		var peerIP string
-		var hostOffset int
-		for offset := minHostOffset; offset <= ipMgr.maxHost; offset++ {
-			if !used[offset] {
-				peerIP = ipMgr.makeIP(offset)
-				hostOffset = offset
-				used[offset] = true
-				break
-			}
+	for i := 1; i <= count; i++ {
+		peerIP, hostOffset, err := ipMgr.findNextAvailable(peers)
+		if err != nil {
+			return nil, fmt.Errorf("allocate IP for peer %d: %w", i, err)
 		}
 
-		if peerIP == "" {
-			slog.Error("insufficient IPs for peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", fmt.Errorf("count=%d subnet=/%d", count, ipMgr.maskBits))
-			return nil, fmt.Errorf("insufficient IPs for %d peers in /%d subnet", count, ipMgr.maskBits)
-		}
-
-		// Generate keys
 		privKey, err := wgtypes.GeneratePrivateKey()
 		if err != nil {
 			slog.Error("failed to generate peer key", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", err)
-			return nil, fmt.Errorf("generate key for peer %d: %w", i+1, err)
+			return nil, fmt.Errorf("generate key for peer %d: %w", i, err)
 		}
 
 		peers = append(peers, PeerConfig{
@@ -398,7 +383,7 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 			Name:                fmt.Sprintf("Peer%d", hostOffset),
 		})
 	}
-	slog.Info("generated peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", fmt.Errorf("count=%d", count))
+	slog.Info("generated peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "count", count)
 	return peers, nil
 }
 

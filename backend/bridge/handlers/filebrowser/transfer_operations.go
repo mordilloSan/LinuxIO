@@ -39,6 +39,7 @@ type uploadTransferJob struct {
 	path         string
 	expectedSize int64
 	done         chan transferOutcome
+	activity     chan struct{}
 	finishOnce   sync.Once
 
 	mu       sync.Mutex
@@ -57,6 +58,7 @@ type downloadTransferJob struct {
 	fileName string
 	total    int64
 	done     chan transferOutcome
+	activity chan struct{}
 
 	finishOnce sync.Once
 	mu         sync.Mutex
@@ -73,6 +75,7 @@ type archiveTransferJob struct {
 	archiveName string
 	total       int64
 	done        chan transferOutcome
+	activity    chan struct{}
 	ready       chan struct{}
 
 	finishOnce  sync.Once
@@ -86,6 +89,56 @@ type archiveTransferJob struct {
 }
 
 var fileTransferJobs sync.Map
+
+// transferIdleTimeout bounds how long a transfer job may sit with no client
+// progress before it is abandoned. Uploads/downloads/archives park in
+// waiting_for_client on a stream error (so the client can resume) instead of
+// failing; without this backstop a client that never reconnects — tab closed,
+// crash, network loss — would hold a limited transfer job slot indefinitely.
+const transferIdleTimeout = 5 * time.Minute
+
+// signalActivity records forward progress on a transfer without blocking. The
+// activity channel is buffered (size 1) and coalesces: a full buffer already
+// means "progress happened since the last reset", so a dropped signal is fine.
+func signalActivity(activity chan struct{}) {
+	if activity == nil {
+		return
+	}
+	select {
+	case activity <- struct{}{}:
+	default:
+	}
+}
+
+// awaitTransferOutcome blocks until the transfer finishes, its context is
+// cancelled, or the client is idle past transferIdleTimeout. Every activity
+// signal resets the idle deadline, so transfers making progress are never
+// interrupted; only genuinely abandoned ones are cancelled (freeing the slot).
+func awaitTransferOutcome(ctx context.Context, done <-chan transferOutcome, activity <-chan struct{}, cancel func()) (any, error) {
+	timer := time.NewTimer(transferIdleTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case outcome := <-done:
+			return outcome.result, outcome.err
+		case <-ctx.Done():
+			cancel()
+			return nil, context.Canceled
+		case <-activity:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(transferIdleTimeout)
+		case <-timer.C:
+			slog.Warn("transfer abandoned by client; cancelling job", "idle_timeout", transferIdleTimeout)
+			cancel()
+			return nil, bridgejobs.NewError("transfer abandoned: client idle", 408)
+		}
+	}
+}
 
 func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, error) {
 	if req.TargetPath == "" || req.Size == "" {
@@ -150,18 +203,13 @@ func runUploadJob(ctx context.Context, job *bridgejobs.Job, req apischema.FileUp
 		path:         filepath.Clean(path),
 		expectedSize: expectedSize,
 		done:         make(chan transferOutcome, 1),
+		activity:     make(chan struct{}, 1),
 	}
 	fileTransferJobs.Store(job.ID(), transfer)
 	defer fileTransferJobs.Delete(job.ID())
 
 	transfer.reportProgress("waiting_for_client")
-	select {
-	case outcome := <-transfer.done:
-		return outcome.result, outcome.err
-	case <-ctx.Done():
-		transfer.cancel()
-		return nil, context.Canceled
-	}
+	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
 func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.PathRequest) (any, error) {
@@ -192,18 +240,13 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.Path
 		fileName: filepath.Base(path),
 		total:    stat.Size(),
 		done:     make(chan transferOutcome, 1),
+		activity: make(chan struct{}, 1),
 	}
 	fileTransferJobs.Store(job.ID(), transfer)
 	defer fileTransferJobs.Delete(job.ID())
 
 	transfer.reportProgress("waiting_for_client")
-	select {
-	case outcome := <-transfer.done:
-		return outcome.result, outcome.err
-	case <-ctx.Done():
-		transfer.cancel()
-		return nil, context.Canceled
-	}
+	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
 func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
@@ -230,6 +273,7 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserS
 		archiveName: archiveNameForPaths(paths, extension),
 		total:       computeArchiveSize(paths),
 		done:        make(chan transferOutcome, 1),
+		activity:    make(chan struct{}, 1),
 		ready:       make(chan struct{}),
 	}
 	fileTransferJobs.Store(job.ID(), transfer)
@@ -270,13 +314,7 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserS
 	transfer.setReady(stat.Size())
 	transfer.reportProgress("waiting_for_client")
 
-	select {
-	case outcome := <-transfer.done:
-		return outcome.result, outcome.err
-	case <-ctx.Done():
-		transfer.cancel()
-		return nil, context.Canceled
-	}
+	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
 func attachFileTransferData(ctx context.Context, job *bridgejobs.Job, stream net.Conn, request any) error {
@@ -455,6 +493,7 @@ func (t *uploadTransferJob) beginAttach(stream net.Conn, offset int64) error {
 	}
 	t.attached = true
 	t.active = stream
+	signalActivity(t.activity)
 	return nil
 }
 
@@ -518,6 +557,7 @@ func (t *uploadTransferJob) writeUploadChunk(stream net.Conn, file *os.File, pay
 	bytes := t.bytes
 	total := t.expectedSize
 	t.mu.Unlock()
+	signalActivity(t.activity)
 
 	if total >= 0 && bytes > total {
 		return t.fail(stream, fmt.Sprintf("size mismatch: expected %d, got at least %d", total, bytes), 400, fmt.Errorf("size mismatch"))
@@ -708,6 +748,7 @@ func (t *downloadTransferJob) beginAttach(stream net.Conn, offset int64) error {
 	t.bytes = offset
 	t.attached = true
 	t.active = stream
+	signalActivity(t.activity)
 	return nil
 }
 
@@ -741,6 +782,7 @@ func (t *downloadTransferJob) streamChunks(stream net.Conn, file io.Reader) erro
 			bytes := t.bytes
 			total := t.total
 			t.mu.Unlock()
+			signalActivity(t.activity)
 
 			if progressGate.ShouldReport(bytes, total) {
 				t.writeProgress(stream, "streaming")
@@ -881,6 +923,7 @@ func (t *archiveTransferJob) beginAttach(stream net.Conn, offset int64) error {
 	t.bytes = offset
 	t.attached = true
 	t.active = stream
+	signalActivity(t.activity)
 	return nil
 }
 
@@ -914,6 +957,7 @@ func (t *archiveTransferJob) streamChunks(stream net.Conn, file io.Reader) error
 			bytes := t.bytes
 			total := t.archiveSize
 			t.mu.Unlock()
+			signalActivity(t.activity)
 
 			if progressGate.ShouldReport(bytes, total) {
 				t.writeProgress(stream, "streaming")
