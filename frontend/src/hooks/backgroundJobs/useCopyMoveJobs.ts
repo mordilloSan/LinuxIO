@@ -19,6 +19,17 @@ import {
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
+// batchLabelBase summarizes a multi-selection for a single navbar entry:
+// the item's name when there is one, otherwise "<n> items".
+function batchLabelBase(sources: string[]): string {
+  if (sources.length === 1) {
+    const trimmed = sources[0].replace(/\/+$/, "");
+    const parts = trimmed.split("/");
+    return parts[parts.length - 1] || "item";
+  }
+  return `${sources.length} items`;
+}
+
 export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
   const [copies, setCopies] = useState<Copy[]>([]);
   const [moves, setMoves] = useState<Move[]>([]);
@@ -56,8 +67,13 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
   );
 
   const startCopy = useCallback(
-    async ({ source, destination, onComplete }: CopyMoveStartOptions) => {
-      if (!source || !destination) {
+    async ({
+      sources,
+      destination,
+      overwrite,
+      onComplete,
+    }: CopyMoveStartOptions) => {
+      if (!sources.length || !destination) {
         throw new Error("Invalid copy parameters");
       }
 
@@ -66,15 +82,20 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
         return;
       }
 
-      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COPY, {
-        source,
+      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_COPY_BATCH, {
+        sources,
         destination,
       });
       pendingLocalJobKeysRef.current.add(pendingKey);
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.copy({ source, destination });
+        // One bridge job copies the whole selection server-side.
+        job = await linuxio.filebrowser.copy_batch({
+          sources,
+          destination,
+          overwrite,
+        });
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start copy",
@@ -85,18 +106,12 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
 
       const id = job.id;
       const abortController = new AbortController();
-
-      const deriveLabelBase = () => {
-        const trimmed = source.replace(/\/+$/, "");
-        const parts = trimmed.split("/");
-        return parts[parts.length - 1] || "item";
-      };
-      const labelBase = deriveLabelBase();
+      const labelBase = batchLabelBase(sources);
 
       const copy: Copy = {
         id,
         type: "copy",
-        source,
+        source: sources[0],
         destination,
         progress: 0,
         label: `Copying ${labelBase} (0%)`,
@@ -112,7 +127,11 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
 
       const getSpeed = createProgressSpeedCalculator();
 
-      void runStreamResult<void, ProgressFrame>({
+      // Resolve when the copy actually completes (or fails), not when the job
+      // merely starts — callers await this to know the operation finished and
+      // to pace sequential bulk copies. The job is still registered in the
+      // navbar above, so the UI stays non-blocking.
+      return runStreamResult<void, ProgressFrame>({
         open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
@@ -193,8 +212,13 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
   );
 
   const startMove = useCallback(
-    async ({ source, destination, onComplete }: CopyMoveStartOptions) => {
-      if (!source || !destination) {
+    async ({
+      sources,
+      destination,
+      overwrite,
+      onComplete,
+    }: CopyMoveStartOptions) => {
+      if (!sources.length || !destination) {
         throw new Error("Invalid move parameters");
       }
 
@@ -203,15 +227,20 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
         return;
       }
 
-      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_MOVE, {
-        source,
+      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_MOVE_BATCH, {
+        sources,
         destination,
       });
       pendingLocalJobKeysRef.current.add(pendingKey);
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.move({ source, destination });
+        // One bridge job moves the whole selection server-side.
+        job = await linuxio.filebrowser.move_batch({
+          sources,
+          destination,
+          overwrite,
+        });
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to start move",
@@ -222,18 +251,12 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
 
       const id = job.id;
       const abortController = new AbortController();
-
-      const deriveLabelBase = () => {
-        const trimmed = source.replace(/\/+$/, "");
-        const parts = trimmed.split("/");
-        return parts[parts.length - 1] || "item";
-      };
-      const labelBase = deriveLabelBase();
+      const labelBase = batchLabelBase(sources);
 
       const move: Move = {
         id,
         type: "move",
-        source,
+        source: sources[0],
         destination,
         progress: 0,
         label: `Moving ${labelBase} (0%)`,
@@ -249,7 +272,11 @@ export function useCopyMoveJobs(runtime: BackgroundJobRuntime) {
 
       const getSpeed = createProgressSpeedCalculator();
 
-      void runStreamResult<void, ProgressFrame>({
+      // Resolve when the move actually completes (or fails), not when the job
+      // merely starts — the cut/paste handler clears the clipboard only after
+      // this resolves, and bulk moves pace off it. The job is still registered
+      // in the navbar above, so the UI stays non-blocking.
+      return runStreamResult<void, ProgressFrame>({
         open: () => openJobAttachStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",

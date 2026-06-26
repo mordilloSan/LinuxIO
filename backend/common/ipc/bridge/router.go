@@ -93,11 +93,16 @@ type JobPolicy struct {
 
 var (
 	ActionDefault = JobPolicy{
-		Name:                    "action_default",
-		MaxActivePerRoute:       4,
-		MaxActivePerOwnerRoute:  1,
-		QueueLimit:              16,
-		StartRatePerMinuteOwner: 10,
+		Name:                   "action_default",
+		MaxActivePerRoute:      4,
+		MaxActivePerOwnerRoute: 1,
+		QueueLimit:             16,
+		// StartRatePerMinuteOwner is 0 (disabled): copy/move/delete and other
+		// action jobs are user-initiated with one job per item, so a per-minute
+		// start cap rejected large multi-selections mid-batch. The frontend
+		// runs these sequentially and MaxActivePerOwnerRoute=1 still serializes
+		// execution, so there is no runaway-job risk.
+		StartRatePerMinuteOwner: 0,
 		Timeout:                 120 * time.Minute,
 	}
 	SingletonSystem = JobPolicy{
@@ -109,11 +114,15 @@ var (
 		DuplicateActiveReject:   true,
 	}
 	StreamDefault = JobPolicy{
-		Name:                    "stream_default",
-		MaxActivePerRoute:       64,
-		MaxActivePerOwnerRoute:  8,
-		QueueLimit:              0,
-		StartRatePerMinuteOwner: 30,
+		Name:                   "stream_default",
+		MaxActivePerRoute:      64,
+		MaxActivePerOwnerRoute: 8,
+		QueueLimit:             0,
+		// StartRatePerMinuteOwner is 0 (disabled): file transfers are
+		// user-initiated with one job per file, so a per-minute start cap
+		// rejected large folder uploads mid-batch. Concurrency is still
+		// bounded by MaxActivePerRoute / MaxActivePerOwnerRoute.
+		StartRatePerMinuteOwner: 0,
 	}
 )
 

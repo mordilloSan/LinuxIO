@@ -37,6 +37,12 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
 - Bridge should mostly read the JSON artifact and display update status.
 
+14 - Filebrowser batch operations follow-ups (see docs/filebrowser-batch-operations.md):
+- Batch uploads: copy/move/delete now run as one batch job, but upload is still one-job-per-file. Add a multi-file stream framing protocol so a folder uploads over a single job/stream (main remaining upgrade).
+- Post-reload listing refresh: add batch (and pre-existing single) copy/move/delete job types to INVALIDATIONS_BY_JOB_TYPE so a job finishing after a page reload refreshes the listing.
+- Remove dead single routes: filebrowser.copy/move/resource_delete + runCopyJob/runMoveJob/resourceDelete handlers + their recovery cases are no longer called by the frontend.
+- Optional: auto-rename on collision for batch copy ("name (copy)") instead of skip-and-report, if best-effort behavior proves annoying.
+
 Implement virtual on logs and filebrowser.... DONE
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it

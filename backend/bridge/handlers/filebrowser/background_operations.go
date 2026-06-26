@@ -236,6 +236,24 @@ func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgejobs.ActionDefault,
 		),
+		apischema.Runner[apischema.BatchTransferRequest, apischema.JobSnapshot]("filebrowser.copy_batch").Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.BatchTransferRequest) (any, error) {
+				return runCopyBatchJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner[apischema.BatchTransferRequest, apischema.JobSnapshot]("filebrowser.move_batch").Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.BatchTransferRequest) (any, error) {
+				return runMoveBatchJob(ctx, job, store, req)
+			},
+			bridgejobs.ActionDefault,
+		),
+		apischema.Runner[apischema.BatchPathRequest, apischema.JobSnapshot]("filebrowser.delete_batch").Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.BatchPathRequest) (any, error) {
+				return runDeleteBatchJob(ctx, job, req)
+			},
+			bridgejobs.ActionDefault,
+		),
 		apischema.Runner[apischema.OptionalPathRequest, apischema.JobSnapshot]("filebrowser.index").Run(runIndexerJob, bridgejobs.SingletonSystem),
 		apischema.Runner[apischema.FileUploadRequest, apischema.JobSnapshot](routeUpload).Run(runUploadJob, bridgejobs.StreamDefault),
 		apischema.Runner[apischema.PathRequest, apischema.JobSnapshot](routeDownload).Run(runDownloadJob, bridgejobs.StreamDefault),

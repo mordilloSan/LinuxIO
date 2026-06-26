@@ -180,6 +180,16 @@ export interface AvgStat {
   load15: number;
 }
 
+export interface BatchPathRequest {
+  paths: string[];
+}
+
+export interface BatchTransferRequest {
+  sources: string[];
+  destination: string;
+  overwrite?: boolean;
+}
+
 export interface BootIDRequest {
   bootId: string;
 }
@@ -2135,6 +2145,16 @@ export interface LinuxIOSchema {
       request: SourceDestinationRequest;
       result: JobSnapshot;
     };
+    copy_batch: {
+      input: [request: BatchTransferRequest];
+      request: BatchTransferRequest;
+      result: JobSnapshot;
+    };
+    delete_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: JobSnapshot;
+    };
     dir_size: {
       input: [path: string];
       request: PathRequest;
@@ -2159,6 +2179,11 @@ export interface LinuxIOSchema {
     move: {
       input: [request: SourceDestinationRequest];
       request: SourceDestinationRequest;
+      result: JobSnapshot;
+    };
+    move_batch: {
+      input: [request: BatchTransferRequest];
+      request: BatchTransferRequest;
       result: JobSnapshot;
     };
     resource_delete: {

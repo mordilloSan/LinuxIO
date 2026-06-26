@@ -271,6 +271,10 @@ export function useRecoveredJobs(
             }
             return `Deleting ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           }
+          case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
+            const processed = data?.processed ?? 0;
+            return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
+          }
           case JobTypes.JOB_TYPE_DOCKER_COMPOSE:
             return (
               data?.message ??
@@ -439,13 +443,22 @@ export function useRecoveredJobs(
           break;
         }
         case JobTypes.JOB_TYPE_FILE_COPY:
-        case JobTypes.JOB_TYPE_FILE_MOVE: {
-          const isMove = job.type === JobTypes.JOB_TYPE_FILE_MOVE;
+        case JobTypes.JOB_TYPE_FILE_COPY_BATCH:
+        case JobTypes.JOB_TYPE_FILE_MOVE:
+        case JobTypes.JOB_TYPE_FILE_MOVE_BATCH: {
+          const isMove =
+            job.type === JobTypes.JOB_TYPE_FILE_MOVE ||
+            job.type === JobTypes.JOB_TYPE_FILE_MOVE_BATCH;
           const activeIds = isMove ? activeMoveIdsRef : activeCopyIdsRef;
           if (activeIds.current.has(job.id)) return;
-          const source = requestString(request, "source") ?? "";
+          const batchSources = requestStringArray(request, "sources");
+          const source =
+            batchSources[0] ?? requestString(request, "source") ?? "";
           const destination = requestString(request, "destination") ?? "";
-          const labelBase = getName(source, "item");
+          const labelBase =
+            batchSources.length > 1
+              ? `${batchSources.length} items`
+              : getName(source, "item");
           activeIds.current.add(job.id);
           if (isMove) {
             setMoves((prev) => [
@@ -608,7 +621,8 @@ export function useRecoveredJobs(
         case JobTypes.JOB_TYPE_FILE_DOWNLOAD:
         case JobTypes.JOB_TYPE_FILE_ARCHIVE:
         case JobTypes.JOB_TYPE_FILE_CHMOD:
-        case JobTypes.JOB_TYPE_FILE_DELETE: {
+        case JobTypes.JOB_TYPE_FILE_DELETE:
+        case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
           if (activeFileTransferJobIdsRef.current.has(job.id)) {
             return;
           }

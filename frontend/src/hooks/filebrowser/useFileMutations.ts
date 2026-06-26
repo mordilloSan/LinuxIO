@@ -47,6 +47,13 @@ interface RenamePayload {
   from: string;
 }
 
+// Result returned by the batch copy/move/delete bridge jobs.
+interface BatchJobResult {
+  total?: number;
+  succeeded?: number;
+  failed?: { path: string; error: string }[];
+}
+
 export const useFileMutations = ({
   normalizedPath,
   queryClient: providedQueryClient,
@@ -105,15 +112,20 @@ export const useFileMutations = ({
 
   const { mutate: deleteItems } = useMutation({
     mutationFn: async (paths: string[]) => {
-      await Promise.all(
-        paths.map(async (path) => {
-          const job = await linuxio.filebrowser.resource_delete(path);
-          await runStreamResult({
-            open: () => openJobAttachStream(job.id),
-            closeMessage: "Delete job stream closed before completion",
-          });
-        }),
-      );
+      if (!paths.length) return;
+      // One batch job deletes the whole selection; the bridge loops
+      // server-side and reports per-item failures in the result.
+      const job = await linuxio.filebrowser.delete_batch(paths);
+      const result = await runStreamResult<BatchJobResult>({
+        open: () => openJobAttachStream(job.id),
+        closeMessage: "Delete job stream closed before completion",
+      });
+      const failed = result?.failed ?? [];
+      if (failed.length > 0) {
+        throw new Error(
+          `Failed to delete ${failed.length} item${failed.length === 1 ? "" : "s"}`,
+        );
+      }
     },
     onSuccess: () => {
       invalidateListing();
@@ -237,24 +249,13 @@ export const useFileMutations = ({
       if (!sourcePaths.length) {
         throw new Error("No paths provided");
       }
-      const cleanBase = (p: string) =>
-        (p.replace(/\/+$/, "").split("/").pop() || "").trim();
-
-      await Promise.all(
-        sourcePaths.map((sourcePath) => {
-          const fileName = cleanBase(sourcePath);
-          if (!fileName) {
-            throw new Error(`Invalid source path: "${sourcePath}"`);
-          }
-          const destination = joinPath(destinationDir, fileName);
-          // Use startCopy for progress tracking
-          return startCopy({
-            source: sourcePath,
-            destination,
-            onComplete: invalidateListing,
-          });
-        }),
-      );
+      // One batch job copies the whole selection into destinationDir; the
+      // bridge loops server-side and reports one aggregate progress bar.
+      await startCopy({
+        sources: sourcePaths,
+        destination: destinationDir,
+        onComplete: invalidateListing,
+      });
     },
     onError: (error: unknown) => {
       toast.error(getMutationErrorMessage(error, "Failed to copy items"));
@@ -266,24 +267,12 @@ export const useFileMutations = ({
       if (!sourcePaths.length) {
         throw new Error("No paths provided");
       }
-      const cleanBase = (p: string) =>
-        (p.replace(/\/+$/, "").split("/").pop() || "").trim();
-
-      await Promise.all(
-        sourcePaths.map((sourcePath) => {
-          const fileName = cleanBase(sourcePath);
-          if (!fileName) {
-            throw new Error(`Invalid source path: "${sourcePath}"`);
-          }
-          const destination = joinPath(destinationDir, fileName);
-          // Use startMove for progress tracking
-          return startMove({
-            source: sourcePath,
-            destination,
-            onComplete: invalidateListing,
-          });
-        }),
-      );
+      // One batch job moves the whole selection into destinationDir.
+      await startMove({
+        sources: sourcePaths,
+        destination: destinationDir,
+        onComplete: invalidateListing,
+      });
     },
     onError: (error: unknown) => {
       toast.error(getMutationErrorMessage(error, "Failed to move items"));
