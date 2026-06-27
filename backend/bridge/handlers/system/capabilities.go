@@ -79,6 +79,14 @@ var capabilityRegistry = []CapabilitySpec{
 		Install: &InstallSpec{PackageDebian: "lm-sensors", PackageRHEL: "lm_sensors"},
 	},
 	{
+		Name:    "memory_inventory",
+		LogName: "Memory module inventory",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(CheckMemoryModuleInventoryAvailability(ctx))
+		},
+		Install: &InstallSpec{PackageDebian: "dmidecode", PackageRHEL: "dmidecode"},
+	},
+	{
 		Name:    "smartmontools",
 		LogName: "smartmontools",
 		Detect: func(_ context.Context) (bool, string) {
@@ -231,6 +239,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "lm_sensors":
 		out.LMSensorsAvailable, out.LMSensorsError = ok, errPtr
+	case "memory_inventory":
+		out.MemoryInventoryAvailable, out.MemoryInventoryError = ok, errPtr
 	case "smartmontools":
 		out.SmartmontoolsAvailable, out.SmartmontoolsError = ok, errPtr
 	case "packagekit":

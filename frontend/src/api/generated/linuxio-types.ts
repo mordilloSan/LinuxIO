@@ -225,6 +225,7 @@ export interface CapabilitiesResponse {
   watchtower_available: boolean;
   indexer_available: boolean;
   lm_sensors_available: boolean;
+  memory_inventory_available: boolean;
   smartmontools_available: boolean;
   packagekit_available: boolean;
   nfs_client_available: boolean;
@@ -237,6 +238,7 @@ export interface CapabilitiesResponse {
   watchtower_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
+  memory_inventory_error?: string;
   smartmontools_error?: string;
   packagekit_error?: string;
   nfs_client_error?: string;
