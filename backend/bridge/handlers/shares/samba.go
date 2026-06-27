@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -15,7 +16,11 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 )
 
-const smbConfFile = "/etc/samba/smb.conf"
+const sambaServerInstallHint = "samba"
+
+// smbConfFile is a var so tests can point it at a temporary location;
+// production always uses the standard Samba path.
+var smbConfFile = "/etc/samba/smb.conf"
 
 // reservedSections are built-in smb.conf sections, not user file shares
 var reservedSections = map[string]bool{
@@ -35,7 +40,40 @@ var (
 	systemdReloadUnit = func(ctx context.Context, name string) error {
 		return systemd.ReloadUnit(ctx, name)
 	}
+	// sambaServerAvailable is the availability gate used by the create/update/
+	// delete preflights; overridable in tests. The capability registry calls
+	// CheckSambaServerAvailability directly.
+	sambaServerAvailable = CheckSambaServerAvailability
 )
+
+// CheckSambaServerAvailability reports whether the Samba server (smbd) is
+// installed. It backs both the share-management preflight and the system
+// capability registry entry for Samba.
+func CheckSambaServerAvailability() (bool, error) {
+	if _, err := findServerCommand("smbd"); err != nil {
+		return false, fmt.Errorf("smbd not found (install %s)", sambaServerInstallHint)
+	}
+	return true, nil
+}
+
+func requireSambaServerAvailability() error {
+	ok, err := sambaServerAvailable()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("samba server is unavailable")
+	}
+	return nil
+}
+
+func ensureSmbConfDir() error {
+	dir := filepath.Dir(smbConfFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", dir, err)
+	}
+	return nil
+}
 
 // ListSambaShares reads smb.conf and returns all user-defined shares
 func ListSambaShares(ctx context.Context) ([]apischema.SambaShare, error) {
@@ -81,6 +119,12 @@ func CreateSambaShare(ctx context.Context, name string, properties map[string]st
 		return fmt.Errorf("invalid share path: %s", path)
 	}
 
+	// Preflight before touching the filesystem so an uninstalled Samba returns a
+	// clear error and never leaves an orphan share directory behind.
+	if err := requireSambaServerAvailability(); err != nil {
+		return err
+	}
+
 	sections, err := parseSmbConf()
 	if err != nil {
 		return err
@@ -91,13 +135,17 @@ func CreateSambaShare(ctx context.Context, name string, properties map[string]st
 		}
 	}
 
+	if dirErr := ensureSmbConfDir(); dirErr != nil {
+		return dirErr
+	}
+
 	if dirErr := os.MkdirAll(path, 0755); dirErr != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, dirErr)
 	}
 
 	block := formatSambaSection(name, properties)
 
-	f, err := os.OpenFile(smbConfFile, os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(smbConfFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", smbConfFile, err)
 	}
@@ -125,6 +173,10 @@ func UpdateSambaShare(ctx context.Context, oldName, newName string, properties m
 	}
 	if !validExportPath.MatchString(path) {
 		return fmt.Errorf("invalid share path: %s", path)
+	}
+
+	if err := requireSambaServerAvailability(); err != nil {
+		return err
 	}
 
 	if !strings.EqualFold(oldName, newName) {
@@ -163,6 +215,10 @@ func UpdateSambaShare(ctx context.Context, oldName, newName string, properties m
 
 // DeleteSambaShare removes a share section from smb.conf and reloads samba
 func DeleteSambaShare(ctx context.Context, name string) error {
+	if err := requireSambaServerAvailability(); err != nil {
+		return err
+	}
+
 	content, err := os.ReadFile(smbConfFile)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", smbConfFile, err)

@@ -230,6 +230,7 @@ export interface CapabilitiesResponse {
   packagekit_available: boolean;
   nfs_client_available: boolean;
   nfs_server_available: boolean;
+  samba_server_available: boolean;
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
@@ -243,6 +244,7 @@ export interface CapabilitiesResponse {
   packagekit_error?: string;
   nfs_client_error?: string;
   nfs_server_error?: string;
+  samba_server_error?: string;
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
