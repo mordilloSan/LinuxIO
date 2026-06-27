@@ -39,19 +39,20 @@ type FailedAttemptBatch struct {
 	Latest    Login
 }
 
+type bootEvent struct {
+	Kind      string
+	StartedAt time.Time
+}
+
 var runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
 var readFile = os.ReadFile
 
-var weekdayTokens = map[string]bool{
-	"Mon": true, "Tue": true, "Wed": true,
-	"Thu": true, "Fri": true, "Sat": true, "Sun": true,
-}
-
 const (
 	btmpPath         = "/var/log/btmp"
+	wtmpPath         = "/var/log/wtmp"
 	currentLoginSkew = 2 * time.Second
 )
 
@@ -69,21 +70,25 @@ func FetchRecent(ctx context.Context, username string, limit int) ([]Login, erro
 		return nil, nil
 	}
 
+	return fetchSuccessfulLogins(ctx, username, limit)
+}
+
+func fetchSuccessfulLogins(ctx context.Context, username string, limit int) ([]Login, error) {
 	if logins, err := fetchWtmpdb(ctx, username, limit); err == nil {
 		return logins, nil
 	}
 
-	args := []string{"-F", "-w"}
-	if limit > 0 {
-		args = append(args, "-n", strconv.Itoa(limit))
+	if logins, err := fetchWtmp(ctx, username, limit); err == nil {
+		return logins, nil
 	}
-	args = append(args, username)
 
-	output, err := runCommand(ctx, "last", args...)
-	if err != nil {
-		return nil, err
+	// Both sources were unavailable. A cancelled/expired context is the one
+	// failure a caller must be able to tell apart from "no history"; anything
+	// else (missing wtmpdb, unreadable wtmp) degrades gracefully to empty.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
-	return ParseLastOutput(username, string(output)), nil
+	return nil, nil
 }
 
 func FetchRecentEvents(ctx context.Context, username string, limit int) ([]Login, error) {
@@ -183,15 +188,34 @@ func FetchFailedAttempts(ctx context.Context, username string, sessionStartedAt 
 }
 
 func FetchByUser(ctx context.Context) (map[string]Login, error) {
-	logins, err := fetchWtmpdb(ctx, "", 0)
+	logins, err := fetchSuccessfulLogins(ctx, "", 0)
 	if err != nil {
-		output, lastErr := runCommand(ctx, "last", "-F", "-w")
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		logins = ParseLastOutput("", string(output))
+		return nil, err
 	}
 	return firstLoginByUser(logins), nil
+}
+
+func fetchBootEvents(ctx context.Context, limit int) ([]bootEvent, error) {
+	data, err := readFile(wtmpPath)
+	if err != nil {
+		return nil, err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return parseWtmpBootEvents(data, limit), nil
+}
+
+func FetchPreviousUncleanBoot(ctx context.Context) (time.Time, bool, error) {
+	status, err := fetchWtmpdbPreviousBootStatus(ctx)
+	if err == nil && status.Found {
+		return status.StartedAt, status.Unclean, nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return time.Time{}, false, ctxErr
+	}
+
+	return fetchWtmpPreviousUncleanBoot(ctx)
 }
 
 func fetchFailedAttemptEvents(ctx context.Context, boundaryUsername, failedUsername string, sessionStartedAt time.Time, limit int) ([]Login, int64, int64, error) {
@@ -227,59 +251,6 @@ func fetchFailedAttemptEvents(ctx context.Context, boundaryUsername, failedUsern
 	return parseBtmpFailuresBetween(failedUsername, data, since, until, limit), since, until, nil
 }
 
-func ParseLastOutput(username, output string) []Login {
-	username = strings.TrimSpace(username)
-	logins := make([]Login, 0)
-
-	for line := range strings.SplitSeq(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" ||
-			strings.HasPrefix(line, "wtmp ") ||
-			strings.HasPrefix(line, "wtmpdb ") ||
-			strings.HasPrefix(line, "btmp ") {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 7 {
-			continue
-		}
-		if username != "" && fields[0] != username {
-			continue
-		}
-		if !isLoginUser(fields[0]) {
-			continue
-		}
-
-		timeStart := -1
-		for i := 2; i < len(fields); i++ {
-			if weekdayTokens[fields[i]] {
-				timeStart = i
-				break
-			}
-		}
-		if timeStart < 0 || len(fields) < timeStart+5 {
-			continue
-		}
-
-		terminal, source := splitTerminalAndSource(fields[1:timeStart])
-		timeText := normalizeLastTime(strings.Join(fields[timeStart:timeStart+5], " "))
-
-		login := Login{
-			Username:  fields[0],
-			Terminal:  terminal,
-			Source:    source,
-			Time:      timeText,
-			StartedAt: parseLastTime(timeText),
-			Status:    LoginStatusSuccess,
-		}
-		login.ID = StableLoginID(login)
-		logins = append(logins, login)
-	}
-
-	return logins
-}
-
 type wtmpdbOutput struct {
 	Entries []wtmpdbEntry `json:"entries"`
 }
@@ -289,6 +260,7 @@ type wtmpdbEntry struct {
 	TTY      string `json:"tty"`
 	Hostname string `json:"hostname"`
 	Login    string `json:"login"`
+	Logout   string `json:"logout"`
 }
 
 func fetchWtmpdb(ctx context.Context, username string, limit int) ([]Login, error) {
@@ -340,6 +312,175 @@ func ParseWtmpdbOutput(username string, output []byte) ([]Login, error) {
 	}
 
 	return logins, nil
+}
+
+type previousBootStatus struct {
+	StartedAt time.Time
+	Unclean   bool
+	Found     bool // wtmpdb returned a definitive answer for the previous boot
+}
+
+func fetchWtmpdbPreviousBootStatus(ctx context.Context) (previousBootStatus, error) {
+	output, err := runCommand(ctx, "wtmpdb", "last", "-j", "--time-format", "iso", "--system", "-n", "2", "shutdown", "reboot")
+	if err != nil {
+		return previousBootStatus{}, err
+	}
+	return parseWtmpdbPreviousBootStatus(output)
+}
+
+func parseWtmpdbPreviousBootStatus(output []byte) (previousBootStatus, error) {
+	var decoded wtmpdbOutput
+	if err := json.Unmarshal(output, &decoded); err != nil {
+		return previousBootStatus{}, err
+	}
+
+	foundCurrent := false
+	for _, entry := range decoded.Entries {
+		kind := strings.TrimSpace(entry.User)
+		if kind != "reboot" && kind != "shutdown" {
+			continue
+		}
+
+		if !foundCurrent {
+			// The most recent system event should be the current boot.
+			if kind != "reboot" {
+				return previousBootStatus{}, nil
+			}
+			foundCurrent = true
+			continue
+		}
+
+		// First system event preceding the current boot decides the verdict.
+		if kind == "shutdown" {
+			// Orderly shutdown before the current boot — clean.
+			return previousBootStatus{Found: true}, nil
+		}
+
+		// Previous boot with no shutdown between it and the current boot; its
+		// logout field marks whether that session ended cleanly.
+		startedAt := parseWtmpdbISOTime(entry.Login)
+		if startedAt.IsZero() {
+			return previousBootStatus{}, nil
+		}
+		return previousBootStatus{
+			StartedAt: startedAt,
+			Unclean:   isUnfinishedBootLogout(entry.Logout),
+			Found:     true,
+		}, nil
+	}
+	return previousBootStatus{}, nil
+}
+
+func parseWtmpdbISOTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{
+		"2006-01-02T15:04:05-0700",
+		time.RFC3339,
+	} {
+		t, err := time.Parse(layout, value)
+		if err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+func isUnfinishedBootLogout(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.Contains(value, "crash") || strings.Contains(value, "still running")
+}
+
+func fetchWtmp(ctx context.Context, username string, limit int) ([]Login, error) {
+	data, err := readFile(wtmpPath)
+	if err != nil {
+		return nil, err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return parseWtmpLogins(username, data, limit), nil
+}
+
+func fetchWtmpPreviousUncleanBoot(ctx context.Context) (time.Time, bool, error) {
+	events, err := fetchBootEvents(ctx, 2)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	startedAt, unclean := previousUncleanBootFromEvents(events)
+	return startedAt, unclean, nil
+}
+
+func previousUncleanBootFromEvents(events []bootEvent) (time.Time, bool) {
+	if len(events) < 2 || events[0].Kind != "reboot" || events[1].Kind != "reboot" {
+		return time.Time{}, false
+	}
+	return events[1].StartedAt, true
+}
+
+func parseWtmpLogins(username string, data []byte, limit int) []Login {
+	username = strings.TrimSpace(username)
+
+	recordCount := len(data) / btmpRecordSize
+	logins := make([]Login, 0)
+	for i := recordCount - 1; i >= 0; i-- {
+		record := data[i*btmpRecordSize : (i+1)*btmpRecordSize]
+		if utmpRecordType(record) != utmpUserProcess {
+			continue
+		}
+
+		recordUser := strings.TrimSpace(fixedCString(record[btmpUserOffset : btmpUserOffset+btmpUserSize]))
+		if !matchesLoginUser(recordUser, username) {
+			continue
+		}
+
+		recordTime := utmpRecordTime(record)
+		if recordTime <= 0 {
+			continue
+		}
+
+		startedAt := time.Unix(recordTime, 0)
+		login := Login{
+			Username:  recordUser,
+			Terminal:  strings.TrimSpace(fixedCString(record[btmpLineOffset : btmpLineOffset+btmpLineSize])),
+			Source:    strings.TrimSpace(fixedCString(record[btmpHostOffset : btmpHostOffset+btmpHostSize])),
+			Time:      formatLoginTime(startedAt),
+			StartedAt: startedAt,
+			Status:    LoginStatusSuccess,
+		}
+		login.ID = StableLoginID(login)
+		logins = append(logins, login)
+
+		if limit > 0 && len(logins) >= limit {
+			break
+		}
+	}
+	return logins
+}
+
+func parseWtmpBootEvents(data []byte, limit int) []bootEvent {
+	recordCount := len(data) / btmpRecordSize
+	events := make([]bootEvent, 0)
+	for i := recordCount - 1; i >= 0; i-- {
+		record := data[i*btmpRecordSize : (i+1)*btmpRecordSize]
+		kind := strings.TrimSpace(fixedCString(record[btmpUserOffset : btmpUserOffset+btmpUserSize]))
+		if kind != "reboot" && kind != "shutdown" {
+			continue
+		}
+
+		recordTime := utmpRecordTime(record)
+		if recordTime <= 0 {
+			continue
+		}
+
+		events = append(events, bootEvent{
+			Kind:      kind,
+			StartedAt: time.Unix(recordTime, 0),
+		})
+		if limit > 0 && len(events) >= limit {
+			break
+		}
+	}
+	return events
 }
 
 func parseBtmpFailures(username string, data []byte, limit int) []Login {
@@ -547,19 +688,6 @@ func fixedCString(value []byte) string {
 		}
 	}
 	return string(value)
-}
-
-func splitTerminalAndSource(fields []string) (terminal string, source string) {
-	switch len(fields) {
-	case 0:
-		return "", ""
-	case 1:
-		return fields[0], ""
-	default:
-		source = fields[len(fields)-1]
-		terminal = strings.Join(fields[:len(fields)-1], " ")
-		return terminal, source
-	}
 }
 
 func normalizeLastTime(value string) string {

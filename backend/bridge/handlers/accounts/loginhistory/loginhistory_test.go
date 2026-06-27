@@ -4,73 +4,50 @@ import (
 	"context"
 	"encoding/binary"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseLastOutputRemote(t *testing.T) {
-	logins := ParseLastOutput("miguel", `miguel   pts/0        172.18.0.7       Tue Apr  1 15:04:00 2026 - still logged in
-
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
+func TestParseWtmpLoginsRemote(t *testing.T) {
+	loginAt := time.Date(2026, time.April, 1, 15, 4, 0, 0, time.UTC)
+	data := appendWtmpUserRecord(nil, "miguel", uint32(loginAt.Unix()), "pts/0", "172.18.0.7")
+	logins := parseWtmpLogins("miguel", data, 1)
 
 	require.Len(t, logins, 1)
 	require.Equal(t, "miguel", logins[0].Username)
 	require.Equal(t, "pts/0", logins[0].Terminal)
 	require.Equal(t, "172.18.0.7", logins[0].Source)
-	require.Equal(t, "Tue Apr 1 15:04:00 2026", logins[0].Time)
-	require.False(t, logins[0].StartedAt.IsZero())
+	require.Equal(t, formatLoginTime(loginAt), logins[0].Time)
+	require.Equal(t, loginAt.Unix(), logins[0].StartedAt.Unix())
 	require.NotEmpty(t, logins[0].ID)
 }
 
-func TestParseLastOutputLocal(t *testing.T) {
-	logins := ParseLastOutput("miguel", `miguel   tty1                          Tue Apr  1 15:04:00 2026 - still logged in
-
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
+func TestParseWtmpLoginsLocal(t *testing.T) {
+	loginAt := time.Date(2026, time.April, 1, 15, 4, 0, 0, time.UTC)
+	data := appendWtmpUserRecord(nil, "miguel", uint32(loginAt.Unix()), "tty1", "")
+	logins := parseWtmpLogins("miguel", data, 1)
 
 	require.Len(t, logins, 1)
 	require.Equal(t, "miguel", logins[0].Username)
 	require.Equal(t, "tty1", logins[0].Terminal)
 	require.Empty(t, logins[0].Source)
-	require.Equal(t, "Tue Apr 1 15:04:00 2026", logins[0].Time)
+	require.Equal(t, formatLoginTime(loginAt), logins[0].Time)
 }
 
-func TestParseLastOutputCompletedSession(t *testing.T) {
-	logins := ParseLastOutput("miguel", `miguel   pts/0        172.18.0.7       Tue Apr  1 15:04:00 2026 - Tue Apr  1 16:04:00 2026  (01:00)
-
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
-
-	require.Len(t, logins, 1)
-	require.Equal(t, "Tue Apr 1 15:04:00 2026", logins[0].Time)
-}
-
-func TestParseLastOutputWebTerminalWithSource(t *testing.T) {
-	logins := ParseLastOutput("miguel", `miguel   web console  192.168.1.42    Tue Apr  1 15:04:00 2026 - still logged in
-
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
-
-	require.Len(t, logins, 1)
-	require.Equal(t, "web console", logins[0].Terminal)
-	require.Equal(t, "192.168.1.42", logins[0].Source)
-}
-
-func TestParseLastOutputNoEntries(t *testing.T) {
-	logins := ParseLastOutput("miguel", `
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
+func TestParseWtmpLoginsNoEntries(t *testing.T) {
+	logins := parseWtmpLogins("miguel", nil, 1)
 
 	require.Empty(t, logins)
 }
 
-func TestParseLastOutputSkipsSystemEntries(t *testing.T) {
-	logins := ParseLastOutput("", `reboot   system boot  6.12.73+deb13-amd64 Mon May  4 15:31:24 2026 - still running
-miguel   pts/0        172.18.0.7       Tue Apr  1 15:04:00 2026 - still logged in
-`)
+func TestParseWtmpLoginsSkipsSystemEntries(t *testing.T) {
+	loginAt := time.Date(2026, time.April, 1, 15, 4, 0, 0, time.UTC)
+	data := appendWtmpUserRecord(nil, "reboot", uint32(loginAt.Unix()), "system boot", "6.12.73")
+	data = appendWtmpUserRecord(data, "miguel", uint32(loginAt.Add(time.Minute).Unix()), "pts/0", "172.18.0.7")
+	logins := parseWtmpLogins("", data, 10)
 
 	require.Len(t, logins, 1)
 	require.Equal(t, "miguel", logins[0].Username)
@@ -103,6 +80,263 @@ func TestParseWtmpdbOutput(t *testing.T) {
 	require.False(t, logins[0].StartedAt.IsZero())
 	require.Equal(t, LoginStatusSuccess, logins[0].Status)
 	require.NotEmpty(t, logins[0].ID)
+}
+
+func TestParseWtmpdbPreviousBootStatusUnclean(t *testing.T) {
+	status, err := parseWtmpdbPreviousBootStatus([]byte(`{
+  "entries": [
+    {
+      "user": "reboot",
+      "tty": "system boot",
+      "hostname": "6.12.94",
+      "login": "2026-06-26T05:02:06+0100",
+      "logout": "still running "
+    },
+    {
+      "user": "reboot",
+      "tty": "system boot",
+      "hostname": "6.12.94",
+      "login": "2026-06-24T08:27:09+0100",
+      "logout": "crash "
+    }
+  ]
+}`))
+
+	require.NoError(t, err)
+	require.True(t, status.Found)
+	require.True(t, status.Unclean)
+	require.Equal(t, mustParseWtmpdbISOTime(t, "2026-06-24T08:27:09+0100").Unix(), status.StartedAt.Unix())
+}
+
+func TestParseWtmpdbPreviousBootStatusClean(t *testing.T) {
+	status, err := parseWtmpdbPreviousBootStatus([]byte(`{
+  "entries": [
+    {
+      "user": "reboot",
+      "tty": "system boot",
+      "hostname": "6.12.94",
+      "login": "2026-06-26T05:02:06+0100",
+      "logout": "still running "
+    },
+    {
+      "user": "reboot",
+      "tty": "system boot",
+      "hostname": "6.12.94",
+      "login": "2026-06-24T08:27:09+0100",
+      "logout": "2026-06-26T05:01:17+0100"
+    },
+    {
+      "user": "shutdown",
+      "tty": "system down",
+      "hostname": "6.12.94",
+      "login": "2026-06-26T05:01:17+0100",
+      "logout": "2026-06-26T05:02:06+0100"
+    }
+  ]
+}`))
+
+	require.NoError(t, err)
+	require.True(t, status.Found)
+	require.False(t, status.Unclean)
+	require.Equal(t, mustParseWtmpdbISOTime(t, "2026-06-24T08:27:09+0100").Unix(), status.StartedAt.Unix())
+}
+
+func TestParseWtmpdbPreviousBootStatusCleanViaShutdown(t *testing.T) {
+	// wtmpdb may return the current boot followed directly by the prior
+	// shutdown (the prior reboot scrolled past the -n window). A shutdown
+	// immediately before the current boot is a definitive clean result.
+	status, err := parseWtmpdbPreviousBootStatus([]byte(`{
+  "entries": [
+    { "user": "reboot",   "login": "2026-06-26T05:02:06+0100", "logout": "still running " },
+    { "user": "shutdown", "login": "2026-06-26T05:01:17+0100", "logout": "2026-06-26T05:02:06+0100" }
+  ]
+}`))
+
+	require.NoError(t, err)
+	require.True(t, status.Found)
+	require.False(t, status.Unclean)
+}
+
+func TestParseWtmpdbPreviousBootStatusNonRebootHeadIsNotDefinitive(t *testing.T) {
+	// If the most recent system event isn't the current boot, wtmpdb can't
+	// answer definitively — fall through to the raw-wtmp path.
+	status, err := parseWtmpdbPreviousBootStatus([]byte(`{
+  "entries": [
+    { "user": "shutdown", "login": "2026-06-26T05:01:17+0100", "logout": "2026-06-26T05:02:06+0100" }
+  ]
+}`))
+
+	require.NoError(t, err)
+	require.False(t, status.Found)
+}
+
+func TestFetchPreviousUncleanBootUsesWtmpdb(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	previous := mustParseWtmpdbISOTime(t, "2026-06-24T08:27:09+0100")
+
+	runCommand = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		require.Equal(t, []string{"last", "-j", "--time-format", "iso", "--system", "-n", "2", "shutdown", "reboot"}, args)
+		return []byte(`{
+  "entries": [
+    { "user": "reboot", "login": "2026-06-26T05:02:06+0100", "logout": "still running " },
+    { "user": "reboot", "login": "2026-06-24T08:27:09+0100", "logout": "crash " }
+  ]
+}`), nil
+	}
+	readFile = func(string) ([]byte, error) {
+		t.Fatal("raw wtmp should not be read when wtmpdb has boot status")
+		return nil, nil
+	}
+
+	startedAt, unclean, err := FetchPreviousUncleanBoot(context.Background())
+
+	require.NoError(t, err)
+	require.True(t, unclean)
+	require.Equal(t, previous.Unix(), startedAt.Unix())
+}
+
+func TestFetchRecentUsesWtmpWhenWtmpdbUnavailable(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	loginAt := time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC)
+
+	runCommand = func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		if name == "wtmpdb" {
+			return nil, exec.ErrNotFound
+		}
+		t.Fatalf("unexpected command fallback to %q", name)
+		return nil, nil
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, wtmpPath, path)
+		return appendWtmpUserRecord(nil, "miguel", uint32(loginAt.Unix()), "pts/0", "192.168.1.20"), nil
+	}
+
+	logins, err := FetchRecent(context.Background(), "miguel", 1)
+
+	require.NoError(t, err)
+	require.Len(t, logins, 1)
+	require.Equal(t, "miguel", logins[0].Username)
+	require.Equal(t, "pts/0", logins[0].Terminal)
+	require.Equal(t, "192.168.1.20", logins[0].Source)
+	require.Equal(t, loginAt.Unix(), logins[0].StartedAt.Unix())
+}
+
+func TestFetchPreviousUncleanBootFallsBackToWtmp(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	previous := time.Date(2026, time.May, 8, 11, 0, 0, 0, time.UTC)
+	current := time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC)
+
+	runCommand = func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		require.Equal(t, "wtmpdb", name)
+		return nil, exec.ErrNotFound
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, wtmpPath, path)
+		data := appendBtmpRecord(nil, "reboot", uint32(previous.Unix()))
+		return appendBtmpRecord(data, "reboot", uint32(current.Unix())), nil
+	}
+
+	startedAt, unclean, err := FetchPreviousUncleanBoot(context.Background())
+
+	require.NoError(t, err)
+	require.True(t, unclean)
+	require.Equal(t, previous.Unix(), startedAt.Unix())
+}
+
+func TestFetchRecentReturnsEmptyWhenHistorySourcesMissing(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	runCommand = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return nil, exec.ErrNotFound
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, wtmpPath, path)
+		return nil, os.ErrNotExist
+	}
+
+	logins, err := FetchRecent(context.Background(), "miguel", 1)
+
+	require.NoError(t, err)
+	require.Empty(t, logins)
+}
+
+func TestFetchRecentReturnsContextErrorWhenCancelled(t *testing.T) {
+	originalRunCommand := runCommand
+	originalReadFile := readFile
+	t.Cleanup(func() {
+		runCommand = originalRunCommand
+		readFile = originalReadFile
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runCommand = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return nil, exec.ErrNotFound
+	}
+	readFile = func(path string) ([]byte, error) {
+		require.Equal(t, wtmpPath, path)
+		return nil, nil
+	}
+
+	_, err := FetchRecent(ctx, "miguel", 1)
+
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestParseWtmpBootEvents(t *testing.T) {
+	previousBoot := time.Date(2026, time.May, 8, 11, 0, 0, 0, time.UTC)
+	shutdown := time.Date(2026, time.May, 8, 11, 30, 0, 0, time.UTC)
+	currentBoot := time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC)
+
+	data := appendBtmpRecord(nil, "reboot", uint32(previousBoot.Unix()))
+	data = appendBtmpRecord(data, "shutdown", uint32(shutdown.Unix()))
+	data = appendBtmpRecord(data, "reboot", uint32(currentBoot.Unix()))
+
+	events := parseWtmpBootEvents(data, 2)
+
+	require.Len(t, events, 2)
+	require.Equal(t, "reboot", events[0].Kind)
+	require.Equal(t, currentBoot.Unix(), events[0].StartedAt.Unix())
+	require.Equal(t, "shutdown", events[1].Kind)
+	require.Equal(t, shutdown.Unix(), events[1].StartedAt.Unix())
+}
+
+func TestPreviousUncleanBootFromEventsClean(t *testing.T) {
+	currentBoot := time.Date(2026, time.May, 8, 12, 0, 0, 0, time.UTC)
+	shutdown := time.Date(2026, time.May, 8, 11, 30, 0, 0, time.UTC)
+
+	startedAt, unclean := previousUncleanBootFromEvents([]bootEvent{
+		{Kind: "reboot", StartedAt: currentBoot},
+		{Kind: "shutdown", StartedAt: shutdown},
+	})
+
+	require.False(t, unclean)
+	require.True(t, startedAt.IsZero())
 }
 
 func TestParseBtmpFailures(t *testing.T) {
@@ -478,6 +712,23 @@ func appendBtmpRecordWithDetails(data []byte, username string, sec uint32, line,
 	copy(record[btmpHostOffset:btmpHostOffset+btmpHostSize], host)
 	putUtmpTime(record, sec)
 	return append(data, record...)
+}
+
+func appendWtmpUserRecord(data []byte, username string, sec uint32, line, host string) []byte {
+	record := make([]byte, btmpRecordSize)
+	putUtmpType(record, utmpUserProcess)
+	copy(record[btmpLineOffset:btmpLineOffset+btmpLineSize], line)
+	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], username)
+	copy(record[btmpHostOffset:btmpHostOffset+btmpHostSize], host)
+	putUtmpTime(record, sec)
+	return append(data, record...)
+}
+
+func mustParseWtmpdbISOTime(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed := parseWtmpdbISOTime(value)
+	require.False(t, parsed.IsZero())
+	return parsed
 }
 
 func putUtmpType(record []byte, value int) {

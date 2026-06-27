@@ -1,6 +1,8 @@
 package system
 
 import (
+	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -11,56 +13,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseUncleanShutdownOutputClean(t *testing.T) {
-	unclean, bootID := parseUncleanShutdownOutput(`reboot   system boot  6.8.0-58-generic Tue Apr  1 15:04:00 2026   still running
-shutdown system down  6.8.0-58-generic Tue Apr  1 15:03:00 2026 - Tue Apr  1 15:04:00 2026  (00:01)
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
+func TestDetectUncleanShutdownUsesPreviousUncleanBoot(t *testing.T) {
+	originalFetchPreviousUncleanBoot := healthFetchPreviousUncleanBoot
+	t.Cleanup(func() { healthFetchPreviousUncleanBoot = originalFetchPreviousUncleanBoot })
 
+	previous := time.Date(2026, time.April, 1, 14, 0, 0, 0, time.UTC)
+
+	healthFetchPreviousUncleanBoot = func(context.Context) (time.Time, bool, error) {
+		return previous, true, nil
+	}
+
+	unclean, bootID, err := DetectUncleanShutdown(context.Background())
+
+	require.NoError(t, err)
+	require.True(t, unclean)
+	require.Equal(t, strconv.FormatInt(previous.Unix(), 10), bootID)
+}
+
+func TestDetectUncleanShutdownClean(t *testing.T) {
+	originalFetchPreviousUncleanBoot := healthFetchPreviousUncleanBoot
+	t.Cleanup(func() { healthFetchPreviousUncleanBoot = originalFetchPreviousUncleanBoot })
+
+	healthFetchPreviousUncleanBoot = func(context.Context) (time.Time, bool, error) {
+		return time.Time{}, false, nil
+	}
+
+	unclean, bootID, err := DetectUncleanShutdown(context.Background())
+
+	require.NoError(t, err)
 	require.False(t, unclean)
 	require.Empty(t, bootID)
 }
 
-func TestParseUncleanShutdownOutputUncleanCrash(t *testing.T) {
-	unclean, bootID := parseUncleanShutdownOutput(`reboot   system boot  6.8.0-58-generic Tue Apr  1 15:04:00 2026   still running
-reboot   system boot  6.8.0-58-generic Tue Apr  1 14:00:00 2026 - crash      (01:04)
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
+func TestDetectUncleanShutdownTreatsMissingBootHistoryAsUnknown(t *testing.T) {
+	originalFetchPreviousUncleanBoot := healthFetchPreviousUncleanBoot
+	t.Cleanup(func() { healthFetchPreviousUncleanBoot = originalFetchPreviousUncleanBoot })
 
-	require.True(t, unclean)
-	// Identifier is the unix-epoch seconds of the unclean boot's start.
-	expected := time.Date(2026, time.April, 1, 14, 0, 0, 0, time.UTC).Unix()
-	require.Equal(t, strconv.FormatInt(expected, 10), bootID)
-}
+	healthFetchPreviousUncleanBoot = func(context.Context) (time.Time, bool, error) {
+		return time.Time{}, false, errors.New("boot history unavailable")
+	}
 
-func TestParseUncleanShutdownOutputUncleanStillRunning(t *testing.T) {
-	// util-linux shows an unfinished previous session as "still running".
-	unclean, bootID := parseUncleanShutdownOutput(`reboot   system boot  6.8.0-58-generic Tue Apr  1 15:04:00 2026   still running
-reboot   system boot  6.8.0-58-generic Tue Apr  1 14:00:00 2026   still running
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
+	unclean, bootID, err := DetectUncleanShutdown(context.Background())
 
-	require.True(t, unclean)
-	require.NotEmpty(t, bootID)
-}
-
-func TestParseUncleanShutdownOutputAmbiguous(t *testing.T) {
-	// Two reboots back-to-back but no "crash" / "still running" marker on the
-	// previous one — treat as clean to avoid false positives.
-	unclean, bootID := parseUncleanShutdownOutput(`reboot   system boot  6.8.0-58-generic Tue Apr  1 15:04:00 2026   still running
-reboot   system boot  6.8.0-58-generic Tue Apr  1 14:00:00 2026 - Tue Apr  1 14:30:00 2026  (00:30)
-wtmp begins Tue Mar  1 10:00:00 2026
-`)
-
-	require.False(t, unclean)
-	require.Empty(t, bootID)
-}
-
-func TestParseUncleanShutdownOutputSingleBoot(t *testing.T) {
-	unclean, bootID := parseUncleanShutdownOutput(`reboot   system boot  6.8.0-58-generic Tue Apr  1 15:04:00 2026   still running
-wtmp begins Tue Apr  1 15:04:00 2026
-`)
-
+	require.NoError(t, err)
 	require.False(t, unclean)
 	require.Empty(t, bootID)
 }
