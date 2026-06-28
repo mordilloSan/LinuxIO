@@ -20,6 +20,7 @@ const apiMocks = vi.hoisted(() => ({
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
+  success: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -74,6 +75,7 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     },
     docker: {
       folders: ["/srv/docker"],
+      requireMountsForFolders: false,
       proxy: {
         baseDomain: "linuxio.test",
         caddyEnabled: true,
@@ -231,6 +233,30 @@ describe("ConfigProvider", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: ["linuxio", "docker", "list_compose_projects"],
     });
+  });
+
+  it("shows a toast after Docker mount ordering changes are persisted", async () => {
+    const { mutationOptions } = renderProvider();
+
+    await screen.findByTestId("loaded");
+
+    mutationOptions.at(-1)?.onSuccess?.(undefined, {
+      docker: {
+        requireMountsForFolders: true,
+      },
+    });
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Docker will wait for configured folder mounts.",
+    );
+
+    mutationOptions.at(-1)?.onSuccess?.(undefined, {
+      docker: {
+        requireMountsForFolders: false,
+      },
+    });
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Docker folder mount ordering disabled.",
+    );
   });
 
   it("signs out and does not render children on auth failures", async () => {

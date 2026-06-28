@@ -445,8 +445,9 @@ type ConfigHardwareSections struct {
 }
 
 type ConfigDockerPayload struct {
-	Folders []string                  `json:"folders,omitempty"`
-	Proxy   *ConfigDockerProxyPayload `json:"proxy,omitempty"`
+	Folders                 []string                  `json:"folders,omitempty"`
+	RequireMountsForFolders *bool                     `json:"requireMountsForFolders,omitempty"`
+	Proxy                   *ConfigDockerProxyPayload `json:"proxy,omitempty"`
 }
 
 type ConfigDockerProxyPayload struct {

@@ -51,8 +51,9 @@ type configThemeColorsPayload struct {
 }
 
 type configDockerPayload struct {
-	Folders []string                  `json:"folders"`
-	Proxy   *configDockerProxyPayload `json:"proxy"`
+	Folders                 []string                  `json:"folders"`
+	RequireMountsForFolders *bool                     `json:"requireMountsForFolders"`
+	Proxy                   *configDockerProxyPayload `json:"proxy"`
 }
 
 type configDockerProxyPayload struct {

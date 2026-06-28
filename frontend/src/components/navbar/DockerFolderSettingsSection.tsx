@@ -13,8 +13,10 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
+import useAuth from "@/hooks/useAuth";
 import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
@@ -70,10 +72,19 @@ const validateDraftFolders = (
 
 const DockerFolderSettingsSection: React.FC = () => {
   const theme = useAppTheme();
+  const { privileged } = useAuth();
   const { config, updateConfig } = useConfig();
   const dockerFolders = config.docker.folders;
+  const requireMountsForFolders = Boolean(
+    config.docker.requireMountsForFolders,
+  );
   const setDockerFolders = useCallback(
     (folders: string[]) => updateConfig({ docker: { folders } }),
+    [updateConfig],
+  );
+  const setRequireMountsForFolders = useCallback(
+    (enabled: boolean) =>
+      updateConfig({ docker: { requireMountsForFolders: enabled } }),
     [updateConfig],
   );
   const configuredFolders = useMemo(
@@ -291,6 +302,59 @@ const DockerFolderSettingsSection: React.FC = () => {
             </div>
           </FrostedCard>
         ))}
+
+        <FrostedCard
+          hoverLift
+          onClick={(event) => {
+            if (!privileged) {
+              toast.error(
+                "Privileged mode is required to change Docker startup ordering.",
+              );
+              return;
+            }
+            const target = event.target as HTMLElement;
+            if (target.closest(".app-switch")) return;
+            setRequireMountsForFolders(!requireMountsForFolders);
+          }}
+          style={{
+            cursor: privileged ? "pointer" : "not-allowed",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: theme.spacing(1.5),
+            opacity: privileged ? 1 : 0.72,
+            padding: 12,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1.5),
+              minWidth: 0,
+            }}
+          >
+            <div style={folderIconStyle}>
+              <Icon height={22} icon="mdi:server-network" width={22} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <AppTypography fontWeight={600} variant="body2">
+                Wait for folder mounts
+              </AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                {privileged
+                  ? "Require configured folders before Docker starts."
+                  : "Privileged mode is required to change Docker startup ordering."}
+              </AppTypography>
+            </div>
+          </div>
+          <AppSwitch
+            aria-label="Wait for Docker folder mounts"
+            checked={requireMountsForFolders}
+            disabled={!privileged}
+            onChange={(_, checked) => setRequireMountsForFolders(checked)}
+          />
+        </FrostedCard>
 
         <FrostedCard
           hoverLift

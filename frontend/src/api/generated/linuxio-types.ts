@@ -322,6 +322,7 @@ export interface ConfigDockerDashboardSections {
 
 export interface ConfigDockerPayload {
   folders?: string[];
+  requireMountsForFolders?: boolean;
   proxy?: ConfigDockerProxyPayload;
 }
 
@@ -660,6 +661,7 @@ export interface DockerProxySettings {
 
 export interface DockerSettings {
   folders: string[];
+  requireMountsForFolders: boolean;
   proxy: DockerProxySettings;
 }
 

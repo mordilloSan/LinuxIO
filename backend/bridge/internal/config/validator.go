@@ -102,6 +102,14 @@ func repairMissingDefaultValues(raw []byte, cfg *Settings, defaults *Settings) b
 		changed = repairMissingAppSettings(appSettings, cfg, defaults) || changed
 	}
 
+	docker, hasDocker := childMap(root, "docker")
+	if !hasDocker {
+		cfg.Docker = cloneDocker(defaults.Docker)
+		changed = true
+	} else {
+		changed = repairMissingDockerSettings(docker, cfg, defaults) || changed
+	}
+
 	jobs, hasJobs := childMap(root, "jobs")
 	if !hasJobs {
 		cfg.Jobs = defaults.Jobs
@@ -143,6 +151,19 @@ func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, default
 	}
 	if !hasMapKey(appSettings, "chunkSizeMB") {
 		cfg.AppSettings.ChunkSizeMB = defaults.AppSettings.ChunkSizeMB
+		changed = true
+	}
+	return changed
+}
+
+func repairMissingDockerSettings(docker map[string]any, cfg *Settings, defaults *Settings) bool {
+	changed := false
+	if !hasMapKey(docker, "folders") {
+		cfg.Docker.Folders = slices.Clone(defaults.Docker.Folders)
+		changed = true
+	}
+	if !hasMapKey(docker, "requireMountsForFolders") {
+		cfg.Docker.RequireMountsForFolders = defaults.Docker.RequireMountsForFolders
 		changed = true
 	}
 	return changed

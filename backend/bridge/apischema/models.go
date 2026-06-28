@@ -1239,8 +1239,9 @@ type DockerProxySettings struct {
 }
 
 type DockerSettings struct {
-	Folders []string            `json:"folders"`
-	Proxy   DockerProxySettings `json:"proxy"`
+	Folders                 []string            `json:"folders"`
+	RequireMountsForFolders bool                `json:"requireMountsForFolders"`
+	Proxy                   DockerProxySettings `json:"proxy"`
 }
 
 type JobSettings struct {

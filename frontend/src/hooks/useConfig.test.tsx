@@ -22,6 +22,7 @@ const config: AppConfig = {
   },
   docker: {
     folders: ["/var/lib/linuxio/docker"],
+    requireMountsForFolders: false,
     proxy: {
       baseDomain: "",
       caddyEnabled: false,

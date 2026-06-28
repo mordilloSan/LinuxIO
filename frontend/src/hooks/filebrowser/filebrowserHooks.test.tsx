@@ -60,6 +60,7 @@ function configWrapper({
       },
       docker: {
         folders: [],
+        requireMountsForFolders: false,
         proxy: {
           baseDomain: "",
           caddyEnabled: false,
