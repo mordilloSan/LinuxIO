@@ -429,6 +429,11 @@ const NetworkList: React.FC<NetworkListProps> = ({
       ),
       meta: {
         align: "center",
+        className: "app-vdt__cell--select",
+        getCellRenderKey: (row) => {
+          const network = row as (typeof filtered)[number];
+          return [network.Id, effectiveSelected.has(network.Id)];
+        },
         width: "40px",
       },
     },

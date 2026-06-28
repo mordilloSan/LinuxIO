@@ -262,6 +262,11 @@ const ImageList: React.FC<ImageListProps> = ({
       ),
       meta: {
         align: "center",
+        className: "app-vdt__cell--select",
+        getCellRenderKey: (row) => {
+          const image = row as (typeof filtered)[number];
+          return [image.id, effectiveSelected.has(image.id)];
+        },
         width: "40px",
       },
     },
