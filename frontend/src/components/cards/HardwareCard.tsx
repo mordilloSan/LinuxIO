@@ -44,8 +44,6 @@ export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
             color="text.secondary"
             style={{
               textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
               flexShrink: 0,
             }}
             variant="caption"
@@ -94,6 +92,8 @@ const HardwareCard: React.FC<{
     style={{
       display: "flex",
       flexDirection: "column",
+      boxSizing: "border-box",
+      height: "100%",
       padding: 8,
     }}
   >
@@ -120,10 +120,10 @@ const HardwareCard: React.FC<{
       title={title}
     />
 
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 16, flex: 1 }}>
+    <div style={{ display: "flex", flex: 1, minWidth: 0 }}>
       <div
         style={{
-          flex: "1 1 200px",
+          flex: 1,
           minWidth: 0,
           display: "flex",
           alignItems: "stretch",
@@ -131,14 +131,6 @@ const HardwareCard: React.FC<{
       >
         <SummaryRowsList rows={rows} />
       </div>
-      <div
-        style={{
-          flex: "1 1 200px",
-          minWidth: 0,
-          display: "flex",
-          alignItems: "stretch",
-        }}
-      />
     </div>
   </FrostedCard>
 );

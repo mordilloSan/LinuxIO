@@ -18,7 +18,7 @@ export interface CapabilityDef {
   /**
    * Whether the backend can install this capability via
    * `system.install_capability`. Omit for capabilities that have no
-   * install path (Docker, the LinuxIO indexer, PackageKit itself).
+   * install path (Docker, PackageKit itself).
    */
   installable?: {
     /** True when installing also requires PackageKit (i.e. there is a
@@ -95,6 +95,7 @@ export const CAPABILITIES = [
     icon: "mdi:magnify-scan",
     reasonUnknown: "Indexer availability is still being checked.",
     reasonUnavailable: "Indexer API is unavailable.",
+    installable: { requiresPackageKit: false },
   },
   {
     wire: "lm_sensors",
@@ -173,9 +174,22 @@ export const CAPABILITIES = [
     route: { href: "/shares", label: "Open shares" },
   },
   {
+    wire: "samba_client",
+    state: "sambaClientAvailable",
+    label: "Samba client",
+    description: "Mount remote SMB/CIFS shares",
+    readyText: "SMB client utilities (cifs-utils) are available.",
+    dependency: "cifs-utils",
+    icon: "mdi:folder-network-outline",
+    reasonUnknown: "SMB client utilities availability is still being checked.",
+    reasonUnavailable: "SMB client utilities are unavailable.",
+    installable: { requiresPackageKit: true },
+    route: { href: "/shares", label: "Open shares" },
+  },
+  {
     wire: "samba_server",
     state: "sambaServerAvailable",
-    label: "Samba (SMB)",
+    label: "Samba server",
     description: "Create and manage SMB/CIFS file shares",
     readyText: "Samba server (smbd) is available.",
     dependency: "smbd",

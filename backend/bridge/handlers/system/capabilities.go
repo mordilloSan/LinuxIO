@@ -42,7 +42,10 @@ type InstallSpec struct {
 	RequiresDocker    bool
 }
 
-const OptionalComponentWatchtower = "watchtower"
+const (
+	OptionalComponentIndexer    = "indexer"
+	OptionalComponentWatchtower = "watchtower"
+)
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -68,6 +71,9 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Indexer API",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(filebrowser.CheckIndexerAvailability(ctx))
+		},
+		Install: &InstallSpec{
+			OptionalComponent: OptionalComponentIndexer,
 		},
 	},
 	{
@@ -136,6 +142,17 @@ var capabilityRegistry = []CapabilitySpec{
 			ServiceDebian: "smbd.service",
 			ServiceRHEL:   "smb.service",
 			EnableService: true,
+		},
+	},
+	{
+		Name:    "samba_client",
+		LogName: "Samba client",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(storage.CheckCIFSClientAvailability())
+		},
+		Install: &InstallSpec{
+			PackageDebian: "cifs-utils smbclient",
+			PackageRHEL:   "cifs-utils samba-client",
 		},
 	},
 	{
@@ -265,6 +282,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.NFSServerAvailable, out.NFSServerError = ok, errPtr
 	case "samba_server":
 		out.SambaServerAvailable, out.SambaServerError = ok, errPtr
+	case "samba_client":
+		out.SambaClientAvailable, out.SambaClientError = ok, errPtr
 	case "tuned":
 		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":

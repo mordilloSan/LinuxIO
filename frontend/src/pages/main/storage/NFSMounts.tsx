@@ -73,8 +73,8 @@ function getPersistenceLabel(mount: NFSMount): string {
   return mount.inFstab ? "Persistent" : "Temporary";
 }
 
-function buildMountOptionsFromEntry(mount: NFSMount): string {
-  return (mount.options ?? []).join(",");
+function buildMountOptionsFromEntry(mount: NFSMount): string[] {
+  return [...(mount.options ?? [])];
 }
 
 // NFS version choices surfaced as a dropdown (emitted as `vers=<n>`). An empty
@@ -409,7 +409,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       }
     };
   }, [server]);
-  const buildOptionsString = () => {
+  const buildOptions = () => {
     const opts: string[] = [];
     opts.push(readOnly ? "ro" : "rw");
     if (mountAtBoot) {
@@ -423,7 +423,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
           .filter(Boolean),
       );
     }
-    return opts.join(",");
+    return opts;
   };
   const handleMount = () => {
     if (!server || !exportPath || !mountpoint) {
@@ -435,7 +435,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       server,
       exportPath,
       mountpoint,
-      options: buildOptionsString(),
+      options: buildOptions(),
       persist: mountAtBoot ? "true" : "false",
     });
   };
@@ -725,7 +725,7 @@ const EditNFSForm: React.FC<EditNFSFormProps> = ({
         );
       },
     });
-  const buildOptionsString = () => {
+  const buildOptions = () => {
     const opts: string[] = [];
     opts.push(readOnly ? "ro" : "rw");
     if (mountAtBoot) {
@@ -755,12 +755,12 @@ const EditNFSForm: React.FC<EditNFSFormProps> = ({
       );
     }
     // De-duplicate while preserving order (custom field may repeat a managed token).
-    return Array.from(new Set(opts)).join(",");
+    return Array.from(new Set(opts));
   };
   const handleSave = () => {
     remountNFS({
       mountpoint: mount.mountpoint,
-      options: buildOptionsString(),
+      options: buildOptions(),
       updateFstab: mountAtBoot ? "true" : "false",
     });
   };

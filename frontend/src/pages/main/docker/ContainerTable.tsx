@@ -186,7 +186,12 @@ const getContainerTableSignature = (container: ContainerInfo) => {
   ].join("\u001f");
 };
 
-const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
+const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
+
+const areStringSetsEqual = (
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+) => {
   if (left === right) return true;
   if (left.size !== right.size) return false;
   for (const value of left) {
@@ -784,6 +789,7 @@ interface ActionsCellProps {
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
   onToggleExpanded: (containerId: string) => void;
+  pending?: boolean;
   state: string;
   url?: string;
 }
@@ -795,6 +801,7 @@ const ActionsCell = React.memo(function ActionsCell({
   onOpenLogs,
   onOpenTerminal,
   onToggleExpanded,
+  pending = false,
   state,
   url,
 }: ActionsCellProps) {
@@ -857,6 +864,7 @@ const ActionsCell = React.memo(function ActionsCell({
           <AppTooltip title="Start">
             <span>
               <AppActionIconButton
+                disabled={pending}
                 icon="mdi:play"
                 iconSize={16}
                 label="Start"
@@ -873,6 +881,7 @@ const ActionsCell = React.memo(function ActionsCell({
                 icon="mdi:stop"
                 iconSize={16}
                 label="Stop"
+                loading={pending}
                 onClick={() => stopContainer({ containerId })}
                 tooltip={false}
               />
@@ -882,6 +891,7 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Restart">
           <span>
             <AppActionIconButton
+              disabled={pending}
               icon="mdi:restart"
               iconSize={16}
               label="Restart"
@@ -893,6 +903,7 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Remove">
           <span>
             <AppActionIconButton
+              disabled={pending}
               icon="mdi:delete"
               iconSize={16}
               label="Remove"
@@ -904,6 +915,7 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Logs">
           <span>
             <AppActionIconButton
+              disabled={pending}
               icon="mdi:file-document-outline"
               iconSize={16}
               label="Logs"
@@ -915,6 +927,7 @@ const ActionsCell = React.memo(function ActionsCell({
         <AppTooltip title="Terminal">
           <span>
             <AppActionIconButton
+              disabled={pending}
               icon="mdi:console"
               iconSize={16}
               label="Terminal"
@@ -927,6 +940,7 @@ const ActionsCell = React.memo(function ActionsCell({
           <AppTooltip title="Open App">
             <span>
               <AppActionIconButton
+                disabled={pending}
                 icon="mdi:open-in-new"
                 iconSize={16}
                 label="Open App"
@@ -969,6 +983,7 @@ interface ContainerTableProps {
   containers: ContainerInfo[];
   editMode?: boolean;
   onToggleAutoUpdate: (name: string) => void;
+  stoppingContainerIds?: ReadonlySet<string>;
 }
 
 interface ContainerDialogTarget {
@@ -985,6 +1000,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
   containers,
   editMode = false,
   onToggleAutoUpdate,
+  stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }) => {
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),
@@ -1203,6 +1219,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               onOpenLogs={openLogs}
               onOpenTerminal={openTerminal}
               onToggleExpanded={toggleExpanded}
+              pending={stoppingContainerIds.has(container.Id)}
               state={container.State}
               url={container.url}
             />
@@ -1220,6 +1237,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
               container.State,
               container.url,
               ports.length > 2 || mounts.length > 2,
+              stoppingContainerIds.has(container.Id),
             ];
           },
           width: "200px",
@@ -1235,6 +1253,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
       openLogs,
       openTerminal,
       onToggleAutoUpdate,
+      stoppingContainerIds,
       toggleExpanded,
     ],
   );
@@ -1294,6 +1313,10 @@ const areContainerTablePropsEqual = (
   previous.checkingUpdates === next.checkingUpdates &&
   previous.editMode === next.editMode &&
   previous.onToggleAutoUpdate === next.onToggleAutoUpdate &&
+  areStringSetsEqual(
+    previous.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,
+    next.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,
+  ) &&
   areStringSetsEqual(
     previous.autoUpdatePendingNames,
     next.autoUpdatePendingNames,

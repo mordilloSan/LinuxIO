@@ -885,6 +885,25 @@ type NFSMount struct {
 	UsedPct    float64  `json:"usedPct"`
 }
 
+// CIFSMount is a mounted (or persisted, fstab-backed) remote SMB/CIFS share. It
+// never carries a password; Username/Domain are display metadata only.
+type CIFSMount struct {
+	Domain     string   `json:"domain"`
+	Free       uint64   `json:"free"`
+	FSType     string   `json:"fsType"`
+	InFstab    bool     `json:"inFstab"`
+	Mounted    bool     `json:"mounted"`
+	Mountpoint string   `json:"mountpoint"`
+	Options    []string `json:"options"`
+	Server     string   `json:"server"`
+	Share      string   `json:"share"`
+	Size       uint64   `json:"size"`
+	Source     string   `json:"source"`
+	Used       uint64   `json:"used"`
+	UsedPct    float64  `json:"usedPct"`
+	Username   string   `json:"username"`
+}
+
 type VersionResponse struct {
 	CheckedAt       string `json:"checked_at"`
 	CurrentVersion  string `json:"current_version"`

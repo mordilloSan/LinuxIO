@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import ComposeStacksPage from "./ComposeStacksPage";
@@ -11,7 +11,7 @@ import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
 
-import { jobSnapshotResult, linuxio } from "@/api";
+import { jobSnapshotResult, linuxio, type ContainerInfo } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -27,6 +27,9 @@ import { useViewMode } from "@/hooks/useViewMode";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+const getContainerName = (container: ContainerInfo) =>
+  container.Names?.[0]?.replace("/", "") || "Unnamed";
+
 const DockerPage: React.FC = () => {
   const theme = useAppTheme();
   const [searchParams] = useSearchParams();
@@ -37,6 +40,10 @@ const DockerPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
+  const stopAllInFlightRef = useRef(false);
+  const [stoppingContainerIds, setStoppingContainerIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const activeDockerTab = searchParams.get("dockerTab") || "dashboard";
   const isDashboardTab = activeDockerTab === "dashboard";
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
@@ -93,18 +100,41 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Failed to start containers")),
     });
-  const { mutate: stopAllRunning, isPending: isStoppingAll } =
-    linuxio.docker.stop_all_running.useMutation({
-      onSuccess: (data: any) => {
-        const result = jobSnapshotResult<{ stopped: number }>(data);
-        toast.success(`Stopped ${result.stopped} container(s)`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, "Failed to stop containers")),
-    });
+  const { mutateAsync: stopContainer } =
+    linuxio.docker.stop_container.useMutation();
+  const isStoppingAll = stoppingContainerIds.size > 0;
+  const handleStopAllRunning = useCallback(async () => {
+    if (stopAllInFlightRef.current || runningContainers.length === 0) return;
+
+    const targets = [...runningContainers];
+    stopAllInFlightRef.current = true;
+    setStoppingContainerIds(new Set(targets.map((container) => container.Id)));
+
+    try {
+      for (const container of targets) {
+        const name = getContainerName(container);
+        try {
+          await stopContainer({ containerId: container.Id });
+          toast.success(`Container ${name} stopped`);
+        } catch (err) {
+          toast.error(getMutationErrorMessage(err, `Failed to stop ${name}`));
+        } finally {
+          setStoppingContainerIds((previous) => {
+            const next = new Set(previous);
+            next.delete(container.Id);
+            return next;
+          });
+        }
+      }
+
+      queryClient.invalidateQueries({
+        queryKey: linuxio.docker.list_containers.queryKey(),
+      });
+    } finally {
+      stopAllInFlightRef.current = false;
+      setStoppingContainerIds(new Set());
+    }
+  }, [queryClient, runningContainers, stopContainer, toast]);
   const { mutate: systemPrune, isPending: isPruning } =
     linuxio.docker.system_prune.useMutation({
       onSuccess: () => {
@@ -271,7 +301,9 @@ const DockerPage: React.FC = () => {
           {
             value: "dashboard",
             label: "Dashboard",
-            component: <DockerDashboard />,
+            component: (
+              <DockerDashboard stoppingContainerIds={stoppingContainerIds} />
+            ),
             rightContent: (
               <>
                 {renderCheckUpdatesButton()}
@@ -280,7 +312,13 @@ const DockerPage: React.FC = () => {
                   disabled={isStartingAll || stoppedContainers.length === 0}
                   onClick={() => startAllStopped()}
                   size="small"
-                  startIcon={<Icon height={20} icon="mdi:play" width={20} />}
+                  startIcon={
+                    isStartingAll ? (
+                      <AppCircularProgress color="inherit" size={18} />
+                    ) : (
+                      <Icon height={20} icon="mdi:play" width={20} />
+                    )
+                  }
                   variant="outlined"
                 >
                   Start All
@@ -288,9 +326,15 @@ const DockerPage: React.FC = () => {
                 <AppButton
                   color="warning"
                   disabled={isStoppingAll || runningContainers.length === 0}
-                  onClick={() => stopAllRunning()}
+                  onClick={() => void handleStopAllRunning()}
                   size="small"
-                  startIcon={<Icon height={20} icon="mdi:stop" width={20} />}
+                  startIcon={
+                    isStoppingAll ? (
+                      <AppCircularProgress color="inherit" size={18} />
+                    ) : (
+                      <Icon height={20} icon="mdi:stop" width={20} />
+                    )
+                  }
                   variant="outlined"
                 >
                   Stop All
@@ -315,6 +359,7 @@ const DockerPage: React.FC = () => {
               <ContainerList
                 checkingUpdates={isCheckingUpdates}
                 editMode={containerEditMode}
+                stoppingContainerIds={stoppingContainerIds}
                 viewMode={containerView}
               />
             ),

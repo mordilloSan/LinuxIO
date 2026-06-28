@@ -54,6 +54,7 @@ const resolveColor = (palette: any, path: string): string => {
 };
 
 interface ContainerCardProps {
+  actionPending?: boolean;
   autoUpdateDisabled?: boolean;
   autoUpdatePending?: boolean;
   autoUpdateReason?: string;
@@ -65,6 +66,7 @@ interface ContainerCardProps {
 }
 
 const ContainerCard: React.FC<ContainerCardProps> = ({
+  actionPending = false,
   autoUpdateDisabled = false,
   autoUpdatePending = false,
   autoUpdateReason,
@@ -183,6 +185,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
     });
 
   const isActionPending =
+    actionPending ||
     isStartPending ||
     isStopPending ||
     isRestartPending ||

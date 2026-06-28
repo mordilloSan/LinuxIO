@@ -7,25 +7,25 @@ import (
 )
 
 func TestManagedNFSMountRegistryRoundTrip(t *testing.T) {
-	originalPath := managedNFSMountsPath
-	managedNFSMountsPath = filepath.Join(t.TempDir(), "nfs-mounts.json")
+	originalPath := nfsMountStore.path
+	nfsMountStore.path = filepath.Join(t.TempDir(), "nfs-mounts.json")
 	t.Cleanup(func() {
-		managedNFSMountsPath = originalPath
+		nfsMountStore.path = originalPath
 	})
 
-	err := upsertManagedNFSMount(
-		"192.168.1.249:/mnt/user/appdata",
-		"/home/miguelmariz/docker2",
-		"nfs4",
-		[]string{"rw", "relatime"},
-	)
+	err := nfsMountStore.upsert(managedMountEntry{
+		Source:     "192.168.1.249:/mnt/user/appdata",
+		Mountpoint: "/home/miguelmariz/docker2",
+		FSType:     "nfs4",
+		Options:    []string{"rw", "relatime"},
+	})
 	if err != nil {
-		t.Fatalf("upsertManagedNFSMount() error = %v", err)
+		t.Fatalf("upsert() error = %v", err)
 	}
 
-	entries, err := loadManagedNFSMountEntries()
+	entries, err := nfsMountStore.load()
 	if err != nil {
-		t.Fatalf("loadManagedNFSMountEntries() error = %v", err)
+		t.Fatalf("load() error = %v", err)
 	}
 
 	entry, ok := entries["/home/miguelmariz/docker2"]
@@ -44,26 +44,26 @@ func TestManagedNFSMountRegistryRoundTrip(t *testing.T) {
 }
 
 func TestRemoveManagedNFSMountDeletesRegistryFileWhenEmpty(t *testing.T) {
-	originalPath := managedNFSMountsPath
-	managedNFSMountsPath = filepath.Join(t.TempDir(), "nfs-mounts.json")
+	originalPath := nfsMountStore.path
+	nfsMountStore.path = filepath.Join(t.TempDir(), "nfs-mounts.json")
 	t.Cleanup(func() {
-		managedNFSMountsPath = originalPath
+		nfsMountStore.path = originalPath
 	})
 
-	if err := upsertManagedNFSMount(
-		"192.168.1.249:/mnt/user/appdata",
-		"/home/miguelmariz/docker2",
-		"nfs",
-		[]string{"rw"},
-	); err != nil {
-		t.Fatalf("upsertManagedNFSMount() error = %v", err)
+	if err := nfsMountStore.upsert(managedMountEntry{
+		Source:     "192.168.1.249:/mnt/user/appdata",
+		Mountpoint: "/home/miguelmariz/docker2",
+		FSType:     "nfs",
+		Options:    []string{"rw"},
+	}); err != nil {
+		t.Fatalf("upsert() error = %v", err)
 	}
 
-	if err := removeManagedNFSMount("/home/miguelmariz/docker2"); err != nil {
-		t.Fatalf("removeManagedNFSMount() error = %v", err)
+	if err := nfsMountStore.remove("/home/miguelmariz/docker2"); err != nil {
+		t.Fatalf("remove() error = %v", err)
 	}
 
-	if _, err := os.Stat(managedNFSMountsPath); !os.IsNotExist(err) {
+	if _, err := os.Stat(nfsMountStore.path); !os.IsNotExist(err) {
 		t.Fatalf("expected registry file to be removed, stat err = %v", err)
 	}
 }

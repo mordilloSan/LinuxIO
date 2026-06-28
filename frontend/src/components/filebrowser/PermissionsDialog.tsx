@@ -164,12 +164,16 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const availableUsers = usersGroupsData?.users || [];
   const availableGroups = usersGroupsData?.groups || [];
   const handlePermissionChange = useCallback(
-    (category: keyof PermissionBits, type: "read" | "write" | "execute") => {
+    (
+      category: keyof PermissionBits,
+      type: "read" | "write" | "execute",
+      checked: boolean,
+    ) => {
       setPermissions((prev) => ({
         ...prev,
         [category]: {
           ...prev[category],
-          [type]: !prev[category][type],
+          [type]: checked,
         },
       }));
     },
@@ -200,11 +204,25 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         header: flag[0].toUpperCase() + flag.slice(1),
         cell: ({ row }) => (
           <AppCheckbox
+            aria-label={`${row.original.label} ${flag}`}
             checked={permissions[row.original.id][flag]}
-            onChange={() => handlePermissionChange(row.original.id, flag)}
+            onChange={(e) =>
+              handlePermissionChange(row.original.id, flag, e.target.checked)
+            }
           />
         ),
-        meta: { align: "center" },
+        meta: {
+          align: "center",
+          cellClassName: "app-vdt__cell--select",
+          getCellRenderKey: (row) => {
+            const permissionRow = row as PermissionMatrixRow;
+            return [
+              permissionRow.id,
+              flag,
+              permissions[permissionRow.id][flag],
+            ];
+          },
+        },
       }),
     ),
   ];

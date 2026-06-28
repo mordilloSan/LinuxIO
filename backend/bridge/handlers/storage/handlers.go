@@ -21,6 +21,11 @@ var api = apischema.Bindings(
 	apischema.Job[apischema.ServerExportMountOptionsPersistRequest, apischema.StorageMountResult]("storage.mount_nfs").Handle(handleMountNFS),
 	apischema.Job[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_nfs").Handle(handleUnmountNFS),
 	apischema.Job[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_nfs").Handle(handleRemountNFS),
+	apischema.Query[apischema.NoRequest, []apischema.CIFSMount]("storage.list_cifs_mounts").Handle(handleListCIFSMounts),
+	apischema.Query[apischema.ServerRequest, []string]("storage.list_cifs_shares").Handle(handleListCIFSShares),
+	apischema.Job[apischema.CIFSMountRequest, apischema.StorageMountResult]("storage.mount_cifs").Handle(handleMountCIFS),
+	apischema.Job[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_cifs").Handle(handleUnmountCIFS),
+	apischema.Job[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_cifs").Handle(handleRemountCIFS),
 	apischema.Job[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
 	apischema.Job[apischema.MountpointNameRequest, apischema.StoragePathResult]("storage.create_btrfs_subvolume").Handle(handleCreateBtrfsSubvolume),
 	apischema.Query[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info").Handle(handleGetDriveInfo),
@@ -160,6 +165,69 @@ func handleRemountNFS(ctx context.Context, req apischema.MountpointOptionsUpdate
 	result, err := RemountNFS(ctx, req.Mountpoint, req.Options, updateFstab)
 	if err != nil {
 		slog.Error("failed to remount NFS share", "mountpoint", req.Mountpoint, "error", err)
+		return err
+	}
+	return bridgeipc.EmitResult(emit, result, nil)
+}
+
+func handleListCIFSMounts(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+	slog.Debug("Listing CIFS mounts")
+	mounts, err := ListCIFSMounts(ctx)
+	if err != nil {
+		slog.Error("failed to list CIFS mounts", "error", err)
+		return err
+	}
+	slog.Debug("listed CIFS mounts", "count", len(mounts))
+	return bridgeipc.EmitResult(emit, mounts, nil)
+}
+
+func handleListCIFSShares(ctx context.Context, req apischema.ServerRequest, emit bridgeipc.Events) error {
+	slog.Debug("listing CIFS shares", "server", req.Server)
+	shares, err := ListCIFSShares(ctx, req.Server)
+	if err != nil {
+		slog.Error("failed to list CIFS shares", "server", req.Server, "error", err)
+		return err
+	}
+	return bridgeipc.EmitResult(emit, shares, nil)
+}
+
+func handleMountCIFS(ctx context.Context, req apischema.CIFSMountRequest, emit bridgeipc.Events) error {
+	// Password safety: never log req.Password or req.Options.
+	slog.Debug("mount_cifs request", "server", req.Server, "share", req.Share, "mountpoint", req.Mountpoint)
+	result, err := MountCIFS(ctx, cifsMountParams{
+		server:     req.Server,
+		share:      req.Share,
+		mountpoint: req.Mountpoint,
+		username:   req.Username,
+		password:   req.Password,
+		domain:     req.Domain,
+		options:    req.Options,
+	})
+	if err != nil {
+		slog.Error("failed to mount CIFS share", "server", req.Server, "share", req.Share, "mountpoint", req.Mountpoint, "error", err)
+		return err
+	}
+	return bridgeipc.EmitResult(emit, result, nil)
+}
+
+func handleUnmountCIFS(ctx context.Context, req apischema.MountpointRemoveFstabRequest, emit bridgeipc.Events) error {
+	removeFstab := truthy(req.RemoveFstab)
+	slog.Debug("unmount_cifs request", "mountpoint", req.Mountpoint, "remove_fstab", removeFstab)
+	result, err := UnmountCIFS(ctx, req.Mountpoint, removeFstab)
+	if err != nil {
+		slog.Error("failed to unmount CIFS share", "mountpoint", req.Mountpoint, "error", err)
+		return err
+	}
+	return bridgeipc.EmitResult(emit, result, nil)
+}
+
+func handleRemountCIFS(ctx context.Context, req apischema.MountpointOptionsUpdateFstabRequest, emit bridgeipc.Events) error {
+	updateFstab := truthy(req.UpdateFstab)
+	// Password safety: never log req.Options.
+	slog.Debug("remount_cifs request", "mountpoint", req.Mountpoint, "update_fstab", updateFstab)
+	result, err := RemountCIFS(ctx, req.Mountpoint, req.Options, updateFstab)
+	if err != nil {
+		slog.Error("failed to remount CIFS share", "mountpoint", req.Mountpoint, "error", err)
 		return err
 	}
 	return bridgeipc.EmitResult(emit, result, nil)

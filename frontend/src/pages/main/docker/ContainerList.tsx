@@ -45,12 +45,16 @@ import {
 interface ContainerListProps {
   checkingUpdates?: boolean;
   editMode: boolean;
+  stoppingContainerIds?: ReadonlySet<string>;
   viewMode?: "card" | "table";
 }
+
+const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 
 const ContainerList: React.FC<ContainerListProps> = ({
   checkingUpdates = false,
   editMode,
+  stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }) => {
   const theme = useAppTheme();
@@ -204,6 +208,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
         checkingUpdates={checkingUpdates}
         containers={orderedContainers}
         editMode={editMode}
+        stoppingContainerIds={stoppingContainerIds}
         onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
       />
     );
@@ -251,6 +256,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
                   >
                     <SortableCard editMode id={container.Id}>
                       <ContainerCard
+                        actionPending={stoppingContainerIds.has(container.Id)}
                         autoUpdateDisabled={containerAutoUpdate.disabled}
                         autoUpdatePending={containerAutoUpdate.pendingNames.has(
                           container.Names?.[0]?.replace("/", "") ?? "",
@@ -340,6 +346,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
                 }}
               >
                 <ContainerCard
+                  actionPending={stoppingContainerIds.has(selectedContainer.Id)}
                   autoUpdateDisabled={containerAutoUpdate.disabled}
                   autoUpdatePending={containerAutoUpdate.pendingNames.has(
                     selectedContainer.Names?.[0]?.replace("/", "") ?? "",
@@ -434,6 +441,7 @@ const ContainerList: React.FC<ContainerListProps> = ({
                     size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
                   >
                     <ContainerCard
+                      actionPending={stoppingContainerIds.has(container.Id)}
                       autoUpdateDisabled={containerAutoUpdate.disabled}
                       autoUpdatePending={containerAutoUpdate.pendingNames.has(
                         container.Names?.[0]?.replace("/", "") ?? "",

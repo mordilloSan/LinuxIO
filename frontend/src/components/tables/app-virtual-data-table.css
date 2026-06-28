@@ -87,6 +87,11 @@
   padding: 4px 16px;
 }
 
+.app-vdt__cell.app-vdt__cell--select {
+  overflow: visible;
+  padding-inline: 3px;
+}
+
 .app-vdt__cell > * {
   min-width: 0;
   max-width: 100%;

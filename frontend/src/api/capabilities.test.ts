@@ -35,6 +35,18 @@ describe("capabilities helpers", () => {
     });
   });
 
+  it("defines indexer as an installable optional component", () => {
+    const indexer = CAPABILITIES.find(
+      (capability) => capability.wire === "indexer",
+    );
+
+    expect(indexer).toMatchObject({
+      dependency: "linuxio indexer",
+      installable: { requiresPackageKit: false },
+      state: "indexerAvailable",
+    });
+  });
+
   it("parses untrusted capability JSON safely", () => {
     expect(parseCapabilityState(null)).toEqual(emptyCapabilityState);
     expect(

@@ -3,6 +3,7 @@ import React, { useRef, useState } from "react";
 
 import { DeleteNFSShareDialog } from "./NFSShares";
 import { DeleteSambaShareDialog } from "./SambaShares";
+import CIFSMounts from "../storage/CIFSMounts";
 import NFSMounts from "../storage/NFSMounts";
 
 import {
@@ -1133,12 +1134,18 @@ const SharesPage: React.FC = () => {
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
+  const { reason: sambaClientReason, status: sambaClientStatus } =
+    useCapability("sambaClientAvailable");
+  const sambaClientUnavailable = sambaClientStatus === "unavailable";
   const [viewMode, setViewMode] = useViewMode("shares", "table");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
   const [mountNFSHandler, setMountNFSHandler] = useState<(() => void) | null>(
+    null,
+  );
+  const [mountSMBHandler, setMountSMBHandler] = useState<(() => void) | null>(
     null,
   );
   const [nfsView, setNfsView] = useViewMode("shares.mounts", "table");
@@ -1264,10 +1271,33 @@ const SharesPage: React.FC = () => {
   );
 
   const mountsContent = (
-    <NFSMounts
-      onMountCreateHandler={(handler) => setMountNFSHandler(() => handler)}
-      viewMode={nfsView}
-    />
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 24,
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      <div>
+        <AppTypography fontWeight={600} gutterBottom variant="subtitle1">
+          NFS
+        </AppTypography>
+        <NFSMounts
+          onMountCreateHandler={(handler) => setMountNFSHandler(() => handler)}
+          viewMode={nfsView}
+        />
+      </div>
+      <div>
+        <AppTypography fontWeight={600} gutterBottom variant="subtitle1">
+          SMB / CIFS
+        </AppTypography>
+        <CIFSMounts
+          onMountCreateHandler={(handler) => setMountSMBHandler(() => handler)}
+        />
+      </div>
+    </div>
   );
 
   return (
@@ -1328,6 +1358,27 @@ const SharesPage: React.FC = () => {
                         variant="contained"
                       >
                         Mount NFS
+                      </AppButton>
+                    </span>
+                  </AppTooltip>
+                )}
+                {mountSMBHandler && (
+                  <AppTooltip
+                    title={
+                      sambaClientUnavailable ? sambaClientReason : "Mount SMB"
+                    }
+                  >
+                    <span>
+                      <AppButton
+                        disabled={sambaClientUnavailable}
+                        onClick={mountSMBHandler}
+                        size="small"
+                        startIcon={
+                          <Icon height={20} icon="mdi:plus" width={20} />
+                        }
+                        variant="contained"
+                      >
+                        Mount SMB
                       </AppButton>
                     </span>
                   </AppTooltip>

@@ -220,6 +220,11 @@ const VolumeList: React.FC<VolumeListProps> = ({
       ),
       meta: {
         align: "center",
+        className: "app-vdt__cell--select",
+        getCellRenderKey: (row) => {
+          const volume = row as (typeof filtered)[number];
+          return [volume.Name, effectiveSelected.has(volume.Name)];
+        },
         width: "40px",
       },
     },

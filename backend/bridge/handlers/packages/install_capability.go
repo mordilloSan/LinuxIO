@@ -176,6 +176,8 @@ func checkCapabilityInstallPrerequisites(ctx context.Context, job *bridgejobs.Jo
 
 func installOptionalComponent(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
 	switch spec.Install.OptionalComponent {
+	case system.OptionalComponentIndexer:
+		return installIndexer(ctx, job)
 	case system.OptionalComponentWatchtower:
 		return installWatchtower(ctx, job)
 	default:
